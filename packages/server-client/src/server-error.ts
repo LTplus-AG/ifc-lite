@@ -47,13 +47,20 @@ function isErrorResponse(value: unknown): value is ErrorResponse {
 
 /** The envelope in `text`, or `undefined` when it is not one. */
 function parseErrorResponse(text: string): ErrorResponse | undefined {
+  const trimmed = text.trim();
+  // Empty, plain text or HTML (a proxy's error page): not the envelope, and
+  // the caller falls back to the HTTP status.
+  if (!trimmed.startsWith('{')) return undefined;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(trimmed);
   } catch (parseError) {
-    // Not JSON: the caller falls back to the HTTP status, which is the
-    // handling. Kept visible at debug level rather than dropped.
-    console.debug('[client] Non-JSON error body:', parseError);
+    // Malformed JSON: the same status fallback is the handling, kept visible
+    // at debug level rather than dropped.
+    console.debug(
+      '[client] Malformed JSON error body:',
+      parseError instanceof Error ? parseError.message : parseError
+    );
     return undefined;
   }
   return isErrorResponse(parsed) ? parsed : undefined;

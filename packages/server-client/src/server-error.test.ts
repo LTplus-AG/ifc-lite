@@ -102,3 +102,16 @@ describe('getCached', () => {
     await expect(client().getCached(KEY)).rejects.toMatchObject({ status: 503, code: 'OVERLOADED' });
   });
 });
+
+describe('serverErrorFromResponse, malformed JSON', () => {
+  it('falls back to the HTTP status for a truncated JSON body', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    const error = await serverErrorFromResponse(
+      new Response('{"error":"cut off', { status: 500, statusText: 'Internal Server Error' })
+    );
+    expect(error.code).toBe('HTTP_500');
+    expect(error.message).toBe('Server error: 500 Internal Server Error');
+    expect(debug).toHaveBeenCalledOnce();
+    debug.mockRestore();
+  });
+});

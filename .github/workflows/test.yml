@@ -354,6 +354,8 @@ jobs:
               # widening that exclusion.
               - 'apps/landing/samples/**'
               - 'docs/architecture/coverage-ledger.md'
+              # scripts/generate-enum-reconciliation.mjs checks this generated ledger (#5365).
+              - 'docs/architecture/schema-enum-reconciliation.md'
             geometry:
               - 'rust/geometry/**'
               - 'rust/core/**'
@@ -1540,6 +1542,11 @@ jobs:
       # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
       - name: Check IFC4 required-slot table freshness
         run: node scripts/generate-ifc4-required-slots.mjs --check
+      # The ledger of enum members a schema conversion can meet that the target
+      # lacks, and what the converter writes for each (#5365). A schema
+      # regeneration that adds one fails here until its rows are reviewed.
+      - name: Check enum reconciliation ledger freshness
+        run: node scripts/generate-enum-reconciliation.mjs --check
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

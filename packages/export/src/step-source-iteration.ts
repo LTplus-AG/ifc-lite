@@ -327,7 +327,7 @@ export function writeSourceEntityLines(
 
       // Apply schema conversion if exporting to a different schema version
       if (pass.converting) {
-        const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots);
+        const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
         if (converted !== null) pass.entities.push(converted);
       } else {
         pass.entities.push(nextEntityText);

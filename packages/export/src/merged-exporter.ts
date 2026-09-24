@@ -18,16 +18,13 @@ import {
 } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import {
-  collectReferencedEntityIds,
-  getVisibleEntityIds,
-  filterHiddenRefsFromRelationshipLine,
-} from './reference-collector.js';
+import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
@@ -515,7 +512,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck()]; // required slots (#4714, #5202)
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -540,14 +537,14 @@ export class MergedExporter {
         if (!written(expressId)) continue;
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
         );
         if (line !== null) allEntityLines.push(line);
       }
 
       isFirstModel = false;
     }
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings()]) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
@@ -644,7 +641,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck()]; // required slots (#4714, #5202)
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -681,7 +678,7 @@ export class MergedExporter {
 
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
         );
         if (line !== null) allEntityLines.push(line);
 
@@ -705,7 +702,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings()]) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
 
     // Assembly phase
     if (onProgress) {
@@ -1197,7 +1194,7 @@ export class MergedExporter {
     hiddenProductIds: ReadonlySet<number> | null,
     completeIndex: CompleteEntityIndex,
     includedIds: ReadonlySet<number> | null,
-    slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck,
+    slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck, enums: EnumReconciliation,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 
@@ -1285,7 +1282,7 @@ export class MergedExporter {
       // "proxy or throw" contract rather than risk a wrong omission in the wrong
       // id space; the same LoadConfiguration/AppliedLoad case that would omit in
       // `StepExporter` still throws here, unchanged from before this fix.
-      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots);
+      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums);
       if (converted === null) {
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }

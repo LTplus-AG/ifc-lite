@@ -21,7 +21,6 @@
  * unaffected by which side is displayed.
  */
 
-import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -37,9 +36,14 @@ import { IdsSummary } from './ValidationPanel.idsSummary';
 import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { useValidationResults } from '@/hooks/validation/useValidationResults';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
+import {
+  setValidationSourceChoice as setActiveSource,
+  useValidationSourceChoice,
+  type ValidationSourceChoice,
+} from '@/lib/validation/validation-source-choice';
 import type { RuleModelPickerModel } from './RuleModelPicker';
 
-type Source = 'ids' | 'rules';
+type Source = ValidationSourceChoice;
 
 interface ValidationPanelProps {
   onClose?: () => void;
@@ -53,7 +57,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
 
-  const [activeSource, setActiveSource] = useState<Source | null>(null);
+  // Shared with the IDS tour (#5608), which puts the panel on its IDS side.
+  const activeSource = useValidationSourceChoice((s) => s.choice);
   // Default, before any explicit pick: whichever side already has content,
   // IDS first. `info.file` is local React state, lost on remount (e.g.
   // switching to another sidebar panel and back) — a landed rules REPORT

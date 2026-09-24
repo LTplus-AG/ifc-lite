@@ -116,15 +116,13 @@ export const commandPaletteEn = {
   'commandPalette.schedule.reset.label': 'Reset Schedule (Clear 4D Data)',
 
   // ── Export ──
-  'commandPalette.export.screenshot.label': 'Screenshot',
-  'commandPalette.export.glb.label': 'Export GLB',
-  'commandPalette.export.usd.label': 'Export USD (OpenUSD)',
+  // Every other Export row reads `exportCommands.*.menuLabel` from the
+  // toolbar registry (#5601); CSV is flattened to one row per table here.
   'commandPalette.export.csvEntities.label': 'Export CSV: Entities',
   'commandPalette.export.csvProperties.label': 'Export CSV: Properties',
   'commandPalette.export.csvQuantities.label': 'Export CSV: Quantities',
   'commandPalette.export.csvSpatial.label': 'Export CSV: Spatial',
-  'commandPalette.export.anonymized.label': 'Export Anonymized Subset…',
-  'commandPalette.export.json.label': 'Export JSON',
+  'commandPalette.export.unavailable': 'Nothing to export yet. Load a model first.',
 
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',

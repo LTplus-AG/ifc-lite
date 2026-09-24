@@ -14,6 +14,7 @@ import type { ExtensionHostService } from '@/services/extensions/host.js';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
+import type { PaletteExportRequest } from './usePaletteExportRunner';
 
 export type RightPanel =
   | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
@@ -29,6 +30,8 @@ export interface CommandPaletteBuildParams {
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;
   activateBottomPanel: (panel: BottomPanelId) => void;
+  /** Runs an Export row through the toolbars' handlers and dialogs (`usePaletteExportRunner`). */
+  runExport: (request: PaletteExportRequest) => void;
 }
 
 /** `labelKey` shorthand: every row that shows fixed UI copy sets exactly

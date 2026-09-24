@@ -318,9 +318,8 @@ export function ViewerLayout() {
         <SearchModal />
         <TourHost />
         {/* Trigger-less: this instance exists so the entity context menu's
-            "Export anonymized…" and the Command Palette's "export:anonymized"
-            (both only set `anonymizedExportRequested`, no trigger of their own)
-            have a mounted dialog regardless of whether the export toolbar
+            "Export anonymized…" (which only sets `anonymizedExportRequested`,
+            no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog />

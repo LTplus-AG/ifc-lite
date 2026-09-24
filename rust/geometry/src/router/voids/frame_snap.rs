@@ -26,14 +26,27 @@ use crate::{Mesh, Point3};
 /// the margin covers the sum over the three world components.
 const QUANTUM_ULPS: f64 = 4.0;
 
+/// Upper bound on the snap tolerance (metres). Far from the origin the world
+/// quantum grows past real feature sizes (48 mm at 100 km); a snap that large
+/// would collapse thin layers, so it stops at 0.1 mm and leaves the rest to
+/// the RTC rebase.
+const MAX_SNAP_TOLERANCE: f64 = 1e-4;
+
+/// A cluster wider than this many tolerances is not rounding noise but a
+/// chain of distinct, closely spaced values (dense tessellation); it is left
+/// untouched rather than collapsed onto one plane.
+const MAX_CLUSTER_SPAN_TOLERANCES: f64 = 4.0;
+
 /// The f32 quantum of world coordinates of magnitude `world_magnitude`, times
-/// [`QUANTUM_ULPS`]: the tolerance [`snap_to_frame_planes`] clusters within.
+/// [`QUANTUM_ULPS`] and capped at [`MAX_SNAP_TOLERANCE`]: the tolerance
+/// [`snap_to_frame_planes`] clusters within.
 pub(super) fn frame_snap_tolerance(world_magnitude: f64) -> f64 {
-    QUANTUM_ULPS * f32::EPSILON as f64 * world_magnitude.max(1.0)
+    (QUANTUM_ULPS * f32::EPSILON as f64 * world_magnitude.max(1.0)).min(MAX_SNAP_TOLERANCE)
 }
 
 /// Per-axis clusters of nearby coordinate values: sorted `(first, last,
-/// representative)` runs whose consecutive gaps are all `<= tol`.
+/// representative)` runs whose consecutive gaps are all `<= tol` and whose
+/// whole span is at most [`MAX_CLUSTER_SPAN_TOLERANCES`] tolerances.
 struct AxisClusters(Vec<(f64, f64, f64)>);
 
 impl AxisClusters {
@@ -44,10 +57,14 @@ impl AxisClusters {
         let mut start = 0;
         for i in 1..=values.len() {
             if i == values.len() || values[i] - values[i - 1] > tol {
-                if i > start {
+                let span = values[i - 1] - values[start];
+                if i > start + 1 && span <= MAX_CLUSTER_SPAN_TOLERANCES * tol {
                     // The median member: a value that really occurs, and the
-                    // same one whatever order the operands arrived in.
-                    runs.push((values[start], values[i - 1], values[(start + i - 1) / 2]));
+                    // same one whatever order the operands arrived in. Rounded
+                    // to f32 so mesh vertices and f64 opening bounds land on
+                    // bit-identical planes.
+                    let rep = values[(start + i - 1) / 2] as f32 as f64;
+                    runs.push((values[start], values[i - 1], rep));
                 }
                 start = i;
             }

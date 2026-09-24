@@ -262,7 +262,7 @@ export function createDataAccessor(
     },
 
     getClassifications(expressId: number): ClassificationInfo[] {
-      return resolveClassifications(store, expressId);
+      return resolveClassifications(store, expressId, entityVisibility);
     },
 
     getMaterials(expressId: number): MaterialInfo[] {

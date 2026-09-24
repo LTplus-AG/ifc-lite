@@ -152,3 +152,48 @@ ${FOOTER}`;
     ]);
   });
 });
+
+/**
+ * #5249: the external-reference walk enumerated the parsed type index, so a
+ * relationship deleted this session still classified the material, and one
+ * created this session was invisible. The overlay here is the structural
+ * shape both a live `MutablePropertyView` and the IDS worker's snapshot
+ * provide.
+ */
+describe('resolveClassifications: external references over the edited model (#5249)', () => {
+  const IFC = `${HEADER}
+#10=IFCMATERIAL('Concrete C30/37',$,$);
+#11=IFCMATERIAL('Steel S355',$,$);
+#20=IFCEXTERNALREFERENCERELATIONSHIP($,$,#21,(#10));
+#21=IFCCLASSIFICATIONREFERENCE($,'Pr_20_93_08','Concrete',#22,$,$);
+#22=IFCCLASSIFICATION($,$,$,'Uniclass 2015',$,$,$);
+${FOOTER}`;
+
+  async function withOverlay(deleted: number[], created: Array<{ expressId: number; type: string; attributes: unknown[] }>) {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+    const tombstones = new Set(deleted);
+    return createDataAccessor(store, undefined, {
+      isDeleted: (id) => tombstones.has(id),
+      getNewEntities: () => created,
+    });
+  }
+
+  it('a relationship deleted this session no longer classifies the material', async () => {
+    const a = await withOverlay([20], []);
+    expect(a.getClassifications(10)).toEqual([]);
+  });
+
+  it('a relationship created this session classifies its material, through source and created references alike', async () => {
+    const a = await withOverlay([], [
+      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, "'Pr_20_76'", "'Steel'", '#22', null, null] },
+      { expressId: 31, type: 'IfcExternalReferenceRelationship', attributes: [null, null, '#30', ['#11']] },
+    ]);
+    expect(a.getClassifications(11)).toEqual([
+      { system: 'Uniclass 2015', value: 'Pr_20_76', name: 'Steel' },
+    ]);
+    // The source classification is untouched.
+    expect(a.getClassifications(10)).toEqual([
+      { system: 'Uniclass 2015', value: 'Pr_20_93_08', name: 'Concrete' },
+    ]);
+  });
+});

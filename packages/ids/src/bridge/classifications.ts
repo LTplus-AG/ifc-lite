@@ -10,7 +10,9 @@ import {
 import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen/schema-hierarchy';
 import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
+import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { ClassificationInfo } from '../types.js';
+import type { EntityVisibilityView } from './entity-visibility.js';
 
 interface ClassRecord {
   system?: string;
@@ -34,13 +36,14 @@ interface ClassRecord {
  */
 export function resolveClassifications(
   store: IfcDataStore,
-  expressId: number
+  expressId: number,
+  overlay?: EntityVisibilityView
 ): ClassificationInfo[] {
   const list: ClassRecord[] = [
     ...(extractClassificationsOnDemand(store, expressId) || []),
   ];
 
-  appendExternalReferenceClassifications(store, expressId, list);
+  appendExternalReferenceClassifications(store, expressId, list, overlay);
 
   const out: ClassificationInfo[] = [];
   for (const c of list) {
@@ -90,7 +93,8 @@ export function resolveClassifications(
 function appendExternalReferenceClassifications(
   store: IfcDataStore,
   expressId: number,
-  list: ClassRecord[]
+  list: ClassRecord[],
+  overlay?: EntityVisibilityView
 ): void {
   if (!store.source?.length) {
     // Only fall back to "cannot determine" when:
@@ -115,15 +119,17 @@ function appendExternalReferenceClassifications(
     return;
   }
 
-  const erRefs =
-    store.entityIndex?.byType?.get?.('IFCEXTERNALREFERENCERELATIONSHIP') || [];
-  if (erRefs.length === 0) return;
-  const ex = new EntityExtractor(store.source);
+  if (!store.entityIndex) return;
+  const read = effectiveRecordReader(store, overlay);
+  // The session's relationships (#5249): a deleted one no longer classifies
+  // anything, and one created this session does.
+  const erIds = Array.from(
+    iterateEffectiveEntities(store, overlay, ['IFCEXTERNALREFERENCERELATIONSHIP']),
+    (e) => e.expressId
+  );
 
-  for (const erId of erRefs) {
-    const erRef = store.entityIndex.byId.get(erId);
-    if (!erRef) continue;
-    const erEntity = ex.extractEntity(erRef);
+  for (const erId of erIds) {
+    const erEntity = read(erId);
     if (!erEntity) continue;
     // [Name, Description, RelatingReference, RelatedResourceObjects]
     const relating = erEntity.attributes?.[2];
@@ -132,9 +138,7 @@ function appendExternalReferenceClassifications(
     if (!Array.isArray(related)) continue;
     if (!related.includes(expressId)) continue;
 
-    const refRef = store.entityIndex.byId.get(relating);
-    if (!refRef) continue;
-    const refEntity = ex.extractEntity(refRef);
+    const refEntity = read(relating);
     if (!refEntity) continue;
     if (refEntity.type.toUpperCase() !== 'IFCCLASSIFICATIONREFERENCE') continue;
 
@@ -163,12 +167,7 @@ function appendExternalReferenceClassifications(
         break;
       }
       seen.add(cursor);
-      const cur = store.entityIndex.byId.get(cursor);
-      if (!cur) {
-        info.unresolved = true;
-        break;
-      }
-      const e = ex.extractEntity(cur);
+      const e = read(cursor);
       if (!e) {
         info.unresolved = true;
         break;
@@ -266,7 +265,55 @@ function isNonRootedClassifiableResource(
   store: IfcDataStore,
   expressId: number
 ): boolean {
+  // @raw-entity-enumeration-ok point read of the queried resource's parsed class, only on a server-parsed store where no source bytes exist to extend
   const type = store.entityIndex?.byId?.get?.(expressId)?.type;
   if (typeof type !== 'string') return false;
   return isNonRootedClassifiableResourceType(type.toUpperCase());
+}
+
+interface RecordRead {
+  type: string;
+  attributes: unknown[];
+}
+
+/**
+ * Read one record of the session's effective model (#5249): `undefined` for an
+ * entity deleted this session; a created entity's authored payload, with its
+ * `#id` references as numbers and STEP-quoted strings unquoted, which is the
+ * shape `EntityExtractor` yields for a parsed one; the source bytes otherwise.
+ */
+function effectiveRecordReader(
+  store: IfcDataStore,
+  overlay: EntityVisibilityView | undefined
+): (id: number) => RecordRead | undefined {
+  const ex = new EntityExtractor(store.source);
+  const created = new Map<number, { type: string; attributes: ReadonlyArray<unknown> }>();
+  for (const entity of overlay?.getNewEntities() ?? []) {
+    created.set(entity.expressId, { type: entity.type, attributes: entity.attributes ?? [] });
+  }
+  const retypes = overlay?.getTypeMutations?.();
+  return (id) => {
+    if (overlay?.isDeleted(id)) return undefined;
+    const retype = retypes?.get(id)?.newType;
+    const authored = created.get(id);
+    if (authored) {
+      return { type: retype ?? authored.type, attributes: authored.attributes.map(authoredValue) };
+    }
+    // @raw-entity-enumeration-ok point read of one source record, after the overlay answered for deleted and created ids
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) return undefined;
+    const entity = ex.extractEntity(ref);
+    if (!entity) return undefined;
+    return { type: retype ?? entity.type, attributes: entity.attributes ?? [] };
+  };
+}
+
+function authoredValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(authoredValue);
+  if (typeof value !== 'string') return value;
+  const ref = /^#(\d+)$/.exec(value.trim());
+  if (ref) return Number(ref[1]);
+  if (value === '$' || value === '*') return undefined;
+  const t = value.trim();
+  return t.length >= 2 && t.startsWith("'") && t.endsWith("'") ? t.slice(1, -1).replace(/''/g, "'") : value;
 }

@@ -172,12 +172,35 @@ impl ClashSession {
         clearance: f64,
         report_touch: bool,
     ) -> RuleResult {
+        self.run_rule_with_depth_floors(group_a, group_b, mode, tolerance, clearance, report_touch)
+            .0
+    }
+
+    /// [`Self::run_rule`], plus one entry per record: for a `Hard` record, the
+    /// f32 noise floor of its `distance` along the direction that depth was
+    /// measured — the depth at or below which the pair would have been
+    /// `Touch` (the classification floor, #5405). `None` for every other
+    /// status. A consumer deciding whether a reported clash is "really a
+    /// contact" (#5639) applies this same floor instead of re-deriving a band
+    /// from the record's coordinates. A separate method, not a
+    /// `ClashRecord` field, so the public record type does not change shape.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_rule_with_depth_floors(
+        &self,
+        group_a: &[u32],
+        group_b: Option<&[u32]>,
+        mode: u8,
+        tolerance: f64,
+        clearance: f64,
+        report_touch: bool,
+    ) -> (RuleResult, Vec<Option<f64>>) {
         let is_clearance = mode == 1;
         let margin = tolerance.max(if is_clearance { clearance } else { 0.0 });
 
         let pairs = self.candidate_pairs(group_a, group_b, margin);
 
         let mut records = Vec::new();
+        let mut depth_floors = Vec::new();
         for (a_global, b_global) in pairs {
             let result = self.with_mesh(a_global, |mesh_a| {
                 self.with_mesh(b_global, |mesh_b| {
@@ -194,6 +217,7 @@ impl ClashSession {
                 })
             });
             if let Some(r) = result {
+                depth_floors.push(r.depth_floor);
                 records.push(ClashRecord {
                     a: a_global,
                     b: b_global,
@@ -213,7 +237,7 @@ impl ClashSession {
             }
         }
 
-        RuleResult { records }
+        (RuleResult { records }, depth_floors)
     }
 
     /// Broad-phase candidate global-index pairs.

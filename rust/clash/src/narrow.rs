@@ -42,6 +42,12 @@ pub struct NarrowResult {
     pub distance_kind: DistanceKind,
     pub point: Vec3,
     pub bounds: Aabb,
+    /// For a `Hard` result, the f32 noise floor of `distance` along the
+    /// direction it was measured (`depth_floor` / `estimate_floor`): the depth
+    /// at or below which this pair would have been `Touch`. `None` otherwise.
+    /// Carried out so the reported touching band is decided by the same rule
+    /// as the verdict (#5639).
+    pub depth_floor: Option<f64>,
 }
 
 /// Run the narrow phase for a candidate element pair.
@@ -345,6 +351,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 
@@ -360,6 +367,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 

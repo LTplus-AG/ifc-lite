@@ -38,6 +38,9 @@ echo "📦 Running wasm-pack..."
 # rebuild from source when possible but soft-skip when not, so a missing
 # wasm-pack doesn't hard-fail `turbo build` / `turbo typecheck`. (CI's build
 # job and Vercel do install Rust and rebuild from source.)
+EXPECTED_DTS="packages/wasm/pkg/ifc-lite.d.ts"
+EXPECTED_WASM="packages/wasm/pkg/ifc-lite_bg.wasm"
+
 WASM_PACK="wasm-pack"
 if ! command -v wasm-pack &> /dev/null; then
   CARGO_BIN="$HOME/.cargo/bin/wasm-pack"
@@ -53,8 +56,6 @@ if ! command -v wasm-pack &> /dev/null; then
     # surface is already on disk. Type-checking works either way; running or
     # bundling the app still needs the real runtime (the viewer's vite build
     # demands the .js/.wasm), so this can't silently mask a missing runtime.
-    EXPECTED_DTS="packages/wasm/pkg/ifc-lite.d.ts"
-    EXPECTED_WASM="packages/wasm/pkg/ifc-lite_bg.wasm"
     if [ -f "$EXPECTED_WASM" ]; then
       echo "⚠️  wasm-pack not found — using the wasm runtime already on disk at $EXPECTED_WASM"
       echo "   (To rebuild from Rust sources, install Rust + wasm-pack:"
@@ -84,12 +85,43 @@ fi
 OUT_DIR="../../packages/wasm/pkg"
 echo "🟢 Building single-thread bundle → $OUT_DIR"
 
-rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+# The same soft-skip the missing-wasm-pack branch above applies, for the
+# symmetric case: wasm-pack is INSTALLED but its build fails (it fetches a
+# wasm-bindgen binary at run time, so a network or toolchain hiccup takes it
+# down) while a usable runtime is already on disk -- which is exactly what
+# `pnpm build:wasm:fetch` puts there. Without this the documented escape hatch
+# for hosts that cannot compile Rust does not actually let `pnpm build`
+# succeed: `set -e` aborts and the whole turbo graph fails with nothing built,
+# even though `pkg/ifc-lite_bg.wasm` is sitting right there (#5543).
+#
+# NEVER on CI: a real build failure there must stay a failure, so the fallback
+# is gated on $CI being unset. Anything that ships an artifact -- the release
+# and docker workflows, Vercel -- sets it.
+if ! rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
   --out-dir "$OUT_DIR" \
   --out-name ifc-lite \
   --release \
   $FEATURES
+then
+  if [ -z "${CI:-}" ] && [ -f "$EXPECTED_WASM" ]; then
+    echo ""
+    echo "⚠️  wasm-pack build FAILED — falling back to the runtime already on disk at $EXPECTED_WASM"
+    echo "   That artifact is whatever was built or fetched previously, NOT this checkout's"
+    echo "   Rust sources, so a change under rust/ is not in it. Re-run once the build works,"
+    echo "   or re-fetch a matching prebuilt with: pnpm build:wasm:fetch"
+    exit 0
+  fi
+  echo ""
+  if [ -n "${CI:-}" ]; then
+    echo "❌ wasm-pack build failed. Not falling back to the on-disk runtime: this is CI,"
+    echo "   where a build failure must stay a failure rather than ship a stale artifact."
+  else
+    echo "❌ wasm-pack build failed and no usable runtime is on disk at $EXPECTED_WASM."
+    echo "   Fetch a prebuilt one with: pnpm build:wasm:fetch"
+  fi
+  exit 1
+fi
 
 # NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
 # no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release

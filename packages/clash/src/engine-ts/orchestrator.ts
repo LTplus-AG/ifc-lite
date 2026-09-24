@@ -251,6 +251,9 @@ function toClash(
     status: rec.status,
     distance: rec.distance,
     distanceKind: rec.distanceKind,
+    // Only present when the kernel set it (a `hard` record), so every other
+    // clash serialises exactly as before.
+    ...(rec.depthFloor !== undefined ? { depthFloor: rec.depthFloor } : {}),
     point: rec.point,
     bounds: rec.bounds,
     severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),

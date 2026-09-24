@@ -41,7 +41,7 @@ import {
   type WallInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
-import { EntityExtractor, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -50,6 +50,7 @@ import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh } from './addElementMeshes.js';
 import { authoredElementMeshPayload, type AuthoredElement } from './authoredElement.js';
 import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import { ensureStoreyPlacement } from './storeyPlacement.js';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -790,55 +791,6 @@ function getOrCreateStoreEditor(
   // keeps the editor memoised without scheduling a render-phase update.
   state.storeEditors.set(modelId, editor);
   return editor;
-}
-
-/**
- * IfcBuildingStorey.ObjectPlacement is optional in the schema —
- * some authoring tools leave it null when the file was never
- * meant to host geometry. Authoring actions need a placement to
- * anchor their new entities against, so we materialise a default
- * IfcLocalPlacement at the storey's elevation when one's missing
- * and patch the storey's attribute via the overlay.
- *
- * Idempotent: if the storey already has a placement (number or
- * `#X` string ref), this is a no-op. Returns true when a
- * placement was created.
- */
-function ensureStoreyPlacement(
-  dataStore: import('@ifc-lite/parser').IfcDataStore,
-  editor: StoreEditor,
-  storeyExpressId: number,
-): boolean {
-  if (!editor.hasEntity(storeyExpressId)) return false;
-  const overlay = editor.getNewEntity(storeyExpressId);
-  let attrs: unknown[];
-  if (overlay) {
-    attrs = overlay.attributes.slice();
-  } else {
-    // @raw-entity-enumeration-ok Source byte span supplies attributes for a live storey; the positional overlay is checked below.
-    const ref = dataStore.entityIndex.byId.get(storeyExpressId);
-    if (!ref) return false;
-    const extractor = new EntityExtractor(dataStore.source);
-    const entity = extractor.extractEntity(ref);
-    if (!entity) return false;
-    attrs = entity.attributes.slice();
-  }
-  // IfcProduct.ObjectPlacement is at index 5 across IFC2X3 / IFC4.
-  const positional = editor.getMutationView().getPositionalMutationsForEntity(storeyExpressId);
-  const existing = positional?.has(5) ? positional.get(5) : attrs[5];
-  if (typeof existing === 'number' && Number.isFinite(existing)) return false;
-  if (typeof existing === 'string' && existing.startsWith('#')) return false;
-
-  // Build a fresh placement at world origin. The storey's elevation
-  // (if any) carries through the geometry pipeline elsewhere; this
-  // placement gives the IFC graph what resolveSpatialAnchor needs.
-  const elevation = dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
-  const originPt = editor.addEntity('IfcCartesianPoint', [[0, 0, elevation]]).expressId;
-  const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [`#${originPt}`, null, null]).expressId;
-  const localPlacement = editor.addEntity('IfcLocalPlacement', [null, `#${axisPlacement}`]).expressId;
-
-  editor.setPositionalAttribute(storeyExpressId, 5, `#${localPlacement}`);
-  return true;
 }
 
 /**

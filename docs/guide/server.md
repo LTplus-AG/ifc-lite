@@ -129,11 +129,11 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
 | `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
-| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload |
+| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload; `?parquet_layout=shared-shapes&stream_shapes=cross-batch` shares shapes across batches (see [below](#sharing-across-stream-batches-opt-in)) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
 All parse endpoints that return geometry also surface the 2D symbol stream
-(`IfcAnnotation` + `IfcGrid`), matching `@ifc-lite/parse`. The JSON and SSE
+(`IfcAnnotation` + `IfcGrid`), matching `@ifc-lite/parser`. The JSON and SSE
 responses carry it inline as `symbolic_data` (in the `complete` event for the
 streaming variants); the binary Parquet transports expose it by cache key via
 `/api/v1/parse/symbolic/{key}` (see below).
@@ -142,7 +142,7 @@ Every geometry endpoint's `ModelMetadata` carries `length_unit_scale` (factor to
 convert model length values to metres, e.g. `0.001` for millimetres) and, when
 the model has an `IfcMapConversion` / `IfcProjectedCRS`, a `georeferencing`
 object (CRS name, datum, false eastings/northings, orthogonal height, grid-north
-rotation, and a local→map 4×4 matrix) — matching `@ifc-lite/parse`. For the
+rotation, and a local→map 4×4 matrix) — matching `@ifc-lite/parser`. For the
 JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 `X-IFC-Metadata` header.
 
@@ -452,7 +452,7 @@ const available = await client.isParquetSupported();
 ## Data Model
 
 The server computes a complete data model including entities, property sets,
-quantity sets, relationships, spatial hierarchy, and — matching `@ifc-lite/parse`
+quantity sets, relationships, spatial hierarchy, and — matching `@ifc-lite/parser`
 — per-element **classifications** (`IfcClassificationReference`), **materials**
 (`IfcMaterialLayerSet` layers with metre thicknesses), and **documents**
 (`IfcDocumentReference`). The latter three are exposed as flat, element-keyed
@@ -608,6 +608,61 @@ Two further consequences:
   `/cache/geometry/{hash}`.** The two layouts are cached separately
   (`-parquet-v5` / `-parquet-v7`) and never cross-serve, so a check that omits
   it answers about the other entry. `@ifc-lite/server-client` does this for you.
+
+#### Sharing across stream batches (opt-in)
+
+On `/parse/parquet-stream`, `shared-shapes` alone shares nothing: every batch
+decodes on its own, so a shape is re-sent in every batch it occurs in, and the
+streamed model is barely smaller than the default layout. Add
+`&stream_shapes=cross-batch` (issue #5407) and the stream shares across batches
+the way `/parse/parquet` shares across the whole model, while still streaming:
+
+```bash
+curl -N -X POST -F "file=@model.ifc" \
+  "$SERVER/api/v1/parse/parquet-stream?parquet_layout=shared-shapes&stream_shapes=cross-batch"
+```
+
+A batch then carries only the shapes no earlier batch sent. Its mesh rows'
+`vertex_start` / `index_start` index the vertex and index rows of the WHOLE
+stream so far, so a row can point back into an earlier batch, and every `batch`
+event states where its own tables start:
+
+```json
+{"type":"batch","batch_number":3,"mesh_count":1000,"data":"...","vertex_base":81234,"index_base":402111}
+```
+
+`index_base` counts indices (three per index-table row), the unit of
+`index_start`. A client appends each batch's vertex and index tables at those
+bases and decodes the batch's mesh rows against everything it holds. It must
+refuse a batch whose base is not what it has received: that is a dropped or
+reordered batch.
+
+- **Why a second opt-in.** A client that sends only `shared-shapes` decodes each
+  batch against that batch's own tables; a row pointing into an earlier batch
+  would read out of range, or as another shape's vertices. The bases double as
+  the server's acknowledgement: a server that predates the parameter ignores it
+  and sends no bases, and each batch then decodes on its own as before.
+- **Requires `parquet_layout=shared-shapes`.** Without the rotation columns
+  nothing can be placed, so `stream_shapes=cross-batch` on the default layout
+  answers `400`. Every other route ignores the parameter.
+- **Cache.** Both stream modes fill the same `-parquet-v7` entry, a whole-model
+  blob with one row group per batch, which `/cache/geometry/{hash}` serves and
+  `decodeParquetGeometry` decodes either way. A cache hit replays to a
+  cross-batch client batch by batch, bases included. A batch-local client
+  cannot be handed rows that point backwards, so it receives an entry a
+  cross-batch stream wrote as a single batch: correct, only not progressive.
+- **Bounded server memory.** No occurrence outlives the batch it arrived in.
+  What persists across batches is, per distinct shape, where it landed (40
+  bytes, whatever the shape's size), and, per instanced representation, the one
+  template mesh its later rotated occurrences are verified against, capped at
+  256 MiB in total. Past the cap a representation is simply not carried forward:
+  its later occurrences are shared within their batch or by content hash
+  instead. Sharing degrades; correctness and the bound do not.
+- **Client memory.** The client keeps the distinct shapes the stream sent,
+  which is the size of the shared payload, not of the model.
+
+`@ifc-lite/server-client`'s `parseParquetStream` sends the opt-in and decodes
+both kinds of batch.
 
 ### Optimized Format
 

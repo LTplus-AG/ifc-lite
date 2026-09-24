@@ -22,6 +22,8 @@ The screen used Linux WSL ext4, `RAYON_NUM_THREADS=12`, benchmark affinity CPUs 
 
 The original measuring script is retained outside the repo; its SHA-256 is pinned in the protocol. [screen.py](screen.py) is a portable-path equivalent: it takes the fixture root, binaries, CPU list and output directory as arguments, refuses existing output directories, runs balanced pairs in fresh processes, hashes each complete GLB, records GNU time RSS, and deletes a fixture's output artifacts only after all its hashes agree. Failed attempts retain a row with an `observerError` and null measurements where collection failed. Linux `taskset` and `/usr/bin/time` are required.
 
+Run the script on an otherwise idle host, or separately record and restore an isolation window like the one in this screen. The script pins only its probe processes; it does not constrain competing work or reproduce the recorded isolation by itself.
+
 ```sh
 # Copy this evidence bundle outside the worktree before checking out the pinned
 # base; that older commit does not contain these archive files.

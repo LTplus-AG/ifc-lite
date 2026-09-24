@@ -51,6 +51,8 @@ def main():
     for path in (args.base, args.candidate):
         if not path.is_file():
             parser.error(f'binary not found: {path}')
+    args.base = args.base.resolve()
+    args.candidate = args.candidate.resolve()
     for _, relative in FIXTURES:
         if not (args.fixture_root / relative).is_file():
             parser.error(f'fixture not found: {args.fixture_root / relative}')

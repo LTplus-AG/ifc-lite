@@ -41,9 +41,9 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.title': 'IFClite',
   'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
-  'viewportLighting.container.emptyState.openButton.open': 'Open .ifc file',
+  'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drag & drop anywhere',
+  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
   'viewportLighting.container.emptyState.orDivider': 'or',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
@@ -54,11 +54,12 @@ export const viewportLightingEn = {
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  'viewportLighting.container.emptyState.layersPromo.badge': 'New',
-  'viewportLighting.container.emptyState.layersPromo.title': 'Layers',
-  'viewportLighting.container.emptyState.layersPromo.description':
-    'Version your model like code: layers, drafts, merges, reviews',
-  'viewportLighting.container.emptyState.layersPromo.cta': 'Try the demo stack →',
+  // First-run primary action (#5840): the demo-kit sample, loaded through
+  // the same `loadFile` as any user file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
+  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
+  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',

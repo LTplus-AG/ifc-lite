@@ -20,19 +20,23 @@ The screen used Linux WSL ext4, `RAYON_NUM_THREADS=12`, benchmark affinity CPUs 
 
 ## Reproduce
 
-The original measuring script is retained outside the repo; its SHA-256 is pinned in the protocol. [screen.py](screen.py) is a portable-path equivalent: it takes the fixture root, binaries, CPU list and output directory as arguments, refuses existing output directories, runs balanced pairs in fresh processes, hashes each complete GLB, records GNU time RSS, and deletes successful output artifacts after hashing. Linux `taskset` and `/usr/bin/time` are required.
+The original measuring script is retained outside the repo; its SHA-256 is pinned in the protocol. [screen.py](screen.py) is a portable-path equivalent: it takes the fixture root, binaries, CPU list and output directory as arguments, refuses existing output directories, runs balanced pairs in fresh processes, hashes each complete GLB, records GNU time RSS, and deletes a fixture's output artifacts only after all its hashes agree. Failed attempts retain a row with an `observerError` and null measurements where collection failed. Linux `taskset` and `/usr/bin/time` are required.
 
 ```sh
-# From a clean checkout at the pinned base commit; set a task-specific target directory.
-git apply docs/architecture/evidence/bounded-glb-replay-5557/example.patch
+# Copy this evidence bundle outside the worktree before checking out the pinned
+# base; that older commit does not contain these archive files.
+cp -a docs/architecture/evidence/bounded-glb-replay-5557 /path/to/evidence-bundle
+git checkout d05f5423a7caf761f0a2e12d064d85e84355d031
+# Use a task-specific Cargo target directory.
+git apply /path/to/evidence-bundle/example.patch
 CARGO_TARGET_DIR=/path/to/cargo-target CARGO_BUILD_JOBS=8 cargo build --profile profiling -p ifc-lite-export --example bounded_spike
 cp /path/to/cargo-target/profiling/examples/bounded_spike /path/to/base-probe
 
-git apply docs/architecture/evidence/bounded-glb-replay-5557/replay-only.patch
+git apply /path/to/evidence-bundle/replay-only.patch
 CARGO_TARGET_DIR=/path/to/cargo-target CARGO_BUILD_JOBS=8 cargo build --profile profiling -p ifc-lite-export --example bounded_spike
 cp /path/to/cargo-target/profiling/examples/bounded_spike /path/to/replay-probe
 
-python3 docs/architecture/evidence/bounded-glb-replay-5557/screen.py \
+python3 /path/to/evidence-bundle/screen.py \
   --base /path/to/base-probe --candidate /path/to/replay-probe \
   --fixture-root /path/to/tests/models --out /path/to/new-screen-output \
   --cpus 4-23 --rayon-threads 12 --pairs 2

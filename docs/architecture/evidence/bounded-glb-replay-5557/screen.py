@@ -82,37 +82,62 @@ def main():
                 command = ['taskset', '-c', args.cpus, '/usr/bin/time', '-v', '-o', str(time_file), str(binary), str(args.fixture_root / relative), str(output), 'float']
                 started = datetime.now(timezone.utc).isoformat()
                 started_monotonic = time.monotonic()
+                observer_errors = []
+                exit_code = None
+                timed_out = False
                 with open(args.out / f'{stem}.stdout', 'w') as stdout, open(args.out / f'{stem}.stderr', 'w') as stderr:
-                    child = subprocess.Popen(command, env=environment, stdout=stdout, stderr=stderr, start_new_session=True)
                     try:
-                        exit_code = child.wait(timeout=120)
-                        timed_out = False
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                        exit_code = child.wait()
-                        timed_out = True
+                        child = subprocess.Popen(command, env=environment, stdout=stdout, stderr=stderr, start_new_session=True)
+                    except OSError as error:
+                        observer_errors.append(f'launch: {error}')
+                    else:
+                        try:
+                            exit_code = child.wait(timeout=120)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(child.pid, signal.SIGKILL)
+                            exit_code = child.wait()
+                            timed_out = True
                 ended = datetime.now(timezone.utc).isoformat()
-                result = next((json.loads(line) for line in (args.out / f'{stem}.stdout').read_text().splitlines() if line.startswith('{')), None)
-                time_text = time_file.read_text()
+                result = None
+                for line in (args.out / f'{stem}.stdout').read_text().splitlines():
+                    try:
+                        parsed = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(parsed, dict) and isinstance(parsed.get('output_ms'), (int, float)):
+                        result = parsed
+                        break
+                if result is None:
+                    observer_errors.append('missing valid probe stdout with output_ms')
+                peak_rss = None
+                try:
+                    peak_rss = int(gnu_time_metric(time_file.read_text(), 'Maximum resident set size (kbytes)'))
+                except (OSError, RuntimeError, ValueError) as error:
+                    observer_errors.append(f'GNU time: {error}')
+                if not output.is_file() or output.stat().st_size == 0:
+                    observer_errors.append('missing or empty GLB output')
                 row = {
                     'sample': stem, 'fixture': name, 'pair': pair, 'arm': arm,
                     'startedUtc': started, 'endedUtc': ended, 'exit': exit_code, 'timeout': timed_out,
                     'processWallMs': (time.monotonic() - started_monotonic) * 1000,
                     'outputMs': result.get('output_ms') if result else None,
                     'artifactMs': result.get('artifact_ms') if result else None,
-                    'peakRssKiB': int(gnu_time_metric(time_text, 'Maximum resident set size (kbytes)')),
-                    'artifactSha256': digest(output) if output.is_file() else None,
+                    'peakRssKiB': peak_rss,
+                    'artifactSha256': digest(output) if output.is_file() and output.stat().st_size else None,
                     'result': result, 'scratchLeaked': scratch.exists(),
+                    'observerError': '; '.join(observer_errors) if observer_errors else None,
                 }
                 rows.append(row)
                 with open(args.out / 'runs.jsonl', 'a') as stream:
                     stream.write(json.dumps(row, separators=(',', ':')) + '\n')
-                if exit_code or timed_out or row['scratchLeaked']:
-                    raise RuntimeError(f'{stem} failed; all artifacts retained in {args.out}')
+                if exit_code != 0 or timed_out or row['scratchLeaked'] or observer_errors:
+                    raise RuntimeError(f'{stem} failed; logs and generated artifacts retained in {args.out}')
                 hashes = {prior['artifactSha256'] for prior in rows if prior['fixture'] == name}
                 if len(hashes) != 1:
-                    raise RuntimeError(f'{name} GLB hashes differ; artifacts retained in {args.out}')
-                output.unlink()
+                    raise RuntimeError(f'{name} GLB hashes differ; fixture artifacts retained in {args.out}')
+        for prior in rows:
+            if prior['fixture'] == name:
+                (args.out / f"{prior['sample']}.glb").unlink()
     print(f'{len(rows)} successful runs; per-fixture GLB hashes match. Evidence: {args.out}')
 
 

@@ -186,6 +186,7 @@ impl GeometryRouter {
             })?;
 
             let items = decoder.resolve_ref_list(items_attr)?;
+            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item
             for item in items {
@@ -193,6 +194,8 @@ impl GeometryRouter {
                     && item.ifc_type == IfcType::IfcAnnotationFillArea
                 {
                     self.process_annotation_fill(&item, decoder)?
+                } else if fill_only {
+                    continue; // symbolic annotation item, never meshed (#5389)
                 } else if let Some(mesh) =
                     self.process_raw_face_for_element(&item, element, decoder)?
                 {
@@ -320,6 +323,7 @@ impl GeometryRouter {
             })?;
 
             let items = decoder.resolve_ref_list(items_attr)?;
+            let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item, preserving geometry IDs
             for item in items {
@@ -328,6 +332,9 @@ impl GeometryRouter {
                 {
                     sub_meshes.add(item.id, self.process_annotation_fill(&item, decoder)?);
                     continue;
+                }
+                if fill_only {
+                    continue; // symbolic annotation item, never meshed (#5389)
                 }
                 if let Some(mesh) = self.process_raw_face_for_element(&item, element, decoder)? {
                     if !mesh.is_empty() {

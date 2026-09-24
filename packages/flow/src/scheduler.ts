@@ -195,7 +195,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       }
     }
 
-    const memoKey = def.writes
+    const memoKey = def.writes || def.volatile
       ? undefined
       : digest({
           type: def.type,

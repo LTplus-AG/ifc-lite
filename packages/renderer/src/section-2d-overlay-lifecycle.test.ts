@@ -39,12 +39,18 @@ interface FakeBuffer extends GPUBuffer {
 function makeDevice(minUniformBufferOffsetAlignment = 256) {
   const buffers: FakeBuffer[] = [];
   const writes: Array<{ buffer: GPUBuffer; offset: number; data: Float32Array }> = [];
+  /** The descriptor each pipeline was created from. */
+  const pipelineDescs = new Map<GPURenderPipeline, GPURenderPipelineDescriptor>();
   const device = {
     limits: { minUniformBufferOffsetAlignment } as unknown as GPUSupportedLimits,
     createBindGroupLayout: () => ({}) as GPUBindGroupLayout,
     createPipelineLayout: () => ({}) as GPUPipelineLayout,
     createShaderModule: (desc: { code: string }) => ({ code: desc.code }) as unknown as GPUShaderModule,
-    createRenderPipeline: (desc: unknown) => ({ desc }) as unknown as GPURenderPipeline,
+    createRenderPipeline: (desc: GPURenderPipelineDescriptor) => {
+      const pipeline = ({ desc }) as unknown as GPURenderPipeline;
+      pipelineDescs.set(pipeline, desc);
+      return pipeline;
+    },
     createBindGroup: () => ({}) as GPUBindGroup,
     createBuffer: (desc: { size: number }) => {
       const buf = {
@@ -69,15 +75,20 @@ function makeDevice(minUniformBufferOffsetAlignment = 256) {
       },
     },
   } as unknown as GPUDevice;
-  return { device, buffers, writes };
+  return { device, buffers, writes, pipelineDescs };
 }
 
 function makePass() {
   const calls: string[] = [];
   /** Dynamic bind-group offsets, in the order they were bound. */
   const binds: number[] = [];
+  /** Every pipeline set, in order. */
+  const pipelines: GPURenderPipeline[] = [];
   const pass = {
-    setPipeline: () => calls.push('setPipeline'),
+    setPipeline: (p: GPURenderPipeline) => {
+      calls.push('setPipeline');
+      pipelines.push(p);
+    },
     setBindGroup: (_i: number, _g: GPUBindGroup, dynamicOffsets?: number[]) => {
       calls.push('setBindGroup');
       binds.push(dynamicOffsets?.[0] ?? 0);
@@ -87,7 +98,7 @@ function makePass() {
     draw: (n: number) => calls.push(`draw:${n}`),
     drawIndexed: (n: number) => calls.push(`drawIndexed:${n}`),
   } as unknown as GPURenderPassEncoder;
-  return { pass, calls, binds };
+  return { pass, calls, binds, pipelines };
 }
 
 /** Two segments = 12 floats, the minimum a family accepts. */
@@ -159,9 +170,9 @@ const FAMILIES: Family[] = [
 ];
 
 function newRenderer(minUniformBufferOffsetAlignment = 256) {
-  const { device, buffers, writes } = makeDevice(minUniformBufferOffsetAlignment);
+  const { device, buffers, writes, pipelineDescs } = makeDevice(minUniformBufferOffsetAlignment);
   const renderer = new Section2DOverlayRenderer(device, 'bgra8unorm' as GPUTextureFormat, 4);
-  return { renderer, buffers, writes };
+  return { renderer, buffers, writes, pipelineDescs };
 }
 
 describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
@@ -549,6 +560,27 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
     const { pass, calls } = makePass();
     renderer.draw(pass, { ...OPTIONS, showFills: true, capStyle: CAP_STYLE });
     assert.ok(calls.some((c) => c.startsWith('drawIndexed:')), 'fill drawn');
+  });
+
+  // The post passes read the depth buffer after the scene pass (ambient
+  // occlusion, #5384). The cap fill writes no depth, so under a cap that
+  // buffer held the clipped element's inside faces and AO darkened the cap.
+  it('replays the cap into depth after the fill, changing no pixel (#5384)', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
+    const { pass, calls, pipelines } = makePass();
+    renderer.draw(pass, { ...OPTIONS, showOutlines: false, showFills: true, capStyle: CAP_STYLE });
+
+    const fills = calls.filter((c) => c.startsWith('drawIndexed:'));
+    assert.strictEqual(fills.length, 2, 'the cap colour, then the cap depth');
+    assert.strictEqual(fills[0], fills[1], 'the depth replay covers the same triangles');
+    const [colour, depth] = pipelines.map((p) => pipelineDescs.get(p));
+    assert.ok(colour && depth, 'both draws bind a pipeline this renderer created');
+    assert.strictEqual(colour.depthStencil?.depthWriteEnabled, false, 'the visible cap still writes no depth');
+    assert.strictEqual(depth.depthStencil?.depthWriteEnabled, true, 'the replay writes the cap depth');
+    assert.strictEqual(depth.depthStencil?.depthCompare, colour.depthStencil?.depthCompare, 'occluded where the cap is occluded');
+    const masks = [...(depth.fragment?.targets ?? [])].map((t) => t?.writeMask);
+    assert.deepStrictEqual(masks, [0, 0], 'colour and object-id writes are masked off');
   });
 
   it('suppresses the outline when showOutlines is false', () => {

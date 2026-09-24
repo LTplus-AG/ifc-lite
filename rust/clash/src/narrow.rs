@@ -42,6 +42,12 @@ pub struct NarrowResult {
     pub distance_kind: DistanceKind,
     pub point: Vec3,
     pub bounds: Aabb,
+    /// For a `Hard` result, the f32 noise floor of `distance` along the
+    /// direction it was measured (`depth_floor` / `estimate_floor`): the depth
+    /// at or below which this pair would have been `Touch`. `None` otherwise.
+    /// Carried out so the reported touching band is decided by the same rule
+    /// as the verdict (#5639).
+    pub depth_floor: Option<f64>,
 }
 
 /// Run the narrow phase for a candidate element pair.
@@ -232,20 +238,19 @@ pub fn test_pair(
         // Infra-Bridge pairs, see `depth_clash_result`). Since #5406 a pair
         // flush to within the tri-tri predicate's own f32 noise band no
         // longer crosses at all; this still decides a crossing above that
-        // band but at or below `precision_floor`.
+        // band but at or below its precision floor.
+        // `None` means "no crossing vertex inside at all" (e.g. a thin member
+        // piercing straight through) — no evidence either way, not evidence
+        // of a sub-floor contact. The deeper side wins, the small side on a
+        // tie (the TS kernel's order).
         let mesh_evidence = match (cross_small.as_ref(), cross_large.as_ref()) {
-            (Some(cs), Some(cl)) => {
-                let d = crossing_vertex_penetration(small, large, cs)
-                    .max(crossing_vertex_penetration(large, small, cl));
-                // 0 means "no crossing vertex inside at all" (e.g. a thin
-                // member piercing straight through) — no evidence either
-                // way, not evidence of a sub-floor contact.
-                if d > 0.0 {
-                    Some(d)
-                } else {
-                    None
-                }
-            }
+            (Some(cs), Some(cl)) => match (
+                crossing_vertex_penetration(small, large, cs),
+                crossing_vertex_penetration(large, small, cl),
+            ) {
+                (Some(s), Some(l)) if l.depth > s.depth => Some(l),
+                (s, l) => s.or(l),
+            },
             _ => None,
         };
         return depth_clash_result(
@@ -346,6 +351,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 
@@ -361,6 +367,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 

@@ -12,7 +12,8 @@
 import type { AABB, ClashElement, ClashRule, Vec3 } from '../types.js';
 import type { TriMesh } from './tri-mesh.js';
 import type { NarrowResult } from './narrow.js';
-import { isThroughPenetration, obbPenetrationDepth } from './obb.js';
+import { isThroughPenetration, obbPenetration } from './obb.js';
+import { depthFloor, estimateFloor } from '../math/aabb.js';
 
 /**
  * Exact box-box penetration when BOTH meshes are (within tolerance)
@@ -36,6 +37,9 @@ import { isThroughPenetration, obbPenetrationDepth } from './obb.js';
 export interface BoxPenetration {
   /** Exact box-box minimum-translation depth (Gottschalk 15-axis SAT). */
   mtd: number;
+  /** The unit axis `mtd` was measured along (its precision floor's
+   * direction, #5405). */
+  axis: Vec3;
   /** The MTD is inflated by the piercing member's own extent; report the
    * AABB estimate instead (see `isThroughPenetration`). */
   through: boolean;
@@ -45,9 +49,9 @@ export function boxPenetration(small: TriMesh, large: TriMesh): BoxPenetration |
   const oa = small.getObb();
   const ob = large.getObb();
   if (!oa || !ob) return null;
-  const mtd = obbPenetrationDepth(oa, ob);
-  if (mtd == null) return null;
-  return { mtd, through: isThroughPenetration(oa, ob) };
+  const pen = obbPenetration(oa, ob);
+  if (pen == null) return null;
+  return { mtd: pen.depth, axis: pen.axis, through: isThroughPenetration(oa, ob) };
 }
 
 /**
@@ -59,48 +63,6 @@ export function boxPenetration(small: TriMesh, large: TriMesh): BoxPenetration |
  * because the two live in different language runtimes.
  */
 const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
-
-/**
- * Penetration-depth floor below which a computed overlap cannot be
- * distinguished from float32 rounding noise, scaled to the pair's own
- * coordinate magnitude (not a fixed constant — infra models sit far from the
- * origin, where a fixed epsilon would be far too tight, and small models sit
- * near it, where a fixed epsilon would be far too loose).
- *
- * `rust/clash/src/tri_mesh.rs` ingests geometry from f32 buffers and stores/
- * queries it in f64, so f64 arithmetic cannot recover precision the source
- * data never had: two surfaces authored to be flush round to adjacent f32
- * values, and the resulting "penetration" is bit-noise at the ULP of
- * whichever operand coordinate is largest, not a measured overlap. Extent is
- * the max abs coordinate over both elements' AABBs (world space, matching
- * `near_band_from_extent`'s use of the actual compared coordinates) with a
- * floor of 1.0 so a model near the origin still gets the single-unit ULP,
- * not zero.
- *
- * The floor grows linearly with the pair's distance from the origin — that
- * is the point, since f32 precision itself degrades the same way. The
- * consequence: on a georeferenced model whose elements sit at real map
- * coordinates (hundreds of kilometres out, which real IFC files do), the
- * floor reaches decimetre scale, and a genuine clash below that threshold
- * reclassifies as `touch`. That is not a bug in this function — at those
- * magnitudes f32 genuinely cannot represent a finer distinction, so the
- * "penetration" is not reliably measurable either way — but it means the
- * floor tracks a limitation of the source data, not of clash detection.
- * The fix for a model in that position is ingesting geometry closer to the
- * origin (or in f64), not lowering this floor.
- */
-function precisionFloor(elA: ClashElement, elB: ClashElement): number {
-  let extent = 1.0;
-  for (const b of [elA.bounds, elB.bounds]) {
-    for (const v of [b.min, b.max]) {
-      for (const c of v) {
-        const a = Math.abs(c);
-        if (a > extent) extent = a;
-      }
-    }
-  }
-  return extent * F32_ULP_SCALE;
-}
 
 /**
  * Whether `inner` — AABB-contained in `outer`, with no triangle pair crossing
@@ -169,14 +131,22 @@ export function containedSolidIsBuried(inner: TriMesh, outer: TriMesh): boolean 
  */
 const PROBE_CLEAR_ULPS = 64;
 
+/** A crossing vertex's penetration into the other solid, with the unit
+ *  direction it was measured along (from the other's surface to the vertex),
+ *  which is what its precision floor is projected onto (#5405). */
+export interface VertexPenetration {
+  depth: number;
+  axis: Vec3;
+}
+
 /**
  * Deepest penetration of `mesh`'s crossing-triangle VERTICES into `other`:
- * the maximum distance-to-surface of `other` over the vertices of the
- * triangles flagged in `crossFlags` (the pairs the narrow phase saw
- * genuinely crossing `other`) that lie inside `other`. Each vertex is
- * visited once (deduped by vertex index, in index order — bit-identical to
- * the Rust `crossing_vertex_penetration`). Returns 0 when no flagged vertex
- * is inside.
+ * the vertex of the triangles flagged in `crossFlags` (the pairs the narrow
+ * phase saw genuinely crossing `other`) that lies inside `other` farthest
+ * from its surface. Each vertex is visited once (deduped by vertex index, in
+ * index order, strict `>` — bit-identical to the Rust
+ * `crossing_vertex_penetration`). `null` when no flagged vertex is strictly
+ * inside.
  *
  * This is NOT a depth metric and must never be reported as one — it is the
  * sampling probe PR #2536 was held over (`maxPenetrationInto`): its value is
@@ -191,9 +161,9 @@ const PROBE_CLEAR_ULPS = 64;
  * underestimating can only keep a pair BELOW the floor, and the floor is
  * the very thing being tested.
  */
-export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFlags: Uint8Array): number {
+export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFlags: Uint8Array): VertexPenetration | null {
   const seen = new Uint8Array(mesh.vertexCount());
-  let depth = 0;
+  let deepest: VertexPenetration | null = null;
   for (let t = 0; t < mesh.count; t += 1) {
     if (crossFlags[t] === 0) continue;
     for (const vi of mesh.triIndices(t)) {
@@ -201,11 +171,13 @@ export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFl
       seen[vi] = 1;
       const v = mesh.vertex(vi);
       if (!other.containsPoint(v)) continue;
-      const d = other.distanceToSurface(v);
-      if (d > depth) depth = d;
+      const [d, q] = other.closestOnSurface(v);
+      if (d > (deepest?.depth ?? 0)) {
+        deepest = { depth: d, axis: [(v[0] - q[0]) / d, (v[1] - q[1]) / d, (v[2] - q[2]) / d] };
+      }
     }
   }
-  return depth;
+  return deepest;
 }
 
 /**
@@ -228,10 +200,22 @@ export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFl
  * - the box MTD, when both elements are certified boxes (`box`);
  * - the crossing-vertex penetration, for a CONTAINED pair with a crossing
  *   vertex inside the other solid (`meshEvidence`) — evidence for this gate
- *   only, never a reported depth (see `crossingVertexPenetration`).
+ *   only, never a reported depth (see `crossingVertexPenetration`), and
+ *   only where the reported depth would be the ESTIMATE (#5717).
  *
- * The pair is `hard` only when the SMALLEST available candidate clears the
- * floor. That is what makes the floor unreachable by depth-source selection:
+ * Each candidate is tested against the floor OF ITS OWN DIRECTION — the
+ * pair's per-axis f32 noise projected onto the direction that candidate was
+ * measured along (`depthFloor`, `estimateFloor`; #5405). A single floor from
+ * the max coordinate over all axes handed a Z-direction depth the noise of
+ * an X coordinate 10 km out: a genuine 2 mm overlap read as `touch` there and
+ * `hard` at the origin, and near the origin the X extent pinned the threshold
+ * for contacts that have no X component at all.
+ *
+ * The pair is `hard` only when every candidate that BEARS ON THE REPORTED
+ * NUMBER clears its floor — all three when the report is the estimate, and
+ * the estimate and the MTD when the box path certified a depth, since a
+ * sampling probe may not overrule an exact one (#5717).
+ * That is what makes the floor unreachable by depth-source selection:
  * a sub-floor box MTD cannot be promoted by the through-penetration guard
  * swapping in a larger AABB estimate; a sub-floor crossing-vertex
  * penetration on a contained pair (surfaces authored flush — the eight
@@ -249,17 +233,40 @@ export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFl
 export function depthClashResult(
   box: BoxPenetration | null,
   estimate: number,
-  meshEvidence: number | null,
+  meshEvidence: VertexPenetration | null,
   elA: ClashElement,
   elB: ClashElement,
   rule: ClashRule,
   point: Vec3,
   bounds: AABB,
 ): NarrowResult | null {
-  let floorDepth = estimate;
-  if (box != null && box.mtd < floorDepth) floorDepth = box.mtd;
-  if (meshEvidence != null && meshEvidence < floorDepth) floorDepth = meshEvidence;
-  if (floorDepth <= precisionFloor(elA, elB)) {
+  // `||` in the same order as the Rust kernel, each comparison `<=` so a NaN
+  // candidate never counts as below its floor, on either side.
+  const estFloor = estimateFloor(elA.bounds, elB.bounds);
+  const boxFloor = box != null ? depthFloor(box.axis, elA.bounds, elB.bounds) : null;
+  // Whether the pair has a CERTIFIED depth, i.e. whether the number this
+  // function would report is the exact box MTD or the AABB estimate. Hoisted
+  // above the floor test because the mesh-evidence term needs it too.
+  const measured = box != null && !box.through;
+  const belowFloor =
+    estimate <= estFloor ||
+    (box != null && boxFloor != null && box.mtd <= boxFloor) ||
+    // Mesh evidence guards the ESTIMATE, and only the estimate (#5717).
+    // `crossingVertexPenetration` is not a depth metric — its own doc
+    // comment says so, and it underestimates by an amount that depends on
+    // tessellation. That is harmless when it is the only thing standing
+    // between a flush contained pair and a fabricated AABB estimate, the
+    // case it was added for. It is not harmless against a certified box
+    // MTD: a vertex lying ON a face the two boxes share reads as a
+    // sub-floor "penetration" once rotation pushes it a noise-width
+    // inside, and vetoed a 20 mm overlap the exact box depth had measured
+    // correctly. Two boxes that are genuinely flush already report 0
+    // through the MTD term above (#5355), so nothing here needs the
+    // probe's second opinion.
+    (!measured &&
+      meshEvidence != null &&
+      meshEvidence.depth <= depthFloor(meshEvidence.axis, elA.bounds, elB.bounds));
+  if (belowFloor) {
     if (!rule.reportTouch) return null;
     // distance is exactly 0 here (the classification, not a measurement, is
     // what changed), so `mesh` — consistent with the other exact-distance
@@ -269,12 +276,14 @@ export function depthClashResult(
   // Estimate-vs-mesh selection, reachable only above the floor: the box MTD
   // is certified (`mesh`) unless the pair is a through-penetration, where
   // the AABB estimate is the honest number (see `boxPenetration`).
-  const measured = box != null && !box.through;
+  // The reported depth carries ITS OWN floor out with it (#5639), so the
+  // reported touching band is decided by the same rule as this verdict.
   return {
     status: 'hard',
     distance: -(measured ? box.mtd : estimate),
     distanceKind: measured ? 'mesh' : 'estimate',
     point,
     bounds,
+    depthFloor: measured && boxFloor != null ? boxFloor : estFloor,
   };
 }

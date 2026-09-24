@@ -124,6 +124,46 @@
   --radius-xl: 0.5rem;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   VIEWPORT OVERLAY TOKENS (#5483, charter #5478)
+   The colours live in ONE place, `lib/viewport-ui/overlay-theme.ts`, and
+   `useOverlayThemeSync` writes them onto <html> as `--overlay-*` on every
+   theme change. These entries only lend them Tailwind names, so overlay code
+   writes `stroke-overlay-accent` / `bg-overlay-accent-soft` / `text-axis-x`
+   and follows the theme for free. `static` so the properties and the z scale
+   exist at runtime even before any utility consumes them: scripts read them
+   through getComputedStyle, and a var() that resolves to nothing is exactly
+   the invisible-measurement-line bug (#5479). */
+@theme static {
+  --color-overlay-accent: var(--overlay-accent);
+  --color-overlay-accent-soft: var(--overlay-accent-soft);
+  --color-overlay-ink: var(--overlay-ink);
+  --color-overlay-ink-muted: var(--overlay-ink-muted);
+  --color-overlay-halo: var(--overlay-halo);
+  --color-axis-x: var(--overlay-axis-x);
+  --color-axis-y: var(--overlay-axis-y);
+  --color-axis-z: var(--overlay-axis-z);
+  --color-status-danger: var(--overlay-status-danger);
+  --color-status-warn: var(--overlay-status-warn);
+  --color-status-ok: var(--overlay-status-ok);
+  --color-status-info: var(--overlay-status-info);
+  --color-clash-a: var(--overlay-clash-a);
+  --color-clash-b: var(--overlay-clash-b);
+  --color-clash-overlap: var(--overlay-clash-overlap);
+  --color-paper: var(--overlay-paper);
+  --color-paper-ink: var(--overlay-paper-ink);
+
+  /* Z scale for everything over the viewport. Use `z-(--z-hud)`; never a
+     literal. scene < hud < hud popover < floating panel < chrome < modal < toast. */
+  --z-scene: 10;
+  --z-hud: 20;
+  --z-hud-popover: 30;
+  --z-float: 40;
+  --z-chrome: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+}
+
 /* Dark mode - Tokyo Night Storm */
 :root.dark,
 .dark {

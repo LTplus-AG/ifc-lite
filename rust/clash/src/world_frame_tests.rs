@@ -298,20 +298,17 @@ fn a_genuine_overlap_is_hard_at_its_own_depth_under_every_translation_5406() {
     }
 }
 
-/// Known remaining non-invariance downstream of the predicate: for a thin
-/// ROTATED box the OBB certification and depth drift with the offset — the
-/// 20 mm overlap reads 23 mm at 123 m and falls back to the AABB `Estimate`
-/// from 1 km out (#5474). Same numbers before and after #5406.
+/// A thin ROTATED box pair: the OBB frame and centre were computed from
+/// absolute world coordinates, so the error of a single triangle's normal was
+/// multiplied by the element's distance from the origin — the 20 mm overlap
+/// read 23 mm (yaw) / 30 mm (three-axis) at 123 m and fell back to the AABB
+/// `Estimate` (-0.25 m / -1.38 m) from 1 km out. Pinned as `should_panic`
+/// until #5474 made box recognition origin-independent.
 #[test]
-#[should_panic(expected = "changed the verdicts")]
-fn a_rotated_overlap_still_loses_its_certified_depth_far_out_5474() {
-    assert_overlap_is_hard_at_its_depth(YAW);
-}
-
-#[test]
-#[should_panic(expected = "changed the verdicts")]
-fn a_three_axis_rotated_overlap_still_loses_its_certified_depth_far_out_5474() {
-    assert_overlap_is_hard_at_its_depth(THREE_AXIS);
+fn a_rotated_overlap_keeps_its_certified_depth_under_every_translation_5474() {
+    for r in [YAW, THREE_AXIS] {
+        assert_overlap_is_hard_at_its_depth(r);
+    }
 }
 
 #[test]
@@ -338,5 +335,91 @@ fn a_gap_beyond_tolerance_reports_nothing_under_every_translation_5406() {
         let scene = panel_and_mullion("20 mm gap, hard rule", r, -0.02);
         let got = assert_translation_invariant(&scene, HARD, 0.0, true);
         assert!(got.is_empty(), "{r:?}: {got:?}");
+    }
+}
+
+#[test]
+fn a_1mm_overlap_is_hard_at_its_own_depth_under_every_translation_5405() {
+    // 1 mm along a Z contact normal: above the Z noise at every placement in
+    // the corpus (Z translations reach 1 km, ~0.24 mm of noise there), but
+    // BELOW the old max-over-all-axes floor once the pair is 10 km out along
+    // X or Y (10,000 * 2^-22 ~ 2.4 mm), which reported it as a Touch there
+    // and a Hard at the origin (#5405). The floor is now the pair's noise
+    // projected onto the depth's own direction, so the X and Y offsets say
+    // nothing about it.
+    const OVERLAP_1MM: f64 = 0.001;
+    let scene = panel_and_mullion("1 mm overlap, contact normal Z", NORMAL_Z, OVERLAP_1MM);
+    let got = assert_translation_invariant(&scene, HARD, 0.0, false);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].0.status, ClashStatus::Hard);
+    assert_eq!(got[0].0.kind, DistanceKind::Mesh);
+    assert!((got[0].1 + OVERLAP_1MM).abs() <= 1e-6, "depth {}", got[0].1);
+}
+
+/// Every `Hard` record's reported depth floor (#5639), per translation.
+fn hard_floors(scene: &Scene, t: [f64; 3], mode: u8) -> Vec<(f64, f64)> {
+    let (result, floors) = scene
+        .session(t)
+        .run_rule_with_depth_floors(&[0], Some(&[1]), mode, TOLERANCE, 0.0, true);
+    result
+        .records
+        .iter()
+        .zip(floors)
+        .filter(|(r, _)| r.status == ClashStatus::Hard)
+        .map(|(r, f)| (-r.distance, f.expect("every Hard record carries its depth floor")))
+        .collect()
+}
+
+#[test]
+fn the_reported_depth_floor_stays_below_the_depth_and_ignores_orthogonal_offsets_5639() {
+    // The reported touching band (`isTouching` in `@ifc-lite/clash`) is
+    // `max(TOUCHING_EPSILON, depth_floor)`. It is decided by the same rule as
+    // the verdict when the floor it reads is the classification floor of the
+    // reported depth itself. Two invariants make it translation-proof:
+    //
+    // 1. A `Hard` record's depth always exceeds its own floor, at every
+    //    placement — so the band collapses to the fixed TOUCHING_EPSILON and
+    //    cannot flip a verdict the kernel did not flip.
+    // 2. A translation ORTHOGONAL to the depth leaves the floor unchanged up
+    //    to the rounding of the elements' own spans. The 1 mm scene's depth is
+    //    along Z; the corpus's far offsets are along X and Y. The old band read
+    //    the X coordinate instead: 10,000 * 2^-22 ~ 2.4 mm > 1 mm, so this very
+    //    clash was reported as "touching" 10 km out in X and not at the
+    //    origin.
+    let scene = panel_and_mullion("1 mm overlap, contact normal Z", NORMAL_Z, 0.001);
+    let origin = hard_floors(&scene, [0.0; 3], HARD);
+    assert_eq!(origin.len(), 1);
+    let origin_floor = origin[0].1;
+    for t in translations() {
+        let got = hard_floors(&scene, t, HARD);
+        assert_eq!(got.len(), 1, "translated by {t:?}");
+        let (depth, floor) = got[0];
+        assert!(floor < depth, "translated by {t:?}: floor {floor} not below depth {depth}");
+        if t[2] == 0.0 {
+            assert!(
+                (floor - origin_floor).abs() <= 1e-3 * origin_floor,
+                "translated by {t:?} (orthogonal to the Z depth): floor {origin_floor} -> {floor}"
+            );
+        }
+    }
+    // The old band at the corpus's far placement, for contrast: it exceeds the
+    // depth, which is what made the reported verdict origin-dependent.
+    let far_band_old = crate::world_frame_corpus::WORLD_FRAME_OFFSET_M / 4_194_304.0;
+    assert!(far_band_old > 0.001 && origin_floor < 1e-5, "{far_band_old} vs {origin_floor}");
+}
+
+#[test]
+fn every_hard_record_in_the_corpus_carries_a_floor_below_its_depth_5639() {
+    // Invariant 1 above, over every scene of this suite that produces a
+    // `Hard` record, at every translation and rotation.
+    for r in [AXIS_ALIGNED, NORMAL_Z, YAW, THREE_AXIS] {
+        for overlap in [0.02, 0.001] {
+            let scene = panel_and_mullion("overlap", r, overlap);
+            for t in translations() {
+                for (depth, floor) in hard_floors(&scene, t, HARD) {
+                    assert!(floor > 0.0 && floor < depth, "{r:?} {overlap} {t:?}: floor {floor}, depth {depth}");
+                }
+            }
+        }
     }
 }

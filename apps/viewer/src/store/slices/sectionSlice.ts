@@ -10,6 +10,7 @@ import type { StateCreator } from 'zustand';
 import type { SectionPlane, SectionPlaneAxis, SectionCapStyle, SectionCapHatchId, CustomSectionPlane } from '../types.js';
 import { SECTION_PLANE_DEFAULTS, SECTION_CAP_DEFAULTS } from '../constants.js';
 import { planeBasis, nearestCardinalAxis } from '@ifc-lite/renderer';
+import { facePickPlaneDistance } from './sectionFacePick.js';
 
 /**
  * Project `pickedAt` onto the current cut plane and return that point as
@@ -263,8 +264,8 @@ export interface SectionSlice {
   /**
    * Set the section plane from a face pick. `normal` is the face's world-
    * space unit normal; `point` is any point on the face (typically the
-   * raycast hit). The derived plane equation is
-   * `dot(worldPos, normal) = dot(point, normal)`.
+   * raycast hit), oriented out of the visible surface. The plane is
+   * `dot(worldPos, normal) = dot(point, normal) - inset` (#5480, `sectionFacePick.ts`).
    *
    * Also writes the nearest cardinal `axis` + `flipped` and a percentage-
    * along-that-axis `position` so legacy consumers (drawings, BCF,
@@ -388,8 +389,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       // `setSectionCustomDistance` once they're known.
       const fallbackSpan = 10;
       next.custom = { ...c, distance: c.distance + dPct * fallbackSpan };
-      // Keep `pickedAt` so future deltas remain anchored to the original
-      // pick — only `distance` (and on flip, `normal`) ever change.
+      // `pickedAt` stays anchored to the original pick; only `distance` changes.
       void dot;
     }
     return { sectionPlane: next };
@@ -476,7 +476,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       return { sectionPickMode: false, sectionPickPreview: null };
     }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
-    const distance = point[0] * unit[0] + point[1] * unit[1] + point[2] * unit[2];
+    const distance = facePickPlaneDistance(unit, point, bounds);
     const basis = planeBasis(unit);
     const cardinal = nearestCardinalAxis(unit);
 

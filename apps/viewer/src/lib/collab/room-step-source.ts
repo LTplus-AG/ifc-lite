@@ -88,6 +88,7 @@ export async function loadRoomStepSource(
     : bytes.slice().buffer;
   const dataStore: IfcDataStore = await new IfcParser().parseColumnar(copy);
   const seededIds = new Set<number>();
+  // @raw-entity-enumeration-ok the portable STEP blob was fetched and freshly parsed above; no live mutation overlay exists here.
   for (const [expressId] of dataStore.entityIndex.byId.entries()) {
     // Match buildStepSeedSource exactly. Some synthetic/test sources use
     // non-canonical GlobalId strings, and the seeder deliberately preserves

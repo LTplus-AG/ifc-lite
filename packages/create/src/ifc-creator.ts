@@ -151,9 +151,6 @@ export class IfcCreator {
   constructor(params: ProjectParams = {}) {
     this.projectParams = params;
     this.schema = params.Schema ?? 'IFC4';
-    if (params.FileSchemaIdentifier !== undefined && this.schema !== 'IFC4X3') {
-      throw new Error(`IfcCreator: FileSchemaIdentifier '${params.FileSchemaIdentifier}' requires Schema 'IFC4X3', not '${this.schema}'`);
-    }
     this.fixedTimestampMs = params.Timestamp === undefined
       ? null
       : typeof params.Timestamp === 'number' ? params.Timestamp : params.Timestamp.getTime();

@@ -46,6 +46,8 @@ const FLAT_TARGETS = [
   { flat: 'overlapBounds', cls: 'Box3', method: 'OverlapBounds', params: [['a', 'box'], ['b', 'box']], ret: 'box' },
   { flat: 'aabbContains', cls: 'Box3', method: 'Contains', params: [['outer', 'box'], ['inner', 'box']], ret: 'bool' },
   { flat: 'boundsOfPoints', cls: 'Vec3', method: 'BoundsOfPoints', params: [['a', 'vec'], ['b', 'vec']], ret: 'box' },
+  { flat: 'depthFloor', cls: 'Vec3', method: 'DepthFloor', params: [['axis', 'vec'], ['a', 'box'], ['b', 'box']], ret: 'num' },
+  { flat: 'estimateFloor', cls: 'Box3', method: 'EstimateFloor', params: [['a', 'box'], ['b', 'box']], ret: 'num' },
   {
     flat: 'triTriIntersect', cls: 'Vec3', method: 'TriTriIntersectEps',
     params: [['a0', 'vec'], ['a1', 'vec'], ['a2', 'vec'], ['b0', 'vec'], ['b1', 'vec'], ['b2', 'vec'], ['eps', 'num']],

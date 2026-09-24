@@ -11,6 +11,22 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
+    /// Resolve an `IfcMappedItem` placement in metre coordinates. The returned
+    /// column-major matrix retains the authored linear part; only translation
+    /// receives the IFC length-unit scale.
+    pub fn resolve_scaled_mapped_item_transform(
+        &self,
+        item: &DecodedEntity,
+        source: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<[f64; 16]>> {
+        let Some(mut matrix) = self.mapped_item_transform(item, source, decoder)? else {
+            return Ok(None);
+        };
+        self.scale_transform(&mut matrix);
+        Ok(Some(std::array::from_fn(|i| matrix.as_slice()[i])))
+    }
+
     /// The full `IfcMappedItem` transform: `MappingTarget · MappingOrigin`.
     ///
     /// `item` is the `IfcMappedItem` (attr 1 = MappingTarget), `source` its

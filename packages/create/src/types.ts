@@ -545,14 +545,6 @@ export interface ProjectParams {
   Name?: string;
   Description?: string;
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
-  /**
-   * @deprecated IFC4X3 output is now always declared as `IFC4X3_ADD2`, the
-   * ISO 16739-1:2024 identifier for the layouts `IfcCreator` writes (#5351),
-   * so this option changes nothing. It still refuses a `Schema` other than
-   * `'IFC4X3'`. Omit it.
-   */
-  // TODO(remove-by: next @ifc-lite/create major, #5562)
-  FileSchemaIdentifier?: 'IFC4X3_ADD2';
   /** Length unit: 'METRE' (default), 'MILLIMETRE', 'FOOT' */
   LengthUnit?: string;
   /**

@@ -5,7 +5,7 @@
 /**
  * `useDrawing2DPersistence` (#4159, localStorage) and
  * `useDrawingMarkupRestoreOnLoad` (#4170, IFC-embedded) both mount
- * unconditionally in `Section2DPanel.tsx` and both restore the SAME four
+ * unconditionally in `DrawingRuntimeHost.tsx` and both restore the SAME four
  * flat markup arrays. This file is the "both sources present at once" case
  * neither hook's own test file exercises — the gap that let #4170 ship with
  * an asymmetric guard (see both hooks' module docs for the full analysis).

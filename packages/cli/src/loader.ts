@@ -61,6 +61,43 @@ export async function loadIfcBytes(
     process.exit(1);
   }
 
+  // A STEP file ends with `END-ISO-10303-21;`. Its absence means the bytes are
+  // truncated -- a half-finished download, a killed export, a partial upload --
+  // and a truncated file does not fail to parse: it parses to a PREFIX. The
+  // scan stops wherever the bytes stop and reports whatever it got, so
+  // `ifc-lite info` answered "Entities: 59" and exited 0 for the first 4 KB of a
+  // real model, and "Schema: IFC4" for a 22-byte stub with no FILE_SCHEMA at
+  // all (#5532). A confidently wrong answer is worse than an error, because
+  // nothing downstream can tell it apart from a small model.
+  //
+  // Only the tail is decoded: these files reach hundreds of MB.
+  const tailStart = Math.max(0, bytes.byteLength - 256);
+  const tailSnippet = new TextDecoder('latin1').decode(bytes.subarray(tailStart));
+  if (!tailSnippet.includes('END-ISO-10303-21;')) {
+    process.stderr.write(
+      `Error: ${label} is truncated: it starts like a STEP file but has no ` +
+        `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
+        `would describe only the part that arrived.\n`,
+    );
+    process.exit(1);
+  }
+
+  // A file with a header and no DATA section carries no entities at all. It is
+  // well-formed STEP, so the terminator check above passes; it is still not a
+  // model, and reporting a schema for it asserts something the file never said.
+  // Bounded, like the header scan: `DATA;` follows the header, and these files
+  // reach hundreds of MB -- decoding one whole would also risk V8's max string
+  // length. 64 KB is far more header than any exporter writes.
+  const headText = new TextDecoder('latin1').decode(
+    bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
+  );
+  if (!/^\s*DATA\s*;/m.test(headText)) {
+    process.stderr.write(
+      `Error: ${label} has no DATA section, so it contains no IFC entities.\n`,
+    );
+    process.exit(1);
+  }
+
   const parser = new IfcParser();
 
   // Capture the parser's internal console.log/warn during parsing and route

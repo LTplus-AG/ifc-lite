@@ -10,11 +10,13 @@
  * rule id, count = 1 while the rule is violated), so both gates agree on
  * what "went up" and "went down" mean (#5607).
  *
- * Two-way, the same rule `check-i18n-literals.mjs` and
- * `check-unused-locals.mjs` apply: a count ABOVE its row is a regression,
- * and a count BELOW its row (including a key that is gone entirely) is slack
- * the baseline must give up, or the next regression spends it unnoticed.
- * A key missing from the baseline has an allowance of zero.
+ * A count ABOVE its row is a regression; a count BELOW its row (including a
+ * key that is gone entirely) is an improvement. A key missing from the
+ * baseline has an allowance of zero. What an improvement MEANS is the
+ * caller's policy: the axe scan fails on it (a fixed rule must leave its
+ * baseline, #5607's acceptance), while check-jsx-a11y.mjs only reports it
+ * (see that file's header for why a stale per-file row must not turn main
+ * red).
  *
  * @param {Record<string, number>} counts   measured now; zero-count keys may be omitted
  * @param {Record<string, number>} baseline committed allowance

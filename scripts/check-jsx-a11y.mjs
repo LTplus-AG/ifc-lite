@@ -14,12 +14,21 @@
  * nothing stopped the count growing. A big-bang fix is its own change; this
  * is the ratchet that holds the line until then.
  *
- * Same shape as `scripts/check-i18n-literals.mjs`: a committed per-file
- * baseline (`scripts/jsx-a11y-baseline.json`) records TODAY's jsx-a11y
- * warning count for every file oxlint lints; the gate fails when a file's
- * count RISES above its row, and also fails when it FALLS until `--update`
- * re-records it (slack left in the baseline is what the next regression
- * would spend unnoticed). The comparison lives in `scripts/lib/count-ratchet.mjs`,
+ * Same CLI and baseline shape as `scripts/check-i18n-literals.mjs`: a
+ * committed per-file baseline (`scripts/jsx-a11y-baseline.json`) records
+ * TODAY's jsx-a11y warning count for every file oxlint lints, and the gate
+ * fails when a file's count RISES above its row.
+ *
+ * One-way on purpose, unlike the i18n gate (whose baseline is empty, so it
+ * has no rows to fall below). A file that FALLS below its row is reported
+ * with a note to lower it, and `--update` records that with no
+ * `--allow-raise`, but it does not fail: this baseline has 100+ non-zero
+ * rows over files other PRs edit concurrently, and a PR that fixes warnings
+ * in one of them without touching this file (any PR branched before it
+ * existed) would otherwise merge green and turn main's Lint red with no
+ * regression anywhere. Review on #5638 measured exactly that: two rows
+ * (Section2DPanel.tsx 7 -> 0, SpaceMousePanel.tsx 2 -> 1) went stale on
+ * main within a day. The comparison lives in `scripts/lib/count-ratchet.mjs`,
  * shared with the axe scan in the viewer smoke e2e.
  *
  * It lints the same directories as `pnpm lint` (`TARGETS` in
@@ -182,11 +191,10 @@ if (regressions.length > 0) {
   process.exit(1);
 }
 
-if (improvements.length > 0) {
-  for (const { key, count, allowed } of improvements) {
-    console.log(`note: ${key}: ${count} warning(s), baseline ${allowed}; lower the baseline to the measured count`);
-  }
-  fail('baseline carries slack; run `node scripts/check-jsx-a11y.mjs --update` and commit to tighten the ratchet.');
+// Reported, never failed: see the header for why a decrease must not turn
+// main red.
+for (const { key, count, allowed } of improvements) {
+  console.log(`note: ${key}: ${count} warning(s), baseline ${allowed}; lower the baseline with \`node scripts/check-jsx-a11y.mjs --update\``);
 }
 
 console.log(`check-jsx-a11y: OK (${files} file(s) linted, ${Object.keys(counts).length} with jsx-a11y warnings, ${total(counts)} total)`);

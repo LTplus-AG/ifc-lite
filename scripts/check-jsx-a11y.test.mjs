@@ -8,7 +8,7 @@
  * comparison under it, scripts/lib/count-ratchet.mjs.
  *
  * Black-box only: the CLI (real oxlint, the per-file baseline, the
- * rise-fails / fall-tightens ratchet) runs with `spawnSync` against a
+ * rise-fails / fall-is-reported ratchet) runs with `spawnSync` against a
  * synthetic tree in a temp dir, the same method check-i18n-literals.test.mjs
  * uses, so nothing here reads the checker's own source. The comparison is
  * covered through it (a raised row, a key new to the baseline, a lowered
@@ -124,14 +124,15 @@ test('a file NEW to the baseline is allowed zero warnings', () => {
   });
 });
 
-test('a DECREASE passes once --update records it, and lowering never needs --allow-raise', () => {
+test('a DECREASE passes, is reported, and --update lowers the row without --allow-raise', () => {
   withTree(2, (root) => {
     assert.equal(run(root, '--update', '--allow-raise').status, 0);
     writeComponent(root, 1);
-    // Unrecorded, the slack is reported so the ratchet tightens in the same change.
-    const slack = run(root);
-    assert.equal(slack.status, 1);
-    assert.match(slack.stdout, /lower the baseline/);
+    // Unrecorded, the decrease passes (a stale row must not turn main red
+    // when a concurrent PR fixes warnings) and says how to tighten.
+    const stale = run(root);
+    assert.equal(stale.status, 0, stale.stderr);
+    assert.match(stale.stdout, new RegExp(`apps/ui/Widget\\.tsx: ${WARNINGS_PER_DIV} warning\\(s\\), baseline ${2 * WARNINGS_PER_DIV}; lower the baseline`));
 
     const lowered = run(root, '--update');
     assert.equal(lowered.status, 0, lowered.stderr);
@@ -146,7 +147,9 @@ test('a file fixed to zero drops its row', () => {
   withTree(1, (root) => {
     assert.equal(run(root, '--update', '--allow-raise').status, 0);
     writeComponent(root, 0);
-    assert.equal(run(root).status, 1);
+    const stale = run(root);
+    assert.equal(stale.status, 0, stale.stderr);
+    assert.match(stale.stdout, /apps\/ui\/Widget\.tsx: 0 warning\(s\), baseline \d+; lower the baseline/);
     assert.equal(run(root, '--update').status, 0);
     assert.deepEqual(baselineOf(root), {});
     assert.equal(run(root).status, 0);

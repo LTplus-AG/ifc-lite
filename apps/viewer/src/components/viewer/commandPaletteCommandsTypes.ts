@@ -17,7 +17,7 @@ import type { TranslationKey, TranslationParameters } from '@/i18n';
 
 export type RightPanel =
   | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
-  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance';
+  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds';
 
 export interface CommandPaletteBuildParams {
   execute: (code: string) => void;

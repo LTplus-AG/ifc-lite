@@ -30,6 +30,8 @@ import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
+import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
+import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
 const LayersPanel = lazy(() =>
@@ -82,6 +84,31 @@ function SourcesPanelBody({ onClose }: { onClose: () => void }) {
 }
 
 /**
+ * Tiny indirection (formerly `ViewportOverlays`'s `PointCloudPanelMount`,
+ * #5507) so the panel can subscribe to its own slice without pulling extra
+ * state into every other panel body.
+ */
+function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
+  const assetCount = useViewerStore((s) => s.pointCloudAssetCount);
+  // BIM↔scan deviation is a CROSS-MODEL operation: the point cloud is one
+  // federated model, the BIM mesh is another. `renderer.computeDeviations()`
+  // builds its BVH from EVERY mesh in the scene (`collectAllSceneMeshes`),
+  // so the compute button must appear whenever ANY loaded model contributes
+  // triangles — not just the active one. Gating on `s.geometryResult` (the
+  // ACTIVE model's result) hid the button whenever the point cloud was the
+  // active model (its synthetic geometryResult has totalTriangles === 0),
+  // which is exactly the common case — so deviation could never be computed
+  // and the colour mode showed every point at the ramp centre (grey). Sum
+  // across all loaded models to mirror the scene the BVH is actually built from.
+  const triangleCount = useViewerStore((s) => {
+    let total = 0;
+    for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
+    return total;
+  });
+  return <PointCloudPanel assetCount={assetCount} triangleCount={triangleCount} onClose={onClose} />;
+}
+
+/**
  * Render the body for a workspace panel. `onClose` is the host's "close this
  * panel" handler (re-dock to Information, remove the float, or re-dock the
  * window). The Information panel ignores it — it is the always-on fallback.
@@ -113,5 +140,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'cost': return <CostPanel onClose={onClose} />;
     case 'environment': return <EnvironmentPanel onClose={onClose} />;
     case 'drawing': return <DrawingPanelBody onClose={onClose} />;
+    case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
   }
 }

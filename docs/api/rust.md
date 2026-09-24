@@ -542,6 +542,9 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
+// Optional authored swept-disk descriptions, keyed by product occurrence ID
+pub use analytic_export::{extract_swept_disk_descriptions, SweptDiskDescriptions};
+
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };
@@ -551,6 +554,21 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+`extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
+optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for
+supported `IfcSweptDiskSolid` items. Coordinates and radii are absolute IFC
+world metres, Z-up; `ids` optionally filters product STEP IDs. Each record
+identifies its source solid and mapped-item path. `source_modified` identifies
+boolean operands whose authored sweep alone does not describe the final body.
+It does not indicate cuts from external `IfcRelVoidsElement` openings.
+Unsupported curves or transforms have an explicit status and no partial
+directrix. For an unsupported transform, radii retain their authored values
+converted to metres; no world circular radius is implied. The existing mesh
+export remains a separate, unchanged operation.
+For partial composite sweeps and raw-circle bounds, the existing mesher can
+cover a different extent ([#5566](https://github.com/LTplus-AG/ifc-lite/issues/5566));
+the analytic description follows the IFC source parameters.
 
 ### Appearance authoring
 

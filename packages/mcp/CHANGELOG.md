@@ -1,5 +1,23 @@
 # @ifc-lite/mcp
 
+## 0.20.2
+
+### Patch Changes
+
+- [#5586](https://github.com/LTplus-AG/ifc-lite/pull/5586) [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398) Thanks [@louistrue](https://github.com/louistrue)! - The MCP server reports the version you can actually install. `VERSION` was the literal `'0.1.0'`, so `--version`, `--help` and the `serverInfo` block of every MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0 — in the one field a client UI puts in front of an operator.
+  
+  The CLI had already paid for this exact mistake (a hard-coded `'0.4.0'` that `--version` still reported at 0.22.0) and fixed it with a `readCliVersion` helper. Rather than copy that helper into a second package, it moves to `@ifc-lite/data` as `readPackageVersion`, which both already depend on, so the two shipped servers cannot drift apart on how they answer `--version`. Its behaviour is unchanged: a broken install reports `0.0.0-unknown` on stderr rather than inventing a plausible number.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`1909a6a`](https://github.com/LTplus-AG/ifc-lite/commit/1909a6ac6b9934c8793b6e6be8f80dfece3fd44e), [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/extensions@0.9.0
+  - @ifc-lite/sdk@7.1.1
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/flow-nodes@0.3.1
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/rules@0.3.2
+
 ## 0.20.1
 
 ### Patch Changes

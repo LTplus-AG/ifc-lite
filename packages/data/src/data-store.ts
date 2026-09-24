@@ -100,10 +100,16 @@ export interface IfcSourceHeader {
   name?: string;
   /** FILE_NAME `time_stamp` field (informational; not re-emitted verbatim). */
   timeStamp?: string;
-  /** FILE_NAME `author` list. */
-  author: string[];
-  /** FILE_NAME `organization` list. */
-  organization: string[];
+  /**
+   * FILE_NAME `author` list. Absent when the source wrote `$` or had no
+   * FILE_NAME record; `[]` only for a literal `()` (#5470).
+   */
+  author?: string[];
+  /**
+   * FILE_NAME `organization` list. Absent when the source wrote `$` or had no
+   * FILE_NAME record; `[]` only for a literal `()` (#5470).
+   */
+  organization?: string[];
   /** FILE_NAME `preprocessor_version` field. */
   preprocessorVersion?: string;
   /** FILE_NAME `originating_system` field. */

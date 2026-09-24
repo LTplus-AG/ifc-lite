@@ -78,4 +78,67 @@ export function runRtcPrecisionContracts(
 
     collection.free();
   });
+
+  test('#5749: LV95 site plus kilometre-local vertices preserves thin geometry through WASM', () => {
+    // The public column fixture declares inch geometry via a 0.0254 m unit.
+    const inchToMetres = 0.0254;
+    const site = [2_600_000, 1_200_000];
+    const localMetres = [3_500, 2_300, 1_190];
+    const localOffset = localMetres.map(metres => metres / inchToMetres);
+    const sitePlaced = withSiteOriginMetres(...site);
+    const placement = /#125\s*=\s*IFCCARTESIANPOINT\(\([^)]*\)\);/;
+    assert.match(sitePlaced, placement, 'public column fixture has a local placement');
+    const zeroPlacement = sitePlaced.replace(placement, '#125= IFCCARTESIANPOINT((0.,0.,0.));');
+    const pointList = /#287\s*=\s*IFCCARTESIANPOINTLIST3D\(\((.*)\)\);/;
+    assert.match(zeroPlacement, pointList, 'public column fixture has tessellated vertices');
+    let shiftedVertices = 0;
+    const shifted = zeroPlacement.replace(pointList, (_match, points) => {
+      const tuples = points.replace(/\((-?\d+(?:\.\d*)?),(-?\d+(?:\.\d*)?),(-?\d+(?:\.\d*)?)\)/g,
+        (_tuple, x, y, z) => {
+          shiftedVertices++;
+          return `(${[x, y, z].map((value, axis) => (Number(value) + localOffset[axis]).toFixed(6)).join(',')})`;
+        });
+      return `#287= IFCCARTESIANPOINTLIST3D((${tuples}));`;
+    });
+    assert.equal(shiftedVertices, 24, 'the transform must move every authored vertex');
+
+    const collection = parseMeshesViaPrePass(api, shifted);
+    try {
+      assert.equal(collection.hasRtcOffset(), true, 'the real pre-pass must detect the LV95 frame');
+      assert.ok(Math.abs(collection.rtcOffsetX - site[0]) < 1);
+      assert.ok(Math.abs(collection.rtcOffsetY - site[1]) < 1);
+      assert.equal(collection.length, 1);
+      assert.equal(collection.totalTriangles, 12, 'the thin column must keep all six faces');
+
+      const mesh = collection.get(0);
+      try {
+        const positions = mesh.positions;
+        const origin = mesh.origin;
+        const min = [Infinity, Infinity, Infinity];
+        const max = [-Infinity, -Infinity, -Infinity];
+        for (let i = 0; i < positions.length; i += 3) {
+          for (let axis = 0; axis < 3; axis++) {
+            const world = positions[i + axis] + origin[axis];
+            min[axis] = Math.min(min[axis], world);
+            max[axis] = Math.max(max[axis], world);
+          }
+        }
+        // IFC Z-up becomes viewer Y-up, and IFC Y becomes negative viewer Z.
+        // Pin absolute bounds as well as dimensions: a coherent but displaced
+        // column would otherwise satisfy an extent-only regression test.
+        const expectedMin = [localMetres[0] - 4 * inchToMetres, localMetres[2], -localMetres[1] - 4 * inchToMetres];
+        const expectedMax = [localMetres[0] + 4 * inchToMetres, localMetres[2] + 120 * inchToMetres, -localMetres[1] + 4 * inchToMetres];
+        for (let axis = 0; axis < 3; axis++) {
+          assert.ok(Math.abs(min[axis] - expectedMin[axis]) < 0.001,
+            `axis ${axis}: emitted min ${min[axis]}m, authored ${expectedMin[axis]}m`);
+          assert.ok(Math.abs(max[axis] - expectedMax[axis]) < 0.001,
+            `axis ${axis}: emitted max ${max[axis]}m, authored ${expectedMax[axis]}m`);
+        }
+      } finally {
+        mesh.free();
+      }
+    } finally {
+      collection.free();
+    }
+  });
 }

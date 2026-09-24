@@ -1,10 +1,10 @@
 {
   "apps/viewer": 229,
   "apps/viewer-embed": 234,
-  "examples/babylonjs-viewer": 1,
+  "examples/babylonjs-viewer": 0,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
-  "examples/threejs-viewer": 2,
+  "examples/threejs-viewer": 0,
   "packages/bcf": 2,
   "packages/bcf-api": 0,
   "packages/cache": 5,

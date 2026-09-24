@@ -61,7 +61,7 @@
 # and reports every affected type in stats.warnings instead.
 # #5307 (Rust twin of #5202): an Ifc4SlotCheck alongside the Ifc2x3SlotFill
 # (declare, pass, report its warning), +4 lines.
-     443 rust/export/src/merged/mod.rs
+     420 rust/export/src/merged/mod.rs
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
@@ -193,7 +193,7 @@
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
-     709 rust/geometry/src/profiles/curves_3d.rs
+     670 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
 # +55: #2866 follow-up — MAX_CURVE_DEPTH = 50 WAS the weakest bound in the tree,
 # exactly as suspected. It caps one PATH's length and says nothing about the
@@ -215,7 +215,7 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     954 rust/geometry/src/profiles/mod.rs
+     847 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs

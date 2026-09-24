@@ -22,7 +22,9 @@ use crate::StepOptions;
 /// the TypeScript twin's: `generateHeader`'s `toList(v, [''])` substitutes the
 /// `('')` fallback only when the field is `undefined`, so a source file that
 /// really carried `FILE_NAME(...,(),(),...)` round-trips as `()` rather than
-/// being back-filled with an empty author. Callers pass `None` for absent.
+/// being back-filled with an empty author. Callers pass `None` for absent,
+/// which includes a source that wrote `$` there (#5470): `()` is not a valid
+/// `LIST [1:?]`, so reading `$` as an empty list wrote an invalid file.
 fn quote_list(items: Option<&[String]>) -> String {
     let items = match items {
         None => return "('')".to_string(),
@@ -92,11 +94,11 @@ pub(crate) fn write_header<W: Write>(
 
     let author: Option<Vec<String>> = match &opts.author {
         Some(a) => Some(vec![a.clone()]),
-        None => source.map(|s| s.author.clone()),
+        None => source.and_then(|s| s.author.clone()),
     };
     let organization: Option<Vec<String>> = match &opts.organization {
         Some(o) => Some(vec![o.clone()]),
-        None => source.map(|s| s.organization.clone()),
+        None => source.and_then(|s| s.organization.clone()),
     };
 
     // preprocessor_version = the tool that WROTE this file (ifc-lite);

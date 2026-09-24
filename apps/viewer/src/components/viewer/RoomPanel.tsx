@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
@@ -201,21 +202,26 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch (err) {
-      // The button simply never turns into "Copied!" — the only feedback the
-      // user gets. Mint failures (expired admin bearer, room revoked) look
-      // exactly like a blocked clipboard from the outside, so name the cause
-      // here; the dialog Share flow remains the fallback. One per click.
+      // Mint failures (expired admin bearer, room revoked) look exactly like a
+      // blocked clipboard from the outside: log the cause, tell the user (#5600).
       console.warn('[collab] could not copy the room link', err);
+      toast.error(t('zonesPanel.roomPanel.copyLinkFailed'));
     }
-  }, [collabRoomId, isAdmin, selfRole]);
+  }, [collabRoomId, isAdmin, selfRole, t]);
 
   const handleRevoke = useCallback(async () => {
     const ok = await revokeCollabLink();
-    if (ok) {
-      setRevoked(true);
-      setTimeout(() => setRevoked(false), 2000);
+    if (!ok) {
+      toast.error(t('zonesPanel.roomPanel.revokeLinkFailed'));
+      return;
     }
-  }, [revokeCollabLink]);
+    setRevoked(true);
+    setTimeout(() => setRevoked(false), 2000);
+  }, [revokeCollabLink, t]);
+
+  const handleKick = useCallback(async (clientId: number, name: string) => {
+    if (!(await kickPeer(clientId))) toast.error(t('zonesPanel.roomPanel.removePeerFailed', { name }));
+  }, [kickPeer, t]);
 
   const handleLeave = useCallback(() => {
     stopCollab();
@@ -246,23 +252,24 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
     () =>
       collabPeers.filter((p) => p?.user).map((p, i) => {
         const clientId = (p as { clientId?: number }).clientId;
+        const name = p.user.name ?? 'Guest';
         const camera = (p as { camera?: { position: Vec3; target: Vec3; fov: number } }).camera;
         const selection = (p as { selection?: string[] }).selection;
         return (
           <PeerRow
             key={p.user.id}
             color={p.user.color ?? '#888'}
-            name={p.user.name ?? 'Guest'}
+            name={name}
             role={(p as { role?: CollabRole }).role}
             activity={p.status ?? (p.tool && p.tool !== 'select' ? p.tool : undefined)}
             selectionCount={selection?.length}
             index={i + 1}
             onJump={camera ? () => jumpToPeer(camera) : undefined}
-            onKick={isAdmin && clientId != null ? () => void kickPeer(clientId) : undefined}
+            onKick={isAdmin && clientId != null ? () => void handleKick(clientId, name) : undefined}
           />
         );
       }),
-    [collabPeers, isAdmin, kickPeer, jumpToPeer],
+    [collabPeers, isAdmin, handleKick, jumpToPeer],
   );
 
   if (!collabRoomId) {

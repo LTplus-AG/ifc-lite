@@ -112,6 +112,29 @@ pub(crate) fn crossing_vertex_penetration(
     deepest
 }
 
+/// Distance from `p` to `mesh`'s surface, and whether `p` is CLEAR of that
+/// surface: farther from it than the pair's depth floor along the direction
+/// from the nearest surface point to `p` (#5751).
+///
+/// A ray-parity (`contains_point`) verdict is trustworthy only for a clear
+/// point. For a point on the surface — which is exactly where a probe lands
+/// for a flush pair — parity is a coin flip decided by f32 rounding, and any
+/// rigid translation re-rolls it. The threshold is the classification floor
+/// itself (`depth_floor`, #5591): a point within it of a surface is within
+/// f32 noise of being on it, so it is evidence of contact, not of volume.
+/// One rule for every probe that asks "is this point clearly inside".
+pub(crate) fn surface_clearance(mesh: &TriMesh, p: Vec3, aabb_a: &Aabb, aabb_b: &Aabb) -> (f64, bool) {
+    let (d, q) = mesh.closest_on_surface(p);
+    let clear = d > 0.0 && d > depth_floor([(p[0] - q[0]) / d, (p[1] - q[1]) / d, (p[2] - q[2]) / d], aabb_a, aabb_b);
+    (d, clear)
+}
+
+/// `p` is inside `mesh`'s solid AND clear of its surface (see
+/// [`surface_clearance`]). Parity first: it is the cheaper query.
+pub(crate) fn clearly_inside(mesh: &TriMesh, p: Vec3, aabb_a: &Aabb, aabb_b: &Aabb) -> bool {
+    mesh.contains_point(p) && surface_clearance(mesh, p, aabb_a, aabb_b).1
+}
+
 /// Whether `inner` — AABB-contained in `outer`, with no triangle pair
 /// crossing beyond f32 noise — is buried in `outer`'s solid (#5473).
 ///
@@ -124,9 +147,9 @@ pub(crate) fn crossing_vertex_penetration(
 /// vertices), so a rigid translation re-rolled the verdict.
 ///
 /// Candidates are `inner`'s vertex centroid (when that lies inside `inner`)
-/// and every vertex; a candidate is CLEAR when it is more than
-/// [`PROBE_CLEAR_ULPS`] f32 ULPs of its largest coordinate off `outer`'s
-/// surface, where its parity is trustworthy.
+/// and every vertex; a candidate is CLEAR of `outer`'s surface by
+/// [`surface_clearance`] (the pair's depth floor along its own direction,
+/// the same rule as the AABB-penetration probe, #5751).
 /// 1. Any clear candidate inside `outer` means its shell is buried: `true`.
 ///    Every candidate is checked, because `inner` may be several
 ///    disconnected shells and only one of them need be buried (review of
@@ -138,16 +161,18 @@ pub(crate) fn crossing_vertex_penetration(
 ///    exactly filling a notch (its centroid is outside) from a duplicate of
 ///    part of `outer` (its centroid is inside).
 ///
-/// Visit order and strict comparisons keep the pick bit-identical to the TS
-/// `containedSolidIsBuried`.
-pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> bool {
+/// `aabb_a` / `aabb_b` are the pair's element AABBs (in either order: the
+/// floor is symmetric). Visit order and strict comparisons keep the pick
+/// bit-identical to the TS `containedSolidIsBuried`.
+pub(crate) fn contained_solid_is_buried(
+    inner: &TriMesh,
+    outer: &TriMesh,
+    aabb_a: &Aabb,
+    aabb_b: &Aabb,
+) -> bool {
     if inner.count == 0 {
         return false;
     }
-    let clear = |p: Vec3, d: f64| {
-        let m = p[0].abs().max(p[1].abs()).max(p[2].abs()).max(1.0);
-        d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m
-    };
     let centroid = inner.vertex_centroid();
     let candidates: Vec<Vec3> = inner
         .contains_point(centroid)
@@ -155,20 +180,16 @@ pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> boo
         .into_iter()
         .chain((0..inner.vertex_count()).map(|i| inner.vertex(i as u32)))
         .collect();
-    // 1. A clearly buried shell. Parity first: it is the cheaper query, and
-    //    only candidates it places inside need their distance.
-    if candidates
-        .iter()
-        .any(|&p| outer.contains_point(p) && clear(p, outer.distance_to_surface(p)))
-    {
+    // 1. A clearly buried shell.
+    if candidates.iter().any(|&p| clearly_inside(outer, p, aabb_a, aabb_b)) {
         return true;
     }
     // 2./3. No shell is clearly buried.
     let mut probe: Option<Vec3> = None;
     let mut farthest = f64::NEG_INFINITY;
     for &p in &candidates {
-        let d = outer.distance_to_surface(p);
-        if clear(p, d) {
+        let (d, clear) = surface_clearance(outer, p, aabb_a, aabb_b);
+        if clear {
             return false;
         }
         if d > farthest {
@@ -178,13 +199,6 @@ pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> boo
     }
     probe.is_some_and(|p| outer.contains_point(p))
 }
-
-/// How far off `outer`'s surface a candidate must be for
-/// `contained_solid_is_buried` to trust its ray parity, in f32 ULPs of its
-/// largest coordinate. Generous on purpose: rounding moves a point on the
-/// surface by a few ULPs, and a vertex any closer is treated as touching,
-/// which only defers the verdict to a farther candidate.
-const PROBE_CLEAR_ULPS: f64 = 64.0;
 
 /// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
 /// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
@@ -214,7 +228,8 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// - the box MTD, when both elements are certified boxes (`box_pen`);
 /// - the crossing-vertex penetration, for a CONTAINED pair with a crossing
 ///   vertex inside the other solid (`mesh_evidence`) — evidence for this
-///   gate only, never a reported depth (see `crossing_vertex_penetration`).
+///   gate only, never a reported depth (see `crossing_vertex_penetration`),
+///   and only where the reported depth would be the ESTIMATE (#5717).
 ///
 /// Each candidate is tested against the floor OF ITS OWN DIRECTION — the
 /// pair's per-axis f32 noise projected onto the direction that candidate was
@@ -224,7 +239,10 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// there and Hard at the origin, and near the origin the X extent pinned
 /// the threshold for contacts that have no X component at all.
 ///
-/// The pair is `Hard` only when EVERY available candidate clears its floor.
+/// The pair is `Hard` only when every candidate that BEARS ON THE REPORTED
+/// NUMBER clears its floor — all three when the report is the estimate, and
+/// the estimate and the MTD when the box path certified a depth, since a
+/// sampling probe may not overrule an exact one (#5717).
 /// That is what makes the floor unreachable by depth-source selection: a sub-floor box MTD cannot be promoted by the through-
 /// penetration guard swapping in a larger AABB estimate; a sub-floor
 /// crossing-vertex penetration on a contained pair (surfaces authored
@@ -251,9 +269,28 @@ pub(crate) fn depth_clash_result(
 ) -> Option<NarrowResult> {
     // `||` in the same order as the TS kernel, each comparison `<=` so a
     // NaN candidate never counts as below its floor, on either side.
-    let below_floor = estimate <= estimate_floor(aabb_a, aabb_b)
-        || box_pen.is_some_and(|b| b.mtd <= depth_floor(b.axis, aabb_a, aabb_b))
-        || mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b));
+    let est_floor = estimate_floor(aabb_a, aabb_b);
+    let box_floor = box_pen.map(|b| depth_floor(b.axis, aabb_a, aabb_b));
+    // Whether the pair has a CERTIFIED depth, i.e. whether the number this
+    // function would report is the exact box MTD or the AABB estimate. Bound
+    // here rather than below because the mesh-evidence term needs it too.
+    let measured = box_pen.filter(|b| !b.through);
+    let below_floor = estimate <= est_floor
+        || box_pen.zip(box_floor).is_some_and(|(b, f)| b.mtd <= f)
+        // Mesh evidence guards the ESTIMATE, and only the estimate (#5717).
+        // `crossing_vertex_penetration` is not a depth metric — its own doc
+        // comment says so, and it underestimates by an amount that depends
+        // on tessellation. That is harmless when it is the only thing
+        // standing between a flush contained pair and a fabricated AABB
+        // estimate, which is the case it was added for. It is not harmless
+        // against a certified box MTD: a vertex lying ON a face the two
+        // boxes share reads as a sub-floor "penetration" once rotation
+        // pushes it a noise-width inside, and vetoed a 20 mm overlap that
+        // the exact box depth had measured correctly. Two boxes that are
+        // genuinely flush already report 0 through the MTD term above
+        // (#5355), so nothing here needs the probe's second opinion.
+        || (measured.is_none()
+            && mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b)));
     if below_floor {
         if !report_touch {
             return None;
@@ -264,24 +301,24 @@ pub(crate) fn depth_clash_result(
             distance_kind: DistanceKind::Mesh, // distance is exact (0)
             point,
             bounds,
+            depth_floor: None,
         });
     }
     // Estimate-vs-mesh selection, reachable only above the floor: the box
     // MTD is certified (`Mesh`) unless the pair is a through-penetration,
     // where the AABB estimate is the honest number (see `box_penetration`).
-    let measured = box_pen.is_some_and(|b| !b.through);
+    // The reported depth carries ITS OWN floor out with it (#5639), so the
+    // reported touching band is decided by the same rule as this verdict.
     Some(NarrowResult {
         status: ClashStatus::Hard,
-        distance: -(match box_pen {
-            Some(b) if !b.through => b.mtd,
-            _ => estimate,
-        }),
-        distance_kind: if measured {
+        distance: -measured.map_or(estimate, |b| b.mtd),
+        distance_kind: if measured.is_some() {
             DistanceKind::Mesh
         } else {
             DistanceKind::Estimate
         },
         point,
         bounds,
+        depth_floor: Some(measured.and(box_floor).unwrap_or(est_floor)),
     })
 }

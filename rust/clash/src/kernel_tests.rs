@@ -616,14 +616,14 @@ fn probe_fixture_matches_the_ts_kernel() {
     for (p, inside, distance) in probes {
         assert_eq!(mesh.contains_point(p), inside, "contains_point {p:?}");
         assert_eq!(
-            mesh.distance_to_surface(p),
+            mesh.closest_on_surface(p).0,
             distance,
-            "distance_to_surface {p:?}"
+            "closest_on_surface {p:?}"
         );
     }
 }
 
-/// The BVH-accelerated `distance_to_surface` must equal an exhaustive scan when
+/// The BVH-accelerated `closest_on_surface` must equal an exhaustive scan when
 /// the answer lies OUTSIDE the first probe cube. The DECOY is one big slanted
 /// triangle whose AABB swallows the probe cube while its own surface sits 0.548
 /// away; the real nearest surface is a fine grid at z = 0.435, outside the seed
@@ -635,7 +635,7 @@ fn probe_fixture_matches_the_ts_kernel() {
 /// hand back the decoy's 0.548), and dropping the widened query entirely.
 /// Mirrors `tri-mesh.test.ts` "finds a near triangle the seed cube missed".
 #[test]
-fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
+fn closest_on_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     const A: f64 = 0.95;
     const SPAN: f64 = 1.16;
     const Z: f64 = 0.435;
@@ -676,11 +676,11 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     // The probe that discriminates: the answer must be the grid (~0.435), not
     // the decoy (~0.548) that the seed cube found first.
     let centre = [0.0, 0.0, 0.0];
-    assert_eq!(mesh.distance_to_surface(centre), scan(centre));
+    assert_eq!(mesh.closest_on_surface(centre).0, scan(centre));
     assert!(
-        mesh.distance_to_surface(centre) < 0.5,
+        mesh.closest_on_surface(centre).0 < 0.5,
         "must reach the grid at z = 0.435, got {}",
-        mesh.distance_to_surface(centre)
+        mesh.closest_on_surface(centre).0
     );
 
     for p in [
@@ -689,13 +689,13 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
         [0.4, 0.4, 0.3],
         [9.0, 9.0, 9.0],
     ] {
-        assert_eq!(mesh.distance_to_surface(p), scan(p), "probe {p:?}");
+        assert_eq!(mesh.closest_on_surface(p).0, scan(p), "probe {p:?}");
     }
 }
 
 /// Brute-force `contains_point`: the SAME Möller–Trumbore crossing count, over
 /// EVERY triangle instead of the BVH's candidate set. This is the oracle the
-/// BVH acceleration never had — `distance_to_surface` has one (`scan` above),
+/// BVH acceleration never had — `closest_on_surface` has one (`scan` above),
 /// but `contains_point`'s "the candidate set is a superset of what a linear
 /// scan would count" was asserted only in a doc comment, so nothing in the
 /// suite would have noticed the traversal starting to prune a triangle the ray
@@ -934,4 +934,30 @@ fn crossing_vertex_evidence_carries_the_direction_it_was_measured_along_5405() {
     assert!((e.depth - 0.01).abs() < 1e-6, "{}", e.depth); // f32 corners
     assert!(e.axis[0].abs() < 1e-9 && e.axis[1].abs() < 1e-9, "{:?}", e.axis);
     assert!((e.axis[2].abs() - 1.0).abs() < 1e-9, "{:?}", e.axis);
+}
+
+#[test]
+fn a_hard_result_reports_the_floor_of_the_depth_it_reports_5639() {
+    // The pair sits 10,000 out along X, so the X floor is ~150x the Z floor.
+    // A certified box MTD measured along X is reported with the X floor; the
+    // AABB estimate (smallest overlap: Z here) with the Z floor — whichever
+    // depth `distance` carries, `depth_floor` is that depth's own floor.
+    let a = Aabb::new([9_999.0, -1.0, 63.0], [10_001.0, 1.0, 64.0]);
+    let b = Aabb::new([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64.0]);
+    let x: Vec3 = [1.0, 0.0, 0.0];
+    let hard = |box_pen, estimate| {
+        let r = crate::depth::depth_clash_result(box_pen, estimate, None, &a, &b, true, [0.0; 3], a)
+            .expect("a result");
+        assert_eq!(r.status, ClashStatus::Hard);
+        (r.distance, r.depth_floor.expect("a Hard result carries its floor"))
+    };
+    let x_floor = crate::aabb::depth_floor(x, &a, &b);
+    let est_floor = crate::aabb::estimate_floor(&a, &b);
+    assert!(x_floor > 100.0 * est_floor, "fixture premise: {x_floor} vs {est_floor}");
+
+    let measured = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: false });
+    assert_eq!(hard(measured, 0.5), (-0.1, x_floor), "certified MTD: its own axis's floor");
+    let through = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: true });
+    assert_eq!(hard(through, 0.5), (-0.5, est_floor), "through-penetration reports the estimate");
+    assert_eq!(hard(None, 0.5), (-0.5, est_floor), "no box: the estimate");
 }

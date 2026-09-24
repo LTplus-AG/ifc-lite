@@ -79,11 +79,37 @@ describe('parseSourceHeader', () => {
       expect(h?.author).toEqual(['A', 'B']);
     });
 
-    it('yields an empty list for a `$` list field', () => {
+    it('leaves a `$` author/organization absent, not an empty list (#5470)', () => {
+      // Both are LIST [1:?]: `$` means never stated, and reading it as `[]`
+      // made the exporter write an invalid `()` instead of its `('')` default.
       const h = parseSourceHeader(
-        header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',$,('O'),'P','S','auth'")),
+        header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',$,$,'P','S','auth'")),
+      );
+      expect(h?.author).toBeUndefined();
+      expect(h?.organization).toBeUndefined();
+    });
+
+    it('leaves a list of only unset entries (`($)`) absent too', () => {
+      const h = parseSourceHeader(
+        header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',($),($,*),'P','S','auth'")),
+      );
+      expect(h?.author).toBeUndefined();
+      expect(h?.organization).toBeUndefined();
+    });
+
+    it('leaves author/organization absent when there is no FILE_NAME record', () => {
+      const h = parseSourceHeader(header("FILE_SCHEMA(('IFC4'));"));
+      expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+      expect(h?.author).toBeUndefined();
+      expect(h?.organization).toBeUndefined();
+    });
+
+    it('keeps a literal `()` author list as an empty list, distinct from `$`', () => {
+      const h = parseSourceHeader(
+        header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',(),$,'P','S','auth'")),
       );
       expect(h?.author).toEqual([]);
+      expect(h?.organization).toBeUndefined();
     });
   });
 
@@ -254,9 +280,9 @@ describe('parseSourceHeader reads a RANGE, never the whole source (#2183)', () =
   const HEADER = [
     'ISO-10303-21;',
     'HEADER;',
-    "FILE_DESCRIPTION((\'ViewDefinition [CoordinationView]\'),\'2;1\');",
-    "FILE_NAME(\'x.ifc\',\'2024-01-01T00:00:00\',(\'A\'),(\'B\'),\'p\',\'o\',\'\');",
-    "FILE_SCHEMA((\'IFC4\'));",
+    "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+    "FILE_NAME('x.ifc','2024-01-01T00:00:00',('A'),('B'),'p','o','');",
+    "FILE_SCHEMA(('IFC4'));",
     'ENDSEC;',
     'DATA;',
   ].join('\n');

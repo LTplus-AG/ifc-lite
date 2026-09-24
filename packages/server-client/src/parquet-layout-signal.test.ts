@@ -77,6 +77,24 @@ describe('flat Parquet layout signal', () => {
     }
   });
 
+  // Cross-batch sharing (#5407) is the streaming route's own opt-in: both of
+  // its requests (the hash probe and the upload) send it, because this client
+  // decodes batches that point into earlier ones. Every other endpoint must
+  // not, since none of them streams batches.
+  it('opts the stream, and only the stream, in to cross-batch shapes', async () => {
+    const urls = recordUrls();
+    await client()
+      .parseParquetStream(file(), () => {})
+      .catch(() => {});
+    await client().parseParquet(file()).catch(() => {});
+    const family = flatFamily(urls);
+    const stream = family.filter((u) => u.includes('/parse/parquet-stream'));
+    expect(stream.length).toBe(2);
+    for (const url of family) {
+      expect(url.includes('stream_shapes=cross-batch'), url).toBe(stream.includes(url));
+    }
+  });
+
   it('survives alongside another query parameter', async () => {
     const urls = recordUrls();
     await client()

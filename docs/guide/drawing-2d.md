@@ -269,7 +269,7 @@ if (isGPUComputeAvailable()) {
 In the IFClite viewer:
 
 1. **Activate section plane** - Position a section plane in the 3D view
-2. **Open 2D panel** - The 2D drawing panel shows the section cut
+2. **Open the Drawing panel** - The section cut appears in the **Drawing** panel, docked in the bottom strip below the 3D view (it opens with the Section tool, or from **Analyze → Drawing**, the sidebar rail or the command palette). Like the other bottom panels it can be resized, floated, or popped out onto another screen
 3. **Toggle layers** - Show/hide cut lines, projection, hidden lines, hatching
 4. **Annotate** - Add measurements, polygon areas, text boxes, and revision clouds
 5. **Select & edit** - Click annotations to select, drag to move, Delete to remove

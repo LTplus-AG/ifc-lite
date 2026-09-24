@@ -1,0 +1,66 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** The Drawing header's one Export menu (#5494): SVG, DXF, PDF, Print, and
+ *  saving the markup into the model. File exports need a drawing. */
+
+import { ChevronDown, Download, FileDown, FileText, Printer } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
+import { SaveMarkupToModelMenuItem } from '../SaveMarkupToModelButton';
+
+export interface DrawingExportMenuProps {
+  hasDrawing: boolean;
+  /** Icon-only trigger for narrow hosts. */
+  compact: boolean;
+  onExportSvg: () => void;
+  onExportDxf: () => void;
+  onExportPdf: () => void;
+  onPrint: () => void;
+}
+
+export function DrawingExportMenu({ hasDrawing, compact, onExportSvg, onExportDxf, onExportPdf, onPrint }: DrawingExportMenuProps) {
+  const { t } = useTranslation();
+  const label = t('section2d.export.menu');
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            {compact ? (
+              <Button variant="ghost" size="icon-sm" aria-label={label}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" aria-label={label}>
+                <Download className="h-3.5 w-3.5" />
+                {label}
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </Button>
+            )}
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem onClick={onExportSvg} disabled={!hasDrawing}>
+          <Download className="mr-2 h-4 w-4" />{t('section2d.export.svg')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onExportDxf} disabled={!hasDrawing}>
+          <FileDown className="mr-2 h-4 w-4" />{t('section2d.export.dxf')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onExportPdf} disabled={!hasDrawing}>
+          <FileText className="mr-2 h-4 w-4" />{t('section2d.export.pdf')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onPrint} disabled={!hasDrawing}>
+          <Printer className="mr-2 h-4 w-4" />{t('section2d.export.print')}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <SaveMarkupToModelMenuItem />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

@@ -6,7 +6,7 @@
  * The command-palette entries for the bottom strip's panels, one per row of
  * the bottom-panel table so a new bottom panel is one line here.
  */
-import { BarChart3, CalendarClock, FileCode2, FileSpreadsheet, FileText, Workflow } from 'lucide-react';
+import { BarChart3, CalendarClock, FileCode2, FileSpreadsheet, FileText, PencilRuler, Workflow } from 'lucide-react';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { Command } from './commandPaletteSearch';
 
@@ -20,6 +20,7 @@ const ENTRIES: ReadonlyArray<Pick<Command, 'label' | 'labelKey' | 'keywords' | '
   { id: 'charts', label: 'Charts', labelKey: 'commandPalette.panel.charts.label', keywords: 'dashboard chart graph bar pie statistics analytics report', icon: BarChart3 },
   { id: 'flow', label: 'Flow', labelKey: 'commandPalette.panel.flow.label', keywords: 'flow graph node dynamo grasshopper automation workflow script', icon: Workflow },
   { id: 'document', label: 'Document', labelKey: 'commandPalette.panel.document.label', keywords: 'document page report template cover sheet label binding pdf print logo', icon: FileText },
+  { id: 'drawing', label: 'Drawing (2D)', labelKey: 'commandPalette.panel.drawing.label', keywords: '2d section cut plan floor plan elevation drawing sheet dxf svg pdf markup', icon: PencilRuler },
 ];
 
 export function bottomPanelCommands(activate: (panel: BottomPanelId) => void): Command[] {

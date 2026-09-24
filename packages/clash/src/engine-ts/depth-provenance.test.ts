@@ -25,7 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { crossingVertexPenetration, depthClashResult, type BoxPenetration, type VertexPenetration } from './depth.js';
-import { estimateFloor, signedGap } from '../math/aabb.js';
+import { depthFloor, estimateFloor, signedGap } from '../math/aabb.js';
 import { TriMesh } from './tri-mesh.js';
 import { createClashEngine } from '../engine.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
@@ -647,6 +647,24 @@ describe('hard-clash distance provenance', () => {
     expect(Math.abs(e.axis[2])).toBeCloseTo(1, 9);
   });
 
+  it('reports on a hard result the floor of the depth it reports (#5639)', () => {
+    // Mirrors `a_hard_result_reports_the_floor_of_the_depth_it_reports_5639`.
+    const a = boundsEl([9_999, -1, 63], [10_001, 1, 64]);
+    const b = boundsEl([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64]);
+    const x: Vec3 = [1, 0, 0];
+    const xFloor = depthFloor(x, a.bounds, b.bounds);
+    const estFloor = estimateFloor(a.bounds, b.bounds);
+    expect(xFloor, 'fixture premise').toBeGreaterThan(100 * estFloor);
+    const hard = (box: BoxPenetration | null, estimate: number) => {
+      const r = depthClashResult(box, estimate, null, a, b, TOUCH_RULE, [0, 0, 0], a.bounds)!;
+      expect(r.status).toBe('hard');
+      return [r.distance, r.depthFloor];
+    };
+    expect(hard({ mtd: 0.1, axis: x, through: false }, 0.5)).toEqual([-0.1, xFloor]);
+    expect(hard({ mtd: 0.1, axis: x, through: true }, 0.5)).toEqual([-0.5, estFloor]);
+    expect(hard(null, 0.5)).toEqual([-0.5, estFloor]);
+  });
+
   it('pins the floor boundary per candidate, each on its own direction (#5405)', () => {
     // The boundary is inclusive (`<=`) for each of the three candidates, and
     // each is judged against the floor OF ITS OWN DIRECTION. Both boxes sit
@@ -763,4 +781,73 @@ describe('clearance distance provenance', () => {
     expect(res?.status).toBe('clearance');
     expect(res?.distanceKind).toBe('mesh');
   });
+});
+
+/**
+ * #5717. Twin of `rust/clash/src/tests.rs`
+ * (`a_shared_face_does_not_veto_a_genuine_overlap_5717`). Same fixture, same
+ * expectations, so the two kernels stay pinned together.
+ */
+describe('#5717: a shared face must not veto a certified overlap', () => {
+  const PEN = 0.02;
+
+  /** A box rotated about Z, baked through f32 exactly as ingest would. */
+  function rotatedBoxEl(key: string, cx: number, cy: number, h: Vec3, rot: number): ClashElement {
+    const c = Math.fround(Math.cos(rot));
+    const s = Math.fround(Math.sin(rot));
+    const corners: Vec3[] = [
+      [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+      [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+    ].map(([sx, sy, sz]) => [sx * h[0], sy * h[1], sz * h[2]] as Vec3);
+    const positions = new Float32Array(24);
+    const min: Vec3 = [Infinity, Infinity, Infinity];
+    const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+    corners.forEach(([x, y, z], i) => {
+      const w: Vec3 = [
+        Math.fround(c * x - s * y + cx),
+        Math.fround(s * x + c * y + cy),
+        Math.fround(z),
+      ];
+      for (let k = 0; k < 3; k += 1) {
+        positions[i * 3 + k] = w[k];
+        min[k] = Math.min(min[k], w[k]);
+        max[k] = Math.max(max[k], w[k]);
+      }
+    });
+    const indices = new Uint32Array([
+      0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 5, 1, 0, 4, 5,
+      3, 2, 6, 3, 6, 7, 0, 3, 7, 0, 7, 4, 1, 5, 6, 1, 6, 2,
+    ]);
+    return { key, ref: nextRef++, model: 'm', tag: 'IfcWall', positions, indices, bounds: { min, max } };
+  }
+
+  const rule: ClashRule = { id: 'r', name: 'r', a: '*', mode: 'hard', tolerance: 0.001, reportTouch: true };
+
+  // A panel and mullion authored to the same height are flush on their tops
+  // and bottoms while overlapping laterally. Rotated off the world axes, the
+  // mullion's top corners bake a noise-width inside the panel's top face;
+  // `crossingVertexPenetration` reported that as a ~0 penetration, which sat
+  // below its floor and took the pair to `touch` — discarding a 20 mm
+  // overlap the exact box MTD had already measured.
+  for (const rot of [0, 0.1, 0.3, 0.4, Math.PI / 4]) {
+    it(`reports a 20 mm overlap as hard at rotation ${rot.toFixed(3)}`, async () => {
+      const engine = createClashEngine({ backend: 'ts' });
+      const c = Math.fround(Math.cos(rot));
+      const s = Math.fround(Math.sin(rot));
+      const mullion = rotatedBoxEl('mullion', 0, 0, [0.1, 0.1, 1.5], rot);
+      const panel = rotatedBoxEl('panel', (0.125 - PEN) * c, (0.125 - PEN) * s, [0.025, 0.75, 1.5], rot);
+
+      const { clashes } = await engine.run([mullion, panel], [rule], { tolerance: 0.001 });
+      expect(clashes).toHaveLength(1);
+      expect(clashes[0].status).toBe('hard');
+      expect(clashes[0].distance).toBeCloseTo(-PEN, 3);
+
+      // Companion: the same pair moved out to exactly flush is still a
+      // touch. Without this, a kernel that never reported `touch` would pass.
+      const flushPanel = rotatedBoxEl('panel', 0.125 * c, 0.125 * s, [0.025, 0.75, 1.5], rot);
+      const flush = await engine.run([mullion, flushPanel], [rule], { tolerance: 0.001 });
+      expect(flush.clashes).toHaveLength(1);
+      expect(flush.clashes[0].status).toBe('touch');
+    });
+  }
 });

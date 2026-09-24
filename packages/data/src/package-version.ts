@@ -10,8 +10,6 @@
  * the MCP server -- cannot drift apart on how they answer `--version`.
  */
 
-import { readFileSync } from 'node:fs';
-
 /** Reported when `package.json` can't be read — deliberately not a plausible
  * version number, so a bug report never carries a fabricated one. */
 export const UNKNOWN_VERSION = '0.0.0-unknown';
@@ -32,7 +30,12 @@ export const UNKNOWN_VERSION = '0.0.0-unknown';
  */
 export function readPackageVersion(pkgPath: string): string {
   try {
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    const pkg = JSON.parse(
+      // Not a top-level import: this package is bundled into browser apps,
+      // where `node:fs` is an empty shim (#5586). Needs Node 20.16+ or 22.3+,
+      // which is what the CLI and MCP (its only callers) declare in `engines`.
+      process.getBuiltinModule('node:fs').readFileSync(pkgPath, 'utf-8'),
+    ) as { version?: string };
     if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;
     process.stderr.write(
       `Warning: ${pkgPath} declares no "version"; reporting ${UNKNOWN_VERSION}.\n`,

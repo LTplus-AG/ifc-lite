@@ -39,7 +39,8 @@ import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
-import { SaveMarkupToModelButton } from './SaveMarkupToModelButton';
+import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExportChangesButton } from './ExportChangesButton';
 
 const STORE_RESET = {
@@ -127,6 +128,7 @@ it('FederationSetupControls: mounts without a dialog open, and its catalogue val
 it('ShareScopeField: renders the multi-model caption in English and translates it (#4918)', () => {
   const container = render(
     <ShareScopeField
+      showScope
       scope="all"
       onScopeChange={() => {}}
       editable
@@ -142,6 +144,7 @@ it('ShareScopeField: renders the multi-model caption in English and translates i
   assert.ok(container.textContent?.includes('All 3 loaded models'));
   assert.ok(container.textContent?.includes('Every loaded model is shared as its own model, so recipients see the whole workspace.'));
   assert.ok(container.textContent?.includes('Create link'));
+  assert.ok(container.textContent?.includes('Creating the link uploads the shared model data to the collaboration server'));
 
   registerLocale('sharescopefield-de', { 'shareScopeField.createLink': 'Link erstellen' });
   act(() => setLocale('sharescopefield-de'));
@@ -301,17 +304,19 @@ it('BottomStrip: the drag-grip catalogue value resolves (#4918)', () => {
 
 // ---- SaveMarkupToModelButton -----------------------------------------------
 
-it('SaveMarkupToModelButton: renders the tooltip title in English and translates it (#4918)', () => {
-  const container = render(<SaveMarkupToModelButton />);
-  const button = container.querySelector('button')!;
-  assert.equal(
-    button.getAttribute('title'),
-    'Save drawing markup into the model (overlay only — Export Changes writes it to a file)',
+it('SaveMarkupToModelMenuItem: renders its label in English and translates it (#4918)', () => {
+  render(
+    <DropdownMenu open>
+      <DropdownMenuTrigger>open</DropdownMenuTrigger>
+      <DropdownMenuContent><SaveMarkupToModelMenuItem /></DropdownMenuContent>
+    </DropdownMenu>,
   );
+  const item = document.querySelector('[role="menuitem"]')!;
+  assert.equal(item.textContent, 'Save Markup to Model');
 
-  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.title': 'Markup ins Modell speichern' });
+  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.menuItemLabel': 'Markup ins Modell speichern' });
   act(() => setLocale('savemarkuptomodelbutton-de'));
-  assert.equal(button.getAttribute('title'), 'Markup ins Modell speichern');
+  assert.equal(item.textContent, 'Markup ins Modell speichern');
 });
 
 // ---- ExportChangesButton ----------------------------------------------------

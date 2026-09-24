@@ -83,7 +83,7 @@ for (const [wId, wName, wLen] of [
       { Name: 'LoadBearing', NominalValue: true, Type: 'IfcBoolean' },
       { Name: 'FireRating', NominalValue: 'REI60', Type: 'IfcLabel' },
       { Name: 'AcousticRating', NominalValue: 'STC 45', Type: 'IfcLabel' },
-      { Name: 'ThermalTransmittance', NominalValue: 0.25, Type: 'IfcReal' },
+      { Name: 'ThermalTransmittance', NominalValue: 0.25, Type: 'IfcThermalTransmittanceMeasure' },
     ],
   });
   bim.create.addIfcElementQuantity(h, wId, {
@@ -157,7 +157,7 @@ for (const [cName, cx, cy] of columnPositions) {
       { Name: 'LoadBearing', NominalValue: true, Type: 'IfcBoolean' },
       { Name: 'IsExternal', NominalValue: false, Type: 'IfcBoolean' },
       { Name: 'FireRating', NominalValue: 'R120', Type: 'IfcLabel' },
-      { Name: 'Slope', NominalValue: 0, Type: 'IfcInteger' },
+      { Name: 'Slope', NominalValue: 0, Type: 'IfcPlaneAngleMeasure' },
     ],
   });
   bim.create.addIfcElementQuantity(h, colId, {
@@ -194,7 +194,7 @@ for (const [bName, bStart, bEnd] of beamDefs) {
       { Name: 'LoadBearing', NominalValue: true, Type: 'IfcBoolean' },
       { Name: 'IsExternal', NominalValue: false, Type: 'IfcBoolean' },
       { Name: 'FireRating', NominalValue: 'R60', Type: 'IfcLabel' },
-      { Name: 'Span', NominalValue: bLen, Type: 'IfcReal' },
+      { Name: 'Span', NominalValue: bLen, Type: 'IfcPositiveLengthMeasure' },
     ],
   });
   bim.create.addIfcElementQuantity(h, beamId, {
@@ -229,10 +229,10 @@ bim.create.addIfcPropertySet(h, stairId, {
   Properties: [
     { Name: 'Reference', NominalValue: 'Concrete - Straight Run', Type: 'IfcIdentifier' },
     { Name: 'FireRating', NominalValue: 'REI60', Type: 'IfcLabel' },
-    { Name: 'NumberOfRiser', NominalValue: numRisers, Type: 'IfcInteger' },
-    { Name: 'NumberOfTreads', NominalValue: numRisers - 1, Type: 'IfcInteger' },
-    { Name: 'RiserHeight', NominalValue: riserH, Type: 'IfcReal' },
-    { Name: 'TreadLength', NominalValue: treadL, Type: 'IfcReal' },
+    { Name: 'NumberOfRiser', NominalValue: numRisers, Type: 'IfcCountMeasure' },
+    { Name: 'NumberOfTreads', NominalValue: numRisers - 1, Type: 'IfcCountMeasure' },
+    { Name: 'RiserHeight', NominalValue: riserH, Type: 'IfcPositiveLengthMeasure' },
+    { Name: 'TreadLength', NominalValue: treadL, Type: 'IfcPositiveLengthMeasure' },
     { Name: 'IsExternal', NominalValue: false, Type: 'IfcBoolean' },
     { Name: 'HandicapAccessible', NominalValue: false, Type: 'IfcBoolean' },
   ],
@@ -335,7 +335,7 @@ for (const [wId, wName, wLen] of [
       { Name: 'IsExternal', NominalValue: true, Type: 'IfcBoolean' },
       { Name: 'LoadBearing', NominalValue: true, Type: 'IfcBoolean' },
       { Name: 'FireRating', NominalValue: 'REI60', Type: 'IfcLabel' },
-      { Name: 'ThermalTransmittance', NominalValue: 0.25, Type: 'IfcReal' },
+      { Name: 'ThermalTransmittance', NominalValue: 0.25, Type: 'IfcThermalTransmittanceMeasure' },
     ],
   });
   bim.create.addIfcElementQuantity(h, wId, {

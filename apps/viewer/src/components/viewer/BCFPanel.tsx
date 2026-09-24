@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import {
@@ -41,6 +42,7 @@ import { BCFTopicList } from './bcf/BCFTopicList';
 import { BCFTopicDetail } from './bcf/BCFTopicDetail';
 import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { BCFServerControl } from './bcf/BCFServerControl';
+import { BCFPanelStatus } from './bcf/BCFPanelStatus';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { readBCFWithDiagnostics, warnIfNoModelLoaded, warnIfImportTruncated, warnIfUnsupportedVersion } from './bcf/bcfImportGuidance';
@@ -191,10 +193,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   }, [handleImportFile]);
 
   const handleImportClick = useCallback(async () => {
-    const imported = await importFromDialog();
-    if (imported) {
-      return;
-    }
+    if (await importFromDialog()) return;
     fileInputRef.current?.click();
   }, [importFromDialog]);
 
@@ -204,6 +203,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
 
     try {
       setBcfLoading(true);
+      setBcfError(null);
       const blob = await writeBCF(bcfProject);
       // Use project name, or generate from model name, or date-based fallback
       const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
@@ -217,7 +217,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     }
   }, [bcfProject, setBcfLoading, setBcfError, getDefaultProjectName]);
 
-  // Create new topic
   // Capture the current view (camera + snapshot + selection) for the create
   // form's preview and the new topic's attached viewpoint.
   const captureCreateViewpoint = useCallback(async () => {
@@ -319,9 +318,9 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     if (viewpoint) {
       addViewpoint(activeTopicId, viewpoint);
     } else {
-      console.warn('[BCFPanel] Failed to capture viewpoint - no camera available');
+      toast.error(t('bcf.panel.captureViewpointFailed'));
     }
-  }, [activeTopicId, addViewpoint, createViewpointFromState]);
+  }, [activeTopicId, addViewpoint, createViewpointFromState, t]);
 
   // Activate viewpoint - apply camera and state to viewer
   const handleActivateViewpoint = useCallback((viewpoint: BCFViewpoint) => {
@@ -456,6 +455,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           </Button>
         </div>
       </div>
+      <BCFPanelStatus />
 
       {/* Content */}
       <div className="flex-1 overflow-hidden relative">

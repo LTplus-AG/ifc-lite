@@ -45,6 +45,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
+import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 const MODELS_DIR = resolve(__dirname, '../../../tests/models');
 const TOOL_DIR = resolve(__dirname, '../../../tools/ifcopenshell_reference');
@@ -191,6 +192,30 @@ describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant 
   );
 
   it(
+    'validates the MergedExporter output of the two converted fixtures, as IFC4 and IFC4X3 (#5471)',
+    async () => {
+      // Building-Architecture aggregates its Building under a Site;
+      // tessellated-item aggregates its Building straight under the Project.
+      // The Buildings unify, and the merge used to give the result both
+      // parents, failing IfcSpatialStructureElement.WR41.
+      const parser = new IfcParser();
+      const models: MergeModelInput[] = [];
+      for (const fixture of IFC4X3_CONVERTED) {
+        const buffer = toArrayBuffer(readFileSync(resolve(MODELS_DIR, fixture)));
+        models.push({ id: fixture, name: fixture, dataStore: await parser.parseColumnar(buffer) });
+      }
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-merged-'));
+      const outputs = (['IFC4', 'IFC4X3'] as const).map((schema) => {
+        const out = join(outDir, `merged-${schema}.ifc`);
+        writeFileSync(out, Buffer.from(new MergedExporter(models).export({ schema }).content));
+        return out;
+      });
+      runValidateOrThrow(outputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
     'validates the round-trip re-export of IFC4X3_ADD2 fixtures',
     async () => {
       const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-4x3-rt-'));
@@ -199,6 +224,36 @@ describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant 
         outputs.push(await reExport(fixture, outDir));
       }
       runValidateOrThrow(outputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+});
+
+/**
+ * #5470: IfcOpenShell/Bonsai write FILE_NAME's author and organization as `$`,
+ * which is itself invalid for a LIST [1:?], and a re-export used to turn it
+ * into `()`, still invalid. The fixture's header is its ONLY defect, so the
+ * control pins exactly that and the re-export must come back clean.
+ */
+const UNSET_AUTHOR_FIXTURE = 'ifc5/Hello_Wall_hello-wall.ifc';
+const canRunUnsetAuthor = fixturesAvailable([UNSET_AUTHOR_FIXTURE]) && ifcopenshellAvailable();
+
+describe.skipIf(!canRunUnsetAuthor)('StepExporter re-export of a `$` FILE_NAME author/organization (#5470)', () => {
+  it(
+    'writes the (\'\') default, and the re-export validates with 0 issues',
+    async () => {
+      const source = resolve(MODELS_DIR, UNSET_AUTHOR_FIXTURE);
+      expect(readFileSync(source, 'utf8')).toMatch(/FILE_NAME\('[^']*','[^']*',\$,\$,/);
+      const control = spawnSync(PYTHON, [VALIDATE_SCRIPT, source], { encoding: 'utf8' });
+      expect(control.stdout, 'control: the source fails on its header, and only there').toContain(
+        ': 2 schema-conformance issue(s)',
+      );
+      expect(control.stdout).toContain("Attribute 'author' has invalid type");
+      expect(control.stdout).toContain("Attribute 'organization' has invalid type");
+
+      const out = await reExport(UNSET_AUTHOR_FIXTURE, mkdtempSync(join(tmpdir(), 'ifc-lite-export-5470-')));
+      expect(readFileSync(out, 'utf8')).toMatch(/FILE_NAME\('[^']*','[^']*',\(''\),\(''\),/);
+      runValidateOrThrow([out]);
     },
     IFCOPENSHELL_TEST_TIMEOUT_MS,
   );

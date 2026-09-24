@@ -1,5 +1,51 @@
 # @ifc-lite/cli
 
+## 0.36.1
+
+### Patch Changes
+
+- [#5686](https://github.com/LTplus-AG/ifc-lite/pull/5686) [`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183) Thanks [@louistrue](https://github.com/louistrue)! - User-facing output uses the canonical IFC EXPRESS class name everywhere, as AGENTS.md requires. STEP stores class names UPPERCASE and `entityIndex.byType` is keyed by that raw spelling, so three surfaces printed `IFCWALLSTANDARDCASE` where `IfcWallStandardCase` belongs:
+  
+  - `ifc-lite info` mapped `typeCounts` through `IFC_ENTITY_NAMES` but not the drop census, so one report showed the same class both ways — `IfcIndexedPolygonalFace` under "Other types" and `IFCINDEXEDPOLYGONALFACE` under "Skipped classes".
+  - `ifc-lite gym`'s observation was raw throughout. That is the machine-readable contract an agent consumes, and it disagreed with `info --json` on the same model.
+  - The export's withheld-entity warning (reached via `ifc-lite anonymize`) named the raw class. The uppercase form is still used for the `IFCREL*` and style-rescue matching it is load-bearing for; only the message changes.
+
+- [#5569](https://github.com/LTplus-AG/ifc-lite/pull/5569) [`019630b`](https://github.com/LTplus-AG/ifc-lite/commit/019630b1d222d60a981d226d9355efe72d58383a) Thanks [@louistrue](https://github.com/louistrue)! - `simplify --json`, `lod --json`, `extract-entities --json` and the `gym` NDJSON protocol now put only their payload on stdout. All four drove the geometry pipeline without first calling `routeConsoleDiagnosticsToStderr()`, so roughly 25 lines of `[IFC-LITE] Opening classifier: …` arrived ahead of the document and `JSON.parse` failed on character 1 — while the exit code stayed 0. `gym`'s consumer got non-JSON on the very first line it read, before it could send a message.
+
+- [#5579](https://github.com/LTplus-AG/ifc-lite/pull/5579) [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c) Thanks [@louistrue](https://github.com/louistrue)! - In-store authoring walks, review follow-up ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): storeys are enumerated from the edited model (`listStoreys` takes an optional overlay; a deleted storey is no longer listed), a created wall retyped out of the divider set no longer bounds rooms, queued positional edits to containment/aggregation relationships are honoured, and the overlay is snapshotted once per walk. The headless `bim.spaces` backend passes the session's mutation view.
+
+- [#5648](https://github.com/LTplus-AG/ifc-lite/pull/5648) [`e7fc638`](https://github.com/LTplus-AG/ifc-lite/commit/e7fc638d9dc428a46a6581dc1d76de7a03b1dd59) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite create storey` works instead of rejecting itself. `storey` was listed in `ELEMENT_TYPES` — so it passed the usage check and appeared in `--help` — but `addElement`'s switch had no case for it, so it fell through to `default` and fataled with `Unknown element type: storey`, printing the very list that had just offered it. `createCommand` already builds the project's storey before dispatching, so the type now returns that storey: a bare project/site/building/storey skeleton, with `--storey` and `--elevation` honoured and `--pset`/`--qset`/`--material` still attaching to something real.
+  
+  The advertised count was wrong in four places at once (28 real, 29 in the error list, "30+" in the CLI help and package README, "29 element types" in the guide). It is 29 everywhere now, and a test drives every entry in `ELEMENT_TYPES` through `addElement` so a listed-but-unbuildable type cannot come back.
+
+- [#5652](https://github.com/LTplus-AG/ifc-lite/pull/5652) [`55922f8`](https://github.com/LTplus-AG/ifc-lite/commit/55922f8da5c781d2c6650b0e4e5f2d867f25bf31) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite extract-entities --type IfcWall` selects `IfcWallStandardCase` too, as `query`, `export`, `anonymize` and `mutate` all already do on the same input. It compared `inst.type === t.toUpperCase()` exactly, so the verbatim example in `docs/guide/cli.md` — `--type IfcWall` on a model whose 13 walls are all `IfcWallStandardCase` — selected nothing and exited 1. Because this command runs its own lightweight STEP parse and has no resolved schema version, it uses `expandTypes`' documented no-version union across the bundled schemas rather than picking one table on the caller's behalf.
+  
+  An empty selection also names the selector that came back empty (`nothing in this file matches --type IfcTank`) instead of advising you to use the flag you just used.
+
+- [#5688](https://github.com/LTplus-AG/ifc-lite/pull/5688) [`849b138`](https://github.com/LTplus-AG/ifc-lite/commit/849b1383f6f5e8706ae223df688b7bd6d2edab3d) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite mutate --json` no longer reports a mutation that did not happen. `applyAttributeMutations` skips an attribute the entity has no slot for and warns on stderr, but it returned only the rewritten text, so the command could not see the skip: it counted one mutation per target unconditionally and published `mutated: 1, warnings: []` for a record it had left byte-identical. It now returns `{ content, applied, skipped }`, the count excludes entities whose every requested attribute was refused, and the JSON carries a `skipped` array with the express id, the attribute, a machine-readable `reason` and the same sentence that goes to stderr.
+
+- [#5699](https://github.com/LTplus-AG/ifc-lite/pull/5699) [`44d4b2c`](https://github.com/LTplus-AG/ifc-lite/commit/44d4b2c03bb21752bb0bb30d387f6c0ddb1865cf) Thanks [@louistrue](https://github.com/louistrue)! - `--out` is documented where it works, and refused where it does not. It was listed under the global `Options:` block as "Write output to file instead of stdout", but 21 of the 37 commands parse no such flag — so `ifc-lite info model.ifc --json --out info.json` wrote to stdout, created no file, and exited 0. The same was true of `query`, `stats`, `validate`, `props`, `schema`, `diff`, `ask`, `schedule`, `clash` and `ids`. It is now removed from the global list (the 16 commands that do take it already show `--out F` on their own line), and passing it to a command that cannot use it fails with a message naming the redirect to use instead and which commands do accept it.
+
+- [#5714](https://github.com/LTplus-AG/ifc-lite/pull/5714) [`6bd9859`](https://github.com/LTplus-AG/ifc-lite/commit/6bd98593582d0f0f411740b24bbc6181c3f305d8) Thanks [@louistrue](https://github.com/louistrue)! - The CLI refuses a truncated or entity-less IFC file instead of summarising it. A truncated file does not fail to parse — it parses to a prefix — and the loader's only check was `ISO-10303-21` somewhere in the first 256 bytes, so `ifc-lite info` reported "Entities: 59" and exited 0 for the first 4 KB of a real model, and "Schema: IFC4" for a 22-byte `ISO-10303-21;\nHEADER;\n` stub that declares no schema at all. Both now fail with a message saying which is wrong: a missing `END-ISO-10303-21;` terminator means the bytes are truncated, and a file with no `DATA;` section carries no entities. Both scans are bounded (256-byte tail, 64 KB head) so a hundreds-of-megabyte model costs nothing extra.
+
+- [#5586](https://github.com/LTplus-AG/ifc-lite/pull/5586) [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398) Thanks [@louistrue](https://github.com/louistrue)! - The MCP server reports the version you can actually install. `VERSION` was the literal `'0.1.0'`, so `--version`, `--help` and the `serverInfo` block of every MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0 — in the one field a client UI puts in front of an operator.
+  
+  The CLI had already paid for this exact mistake (a hard-coded `'0.4.0'` that `--version` still reported at 0.22.0) and fixed it with a `readCliVersion` helper. Rather than copy that helper into a second package, it moves to `@ifc-lite/data` as `readPackageVersion`, which both already depend on, so the two shipped servers cannot drift apart on how they answer `--version`. Its behaviour is unchanged: a broken install reports `0.0.0-unknown` on stderr rather than inventing a plausible number.
+
+- [#5692](https://github.com/LTplus-AG/ifc-lite/pull/5692) [`617cf4c`](https://github.com/LTplus-AG/ifc-lite/commit/617cf4c8a3889c2b7f040b9b489e07ba3a6b55d4) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite <command> --help` describes that command instead of printing the global help. `main()` answered `--help` before dispatch with the command still in `args`, so all 37 subcommands returned the same page — and the CLI's own docs tell LLM users to "discover all capabilities by running `ifc-lite --help`", with no second level to discover. It also made the real per-command help already written in `layer`, `ref` and `ext` unreachable: those handlers test for `--help` and were never reached. Those three now answer for themselves; every other command gets its entry from the `Commands:` block, continuation lines included, plus a link to the full reference. An unrecognised name still falls back to the global page.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`5cfc6ff`](https://github.com/LTplus-AG/ifc-lite/commit/5cfc6ffd905db7fb512bddf1ddfa392c2156bd09), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`1909a6a`](https://github.com/LTplus-AG/ifc-lite/commit/1909a6ac6b9934c8793b6e6be8f80dfece3fd44e), [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/wasm@10.1.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/extensions@0.9.0
+  - @ifc-lite/sdk@7.1.1
+  - @ifc-lite/mcp@0.20.2
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/flow-nodes@0.3.1
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/rules@0.3.2
+
 ## 0.36.0
 
 ### Minor Changes

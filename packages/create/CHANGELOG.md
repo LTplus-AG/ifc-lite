@@ -1,5 +1,13 @@
 # @ifc-lite/create
 
+## 2.9.2
+
+### Patch Changes
+
+- [#5579](https://github.com/LTplus-AG/ifc-lite/pull/5579) [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c) Thanks [@louistrue](https://github.com/louistrue)! - In-store authoring walks, review follow-up ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): storeys are enumerated from the edited model (`listStoreys` takes an optional overlay; a deleted storey is no longer listed), a created wall retyped out of the divider set no longer bounds rooms, queued positional edits to containment/aggregation relationships are honoured, and the overlay is snapshotted once per walk. The headless `bim.spaces` backend passes the session's mutation view.
+- Updated dependencies [[`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/data@5.3.0
+
 ## 2.9.1
 
 ### Patch Changes

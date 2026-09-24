@@ -7,13 +7,14 @@
   "description": "Lightweight Three.js viewer using @ifc-lite/geometry",
   "scripts": {
     "dev": "vite",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ifc-lite/data": "^2.0.0",
-    "@ifc-lite/geometry": "^2.1.0",
-    "@ifc-lite/parser": "^3.0.0",
+    "@ifc-lite/data": "^5.3.0",
+    "@ifc-lite/geometry": "^7.5.0",
+    "@ifc-lite/parser": "^8.0.0",
     "three": "^0.186.0"
   },
   "devDependencies": {

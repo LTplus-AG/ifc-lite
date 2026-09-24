@@ -21,6 +21,8 @@ export interface NarrowRecord {
   distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
+  /** See `Clash.depthFloor`. Absent for every non-`hard` record. */
+  depthFloor?: number;
 }
 
 export interface RuleDetection {

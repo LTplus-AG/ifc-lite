@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 import { GeometryProcessor, type MeshData, type GeometryResult } from '@ifc-lite/geometry';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
-import { CommandPalette } from './CommandPalette';
 import { MobileToolbar } from './MobileToolbar';
 import { render, cleanup, click, advance, press } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -45,7 +44,9 @@ it('exports the placed triangle instead of remeshing unplaced IFC bytes with def
   assert.deepEqual(mesh.origin, [10, 20, 30], 'the authored source remains unchanged');
 });
 
-for (const mobile of [false, true]) it(`quick GLB export includes placement (mobile: ${mobile}, #4226)`, async () => {
+// The command palette had its own quick GLB export too; since #5601 its GLB row
+// opens `GLBExportDialog`, whose placement handling the test above covers.
+it('quick GLB export includes placement (mobile toolbar, #4226)', async () => {
   const zero = { x: 0, y: 0, z: 0 }, mesh: MeshData = { expressId: 1, origin: [10, 20, 30],
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] };
   const geometry: GeometryResult = { meshes: [mesh], totalTriangles: 1, totalVertices: 3,
@@ -56,12 +57,10 @@ for (const mobile of [false, true]) it(`quick GLB export includes placement (mob
   mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
   mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
   mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', (meshes: MeshData[]) => { exported = meshes; return new Uint8Array([1]); });
-  render(<BimReactContext.Provider value={{} as BimContext}>{mobile ? <MobileToolbar /> : <CommandPalette open onOpenChange={() => undefined} />}</BimReactContext.Provider>);
-  if (mobile) {
-    const trigger = document.querySelector('[aria-haspopup="menu"]')!;
-    press(trigger, 'ArrowDown'); await advance(10);
-  }
-  const action = [...document.querySelectorAll(mobile ? '[role="menuitem"]' : '[role="option"]')].find((item) => item.textContent?.trim() === 'Export GLB');
+  render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
+  const trigger = document.querySelector('[aria-haspopup="menu"]')!;
+  press(trigger, 'ArrowDown'); await advance(10);
+  const action = [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Export GLB');
   assert.ok(action); click(action); await advance(25);
   assert.ok(exported); assert.deepEqual(exported[0].origin, [12, 24, 27]);
   assert.deepEqual(mesh.origin, [10, 20, 30]);

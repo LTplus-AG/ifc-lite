@@ -29,6 +29,7 @@ import type { IDSDocument } from '@ifc-lite/ids';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
+import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
 
 const WALLS_IFC = `ISO-10303-21;
@@ -124,6 +125,7 @@ const initial = useViewerStore.getState();
 
 afterEach(() => {
   cleanup();
+  setValidationSourceChoice(null);
   useViewerStore.setState({
     ...initial,
     models: new Map(),

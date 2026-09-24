@@ -72,7 +72,7 @@ export function checkProofOfWork({ response, input }) {
       `\`riskiest_change.path\` is \`${sanitizePath(rc.path)}\`, which was never sent. REMEDY: re-run.`,
     );
   }
-  if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS)) {
+  if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS, { path: rc.path })) {
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
       quotedLineFailureMessage(input.files, rc.path, rc.quoted_line, MIN_PROOF_QUOTE_CHARS),

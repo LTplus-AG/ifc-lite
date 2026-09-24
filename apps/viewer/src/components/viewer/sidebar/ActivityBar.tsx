@@ -70,6 +70,10 @@ export function ActivityBar() {
   // the count where the user already looks, like the Room peers badge.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const hasStack = useViewerStore((s) => s.layerStack.length > 0);
+  // Point Clouds rail icon (#5507): only shown while at least one point
+  // cloud asset is loaded — same gating shape as `isCollabEnabled()` below,
+  // just driven by scene state instead of a feature flag.
+  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const pendingLayerEdits = useMemo(() => {
     void mutationVersion;
     return hasStack ? pendingCompositionMutations().length : 0;
@@ -86,7 +90,8 @@ export function ActivityBar() {
   const visibleIds = order.filter(
     (id) =>
       (!hidden.has(id) || id === 'properties') &&
-      (id !== 'collab' || isCollabEnabled()),
+      (id !== 'collab' || isCollabEnabled()) &&
+      (id !== 'pointclouds' || pointCloudAssetCount > 0),
   );
 
   const onIconClick = (id: WorkspacePanelId) => {

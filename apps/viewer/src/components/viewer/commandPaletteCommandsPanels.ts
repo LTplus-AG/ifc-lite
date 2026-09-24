@@ -19,9 +19,9 @@
 
 import {
   Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
-  FileSpreadsheet, Palette, Puzzle, Camera, Download, FileJson, ShieldQuestion, Sun, Info,
+  Palette, Puzzle, Sun, Info,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
-  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair,
+  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
@@ -31,14 +31,8 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
-import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
-import { exportCsvFromBytes } from '@/lib/export/csv';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
-import { GeometryProcessor } from '@ifc-lite/geometry';
-import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
-import { buildCommandPaletteJsonEntities } from './commandPaletteJsonExport';
 import { bottomPanelCommands } from './commandPaletteBottomPanels';
+import { buildExportCommands } from './commandPaletteExports';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
@@ -71,6 +65,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('zones'); } },
     { id: 'panel:loadReport', label: 'Load Report', ...withKey('commandPalette.panel.loadReport.label'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
       action: () => { p.activateRightPanel('loadReport'); } },
+    { id: 'panel:pointclouds', label: 'Point Clouds', ...withKey('commandPalette.panel.pointClouds.label'), keywords: 'point cloud scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
+      action: () => { p.activateRightPanel('pointclouds'); } },
     { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()
@@ -132,55 +128,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       } },
   );
 
-  // ── Export ──
-  c.push(
-    { id: 'export:screenshot', label: 'Screenshot', ...withKey('commandPalette.export.screenshot.label'), keywords: 'capture png image viewport', category: 'Export', icon: Camera,
-      action: () => {
-        const canvas = document.querySelector('canvas');
-        if (!canvas) return;
-        try { const d = canvas.toDataURL('image/png'); Object.assign(document.createElement('a'), { href: d, download: 'screenshot.png' }).click(); }
-        catch (e) { console.error('Screenshot failed:', e); }
-      } },
-    { id: 'export:glb', label: 'Export GLB', ...withKey('commandPalette.export.glb.label'), keywords: '3d model gltf download', category: 'Export', icon: Download,
-      action: async () => {
-        const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-        try { downloadFile(await exportPlacedModelGlb(gr), 'model.glb', 'model/gltf-binary'); }
-        catch (e) { console.error('GLB export failed:', e); }
-      } },
-    { id: 'export:usd', label: 'Export USD (OpenUSD)', ...withKey('commandPalette.export.usd.label'), keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
-      action: async () => {
-        const st = useViewerStore.getState();
-        const model = [...st.models.values()].find(isUsdExportableModel);
-        if (!model) return;
-        const gp = new GeometryProcessor();
-        try {
-          const bytes = await resolveUsdExportBytes(model, st.getMutationView);
-          await gp.init();
-          const usd = gp.exportUsd(bytes);
-          if (usd == null) throw new Error('Geometry engine unavailable');
-          downloadFile(usd, buildExportFilename(stripExtension(model.name), 'usda'), 'text/plain');
-        } catch (e) { console.error('USD export failed:', e); }
-        finally { gp.dispose(); }
-      } },
-    { id: 'export:csv-entities', label: 'Export CSV: Entities', ...withKey('commandPalette.export.csvEntities.label'), keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
-    { id: 'export:csv-properties', label: 'Export CSV: Properties', ...withKey('commandPalette.export.csvProperties.label'), keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
-    { id: 'export:csv-quantities', label: 'Export CSV: Quantities', ...withKey('commandPalette.export.csvQuantities.label'), keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
-    { id: 'export:csv-spatial', label: 'Export CSV: Spatial', ...withKey('commandPalette.export.csvSpatial.label'), keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
-    { id: 'export:anonymized', label: 'Export Anonymized Subset…', ...withKey('commandPalette.export.anonymized.label'), keywords: 'anonymize obfuscate isolate scrub redact bug report reproduction privacy scrub-safe', category: 'Export', icon: ShieldQuestion,
-      action: () => { useViewerStore.getState().setAnonymizedExportRequested(true); } },
-    { id: 'export:json', label: 'Export JSON', ...withKey('commandPalette.export.json.label'), keywords: 'data entities all download', category: 'Export', icon: FileJson,
-      action: () => {
-        const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d) return;
-        try {
-          const out = buildCommandPaletteJsonEntities(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null);
-          downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
-        } catch (e) { console.error(e); }
-      } },
-  );
+  // ── Export ── (built from the toolbar registry, #5601)
+  c.push(...buildExportCommands(p.runExport));
 
   // ── Automation (scripts — last, power-user feature) ──
   for (const t of SCRIPT_TEMPLATES) {

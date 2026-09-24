@@ -40,7 +40,7 @@ export class TriMesh {
   private readonly transform?: Mat4;
   private readonly bvh: BVH;
   /**
-   * Starting half-size for the expanding-cube probe in `distanceToSurface`: a
+   * Starting half-size for the expanding-cube probe in `closestOnSurface`: a
    * power-of-two fraction of the mesh's longest axis, scaled down by the cube
    * root of the triangle count so it lands near the average triangle size.
    * Derived with exact power-of-two arithmetic (no `pow`/`cbrt`, whose last bit
@@ -189,11 +189,6 @@ export class TriMesh {
     return [best, point];
   }
 
-  /** {@link closestOnSurface}'s distance alone. */
-  distanceToSurface(p: Vec3): number {
-    return this.closestOnSurface(p)[0];
-  }
-
   /**
    * Exact distance from `p` to this mesh's surface: the minimum point-to-
    * triangle distance over the whole mesh.
@@ -228,7 +223,7 @@ export class TriMesh {
    * The reported value is therefore the same minimum the linear scan returns —
    * `min` selects an element, it does not accumulate, so visiting a superset of
    * the argmin in a different order returns the identical `f64`. The Rust
-   * `distance_to_surface` runs the identical sequence of queries on the identical
+   * `closest_on_surface` runs the identical sequence of queries on the identical
    * BVH, so the two kernels stay bit-identical to each other (see the shared
    * probe fixture in `tri-mesh.test.ts` / `kernel_tests.rs`).
    *

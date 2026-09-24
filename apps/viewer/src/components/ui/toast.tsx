@@ -49,16 +49,21 @@ function clearTimer(id: number) {
 
 /**
  * Show a toast, or bump the count of an identical one already on screen and
- * make it the newest. `durationMs: null` keeps it until dismissed. The
- * oldest toasts are evicted past `MAX_VISIBLE`.
+ * make it the newest. `durationMs: null` keeps it until dismissed. Past
+ * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
+ * an error stays until dismissed, so newer successes must not push it off.
  */
 function addToast(type: Toast['type'], message: string, durationMs: number | null) {
   const existing = toasts.find((t) => t.type === type && t.message === message);
   const id = existing?.id ?? nextId++;
   const others = toasts.filter((t) => t.id !== id);
-  const evicted = others.slice(0, Math.max(0, others.length - (MAX_VISIBLE - 1)));
-  for (const t of evicted) clearTimer(t.id);
-  toasts = [...others.slice(evicted.length), { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++ }];
+  const excess = Math.max(0, others.length - (MAX_VISIBLE - 1));
+  // `others` is oldest-first, so this is oldest transient, then oldest error.
+  const evictOrder = [...others.filter((t) => t.type !== 'error'), ...others.filter((t) => t.type === 'error')];
+  const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
+  for (const evictedId of evicted) clearTimer(evictedId);
+  const kept = others.filter((t) => !evicted.has(t.id));
+  toasts = [...kept, { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++ }];
   clearTimer(id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();

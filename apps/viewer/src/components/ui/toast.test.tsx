@@ -70,6 +70,24 @@ describe('Toaster (#5603)', () => {
     assert.ok(texts.some((text) => text.includes('fourth')));
   });
 
+  it('evicts transient toasts before an error, so newer successes cannot push it off', () => {
+    act(() => toast.error('Export failed'));
+    act(() => toast.success('one'));
+    act(() => toast.success('two'));
+    act(() => toast.success('three'));
+    const texts = toastItems().map((item) => item.textContent ?? '');
+    assert.equal(texts.length, 3);
+    assert.ok(texts.some((text) => text.includes('Export failed')), 'the error was evicted by newer successes');
+    assert.ok(!texts.some((text) => text.includes('one')), 'the oldest success should have gone first');
+  });
+
+  it('evicts the oldest error only when every visible toast is an error', () => {
+    for (const message of ['e1', 'e2', 'e3', 'e4']) act(() => toast.error(message));
+    const texts = toastItems().map((item) => item.textContent ?? '');
+    assert.equal(texts.length, 3);
+    assert.ok(!texts.some((text) => text.includes('e1')));
+  });
+
   it('gives the dismiss button an accessible name', () => {
     act(() => toast.success('Exported 42 entities'));
     const [button] = dismissButtons();

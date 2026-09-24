@@ -280,18 +280,29 @@ describe('mapAlignments — records that are not alignments (#5370 review)', () 
   it('refuses an alignment whose segment is malformed, under its own name, instead of throwing', () => {
     // The header is valid, so only a check that reaches the segments sees the
     // problem; before, the mapper dereferenced `primitive.kind` of `{}`.
-    const records = [
+    const records: unknown[] = [
       { sourceId: 'landxml:alignment:a', name: 'Empty segment', staStart: 0, segments: [{}] },
       {
         sourceId: 'landxml:alignment:b', name: 'Bad location', staStart: 0,
         segments: [{ sourceId: 's', ordinal: 0, primitive: { kind: 'line', start: {}, end: {}, declaredLength: null } }],
       },
     ];
+    // A NaN declared length fails every `>` comparison, so the length
+    // check alone would let the arc through unrefused.
+    const fixtureCurve = readFixture().alignments
+      .flatMap((alignment) => alignment.segments)
+      .find((segment) => segment.primitive.kind === 'curve');
+    expect(fixtureCurve).toBeDefined();
+    records.push({
+      sourceId: 'landxml:alignment:c', name: 'NaN length', staStart: 0,
+      segments: [{ ...fixtureCurve!, primitive: { ...fixtureCurve!.primitive, declaredLength: Number.NaN } as never }],
+    });
     const { mapped, refused } = mapAlignments(records, METRES, false, noRefs);
     expect(mapped).toEqual([]);
     expect(refused).toEqual([
       { sourceId: 'landxml:alignment:a', name: 'Empty segment', reason: expect.stringMatching(/segment 1 is not a line, curve or spiral/) },
       { sourceId: 'landxml:alignment:b', name: 'Bad location', reason: expect.stringMatching(/segment 1 is not a line, curve or spiral/) },
+      { sourceId: 'landxml:alignment:c', name: 'NaN length', reason: expect.stringMatching(/segment 1 is not a line, curve or spiral/) },
     ]);
   });
 });

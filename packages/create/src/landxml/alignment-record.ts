@@ -18,7 +18,9 @@ type Fields = Record<string, unknown>;
 
 const isObject = (value: unknown): value is Fields => typeof value === 'object' && value !== null;
 const isNumber = (value: unknown): boolean => typeof value === 'number';
-const isOptionalLength = (value: unknown): boolean => value === null || isNumber(value);
+/** A length must be finite: `NaN` fails every `>` comparison, so it would pass the length checks unseen. */
+const isLength = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value);
+const isOptionalLength = (value: unknown): boolean => value === null || isLength(value);
 const isRotation = (value: unknown): boolean => value === 'clockwise' || value === 'counter_clockwise';
 const isRadius = (value: unknown): boolean => value === undefined || value === 'infinite' || isNumber(value);
 
@@ -42,7 +44,7 @@ function isPrimitive(value: unknown): boolean {
     case 'unsupported_spiral':
       return isLocation(value.start) && isLocation(value.pi) && isLocation(value.end)
         && typeof value.spiType === 'string' && isRadius(value.radiusStart) && isRadius(value.radiusEnd)
-        && (value.rotation === undefined || isRotation(value.rotation)) && isNumber(value.declaredLength);
+        && (value.rotation === undefined || isRotation(value.rotation)) && isLength(value.declaredLength);
     default:
       return false;
   }

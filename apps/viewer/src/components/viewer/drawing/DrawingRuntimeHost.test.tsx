@@ -10,7 +10,7 @@ import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { Section2DPanel } from '../Section2DPanel';
+import { DrawingPanel } from './DrawingPanel';
 import { DrawingRuntimeHost } from './DrawingRuntimeHost';
 
 function box(expressId: number, size: number): MeshData {
@@ -44,10 +44,10 @@ it("a drawing view's Regenerate runs the host's generator (#5492)", async () => 
     drawing2DPanelVisible: true, activeModelId: null, ifcDataStore: null, activeTool: 'select', drawing2D: null, drawing2DStatus: 'idle',
     sectionPlane: { ...s.sectionPlane, axis: 'down', position: 50, enabled: true } });
   try {
-    const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><Section2DPanel /></>);
+    const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><DrawingPanel /></>);
     const first = await readyDrawingOtherThan(null);
 
-    const regenerate = ui.querySelector('[title="Regenerate"]');
+    const regenerate = ui.querySelector('[aria-label="Regenerate"]');
     assert.ok(regenerate, 'the drawing view shows its Regenerate button');
     click(regenerate);
 

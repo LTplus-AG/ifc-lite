@@ -79,8 +79,8 @@ it('the bottom strip renders the drawing view, and its Close closes the panel (#
     return <div ref={containerRef}><BottomStrip dockedPanel="drawing" analysisExtension={null} containerRef={containerRef} closePanel={closePanel} /></div>;
   }
   const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><Strip /></>);
-  await until(() => (ui.textContent ?? '').includes('2D Section'), 'the lazy drawing view');
-  const close = [...ui.querySelectorAll('[title="Close"]')].at(-1);
+  await until(() => (ui.textContent ?? '').includes('Drawing'), 'the lazy drawing view');
+  const close = [...ui.querySelectorAll('[aria-label="Close"]')].at(-1);
   assert.ok(close, 'the drawing view has a Close button');
   click(close);
   assert.equal(useViewerStore.getState().drawing2DPanelVisible, false);

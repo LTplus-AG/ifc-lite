@@ -7,7 +7,7 @@ import type { IfcSourceBytes } from '@ifc-lite/parser';
 /**
  * useDrawingGeneration - Custom hook for 2D drawing generation logic
  *
- * Extracts the drawing generation pipeline from Section2DPanel, including:
+ * Extracts the drawing generation pipeline from the 2D drawing view, including:
  * - Section cut generation via Drawing2DGenerator
  * - Symbolic representation parsing and caching
  * - Hybrid drawing creation (symbolic + section cut)

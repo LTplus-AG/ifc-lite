@@ -35,7 +35,7 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { X, Eye, EyeOff, FileUp, Trash2, Layers, ChevronDown, ChevronRight, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
+import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,7 +52,6 @@ import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 
 interface DxfUnderlayPanelProps {
-  onClose: () => void;
   /** Centre the underlay on the generated drawing (offset adjustment). */
   onCenterOnModel: (id: string) => void;
   /** False when the current section is not a cardinal plan view. */
@@ -343,7 +342,7 @@ function UnderlayCard({
   );
 }
 
-export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
+export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
   const { t } = useTranslation(); const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -366,18 +365,8 @@ export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, geo
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-2">
-          <Layers className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">{t('drawingUnderlay.dxf.panelTitle')}</h2>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
+    <div className="flex flex-col h-full bg-background">
+      {/* The inspector tab (#5495) carries the title; no panel-owned header. */}
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <input

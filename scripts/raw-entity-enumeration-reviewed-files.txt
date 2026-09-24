@@ -39,6 +39,7 @@ packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
 packages/mcp/src/effective-entity-membership.ts
 packages/mutations/src/express-id-watermark.ts
+packages/mutations/src/prepare-entity-operations.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts
 packages/parser/src/cost-reader.ts

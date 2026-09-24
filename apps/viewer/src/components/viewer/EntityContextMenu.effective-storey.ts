@@ -27,8 +27,7 @@ export function sameEffectiveStoreyIds(
   const overlay = effectiveMutationRelationships(store, view);
   const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
   const isStorey = (id: number) => !view.isDeleted(id)
-    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id))
-    && (spatial.byStorey.has(id) || Boolean(view.getNewEntity(id)));
+    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id));
   const containmentParents = new Map<number, number[]>();
   const aggregateParents = new Map<number, number[]>();
   const append = (map: Map<number, number[]>, key: number, values: readonly number[]) => {

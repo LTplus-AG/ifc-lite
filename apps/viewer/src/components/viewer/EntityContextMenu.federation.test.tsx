@@ -30,6 +30,7 @@ import {
   FIXTURE_WALL_B,
   FIXTURE_WALL_C,
   FIXTURE_WINDOW,
+  FIXTURE_BUILDING,
   FIXTURE_STOREY_1,
   FIXTURE_REL_CONTAINED_2,
   guid,
@@ -185,6 +186,20 @@ describe('EntityContextMenu — federation-space selection', () => {
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
+  it('selects members of a source building retyped as a storey (#5249 review)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setEntityType(FIXTURE_BUILDING, 'IfcBuildingStorey');
+    view.setAttribute(FIXTURE_REL_CONTAINED_2, 'RelatingStructure', `#${FIXTURE_BUILDING}`);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
   });
 
   it('finds the storey of an overlay-created aggregated part but selects direct members (#5249)', () => {

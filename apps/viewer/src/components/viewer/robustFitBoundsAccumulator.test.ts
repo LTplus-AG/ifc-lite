@@ -263,6 +263,35 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);
   });
 
+  it('keeps a second building of comparable size however far away (PR #5460 review)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 60; i++) meshes.push(box([(i % 10) * 5, 0, 0], [(i % 10) * 5 + 5, 10, 10]));
+    for (let i = 0; i < 40; i++) meshes.push(box([200 + (i % 8) * 5, 0, 0], [200 + (i % 8) * 5 + 5, 10, 10]));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('drops a tiny glyph beside a large model even when it is closer than two model lengths (Infra-Bridge layout)', () => {
+    // Two bridges ~40 m long, glyph at the origin ~26 m from them: the glyph is
+    // under a tenth of the model's size, so the "tiny" branch drops it.
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 20; i++) meshes.push(box([8 + i * 1.8, -3.5, -57 + i], [10 + i * 1.8, 7.8, -50 + i]));
+    meshes.push(box([-0.9, 0.05, -0.9], [0.9, 0.15, 0.9], 1272));
+    const result = robustFitBoundsFull(meshes);
+    assert.ok(result?.robust, 'a robust box is produced');
+    assert.ok(result.robust.min.x >= 8 - 1e-6, `the glyph is framed out: min.x ${result.robust.min.x}`);
+  });
+
+  it('incremental and full paths agree when the marker streams in first and the model trickles in', () => {
+    const house: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 12; i++) house.push(box([3 + (i % 4), 0, -9 + (i % 3)], [6 + (i % 4), 3 + (i % 2), -4 + (i % 3)]));
+    const streamed: RobustFitMeshInput[] = [GLYPH()];
+    const acc = createRobustFitBoundsAccumulator();
+    for (const m of house) {
+      streamed.push(m);
+      assert.deepEqual(acc.update(streamed), robustFitBoundsFull(streamed), `mismatch at ${streamed.length} meshes`);
+    }
+  });
+
   it('keeps a small outbuilding one model-length away (PR #5460 review)', () => {
     const meshes: RobustFitMeshInput[] = [];
     for (let i = 0; i < 10; i++) meshes.push(box([i, 0, 0], [i + 1, 1, 1]));

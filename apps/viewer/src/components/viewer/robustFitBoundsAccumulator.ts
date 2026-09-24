@@ -176,6 +176,10 @@ const DETACHED_MAX_SIZE_OF_MAIN = 0.1;
 /** A small outbuilding one model-length away (1.5x) is part of the site and
  *  stays framed; only content two model-lengths out counts as detached. */
 const DETACHED_GAP_OVER_MAIN_SIZE = 2;
+/** Even far out, only a cluster clearly smaller than the model is dropped: a
+ *  second building of comparable size (a campus, a federated pair) stays
+ *  framed however far apart. Building-Hvac's glyph is 0.54 of its chimney. */
+const DETACHED_FAR_MAX_SIZE_OF_MAIN = 0.6;
 
 /**
  * Mark the meshes of small clusters that sit detached from the model's main
@@ -183,10 +187,11 @@ const DETACHED_GAP_OVER_MAIN_SIZE = 2;
  * clustered on a coarse grid (touching or neighbouring cells join); the main
  * cluster holds the most meshes (ties: the larger box). Another cluster is
  * detached when it is far for its size (gap to the main cluster over
- * DETACHED_GAP_OVER_OWN_SIZE of its own diagonals) and either small next to
- * the main cluster (diagonal at most DETACHED_MAX_SIZE_OF_MAIN of its) or
- * farther from it than DETACHED_GAP_OVER_MAIN_SIZE of its diagonals. Only a strict minority
- * of meshes is ever dropped.
+ * DETACHED_GAP_OVER_OWN_SIZE of its own diagonals) and either tiny next to
+ * the main cluster (diagonal at most DETACHED_MAX_SIZE_OF_MAIN of its), or
+ * clearly smaller (at most DETACHED_FAR_MAX_SIZE_OF_MAIN) and more than
+ * DETACHED_GAP_OVER_MAIN_SIZE main diagonals away. Only a strict minority of
+ * meshes is ever dropped.
  */
 function detachedMinorityClusters(
   bb: Float64Array[],
@@ -259,7 +264,8 @@ function detachedMinorityClusters(
     );
     const own = diag(u);
     const farForItsSize = gap > DETACHED_GAP_OVER_OWN_SIZE * own;
-    const minorNextToMain = own <= DETACHED_MAX_SIZE_OF_MAIN * mainDiag || gap > DETACHED_GAP_OVER_MAIN_SIZE * mainDiag;
+    const minorNextToMain = own <= DETACHED_MAX_SIZE_OF_MAIN * mainDiag
+      || (own <= DETACHED_FAR_MAX_SIZE_OF_MAIN * mainDiag && gap > DETACHED_GAP_OVER_MAIN_SIZE * mainDiag);
     if (farForItsSize && minorNextToMain) { drop[k] = 1; dropped += meshes[k]; }
   }
   if (dropped === 0 || dropped >= count - dropped) return null;

@@ -12,8 +12,6 @@
  */
 
 import React from 'react';
-import { ScanLine, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -23,14 +21,12 @@ import {
 } from '@/hooks/scanSectionMath';
 
 interface ScanSectionPanelProps {
-  onClose: () => void;
   hasPointCloud: boolean;
   totalInBand: number;
   renderedCount: number;
 }
 
 export function ScanSectionPanel({
-  onClose,
   hasPointCloud,
   totalInBand,
   renderedCount,
@@ -42,18 +38,8 @@ export function ScanSectionPanel({
   const { showScanSection, scanSectionThickness, scanSectionOpacity, scanSectionIncludeInExport } = displayOptions;
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-2">
-          <ScanLine className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">{t('scanSectionPanel.title')}</h2>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('scanSectionPanel.closeAriaLabel')}>
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-
+    <div className="flex flex-col h-full bg-background">
+      {/* The inspector tab (#5495) carries the title; no panel-owned header. */}
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
         <label className="flex items-center justify-between gap-2 cursor-pointer">

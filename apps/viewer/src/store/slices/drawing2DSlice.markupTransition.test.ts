@@ -103,7 +103,7 @@ describe('markupTransitionPatch', () => {
     });
 
     // #4199: measure2DSnapPoint and annotation2DCursorPos are frame-dependent
-    // Point2D fields consumed for rendering by Section2DPanel.tsx
+    // Point2D fields consumed for rendering by the Drawing panel
     // (measureSnapPoint / annotation2DCursorPos props) that #4196's own pass
     // missed. Without this clear, a snap indicator or cursor preview computed
     // in the outgoing model's drawing coordinates renders at the wrong place

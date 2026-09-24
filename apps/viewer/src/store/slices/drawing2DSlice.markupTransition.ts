@@ -104,7 +104,7 @@
  * #4199 (this PR's own review) found the same bug class a SIXTH time inside
  * the PR meant to end it: `measure2DSnapPoint` and `annotation2DCursorPos`
  * are both frame-dependent `Point2D | null` fields — consumed for rendering
- * as `measureSnapPoint`/`annotation2DCursorPos` props in `Section2DPanel.tsx`
+ * as `measureSnapPoint`/`annotation2DCursorPos` props in `drawing/DrawingCanvasView.tsx`
  * — that were on `Drawing2DState` before this file's `#4196` pass and were
  * missed by it: neither the five committed fields nor the original six
  * in-progress fields covered them. A snap indicator or cursor preview

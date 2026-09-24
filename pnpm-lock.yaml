@@ -1045,6 +1045,9 @@ importers:
       '@types/node':
         specifier: ^26.6.1
         version: 26.6.2
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       proj4:
         specifier: ^2.22.0
         version: 2.22.0(geotiff@3.0.5)

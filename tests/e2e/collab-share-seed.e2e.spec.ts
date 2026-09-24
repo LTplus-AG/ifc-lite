@@ -10,7 +10,8 @@
  * `vite preview` (`collab/preview.ts`) and a disposable signed
  * `@ifc-lite/collab-server` (`collab/relay.ts`), both on ephemeral ports. The
  * owner loads the textured AC20-FZK-Haus IFCZIP (`collab/textured-ac20.ts`
- * builds it from the plain fixture), opens File → Share, and its context is
+ * builds it from the plain fixture), opens File → Share, presses Create link
+ * (opening it uploads nothing, #5599), and its context is
  * closed the instant the Copy action is enabled — no grace period. Copy is
  * asserted enabled and the link is read from the field; the clipboard itself
  * is not exercised headless. A fresh

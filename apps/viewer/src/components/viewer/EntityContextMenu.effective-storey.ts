@@ -43,7 +43,7 @@ export function sameEffectiveStoreyIds(
     if (type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') {
       for (const id of relation.related) append(containmentParents, id, relation.relating);
       for (const id of relation.relating) append(containmentChildren, id, relation.related);
-    } else if (type === 'IFCRELAGGREGATES') {
+    } else if (type === 'IFCRELAGGREGATES' || type === 'IFCRELNESTS') {
       for (const id of relation.related) append(aggregateParents, id, relation.relating);
     }
   }

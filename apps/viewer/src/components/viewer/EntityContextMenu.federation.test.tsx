@@ -204,6 +204,23 @@ describe('EntityContextMenu — federation-space selection', () => {
       new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
   });
 
+  it('finds the storey through an overlay-created IfcRelNests edge (#5249 review)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    const part = view.createEntity('IfcBuildingElementPart', [guid(89), null, 'Nested part', null, null, null, null, null]);
+    view.createEntity('IfcRelNests', [
+      guid(90), null, null, null, `#${FIXTURE_WALL_B}`, [`#${part.expressId}`],
+    ]);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(part.expressId), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
   it('does not select members from a deleted containment relationship (#5249)', () => {
     const view = new MutablePropertyView(null, 'm1');
     view.deleteEntity(FIXTURE_REL_CONTAINED_2);

@@ -14,6 +14,7 @@
  */
 
 import { decodeParquetGeometry } from './parquet-decoder.js';
+import { decodeCrossBatch, StreamShapeStore } from './parquet-stream-shapes.js';
 import type {
   ModelMetadata,
   ParquetBatch,
@@ -62,6 +63,9 @@ export async function consumeParquetStream(
   let stats: ProcessingStats | null = null;
   let metadata: ModelMetadata | null = null;
   let symbolic_data: SymbolicData | undefined;
+  // Shapes earlier batches carried, for a server that shares across batches
+  // (#5407). Only ever filled by batches that state their bases.
+  const shapes = new StreamShapeStore();
 
   // A thrown 'error' event (or any other exception mid-loop) must not
   // leave the reader locked on `response.body` — mirrors the try/finally
@@ -105,8 +109,16 @@ export async function consumeParquetStream(
                 bytes[i] = binaryStr.charCodeAt(i);
               }
 
-              // Decode Parquet to meshes
-              const meshes = await decodeParquetGeometry(bytes.buffer);
+              // Decode Parquet to meshes. A batch stating its bases indexes the
+              // whole stream's shapes; one without decodes on its own.
+              const { vertex_base, index_base } = event;
+              if ((vertex_base === undefined) !== (index_base === undefined)) {
+                throw new Error('Malformed Parquet stream: a batch stated only one of vertex_base / index_base');
+              }
+              const meshes =
+                vertex_base !== undefined && index_base !== undefined
+                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base)
+                  : await decodeParquetGeometry(bytes.buffer);
               const decodeTime = performance.now() - decodeStart;
 
               total_meshes += meshes.length;

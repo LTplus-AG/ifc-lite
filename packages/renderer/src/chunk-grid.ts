@@ -90,13 +90,17 @@ export interface MaterialKeySource {
 /**
  * Colour key for grouping meshes into batches: RGBA quantized to 1000
  * levels, packed as `r|g|b|a`, with an IFC-authored metallic/roughness
- * suffix (#5582) so two pieces sharing a colour but authoring DIFFERENT
- * finishes never land in the same batch — `createSceneBatch` patches one
- * material row per batch (`scene-batch-upload.ts`), so a mixed bucket would
- * paint every piece with whichever finish happened to be its first piece's.
- * The suffix is omitted (not "0|0") when neither field is authored, so an
- * unauthored piece keeps its pre-#5582 key exactly — no batch churn for the
- * overwhelmingly common case.
+ * suffix (#5582), quantized the same way. `createSceneBatch` patches one
+ * material row per batch (`scene-batch-upload.ts`) from its first piece, so
+ * two pieces landing in the same bucket draw with that one finish — the
+ * 1/1000 quantization means finishes closer than 0.001 apart (e.g. metallic
+ * or roughness 0.1001 vs 0.1004) share a batch and its first piece's exact
+ * value, same as the pre-#5582 colour quantization already accepted for hue.
+ * That is intentional, not a bug: a difference below 1/1000 is not visually
+ * distinguishable, so two pieces THAT close were always going to render
+ * alike. The suffix is omitted (not "0|0") when neither field is authored,
+ * so an unauthored piece keeps its pre-#5582 key exactly — no batch churn
+ * for the overwhelmingly common case.
  */
 export function colorKey(
   color: readonly [number, number, number, number],

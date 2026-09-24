@@ -74,9 +74,12 @@ describe('bucketBaseKeyFor', () => {
 
 /**
  * #5582: `colorKey` folds an IFC-authored metallic/roughness into the batch
- * key so two pieces sharing a colour but authoring DIFFERENT finishes never
+ * key, quantized to the same 1/1000 precision as colour, so two pieces
+ * sharing a colour but authoring finishes that differ by 0.001 or more never
  * merge into the same batch (a merged batch draws with a single material
- * row — see `createSceneBatch`, `scene-batch-upload.ts`).
+ * row — see `createSceneBatch`, `scene-batch-upload.ts`). Finishes closer
+ * than that share a batch and its first piece's exact value — not visually
+ * distinguishable, so intentional, same as the pre-#5582 colour quantization.
  */
 describe('colorKey', () => {
   const white: [number, number, number, number] = [1, 1, 1, 1];

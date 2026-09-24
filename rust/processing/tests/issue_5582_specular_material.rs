@@ -43,10 +43,11 @@ fn meshes_named<'a>(meshes: &'a [MeshData], name: &str) -> Vec<&'a MeshData> {
 
 /// 'Glas': `SpecularColour = IFCNORMALISEDRATIOMEASURE(1.)`, no
 /// `SpecularHighlight`, `ReflectanceMethod = .NOTDEFINED.` -> a dielectric
-/// (no metallic evidence) floored at the renderer's own glass roughness
-/// (0.05): `roughness = 1 - 1.0`, clamped to the floor.
+/// (no metallic evidence) with roughness AS AUTHORED: `roughness = 1 - 1.0 =
+/// 0.0`. Rust does not floor this — the renderer's shader owns the single
+/// `MIN_SPECULAR_ROUGHNESS` clamp (review of #5582).
 #[test]
-fn glas_meshes_carry_floor_roughness_and_no_metal() {
+fn glas_meshes_carry_zero_roughness_and_no_metal() {
     let Some(content) = load_fixture() else { return };
     let result = process_geometry(content.as_str());
     let glas = meshes_named(&result.meshes, "Glas");
@@ -54,7 +55,7 @@ fn glas_meshes_carry_floor_roughness_and_no_metal() {
     for m in glas {
         assert_eq!(m.metallic, None, "Glas is a dielectric — no metal evidence (express_id {})", m.express_id);
         let roughness = m.roughness.unwrap_or_else(|| panic!("Glas mesh {} missing roughness", m.express_id));
-        assert!((roughness - 0.05).abs() < 1e-6, "express_id {}: expected roughness ~0.05, got {roughness}", m.express_id);
+        assert!(roughness.abs() < 1e-6, "express_id {}: expected roughness ~0.0 as authored, got {roughness}", m.express_id);
     }
 }
 

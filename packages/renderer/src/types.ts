@@ -85,9 +85,11 @@ export interface BatchedMesh {
   indexCount: number;
   color: [number, number, number, number];
   /** IFC-authored metallic/roughness shared by every piece in this batch
-   *  (#5582) — the colour key folds material in, so a batch can never mix
-   *  pieces with different finishes. Absent means none of them authored one;
-   *  `packMeshMaterial` then keeps its own default. */
+   *  (#5582) — the colour key folds material in (quantized to the same
+   *  1/1000 precision as colour, see `chunk-grid.ts`'s `colorKey`), so a
+   *  batch never mixes pieces whose metallic or roughness differ by 0.001 or
+   *  more. Absent means none of them authored one; `packMeshMaterial` then
+   *  keeps its own default. */
   material?: Partial<Material>;
   expressIds: number[];  // For picking - all expressIds in this batch
   /** Per-entry modelIndex, parallel to `expressIds` (same index = same source

@@ -6,17 +6,16 @@
  * Binary download, caching, and execution.
  */
 
-import { createWriteStream, existsSync, mkdirSync, chmodSync, statSync, unlinkSync, createReadStream } from 'fs';
+import { existsSync, mkdirSync, chmodSync, unlinkSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { join, dirname } from 'path';
-import { pipeline } from 'stream/promises';
-import { createGunzip, createInflateRaw } from 'zlib';
 import { spawn, type SpawnOptions } from 'child_process';
 import { fileURLToPath } from 'url';
 import { extract } from 'tar';
 import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
 import { verifyArchiveChecksum } from './checksum.js';
+import { findFallbackRelease, HttpStatusError, noBinaryMessage, type FallbackLookup } from './release-fallback.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -99,7 +98,7 @@ async function downloadFile(
   });
 
   if (!response.ok) {
-    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+    throw new HttpStatusError(response.status, response.statusText);
   }
 
   const contentLength = response.headers.get('content-length');
@@ -221,6 +220,10 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       `${RELEASE_BASE_URL}/${version}/${platformInfo.archiveName}`,
     ];
 
+    // Only a clean "not found" on every URL means this version has no
+    // release; any other failure (network, 5xx) must not silently swap in a
+    // different server version.
+    let allNotFound = error instanceof HttpStatusError && error.status === 404;
     let downloaded = false;
     for (const altUrl of altUrls) {
       try {
@@ -229,28 +232,43 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
         resolvedAssetUrl = altUrl;
         downloaded = true;
         break;
-      } catch {
-        // Legitimately silent: these are speculative URL shapes, and a miss on
-        // one is the expected case. The alternates that were tried are printed
-        // above; if none work, the `if (!downloaded)` below throws naming the
-        // original download failure.
+      } catch (altError) {
+        // Speculative URL shapes: a miss is the expected case. Only whether
+        // it was a 404 matters, for the fallback decision below.
+        allNotFound &&= altError instanceof HttpStatusError && altError.status === 404;
         continue;
       }
     }
 
     if (!downloaded) {
-      throw new Error(
-        `Failed to download binary from GitHub releases.\n` +
-        `URL: ${downloadUrl}\n` +
-        `Error: ${error instanceof Error ? error.message : String(error)}\n\n` +
-        `This could mean:\n` +
-        `  1. The release doesn't exist yet for version ${version}\n` +
-        `  2. Pre-built binaries aren't available for ${platformInfo.targetTriple}\n` +
-        `  3. Network connectivity issues\n\n` +
-        `Alternatives:\n` +
-        `  - Use Docker: npx create-ifc-lite my-app --template server\n` +
-        `  - Build from source: cargo build --release -p ifc-lite-server`
+      const errorText = error instanceof Error ? error.message : String(error);
+      const lookup: FallbackLookup = allNotFound
+        ? await findFallbackRelease(platformInfo.archiveName, version)
+        : { found: null, reason: `the download failed for a reason other than a missing release (${errorText})` };
+
+      if (!lookup.found) {
+        throw new Error(noBinaryMessage({
+          version, downloadUrl, errorText, reason: lookup.reason, archiveName: platformInfo.archiveName,
+        }));
+      }
+
+      const fallback = lookup.found;
+      console.warn(
+        `Warning: @ifc-lite/server-bin@${version} has no published binary for ${platformInfo.targetTriple} ` +
+        `(release v${version} is missing).\n` +
+        `Warning: falling back to the server binary from release v${fallback.version}.`
       );
+      console.log(`Downloading from: ${fallback.assetUrl}`);
+      try {
+        await downloadFile(fallback.assetUrl, archivePath, onProgress);
+      } catch (fallbackError) {
+        throw new Error(
+          `Release v${version} has no binary, and downloading the fallback from v${fallback.version} failed: ` +
+          `${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}\n` +
+          `Fix: npm i @ifc-lite/server-bin@${fallback.version}`
+        );
+      }
+      resolvedAssetUrl = fallback.assetUrl;
     }
   }
 
@@ -278,7 +296,9 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
     );
   }
 
-  // Write version file
+  // Write version file. It is the cache key against THIS package's version,
+  // even when a fallback release supplied the binary, so a fallback install
+  // is reused rather than re-resolved on every run.
   await writeFile(VERSION_FILE, version);
 
   // Clean up archive

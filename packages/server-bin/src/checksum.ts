@@ -12,13 +12,13 @@
  * checksum fail closed: the artifact is unlinked and an error thrown.
  *
  * Failing closed on a missing sidecar cannot break a supported install:
- * binary.ts derives the release tag from this package's own version, so a
- * given published version only ever downloads its own release, and every
- * release cut at or after the version that ships this code publishes one
- * sidecar per archive (.github/workflows/server-binaries.yml, "Create
+ * binary.ts derives the release tag from this package's own version, and
+ * every release cut at or after the version that ships this code publishes
+ * one sidecar per archive (.github/workflows/server-binaries.yml, "Create
  * Checksum Sidecar" - enforced by scripts/check-server-bin-targets.mjs).
- * Releases without sidecars are only downloaded by older published package
- * versions, which carry their own fail-open copy of this check.
+ * When that release is missing, binary.ts falls back to an older release
+ * (release-fallback.ts), and only to one whose asset list carries a checksum,
+ * which is then verified here exactly like the primary download.
  */
 
 import { existsSync, unlinkSync, createReadStream } from 'fs';

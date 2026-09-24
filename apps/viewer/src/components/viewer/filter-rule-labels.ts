@@ -21,4 +21,5 @@ export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   type: 'Type Name',
   parent: 'Parent',
   group: 'Group',
+  modelFact: 'Model fact',
 };

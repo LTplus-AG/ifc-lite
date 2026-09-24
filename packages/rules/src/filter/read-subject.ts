@@ -48,6 +48,7 @@ import { stringifyValue, defaultStoreyName, materialNamesOf } from './filter-mat
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { readMeasureSubject } from './read-measure-subject.js';
 import { assignedGroupNames } from './filter-group-rule.js';
+import { readModelFact } from './filter-model-fact.js';
 
 /** What `readSubject` needs about the element it reads. No `mutationView` —
  *  the engine reads the model as loaded, not with live in-session edits
@@ -151,6 +152,8 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const name = defaultStoreyName(store, expressId);
       return fromStrings([name.length > 0 ? name : undefined]);
     }
+    case 'modelFact':
+      return fromStrings(readModelFact(store, subject.fact).map(String));
     case 'group': {
       // Present = assigned to at least one such group, named or not (#5226):
       // membership is the fact, a group's Name is only what value ops read.

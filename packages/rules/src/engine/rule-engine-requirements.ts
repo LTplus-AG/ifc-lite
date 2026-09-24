@@ -28,6 +28,7 @@ import {
   type ClassificationRule,
   type FilterRule,
   type GroupRule,
+  type ModelFactRule,
   type IfcTypeRule,
   type MaterialRule,
   type NumericOp,
@@ -94,6 +95,7 @@ function subjectLabel(rule: FilterRule): string {
     case 'material': return 'Material';
     case 'classification': return rule.system ? `Classification[${rule.system}]` : 'Classification';
     case 'group': return rule.groupClass ? `Group[${rule.groupClass}]` : 'Group';
+    case 'modelFact': return `model.${rule.fact}`;
     case 'ifcType': return 'IfcType';
     case 'predefinedType': return 'PredefinedType';
     default: return rule.kind;
@@ -125,6 +127,7 @@ function checkKindOf(kind: FilterRule['kind']): CheckKind {
     case 'predefinedType':
       return 'entity';
     case 'storey': return 'spatial';
+    case 'modelFact': return 'model';
     default: return 'attribute';
   }
 }
@@ -135,6 +138,7 @@ function renderExpected(rule: FilterRule): string {
       return `${OP_LABEL[rule.op]} ${rule.value}`;
     case 'property':
     case 'attribute':
+    case 'modelFact':
     case 'name':
     case 'type':
     case 'parent':
@@ -157,13 +161,13 @@ function renderExpected(rule: FilterRule): string {
  *  and reported as `SpecificationResult.error`). */
 type ElementRule =
   | PropertyRule | QuantityRule | AttributeRule | NameRule | TypeNameRule
-  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule | GroupRule;
+  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule | GroupRule | ModelFactRule;
 
 function isElementRule(rule: FilterRule): rule is ElementRule {
   switch (rule.kind) {
     case 'property': case 'quantity': case 'attribute': case 'name': case 'type':
     case 'parent': case 'material': case 'classification': case 'ifcType': case 'predefinedType':
-    case 'group':
+    case 'group': case 'modelFact':
       return true;
     default:
       return false;
@@ -200,6 +204,7 @@ function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: Valid
     }
     case 'property':
     case 'attribute':
+    case 'modelFact':
       return checkValueOp(rule, subject, opts, facetType, actual, expected, checkedDescription);
     case 'ifcType':
     case 'predefinedType': {
@@ -220,7 +225,7 @@ function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: Valid
 }
 
 function checkValueOp(
-  rule: PropertyRule | AttributeRule,
+  rule: PropertyRule | AttributeRule | ModelFactRule,
   subject: SubjectValue,
   opts: ValidationOpts,
   facetType: CheckKind,

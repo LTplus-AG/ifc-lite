@@ -167,6 +167,8 @@ function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
       // IDS's partOf IfcRelAssignsToGroup names the group's exact class only:
       // no Name match, and no subclass expansion of `groupClass`.
       return { reason: 'group membership by name or by class-with-subclasses has no IDS facet (partOf matches one exact class)' };
+    case 'modelFact':
+      return { reason: 'a model-level fact (georeferencing, units, header) has no IDS facet' };
     case 'globalId':
       return { facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' }, value: simpleOrEnumeration(rule.values) } };
     case 'name':

@@ -16,9 +16,9 @@
 import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
 import type { SubjectReadOptions } from './subject-read-options.js';
+import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
 
 // ── Operator enums ────────────────────────────────────────────────────────────
-
 /** Set-membership: storey, ifcType, predefinedType. */
 export type SetOp = 'in' | 'notIn';
 
@@ -90,7 +90,6 @@ export type Combinator = 'AND' | 'OR';
 export type TextKind = 'literal' | 'regex';
 
 // ── Rule discriminated union ──────────────────────────────────────────────────
-
 export interface StoreyRule {
   kind: 'storey';
   values: string[];
@@ -293,7 +292,7 @@ export type FilterRule =
   | ElevationRule
   | TypeNameRule
   | ParentRule
-  | GroupRule;
+  | GroupRule | ModelFactRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 /** Combine an array of per-rule booleans according to AND/OR semantics. */
@@ -389,12 +388,13 @@ export const Rule = {
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
   parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
     ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
-  group: groupRule,
+  group: groupRule, modelFact: modelFactRule,
 } as const;
 
 // ── JSON guards (`filter-rule-guards.ts`, re-exported for existing imports) ─
 export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
 export type { GroupRule } from './filter-group-rule.js';
+export type { ModelFactRule } from './filter-model-fact.js';
 // Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
 // etc.) can pull in the groups helper too without a second import line (#4904).
 export { activeGroupRules } from './filter-groups.js';

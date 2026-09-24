@@ -12,6 +12,7 @@
 import type { Subject, UniqueRequirement, AggregateRequirement, CompareRequirement } from './rule-set.js';
 import type { NumericOp } from '../filter/filter-rules.js';
 import { checkAggregateSubject, checkCompareSubjects } from './requirement-invariants.js';
+import { isModelFact } from '../filter/filter-model-fact.js';
 
 export type TextRequirement = UniqueRequirement | AggregateRequirement | CompareRequirement;
 export type RequirementTextResult = { ok: true; requirement: TextRequirement } | { ok: false; error: string };
@@ -32,6 +33,7 @@ function subjectToText(s: Subject): string {
   if (s.kind === 'classification') return 'classification';
   // Likewise a class-scoped group (#5226): `group` is any group.
   if (s.kind === 'group') return 'group';
+  if (s.kind === 'modelFact') return `model.${s.fact}`;
   return Object.entries(BARE_KINDS).find(([, kind]) => kind === s.kind)?.[0] ?? s.kind;
 }
 export function requirementToText(req: TextRequirement): string {
@@ -67,6 +69,9 @@ function skipWs(s: string, i: number): number {
 function parseSubject(s: string, i: number): [Subject, number] {
   i = skipWs(s, i);
   const [seg, j] = readSegment(s, i);
+  // `model.<fact>` (#5442): a known fact wins over a property set named "model".
+  const fact = seg === 'model' ? /^\.([A-Za-z]+\.[A-Za-z]+)/.exec(s.slice(j)) : null;
+  if (fact && isModelFact(fact[1])) return [{ kind: 'modelFact', fact: fact[1] }, j + fact[0].length];
   if (s[j] === '.') {
     const [seg2, k] = readSegment(s, j + 1);
     // `Qto_…` names the QUANTITY table (selector adapter's `looksLikeQuantitySet`).

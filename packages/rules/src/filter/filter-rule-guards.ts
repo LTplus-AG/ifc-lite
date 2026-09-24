@@ -14,10 +14,15 @@
  */
 
 import { isModelTagOp } from './model-tag.js';
-import type { ClassificationOp, FilterRule, StringOp } from './filter-rules.js';
+import { isModelFact } from './filter-model-fact.js';
+import type { ClassificationOp, FilterRule, StringOp, ValueOp } from './filter-rules.js';
 
 const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
   'eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches',
+]);
+
+const VALUE_OPS: ReadonlySet<unknown> = new Set<ValueOp>([
+  'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
 ]);
 
 const CLASSIFICATION_OPS: ReadonlySet<unknown> = new Set<ClassificationOp>([
@@ -54,6 +59,10 @@ export function isFilterRule(value: unknown): value is FilterRule {
     );
   }
   if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
+  if (kind === 'modelFact') {
+    const r = value as { fact?: unknown; op?: unknown; value?: unknown };
+    return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';
+  }
   return (
     kind === 'model' ||
     kind === 'storey' ||

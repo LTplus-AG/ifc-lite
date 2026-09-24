@@ -11,11 +11,12 @@
 
 import type { Subject } from './rule-set.js';
 import { fail, isPlainObject } from './rule-set-io-shared.js';
+import { isModelFact } from '../filter/filter-model-fact.js';
 
 const TEXT_KINDS = new Set(['literal', 'regex']);
 
 const SUBJECT_KINDS = new Set([
-  'attribute', 'property', 'quantity', 'classification', 'group',
+  'attribute', 'property', 'quantity', 'classification', 'group', 'modelFact',
   'name', 'material', 'storey', 'parent', 'type', 'ifcType', 'predefinedType', 'globalId',
 ]);
 
@@ -62,6 +63,10 @@ export function parseSubject(raw: unknown, where: string): Subject {
   if (kind === 'classification') {
     if (s.system !== undefined && typeof s.system !== 'string') fail(`${where}: "system" must be a string`);
     return { kind: 'classification', ...(s.system !== undefined ? { system: s.system as string } : {}) };
+  }
+  if (kind === 'modelFact') {
+    if (!isModelFact(s.fact)) fail(`${where}: unrecognised model fact ${JSON.stringify(s.fact)}`);
+    return { kind: 'modelFact', fact: s.fact };
   }
   if (kind === 'group') {
     if (s.groupClass !== undefined && typeof s.groupClass !== 'string') fail(`${where}: "groupClass" must be a string`);

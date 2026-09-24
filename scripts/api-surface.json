@@ -8472,6 +8472,7 @@
     "parseRuleBlock: function",
     "parseRuleSetFile: function",
     "pickPredefinedType: function",
+    "propertyCandidates: function",
     "quantitySetsFor: function",
     "readSubject: function",
     "regexOpMatches: function",

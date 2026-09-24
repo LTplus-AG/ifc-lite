@@ -29,6 +29,7 @@ import {
   type StoreyRule,
   type ParentRule,
   type TextKind,
+  type ValueOp,
 } from './filter-rules.js';
 import { valueOpMatches, numericOpMatches, matchStringAnyNone } from './filter-ops.js';
 import { lensMaterialNames } from './lens-material-names.js';
@@ -69,13 +70,28 @@ export type PsetRows = ReadonlyArray<PsetRow>;
 export interface QtyRow { setName: string; quantityName: string; value: number }
 export type QtyRows = ReadonlyArray<QtyRow>;
 
+/** Structures whose `values` are the candidates a rule reads (#5475). */
+const ANY_MATCH_STRUCTURES = new Set(['enumerated', 'list', 'table']);
+
+/**
+ * The values a rule compares for one property: every member of an
+ * enumerated or list value and every cell of a table, so a positive op
+ * passes when ANY of them does (IDS / ifctester parity, #5475); otherwise the
+ * single display value. An empty list keeps one blank candidate, so the
+ * property still reads as present for `isSet`, as it did before.
+ */
+export function propertyCandidates(p: { value: unknown; values?: readonly string[]; structure?: string }): string[] {
+  if (p.structure && ANY_MATCH_STRUCTURES.has(p.structure) && p.values && p.values.length > 0) return [...p.values];
+  return [stringifyValue(p.value)];
+}
+
 export function flattenPsets(
   psets: ReturnType<typeof extractPropertiesOnDemand>,
 ): PsetRows {
   const out: PsetRow[] = [];
   for (const set of psets) {
     for (const p of set.properties) {
-      out.push({
+      for (const value of propertyCandidates(p)) out.push({
         setName: set.name,
         propertyName: p.name,
         // Stringify everything — `valueOpMatches` re-parses numeric ops
@@ -86,7 +102,7 @@ export function flattenPsets(
         // what the user sees rendered elsewhere. `valueOpMatches`'s eq/ne
         // are case-insensitive, so this doesn't change matching outcomes
         // for either the search chips or free-typed "true"/"false".
-        value: stringifyValue(p.value),
+        value,
       });
     }
   }
@@ -127,13 +143,21 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
     return rule.op === 'isSet' ? present : !present;
   }
 
-  return rows.some(
+  const matching = rows.filter(
     (r) =>
       nameMatches(rule.setName, r.setName, rule.setNameKind) &&
-      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind) &&
-      valueOpMatches(rule.op, r.value, rule.value, rule.valueKind),
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
   );
+  // A negated op holds when NO candidate has the value (a list [A, B] is
+  // not "!= A"), the ANY/NONE convention `material` and `parent` use and
+  // validation's `checkValueOp` applies (#5475). With a single candidate
+  // this is the same answer as before.
+  const positive = NEGATED_VALUE_OP[rule.op];
+  if (positive) return matching.length > 0 && !matching.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind));
+  return matching.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind));
 }
+
+const NEGATED_VALUE_OP: Partial<Record<ValueOp, ValueOp>> = { ne: 'eq', notContains: 'contains', notMatches: 'matches' };
 
 /** One entity's generic named attributes, as `extractAllEntityAttributes`
  *  returns them — schema-driven, string/number/boolean values only. */

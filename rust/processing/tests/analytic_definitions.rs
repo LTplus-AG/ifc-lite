@@ -23,6 +23,7 @@ fn repeated_mapping_targets_share_one_raw_source_with_distinct_world_instances()
     assert_eq!(view.sources.len(), 1);
     assert_eq!(view.sources[0].radius, 14.5); // raw millimetres
     assert_eq!(view.sources[0].key.schema.as_deref(), Some("IFC2X3"));
+    assert_eq!(view.sources[0].key.length_unit_scale_bits.len(), 16);
     assert!(matches!(&view.sources[0].key.context,
         SweptDiskSourceContext::Mapped { representation_map_path } if representation_map_path == &[45]));
     for id in [50, 51] {
@@ -109,4 +110,28 @@ fn repeated_csg_operand_keeps_each_instance_and_source_modified_provenance() {
     assert_eq!(instances.len(), 2);
     assert_eq!([instances[0].ordinal, instances[1].ordinal], [0, 1]);
     assert!(instances.iter().all(|instance| instance.source_modified));
+}
+
+#[test]
+fn distinct_representation_maps_do_not_share_a_source_key() {
+    let model = fixture().replace(
+        "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",
+        "#1005=IFCREPRESENTATIONMAP(#13,#44);\n#1006=IFCMAPPEDITEM(#1005,#46);\n#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47,#1006));",
+    );
+    let view = extract_swept_disk_definitions(model.as_bytes(), None);
+    assert!(view.diagnostics.is_empty(), "{:?}", view.diagnostics);
+    assert_eq!(view.sources.len(), 2);
+    assert_ne!(view.instances[&50][0].source, view.instances[&50][1].source);
+}
+
+#[test]
+fn malformed_source_is_reported_without_partial_instances() {
+    let model = fixture().replace(
+        "#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
+        "#43=IFCSWEPTDISKSOLID(#42,-1.,$,0.,2750.);",
+    );
+    let view = extract_swept_disk_definitions(model.as_bytes(), None);
+    assert!(view.sources.is_empty());
+    assert!(view.instances.is_empty());
+    assert!(view.diagnostics.iter().any(|item| item.contains("product #50, solid #43")));
 }

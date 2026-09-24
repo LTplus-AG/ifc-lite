@@ -40,6 +40,14 @@ and GPU-process private memory after applying a lens: the renderer's resident
 geometry counter alone omits the allocation that dominated the old path.
 See the [browser evidence](evidence/color-overrides-6148/README.md).
 
+## Reusable swept-disk source definitions (#5785)
+
+The source/instance API is opt-in. The shared bounded walk reuses decoded raw
+solids within one extraction; the default mesh pipeline remains separate.
+The earlier stacked-branch worker-pool trial ran during another geometry build
+and was inconclusive for timing. Recheck current main against this branch on
+an idle host before reporting a performance delta.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

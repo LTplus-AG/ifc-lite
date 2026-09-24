@@ -104,7 +104,7 @@ class SweptDiskChecks(TypedDict):
 class SweptDiskSourceKey(TypedDict):
     model_sha256: str
     schema: Optional[str]
-    length_unit_scale_bits: int  # exact f64 bit pattern
+    length_unit_scale_bits: str  # 16 hex digits; exact f64 bit pattern
     context: Dict[str, Any]  # direct representation_id or mapped representation_map_path
     solid_id: int
 

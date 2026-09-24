@@ -25,7 +25,8 @@ pub enum SweptDiskSourceContext {
 pub struct SweptDiskSourceKey {
     pub model_sha256: String,
     pub schema: Option<String>,
-    pub length_unit_scale_bits: u64,
+    /// Sixteen hex digits preserve f64 identity through JSON/JavaScript.
+    pub length_unit_scale_bits: String,
     pub context: SweptDiskSourceContext,
     pub solid_id: u32,
 }
@@ -86,7 +87,8 @@ impl SweptDiskDefinitions {
 
     pub(super) fn key(&self, context: SweptDiskSourceContext, solid_id: u32) -> SweptDiskSourceKey {
         SweptDiskSourceKey { model_sha256: self.model_sha256.clone(),
-            schema: self.schema.clone(), length_unit_scale_bits: self.length_unit_scale.to_bits(),
+            schema: self.schema.clone(),
+            length_unit_scale_bits: format!("{:016x}", self.length_unit_scale.to_bits()),
             context, solid_id }
     }
 }

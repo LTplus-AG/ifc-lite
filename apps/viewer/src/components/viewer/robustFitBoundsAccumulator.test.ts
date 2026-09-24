@@ -197,3 +197,110 @@ describe('robustFitBounds: incremental accumulator matches full rescan', () => {
     assert.deepEqual(second, robustFitBoundsFull(meshes));
   });
 });
+
+// ── #5387: detached coordination markers ──────────────────────────────────
+// The buildingSMART sample files carry an `origin` cube and a `geo-reference`
+// compass glyph (IfcBuildingElementProxy) placed at the coordination origin,
+// away from the model. The glyph is vertex-heavy (1272 of Building-
+// Architecture's 1884 vertices), so the 99.5%-vertex-mass trim could never
+// reach it, and Building-Hvac has only 5 meshes, under that trim's minimum of
+// 8. The fixtures below reproduce those measured layouts.
+
+/** An axis-aligned box mesh: its 8 corners, repeated up to `verts` vertices. */
+function box(min: [number, number, number], max: [number, number, number], verts = 24): RobustFitMeshInput {
+  const positions = new Float32Array(verts * 3);
+  for (let i = 0; i < verts; i++) {
+    positions[i * 3] = i & 1 ? max[0] : min[0];
+    positions[i * 3 + 1] = i & 2 ? max[1] : min[1];
+    positions[i * 3 + 2] = i & 4 ? max[2] : min[2];
+  }
+  return { positions };
+}
+
+/** The geo-reference glyph: 1.6 x 0.1 x 1.7, 1272 vertices, ~30 m out. */
+const GLYPH = () => box([-29.6, -1.35, 13.3], [-28, -1.25, 15], 1272);
+
+type Box = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+function assertBox(actual: Box | null | undefined, min: number[], max: number[], what: string) {
+  assert.ok(actual, `${what}: expected a robust framing box`);
+  const got = [actual.min.x, actual.min.y, actual.min.z, actual.max.x, actual.max.y, actual.max.z];
+  const want = [...min, ...max];
+  got.forEach((v, i) => assert.ok(Math.abs(v - want[i]) < 1e-4, `${what}: ${got} vs ${want}`));
+}
+
+describe('robustFitBounds drops detached coordination markers (#5387)', () => {
+  it('frames the house, not the vertex-heavy geo-reference glyph (Building-Architecture layout)', () => {
+    const house: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 12; i++) house.push(box([3 + (i % 4), 0, -9 + (i % 3)], [6 + (i % 4), 3 + (i % 2), -4 + (i % 3)]));
+    const meshes = [...house, GLYPH()];
+    const result = robustFitBoundsFull(meshes);
+    assertBox(result?.robust, [3, 0, -9], [9, 4, -2], 'house framing');
+    assert.deepEqual(createRobustFitBoundsAccumulator().update(meshes), result, 'incremental path agrees');
+  });
+
+  it('works below the 8-mesh minimum: a 3-mesh chimney, the origin cube and the glyph (Building-Hvac layout)', () => {
+    const chimney = [
+      box([7.6, 4.7, -8.3], [8.3, 4.9, -7.6]),
+      box([7.8, 0.9, -8.1], [8, 4.7, -7.9]),
+      box([7.75, 0.7, -8.2], [8.05, 0.9, -7.6]),
+    ];
+    const origin = box([0, 0, -1], [1, 1, 0]);
+    const result = robustFitBoundsFull([...chimney, origin, GLYPH()]);
+    assertBox(result?.robust, [7.6, 0.7, -8.3], [8.3, 4.9, -7.6], 'chimney framing');
+  });
+
+  it('keeps a second structure of comparable size, even well apart (Infra-Bridge has two bridges)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 10; i++) meshes.push(box([i * 3, 0, 0], [i * 3 + 3, 5, 8]));
+    for (let i = 0; i < 10; i++) meshes.push(box([45 + i * 3, 0, 0], [45 + i * 3 + 3, 5, 8]));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('keeps a marker beside the model envelope (Infra-Plumbing: the glyph sits by the pipe runs)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 10; i++) meshes.push(box([-26 + i * 7, -2, -45], [-20 + i * 7, 0, -5]));
+    meshes.push(box([-0.9, 0.05, -0.9], [0.9, 0.15, 0.9], 1272));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('keeps a second building of comparable size however far away (PR #5460 review)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 60; i++) meshes.push(box([(i % 10) * 5, 0, 0], [(i % 10) * 5 + 5, 10, 10]));
+    for (let i = 0; i < 40; i++) meshes.push(box([200 + (i % 8) * 5, 0, 0], [200 + (i % 8) * 5 + 5, 10, 10]));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('drops a tiny glyph beside a large model even when it is closer than two model lengths (Infra-Bridge layout)', () => {
+    // Two bridges ~40 m long, glyph at the origin ~26 m from them: the glyph is
+    // under a tenth of the model's size, so the "tiny" branch drops it.
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 20; i++) meshes.push(box([8 + i * 1.8, -3.5, -57 + i], [10 + i * 1.8, 7.8, -50 + i]));
+    meshes.push(box([-0.9, 0.05, -0.9], [0.9, 0.15, 0.9], 1272));
+    const result = robustFitBoundsFull(meshes);
+    assert.ok(result?.robust, 'a robust box is produced');
+    assert.ok(result.robust.min.x >= 8 - 1e-6, `the glyph is framed out: min.x ${result.robust.min.x}`);
+  });
+
+  it('incremental and full paths agree when the marker streams in first and the model trickles in', () => {
+    const house: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 12; i++) house.push(box([3 + (i % 4), 0, -9 + (i % 3)], [6 + (i % 4), 3 + (i % 2), -4 + (i % 3)]));
+    const streamed: RobustFitMeshInput[] = [GLYPH()];
+    const acc = createRobustFitBoundsAccumulator();
+    for (const m of house) {
+      streamed.push(m);
+      assert.deepEqual(acc.update(streamed), robustFitBoundsFull(streamed), `mismatch at ${streamed.length} meshes`);
+    }
+  });
+
+  it('keeps a small outbuilding one model-length away (PR #5460 review)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 10; i++) meshes.push(box([i, 0, 0], [i + 1, 1, 1]));
+    meshes.push(box([25, 0, 0], [26, 1, 1]));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('never drops a majority: three meshes far apart stay framed together', () => {
+    const meshes = [box([0, 0, 0], [1, 1, 1]), box([100, 0, 0], [101, 1, 1]), box([200, 0, 0], [201, 1, 1])];
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+});

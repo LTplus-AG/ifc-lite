@@ -91,15 +91,15 @@ describe('flowPublishIntent', () => {
 });
 
 describe('mutationsInRun — what one run published', () => {
-  it('keeps edits made inside the run and drops those made before or after it', () => {
-    const before = { timestamp: 99, id: 'before' };
-    const during = { timestamp: 150, id: 'during' };
-    const atEdges = [{ timestamp: 100, id: 'start' }, { timestamp: 200, id: 'end' }];
-    const after = { timestamp: 201, id: 'after' };
-    const kept = mutationsInRun([before, during, ...atEdges, after], { start: 100, end: 200 });
-    // `after` is the case the bounded window exists for: a manual edit made
-    // once the run finished must not ship under the graph's provenance.
-    assert.deepEqual(kept.map((m) => m.id), ['during', 'start', 'end']);
+  it('keeps exactly the mutations the run created, by id, even against a same-millisecond manual edit', () => {
+    // An inclusive time window took in a manual edit stamped with the run's
+    // end millisecond (#5380 review); ids cannot collide that way.
+    const run = { mutationIds: new Set(['r1', 'r2']) };
+    const pending = [
+      { id: 'before', timestamp: 99 }, { id: 'r1', timestamp: 150 },
+      { id: 'r2', timestamp: 200 }, { id: 'manual', timestamp: 200 },
+    ];
+    assert.deepEqual(mutationsInRun(pending, run).map((m) => m.id), ['r1', 'r2']);
   });
 });
 
@@ -130,10 +130,11 @@ describe('flowPublishEligibility — other pending edits (#5380 review)', () => 
     assert.deepEqual(flowPublishEligibility(run, null, 0, 2), { canPublish: true });
   });
 
-  it('counts edits outside the window on any model, plus pending georeferencing', () => {
-    const edits = [{ timestamp: 50 }, { timestamp: 150 }, { timestamp: 250 }];
-    assert.equal(countPendingOutsideRun(edits, { start: 100, end: 200 }, 0), 2);
-    assert.equal(countPendingOutsideRun(edits, { start: 100, end: 200 }, 1), 3, 'a pending georef change counts too');
+  it('counts edits the run did not make, on any model, plus pending georeferencing', () => {
+    const edits = [{ id: 'a' }, { id: 'run' }, { id: 'b' }];
+    const run = { mutationIds: new Set(['run']) };
+    assert.equal(countPendingOutsideRun(edits, run, 0), 2);
+    assert.equal(countPendingOutsideRun(edits, run, 1), 3, 'a pending georef change counts too');
     assert.equal(countPendingOutsideRun(edits, null, 0), 3, 'no recorded run: nothing belongs to it');
   });
 });

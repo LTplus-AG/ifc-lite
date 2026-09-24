@@ -77,7 +77,7 @@ describe('flowSlice', () => {
 
   it('a session reset closes the panel and drops the run, but keeps the saved graphs and the working copy', () => {
     useViewerStore.getState().createFlow('Kept');
-    useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x') } });
+    useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x'), mutationIds: new Set() } });
     useViewerStore.setState(viewerTeardown({ kind: 'session-reset' }, useViewerStore.getState()));
     const s = useViewerStore.getState();
     assert.equal(s.flowPanelVisible, false);
@@ -91,11 +91,11 @@ describe('flowSlice', () => {
   it('setFlowLastRun records the run\'s closed window, for Publish to scope "this run\'s" mutations', () => {
     const ranDoc = newFlowDocument('ran');
     useViewerStore.getState().setFlowLastRun(
-      { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [], log: [] }, undefined, { start: 999, end: 1005, doc: ranDoc },
+      { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [], log: [] }, undefined, { start: 999, end: 1005, doc: ranDoc, mutationIds: new Set(['m1']) },
     );
     // Both ends, not just the start: an open-ended window would sweep in the
     // user's own later edits and publish them under the graph's provenance.
-    assert.deepEqual(useViewerStore.getState().flowLastRunWindow, { start: 999, end: 1005, doc: ranDoc });
+    assert.deepEqual(useViewerStore.getState().flowLastRunWindow, { start: 999, end: 1005, doc: ranDoc, mutationIds: new Set(['m1']) });
     useViewerStore.getState().setFlowLastRun(null, 'boom');
     assert.equal(useViewerStore.getState().flowLastRunWindow, null, 'an omitted window defaults to null, not the previous run\'s');
   });

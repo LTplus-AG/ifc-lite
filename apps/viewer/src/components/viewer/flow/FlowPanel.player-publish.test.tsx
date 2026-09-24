@@ -202,6 +202,29 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     assert.equal(window?.doc.name, 'Provenance graph');
   });
 
+  it('drops a run whose graph was switched away from before it finished (#5380 review)', async () => {
+    // Otherwise graph B's panel showed, and could publish, graph A's run.
+    const a = numberGraph('Graph A');
+    const b = numberGraph('Graph B');
+    const bId = useViewerStore.getState().importFlow(b)!;
+    const aId = useViewerStore.getState().importFlow(a)!;
+    assert.equal(useViewerStore.getState().activeFlowId, aId);
+    const container = mountFlowPanel();
+    click(byText(container, 'button', 'Player'));
+    const player = container.querySelector('[data-flow-player]')!;
+    await act(async () => {
+      click(byText<HTMLButtonElement>(player, 'button', 'Run'));
+      useViewerStore.getState().openFlow(bId); // switched while A's run is in flight
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const state = useViewerStore.getState();
+    assert.equal(state.flowDoc?.id, bId);
+    assert.equal(state.flowLastRun, null, 'A\'s result is not shown for B');
+    assert.equal(state.flowLastRunWindow, null, 'nor can B publish it');
+    assert.equal(state.flowRunning, false);
+  });
+
   it('last-used values persist per graph id and are not inherited by a different graph', async () => {
     const docA = numberGraph('Graph A');
     const docB = numberGraph('Graph B');
@@ -244,7 +267,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
       useViewerStore.getState().setFlowLastRun(
         { ok: true, writes: 0, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
         undefined,
-        { start: Date.now(), end: Date.now(), doc },
+        { start: Date.now(), end: Date.now(), doc, mutationIds: new Set() },
       );
     });
     const publishNoWrites = byText<HTMLButtonElement>(container, 'button', 'Publish');
@@ -254,11 +277,11 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     // The run's write, still pending: only then is there something to publish.
     const at = Date.now();
     act(() => {
-      useViewerStore.setState({ undoStacks: new Map([['model-1', [{ timestamp: at } as never]]]) });
+      useViewerStore.setState({ undoStacks: new Map([['model-1', [{ id: 'run-1', timestamp: at } as never]]]) });
       useViewerStore.getState().setFlowLastRun(
         { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [{ nodeId: 'number-1', status: 'ok', durationMs: 0, lanes: 1, laneErrors: 0, missing: {}, warnings: [] }], log: [] },
         undefined,
-        { start: at, end: at, doc },
+        { start: at, end: at, doc, mutationIds: new Set(['run-1']) },
       );
     });
     // `writingNodes` only counts nodes whose registry def declares `writes:

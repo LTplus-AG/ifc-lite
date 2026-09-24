@@ -45,7 +45,7 @@ export function flowPublishEligibility(
  * georeferencing change (`clearAllMutations` drops those too).
  */
 export function countPendingOutsideRun(
-  mutations: readonly { timestamp: number }[], window: { start: number; end: number } | null, otherPending: number,
+  mutations: readonly { id: string }[], window: RunMutations | null, otherPending: number,
 ): number {
   const inRun = window ? mutationsInRun(mutations, window).length : 0;
   return mutations.length - inRun + otherPending;
@@ -90,14 +90,16 @@ export function flowPublishIntent(doc: FlowDocument, nodes: readonly WritingNode
  */
 export const FLOW_PUBLISH_AUTHOR_KIND = 'hybrid' as const;
 
+/** The part of a recorded run Publish needs: which pending mutations it created. */
+export interface RunMutations {
+  readonly mutationIds: ReadonlySet<string>;
+}
+
 /**
- * The pending mutations one run produced: those timestamped inside the run's
- * CLOSED window. Mutations carry no per-run identifier, so time is the only
- * key — and it must be bounded at both ends, or an edit the user made by hand
- * after the run would be published under the graph's provenance.
+ * The pending mutations one run produced, by id (recorded when the run
+ * finished; see `FlowRunWindow.mutationIds`). An edit made by hand after the
+ * run is never among them, even one in the same millisecond.
  */
-export function mutationsInRun<T extends { timestamp: number }>(
-  mutations: readonly T[], window: { start: number; end: number },
-): T[] {
-  return mutations.filter((mutation) => mutation.timestamp >= window.start && mutation.timestamp <= window.end);
+export function mutationsInRun<T extends { id: string }>(mutations: readonly T[], run: RunMutations): T[] {
+  return mutations.filter((mutation) => run.mutationIds.has(mutation.id));
 }

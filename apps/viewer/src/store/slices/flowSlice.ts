@@ -26,6 +26,13 @@ export interface FlowRunWindow {
    * after the run must not be credited with the run's writes (#5380 review).
    */
   readonly doc: FlowDocument;
+  /**
+   * Ids of the pending mutations this run created: pending when it finished,
+   * not pending when it started. Publish selects by these ids, not by time: an
+   * inclusive millisecond window also took in a manual edit made in the same
+   * millisecond the run ended (#5380 review).
+   */
+  readonly mutationIds: ReadonlySet<string>;
 }
 
 export interface FlowSlice {

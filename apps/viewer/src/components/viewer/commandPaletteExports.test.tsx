@@ -13,7 +13,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
@@ -52,11 +52,15 @@ function brokenDataStore(): IfcDataStore {
   return store as unknown as IfcDataStore;
 }
 
+// Under StrictMode, as the app runs: it replays mount effects, which is what
+// would re-click (and so close) a dialog's auto-open trigger.
 function renderPalette(): void {
   render(
-    <BimReactContext.Provider value={{} as BimContext}>
-      <CommandPalette open onOpenChange={() => {}} />
-    </BimReactContext.Provider>,
+    <StrictMode>
+      <BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>
+    </StrictMode>,
   );
 }
 

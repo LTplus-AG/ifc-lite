@@ -33,12 +33,17 @@ export type PaletteExportRequest =
 /**
  * A `DialogTrigger asChild` target that opens its dialog on mount. Radix
  * merges its `onClick`/`ref`/aria props onto this button, so the click below
- * is the dialog's ordinary trigger path.
+ * is the dialog's ordinary trigger path. That click TOGGLES the dialog, so it
+ * must fire once: Strict Mode replays mount effects in development, and a
+ * second click would close the dialog it just opened.
  */
 function AutoOpenTrigger({ ref, ...props }: React.ComponentProps<'button'>) {
   const own = useRef<HTMLButtonElement | null>(null);
+  const clicked = useRef(false);
   useEffect(() => {
-    own.current?.click();
+    if (clicked.current || !own.current) return;
+    clicked.current = true;
+    own.current.click();
   }, []);
   return (
     <button

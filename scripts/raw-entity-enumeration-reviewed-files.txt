@@ -47,6 +47,9 @@ packages/mutations/src/prepare-entity-operations.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts
 packages/parser/src/cost-reader.ts
+packages/parser/src/classification-resolver.ts
+packages/parser/src/structural-load-extractor.ts
+packages/parser/src/structural-step-values.ts
 packages/parser/src/columnar-parser-root-attributes.ts
 packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts

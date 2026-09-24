@@ -20,9 +20,9 @@
 
 import ExcelJS from 'exceljs';
 import { guardSpreadsheetFormula } from '@ifc-lite/export';
-import { PARSE_INVALID } from '@ifc-lite/mutations';
-import { parseStrictCell } from './strict-cell.js';
+import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
 import { COLUMN_TYPES, type Cell, type Column, type ColumnType, type Table } from '@ifc-lite/flow';
+import { VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 
 export interface XlsxColumnSpec {
   readonly name: string;
@@ -139,7 +139,7 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
         row[col.name] = raw;
         return;
       }
-      const parsed = parseStrictCell(raw, col.type);
+      const parsed = parseValue(raw, VALUE_TYPE_BY_COLUMN_TYPE[col.type]);
       if (parsed === PARSE_INVALID) {
         problems.push(`row ${r}: column "${col.name}": cannot parse "${raw}" as ${col.type}`);
         row[col.name] = null;

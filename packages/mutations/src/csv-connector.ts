@@ -169,9 +169,9 @@ export class CsvConnector {
   /**
    * Generate mutations from matched data.
    *
-   * `warnings`, when passed, collects one message per skipped cell — a
-   * malformed Real/Integer value (see {@link parseValue}) that would
-   * otherwise have silently written `0`. Optional and additive: existing
+   * `warnings`, when passed, collects one message per skipped cell — one
+   * that is not exactly a value of its column's type (see {@link parseValue}),
+   * such as `12,5` in a Real column or `ja` in a Boolean one. Optional and additive: existing
    * callers that only want the mutation list are unaffected.
    */
   generateMutations(matches: MatchResult[], mapping: DataMapping, warnings?: string[]): Mutation[] {

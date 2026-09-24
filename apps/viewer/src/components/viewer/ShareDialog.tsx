@@ -257,9 +257,9 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard may be blocked; the input is selectable as a fallback
+      toast.error(t('shareDialog.copyFailed')); // the input stays selectable as a fallback (#5600)
     }
-  }, [link]);
+  }, [link, t]);
 
   const waiting = awaitingConsent || (creating && !collabRoomId) || seedInFlight || minting;
   const seedLabel = describeSeedPhase(seedPhase, seedProgress);

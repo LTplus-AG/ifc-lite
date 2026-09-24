@@ -159,6 +159,7 @@ export const miscPanelsBEn = {
   'shareDialog.linkLabel': 'Link',
   'shareDialog.copied': 'Copied',
   'shareDialog.copy': 'Copy',
+  'shareDialog.copyFailed': 'Could not copy the link. Select it in the field and copy it manually.',
   'shareDialog.liveNow': 'Live now',
   'shareDialog.linkExpiryNotice': 'Link expires in 7 days. Anyone with it gets {role} access.',
   'shareDialog.youSuffix': '{name} (you)',

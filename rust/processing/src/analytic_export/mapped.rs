@@ -13,11 +13,17 @@ use super::placement::{
 };
 use super::MAX_VISITED_ITEMS;
 
+pub(super) struct MappedResolution {
+    pub items: Vec<DecodedEntity>,
+    pub transform: Option<[f64; 16]>,
+    pub representation_map_id: u32,
+}
+
 pub(super) fn resolve_mapped_item(
     item: &DecodedEntity,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
-) -> Result<(Vec<DecodedEntity>, Option<[f64; 16]>), String> {
+) -> Result<MappedResolution, String> {
     let target = resolve_required(item, 1, "MappingTarget", decoder)?;
     validate_target(&target, decoder)?;
 
@@ -44,7 +50,7 @@ pub(super) fn resolve_mapped_item(
         .map_err(|error| format!("MappedRepresentation #{} Items: {error}", rep.id))?;
     let local = router.resolve_scaled_mapped_item_transform(item, &source, decoder)
         .map_err(|error| format!("mapped transform: {error}"))?;
-    Ok((items, local))
+    Ok(MappedResolution { items, transform: local, representation_map_id: source.id })
 }
 
 fn validate_target(target: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {

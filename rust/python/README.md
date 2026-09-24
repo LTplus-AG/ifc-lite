@@ -27,6 +27,7 @@ same geometry and differ only in output format; pass
 reads attributes and property sets instead, without tessellating.
 `check_swept_disks` checks authored swept-disk paths without tessellating.
 
+`swept_disk_definitions` returns reusable raw source paths and occurrence transforms.
 ```python
 import ifclite_geom
 import numpy as np
@@ -182,6 +183,34 @@ certify fabrication compliance or calculate bend allowances. IFC allows
 non-tangent consecutive segments to form a miter, so
 `tangent_discontinuity` is an inspection cue rather than an automatic schema
 violation ([IfcSweptDiskSolid](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcSweptDiskSolid.htm)).
+
+### `swept_disk_definitions(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Return one source definition per representation-map path and solid, with one
+instance per use in a product. This is an opt-in, untessellated view; the
+flattened `include_directrices=True` contract is unchanged. `sources` contain
+authored `Radius`, `InnerRadius`, and `Directrix` in the IFC file's length
+units. `instances` is keyed by product STEP id and preserves deterministic
+`ordinal`, `mapping_path` (mapped-item STEP ids), `source_modified`, and
+`status`. The `source` key contains the SHA-256 of the IFC bytes, `FILE_SCHEMA`,
+unit scale, solid STEP id, and either a top-level representation id or ordered
+`IfcRepresentationMap` ids. Repeated `MappingTarget`s therefore share a source
+without collapsing distinct uses.
+
+`world_from_source` is a column-major 4×4 f64 matrix mapping source file-unit
+coordinates directly to absolute IFC Z-up metres. It includes the file length
+scale, product placement, and nested mapping transforms. The source radius is
+raw; a uniform instance's effective world radius also includes the matrix's
+uniform scale. A nonuniform instance carries `status=unsupported` because its
+world disk is not circular. An invalid matrix is `None` with an unsupported
+status. Source and instance output have independent work budgets; truncation
+appears in `diagnostics`.
+
+```python
+view = ifclite_geom.swept_disk_definitions(ifc_bytes, ids={50})
+for instance in view["instances"].get(50, []):
+    print(instance["source"], instance["world_from_source"])
+```
 
 ### Tessellation quality
 

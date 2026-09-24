@@ -2230,11 +2230,8 @@ export class IfcCreator {
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    // Axis and RefDirection are written both or neither (#5469).
-    const axes = completePlacementAxes(placement.Axis, placement.RefDirection);
-    const axisId = axes ? this.addDirection(axes.Axis) : undefined;
-    const refDirId = axes ? this.addDirection(axes.RefDirection) : undefined;
-    const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
+    const axes = completePlacementAxes(placement.Axis, placement.RefDirection); // both or neither (#5469)
+    const axis2Id = this.addAxis2Placement3D(originId, axes && this.addDirection(axes.Axis), axes && this.addDirection(axes.RefDirection));
 
     const id = this.id();
     this.line(id, 'IFCLOCALPLACEMENT', `#${relativeTo},#${axis2Id}`);

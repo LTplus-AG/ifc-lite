@@ -10,6 +10,8 @@
  * would mean two near-identical vertex inputs and duplicate camera structs.
  */
 
+import { GLYPH_HALO_PX } from '../symbolic-text-atlas.js';
+
 export const SYMBOLIC_FILL_WGSL = /* wgsl */ `
 struct Camera {
   viewProj: mat4x4<f32>,
@@ -237,13 +239,37 @@ fn vs_main(in: VsIn, inst: InstIn) -> VsOut {
   return out;
 }
 
+// Halo (#5388): labels sit over model geometry as often as over the empty
+// backdrop, so no single ink is legible on both. Every glyph gets a thin
+// contrasting outline: the glyph coverage dilated by HALO_TEXELS, drawn under
+// the glyph in black (light text) or white (dark text). The quad and its UVs
+// were widened by the same margin on upload, and the atlas packs glyphs far
+// enough apart that the taps never reach a neighbour.
+const HALO_TEXELS: f32 = ${GLYPH_HALO_PX}.0;
+const HALO_OPACITY: f32 = 0.8;
+const HALO_DIRS = array<vec2<f32>, 8>(
+  vec2<f32>(1.0, 0.0), vec2<f32>(-1.0, 0.0), vec2<f32>(0.0, 1.0), vec2<f32>(0.0, -1.0),
+  vec2<f32>(0.7071, 0.7071), vec2<f32>(-0.7071, 0.7071), vec2<f32>(0.7071, -0.7071), vec2<f32>(-0.7071, -0.7071),
+);
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-  let atlas = textureSample(atlasTex, atlasSamp, in.uv);
   // The atlas was rasterised with white glyphs on a transparent background,
-  // so atlas.r is the coverage and atlas.a is the alpha. Multiply by the
-  // per-glyph tint and premultiply for the standard composite.
-  let alpha = atlas.a * in.color.a;
-  return vec4<f32>(in.color.rgb * alpha, alpha);
+  // so atlas.a is the coverage.
+  let coverage = textureSample(atlasTex, atlasSamp, in.uv).a;
+  let texel = 1.0 / vec2<f32>(textureDimensions(atlasTex));
+  var dilated = coverage;
+  // Two rings (full and half radius) so thin strokes and counters fill in.
+  for (var i = 0u; i < 8u; i = i + 1u) {
+    let d = HALO_DIRS[i] * texel * HALO_TEXELS;
+    dilated = max(dilated, textureSample(atlasTex, atlasSamp, in.uv + d).a);
+    dilated = max(dilated, textureSample(atlasTex, atlasSamp, in.uv + d * 0.5).a);
+  }
+  let luminance = dot(in.color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+  let haloRgb = select(vec3<f32>(1.0), vec3<f32>(0.0), luminance > 0.5);
+  // Glyph over halo, premultiplied for the standard composite.
+  let glyphA = coverage * in.color.a;
+  let haloA = dilated * HALO_OPACITY * in.color.a * (1.0 - glyphA);
+  return vec4<f32>(in.color.rgb * glyphA + haloRgb * haloA, glyphA + haloA);
 }
 `;

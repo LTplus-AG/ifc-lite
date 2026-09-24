@@ -140,7 +140,7 @@ const BAND_OVER_BUCKET = { clipEnabled: true, clipPos: BUCKET_Y, clipDepth: 1 };
 /** Band that admits `FALLBACK_Y` and excludes `BUCKET_Y`. */
 const BAND_OVER_FALLBACK = { clipEnabled: true, clipPos: FALLBACK_Y, clipDepth: 1 };
 
-const GRID_ONLY = { enabled: false, effectiveGridEnabled: true, fallbackY: FALLBACK_Y };
+const GRID_ONLY = { enabled: false, effectiveGridEnabled: true, fallbackY: FALLBACK_Y, theme: 'light' as const };
 
 /** Every x coordinate in a flat `[x, y, z, …]` line list. */
 function xs(buffer: SymbolicLineVertices): number[] {
@@ -262,6 +262,7 @@ describe('the grid section-clip band filters gridByStorey buckets (issues #862, 
       enabled: true,
       effectiveGridEnabled: true,
       fallbackY: FALLBACK_Y,
+      theme: 'light' as const,
       ...BAND_OVER_FALLBACK,
     };
 

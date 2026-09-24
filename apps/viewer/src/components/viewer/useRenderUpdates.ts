@@ -17,6 +17,8 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
 import { customPlaneCenter } from '@/store';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
+import { annotationLineInk } from '@/lib/annotation-ink';
+import type { ThemeMode } from '@/store/slices/uiSlice';
 
 export interface UseRenderUpdatesParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -78,9 +80,12 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     showHiddenLines,
   } = params;
 
-  // Theme-aware clear color update
+  // Theme-aware clear color update, and the overlay line ink that has to read
+  // against it (annotation / alignment / grid / DXF / LandXML lines and the
+  // section-cut outline all share one colour, #5388).
   useEffect(() => {
     clearColorRef.current = getThemeClearColor(theme as 'light' | 'dark' | 'colorful');
+    if (isInitialized) rendererRef.current?.setOverlayLineColor(annotationLineInk(theme as ThemeMode));
     rendererRef.current?.requestRender();
   }, [theme, isInitialized]);
 

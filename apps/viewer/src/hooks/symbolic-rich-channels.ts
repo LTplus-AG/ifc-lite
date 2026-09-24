@@ -32,6 +32,8 @@ import type {
   ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { resolveBucketY } from './useSymbolicAnnotations.js';
+import { legibleAnnotationTextColor } from '@/lib/annotation-ink';
+import type { ThemeMode } from '@/store/slices/uiSlice';
 
 /**
  * A text annotation lifted into 3D world space.
@@ -53,8 +55,8 @@ export interface AnnotationText3D {
   alignment: string;
   /** True when the glyph quad should rebuild in camera-aligned basis (grid tags). */
   billboard?: boolean;
-  /** sRGB straight-alpha tint, 0..1. */
-  color?: [number, number, number, number];
+  /** sRGB straight-alpha tint, 0..1, already resolved for the theme (#5388). */
+  color: [number, number, number, number];
   /** Per-instance target cap height in screen pixels. */
   targetPx?: number;
   /**
@@ -106,6 +108,8 @@ interface SymbolicRichChannelsParams {
   clipPos: number;
   clipDepth: number;
   fallbackY: number;
+  /** Labels are recoloured to stay legible on this theme's backdrop (#5388). */
+  theme: ThemeMode;
 }
 
 /** Cheap stable empty arrays for the no-data path. */
@@ -125,7 +129,7 @@ export function buildSymbolicRichChannels(
   entries: readonly SymbolicRichChannelsEntry[],
   params: SymbolicRichChannelsParams,
 ): SymbolicRichChannels {
-  const { enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, fallbackY } = params;
+  const { enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, fallbackY, theme } = params;
   if (!enabled && !effectiveGridEnabled) return EMPTY_RICH_CHANNELS;
 
   const texts: AnnotationText3D[] = [];
@@ -153,7 +157,9 @@ export function buildSymbolicRichChannels(
         content: t.content,
         alignment: t.alignment,
         billboard: t.billboard,
-        color: t.color,
+        // Theme ink for an unstyled label; an authored colour too close to the
+        // backdrop is pulled toward the ink just far enough to read (#5388).
+        color: legibleAnnotationTextColor(t.color, theme),
         targetPx: t.targetPx,
         definesExtent,
       });

@@ -432,6 +432,7 @@ export function useSymbolicAnnotationsRichData(params: {
     useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
   const stores = useSymbolicActiveStores();
   const hiddenSets = useHiddenOwnerSets();
+  const theme = useViewerStore((s) => s.theme); // label ink (#5388)
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
   const clipPos = clipEnabled ? gridSectionClip!.posWorld : 0;
@@ -456,6 +457,7 @@ export function useSymbolicAnnotationsRichData(params: {
       clipPos,
       clipDepth,
       fallbackY,
+      theme,
     });
-  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY, theme]);
 }

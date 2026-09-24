@@ -10,6 +10,8 @@
 import { trackUiEvent } from '@/lib/analytics';
 import type { ToolExitVia, UiSurface } from '@/lib/analytics-ui-events';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
+import type { StateCreator } from 'zustand';
+import type { UISlice } from './slices/uiSlice.js';
 
 export type { ToolExitVia, UiSurface };
 
@@ -24,9 +26,28 @@ export function trackPanelOpened(panel: WorkspacePanelId, surface?: UiSurface, r
   if (replacing && replacing !== 'properties') trackUiEvent('panel_replaced', { from: replacing, to: panel });
 }
 
-/** `tool_exited` for the tool being left and `tool_activated` for the new one; Select is the resting state, not a tool. */
-export function trackToolChange(from: string, to: string, via: ToolExitVia = 'switch'): void {
-  if (from === to) return;
-  if (from !== 'select') trackUiEvent('tool_exited', { tool: from, via });
-  if (to !== 'select') trackUiEvent('tool_activated', { tool: to });
+/**
+ * Wrap the UI slice so `setActiveTool` reports `tool_exited` for the tool being
+ * left and `tool_activated` for the new one (Select is the resting state, not
+ * a tool). Compared after the call, so a change the collab gate rejects emits
+ * nothing. Kept out of uiSlice.ts, whose isolated tests run without the
+ * browser globals posthog-js needs at import.
+ */
+export function withToolTelemetry<S extends UISlice>(
+  create: StateCreator<S, [], [], UISlice>,
+): StateCreator<S, [], [], UISlice> {
+  return (set, get, api) => {
+    const slice = create(set, get, api);
+    return {
+      ...slice,
+      setActiveTool: (tool, via: ToolExitVia = 'switch') => {
+        const from = get().activeTool;
+        slice.setActiveTool(tool, via);
+        const to = get().activeTool;
+        if (from === to) return;
+        if (from !== 'select') trackUiEvent('tool_exited', { tool: from, via });
+        if (to !== 'select') trackUiEvent('tool_activated', { tool: to });
+      },
+    };
+  };
 }

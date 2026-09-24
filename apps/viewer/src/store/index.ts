@@ -40,7 +40,7 @@ import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
-import { trackPanelOpened, type UiSurface } from './uiTelemetry.js';
+import { trackPanelOpened, withToolTelemetry, type UiSurface } from './uiTelemetry.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -239,7 +239,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
   ...createVisibilitySlice(...args),
-  ...createUISlice(...args),
+  ...withToolTelemetry(createUISlice)(...args),
   ...createHoverSlice(...args),
   ...createCameraSlice(...args),
   ...createSectionSlice(...args),

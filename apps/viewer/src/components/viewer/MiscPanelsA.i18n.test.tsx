@@ -140,7 +140,6 @@ const RESET_STATE = {
   activeBasketViewId: null,
   basketPresentationVisible: false,
   isMobile: false,
-  spaceMousePanelOpen: false,
   spaceMouseSupported: false,
   spaceMouseConnected: false,
   spaceMouseDeviceName: null,
@@ -391,16 +390,14 @@ describe('ScanSectionPanel localization (#4918)', () => {
   });
 });
 
-describe('SpaceMousePanel localization (#4918)', () => {
-  it('translates the header and the no-WebHID-support message', () => {
-    useViewerStore.setState({ spaceMousePanelOpen: true, spaceMouseSupported: false });
+describe('SpaceMousePanel localization (#4918, #5509)', () => {
+  it('translates the no-WebHID-support message', () => {
+    useViewerStore.setState({ spaceMouseSupported: false });
     const container = render(<SpaceMousePanel />);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'spaceMousePanel.dragToMoveTitle' },
-        { key: 'spaceMousePanel.headerLabel' },
         { key: 'spaceMousePanel.noWebHidMessage' },
       ],
       englishDom,
@@ -409,7 +406,7 @@ describe('SpaceMousePanel localization (#4918)', () => {
   });
 
   it('translates the connect button and sensitivity controls when supported but not connected', () => {
-    useViewerStore.setState({ spaceMousePanelOpen: true, spaceMouseSupported: true, spaceMouseConnected: false });
+    useViewerStore.setState({ spaceMouseSupported: true, spaceMouseConnected: false });
     const container = render(<SpaceMousePanel />);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
@@ -427,7 +424,6 @@ describe('SpaceMousePanel localization (#4918)', () => {
 
   it('translates the connected/disconnect row and device-name fallback', () => {
     useViewerStore.setState({
-      spaceMousePanelOpen: true,
       spaceMouseSupported: true,
       spaceMouseConnected: true,
       spaceMouseDeviceName: null,
@@ -460,7 +456,6 @@ describe('SpaceMousePanel localization (#4918)', () => {
       buildDump: () => '{}',
     };
     useViewerStore.setState({
-      spaceMousePanelOpen: true,
       spaceMouseSupported: true,
       spaceMouseConnected: true,
       spaceMouseDeviceName: 'Test Device',

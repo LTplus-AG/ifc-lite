@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HudSurface } from '@/components/viewport-ui/hud';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 
@@ -107,27 +108,24 @@ export function AnnotationDropInput({
   const overHardLimit = draft.length > MAX_NOTE_LEN;
 
   return (
-    <div
+    <HudSurface
       ref={containerRef}
       role="dialog"
       aria-label={t('annotations.dropInput.ariaLabel')}
       style={{ left, top, width: INPUT_WIDTH }}
       className={cn(
-        'absolute z-[60] pointer-events-auto',
-        'rounded-md border border-amber-400/70 dark:border-amber-600/40',
-        'bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md',
-        'shadow-[0_8px_32px_rgba(0,0,0,0.18)]',
-        'overflow-hidden',
+        // The shared viewport card (#5491): no bespoke hue, border or shadow.
+        'absolute z-[60] overflow-hidden',
         'animate-in fade-in-0 zoom-in-95 duration-150',
       )}
     >
       {/* Guiding label — explicit so the user knows what to type and
           establishes "this is for capturing intent, not chat". */}
-      <div className="px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-amber-50/40 dark:bg-amber-950/20">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
+      <div className="px-3 py-1.5 border-b border-border">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-popover-foreground">
           {t('annotations.dropInput.promptLabel')}
           {entityType && (
-            <span className="ml-1.5 text-zinc-500 dark:text-zinc-400">
+            <span className="ml-1.5 text-muted-foreground">
               · {entityType}
               {entityExpressId !== null && entityExpressId !== undefined && ` #${entityExpressId}`}
             </span>
@@ -146,12 +144,12 @@ export function AnnotationDropInput({
           maxLength={MAX_NOTE_LEN + 100}
           className={cn(
             'w-full resize-none font-mono text-[11px] leading-relaxed',
-            'bg-zinc-50 dark:bg-zinc-900/60 text-zinc-800 dark:text-zinc-200',
-            'border border-zinc-200 dark:border-zinc-800 rounded-sm',
+            'bg-background/60 text-popover-foreground',
+            'border border-border rounded-sm',
             'px-2 py-1.5 outline-none focus:ring-1',
             overHardLimit
               ? 'focus:ring-red-400 border-red-300 dark:border-red-700/60'
-              : 'focus:ring-amber-400/50 focus:border-amber-300/60',
+              : 'focus:ring-overlay-accent/50 focus:border-overlay-accent',
           )}
           spellCheck
           autoCorrect="on"
@@ -167,7 +165,7 @@ export function AnnotationDropInput({
                 overHardLimit
                   ? 'text-red-500'
                   : overSoftLimit
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-status-warn'
                     : 'text-zinc-400',
               )}
             >
@@ -187,7 +185,7 @@ export function AnnotationDropInput({
           </Button>
           <Button
             size="sm"
-            className="h-7 px-2 text-[11px] bg-amber-500 hover:bg-amber-500/90 text-white"
+            className="h-7 px-2 text-[11px] border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
             onClick={() => {
               if (overHardLimit) return;
               if (draft.trim().length === 0) onCancel();
@@ -200,6 +198,6 @@ export function AnnotationDropInput({
           </Button>
         </div>
       </div>
-    </div>
+    </HudSurface>
   );
 }

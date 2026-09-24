@@ -4702,6 +4702,7 @@
     "SpatialZoneInput: interface",
     "SpatialZoneType: type",
     "StairParams: interface",
+    "StationEquationParams: interface",
     "StoreyInfo: interface",
     "StoreyParams: interface",
     "StoreyPlanFrame: interface",

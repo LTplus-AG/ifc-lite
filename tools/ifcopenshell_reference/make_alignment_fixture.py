@@ -52,6 +52,60 @@ def loc(x, y):
     return {"kind": "coordinates", "point": {"northing": round(y, 6), "easting": round(x, 6)}}
 
 
+def curvatures(part):
+    sign = 1 if part.get("rotation", "counter_clockwise") == "counter_clockwise" else -1
+    if part["kind"] == "line":
+        return 0.0, 0.0
+    if part["kind"] == "curve":
+        return sign / part["radius"], sign / part["radius"]
+    r0, r1 = part["radiusStart"], part["radiusEnd"]
+    return (0.0 if r0 == "infinite" else sign / r0), (0.0 if r1 == "infinite" else sign / r1)
+
+
+def point_at(start, heading_deg, parts, distance):
+    """(easting, northing) at `distance` along the parts — this script's own integration."""
+    x, y = start
+    heading = math.radians(heading_deg)
+    for part in parts:
+        k0, k1 = curvatures(part)
+        length = part["length"]
+        if distance <= length:
+            # Curvature varies linearly over the WHOLE part, so the partial
+            # integral uses the part's rate, not one rescaled to `distance`.
+            k_at = k0 + (k1 - k0) * distance / length
+            px, py, _ = integrate(x, y, heading, k0, k_at, distance)
+            return [round(px, 6), round(py, 6)]
+        x, y, heading = integrate(x, y, heading, k0, k1, length)
+        distance -= length
+    raise ValueError("distance beyond the alignment")
+
+
+def station_equations(source_id, sta_start, start, heading_deg, parts, authored):
+    """StaEquation records plus what a reader must find for each (§14).
+
+    `authored` rows: (staInternal, staAhead, staBack or None, staIncrement or None).
+    The expected IncomingStation for an absent staBack follows the running
+    stationing, as rust/landxml's station_mapping derives it.
+    """
+    records, expected = [], []
+    displayed, previous, direction = sta_start, sta_start, 1
+    for ordinal, (internal, ahead, back, increment) in enumerate(authored, start=1):
+        records.append({
+            "sourceId": f"{source_id}:station-equation:{ordinal}", "staInternal": internal,
+            "staAhead": ahead, "staBack": back, "staIncrement": increment,
+        })
+        expected.append({
+            "distanceAlong": internal - sta_start,
+            "station": ahead,
+            "incomingStation": back if back is not None else displayed + direction * (internal - previous),
+            "hasIncreasingStation": None if increment is None else increment == "increasing",
+            "point": point_at(start, heading_deg, parts, internal - sta_start),
+        })
+        displayed, previous = ahead, internal
+        direction = -1 if increment == "decreasing" else 1
+    return records, expected
+
+
 def build(name, source_id, start, heading_deg, parts, sta_start):
     x, y = start
     heading = math.radians(heading_deg)
@@ -194,9 +248,24 @@ def build_profile(alignment, name, pvis, curves):
     return profile, {"staStart": alignment["staStart"], "heights": heights}
 
 
+def displayed(internal, sta_start, authored):
+    """The displayed station at an internal station, as rust/landxml's station_mapping reads it."""
+    value, previous, direction = sta_start, sta_start, 1
+    for eq_internal, ahead, _back, increment in authored:
+        if internal < eq_internal:
+            break
+        value, previous = ahead, eq_internal
+        direction = -1 if increment == "decreasing" else 1
+    return value + direction * (internal - previous)
+
+
+def displayed_stations(profile, sta_start, authored):
+    """Re-author a profile designed in internal stations in DISPLAYED ones (§14.5)."""
+    for record in profile["pvis"] + profile["verticalCurves"]:
+        record["station"] = round(displayed(record["station"], sta_start, authored), 9)
+
 def main():
-    left, left_b = build(
-        "A-Left", "landxml:alignment:1", (157800.0, 6406900.0), 30.0,
+    LEFT = ((157800.0, 6406900.0), 30.0,
         [
             {"kind": "line", "length": 120.0},
             {"kind": "spiral", "length": 80.0, "radiusStart": "infinite", "radiusEnd": 300.0, "rotation": "counter_clockwise"},
@@ -204,10 +273,8 @@ def main():
             {"kind": "spiral", "length": 80.0, "radiusStart": 300.0, "radiusEnd": "infinite", "rotation": "counter_clockwise"},
             {"kind": "line", "length": 100.0},
         ],
-        1000.0,
     )
-    right, right_b = build(
-        "A-Right", "landxml:alignment:2", (158500.0, 6407200.0), 100.0,
+    RIGHT = ((158500.0, 6407200.0), 100.0,
         [
             {"kind": "line", "length": 60.0},
             {"kind": "spiral", "length": 45.0, "radiusStart": "infinite", "radiusEnd": 150.0, "rotation": "clockwise"},
@@ -218,10 +285,10 @@ def main():
             {"kind": "spiral", "length": 50.0, "radiusStart": 400.0, "radiusEnd": "infinite", "rotation": "clockwise"},
             {"kind": "line", "length": 80.0},
         ],
-        0.0,
     )
-    compound, compound_b = build(
-        "A-Compound", "landxml:alignment:3", (159100.0, 6406500.0), -45.0,
+    left, left_b = build("A-Left", "landxml:alignment:1", *LEFT, 1000.0)
+    right, right_b = build("A-Right", "landxml:alignment:2", *RIGHT, 0.0)
+    COMPOUND = ((159100.0, 6406500.0), -45.0,
         [
             {"kind": "line", "length": 70.0},
             {"kind": "spiral", "length": 40.0, "radiusStart": "infinite", "radiusEnd": 600.0, "rotation": "counter_clockwise"},
@@ -233,14 +300,43 @@ def main():
             {"kind": "spiral", "length": 65.0, "radiusStart": 250.0, "radiusEnd": "infinite", "rotation": "counter_clockwise"},
             {"kind": "line", "length": 50.0},
         ],
-        250.0,
     )
+    compound, compound_b = build("A-Compound", "landxml:alignment:3", *COMPOUND, 250.0)
+    # Station equations (§14), and a profile read through them (§14.5).
+    #
+    # A-Left: ONE forward jump (internal 1200 -> displayed 1250) under its
+    # profile. The profile is designed in internal stations, exactly as before,
+    # and its PVIs and curves are then AUTHORED in displayed stations — so the
+    # IFC must carry the same geometry as without the jump, which only a
+    # correct station-to-distance mapping produces.
+    #
+    # A-Compound (no profile): a backward jump to below the start station (the
+    # case where ordering by Station and ordering along the alignment differ),
+    # a decreasing run starting inside the finite-start clothoid, then an
+    # equation with no staBack (a derived IncomingStation) inside the last
+    # spiral. A-Right keeps none.
+    referents = {}
+    left_equations = [(1200.0, 1250.0, 1200.0, "increasing")]
+    for alignment, start, heading_deg, parts, authored in (
+        (left, *LEFT, left_equations),
+        (compound, *COMPOUND, [
+            (330.0, 200.0, 330.0, "increasing"), (400.0, 500.0, 270.0, "decreasing"), (520.0, 2000.0, None, "increasing"),
+        ]),
+    ):
+        records, expected = station_equations(
+            alignment["sourceId"], alignment["staStart"], start, heading_deg, parts, authored,
+        )
+        alignment["stationEquations"] = records
+        referents[alignment["name"]] = {"startStation": alignment["staStart"], "equations": expected}
+    referents["A-Right"] = {"startStation": right["staStart"], "equations": []}
+
     # A-Left: a CREST parabola, a bare grade break, then a SAG circular arc.
     left_profile, left_v = build_profile(
         left, "P-Left",
         [(1000.0, 20.0), (1150.0, 23.0), (1300.0, 21.5), (1420.0, 18.9), (1530.0, 20.0)],
         {1: {"kind": "parabolic", "length": 80.0}, 3: {"kind": "circular", "radius": 2000.0}},
     )
+    displayed_stations(left_profile, left["staStart"], left_equations)
     # A-Right: a SAG parabola, then an UNSYMMETRICAL crest (unequal legs).
     right_profile, right_v = build_profile(
         right, "P-Right",
@@ -255,6 +351,7 @@ def main():
         "profiles": [left_profile, right_profile],
         "authored": {"A-Left": left_b, "A-Right": right_b, "A-Compound": compound_b},
         "authoredVertical": {"A-Left": left_v, "A-Right": right_v},
+        "referents": referents,
     }
     out = os.path.join(os.path.dirname(__file__), "alignment_fixture.json")
     with open(out, "w", encoding="utf-8") as handle:

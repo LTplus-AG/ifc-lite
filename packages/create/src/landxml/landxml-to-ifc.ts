@@ -31,6 +31,7 @@ import { checkCoordinateOrder, type CrsPlausibilityBounds } from './coordinate-p
 import { collectRefusals, isMappableSurface, refusalReason } from './refusals.js';
 import { cogoPointResolver, mapAlignments } from './alignment-mapping.js';
 import { mapProfiles } from './profile-mapping.js';
+import { stationEquationsOf } from './station-equations.js';
 import { writeAlignments, writeSurfaces, writeSurveyPoints } from './writers.js';
 import type { LandXmlIfcSource } from './source-types.js';
 import type {
@@ -38,7 +39,7 @@ import type {
 } from './result-types.js';
 
 /** The mapping-document version this converter implements. */
-export const LANDXML_IFC_MAPPING_VERSION = '1.2';
+export const LANDXML_IFC_MAPPING_VERSION = '1.3';
 
 export interface LandXmlIfcOptions {
   /** Recorded as provenance (§7); never used to decide anything. */
@@ -89,8 +90,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
   const alignmentMapping = mapAlignments(
     source.alignments, source.units, swap, cogoPointResolver(source.plan?.cogoPoints),
   );
-  const profileMapping = mapProfiles(source.profiles, source.alignments, alignmentMapping, source.units);
-  const refusals = collectRefusals(source, alignmentMapping, profileMapping);
+  const stationing = stationEquationsOf(source, alignmentMapping);
+  const profileMapping = mapProfiles(source.profiles, source.alignments, alignmentMapping, source.units, stationing);
+  const refusals = collectRefusals(source, alignmentMapping, profileMapping, stationing);
   const warnings: LandXmlIfcWarning[] = [];
 
   const mappableSurfaces = source.surfaces.filter(isMappableSurface);
@@ -169,7 +171,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
 
   const surfaceResult = writeSurfaces(terrain, source.surfaces, units, swap, landXmlGlobalId);
   const pointResult = writeSurveyPoints(terrain, cogoPoints, units, swap, landXmlGlobalId);
-  const alignmentSamples = writeAlignments(terrain, alignmentMapping.mapped, landXmlGlobalId, profileMapping.mapped);
+  const alignmentSamples = writeAlignments(
+    terrain, alignmentMapping.mapped, landXmlGlobalId, profileMapping.mapped, stationing,
+  );
 
   if (options.crs?.Bounds) {
     const warning = checkCoordinateOrder(

@@ -16,6 +16,7 @@ import type { TerrainWriter } from '../ifc-creator-terrain.js';
 import { isMappableSurface } from './refusals.js';
 import type { MappedAlignment } from './alignment-mapping.js';
 import type { MappedProfile } from './profile-mapping.js';
+import type { StationEquationMapping } from './station-equations.js';
 import type { LandXmlIfcCgPoint, LandXmlIfcSurface, LandXmlIfcUnits } from './source-types.js';
 
 /** Deterministic GlobalId from a LandXML source id, passed in to avoid an import cycle. */
@@ -163,6 +164,7 @@ export function writeSurveyPoints(
 export function writeAlignments(
   terrain: TerrainWriter, alignments: readonly MappedAlignment[], landXmlGlobalId: GlobalIdOf,
   profiles: readonly MappedProfile[] = [],
+  stationing: ReadonlyMap<string, StationEquationMapping> = new Map(),
 ): Array<[number, number]> {
   const samples: Array<[number, number]> = [];
   for (const alignment of alignments) {
@@ -177,6 +179,17 @@ export function writeAlignments(
       GlobalId: landXmlGlobalId(alignment.sourceId),
       StartStation: alignment.startStation,
       Segments: alignment.segments,
+      // §14: each written equation is an IfcReferent whose GlobalId derives
+      // from the equation's own source id.
+      StationEquations: (stationing.get(alignment.sourceId)?.equations ?? []).map((equation) => ({
+        DistanceAlong: equation.distanceAlong,
+        Station: equation.station,
+        IncomingStation: equation.incomingStation,
+        HasIncreasingStation: equation.increasing,
+        Role: equation.sourceId.startsWith(`${alignment.sourceId}:`)
+          ? equation.sourceId.slice(alignment.sourceId.length + 1)
+          : equation.sourceId,
+      })),
       guidFor: (role) => landXmlGlobalId(`${alignment.sourceId}:${role}`),
     });
     for (const segment of alignment.segments) samples.push([segment.start[0], segment.start[1]]);

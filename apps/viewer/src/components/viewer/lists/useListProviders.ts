@@ -20,6 +20,7 @@ import { createListDataProvider } from '@/lib/lists';
 import type { ModelProviderPair } from '@/lib/lists/run-list';
 import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
 import { zoneVolumeSiScale } from '@/lib/units/zone-volume-scale';
+import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export interface ListProviders {
   /** {modelId, provider, store} triples, built in one pass so they can never drift out of alignment. */
@@ -43,6 +44,8 @@ export function useListProviders(): ListProviders {
   const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const zoneApportionment = useViewerStore((s) => s.zoneApportionment);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Declared VOLUMEUNIT scale per model (#2508), memoized on MODELS alone so
   // zone/assignment changes don't re-derive a value that cannot have moved.
@@ -73,7 +76,7 @@ export function useListProviders(): ListProviders {
           toGlobalId: (expressId: number) => toGlobalId(modelId, expressId),
           getWorldPosition: makeWorldPositionGetter(model.ifcDataStore, model.geometryResult ?? geometryResult, renderFrame, (id) => toGlobalId(modelId, id)),
         };
-        out.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext), store: model.ifcDataStore });
+        out.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext, mutationViews.get(modelId)), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
       const zoneContext = {
@@ -83,10 +86,11 @@ export function useListProviders(): ListProviders {
         toGlobalId: (expressId: number) => toGlobalId('default', expressId),
         getWorldPosition: makeWorldPositionGetter(ifcDataStore, geometryResult, renderFrame, (id) => toGlobalId('default', id)),
       };
-      out.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext), store: ifcDataStore });
+      const view = mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
+      out.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext, view), store: ifcDataStore });
     }
     return out;
-  }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId]);
+  }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId, mutationViews, mutationVersion]);
 
   const providers = useMemo(() => pairs.map((p) => p.provider), [pairs]);
   const stores = useMemo(() => pairs.map((p) => p.store), [pairs]);

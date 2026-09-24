@@ -28,7 +28,18 @@
 
 const DEFAULT_ATLAS_SIZE = 1024;
 const DEFAULT_GLYPH_PX = 48;        // canvas pixels per glyph height
-const DEFAULT_PADDING = 2;          // pixels of empty space around each glyph (prevents bleed)
+/**
+ * Atlas pixels of contrasting halo drawn around every glyph (#5388). Labels
+ * sit over model geometry as often as over the empty backdrop, so no single
+ * ink colour is legible on both; a halo is. The text pipeline widens each
+ * glyph quad (and its atlas UVs) by this margin on every side, and the
+ * fragment shader dilates the glyph coverage into it.
+ */
+export const GLYPH_HALO_PX = 6;
+// Empty space between packed glyphs. Each glyph's halo margin reads GLYPH_HALO_PX
+// into this gap from BOTH neighbours, plus 1 px each so linear filtering at the
+// widened quad edge never picks up the next glyph.
+const DEFAULT_PADDING = GLYPH_HALO_PX * 2 + 2;
 const DEFAULT_FONT_FAMILY =
   '"Inter", "Helvetica Neue", "Segoe UI", system-ui, -apple-system, sans-serif';
 

@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
-import { resolveEnvironment } from './environment.js';
 
 /**
  * The colour pipeline lights authored sRGB colours in linear and grades
@@ -83,34 +82,5 @@ describe('linear colour pipeline (#5381)', () => {
       });
       assert.ok(bodies.every((b) => b === bodies[0]), `\`fn ${fn}\` differs between shaders; they must share color-transfer.wgsl.ts`);
     }
-  });
-
-  it('calibrates the default rig so a sun-facing horizontal surface is at unit irradiance', () => {
-    const declared = /const IRRADIANCE_CALIBRATION: f32 = ([\d.]+);/.exec(mainShaderSource);
-    assert.ok(declared, 'expected the shader to declare IRRADIANCE_CALIBRATION');
-    const calibration = Number(declared[1]);
-    // The value is only half the contract: fs_main must actually scale the
-    // light by it, or a correct constant calibrates nothing.
-    assert.match(
-      mainShaderSource,
-      /let irradiance = lightTerm \* \(env\.exposure \* IRRADIANCE_CALIBRATION\);/,
-      'fs_main no longer applies IRRADIANCE_CALIBRATION to the light',
-    );
-
-    // main.wgsl's light terms evaluated for N = +Y with the default environment.
-    const env = resolveEnvironment();
-    const norm = (v: readonly number[]) => {
-      const l = Math.hypot(v[0], v[1], v[2]);
-      return [v[0] / l, v[1] / l, v[2] / l];
-    };
-    const n = [0, 1, 0];
-    const dot = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    const sun = Math.max((Math.abs(dot(n, env.sunDirection)) + env.sunSoftness) / (1 + env.sunSoftness), 0) * env.sunIntensity;
-    const fill = Math.abs(dot(n, norm([-0.5, 0.3, -0.3]))) * env.fillIntensity;
-    const rim = Math.max(dot(n, norm([0, 0.2, -1])), 0) ** 4 * env.rimIntensity;
-    const light = env.skyColor.map((c, i) => c * env.ambientIntensity + env.sunColor[i] * sun + fill + rim);
-    const luma = 0.299 * light[0] + 0.587 * light[1] + 0.114 * light[2];
-    const irradiance = luma * env.exposure * calibration;
-    assert.ok(Math.abs(irradiance - 1) < 0.005, `default key irradiance ${irradiance.toFixed(4)} drifted from 1.0; recalibrate IRRADIANCE_CALIBRATION`);
   });
 });

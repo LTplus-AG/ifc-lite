@@ -16,9 +16,9 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 /**
  * Converts the environment's light intensities to linear irradiance.
  *
- * Those intensities were tuned by eye for a pipeline that lit sRGB values as
- * if they were linear and brightened the result with a 2.2 gamma. Lit in
- * linear, the same numbers would render every model far darker. The default
+ * The intensity scale predates the linear pipeline (#5381), which lights in
+ * linear rather than lighting sRGB values and brightening them with a 2.2
+ * gamma; one factor maps it instead of restating every preset. The default
  * rig delivers 0.6464 (luma) to a sun-facing horizontal surface and the
  * default exposure is 0.85, so this factor puts that surface at unit
  * irradiance by luma. The default sky tint leaves the channels within about
@@ -27,7 +27,7 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
  * within about 2% of authored and pure white lands near 241/255. Every
  * preset and user exposure is scaled by the same factor, so their relative
  * brightness holds.
- * `color-pipeline.test.ts` re-derives it from the default rig.
+ * `light-rig.test.ts` re-derives it from the default rig.
  */
 const IRRADIANCE_CALIBRATION = 1.82;
 
@@ -406,26 +406,29 @@ export const mainShaderSource = `
           }
 
           // Lighting environment — sun/hemisphere/exposure come from the
-          // global env uniform (defaults reproduce the historic hardcoded
-          // values); fill + rim directions stay fixed in view-agnostic
-          // world space as stylistic shaping lights.
+          // global env uniform. The fill follows the sun (it bounces in from
+          // the opposite side); the rim stays fixed in world space as a
+          // stylistic shaping light.
           let sunLight = env.sunDirection;
-          let fillLight = normalize(vec3<f32>(-0.5, 0.3, -0.3));  // Fill light
+          // Horizontal mirror of the sun, lifted slightly. An overhead sun
+          // leaves (0, 0.25, 0), which normalizes to straight up.
+          let fillLight = normalize(vec3<f32>(-sunLight.x, 0.25, -sunLight.z));
           let rimLight = normalize(vec3<f32>(0.0, 0.2, -1.0));  // Rim light for edge definition
 
-          // Hemisphere ambient
+          // Hemisphere ambient. This, not the sun, keeps faces turned away
+          // from the sun readable (I-beam webs and flange undersides, #5382).
           let hemisphereFactor = N.y * 0.5 + 0.5;
           let ambient = mix(env.groundColor, env.skyColor, hemisphereFactor) * env.ambientIntensity;
 
-          // Two-sided sun light so inner faces (I-beam channels) stay visible.
+          // One-sided sun, so a building has a lit side and a shaded side.
           // sunSoftness is the diffuse wrap (env uniform): 0 = crisp
           // terminator (hard shadows), larger = softer wrap-around (overcast).
-          let NdotL = abs(dot(N, sunLight));
+          let NdotL = dot(N, sunLight);
           let wrap = env.sunSoftness;
           let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * env.sunIntensity;
 
-          // Fill light - two-sided
-          let NdotFill = abs(dot(N, fillLight));
+          // Fill light, one-sided like the sun.
+          let NdotFill = max(dot(N, fillLight), 0.0);
           let diffuseFill = NdotFill * env.fillIntensity;
 
           // Rim light for edge definition

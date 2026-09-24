@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/flow-nodes",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node",
   "type": "module",
   "main": "./dist/index.js",

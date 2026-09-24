@@ -1,5 +1,15 @@
 # @ifc-lite/flow
 
+## 0.3.0
+
+### Minor Changes
+
+- [#5359](https://github.com/LTplus-AG/ifc-lite/pull/5359) [`94324e2`](https://github.com/LTplus-AG/ifc-lite/commit/94324e2a69a6cf41cf23488ccdc56b2b7d2c069f) Thanks [@louistrue](https://github.com/louistrue)! - Add `describe_flow` and `run_flow` MCP tools ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) Phase 4.3): agents can now discover and execute a `.flow.json` graph headlessly through MCP, exactly as `ifc-lite flow run` does. `describe_flow` returns a graph's declared inputs/outputs with types and registry-aware wiring diagnostics (`validateFlowWiring`, not just the registry-free `parseFlowDocument`) without throwing on an invalid graph. `run_flow` executes a graph against a loaded model, rejects `inputs` keys naming no declared parameter, and reports the run status plus a summary of tracked writes. `@ifc-lite/flow` gains `describeFlowIO`, `resolveDeclaredParam`, `unknownInputKeys`, and `declaredInputKeys` — the introspection/input-validation helpers now shared between `@ifc-lite/cli`'s `flow` command and the new MCP tools, so the two callers cannot independently drift on what counts as a declared parameter.
+
+### Patch Changes
+
+- [#5240](https://github.com/LTplus-AG/ifc-lite/pull/5240) [`46f79e3`](https://github.com/LTplus-AG/ifc-lite/commit/46f79e38649c6d78753587aeaefbf3d5bbef0d95) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a tracked node whose `NodeDef` has no `remove` hook reporting vanished elements as removed and dropping their entries from the tracking store, orphaning them in the model with no way to retry. The scheduler now warns, counts them as not removed, and retains their entries, matching how the orphan sweep already handles this case.
+
 ## 0.2.0
 
 ### Minor Changes

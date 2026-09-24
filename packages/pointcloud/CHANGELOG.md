@@ -1,5 +1,11 @@
 # @ifc-lite/pointcloud
 
+## 0.11.0
+
+### Minor Changes
+
+- [#5258](https://github.com/LTplus-AG/ifc-lite/pull/5258) [`c0f6caa`](https://github.com/LTplus-AG/ifc-lite/commit/c0f6caab3c726369707173e8aa48017a609e7cc0) Thanks [@louistrue](https://github.com/louistrue)! - `inspectE57SpatialMetadata` and `E57StreamingSource.open()` now throw when the E57 XML metadata section reads shorter than its declared length (a truncated blob), instead of silently returning `undefined` as if the file had no CRS. Point-data reads keep their existing tolerance for an over-reported `recordCount`.
+
 ## 0.10.0
 
 ### Minor Changes

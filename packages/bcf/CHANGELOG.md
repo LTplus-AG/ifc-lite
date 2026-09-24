@@ -1,5 +1,17 @@
 # @ifc-lite/bcf
 
+## 4.2.0
+
+### Minor Changes
+
+- [#5247](https://github.com/LTplus-AG/ifc-lite/pull/5247) [`becc9dc`](https://github.com/LTplus-AG/ifc-lite/commit/becc9dc4bd33267dbe8522f788fb8936dd349b70) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `readBCF` silently dropping topics nested below the archive root (e.g. `MyProject/<guid>/markup.bcf`, the shape produced by zipping a folder rather than its contents) and dropping viewpoints named with an uppercase `.BCFV` extension. Both previously vanished with no warning and no error. Topic-folder matching now works at any depth while explicitly excluding `__MACOSX` resource-fork shadow paths, so this is a behaviour change consumers may observe as more topics/viewpoints being read from archives that used to import as empty or incomplete.
+
+### Patch Changes
+
+- [#5293](https://github.com/LTplus-AG/ifc-lite/pull/5293) [`77f5e16`](https://github.com/LTplus-AG/ifc-lite/commit/77f5e16e939aac5d28301c56a29c04472aa90792) Thanks [@louistrue](https://github.com/louistrue)! - Fix `readBCF` silently returning an empty project for a `.bcfzip` whose entries use backslash path separators (a real historical Windows-zip-writer output). Entry names are normalised to `/` once when the archive loads, so the archive root, topic folders, viewpoints and snapshots all resolve, including in a zipped-folder archive. A `markup.bcf` that no topic folder can claim is now reported through `onWarning` (and the console) instead of reading as a successful empty result.
+
+- [#5278](https://github.com/LTplus-AG/ifc-lite/pull/5278) [`610c3a1`](https://github.com/LTplus-AG/ifc-lite/commit/610c3a1d60c76850c2d2cc839e176f97ec0e2ca6) Thanks [@louistrue](https://github.com/louistrue)! - `readBCF` now reads `bcf.version` and `project.bcfp` when their names differ only in case (for example `MyProject/BCF.VERSION`), at the archive root and inside a wrapped project folder. Previously the wrapped root was matched case-insensitively and then read under a lowercase name that did not exist, so the import failed with `missing bcf.version`.
+
 ## 4.1.0
 
 ### Minor Changes

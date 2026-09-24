@@ -1,5 +1,36 @@
 # @ifc-lite/renderer
 
+## 4.1.0
+
+### Minor Changes
+
+- [#5400](https://github.com/LTplus-AG/ifc-lite/pull/5400) [`b1004c3`](https://github.com/LTplus-AG/ifc-lite/commit/b1004c3f0fe070d01dd7fc8b8d889c3dd990c14b) Thanks [@louistrue](https://github.com/louistrue)! - Stop distorting authored colours ([#5381](https://github.com/LTplus-AG/ifc-lite/issues/5381)). The geometry shader used to multiply sRGB colours by light as if they were linear, then darken near-greys, stretch contrast, boost saturation 1.4x, run ACES and apply a 2.2 power. That turned grass green neon, brown brick crimson and every grey at or below 40/255 pure black, and kept pure white below 202/255.
+  
+  Colours, overlay tints, texture texels and the selection blue are now decoded to linear before lighting. Highlights roll off with a hue-preserving operator (Khronos PBR Neutral without its toe), and the result is encoded as exact sRGB. The procedural sky uses the same shared functions.
+  
+  `LightingEnvironment` values keep their meaning and defaults. A fixed calibration converts them to linear irradiance, so the default rig lights a sun-facing horizontal surface at unit irradiance by luma, and every preset keeps its relative brightness. Mid-tone colours on that surface render within about 2% of their authored values per channel (the residual comes from the default sky tint). Colours brighter than about 227/255 roll off with their hue preserved, so pure white lands near 241/255. The rendered look of every model changes.
+
+- [#5466](https://github.com/LTplus-AG/ifc-lite/pull/5466) [`3f0af07`](https://github.com/LTplus-AG/ifc-lite/commit/3f0af07966ecd8493b83315b81a0cdf2c9889d66) Thanks [@louistrue](https://github.com/louistrue)! - Give buildings a lit side and a shaded side ([#5382](https://github.com/LTplus-AG/ifc-lite/issues/5382)). The sun and fill lights used `abs(dot(N, L))`, which lit a face turned away from the sun exactly as brightly as one facing it (a slab's underside came out at 0.91 of its top). The default sun also sat behind the default camera, so both walls seen on open were sunlit. With cast shadows on, shadowed areas went near-black because the ambient was about 0.09 of the key light.
+  
+  The sun and fill are now one-sided, and the fill comes from the side opposite the sun. The default rig is re-balanced:
+  - sun from `normalize(-0.45, 1, 0.6)`, which lights +Z and leaves +X (seen on open) in shade;
+  - `sunIntensity` 0.4, `ambientIntensity` 0.775, `skyColor` [0.34, 0.35, 0.36] (near-neutral, so the ambient, now almost half the key, does not tint sunlit whites), `groundColor` [0.24, 0.2, 0.17], `fillIntensity` 0.1, `rimIntensity` 0.05.
+  
+  A sun-facing horizontal surface stays at unit irradiance (each channel within about 1.5%). Faces turned away from the sun keep about 42% of the key, and a cast-shadowed floor about 48%. Callers passing their own `LightingEnvironment` get the one-sided shading with their values.
+
+### Patch Changes
+
+- [#5436](https://github.com/LTplus-AG/ifc-lite/pull/5436) [`b12b113`](https://github.com/LTplus-AG/ifc-lite/commit/b12b11325a47f1989c855f6e12c1f243da10ef9a) Thanks [@louistrue](https://github.com/louistrue)! - IfcAnnotation labels now draw with a thin contrasting halo (black around light text, white around dark text), so they stay legible over model geometry and over the empty backdrop in every theme ([#5388](https://github.com/LTplus-AG/ifc-lite/issues/5388)). Glyph quads and atlas UVs are widened by the halo margin; the glyph itself does not move.
+
+- [#5437](https://github.com/LTplus-AG/ifc-lite/pull/5437) [`8fe905e`](https://github.com/LTplus-AG/ifc-lite/commit/8fe905ed4ee6db585da82e6eb15b1b117d45c86b) Thanks [@louistrue](https://github.com/louistrue)! - Render the 3D canvas at the display's device-pixel resolution, and stop flooring its width to a multiple of 64 ([#5383](https://github.com/LTplus-AG/ifc-lite/issues/5383)). The drawing buffer now follows the element's CSS size times `devicePixelRatio` (capped at 2, and lowered uniformly on both axes when the GPU's max texture dimension would be exceeded), so HiDPI screens get a sharp image instead of an upscaled CSS-resolution one, and the buffer's aspect matches the element's, so the view is no longer stretched sideways. Sizes authored in CSS pixels stay the same on screen at every density: point-cloud splats, symbolic text, section-cap hatching, contact shading, separation lines, eye-dome lighting, snap tolerances and the small-object cull thresholds. Picking keeps rendering at CSS resolution, so a click costs the same as before. In the viewer, wheel and pinch zoom-to-cursor and the orbit pivot pair CSS cursor coordinates with the CSS extent instead of the drawing-buffer width, and the scale bar and the adaptive fit read CSS sizes.
+
+- [#5453](https://github.com/LTplus-AG/ifc-lite/pull/5453) [`08f3eca`](https://github.com/LTplus-AG/ifc-lite/commit/08f3eca2222a244402d07e30f7aaab8633967bb5) Thanks [@louistrue](https://github.com/louistrue)! - Make a streaming finalize rebuild only what was streamed since the last finalize ([#5358](https://github.com/LTplus-AG/ifc-lite/issues/5358)). `Scene.finalizeStreaming()` and `finalizeStreamingAsync()` used to dissolve and rebuild every bucket in the scene, so each streamed federated add re-merged and re-uploaded the whole federation (O(N²) over N models) and briefly held two GPU copies of all of it. They now re-group and rebuild only the buckets that received streamed meshes (plus any key already pending). Every other model keeps its batches, its partial-visibility caches and its residency state. The streamed meshes are still re-grouped by their current colour, so deferred style colours applied during streaming still land in the right batch. On a failed GPU upload the bucket map is restored along with the drawables.
+
+- [#5519](https://github.com/LTplus-AG/ifc-lite/pull/5519) [`049d987`](https://github.com/LTplus-AG/ifc-lite/commit/049d9873ebb4a1f312ea0e8f8bef4c55460d3d23) Thanks [@louistrue](https://github.com/louistrue)! - Upload static geometry (batch vertex/index/LOD buffers, instanced template and instance buffers, and their device-recovery rebuilds) with `queue.writeBuffer` instead of `createBuffer({ mappedAtCreation: true })` ([#5429](https://github.com/LTplus-AG/ifc-lite/issues/5429)). On Chromium (Chrome / Edge / WebView2), a mapped-at-creation buffer keeps a shared-memory copy of its full contents for as long as it lives, so a loaded scene carried a hidden second copy of all its GPU geometry in system commit. Every site now goes through one helper, `createStaticGpuBuffer`, which pads payloads to the 4-byte multiple `writeBuffer` requires, so an odd-length upload can never raise an `OperationError` that the device-loss classifier would mistake for a lost device. The `createBuffer failed … when mappedAtCreation == true` RangeError can no longer come from these uploads.
+- Updated dependencies [[`8d45322`](https://github.com/LTplus-AG/ifc-lite/commit/8d45322f544ba1c3a6352303dfb048cc5d3836a6), [`5e79d7e`](https://github.com/LTplus-AG/ifc-lite/commit/5e79d7eb6837e238060dde19fa0b4933b832c1a7), [`7e5eb9e`](https://github.com/LTplus-AG/ifc-lite/commit/7e5eb9eb9631bceeefd5f03e6c18ac4cc7e35876)]:
+  - @ifc-lite/geometry@7.5.1
+  - @ifc-lite/spatial@1.15.0
+
 ## 4.0.0
 
 ### Major Changes

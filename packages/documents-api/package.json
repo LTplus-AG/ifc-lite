@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/documents-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server",
   "type": "module",
   "main": "./dist/index.js",

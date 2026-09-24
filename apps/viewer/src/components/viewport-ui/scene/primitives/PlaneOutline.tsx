@@ -72,6 +72,19 @@ export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projector, baseId, corners.length]);
 
+  // `corners.length` above only re-registers anchors when the CORNER COUNT
+  // changes; the registered getters already read `latest.current` fresh, so
+  // a coordinate move is picked up on the next dirty tick — but with a
+  // static camera nothing schedules that next tick (#5636 review, same
+  // class as `useWorldAnchor`'s). `cornerKey` turns the corner VALUES into
+  // one dependency so this effect re-runs — and wakes the projector — on an
+  // actual coordinate change, not just on array-identity or length changes.
+  const cornerKey = corners.map((c) => `${c.x},${c.y},${c.z}`).join('|');
+  useEffect(() => {
+    projector?.notifyAnchorsChanged();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projector, cornerKey]);
+
   if (!svgLayer) return null;
 
   return createPortal(

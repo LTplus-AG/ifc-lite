@@ -62,7 +62,11 @@ export function useWorldAnchor<T extends AnchorElement>(
       (projection) => {
         const el = ref.current;
         if (!el) return;
-        if (projection.screen) {
+        // Behind-camera AND off-screen both mean "don't show this" — a
+        // point that projects to a screen coordinate well outside the
+        // canvas is still `screen: { x, y }` (truthy), so `offScreen` must
+        // be checked separately, not folded into "no screen" (#5636 review).
+        if (projection.screen && !projection.offScreen) {
           el.style.display = '';
           (latest.current.applyTransform ?? defaultApplyTransform)(el, projection.screen);
         } else {
@@ -74,6 +78,22 @@ export function useWorldAnchor<T extends AnchorElement>(
     return unregister;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projector, id]);
+
+  // Read the CURRENT world point (not through `latest.current`, which
+  // exists only to dodge react-hooks/exhaustive-deps on the registration
+  // effect above) so this effect's dependency array sees the actual x/y/z
+  // VALUES, not the closure identity — `getWorldPoint` is a fresh closure
+  // almost every render even when the point it returns hasn't moved, and a
+  // fresh closure identity is not "the anchor changed". When the camera is
+  // static, nothing else notices a prop-driven world-point move: the
+  // projector is idle, and `registerAnchor` only fires once at mount. This
+  // is what wakes it on a value change instead of leaving the element
+  // stranded at its old screen position until an unrelated wake (#5636 review).
+  const currentWorldPoint = getWorldPoint();
+  useEffect(() => {
+    projector?.notifyAnchorsChanged();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projector, currentWorldPoint?.x, currentWorldPoint?.y, currentWorldPoint?.z]);
 
   return { ref };
 }

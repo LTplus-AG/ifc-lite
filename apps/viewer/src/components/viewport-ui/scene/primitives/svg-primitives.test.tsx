@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act, useState } from 'react';
 import { cleanup } from '@/test/render.js';
 import { renderScene } from '../test/scene-test-support.js';
 import { Handle } from './Handle.js';
@@ -20,6 +21,7 @@ import { SnapGlyph } from './SnapGlyph.js';
 import { Pin } from './Pin.js';
 import { PlaneOutline } from './PlaneOutline.js';
 import { Leader } from './Leader.js';
+import type { Vec3 } from '../types.js';
 
 afterEach(() => cleanup());
 
@@ -56,6 +58,44 @@ describe('Handle', () => {
     assert.equal(g.style.display, 'none');
     // Mutation check: dropping the `else { el.style.display = 'none' }` branch
     // in useWorldAnchor's callback would leave this asserting a false positive.
+  });
+
+  it('hides when off-screen, even though projection.screen is truthy (#5636 review)', () => {
+    // The stub camera maps world x/y straight to screen px with no clamping,
+    // so a world point of (5000, 5000) against the default 800x600 stub
+    // canvas projects to a real, truthy `screen` point that is nonetheless
+    // outside the canvas — `offScreen: true`. `useWorldAnchor` must treat
+    // that the same as "no screen".
+    const { container, flush } = renderScene(<Handle worldPoint={{ x: 5000, y: 5000, z: 0 }} />);
+    flush();
+    const g = container.querySelector('[data-scene-primitive="handle"]') as SVGGElement;
+    assert.equal(g.style.display, 'none');
+    // Mutation check: `if (projection.screen)` without the `&& !projection.offScreen`
+    // clause reads `display: ''` here instead — verified by reverting the
+    // fix and re-running this file (see PR #5636 review thread).
+  });
+
+  it('re-projects when worldPoint changes VALUE with a static camera (#5636 review)', () => {
+    // Registration only happens once (on mount); with a static camera
+    // nothing else re-checks a static-looking anchor. A prop-driven
+    // worldPoint move must itself wake the projector.
+    let setPoint!: (p: Vec3) => void;
+    function Harness() {
+      const [point, setP] = useState<Vec3>({ x: 1, y: 1, z: 0 });
+      setPoint = setP;
+      return <Handle worldPoint={point} />;
+    }
+    const { container, source, flush } = renderScene(<Harness />);
+    flush();
+    const g = container.querySelector('[data-scene-primitive="handle"]') as SVGGElement;
+    assert.equal(g.style.transform, 'translate(1px, 1px)');
+    source.dirty = false; // camera stays put — only the worldPoint prop moves
+    act(() => setPoint({ x: 9, y: 9, z: 0 }));
+    flush();
+    assert.equal(g.style.transform, 'translate(9px, 9px)');
+    // Mutation check: removing the `useEffect(() => projector?.notifyAnchorsChanged(), [projector, currentWorldPoint?.x, …])`
+    // effect leaves `scheduler.pending` at 0 after the prop change, so `flush()`
+    // runs nothing and this reads the stale `translate(1px, 1px)`.
   });
 });
 
@@ -147,6 +187,37 @@ describe('PlaneOutline', () => {
     assert.equal(polygon.style.display, 'none');
     // Mutation check: using `.some()` instead of `.every()` for `allVisible`
     // would keep the polygon visible with a missing corner.
+  });
+
+  it('re-projects when corner VALUES change without corners.length changing (#5636 review)', () => {
+    let setCorners!: (c: Vec3[]) => void;
+    function Harness() {
+      const [corners, setC] = useState<Vec3[]>([
+        { x: 0, y: 0, z: 0 },
+        { x: 10, y: 0, z: 0 },
+        { x: 10, y: 10, z: 0 },
+      ]);
+      setCorners = setC;
+      return <PlaneOutline corners={corners} />;
+    }
+    const { container, source, flush } = renderScene(<Harness />);
+    flush();
+    const polygon = container.querySelector('[data-scene-primitive="plane-outline"]') as SVGPolygonElement;
+    assert.equal(polygon.getAttribute('points'), '0,0 10,0 10,10');
+    source.dirty = false; // camera stays put — only the corner coordinates move
+    act(() =>
+      setCorners([
+        { x: 5, y: 5, z: 0 },
+        { x: 15, y: 5, z: 0 },
+        { x: 15, y: 15, z: 0 },
+      ]),
+    );
+    flush();
+    assert.equal(polygon.getAttribute('points'), '5,5 15,5 15,15');
+    // Mutation check: removing the `cornerKey`-driven `useEffect` leaves the
+    // main registration effect's `[projector, baseId, corners.length]` deps
+    // unchanged (length is still 3), so no frame gets scheduled and this
+    // reads the stale `0,0 10,0 10,10`.
   });
 });
 

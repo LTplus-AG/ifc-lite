@@ -31,6 +31,13 @@ export const hierarchyEn = {
   'hierarchy.node.syncFromSource': 'Sync from source',
   'hierarchy.node.removeModelAriaLabel': 'Remove model {name}',
   'hierarchy.node.removeModel': 'Remove model',
+  'hierarchy.removeModelConfirm.title': 'Remove model with unexported changes?',
+  'hierarchy.removeModelConfirm.description': {
+    one: '{name} has {count} change that has not been exported. Removing the model discards it.',
+    other: '{name} has {count} changes that have not been exported. Removing the model discards them.',
+  },
+  'hierarchy.removeModelConfirm.cancel': 'Cancel',
+  'hierarchy.removeModelConfirm.confirm': 'Remove and discard changes',
 
   // HierarchyNode: regular spatial/element row
   'hierarchy.node.collapseAriaLabel': 'Collapse {name}',

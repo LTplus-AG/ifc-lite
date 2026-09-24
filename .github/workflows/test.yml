@@ -1068,6 +1068,21 @@ jobs:
       # actual assets can't make these pass vacuously.
       - name: Check asset-usage gate regressions
         run: node --test scripts/check-asset-usage.test.mjs
+      # A `var(--name)` reference with no fallback that resolves to nothing
+      # renders `none`/invalid rather than failing loudly (#5479):
+      # MeasurementVisuals.tsx stroked finished measurement lines with
+      # `hsl(var(--primary))` at 16 sites, but no `--primary` custom property
+      # was ever declared -- the viewer's Tailwind v4 @theme block defines
+      # `--color-primary` instead. Once a drag ended, the line's computed
+      # stroke was `none`: two floating endpoint dots and a label were all
+      # that remained. tsc does not know CSS custom properties exist, so
+      # nothing caught it. Its own tests run first, same reason as every
+      # other gate here: this check's value is entirely in not passing
+      # vacuously.
+      - name: Check CSS custom-property gate's own tests
+        run: node --test scripts/check-css-vars.test.mjs
+      - name: Check for undefined CSS custom-property references
+        run: node scripts/check-css-vars.mjs
       # An entity can legitimately carry two distinct property/quantity sets
       # sharing the same name (type + occurrence). `sets.find(s => s.name ===
       # x)` only ever sees the first one -- fixed one call site at a time

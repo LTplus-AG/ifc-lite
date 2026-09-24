@@ -23,7 +23,7 @@ export type Point2D = [number, number];
 export interface Placement3D {
   Location: Point3D;
   Axis?: Point3D;        // Z direction, default [0,0,1]
-  RefDirection?: Point3D; // X direction, default [1,0,0]
+  RefDirection?: Point3D; // X direction, default world X projected normal to Axis (IfcFirstProjAxis)
 }
 
 /** 2D rectangle profile (width along X, depth along Y, centered at origin) */

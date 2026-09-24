@@ -105,7 +105,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={m.start.screenY}
               x2={m.end.screenX}
               y2={m.end.screenY}
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
               strokeDasharray="6,3"
               filter="url(#glow)"
@@ -116,7 +116,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cy={m.start.screenY}
               r="5"
               fill="white"
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
             />
             {/* End point */}
@@ -125,7 +125,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cy={m.end.screenY}
               r="5"
               fill="white"
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
             />
           </svg>
@@ -167,9 +167,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         return (
           <div key={pl.id} className="pointer-events-none">
             <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
-              <path d={d} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" filter="url(#glow)" />
+              <path d={d} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeDasharray="6,3" filter="url(#glow)" />
               {pl.points.map((p, i) => (
-                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill="white" stroke="var(--color-primary)" strokeWidth="2" />
               ))}
             </svg>
             <div
@@ -197,7 +197,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         return (
           <div className="pointer-events-none">
             <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
-              <path d={placedD} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter="url(#glow)" />
+              <path d={placedD} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter="url(#glow)" />
               {/* Rubber-band segment to the cursor's current snap/hover position. */}
               {hoverPosition && (
                 <line
@@ -205,14 +205,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   y1={last.screenY}
                   x2={hoverPosition.x}
                   y2={hoverPosition.y}
-                  stroke="hsl(var(--primary))"
+                  stroke="var(--color-primary)"
                   strokeWidth="1.5"
                   strokeDasharray="3,3"
                   strokeOpacity="0.5"
                 />
               )}
               {points.map((p, i) => (
-                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill="white" stroke="var(--color-primary)" strokeWidth="2" />
               ))}
               {/* First point gets a visible "close the loop here" ring once
                   there are enough points to close (>= 3) — clicking inside
@@ -258,7 +258,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={activeMeasurement.start.screenY}
               x2={activeMeasurement.current.screenX}
               y2={activeMeasurement.current.screenY}
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
               strokeDasharray="6,3"
               strokeOpacity="0.7"
@@ -270,7 +270,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cy={activeMeasurement.start.screenY}
               r="6"
               fill="white"
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
               filter="url(#glow)"
             />
@@ -280,7 +280,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cy={activeMeasurement.current.screenY}
               r="7"
               fill="white"
-              stroke="hsl(var(--primary))"
+              stroke="var(--color-primary)"
               strokeWidth="2"
               filter="url(#glow)"
               className="animate-pulse"
@@ -524,7 +524,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             y1={snapVisualization.planeIndicator.y}
             x2={snapVisualization.planeIndicator.x + 20}
             y2={snapVisualization.planeIndicator.y}
-            stroke="hsl(var(--primary))"
+            stroke="var(--color-primary)"
             strokeWidth="2"
             strokeOpacity="0.4"
           />
@@ -533,7 +533,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             y1={snapVisualization.planeIndicator.y - 20}
             x2={snapVisualization.planeIndicator.x}
             y2={snapVisualization.planeIndicator.y + 20}
-            stroke="hsl(var(--primary))"
+            stroke="var(--color-primary)"
             strokeWidth="2"
             strokeOpacity="0.4"
           />
@@ -542,7 +542,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             cx={snapVisualization.planeIndicator.x}
             cy={snapVisualization.planeIndicator.y}
             r="4"
-            fill="hsl(var(--primary))"
+            fill="var(--color-primary)"
             fillOpacity="0.6"
           />
         </svg>
@@ -568,14 +568,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             cy={pending.screenY}
             r="5"
             fill="none"
-            stroke="hsl(var(--primary))"
+            stroke="var(--color-primary)"
             strokeWidth="1.5"
           />
           <circle
             cx={pending.screenX}
             cy={pending.screenY}
             r="2.5"
-            fill="hsl(var(--primary))"
+            fill="var(--color-primary)"
           />
         </svg>
       )}

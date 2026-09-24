@@ -88,6 +88,7 @@ import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
+import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -2049,7 +2050,8 @@ export function useIfcLoader() {
         // The stall / worker-crash / OOM failures land HERE, not in the outer
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
-        setError(formatLoadError(err, file.name, 'geometry_processing'));
+        // A stale deployment gets the reload notice, not a generic error (#5609).
+        if (!surfaceStaleDeployment(err)) setError(formatLoadError(err, file.name, 'geometry_processing'));
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2184,7 +2186,7 @@ export function useIfcLoader() {
         loadState: 'error',
         loadError: friendly,
       });
-      setError(friendly);
+      if (!surfaceStaleDeployment(err)) setError(friendly);
       // Flat, and enough to identify the failure WITHOUT a stack: a fetch
       // rejection ("Load failed" / "Failed to fetch") carries no frames of
       // ours, so `load_stage` + `error_type` + `online` are all the triage

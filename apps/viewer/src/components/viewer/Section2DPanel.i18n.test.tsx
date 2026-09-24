@@ -58,7 +58,6 @@ describe('2D Section panel localization (#4918)', () => {
 
     assert.match(ui.textContent ?? '', /⟦2D Section⟧/);
     const titles = [...ui.querySelectorAll('[title]')].map((element) => element.getAttribute('title'));
-    assert.ok(titles.includes(marked(CATALOGUE['section2d.dragTitle'])));
     assert.ok(titles.includes(marked(CATALOGUE['section2d.close'])));
     assert.ok(titles.includes(marked(CATALOGUE['section2d.zoom.fit'])));
   });

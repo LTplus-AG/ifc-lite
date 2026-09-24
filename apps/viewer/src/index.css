@@ -194,8 +194,17 @@
 }
 
 /* Base styles */
-* {
-  border-color: var(--color-border);
+/* Layered (#5485): an unlayered `* { border-color }` sits ABOVE every
+   Tailwind utility layer in cascade order, so it wins over `border-<color>`
+   utilities (e.g. `border-overlay-accent`) no matter their source order —
+   the utility's declaration loses even though it's more specific-looking in
+   the file. `@layer base` puts this at Tailwind's lowest layer, where a
+   `utilities`-layer class (every `border-*` utility) always wins regardless
+   of stylesheet order, matching plain CSS cascade-layer semantics. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 body {

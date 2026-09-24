@@ -26,12 +26,6 @@ function box(expressId: number, size: number): MeshData {
     indices, color: [0.5, 0.5, 0.5, 1], geometryClass: 0 };
 }
 
-/** Radix's DropdownMenu trigger opens on pointerdown, then click. */
-function openMenu(trigger: Element): void {
-  act(() => { trigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })); });
-  act(() => { trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
-}
-
 async function readyDrawingOtherThan(previous: unknown) {
   for (let i = 0; i < 150; i++) {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
@@ -53,12 +47,8 @@ it("a drawing view's Regenerate runs the host's generator (#5492)", async () => 
     const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><Section2DPanel /></>);
     const first = await readyDrawingOtherThan(null);
 
-    // At the default window width the header collapses to Fit + the overflow menu.
-    const more = ui.querySelector('[title="More options"]');
-    assert.ok(more, 'the drawing view is mounted with its overflow menu');
-    openMenu(more);
-    const regenerate = [...document.body.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes('Regenerate'));
-    assert.ok(regenerate, 'the overflow menu offers Regenerate');
+    const regenerate = ui.querySelector('[title="Regenerate"]');
+    assert.ok(regenerate, 'the drawing view shows its Regenerate button');
     click(regenerate);
 
     const second = await readyDrawingOtherThan(first);

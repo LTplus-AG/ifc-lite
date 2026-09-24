@@ -150,7 +150,7 @@ function validateFindings({ response, input, warn }) {
     // verbatim should not be lost to it): the finding is moved there, LOUDLY,
     // with the original line in the log. An ambiguous quote (several added
     // lines carry it) or an absent one is still dropped, never guessed at.
-    const matches = addedLinesMatching(file.patch, f.quote);
+    const matches = addedLinesMatching(file.patch, f.quote, { path: f.path });
     if (matches.length === 1 && f.line !== matches[0]) {
       warn(
         `${REANCHORED_LABEL} findings[${i}]: \`line\` ${JSON.stringify(f.line)} of \`${sanitizePath(f.path)}\` moved to ` +

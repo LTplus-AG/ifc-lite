@@ -17,6 +17,7 @@ export const measureEn = {
   'measure.dragToMove': 'Drag to move',
   'measure.panelTitle': 'Measure',
   'measure.clearAll': 'Clear all',
+  'measure.clearAllConfirm': 'Clear every measurement? This cannot be undone.',
   'measure.close': 'Close',
 
   // Angle-mode click hints (`angleHint`), one key per kind/pick-count

@@ -185,4 +185,7 @@ export const zonesPanelEn = {
   'zonesPanel.roomPanel.revokeLinkTooltip': 'Invalidate the current share link',
   'zonesPanel.roomPanel.leaveAbandonsUploadLabel': 'Leave (abandons upload)',
   'zonesPanel.roomPanel.leaveRoomLabel': 'Leave room',
+  'zonesPanel.roomPanel.copyLinkFailed': 'Could not copy the invite link. Check the connection and clipboard access, then try again.',
+  'zonesPanel.roomPanel.revokeLinkFailed': 'Could not revoke the share link. Links you already shared still work.',
+  'zonesPanel.roomPanel.removePeerFailed': 'Could not remove {name} from the room. Try again.',
 } as const satisfies Record<string, TranslationValue>;

@@ -8,6 +8,7 @@
 //! the HTTP server and the native FFI library.
 
 pub mod appearance;
+pub mod analytic_export;
 pub mod pdf_vector;
 pub mod determinism;
 pub(crate) mod parallel_scan;
@@ -60,6 +61,7 @@ mod symbolic;
 mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
+pub use analytic_export::{extract_swept_disk_descriptions, SweptDiskDescriptions, SweptDiskOccurrence};
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };

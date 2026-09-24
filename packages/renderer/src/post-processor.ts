@@ -3,41 +3,30 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Post-processing effects for Blender-quality rendering
- * Includes SSAO, tone mapping, and edge enhancement
+ * Separation-line overlay: a fullscreen pass that darkens pixels where a
+ * neighbour belongs to a different entity AND the depth creases or steps
+ * there, so abutting elements read as separate parts.
+ *
+ * Ambient occlusion used to share this pass as "contact shading"; it now
+ * lives in `ao-pass.ts` (#5384).
  */
 
 import { WebGPUDevice } from './device.js';
 
-export interface PostProcessorOptions {
-    enableContactShading?: boolean;
-    contactRadius?: number;
-    contactIntensity?: number;
-}
-
 export type PostProcessQuality = 'low' | 'high';
 
-export interface ContactShadingPassOptions {
+export interface SeparationLinePassOptions {
     targetView: GPUTextureView;
     depthView: GPUTextureView;
     objectIdView: GPUTextureView;
-    contactQuality: PostProcessQuality;
+    quality: PostProcessQuality;
+    /** Tap distance in pixels at `high` quality; `low` always uses 1. */
     radius: number;
     intensity: number;
-    separationQuality: PostProcessQuality;
-    separationRadius: number;
-    separationIntensity: number;
-    enableSeparationLines: boolean;
 }
 
-/**
- * Post-processing pipeline
- * Currently implements enhanced tone mapping in shader
- * SSAO and edge enhancement can be added as separate passes
- */
 export class PostProcessor {
     private _device: GPUDevice;
-    private options: PostProcessorOptions;
     private colorFormat: GPUTextureFormat;
     private isMultisampled: boolean;
     private uniformBuffer: GPUBuffer;
@@ -50,23 +39,16 @@ export class PostProcessor {
     private cachedDepthView: GPUTextureView | null = null;
     private cachedObjectIdView: GPUTextureView | null = null;
 
-    constructor(device: WebGPUDevice, options: PostProcessorOptions = {}, sampleCount: number = 1) {
+    constructor(device: WebGPUDevice, sampleCount: number) {
         this._device = device.getDevice();
         this.colorFormat = device.getFormat();
         this.isMultisampled = sampleCount > 1;
-        this.options = {
-            enableContactShading: false,
-            contactRadius: 1.0,
-            contactIntensity: 0.3,
-            ...options,
-        };
-        this.uniformStaging = new ArrayBuffer(48);
+        this.uniformStaging = new ArrayBuffer(16);
         this.uniformF32 = new Float32Array(this.uniformStaging);
         this.uniformU32 = new Uint32Array(this.uniformStaging);
 
         this.uniformBuffer = this._device.createBuffer({
-            // WGSL uniform layout for Params requires 48 bytes due to 16-byte alignment.
-            size: 48,
+            size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
@@ -106,11 +88,10 @@ export class PostProcessor {
         const shader = this._device.createShaderModule({
             code: `
 struct Params {
-  contactRadiusPx: f32,
-  contactIntensity: f32,
   seamRadiusPx: f32,
   seamIntensity: f32,
-  flags: vec4<u32>, // x=contactQuality y=seamQuality z=seamsEnabled w=reserved
+  highQuality: u32,
+  _pad: u32,
 }
 
 ${depthTexDecl}
@@ -161,37 +142,8 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
   }
 
-  let r = max(1, i32(params.contactRadiusPx));
-  var accum = 0.0;
-  var count = 0.0;
-
-  // Reverse-Z: higher depth means closer to camera.
-  let d1 = sampleDepthClamped(p + vec2<i32>( r,  0), dims);
-  let d2 = sampleDepthClamped(p + vec2<i32>(-r,  0), dims);
-  let d3 = sampleDepthClamped(p + vec2<i32>( 0,  r), dims);
-  let d4 = sampleDepthClamped(p + vec2<i32>( 0, -r), dims);
-  accum += max(0.0, d1 - center);
-  accum += max(0.0, d2 - center);
-  accum += max(0.0, d3 - center);
-  accum += max(0.0, d4 - center);
-  count += 4.0;
-
-  if (params.flags.x == 1u) {
-    let d5 = sampleDepthClamped(p + vec2<i32>( r,  r), dims);
-    let d6 = sampleDepthClamped(p + vec2<i32>(-r,  r), dims);
-    let d7 = sampleDepthClamped(p + vec2<i32>( r, -r), dims);
-    let d8 = sampleDepthClamped(p + vec2<i32>(-r, -r), dims);
-    accum += max(0.0, d5 - center);
-    accum += max(0.0, d6 - center);
-    accum += max(0.0, d7 - center);
-    accum += max(0.0, d8 - center);
-    count += 4.0;
-  }
-
-  let contact = clamp((accum / max(count, 1.0)) * (120.0 * params.contactIntensity), 0.0, 0.7);
-
   var seam = 0.0;
-  if (params.flags.z == 1u) {
+  {
     let idCenter = sampleIdClamped(p, dims);
     if (idCenter != 0u) {
       let rs = max(1, i32(params.seamRadiusPx));
@@ -252,7 +204,7 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
         f32(idY0 != idCenter && idY0 != 0u && (creaseY || discY0));
       seam = edge4Count * 0.25;
 
-      if (params.flags.y == 1u) {
+      if (params.highQuality == 1u) {
         let idD1 = sampleIdClamped(p + vec2<i32>( rs,  rs), dims);
         let idD2 = sampleIdClamped(p + vec2<i32>(-rs,  rs), dims);
         let idD3 = sampleIdClamped(p + vec2<i32>( rs, -rs), dims);
@@ -284,8 +236,7 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
   }
 
   let seamDarken = clamp(seam * params.seamIntensity, 0.0, 0.35);
-  let overlay = max(contact, seamDarken);
-  return vec4<f32>(0.0, 0.0, 0.0, overlay);
+  return vec4<f32>(0.0, 0.0, 0.0, seamDarken);
 }
 `,
         });
@@ -321,25 +272,15 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     /**
-     * Apply lightweight contact shading in a fullscreen overlay pass.
+     * Draw the separation lines over `targetView` in a fullscreen overlay pass.
      */
-    apply(commandEncoder: GPUCommandEncoder, options: ContactShadingPassOptions): void {
-        if (!this.options.enableContactShading && !options.enableSeparationLines) {
-            return;
-        }
-
-        const contactQualityFlag = options.contactQuality === 'high' ? 1 : 0;
-        const seamQualityFlag = options.separationQuality === 'high' ? 1 : 0;
-        const contactRadiusPx = options.contactQuality === 'high' ? options.radius : options.radius * 0.5;
-        const seamRadiusPx = options.separationQuality === 'high' ? options.separationRadius : 1.0;
-        this.uniformF32[0] = contactRadiusPx;
+    apply(commandEncoder: GPUCommandEncoder, options: SeparationLinePassOptions): void {
+        if (this.destroyed) return;
+        const highQuality = options.quality === 'high';
+        this.uniformF32[0] = highQuality ? options.radius : 1.0;
         this.uniformF32[1] = options.intensity;
-        this.uniformF32[2] = seamRadiusPx;
-        this.uniformF32[3] = options.separationIntensity;
-        this.uniformU32[4] = contactQualityFlag;
-        this.uniformU32[5] = seamQualityFlag;
-        this.uniformU32[6] = options.enableSeparationLines ? 1 : 0;
-        this.uniformU32[7] = 0;
+        this.uniformU32[2] = highQuality ? 1 : 0;
+        this.uniformU32[3] = 0;
         this._device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformStaging);
 
         if (this.cachedDepthView !== options.depthView || this.cachedObjectIdView !== options.objectIdView || this.cachedBindGroup === null) {
@@ -366,13 +307,6 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
         pass.setBindGroup(0, this.cachedBindGroup);
         pass.draw(3, 1, 0, 0);
         pass.end();
-    }
-
-    /**
-     * Update post-processing options
-     */
-    updateOptions(options: Partial<PostProcessorOptions>): void {
-        this.options = { ...this.options, ...options };
     }
 
     private destroyed = false;

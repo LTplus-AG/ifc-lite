@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, Puzzle, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, Puzzle, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -45,7 +45,8 @@ export type WorkspacePanelId =
   | 'charts'
   | 'flow'
   | 'document'
-  | 'cost';
+  | 'cost'
+  | 'environment';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -121,6 +122,12 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // like 'zones'/'loadReport' above (#1869 precedent) — docks in the right
   // pane, no dedicated costPanelVisible boolean or bottom-strip wiring.
   { id: 'cost', title: 'Cost', short: 'Cost', Icon: Coins, group: 'inspect', region: 'side', prefersWide: true },
+  // Environment — sky, lighting presets and the sun-path study (#5506: the
+  // docked side panel that replaced the floating "Sun & Sky" panel).
+  // APPENDED so the frozen Alt+1..0 mapping stays intact (no Alt shortcut).
+  // Flag-free like 'zones'/'loadReport'/'cost' above (#1869 precedent) —
+  // docks in the right pane, no dedicated envPanelOpen visibility flag.
+  { id: 'environment', title: 'Environment', short: 'Environment', Icon: Sun, group: 'author', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

@@ -122,3 +122,18 @@ pub fn bounds_of_points(a: Vec3, b: Vec3) -> Aabb {
 pub fn aabb_contains(outer: &Aabb, inner: &Aabb) -> bool {
     to_box3(outer).Contains(to_box3(inner))
 }
+
+/// Precision floor of a depth measured along the UNIT direction `axis`: the
+/// pair's per-axis f32 noise projected onto it (#5405). Adapter over the
+/// generated `Vec3::DepthFloor` — the same noise rule as the tri-tri contact
+/// band.
+pub(crate) fn depth_floor(axis: Vec3, a: &Aabb, b: &Aabb) -> f64 {
+    PlatoVec3::new(axis[0], axis[1], axis[2]).DepthFloor(to_box3(a), to_box3(b))
+}
+
+/// Precision floor of the AABB estimate `-signed_gap(a, b)`: the noise of the
+/// world axis that estimate is measured along. Adapter over the generated
+/// `Box3::EstimateFloor`.
+pub(crate) fn estimate_floor(a: &Aabb, b: &Aabb) -> f64 {
+    to_box3(a).EstimateFloor(to_box3(b))
+}

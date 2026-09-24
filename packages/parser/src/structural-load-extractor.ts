@@ -222,6 +222,7 @@ function readLoad(
   if (depth > MAX_LOAD_DEPTH) return { dropped: 'depth', truncated: true };
   if (path.has(expressId)) return { dropped: 'cycle', truncated: true };
   if (budget.remaining <= 0) return { dropped: 'budget', truncated: true };
+  // @raw-entity-enumeration-ok bounded source reference walk needs this STEP byte span for EntityExtractor
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return { dropped: 'unresolved', truncated: false };
   const entity = extractor.extractEntity(ref);
@@ -298,6 +299,7 @@ export function extractBoundaryCondition(
   store: IfcDataStore,
   expressId: number,
 ): BoundaryConditionInfo | undefined {
+  // @raw-entity-enumeration-ok boundary condition is decoded from one source STEP record
   const ref = store.entityIndex.byId.get(expressId);
   if (!ref) return undefined;
   const entity = extractor.extractEntity(ref);

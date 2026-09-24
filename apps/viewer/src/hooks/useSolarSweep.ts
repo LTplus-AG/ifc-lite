@@ -6,7 +6,7 @@
  * Solar sweep animation — advances the studied instant while playing.
  *
  * Lives at the viewport level (not inside the panel) so collapsing or
- * closing the Sun & Sky panel doesn't stop a running sweep.
+ * closing the Environment panel doesn't stop a running sweep.
  *
  * Reads/writes the store imperatively each tick to avoid stale closures,
  * and wraps within the current day (day sweep) or year (year sweep) so the

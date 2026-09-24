@@ -110,6 +110,7 @@ export function createQueryAdapter(
       const data = createdEntityData(created, ref, store);
       return { ...data, type: pending?.effectiveType(ref.expressId) ?? data.type };
     }
+    // @raw-entity-enumeration-ok tombstones and overlay-created ids returned above; this point probe only checks the remaining parsed source
     if (!store.entityIndex.byId.has(ref.expressId)) return null;
     const node = new EntityNode(store, ref.expressId);
     const type = node.type;

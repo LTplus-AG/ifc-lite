@@ -11,7 +11,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { generateLod0, generateLod1 } from '@ifc-lite/export';
-import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
+import { getFlag, hasFlag, fatal, printJson, writeOutput, routeConsoleDiagnosticsToStderr } from '../output.js';
 
 type LodLevel = '0' | '1';
 
@@ -30,6 +30,9 @@ function parseLevel(value: string | undefined): LodLevel {
 }
 
 export async function lodCommand(args: string[]): Promise<void> {
+  // stdout carries this command's payload, so redirect console diagnostics
+  // BEFORE the first parse/geometry init (see the function's own docstring).
+  routeConsoleDiagnosticsToStderr();
   const filePath = args.find(arg => !arg.startsWith('-'));
   if (!filePath) {
     fatal('Usage: ifc-lite lod <file.ifc> --level 0|1 [--out file] [--meta file] [--json]');

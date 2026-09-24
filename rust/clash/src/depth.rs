@@ -5,11 +5,11 @@
 //! Depth measurement and the f32-precision floor for the narrow phase
 //! (`narrow.rs`). Split out to keep `narrow.rs` under the module-size
 //! ratchet; faithful port of `packages/clash/src/engine-ts/narrow.ts`'s
-//! `boxMeasuredDepth` / `precisionFloor` / `depthClashResult`.
+//! `boxPenetration` / `crossingVertexPenetration` / `depthClashResult`.
 
-use crate::aabb::Aabb;
+use crate::aabb::{depth_floor, estimate_floor, Aabb};
 use crate::narrow::{ClashStatus, DistanceKind, NarrowResult};
-use crate::obb::{is_through_penetration, obb_penetration_depth};
+use crate::obb::{is_through_penetration, obb_penetration};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::Vec3;
 
@@ -30,6 +30,9 @@ use crate::vec3::Vec3;
 pub(crate) struct BoxPenetration {
     /// Exact box-box minimum-translation depth (Gottschalk 15-axis SAT).
     pub(crate) mtd: f64,
+    /// The unit axis `mtd` was measured along (its precision floor's
+    /// direction, #5405).
+    pub(crate) axis: Vec3,
     /// The MTD is inflated by the piercing member's own extent; report the
     /// AABB estimate instead (see `is_through_penetration`).
     pub(crate) through: bool,
@@ -38,19 +41,29 @@ pub(crate) struct BoxPenetration {
 pub(crate) fn box_penetration(small: &TriMesh, large: &TriMesh) -> Option<BoxPenetration> {
     let oa = small.get_obb()?;
     let ob = large.get_obb()?;
-    let mtd = obb_penetration_depth(&oa, &ob)?;
+    let pen = obb_penetration(&oa, &ob)?;
     Some(BoxPenetration {
-        mtd,
+        mtd: pen.depth,
+        axis: pen.axis,
         through: is_through_penetration(&oa, &ob),
     })
 }
 
+/// A crossing vertex's penetration into the other solid, with the unit
+/// direction it was measured along (from the other's surface to the
+/// vertex), which is what its precision floor is projected onto (#5405).
+#[derive(Clone, Copy)]
+pub(crate) struct VertexPenetration {
+    pub(crate) depth: f64,
+    pub(crate) axis: Vec3,
+}
+
 /// Deepest penetration of `mesh`'s crossing-triangle VERTICES into `other`:
-/// the maximum `distance_to_surface` of `other` over the vertices of the
-/// triangles flagged in `cross_flags` (the pairs the narrow phase saw
-/// genuinely crossing `other`) that lie inside `other`. Each vertex is
-/// visited once (deduped by vertex index, in index order — bit-identical to
-/// the TS `crossingVertexPenetration`). Returns 0 when no flagged vertex is
+/// the vertex of the triangles flagged in `cross_flags` (the pairs the
+/// narrow phase saw genuinely crossing `other`) that lies inside `other`
+/// farthest from its surface. Each vertex is visited once (deduped by vertex
+/// index, in index order, strict `>` — bit-identical to the TS
+/// `crossingVertexPenetration`). `None` when no flagged vertex is strictly
 /// inside.
 ///
 /// This is NOT a depth metric and must never be reported as one — it is the
@@ -69,9 +82,9 @@ pub(crate) fn crossing_vertex_penetration(
     mesh: &TriMesh,
     other: &TriMesh,
     cross_flags: &[bool],
-) -> f64 {
+) -> Option<VertexPenetration> {
     let mut seen = vec![false; mesh.vertex_count()];
-    let mut depth = 0.0f64;
+    let mut deepest: Option<VertexPenetration> = None;
     // `cross_flags` has one entry per triangle (len == mesh.count).
     for (t, &flagged) in cross_flags.iter().enumerate() {
         if !flagged {
@@ -87,13 +100,16 @@ pub(crate) fn crossing_vertex_penetration(
             if !other.contains_point(v) {
                 continue;
             }
-            let d = other.distance_to_surface(v);
-            if d > depth {
-                depth = d;
+            let (d, q) = other.closest_on_surface(v);
+            if d > deepest.map_or(0.0, |e| e.depth) {
+                deepest = Some(VertexPenetration {
+                    depth: d,
+                    axis: [(v[0] - q[0]) / d, (v[1] - q[1]) / d, (v[2] - q[2]) / d],
+                });
             }
         }
     }
-    depth
+    deepest
 }
 
 /// Whether `inner` — AABB-contained in `outer`, with no triangle pair
@@ -180,40 +196,6 @@ const PROBE_CLEAR_ULPS: f64 = 64.0;
 /// direction error bound.
 pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 
-/// Penetration-depth floor below which a computed overlap cannot be
-/// distinguished from float32 rounding noise, scaled to the pair's own
-/// coordinate magnitude (a fixed constant would be far too tight for infra
-/// models far from the origin, and far too loose for small ones near it).
-///
-/// `tri_mesh.rs` ingests geometry from f32 buffers and stores/queries it in
-/// f64, so f64 arithmetic cannot recover precision the source never had: two
-/// surfaces authored flush round to adjacent f32 values, and the resulting
-/// "penetration" is bit-noise at the ULP of the largest operand coordinate,
-/// not a measured overlap. Extent is the max abs coordinate over both
-/// elements' AABBs, floored at 1.0 so a model near the origin still gets the
-/// single-unit ULP, not zero.
-///
-/// The floor grows linearly with distance from the origin, same as f32
-/// precision itself: on a georeferenced model (real map coordinates,
-/// hundreds of km out) the floor reaches decimetre scale and a genuine clash
-/// below it reclassifies as `Touch` — not a bug, since f32 genuinely cannot
-/// represent a finer distinction there. The fix is ingesting geometry closer
-/// to the origin (or in f64), not lowering this floor.
-fn precision_floor(aabb_a: &Aabb, aabb_b: &Aabb) -> f64 {
-    let mut extent = 1.0f64;
-    for b in [aabb_a, aabb_b] {
-        for v in [&b.min, &b.max] {
-            for &c in v {
-                let a = c.abs();
-                if a > extent {
-                    extent = a;
-                }
-            }
-        }
-    }
-    extent * F32_ULP_SCALE
-}
-
 /// Turns the candidate penetration depths into the final `NarrowResult`. The
 /// ONLY place allowed to build a `Mesh`/`Estimate`-labelled `Hard` result off
 /// a depth number — every branch in `narrow.rs` that can label a result
@@ -234,9 +216,16 @@ fn precision_floor(aabb_a: &Aabb, aabb_b: &Aabb) -> f64 {
 ///   vertex inside the other solid (`mesh_evidence`) — evidence for this
 ///   gate only, never a reported depth (see `crossing_vertex_penetration`).
 ///
-/// The pair is `Hard` only when the SMALLEST available candidate clears the
-/// floor. That is what makes the floor unreachable by depth-source
-/// selection: a sub-floor box MTD cannot be promoted by the through-
+/// Each candidate is tested against the floor OF ITS OWN DIRECTION — the
+/// pair's per-axis f32 noise projected onto the direction that candidate was
+/// measured along (`depth_floor`, `estimate_floor`; #5405). A single floor
+/// from the max coordinate over all axes handed a Z-direction depth the
+/// noise of an X coordinate 10 km out: a genuine 2 mm overlap read as Touch
+/// there and Hard at the origin, and near the origin the X extent pinned
+/// the threshold for contacts that have no X component at all.
+///
+/// The pair is `Hard` only when EVERY available candidate clears its floor.
+/// That is what makes the floor unreachable by depth-source selection: a sub-floor box MTD cannot be promoted by the through-
 /// penetration guard swapping in a larger AABB estimate; a sub-floor
 /// crossing-vertex penetration on a contained pair (surfaces authored
 /// flush — the eight Infra-Bridge pairs that moved #2594's 50-hard-clash
@@ -253,35 +242,19 @@ fn precision_floor(aabb_a: &Aabb, aabb_b: &Aabb) -> f64 {
 pub(crate) fn depth_clash_result(
     box_pen: Option<BoxPenetration>,
     estimate: f64,
-    mesh_evidence: Option<f64>,
+    mesh_evidence: Option<VertexPenetration>,
     aabb_a: &Aabb,
     aabb_b: &Aabb,
     report_touch: bool,
     point: Vec3,
     bounds: Aabb,
 ) -> Option<NarrowResult> {
-    // Comparisons, not `f64::min`, to match the TS kernel bit for bit. The two
-    // disagree on exactly one input: `f64::min(NaN, x)` returns the FINITE `x`,
-    // whereas TS's `if (x < floorDepth)` is false against a NaN `floorDepth`
-    // and leaves it NaN. So a NaN `estimate` would be silently replaced by a
-    // finite candidate here and preserved there, and the two kernels would
-    // then classify the same pair differently — the one thing the differential
-    // suite exists to prevent. Currently unreachable (#2665 abstains on
-    // non-finite bounds upstream), which is precisely why it is worth pinning
-    // rather than leaving to chance: an unreachable divergence stays invisible
-    // until the gate above it moves.
-    let mut floor_depth = estimate;
-    if let Some(b) = box_pen {
-        if b.mtd < floor_depth {
-            floor_depth = b.mtd;
-        }
-    }
-    if let Some(m) = mesh_evidence {
-        if m < floor_depth {
-            floor_depth = m;
-        }
-    }
-    if floor_depth <= precision_floor(aabb_a, aabb_b) {
+    // `||` in the same order as the TS kernel, each comparison `<=` so a
+    // NaN candidate never counts as below its floor, on either side.
+    let below_floor = estimate <= estimate_floor(aabb_a, aabb_b)
+        || box_pen.is_some_and(|b| b.mtd <= depth_floor(b.axis, aabb_a, aabb_b))
+        || mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b));
+    if below_floor {
         if !report_touch {
             return None;
         }

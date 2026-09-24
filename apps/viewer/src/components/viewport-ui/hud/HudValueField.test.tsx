@@ -134,6 +134,10 @@ describe('HudValueField (#5485)', () => {
     pointerDown(field, 0);
     pointerMove(field, 1000);
     pointerUp(field, 1000);
+    // `every` on an empty array is vacuously true, so a drag path that
+    // stopped calling `onChange` entirely would pass the bound check below
+    // without ever being caught — require at least one result first.
+    assert.ok(values.length > 0, 'the drag produced at least one onChange');
     assert.ok(values.every((v) => v <= 10));
   });
 

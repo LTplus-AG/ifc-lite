@@ -11,6 +11,7 @@
  */
 
 import { logger, parseVerbosity } from './logger.js';
+import { fatal } from './output.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
 import { scheduleCommand } from './commands/schedule.js';
@@ -55,6 +56,22 @@ import { buildHelp, buildCommandHelp } from './help.js';
 
 // package.json sits one level above both `src/` and `dist/`.
 const VERSION = readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
+
+/**
+ * Commands that write their result to a path given by `--out`.
+ *
+ * `--out` was listed under the global `Options:` block, and is not global: the
+ * 21 commands not named here parse no such flag, so `info --json --out f.json`
+ * wrote to stdout, created nothing and exited 0 (#5528). It is documented per
+ * command instead -- each of these already shows `--out F` on its own line in
+ * `Commands:` -- and passing it to any other command is refused rather than
+ * swallowed.
+ */
+export const COMMANDS_WITH_OUT = new Set([
+  'export', 'diagnose-geometry', 'extract-entities', 'anonymize', 'bcf', 'create',
+  'merge', 'convert', 'rekey', 'mutate', 'generate-spaces', 'analyze', 'lod',
+  'simplify', 'delivery', 'flow',
+]);
 
 /** Command being executed, captured for the top-level error handler. */
 /**
@@ -103,6 +120,14 @@ async function main(): Promise<void> {
   const command = args[0];
   activeCommand = command;
   const commandArgs = args.slice(1);
+
+  if (commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
+    fatal(
+      `\`${command}\` does not write to a file: it has no --out. ` +
+        `Redirect its output instead, e.g. \`ifc-lite ${command} ... > out.json\`. ` +
+        `Commands that do take --out: ${[...COMMANDS_WITH_OUT].sort().join(', ')}.`,
+    );
+  }
 
   switch (command) {
     case 'info':

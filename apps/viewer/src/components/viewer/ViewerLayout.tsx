@@ -17,6 +17,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
@@ -66,6 +67,7 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
   // the whole session: a second instance would keep its own ownership map and

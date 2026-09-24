@@ -30,6 +30,7 @@ export function useCentrelineRendererOverlay(
   const isolated = useViewerStore((state) => state.isolatedEntities);
   const classFilter = useViewerStore((state) => state.classFilter);
   const lensHidden = useViewerStore((state) => state.lensHiddenIds);
+  const highlightedSegment = useViewerStore((state) => state.selectedDirectrixSegment);
   const selected = useSelectedSweptDisks(enabled);
   const { t } = useTranslation();
   const lastNotice = useRef<string | null>(null);
@@ -41,7 +42,8 @@ export function useCentrelineRendererOverlay(
     sourceEpoch.current++;
     if (isInitialized) rendererRef.current?.setLineOverlay('centreline', null);
   }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations,
-    selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden]);
+    selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden,
+    highlightedSegment]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -60,7 +62,7 @@ export function useCentrelineRendererOverlay(
       toast.error(t('ribbon.view.centrelineOmitted', { reason: messages[0]?.slice(0, 240) ?? '' }));
     };
     if (enabled && !selected.loading && selected.items.length > 0) {
-      void lineBuilder(selected.items, useViewerStore.getState()).then(({ vertices, diagnostics }) => {
+      void lineBuilder(selected.items, useViewerStore.getState(), highlightedSegment).then(({ vertices, diagnostics }) => {
         if (!active || epoch !== sourceEpoch.current) return;
         report(selected.error ? [selected.error, ...diagnostics] : diagnostics);
         if (vertices.length === 0) return;
@@ -79,5 +81,6 @@ export function useCentrelineRendererOverlay(
       active = false;
       renderer.setLineOverlay('centreline', null);
     };
-  }, [enabled, selected, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations, t, lineBuilder]);
+  }, [enabled, selected, highlightedSegment, isInitialized, recoveryEpoch,
+    rendererRef, models, placement, georefMutations, t, lineBuilder]);
 }

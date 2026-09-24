@@ -42,6 +42,12 @@ flowchart TB
 
 Key rendering features include section planes for model slicing, snap detection for precision interaction, GPU picking for object selection, and measurement tools for calculating distances and angles between geometry points. For generating 2D plans and elevations from 3D models, see the [2D Drawing Guide](drawing-2d.md).
 
+## Inspecting swept-disk source geometry
+
+Select a product containing `IfcSweptDiskSolid` geometry, then open **Properties → Quantities → Derived source geometry** or **Measure → Source**. Each solid shows its source solid and directrix IDs, mapped path, effective radius, optional inner radius, complete or unsupported status, and whether a CSG operation modified the source. Complete records show analytic total and per-segment centreline lengths, plus each arc's bend magnitude and signed sweep. Click an unmodified segment row to isolate it in the centreline overlay; click it again to clear the highlight.
+
+These lengths come from the authored directrix in metres, with the viewer's display-unit preference applied. They are separate from authored IFC attributes and `IfcElementQuantity` values. A source modified by CSG may differ from the visible mesh, and an unsupported description cannot provide a derived length. The readout does not infer fabrication quantities or a bar count.
+
 ## Basic Setup
 
 ```typescript

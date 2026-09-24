@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, stringToEntityRef, entityRefToString, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
@@ -38,6 +38,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   const classFilter = useViewerStore((state) => state.classFilter);
   const lensHidden = useViewerStore((state) => state.lensHiddenIds);
   const [result, setResult] = useState<SelectedSweptDisksState>(EMPTY);
+  const sourceIdentities = useRef<Map<string, object> | null>(null);
 
   useEffect(() => selectedSweptDiskCache.retain(), []);
 
@@ -45,6 +46,16 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     const sourceModels: AnalyticSourceModel[] = [...models.values()];
     if (models.size === 0 && legacyStore) sourceModels.push({ id: 'legacy', ifcDataStore: legacyStore });
     selectedSweptDiskCache.prune(sourceModels);
+    const next = new Map(sourceModels.flatMap((model) => {
+      const source = model.ifcDataStore?.source.byteLength ? model.ifcDataStore.source : model.sourceFile;
+      return source ? [[model.id, source] as const] : [];
+    }));
+    const highlighted = useViewerStore.getState().selectedDirectrixSegment;
+    if (highlighted && sourceIdentities.current
+      && sourceIdentities.current.get(highlighted.modelId) !== next.get(highlighted.modelId)) {
+      useViewerStore.getState().setSelectedDirectrixSegment(null);
+    }
+    sourceIdentities.current = next;
   }, [models, legacyStore]);
 
   useEffect(() => {
@@ -66,11 +77,25 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       const ref = stringToEntityRef(key);
       if (ref.expressId > 0) refs.set(entityRefToString(ref), ref);
     }
+    const highlighted = state.selectedDirectrixSegment;
+    const highlightedKey = highlighted
+      ? entityRefToString({ modelId: highlighted.modelId, expressId: highlighted.expressId }) : null;
+    if (highlightedKey && !refs.has(highlightedKey)) {
+      state.setSelectedDirectrixSegment(null);
+    }
+    // A highlighted source stays eligible under the selected-product cap.
+    const orderedRefs = new Map<string, EntityRef>();
+    if (highlightedKey) {
+      const ref = refs.get(highlightedKey);
+      if (ref) orderedRefs.set(highlightedKey, ref);
+    }
+    for (const [key, ref] of refs) orderedRefs.set(key, ref);
     const grouped = new Map<string, number[]>();
+    const createdInOverlay: SelectedSweptDisk[] = [];
     const diagnostics: string[] = [];
     let selectedProducts = 0;
     let omittedProducts = 0;
-    for (const ref of refs.values()) {
+    for (const ref of orderedRefs.values()) {
       const model = ref.modelId === 'legacy' && models.size === 0
         ? { visible: true, schemaVersion: legacyStore?.schemaVersion, ifcDataStore: legacyStore }
         : models.get(ref.modelId);
@@ -85,6 +110,12 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       if (hidden.has(globalId) || lensHidden.has(globalId)
         || (isolated !== null && !isolated.has(globalId))
         || (classFilter !== null && !classFilter.ids.has(globalId))) continue;
+      if (state.mutationViews.get(ref.modelId)?.getNewEntity(ref.expressId)) {
+        createdInOverlay.push({ ref, occurrences: [], diagnostics: [
+          `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
+        ] });
+        continue;
+      }
       if (selectedProducts >= MAX_SELECTED_PRODUCTS) {
         omittedProducts++;
         continue;
@@ -98,7 +129,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       `Selected centreline limited to ${MAX_SELECTED_PRODUCTS} products; ${omittedProducts} selected products were omitted`,
     );
     if (grouped.size === 0) {
-      setResult({ items: [], loading: false, error: diagnostics.join('; ') || null });
+      setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null });
       return () => { active = false; };
     }
     setResult({ items: [], loading: true, error: null });
@@ -112,7 +143,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
         return { ref: { modelId, expressId }, occurrences: product?.occurrences ?? [], diagnostics: product?.diagnostics ?? [] };
       });
     })).then((groups) => {
-      if (active) setResult({ items: groups.flat(), loading: false, error: diagnostics.join('; ') || null });
+      if (active) setResult({ items: [...groups.flat(), ...createdInOverlay], loading: false, error: diagnostics.join('; ') || null });
     }).catch((error: unknown) => {
       if (active) setResult({ items: [], loading: false, error: String(error) });
     });

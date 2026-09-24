@@ -137,4 +137,38 @@ describe('selected centreline overlay (#5778)', () => {
       useViewerStore.setState(prior);
     }
   });
+
+  it('isolates a selected segment by model, occurrence and index (#5783)', async () => {
+    const first = fixtureModel('first', { idOffset: 1_000_000 });
+    const second = fixtureModel('second', { idOffset: 2_000_000 });
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    const geometry = { meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: { originShift: zero, wasmRtcOffset: zero, hasLargeCoordinates: false,
+        originalBounds: box, shiftedBounds: box } };
+    first.geometryResult = geometry;
+    second.geometryResult = geometry;
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState(fixtureModels(first, second));
+      const secondItem = selected('second', 10);
+      const firstOccurrence = secondItem.occurrences[0]!;
+      secondItem.occurrences.push({
+        ...firstOccurrence,
+        solid_id: 93,
+        Directrix: [
+          { type: 'line', start: [20, 0, 0], end: [21, 0, 0] },
+          { type: 'line', start: [21, 0, 0], end: [22, 0, 0] },
+        ],
+      });
+      const result = await selectedCentrelineWorldLines(
+        [selected('first', 100), secondItem], useViewerStore.getState(),
+        { modelId: 'second', expressId: 42, occurrenceIndex: 1, segmentIndex: 1 },
+      );
+      assert.equal(result.vertices.length, 6);
+      assert.deepEqual(result.vertices, [21, 0, 0, 22, 0, 0]);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
 });

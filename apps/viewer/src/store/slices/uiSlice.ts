@@ -122,6 +122,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   visualEnhancementsEnabled: boolean;
   /** Show exact authored swept-disk directrices for selected IFC products. */
   centrelineOverlayEnabled: boolean;
+  selectedDirectrixSegment: import('@/lib/analytic/segment-selection').SelectedDirectrixSegment | null;
   contactShadingQuality: ContactShadingQuality;
   contactShadingIntensity: number;
   contactShadingRadius: number;
@@ -166,6 +167,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setCentrelineOverlayEnabled: (enabled: boolean) => void;
+  setSelectedDirectrixSegment: (segment: import('@/lib/analytic/segment-selection').SelectedDirectrixSegment | null) => void;
   setContactShadingQuality: (quality: ContactShadingQuality) => void;
   setContactShadingIntensity: (intensity: number) => void;
   setContactShadingRadius: (radius: number) => void;
@@ -210,6 +212,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   centrelineOverlayEnabled: false,
+  selectedDirectrixSegment: null,
   contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
   contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
   contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
@@ -336,6 +339,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),
+  setSelectedDirectrixSegment: (selectedDirectrixSegment) => set({ selectedDirectrixSegment }),
   setContactShadingQuality: (contactShadingQuality) => set({ contactShadingQuality }),
   setContactShadingIntensity: (contactShadingIntensity) => set({ contactShadingIntensity }),
   setContactShadingRadius: (contactShadingRadius) => set({ contactShadingRadius }),

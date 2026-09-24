@@ -70,6 +70,9 @@ export {
     ENVIRONMENT_UNIFORM_SIZE,
 } from './environment.js';
 export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
+export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js';
+export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
+import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
@@ -232,10 +235,13 @@ export class Renderer {
     private scene: Scene;
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
+    // The overlay theme (#5484), kept so a pre-init `setOverlayTheme` call
+    // (and a later re-init) still lands — `init()` re-applies it to `pipeline`.
+    private overlayTheme: OverlayTheme = DEFAULT_OVERLAY_THEME;
     /**
      * Section-plane gizmo, 2D section drawing/cap, and the standalone 3D line
      * + symbolic annotation overlays (issue #2425). Created here rather than in
-     * `init()` so a pre-init `setOverlayLineColor` still lands — the GPU
+     * `init()` so a pre-init `setOverlayTheme` still lands — the GPU
      * objects inside stay null until `init()` calls `overlays.init()`.
      */
     private readonly overlays = new RendererOverlays({
@@ -623,6 +629,9 @@ export class Renderer {
         }
 
         this.pipeline = new RenderPipeline(this.device, width, height);
+        // Re-apply any theme set before this (re)creation, or set by a prior
+        // init() before a device-loss re-init, so it isn't lost (#5484).
+        this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
         this.overlays.init(
             this.device.getDevice(),
@@ -3401,13 +3410,21 @@ export class Renderer {
     }
 
     /**
-     * Set the colour of the overlay lines (annotation / alignment / grid) and the
-     * section-cut outline (RGBA, 0..1). Defaults to opaque black; theme it to keep
-     * lines legible on a dark canvas. The matching label colour is per-text via
+     * Set the one colour vocabulary every overlay draws in (#5484): the selection
+     * highlight, the section-plane preview (one accent for every axis), every
+     * overlay line channel (section-cut outline, IfcAnnotation, alignment,
+     * IfcGrid, DXF / LandXML) and the clash pair / overlap tints. Call this on
+     * theme change and once after `init()`; the underlying GPU uniforms are
+     * written only here, never per frame. Supersedes `setOverlayLineColor`
+     * (deleted — the app never called it with a themed colour). See
+     * `OverlayTheme` for which fields want linear-light RGBA and which want
+     * sRGB-direct RGBA. The matching label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
-    setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        this.overlays.setOverlayLineColor(color);
+    setOverlayTheme(theme: OverlayTheme): void {
+        this.overlayTheme = theme;
+        this.pipeline?.selectionColorUniform.update(theme.selection);
+        this.overlays.setTheme(theme);
     }
 
     /**
@@ -3421,7 +3438,7 @@ export class Renderer {
      *
      * Every channel is an independent buffer with its own visibility, so
      * setting one leaves the other three untouched. All four share the colour
-     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * set by `Renderer.setOverlayTheme`'s `overlayLine` field; label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      *
      * The channels differ in exactly one way — whether they grow the scene

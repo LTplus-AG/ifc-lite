@@ -17,6 +17,7 @@ import {
     resolveEnvironment,
     type LightingEnvironment,
 } from './environment.js';
+import { SelectionColorUniform } from './overlay-theme-uniforms.js';
 
 /**
  * Bytes of the sun shadow uniform (#2670): lightViewProj mat4 (64) + two vec4
@@ -81,6 +82,7 @@ export class RenderPipeline {
     private dummyShadowTexture: GPUTexture;
     private dummyShadowView: GPUTextureView;
     private currentShadowView: GPUTextureView;
+    readonly selectionColorUniform: SelectionColorUniform; // (#5484) — Renderer.setOverlayTheme writes it via .update()
     private currentWidth: number;
     private currentHeight: number;
 
@@ -168,11 +170,8 @@ export class RenderPipeline {
                     visibility: GPUShaderStage.FRAGMENT,
                     sampler: { type: 'comparison' },
                 },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    buffer: { type: 'uniform' },
-                },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // selectionColorUniform (#5484)
             ],
         });
         this.environmentBuffer = this.device.createBuffer({
@@ -180,6 +179,7 @@ export class RenderPipeline {
             size: ENVIRONMENT_UNIFORM_SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
+        this.selectionColorUniform = new SelectionColorUniform(this.device);
         // Shadow-sampling resources. The comparison direction mirrors the
         // reverse-Z depth pass (a receiver is lit when its depth is ≥ the stored
         // closest-occluder depth). The dummy 1×1 depth texture is bound whenever
@@ -716,6 +716,7 @@ export class RenderPipeline {
                 { binding: 1, resource: this.currentShadowView },
                 { binding: 2, resource: this.shadowSampler },
                 { binding: 3, resource: { buffer: this.shadowUniformBuffer } },
+                { binding: 4, resource: { buffer: this.selectionColorUniform.buffer } },
             ],
         });
     }
@@ -943,6 +944,7 @@ export class RenderPipeline {
         this.uniformBuffer.destroy();
         this.environmentBuffer.destroy();
         this.shadowUniformBuffer.destroy();
+        this.selectionColorUniform.destroy();
         this.dummyShadowTexture.destroy();
     }
 }

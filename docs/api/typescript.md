@@ -194,6 +194,9 @@ class GeometryProcessor {
   // Stream geometry for large files (async generator of streaming events)
   processStreaming(/* buffer + streaming options; see the .d.ts */): AsyncGenerator<StreamingGeometryEvent>;
 
+  // Authored IfcSweptDiskSolid curves and derived centreline measurements
+  extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null;
+
   // Rust-side exporters surfaced on the processor
   exportGlb(buffer, includeMetadata?, hidden?, isolated?, hiddenTypesCsv?, lit?): Uint8Array | null;
   exportGlbFromMeshes(meshes: MeshData[], includeMetadata?, lit?): Uint8Array | null;
@@ -217,6 +220,18 @@ class GeometryProcessor {
   exportHbjson(buffer, name): Uint8Array | null;
 }
 ```
+
+`extractSweptDiskDescriptions` returns `null` until `init()` completes. Omit
+`ids` to inspect every product, or pass an empty `Uint32Array` to select none.
+The result is keyed by product STEP ID and contains ordered exact line and arc
+segments, the disk `Radius` and `InnerRadius`, and per-segment and total
+centreline lengths in metres. Arc `bend_angle` is an unsigned radian measure;
+the directrix's signed `sweep_angle` keeps its travel direction. Coordinates
+are double-precision, absolute IFC Z-up world metres. `source_modified` marks
+a CSG operand whose final visible shape may differ. Unsupported records have
+an empty directrix and `directrix_metrics: null`; `diagnostics` reports
+malformed representation walks. The returned data is an analytic description,
+not a render overlay or a mesh.
 
 ### GeometryResult and MeshData
 

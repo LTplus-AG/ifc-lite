@@ -9,6 +9,7 @@
 
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
+export type { SweptDiskDescriptions } from './analytic-descriptions.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -88,6 +89,7 @@ export {
 export * from './types.js';
 export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
+import type { SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
@@ -1091,14 +1093,16 @@ export class GeometryProcessor {
     }
   }
 
-  /**
-   * Extract raw profile polygons from IfcExtrudedAreaSolid building elements.
-   * Returns clean per-element profile outlines + 3D placement transforms.
-   * Used by Drawing2DGenerator for artifact-free 2D projection.
-   * @param buffer IFC file buffer
-   * @param modelIndex Federation model index (0 for single-model files)
-   * @returns Collection of ProfileEntryJs items, or null if not initialized
-   */
+  /** Authored swept-disk curves in IFC Z-up world metres; optional product IDs.
+   * `undefined` selects all and an empty array selects none. Null until init(). */
+  extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null {
+    return this.bridge?.isInitialized()
+      ? this.bridge.extractSweptDiskDescriptions(buffer, ids)
+      : null;
+  }
+
+  /** Extract IfcExtrudedAreaSolid profiles and transforms for 2D projection.
+   * `modelIndex` is the federation index; null until initialized. */
   extractProfiles(buffer: Uint8Array, modelIndex: number = 0): import('@ifc-lite/wasm').ProfileCollection | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
@@ -1109,14 +1113,8 @@ export class GeometryProcessor {
     return this.bridge.extractProfiles(content, modelIndex);
   }
 
-  /**
-   * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
-   * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
-   * UTF-8 for the text formats, so output is not capped by the V8 max-string
-   * ceiling - decode with `TextDecoder` when a string is needed), or null if
-   * not initialized. `isolated` below: `undefined` ⇒ no filter; empty `Uint32Array`
-   * ⇒ active but matching nothing (hides every mesh) — don't collapse the two.
-   */
+  /** Rust domain exporters return bytes (UTF-8 for text) or null before init().
+   * `isolated`: undefined selects all; an empty array selects none. */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
@@ -1294,7 +1292,7 @@ export class GeometryProcessor {
     const records = meshes.filter(
       (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
-    const requested = new Set([...levels.keys()]);
+    const requested = new Set(levels.keys());
     const covered = new Set(records.map((m) => m.expressId));
     const result: SimplifyMeshesResult = { elements: [], skipped: [] };
     for (const id of requested) {

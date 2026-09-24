@@ -13,6 +13,7 @@ import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
+import type { SweptDiskDescriptions } from './analytic-descriptions.js';
 import { getStartedSharedWasmModule } from './wasm-shared-module.js';
 import {
   isWasmRuntimeTrap,
@@ -96,20 +97,9 @@ export class IfcLiteBridge {
   }
 
   /**
-   * An operation on THIS bridge's engine took a WebAssembly runtime trap
-   * (#1898). Everything a trap can wedge lives on the `IfcAPI` handle — the
-   * per-load pre-pass / entity / style caches behind its mutexes — so the
-   * recovery is to drop that handle. The next `init()` (on this bridge or any
-   * other) builds a clean one and works; the trap itself propagates to the
-   * caller unchanged, so the failing operation still fails loudly with its own
-   * stack.
-   *
-   * This deliberately does NOT latch any realm-wide state. The previous
-   * behaviour stored one Error in a module global and refused every later
-   * `init()` in the document, which bricked every unrelated main-thread
-   * consumer (model load, grid / drawing meshers, the other exporters) after a
-   * single failed export — while bridges that happened to be initialized
-   * already kept running, so the "unrecoverable" claim contradicted itself.
+   * After a runtime trap, drop this bridge's potentially wedged IfcAPI and
+   * its caches (#1898). The caller still gets the original error; a later
+   * init() can build a fresh handle without disabling other consumers.
    */
   private recordWasmRuntimeTrap(): void {
     this.disposeBestEffort();
@@ -435,6 +425,13 @@ export class IfcLiteBridge {
       }
       throw error;
     }
+  }
+
+  /** Exact authored swept-disk definitions and measurements in IFC world metres. */
+  extractSweptDiskDescriptions(content: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions {
+    return this.runExport('extractSweptDiskDescriptions', content, (api) =>
+      api.extractSweptDiskDescriptions(content, ids) as SweptDiskDescriptions,
+    );
   }
 
   /**

@@ -6092,6 +6092,7 @@
     "StreamingGeometryEvent: type",
     "StreamingOptions: interface",
     "StreamingProgress: interface",
+    "SweptDiskDescriptions: interface",
     "SymbolicCircle: class (type-only)",
     "SymbolicDataByEntity: interface",
     "SymbolicPolyline: class (type-only)",

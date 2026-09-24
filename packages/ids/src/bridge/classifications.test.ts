@@ -238,6 +238,7 @@ ${FOOTER}`;
     });
     accessor.getClassifications(10);
     const afterFirst = copies;
+    expect(afterFirst, 'the first read builds the overlay snapshot').toBeGreaterThan(0);
     for (let i = 0; i < 5; i++) accessor.getClassifications(10);
     accessor.getClassifications(11);
     expect(copies, 'later reads reuse the snapshot').toBe(afterFirst);

@@ -165,8 +165,15 @@ export async function flowCommand(args: string[]): Promise<void> {
   const [graphPath, modelPath] = positional;
   if (!modelPath) fatal(USAGE);
   const doc = await loadDocument(graphPath);
-  const { bim, store } = await createHeadlessContext(modelPath);
-  const host: FlowHost = { bim, defaultModelId: bim.model.activeId() ?? undefined };
+  const { bim, store, backend } = await createHeadlessContext(modelPath);
+  const host: FlowHost = {
+    bim,
+    defaultModelId: bim.model.activeId() ?? undefined,
+    // `table.joinByKey`'s tag/property strategies reuse `@ifc-lite/mutations`'
+    // csv-match.ts index builder, which needs the raw entity table + mutation
+    // view rather than per-ref BimContext accessors (see host.ts's TableAccess).
+    tables: (modelId) => backend.tableAccess(modelId),
+  };
 
   let tracking: FileTrackingStore | undefined;
   const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);

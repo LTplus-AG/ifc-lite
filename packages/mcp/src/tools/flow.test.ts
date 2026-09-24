@@ -204,3 +204,67 @@ describe('#5167 describe_flow / run_flow', () => {
     expect(info.diagnostics.some((d) => /must be one of shortest, longest, cross/.test(d.message))).toBe(true);
   });
 });
+
+/**
+ * #5377 review — the MCP host provides `tables()`, so `table.joinByKey`'s
+ * property strategy runs over MCP as it does in the CLI and the viewer. Without
+ * it the node failed at run time over MCP only. Same pilot graph and model as
+ * the CLI's `flow-table-connectors.test.ts`.
+ */
+describe('run_flow — table.joinByKey over MCP (#5167)', () => {
+  const MODEL = [
+    'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
+    "FILE_NAME('t.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
+    "#1=IFCPROJECT('0project000000000000001',$,'P',$,$,$,$,$,$);",
+    "#10=IFCWALL('0wall000000000000000w1',$,'Wall 1',$,$,$,$,$,$);",
+    "#11=IFCWALL('0wall000000000000000w2',$,'Wall 2',$,$,$,$,$,$);",
+    "#100=IFCPROPERTYSINGLEVALUE('Mark',$,IFCLABEL('T-100'),$);",
+    "#101=IFCPROPERTYSET('0pset0000000000000pw01',$,'Pset_Fabrication',$,(#100));",
+    "#102=IFCRELDEFINESBYPROPERTIES('0rel00000000000000rw01',$,$,$,(#10),#101);",
+    "#110=IFCPROPERTYSINGLEVALUE('Mark',$,IFCLABEL('T-200'),$);",
+    "#111=IFCPROPERTYSET('0pset0000000000000pw02',$,'Pset_Fabrication',$,(#110));",
+    "#112=IFCRELDEFINESBYPROPERTIES('0rel00000000000000rw02',$,$,$,(#11),#111);",
+    'ENDSEC;', 'END-ISO-10303-21;',
+  ].join('\n');
+
+  it('matches rows to walls by a property through the model’s entity table', async () => {
+    const modelPath = join(tmp, 'marks.ifc');
+    await writeFile(modelPath, MODEL);
+    const registryInstance = new InMemoryModelRegistry();
+    registryInstance.add(await loadIfcModel(modelPath, { modelId: 'marks' }));
+    const ctx: ToolContext = {
+      registry: registryInstance, scope: fullScope(), progress: NOOP_PROGRESS, log: SILENT_LOGGER,
+      signal: new AbortController().signal, config: { ...DEFAULT_CONFIG, allowedPaths: [tmp] },
+    };
+    const flow = {
+      flowVersion: 1, id: 'mcp-join', name: 'MCP join', capabilities: ['model.read'], inputs: [],
+      outputs: [
+        { nodeId: 'join', port: 'matched', label: 'Matched' },
+        { nodeId: 'join', port: 'unmatched', label: 'Unmatched' },
+      ],
+      nodes: [
+        { id: 'csv', type: 'core.string', params: { value: 'Mark\nT-200\nT-999\n' } },
+        { id: 'read', type: 'table.readCsv', params: { columns: [{ name: 'Mark', type: 'string' }] } },
+        { id: 'walls', type: 'model.byType', params: { type: 'IfcWall' } },
+        { id: 'join', type: 'table.joinByKey', params: { strategy: 'property', column: 'Mark', pset: 'Pset_Fabrication', prop: 'Mark' } },
+      ],
+      edges: [
+        { from: ['csv', 'value'], to: ['read', 'text'] },
+        { from: ['walls', 'entities'], to: ['join', 'entities'] },
+        { from: ['read', 'table'], to: ['join', 'table'] },
+      ],
+    };
+    expect(runFlow, 'run_flow is registered').toBeDefined();
+    const result = structured(await runFlow!.handler({ flow, model_id: 'marks' }, ctx));
+    // Before the host provided tables(), this was ok:false with a
+    // "host does not support" error from the join node.
+    expect(result.ok, JSON.stringify(result.log)).toBe(true);
+    const outputs = result.outputs as Array<{ label: string; data: { rows: Array<Record<string, unknown>> } }>;
+    const matched = outputs.find((o) => o.label === 'Matched')!.data.rows;
+    const unmatched = outputs.find((o) => o.label === 'Unmatched')!.data.rows;
+    // Matched to the wall that carries the mark, by GlobalId — not merely
+    // "some row matched".
+    expect(matched).toEqual([{ Mark: 'T-200', GlobalId: '0wall000000000000000w2' }]);
+    expect(unmatched.map((row) => row.Mark)).toEqual(['T-999']);
+  });
+});

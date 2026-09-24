@@ -224,7 +224,19 @@ const runFlowTool: Tool = {
     }
 
     const model = resolveModel(ctx, input.model_id as string | undefined);
-    const host: FlowHost = { bim: model.bim, defaultModelId: model.id };
+    // `tables()` gives `table.joinByKey`'s tag/property strategies the entity
+    // table, as the CLI and viewer hosts do — without it those strategies fail
+    // at run time over MCP only. The mutation view is the one `bim.mutate`
+    // writes through, so a join sees what an earlier node in the run wrote.
+    const host: FlowHost = {
+      bim: model.bim,
+      defaultModelId: model.id,
+      tables: () => ({
+        entities: model.store.entities,
+        mutationView: model.backend.getOrCreateMutationView(),
+        strings: model.store.strings ?? null,
+      }),
+    };
     const result = await runFlow(doc, {
       host,
       registry,

@@ -15,6 +15,7 @@ import { MemoCache } from '@ifc-lite/flow';
 import { useBim } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { invalidateForExternalChange, runFlowInViewer } from '@/lib/flow/runner';
+import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 
 export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean } {
   const bim = useBim();
@@ -51,7 +52,9 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     running.current = true;
     setFlowRunning(true);
     try {
-      const result = await runFlowInViewer({ doc: flowDoc, bim, pin, cache, inputs });
+      const result = await runFlowInViewer({
+        doc: flowDoc, bim, pin, cache, inputs, tables: viewerTableAccess(useViewerStore),
+      });
       setFlowLastRun(result);
     } catch (err) {
       setFlowLastRun(null, err instanceof Error ? err.message : String(err));

@@ -48,6 +48,8 @@ export {
   type ImportProgress,
   type CsvParseOptions,
 } from './csv-connector.js';
+export { buildMatchContext, matchRowAgainstContext } from './csv-match.js';
+export { parseValue, PARSE_INVALID } from './csv-parse-value.js';
 export {
   changeSetToOps,
   deriveEntityIdentity,

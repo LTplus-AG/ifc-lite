@@ -1206,12 +1206,18 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
+      '@ifc-lite/export':
+        specifier: workspace:^
+        version: link:../export
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../flow
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../mutations
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
@@ -1221,6 +1227,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
     devDependencies:
       '@types/node':
         specifier: ^26.6.1

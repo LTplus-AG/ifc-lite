@@ -39,6 +39,8 @@ export interface ViewerRunInput {
   readonly cache: MemoCache;
   readonly inputs?: Readonly<Record<string, unknown>>;
   readonly signal?: AbortSignal;
+  /** Entity-table access for `table.joinByKey`'s tag/property strategies — see `viewer-tables.ts`. */
+  readonly tables?: FlowHost['tables'];
 }
 
 export class FlowCapabilityError extends Error {
@@ -51,7 +53,12 @@ export class FlowCapabilityError extends Error {
 export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult> {
   const parsed = parseCapabilities(input.doc.capabilities);
   if (!parsed.ok) throw new FlowCapabilityError(parsed.errors.map((e) => e.message));
-  const host: FlowHost = { bim: input.bim, grants: parsed.value, defaultModelId: input.bim.model.activeId() ?? undefined };
+  const host: FlowHost = {
+    bim: input.bim,
+    grants: parsed.value,
+    defaultModelId: input.bim.model.activeId() ?? undefined,
+    ...(input.tables ? { tables: input.tables } : {}),
+  };
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
   const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
     runFlow(input.doc, {

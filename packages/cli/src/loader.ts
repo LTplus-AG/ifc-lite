@@ -99,11 +99,11 @@ export async function loadIfcBytes(
 /**
  * Create a BimContext backed by a headless backend from an IFC file.
  */
-export async function createHeadlessContext(filePath: string): Promise<{ bim: BimContext; store: IfcDataStore }> {
+export async function createHeadlessContext(filePath: string): Promise<{ bim: BimContext; store: IfcDataStore; backend: HeadlessBackend }> {
   const store = await loadIfcFile(filePath);
   const backend = new HeadlessBackend(store, basename(filePath));
   const bim = createBimContext({ backend });
-  return { bim, store };
+  return { bim, store, backend };
 }
 
 /**

@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { NodeRegistry, type HostFeatures } from '@ifc-lite/flow';
+import { applyTableNode } from './apply-table-node.js';
+import { connectorNodes } from './connector-nodes.js';
 import { coreNodes } from './core-nodes.js';
+import { csvNodes } from './csv-nodes.js';
 import { elementNodes } from './element-nodes.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
@@ -11,15 +14,31 @@ import { scriptListNode, scriptNode } from './script-node.js';
 import { tableNodes } from './table-nodes.js';
 import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
+import { xlsxNodes } from './xlsx-nodes.js';
 
-export type { FlowHost, FlowNodeDef } from './host.js';
+export type { FlowHost, FlowNodeDef, TableAccess, StringLookup } from './host.js';
 export { requireCapability, toRef, toSdkRef, resolveByGlobalId, rememberGlobalId, forgetGlobalId, invalidateGlobalIdIndex } from './host.js';
 export { columnTypeOf, VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 export type { ElementSpec } from './element-nodes.js';
+export { readXlsxTable, writeXlsxTable } from './xlsx-io.js';
+export type { ReadXlsxOptions, ReadXlsxResult, XlsxColumnSpec } from './xlsx-io.js';
 
 /** Every standard node, in one registry. */
 export function createStandardRegistry(): NodeRegistry<FlowHost> {
-  return new NodeRegistry<FlowHost>().registerAll([...coreNodes, ...modelNodes, ...tableNodes, ...viewerNodes, ...writeNodes, ...elementNodes, scriptNode, scriptListNode]);
+  return new NodeRegistry<FlowHost>().registerAll([
+    ...coreNodes,
+    ...modelNodes,
+    ...tableNodes,
+    ...viewerNodes,
+    ...writeNodes,
+    ...elementNodes,
+    ...csvNodes,
+    ...xlsxNodes,
+    ...connectorNodes,
+    applyTableNode,
+    scriptNode,
+    scriptListNode,
+  ]);
 }
 
 /** What a viewer-embedded host offers. Secrets are never available in the browser. */

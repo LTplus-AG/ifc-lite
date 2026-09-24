@@ -599,6 +599,20 @@ consecutive segments to form a miter, so a tangent discontinuity is an
 inspection cue rather than an automatic schema violation
 ([IfcSweptDiskSolid](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcSweptDiskSolid.htm)).
 
+`ifc_lite_export::build_rebar_schedule(ifc_bytes, ids, &options)` returns one
+row per selected `IfcReinforcingBar` entity, including rows whose body has no
+supported swept-disk source. `rows` is keyed by occurrence STEP ID. Every
+represented source sweep has its own ordinal, solid/directrix IDs, mapping path,
+world outer/inner radii, directrix metrics and geometric check report. It keeps repeated
+mapped sources and CSG operands distinct. The `authored` map uses exact EXPRESS
+attribute names; each entry identifies the occurrence or type entity that
+supplied it. Numeric measures retain `value_file_units` and their `value_si`
+conversion, while centreline lengths are separately derived world metres.
+Conflicting occurrence/type values are reported, with the occurrence taking
+precedence. `bar_entity_count` and `represented_sweep_count` count IFC records,
+not manufactured bars. The API provides no physical bar count, cutting length,
+or certified fabrication result.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

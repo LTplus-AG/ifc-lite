@@ -8,9 +8,16 @@
  * still carries a pending changeset.
  *
  * Every case is a REAL throwaway git repository, because the verdict is a
- * comparison against `HEAD~1` and a stubbed git would prove nothing about it.
- * The CLI is driven as a child process, since its exit code is the interface
- * both workflows consume.
+ * comparison against a base revision and a stubbed git would prove nothing
+ * about it. Only the CLI is driven, as a child process: its exit status and
+ * `--record` line are the whole interface both workflows consume.
+ *
+ * Every case asserts the exit STATUS first, and checks stderr with
+ * `assert.ok(re.test(...))` rather than `assert.match`, which echoes the
+ * input on failure. Both are load-bearing for the revert oracle (`Changed
+ * tests observe production`): with the script reverted away, node exits 1
+ * with "Cannot find module" on stderr, and echoing that text would make the
+ * oracle read the run, rightly by its rules, as a test that never loaded.
  */
 
 import { test } from 'node:test';
@@ -20,8 +27,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { lateChangesets, pendingChangesets } from './check-release-late-changesets.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, 'check-release-late-changesets.mjs');
@@ -90,23 +95,16 @@ test('a release commit that still carries a pending changeset fails', (t) => {
     'packages/geometry/package.json': '7.5.1',
     'packages/parser/package.json': '8.2.0',
   });
-  const result = lateChangesets(repo);
-  assert.equal(result.verdict, 'late-changesets');
-  assert.deepEqual(result.pending, ['cozy-seals-knock.md']);
-  assert.deepEqual(
-    result.bumps.map((b) => `${b.path}:${b.from}->${b.to}`),
-    ['packages/geometry/package.json:7.5.0->7.5.1', 'packages/parser/package.json:8.0.0->8.2.0']
-  );
-
   const run = cli(repo, ['--context', 'merge']);
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /^::error title=Release commit still carries changesets/m);
-  assert.match(run.stderr, /\.changeset\/cozy-seals-knock\.md/);
-  assert.match(run.stderr, /queue it again/, 'the merge remedy tells the operator to refresh and re-queue');
+  assert.ok(/^::error title=Release commit still carries changesets/m.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
+  assert.ok(/Since HEAD~1, 2 workspace version\(s\) moved:\n {2}packages\/geometry\/package\.json: 7\.5\.0 -> 7\.5\.1\n {2}packages\/parser\/package\.json: 8\.0\.0 -> 8\.2\.0\n/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
+  assert.ok(/1 pending changeset\(s\):\n {2}\.changeset\/cozy-seals-knock\.md\n/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
+  assert.ok(/queue it again/.test(run.stderr), 'the merge remedy tells the operator to refresh and re-queue');
 
   const release = cli(repo, ['--context', 'release']);
   assert.equal(release.status, 1);
-  assert.match(release.stderr, /published NOTHING/);
+  assert.ok(/published NOTHING/.test(release.stderr), 'stderr lacks the expected text (not echoed; see the header)');
 });
 
 test('a release commit that consumed every changeset passes', (t) => {
@@ -114,10 +112,9 @@ test('a release commit that consumed every changeset passes', (t) => {
     'packages/geometry/package.json': '7.5.1',
     '.changeset/cozy-seals-knock.md': null,
   });
-  assert.equal(lateChangesets(repo).verdict, 'clean');
   const run = cli(repo);
-  assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /release commit \(1 version bump\(s\)\) with no pending changesets/);
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout, 'release commit (1 version bump(s)) with no pending changesets\n');
 });
 
 test('an ordinary commit that adds a changeset passes', (t) => {
@@ -127,10 +124,9 @@ test('an ordinary commit that adds a changeset passes', (t) => {
     'packages/geometry/src/index.ts': 'export const fixed = true;\n',
     '.changeset/another-fix.md': '---\n"@ifc-lite/geometry": patch\n---\n\nfix\n',
   });
-  const result = lateChangesets(repo);
-  assert.equal(result.verdict, 'clean');
-  assert.deepEqual(result.pending, ['another-fix.md', 'cozy-seals-knock.md']);
-  assert.equal(cli(repo).status, 0);
+  const run = cli(repo);
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout, 'no version bump since HEAD~1 (2 pending changeset(s))\n');
 });
 
 test('an ordinary commit that ADDS a workspace package with its changeset passes', (t) => {
@@ -141,8 +137,9 @@ test('an ordinary commit that ADDS a workspace package with its changeset passes
     'packages/brand-new/package.json': '0.1.0',
     '.changeset/brand-new.md': '---\n"packages-brand-new-package.json": minor\n---\n\nnew\n',
   });
-  assert.equal(lateChangesets(repo).verdict, 'clean');
-  assert.equal(cli(repo).status, 0);
+  const run = cli(repo);
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout, 'no version bump since HEAD~1 (2 pending changeset(s))\n');
 });
 
 test('files @changesets/read ignores are not pending changesets', (t) => {
@@ -156,8 +153,9 @@ test('files @changesets/read ignores are not pending changesets', (t) => {
     '.changeset/.hidden.md': 'dotfile\n',
     '.changeset/pre/nested.md': 'pre-mode dir is not read\n',
   });
-  assert.deepEqual(pendingChangesets(repo), []);
-  assert.equal(lateChangesets(repo).verdict, 'clean');
+  const run = cli(repo);
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout, 'release commit (1 version bump(s)) with no pending changesets\n');
 });
 
 test('a Version Packages commit and a later changeset in ONE push fail against the push base', (t) => {
@@ -174,23 +172,20 @@ test('a Version Packages commit and a later changeset in ONE push fail against t
   git(repo, ['add', '-A']);
   git(repo, ['commit', '-qm', 'ordinary PR queued behind the version PR']);
 
-  assert.equal(lateChangesets(repo).verdict, 'clean', 'HEAD~1 alone cannot see the batch');
-  const result = lateChangesets(repo, { previousRev: 'HEAD~2' });
-  assert.equal(result.verdict, 'late-changesets');
-  assert.deepEqual(result.pending, ['behind-in-queue.md']);
-
-  assert.equal(cli(repo).status, 0);
+  const alone = cli(repo);
+  assert.equal(alone.status, 0, 'HEAD~1 alone cannot see the batch');
   const run = cli(repo, ['--base', 'HEAD~2', '--context', 'push']);
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /Since HEAD~2, 1 workspace version\(s\) moved/);
-  assert.match(run.stderr, /merge the refreshed PR on its own/);
+  assert.ok(/Since HEAD~2, 1 workspace version\(s\) moved/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
+  assert.ok(/\.changeset\/behind-in-queue\.md/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
+  assert.ok(/merge the refreshed PR on its own/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
 });
 
 test('an unreadable --base refuses (exit 2)', (t) => {
   const repo = makeRepo(t, MAIN_WITH_LATE_CHANGESET, {});
   const run = cli(repo, ['--base', '0123456789abcdef0123456789abcdef01234567']);
   assert.equal(run.status, 2);
-  assert.match(run.stderr, /is not readable/);
+  assert.ok(/is not readable/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
   assert.equal(cli(repo, ['--base']).status, 2, 'a --base without a value is a usage error');
 });
 
@@ -198,10 +193,9 @@ test('an unreadable parent refuses (exit 2) rather than reading as clean', (t) =
   // A depth-1 checkout: nothing to compare against. "Cannot tell" must not
   // pass, or a shallow checkout would switch the gate off silently.
   const repo = makeRepo(t, null, MAIN_WITH_LATE_CHANGESET);
-  assert.equal(lateChangesets(repo).verdict, 'unknown');
   const run = cli(repo);
   assert.equal(run.status, 2);
-  assert.match(run.stderr, /base revision HEAD~1 is not readable/);
+  assert.ok(/base revision HEAD~1 is not readable/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
 });
 
 test('a tree that cannot be read refuses (exit 2)', (t) => {
@@ -209,7 +203,7 @@ test('a tree that cannot be read refuses (exit 2)', (t) => {
   writeFileSync(join(repo, 'packages/geometry/package.json'), '{ not JSON\n');
   const run = cli(repo);
   assert.equal(run.status, 2);
-  assert.match(run.stderr, /could not be evaluated/);
+  assert.ok(/could not be evaluated/.test(run.stderr), 'stderr lacks the expected text (not echoed; see the header)');
 });
 
 test('an unknown --context refuses (exit 2)', (t) => {
@@ -232,7 +226,7 @@ test('--record appends the status to the given file and exits 0, whatever the ve
     const out = join(repo, 'github_output');
     writeFileSync(out, 'earlier=kept\n');
     const run = cli(repo, ['--context', 'release', '--record', out]);
-    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.status, 0);
     assert.equal(readFileSync(out, 'utf8'), `earlier=kept\nstatus=${expected}\n`);
   }
 });

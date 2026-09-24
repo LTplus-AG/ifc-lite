@@ -598,6 +598,17 @@ describe('#4854 cost evaluator blocker regressions', () => {
     });
   }, 2_000);
 
+  // Bounded work is asserted deterministically, not by wall clock (#5334). Each
+  // item's evaluation session may spend 100,000 work units
+  // (`consumeValueEvaluationWork`). With the category subtotal memoized, an item
+  // here costs O(count) units and fits. Recomputing the subtotal for each of the
+  // `count` values costs O(count^2), which exhausts the budget, so the result
+  // comes back with no Amount and an INVALID_LIST diagnostic and the
+  // `Diagnostics: []` assertion below fails in well under a second (checked by
+  // disabling `session.categoryMemo`). The old 3 s timeout was a second,
+  // timing-only guard on the same property. It failed on a contended CI runner
+  // where every heavy test in this file ran 15-24x slower than on an idle
+  // machine. The timeout left below only catches a hang.
   it('memoizes nested category subtotal reductions while preserving multiplicity', () => {
     const count = 19_000;
     const subtotalIds = Array.from({ length: count }, (_, index) => 100 + index);
@@ -626,7 +637,7 @@ describe('#4854 cost evaluator blocker regressions', () => {
     expect(evaluateCostItem(extraction, 10)).toMatchObject({
       Amount: '4.7045881e+25', Currency: 'CHF', Diagnostics: [],
     });
-  }, 3_000);
+  }, 30_000);
 
   it('requires direct CostValues references to target IfcCostValue', async () => {
     const extraction = extractCostOnDemand(await parse(step('IFC4', [...PROJECT,

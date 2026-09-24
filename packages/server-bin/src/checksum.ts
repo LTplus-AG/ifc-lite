@@ -124,7 +124,7 @@ export async function verifyArchiveChecksum(
       `  2. A network problem blocked the checksum fetch\n` +
       `  3. The release is incomplete - report at https://github.com/LTplus-AG/ifc-lite/issues\n` +
       `Alternatives:\n` +
-      `  - Use Docker: npx create-ifc-lite my-app --template server\n` +
+      `  - Pin a version whose release carries verified binaries: npm i @ifc-lite/server-bin@X.Y.Z\n` +
       `  - Build from source: cargo build --release -p ifc-lite-server`
     );
   }

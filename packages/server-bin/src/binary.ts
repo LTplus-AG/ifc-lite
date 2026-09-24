@@ -15,7 +15,8 @@ import { extract } from 'tar';
 import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
 import { verifyArchiveChecksum } from './checksum.js';
-import { findFallbackRelease, HttpStatusError, noBinaryMessage, type FallbackLookup } from './release-fallback.js';
+import { fallbackInUseWarning, findFallbackRelease, HttpStatusError, noBinaryMessage, parseVersionSidecar,
+  versionSidecar, type FallbackLookup } from './release-fallback.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -66,9 +67,11 @@ export async function isBinaryCached(): Promise<boolean> {
   }
 
   try {
-    const cachedVersion = (await readFile(VERSION_FILE, 'utf-8')).trim();
+    const cached = parseVersionSidecar(await readFile(VERSION_FILE, 'utf-8'));
     const currentVersion = await getPackageVersion();
-    return cachedVersion === currentVersion;
+    if (cached.version !== currentVersion) return false;
+    if (cached.fallback) console.warn(fallbackInUseWarning(currentVersion, cached.fallback));
+    return true;
   } catch {
     // Legitimately silent: an unreadable version sidecar means "not cached",
     // which triggers a fresh download — the same, safe outcome as a genuine
@@ -199,10 +202,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   const archivePath = join(CACHE_DIR, platformInfo.archiveName);
   const binaryPath = getBinaryPath(platformInfo);
 
-  // Clean up any existing files
-  if (existsSync(archivePath)) {
-    unlinkSync(archivePath);
-  }
+  if (existsSync(archivePath)) unlinkSync(archivePath); // stale partial download
 
   // Download archive
   console.log(`Downloading from: ${downloadUrl}`);
@@ -210,6 +210,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   // Track the asset URL that actually succeeded so the checksum sidecar is
   // fetched from the SAME release/asset that produced this archive.
   let resolvedAssetUrl = downloadUrl;
+  let fallbackVersion: string | undefined;
 
   try {
     await downloadFile(downloadUrl, archivePath, onProgress);
@@ -255,7 +256,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       const fallback = lookup.found;
       console.warn(
         `Warning: @ifc-lite/server-bin@${version} has no published binary for ${platformInfo.targetTriple} ` +
-        `(release v${version} is missing).\n` +
+        `(release v${version} is missing or lacks this platform's archive).\n` +
         `Warning: falling back to the server binary from release v${fallback.version}.`
       );
       console.log(`Downloading from: ${fallback.assetUrl}`);
@@ -269,6 +270,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
         );
       }
       resolvedAssetUrl = fallback.assetUrl;
+      fallbackVersion = fallback.version;
     }
   }
 
@@ -296,10 +298,9 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
     );
   }
 
-  // Write version file. It is the cache key against THIS package's version,
-  // even when a fallback release supplied the binary, so a fallback install
-  // is reused rather than re-resolved on every run.
-  await writeFile(VERSION_FILE, version);
+  // Keyed on THIS package's version even for a fallback install (reused, not
+  // re-resolved every run); the sidecar names the fallback so each run warns.
+  await writeFile(VERSION_FILE, versionSidecar(version, fallbackVersion));
 
   // Clean up archive
   unlinkSync(archivePath);

@@ -17,6 +17,7 @@
 const GITHUB_REPO = 'LTplus-AG/ifc-lite';
 const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
 const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO}/releases`;
+const RELEASES_DOWNLOAD_URL = `${RELEASES_PAGE_URL}/download`;
 
 /**
  * The repo publishes one GitHub release per npm package, so `v*` server
@@ -86,6 +87,9 @@ function usableAsset(release: ApiRelease, archiveName: string): FallbackRelease 
   const archive = assets.find((a) => a.name === archiveName);
   const hasChecksum = assets.some((a) => a.name === `${archiveName}.sha256` || a.name === 'SHA256SUMS');
   if (!archive || !hasChecksum || typeof archive.browser_download_url !== 'string') return null;
+  // The checksum is fetched relative to this URL, so it must be the release's
+  // own asset on github.com, not whatever the API response names.
+  if (!archive.browser_download_url.startsWith(`${RELEASES_DOWNLOAD_URL}/${release.tag_name}/`)) return null;
   return { version, assetUrl: archive.browser_download_url };
 }
 
@@ -100,6 +104,11 @@ export async function findFallbackRelease(
   requestedVersion: string
 ): Promise<FallbackLookup> {
   const requested = parseSemver(requestedVersion);
+  // Without a plain X.Y.Z (e.g. a prerelease) "older" is undefined, and a
+  // fallback could pick a newer or unrelated release. Refuse instead.
+  if (!requested) {
+    return { found: null, reason: `v${requestedVersion} is not a plain X.Y.Z version, so no older release can be chosen` };
+  }
   let best: FallbackRelease | null = null;
   let bestSemver: [number, number, number] | null = null;
 
@@ -107,12 +116,7 @@ export async function findFallbackRelease(
     const url = `${RELEASES_API_URL}?per_page=${PER_PAGE}&page=${page}`;
     let releases: unknown;
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'ifc-lite-server-bin',
-          Accept: 'application/vnd.github+json',
-        },
-      });
+      const response = await fetch(url, { headers: apiHeaders() });
       if (!response.ok) {
         const rateLimited =
           (response.status === 403 || response.status === 429) &&
@@ -142,7 +146,7 @@ export async function findFallbackRelease(
       if (!semver) continue;
       // Only ever fall BACK: a release newer than the requested version is
       // not what this package version was built against.
-      if (requested && compareSemver(semver, requested) >= 0) continue;
+      if (compareSemver(semver, requested) >= 0) continue;
       if (!bestSemver || compareSemver(semver, bestSemver) > 0) {
         best = candidate;
         bestSemver = semver;
@@ -160,6 +164,47 @@ export async function findFallbackRelease(
         found: null,
         reason: `no release older than v${requestedVersion} in the ${MAX_PAGES * PER_PAGE} most recent carries ${archiveName} with a checksum`,
       };
+}
+
+/**
+ * Headers for the releases API. A `GITHUB_TOKEN` / `GH_TOKEN` in the
+ * environment (CI, shared NAT: where the 60/hour unauthenticated limit runs
+ * out first) is sent so the lookup gets the authenticated limit.
+ */
+function apiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'ifc-lite-server-bin',
+    Accept: 'application/vnd.github+json',
+  };
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/**
+ * The version sidecar (`.cache/version.txt`). Its first line is the package
+ * version the cache is keyed on; a fallback install adds a second line naming
+ * the release that actually supplied the binary, so every later run can say so
+ * instead of the substitution being visible only in a (usually hidden)
+ * postinstall log.
+ */
+export function versionSidecar(version: string, fallbackVersion?: string): string {
+  return fallbackVersion ? `${version}\nfallback ${fallbackVersion}\n` : version;
+}
+
+export function parseVersionSidecar(text: string): { version: string; fallback: string | null } {
+  const [first = '', second = ''] = text.trim().split(/\r?\n/);
+  const fallback = /^fallback (\S+)$/.exec(second.trim());
+  return { version: first.trim(), fallback: fallback ? fallback[1] : null };
+}
+
+/** The warning printed on every run that reuses a fallback binary. */
+export function fallbackInUseWarning(version: string, fallbackVersion: string): string {
+  return (
+    `Warning: @ifc-lite/server-bin@${version} is running the server binary from release v${fallbackVersion}, ` +
+    `because release v${version} had no binary for this platform when it was installed.\n` +
+    `Warning: run "npx @ifc-lite/server-bin download" to retry v${version}, or pin: npm i @ifc-lite/server-bin@${fallbackVersion}`
+  );
 }
 
 /**

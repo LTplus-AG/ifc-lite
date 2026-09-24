@@ -535,4 +535,52 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith(API))).toBe(false);
     expect(verifyChecksumMock).not.toHaveBeenCalled();
   });
+
+  it('records the fallback in the version sidecar, and every cached run warns about it', async () => {
+    apiBody = [release('1.16.3', ['$', '$.sha256'])];
+    await downloadBinary();
+
+    const sidecarWrite = writeFileMock.mock.calls.find(([p]) => String(p).endsWith('version.txt'));
+    const sidecar = String(sidecarWrite?.[1]);
+    expect(sidecar).toMatch(/^1\.16\.6\nfallback 1\.16\.3/);
+
+    // A later run reuses the install (same package version) but says so.
+    vi.mocked(console.warn).mockClear();
+    readFileMock.mockImplementation(async (path: string) =>
+      String(path).endsWith('package.json') ? JSON.stringify({ version: PKG_VERSION }) : sidecar
+    );
+    await expect(isBinaryCached()).resolves.toBe(true);
+    const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warning).toContain('release v1.16.3');
+    expect(warning).toContain('npx @ifc-lite/server-bin download');
+  });
+
+  it('never falls back for a version that is not a plain X.Y.Z (e.g. a prerelease)', async () => {
+    readFileMock.mockImplementation(async () => JSON.stringify({ version: '1.17.0-next.0' }));
+    apiBody = [release('1.18.0', ['$', '$.sha256']), release('1.16.2', ['$', '$.sha256'])];
+    fetchMock.mockImplementation(async (url: string) => (url.startsWith(API) ? json(apiBody) : status(404, 'Not Found')));
+
+    await expect(downloadBinary()).rejects.toThrow(/not a plain X\.Y\.Z version/);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
+  });
+
+  it('skips a release whose asset URL is not that release on github.com', async () => {
+    const foreign = release('1.16.3', ['$', '$.sha256']);
+    foreign.assets[0].browser_download_url = `https://example.invalid/v1.16.3/${archiveName()}`;
+    apiBody = [foreign, release('1.16.2', ['$', '$.sha256'])];
+
+    await downloadBinary();
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+  });
+
+  it('authenticates the releases lookup with GITHUB_TOKEN when it is set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'test-token');
+    apiBody = [release('1.16.2', ['$', '$.sha256'])];
+    await downloadBinary();
+    vi.unstubAllEnvs();
+
+    const apiCall = fetchMock.mock.calls.find(([u]) => String(u).startsWith(API));
+    expect(apiCall).toBeDefined();
+    expect((apiCall![1] as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer test-token');
+  });
 });

@@ -311,6 +311,19 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);
   });
 
+  it('never drops a majority summed across clustering passes (#5633)', () => {
+    // 3 model meshes, 2 tiny proxies beside them, 2 stray points 5 km out.
+    // Pass 1 drops the strays (2 of 7), pass 2 the proxies (2 of 5): each a
+    // minority on its own, 4 of 7 together. Only the cross-pass guard keeps
+    // the framing box from shrinking to 3 of 7 meshes.
+    const meshes = [
+      box([0, 0, 0], [10, 3, 5]), box([10, 0, 0], [20, 3, 5]), box([20, 0, 0], [30, 3, 5]),
+      box([-60, 0, 0], [-59, 0.1, 1], 24, PROXY), box([90, 0, 0], [91, 0.1, 1], 24, PROXY),
+      box([5000, 0, 0], [5000.01, 0.01, 0.01], 1), box([5000, 0, 3], [5000.01, 0.01, 3.01], 1),
+    ];
+    assert.equal(robustFitBoundsFull(meshes)?.robust ?? null, null);
+  });
+
   // #5633 (follow-up review of #5460) ------------------------------------
   /** A 25 x 8 x 20 m house of 20 wall-like meshes. */
   const house = (): RobustFitMeshInput[] => {

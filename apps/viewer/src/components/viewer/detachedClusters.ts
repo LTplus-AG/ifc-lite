@@ -21,7 +21,11 @@
  *    only of IfcBuildingElementProxy meshes, the coordination-marker
  *    convention (Infra-Bridge's and Infra-Rail's glyphs sit 0.5-0.8 model
  *    lengths out). A lamp post or a shrub near the building is typed as what
- *    it is, so it stays framed (#5633).
+ *    it is, so it stays framed (#5633). Known limit: an exporter that writes
+ *    small site furniture as IfcBuildingElementProxy (generic models) gets it
+ *    treated like a marker. The mesh data carries no Name/ObjectType, which
+ *    is what would tell `origin` / `geo-reference` apart; the object stays
+ *    rendered and inside the clipping bounds either way.
  * Only a strict minority of meshes is ever dropped, across all passes.
  *
  * Clustering repeats on what is kept (up to CLUSTER_PASSES): one stray point
@@ -42,8 +46,10 @@ const DETACHED_TINY_MIN_GAP_OVER_MAIN = 1;
 const DETACHED_GAP_OVER_MAIN_SIZE = 2;
 const DETACHED_FAR_MAX_SIZE_OF_MAIN = 0.6;
 /** Fewer meshes than this during streaming: the first batch is not the model
- *  yet, so framing a subset of it could crop real structure (#5633). */
-export const DETACHED_MIN_MESHES_WHILE_STREAMING = 8;
+ *  yet, so framing a subset of it could crop real structure (#5633). A larger
+ *  first batch can still be framed as a subset; the streaming-complete refit
+ *  re-frames on the whole model unless the user has moved the camera. */
+const DETACHED_MIN_MESHES_WHILE_STREAMING = 8;
 
 /**
  * Mark the meshes to leave out of the framing box, or return null when there

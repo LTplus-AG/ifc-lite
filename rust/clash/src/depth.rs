@@ -96,6 +96,80 @@ pub(crate) fn crossing_vertex_penetration(
     depth
 }
 
+/// Whether `inner` — AABB-contained in `outer`, with no triangle pair
+/// crossing beyond f32 noise — is buried in `outer`'s solid (#5473).
+///
+/// With no crossing, each connected shell of `inner` lies entirely on one
+/// side of `outer`'s surface up to touching it, so one probe point per shell
+/// decides by ray parity — provided the probe is not itself on `outer`'s
+/// surface, where parity is a coin flip decided by f32 rounding. The old
+/// probe, `inner`'s first vertex, is exactly that point for a flush pair (an
+/// element resting against the inside of another's AABB touches it AT its
+/// vertices), so a rigid translation re-rolled the verdict.
+///
+/// Candidates are `inner`'s vertex centroid (when that lies inside `inner`)
+/// and every vertex; a candidate is CLEAR when it is more than
+/// [`PROBE_CLEAR_ULPS`] f32 ULPs of its largest coordinate off `outer`'s
+/// surface, where its parity is trustworthy.
+/// 1. Any clear candidate inside `outer` means its shell is buried: `true`.
+///    Every candidate is checked, because `inner` may be several
+///    disconnected shells and only one of them need be buried (review of
+///    #5564); an outside shell must not end the search.
+/// 2. Otherwise any clear candidate is outside, and no shell is clearly
+///    buried: `false`.
+/// 3. With no clear candidate at all — every vertex on `outer`'s surface —
+///    the one farthest from it decides. That is what separates an element
+///    exactly filling a notch (its centroid is outside) from a duplicate of
+///    part of `outer` (its centroid is inside).
+///
+/// Visit order and strict comparisons keep the pick bit-identical to the TS
+/// `containedSolidIsBuried`.
+pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> bool {
+    if inner.count == 0 {
+        return false;
+    }
+    let clear = |p: Vec3, d: f64| {
+        let m = p[0].abs().max(p[1].abs()).max(p[2].abs()).max(1.0);
+        d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m
+    };
+    let centroid = inner.vertex_centroid();
+    let candidates: Vec<Vec3> = inner
+        .contains_point(centroid)
+        .then_some(centroid)
+        .into_iter()
+        .chain((0..inner.vertex_count()).map(|i| inner.vertex(i as u32)))
+        .collect();
+    // 1. A clearly buried shell. Parity first: it is the cheaper query, and
+    //    only candidates it places inside need their distance.
+    if candidates
+        .iter()
+        .any(|&p| outer.contains_point(p) && clear(p, outer.distance_to_surface(p)))
+    {
+        return true;
+    }
+    // 2./3. No shell is clearly buried.
+    let mut probe: Option<Vec3> = None;
+    let mut farthest = f64::NEG_INFINITY;
+    for &p in &candidates {
+        let d = outer.distance_to_surface(p);
+        if clear(p, d) {
+            return false;
+        }
+        if d > farthest {
+            farthest = d;
+            probe = Some(p);
+        }
+    }
+    probe.is_some_and(|p| outer.contains_point(p))
+}
+
+/// How far off `outer`'s surface a candidate must be for
+/// `contained_solid_is_buried` to trust its ray parity, in f32 ULPs of its
+/// largest coordinate. Generous on purpose: rounding moves a point on the
+/// surface by a few ULPs, and a vertex any closer is treated as touching,
+/// which only defers the verdict to a farther candidate.
+const PROBE_CLEAR_ULPS: f64 = 64.0;
+
 /// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
 /// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
 /// larger magnitudes the ULP only grows. Same term/reasoning as

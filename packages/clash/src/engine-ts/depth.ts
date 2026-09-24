@@ -103,6 +103,73 @@ function precisionFloor(elA: ClashElement, elB: ClashElement): number {
 }
 
 /**
+ * Whether `inner` — AABB-contained in `outer`, with no triangle pair crossing
+ * beyond f32 noise — is buried in `outer`'s solid (#5473).
+ *
+ * With no crossing, each connected shell of `inner` lies entirely on one side
+ * of `outer`'s surface up to touching it, so one probe point per shell decides
+ * by ray parity — provided the probe is not itself on `outer`'s surface, where
+ * parity is a coin flip decided by f32 rounding. The old probe, `inner`'s
+ * first vertex, is exactly that point for a flush pair (an element resting
+ * against the inside of another's AABB touches it AT its vertices), so a rigid
+ * translation re-rolled the verdict.
+ *
+ * Candidates are `inner`'s vertex centroid (when that lies inside `inner`) and
+ * every vertex; a candidate is CLEAR when it is more than
+ * {@link PROBE_CLEAR_ULPS} f32 ULPs of its largest coordinate off `outer`'s
+ * surface, where its parity is trustworthy.
+ * 1. Any clear candidate inside `outer` means its shell is buried: `true`.
+ *    Every candidate is checked, because `inner` may be several disconnected
+ *    shells and only one of them need be buried (review of #5564); an outside
+ *    shell must not end the search.
+ * 2. Otherwise any clear candidate is outside, and no shell is clearly
+ *    buried: `false`.
+ * 3. With no clear candidate at all — every vertex on `outer`'s surface — the
+ *    one farthest from it decides. That is what separates an element exactly
+ *    filling a notch (its centroid is outside) from a duplicate of part of
+ *    `outer` (its centroid is inside).
+ *
+ * Visit order and strict comparisons keep the pick bit-identical to the Rust
+ * `contained_solid_is_buried`.
+ */
+export function containedSolidIsBuried(inner: TriMesh, outer: TriMesh): boolean {
+  if (inner.count === 0) return false;
+  const clear = (p: Vec3, d: number): boolean => {
+    const m = Math.max(Math.max(Math.max(Math.abs(p[0]), Math.abs(p[1])), Math.abs(p[2])), 1);
+    return d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m;
+  };
+  const candidates: Vec3[] = [];
+  const c = inner.vertexCentroid();
+  if (inner.containsPoint(c)) candidates.push(c);
+  const n = inner.vertexCount();
+  for (let i = 0; i < n; i += 1) candidates.push(inner.vertex(i));
+  // 1. A clearly buried shell. Parity first: it is the cheaper query, and
+  //    only candidates it places inside need their distance.
+  if (candidates.some((p) => outer.containsPoint(p) && clear(p, outer.distanceToSurface(p)))) return true;
+  // 2./3. No shell is clearly buried.
+  let probe: Vec3 | null = null;
+  let farthest = -Infinity;
+  for (const p of candidates) {
+    const d = outer.distanceToSurface(p);
+    if (clear(p, d)) return false;
+    if (d > farthest) {
+      farthest = d;
+      probe = p;
+    }
+  }
+  return probe !== null && outer.containsPoint(probe);
+}
+
+/**
+ * How far off `outer`'s surface a candidate must be for
+ * `containedSolidIsBuried` to trust its ray parity, in f32 ULPs of its largest
+ * coordinate. Generous on purpose: rounding moves a point on the surface by a
+ * few ULPs, and a vertex any closer is treated as touching, which only defers
+ * the verdict to a farther candidate.
+ */
+const PROBE_CLEAR_ULPS = 64;
+
+/**
  * Deepest penetration of `mesh`'s crossing-triangle VERTICES into `other`:
  * the maximum distance-to-surface of `other` over the vertices of the
  * triangles flagged in `crossFlags` (the pairs the narrow phase saw

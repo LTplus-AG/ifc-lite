@@ -7,7 +7,9 @@
 //! and result construction match bit-for-bit so the two engines agree.
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
-use crate::depth::{box_penetration, crossing_vertex_penetration, depth_clash_result};
+use crate::depth::{
+    box_penetration, contained_solid_is_buried, crossing_vertex_penetration, depth_clash_result,
+};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
@@ -227,7 +229,10 @@ pub fn test_pair(
         // element's own extent), so without it a flush contained pair —
         // whose only measurable penetration is f32 noise — would be
         // promoted to `Hard` at a number that measures nothing (the eight
-        // Infra-Bridge pairs, see `depth_clash_result`).
+        // Infra-Bridge pairs, see `depth_clash_result`). Since #5406 a pair
+        // flush to within the tri-tri predicate's own f32 noise band no
+        // longer crosses at all; this still decides a crossing above that
+        // band but at or below `precision_floor`.
         let mesh_evidence = match (cross_small.as_ref(), cross_large.as_ref()) {
             (Some(cs), Some(cl)) => {
                 let d = crossing_vertex_penetration(small, large, cs)
@@ -257,15 +262,16 @@ pub fn test_pair(
 
     // Fully-enclosed solid: one element's AABB is wholly inside the other's,
     // so it may be buried. No surface crossing means the inner solid is
-    // entirely inside OR outside, so ray-casting ONE vertex of the contained
-    // mesh decides it (correctly "outside" for a concave notch, unlike an
-    // AABB test). B-contains-A tested first so the inner pick is deterministic
-    // on equal AABBs. Exact box-box depth when both are boxes; else the AABB
-    // gap is an estimate.
+    // entirely inside OR outside, so ray-casting one probe point of the
+    // contained mesh decides it (correctly "outside" for a concave notch,
+    // unlike an AABB test) — one chosen off the other's surface, see
+    // `contained_solid_is_buried` (#5473). B-contains-A tested first so the
+    // inner pick is deterministic on equal AABBs. Exact box-box depth when
+    // both are boxes; else the AABB gap is an estimate.
     let enclosed = if aabb_contains(aabb_b, aabb_a) {
-        tri_a.count > 0 && tri_b.contains_point(tri_a.tri(0)[0])
+        contained_solid_is_buried(tri_a, tri_b)
     } else if aabb_contains(aabb_a, aabb_b) {
-        tri_b.count > 0 && tri_a.contains_point(tri_b.tri(0)[0])
+        contained_solid_is_buried(tri_b, tri_a)
     } else {
         false
     };

@@ -196,35 +196,82 @@ library Triangles
             .FoldMax(v1.Dot(axis))
             .FoldMax(v2.Dot(axis));
 
-    // <= so exact contact counts as separation (touch), not interpenetration.
-    SeparatedOn(axis: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Boolean
-        => (axis.MaxDot(a0, a1, a2) <= axis.MinDot(b0, b1, b2))
-        || (axis.MaxDot(b0, b1, b2) <= axis.MinDot(a0, a1, a2));
+    // f32 quantisation noise of the six vertices, PER AXIS: the largest
+    // |coordinate| on that axis, floored at 1.0 so a pair near the origin
+    // keeps a nonzero band, times 2^-22 (the same scale as `F32_ULP_SCALE`
+    // in rust/clash/src/depth.rs, and >= 2 f32 ULPs at every magnitude).
+    // Vertices reach the clash kernel through f32 buffers, so two surfaces
+    // authored flush land on the same OR ADJACENT f32 values, and which one
+    // a rigid translation of the model decides (#5406).
+    AxisNoise(c0: Number, c1: Number, c2: Number, c3: Number, c4: Number, c5: Number): Number
+        => (1.0).FoldMax(c0.Abs).FoldMax(c1.Abs).FoldMax(c2.Abs).FoldMax(c3.Abs).FoldMax(c4.Abs).FoldMax(c5.Abs) * (1.0 / 4194304.0);
 
-    // Edge-edge cross axes are skipped when nearly zero-length (squared
-    // length <= eps), matching both kernels.
-    EdgeAxisSeparates(ea: Vec3, eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: Number): Boolean
-        => ea.Cross(eb).Dot(ea.Cross(eb)) > eps
-            ? ea.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2)
+    PairNoise(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Vec3
+        => new Vec3(
+            a0.X.AxisNoise(a1.X, a2.X, b0.X, b1.X, b2.X),
+            a0.Y.AxisNoise(a1.Y, a2.Y, b0.Y, b1.Y, b2.Y),
+            a0.Z.AxisNoise(a1.Z, a2.Z, b0.Z, b1.Z, b2.Z));
+
+    // The noise band of a projection onto `axis` (unnormalised): each
+    // axis's noise weighted by that axis's own component, so a coordinate
+    // axis orthogonal to `axis` contributes nothing however far from the
+    // origin it puts the pair. Scales with |axis|, like the projections it
+    // is compared against, so no normalisation (and no sqrt) is needed.
+    Band(axis: Vec3, noise: Vec3): Number
+        => ((axis.X.Abs * noise.X) + (axis.Y.Abs * noise.Y)) + (axis.Z.Abs * noise.Z);
+
+    // Separation on one axis, where overlap within the axis's noise band
+    // counts as separation (touch), not interpenetration. Exact contact is
+    // the zero-width case of this, which is what `<=` alone used to decide:
+    // a floating-point tie, so a flush pair one f32 ULP off read as a
+    // crossing and a rigid translation flipped it (#5406). The same tie
+    // decided an edge ending on a face (on that face's normal) and every
+    // coplanar pair: for two coplanar triangles both face normals and every
+    // non-degenerate edge-edge axis are the shared normal, along which each
+    // triangle projects to a point, so the SAT had no axis that could see
+    // an in-plane gap and separated them only if rounding ordered the two
+    // points. With the band the normal separates any pair coplanar to within
+    // f32 noise, overlapping or not (coplanar contact is touch, and the
+    // distance routine measures a real in-plane gap), so the coplanar branch
+    // this SAT lacked is this test's degenerate case, not a separate branch.
+    SeparatedOn(axis: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3): Boolean
+        => ((axis.MaxDot(a0, a1, a2) - axis.MinDot(b0, b1, b2)) <= axis.Band(noise))
+        || ((axis.MaxDot(b0, b1, b2) - axis.MinDot(a0, a1, a2)) <= axis.Band(noise));
+
+    // Edge-edge cross axes are skipped when the two edges are near-parallel:
+    // |ea x eb|^2 <= eps * |ea|^2 * |eb|^2, i.e. sin^2 of the angle between
+    // them <= eps. Relative, so the test is scale-free: an absolute bound on
+    // the raw |ea x eb|^2 dropped every axis between edges shorter than
+    // ~1 mm however well-conditioned (#5406). Skipping an axis can only fail
+    // to find a separation, never fabricate one.
+    EdgeAxisSeparates(ea: Vec3, eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3, eps: Number): Boolean
+        => ea.Cross(eb).LenSq > (eps * ea.LenSq) * eb.LenSq
+            ? ea.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2, noise)
             : false;
 
-    // Exact triangle-triangle intersection via the Separating Axis Theorem:
-    // the two face normals plus the up-to-9 edge-edge cross axes. True only
-    // when the interiors overlap; bare touching reports false.
-    TriTriIntersectEps(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: Number): Boolean
-        => (a1.Sub(a0).Cross(a2.Sub(a1)).SeparatedOn(a0, a1, a2, b0, b1, b2)
-            || b1.Sub(b0).Cross(b2.Sub(b1)).SeparatedOn(a0, a1, a2, b0, b1, b2)
-            || a1.Sub(a0).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
-            || a1.Sub(a0).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
-            || a1.Sub(a0).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps)
-            || a2.Sub(a1).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
-            || a2.Sub(a1).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
-            || a2.Sub(a1).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps)
-            || a0.Sub(a2).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, eps)
-            || a0.Sub(a2).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, eps)
-            || a0.Sub(a2).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, eps))
+    // Separating Axis Theorem over the two face normals plus the up-to-9
+    // edge-edge cross axes, with the pair's noise band.
+    TriTriSat(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3, eps: Number): Boolean
+        => (a1.Sub(a0).Cross(a2.Sub(a1)).SeparatedOn(a0, a1, a2, b0, b1, b2, noise)
+            || b1.Sub(b0).Cross(b2.Sub(b1)).SeparatedOn(a0, a1, a2, b0, b1, b2, noise)
+            || a1.Sub(a0).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a1.Sub(a0).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a1.Sub(a0).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a2.Sub(a1).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b1.Sub(b0), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b2.Sub(b1), a0, a1, a2, b0, b1, b2, noise, eps)
+            || a0.Sub(a2).EdgeAxisSeparates(b0.Sub(b2), a0, a1, a2, b0, b1, b2, noise, eps))
             ? false
             : true;
+
+    // Triangle-triangle intersection. True only when the interiors overlap
+    // by more than the f32 quantisation noise of the six vertices; touching
+    // (coincident faces, an edge or vertex on a face, coplanar overlap)
+    // reports false, within that noise.
+    TriTriIntersectEps(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: Number): Boolean
+        => a0.TriTriSat(a1, a2, b0, b1, b2, a0.PairNoise(a1, a2, b0, b1, b2), eps);
 
     TriTriIntersect(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Boolean
         => a0.TriTriIntersectEps(a1, a2, b0, b1, b2, 0.000000000001);

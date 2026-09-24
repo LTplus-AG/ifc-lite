@@ -53,13 +53,15 @@ pub async fn parse_parquet_stream(
     Query(query): Query<ParseQuery>,
     multipart: Option<Multipart>,
 ) -> Result<axum::response::Response, ApiError> {
-    use crate::services::{serialize_batch_with_layout, StreamingParquetCacheWriter};
+    use crate::services::parquet_stream_shapes::StreamShapePlanner;
+    use crate::services::{StreamShapes, StreamingParquetCacheWriter};
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
     use futures::StreamExt;
     use std::sync::{Arc, Mutex};
 
     let tessellation_quality = query.resolved_tessellation_quality()?;
+    let stream_shapes = query.resolved_stream_shapes()?;
 
     // Hash-only probe: no body was sent, so there is nothing to extract and
     // nothing to parse. It is checked before the gate below only because that
@@ -77,6 +79,7 @@ pub async fn parse_parquet_stream(
             &state,
             &query,
             tessellation_quality,
+            stream_shapes,
             sha256,
         )
         .await;
@@ -99,16 +102,20 @@ pub async fn parse_parquet_stream(
     // describe what it uploaded still reads and writes the entry its bytes name.
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
     let cache_key_clone = cache_key.clone();
-    // This route SHARES nothing -- a per-batch writer cannot see across a batch
-    // boundary -- so the layout only decides whether the mesh table carries
-    // identity `rot0..rot8`, and which cache namespace the result lands in. A
-    // default request therefore still produces byte-identical v5 output.
+    // Without `stream_shapes=cross-batch` this route SHARES nothing -- each
+    // batch must decode on its own -- so the layout only decides whether the
+    // mesh table carries identity `rot0..rot8`, and which cache namespace the
+    // result lands in. A default request therefore still produces
+    // byte-identical v5 output. With it (#5407), `planner` below carries the
+    // shapes already emitted from one batch to the next.
     let layout = query.parquet_layout;
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached (see
     // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
-    if let Some(response) = super::cached_replay::try_cached_replay(&state, &cache_key, layout).await? {
+    if let Some(response) =
+        super::cached_replay::try_cached_replay(&state, &cache_key, layout, stream_shapes).await?
+    {
         // Cached replay: no parse work runs, so holding the admission
         // guard (and its CPU slot) while a slow client drains the SSE
         // would starve real parses for nothing. The replay blob is
@@ -143,6 +150,12 @@ pub async fn parse_parquet_stream(
             }
         }));
     let cache_writer_for_stream = cache_writer.clone();
+    // Cross-batch streams only: the whole-stream offsets and the shapes
+    // emitted so far (#5407). Owned by the stream, NOT by the cache writer,
+    // because the client's batches depend on it and must keep flowing when a
+    // cache-writer error has dropped the cache fill.
+    let mut planner = (stream_shapes == StreamShapes::CrossBatch)
+        .then(|| StreamShapePlanner::new(layout, stream_shapes));
     // Job-unit progress checkpoints for the cache-hit replay: `progress`
     // events report the pipeline's `processed_jobs` / `total_jobs`, which the
     // geometry blob does not record (issue #3897).
@@ -171,40 +184,30 @@ pub async fn parse_parquet_stream(
                 progress_recorder.on_progress(processed, total);
                 ParquetStreamEvent::Progress { processed, total }
             }
-            StreamEvent::Batch { meshes, batch_number } => {
+            StreamEvent::Batch { meshes, batch_number, baked_basis } => {
                 progress_recorder.on_batch();
                 // Per-batch CPU work (client-blob serialization + cache-writer
-                // append) runs inside this stream map, i.e. on an async worker.
-                // On the multi-thread runtime, step off the async pool for it
-                // so other connections' polls are not starved. (Guarded by
-                // runtime flavor: block_in_place panics on current_thread,
-                // which the #[tokio::test] harness uses.)
-                let cpu_work = || {
-                    if let Ok(mut slot) = cache_writer_for_stream.lock() {
-                        if let Some(writer) = slot.as_mut() {
-                            if let Err(e) = writer.append(&meshes) {
-                                tracing::error!(error = %e, "Streaming cache writer failed; skipping cache fill");
-                                *slot = None;
-                            }
-                        }
-                    }
-                    serialize_batch_with_layout(&meshes, layout)
-                };
-                let serialized = if tokio::runtime::Handle::current().runtime_flavor()
-                    == tokio::runtime::RuntimeFlavor::MultiThread
-                {
-                    tokio::task::block_in_place(cpu_work)
-                } else {
-                    cpu_work()
-                };
+                // append) runs inside this stream map, i.e. on an async worker,
+                // so it steps off the async pool for it.
+                let serialized = super::stream_batch::off_the_async_worker(|| {
+                    super::stream_batch::encode_batch(
+                        &meshes,
+                        layout,
+                        baked_basis.as_ref(),
+                        planner.as_mut(),
+                        &cache_writer_for_stream,
+                    )
+                });
 
                 match serialized {
-                    Ok(parquet_bytes) => {
+                    Ok((parquet_bytes, bases)) => {
                         let base64_data = STANDARD.encode(&parquet_bytes);
                         ParquetStreamEvent::Batch {
                             data: base64_data,
                             mesh_count: meshes.len(),
                             batch_number,
+                            vertex_base: bases.map(|(v, _)| v),
+                            index_base: bases.map(|(_, i)| i),
                         }
                     }
                     Err(e) => {

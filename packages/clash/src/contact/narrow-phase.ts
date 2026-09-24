@@ -13,7 +13,7 @@ import type { AABB, Mesh, Vec3 } from "./types.js";
  * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
  * larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
  * `near_band_from_extent` in `rust/geometry/src/kernel/near_band.rs` and
- * `precisionFloor` in `engine-ts/narrow.ts` — kept local rather than shared
+ * the clash-math `depthFloor` (`math/aabb.ts`) — kept local rather than shared
  * because plane-distance tolerance and penetration-depth tolerance are
  * different jobs, even though both derive from the same f32 ingestion floor.
  */

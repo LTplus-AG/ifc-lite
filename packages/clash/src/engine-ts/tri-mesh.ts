@@ -172,28 +172,26 @@ export class TriMesh {
     return [sx / n, sy / n, sz / n];
   }
 
-  /** Minimum point-to-triangle distance over `tris`, as a squared distance. */
-  private minDistSqOver(p: Vec3, tris: readonly number[]): number {
+  /** Minimum point-to-triangle squared distance over `tris`, with the
+   *  closest point (the first one reaching the minimum, in visit order). */
+  private closestOver(p: Vec3, tris: Iterable<number>): [number, Vec3] {
     let best = Infinity;
+    let point: Vec3 = p;
     for (const t of tris) {
       const [a, b, c] = this.tri(t);
       const q = closestPtPointTriangle(p, a, b, c);
       const d2 = distSq(p, q);
-      if (d2 < best) best = d2;
+      if (d2 < best) {
+        best = d2;
+        point = q;
+      }
     }
-    return best;
+    return [best, point];
   }
 
-  /** Exhaustive fallback for `distanceToSurface`: every triangle, index order. */
-  private distanceToSurfaceScan(p: Vec3): number {
-    let best = Infinity;
-    for (let t = 0; t < this.count; t += 1) {
-      const [a, b, c] = this.tri(t);
-      const q = closestPtPointTriangle(p, a, b, c);
-      const d2 = distSq(p, q);
-      if (d2 < best) best = d2;
-    }
-    return Math.sqrt(best);
+  /** {@link closestOnSurface}'s distance alone. */
+  distanceToSurface(p: Vec3): number {
+    return this.closestOnSurface(p)[0];
   }
 
   /**
@@ -240,9 +238,18 @@ export class TriMesh {
    * also intersects the wider cube — `wider` cannot come back empty. It is kept
    * only as defence-in-depth against a future `queryTris` regression, not as a
    * code path with coverage; do not read it as a tested safety net.
+   *
+   * Returns the distance together with the closest surface point, whose
+   * direction from `p` is what the depth's precision floor is projected onto
+   * (#5405).
    */
-  distanceToSurface(p: Vec3): number {
-    if (this.count === 0) return Infinity;
+  closestOnSurface(p: Vec3): [number, Vec3] {
+    if (this.count === 0) return [Infinity, p];
+    const over = (tris: Iterable<number>): [number, Vec3] => {
+      const [d2, q] = this.closestOver(p, tris);
+      return [Math.sqrt(d2), q];
+    };
+    const scan = (): [number, Vec3] => over(indexRange(this.count));
     let h = this.probeSeed;
     // 64 doublings from a positive seed overflow to Infinity, whose cube
     // intersects every finite box — so the loop only runs out on NaN geometry,
@@ -250,15 +257,15 @@ export class TriMesh {
     for (let step = 0; step < 64; step += 1) {
       const hits = this.queryTris(cubeAround(p, h));
       if (hits.length > 0) {
-        const d = Math.sqrt(this.minDistSqOver(p, hits));
-        if (d <= h) return d;
-        const wider = this.queryTris(cubeAround(p, d));
-        if (wider.length > 0) return Math.sqrt(this.minDistSqOver(p, wider));
-        return this.distanceToSurfaceScan(p);
+        const near = over(hits);
+        if (near[0] <= h) return near;
+        const wider = this.queryTris(cubeAround(p, near[0]));
+        if (wider.length > 0) return over(wider);
+        return scan();
       }
       h *= 2;
     }
-    return this.distanceToSurfaceScan(p);
+    return scan();
   }
 
   /**
@@ -307,4 +314,9 @@ export class TriMesh {
     const o = t * 3;
     return [this.indices[o], this.indices[o + 1], this.indices[o + 2]];
   }
+}
+
+/** `0, 1, ..., n - 1`: the exhaustive scan's visit order (index order). */
+function* indexRange(n: number): Generator<number> {
+  for (let t = 0; t < n; t += 1) yield t;
 }

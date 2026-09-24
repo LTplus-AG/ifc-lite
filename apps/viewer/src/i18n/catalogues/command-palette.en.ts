@@ -48,7 +48,7 @@ export const commandPaletteEn = {
   'commandPalette.view.left.label': 'Left View',
   'commandPalette.view.right.label': 'Right View',
   'commandPalette.view.world.label': 'Toggle 3D World Context',
-  'commandPalette.view.lighting.label': 'Sun & Sky',
+  'commandPalette.view.lighting.label': 'Environment',
   'commandPalette.view.spacemouse.label': 'SpaceMouse',
 
   // ── Tools ──

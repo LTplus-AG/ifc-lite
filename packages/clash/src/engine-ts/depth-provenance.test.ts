@@ -24,6 +24,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
+import { crossingVertexPenetration, depthClashResult, type BoxPenetration, type VertexPenetration } from './depth.js';
+import { depthFloor, estimateFloor, signedGap } from '../math/aabb.js';
 import { TriMesh } from './tri-mesh.js';
 import { createClashEngine } from '../engine.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
@@ -272,6 +274,26 @@ function pair(a: ClashElement, b: ClashElement) {
   return res;
 }
 
+/** The AABB estimate `-signedGap` of two elements and its precision floor,
+ *  as `depthClashResult` sees them. */
+function estimateAndFloor(a: ClashElement, b: ClashElement): [number, number] {
+  return [-signedGap(a.bounds, b.bounds), estimateFloor(a.bounds, b.bounds)];
+}
+
+/** An element that is only its bounds (for `depthClashResult` unit tests). */
+function boundsEl(min: Vec3, max: Vec3): ClashElement {
+  return { key: 'k', ref: nextRef++, model: 'm', tag: 'IfcSlab', positions: new Float32Array(), indices: new Uint32Array(), bounds: { min, max } };
+}
+
+const TOUCH_RULE: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+
+function nextUp(x: number): number {
+  const f = new Float64Array([x]);
+  const u = new BigUint64Array(f.buffer);
+  u[0] = u[0]! + 1n;
+  return f[0]!;
+}
+
 describe('hard-clash distance provenance', () => {
   it('labels a genuine box-box crossing as mesh-measured', () => {
     // A block driven 75 mm into a 200 mm slab: both elements are boxes, so the
@@ -429,30 +451,39 @@ describe('hard-clash distance provenance', () => {
     // Precedence pin (#2536 rebase over #2594): a pair can simultaneously be
     // a through-penetration (declines the box-exact `'mesh'` label, falls
     // back to the AABB estimate) AND have that estimate at or below the f32
-    // precision floor for its coordinate magnitude — the two guards in
-    // `testPair` fire on the same result. The floor wins: it is checked
-    // BEFORE the through-penetration guard decides `'mesh'` vs `'estimate'`,
-    // so this reports `'touch'`, not a `'hard'` clash labelled either way —
-    // the number is not measurable at this magnitude regardless of which
-    // quantity would have produced it. Same wall/duct through-penetration
-    // shape as the aligned case above (true overlap 0.2 m), translated far
-    // enough from the origin (1,000,000 units) that `precisionFloor` grows
-    // past 0.2 m: floor = extent * 2^-22 ~ 1e6 * 2.384e-7 ~ 0.238 m > 0.2 m.
-    const off = 1_000_000;
-    const wall = boxEl('W', 'IfcWall', [off - 2.5, -0.1, -1.5], [off + 2.5, 0.1, 1.5]);
-    const duct = boxEl('D', 'IfcDuct', [off - 0.2, -1.0, -0.2], [off + 0.2, 1.0, 0.2]);
+    // precision floor — the two guards in `testPair` fire on the same
+    // result. The floor wins: it is checked BEFORE the through-penetration
+    // guard decides `'mesh'` vs `'estimate'`, so this reports `'touch'`, not
+    // a `'hard'` clash labelled either way. Same wall/duct shape as the
+    // aligned case above: the duct pierces the wall along Y, so the estimate
+    // (the wall's 0.2 m thickness) is measured along Y and its floor is the
+    // Y noise (#5405). The pair sits 1,500,000 out along Y, where that floor
+    // (~0.36 m) is above 0.2 m. Until #5405 this pin translated along X and
+    // relied on the X magnitude inflating a floor it has nothing to do with
+    // — see the companion below. Mirrors the Rust pin in `tests.rs`.
+    const off = 1_500_000;
+    const wall = boxEl('W', 'IfcWall', [-2.5, off - 0.1, -1.5], [2.5, off + 0.1, 1.5]);
+    const duct = boxEl('D', 'IfcDuct', [-0.2, off - 1.0, -0.2], [0.2, off + 1.0, 0.2]);
+    const [estimate, floor] = estimateAndFloor(wall, duct);
+    expect(estimate, 'fixture premise: the estimate is within its Y floor').toBeLessThanOrEqual(floor);
     const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
-    const res = testPair(
-      wall,
-      new TriMesh(wall.positions!, wall.indices!),
-      duct,
-      new TriMesh(duct.positions!, duct.indices!),
-      touchRule,
-      0.001,
-    );
+    const res = testPair(wall, new TriMesh(wall.positions!, wall.indices!), duct, new TriMesh(duct.positions!, duct.indices!), touchRule, 0.001);
     if (!res) throw new Error('expected a clash');
     expect(res.status).toBe('touch');
     expect(res.distance).toBe(0);
+  });
+
+  it('still reports a through-penetration far out on an ORTHOGONAL axis as hard (#5405)', () => {
+    // The old pin's placement, 1,000,000 out along X. X is orthogonal to the
+    // Y-direction depth; the old max-over-all-axes floor (~0.24 m, from X)
+    // swallowed the 0.2 m through-penetration here.
+    const off = 1_000_000;
+    const wall = boxEl('W', 'IfcWall', [off - 2.5, -0.1, -1.5], [off + 2.5, 0.1, 1.5]);
+    const duct = boxEl('D', 'IfcDuct', [off - 0.2, -1.0, -0.2], [off + 0.2, 1.0, 0.2]);
+    const res = pair(wall, duct);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+    expect(res.distance).toBeCloseTo(-0.2, 6);
   });
 
   it('labels a non-box member piercing clean through as an AABB estimate', () => {
@@ -541,34 +572,49 @@ describe('hard-clash distance provenance', () => {
 
   it('reports touch, not a mesh-labelled hard clash, for a coincident-footprint pair below the f32 precision floor', () => {
     // Reviewer's regression (PR #2536 review): the "coincident-footprint
-    // stacked box layers" fixture above (true depth 0.04 m) still reports
-    // `mesh`/-0.04 no matter how far it sits from the origin, because that
-    // branch (surfaces coincide, no triangle crossing, AABB penetration
-    // beyond tolerance) builds its `NarrowResult` directly and never checked
-    // `precisionFloor` — unlike the crossing branch just above, which does.
-    // Translate the SAME shape 1,000,000 units out, where the floor grows to
-    // ~0.238 m (> the true 0.04 m depth): this must report `touch`, exactly
-    // like the crossing-branch pin above, not `hard`/`mesh`/-0.04.
-    const off = 1_000_000;
-    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.2]);
-    const b = boxEl('B', 'IfcSlab', [off, 0, 0.16], [off + 10, 10, 0.41]);
+    // stacked box layers" branch (surfaces coincide, no triangle crossing,
+    // AABB penetration beyond tolerance) built its `NarrowResult` directly
+    // and never checked the precision floor — unlike the crossing branch
+    // just above, which does. Same shape as the fixture above (0.04 m along
+    // Z), placed 250,000 out along Z, where the Z floor (~0.06 m) is above
+    // the depth: must report `touch`, not `hard`/`mesh`/-0.04. Until #5405
+    // this translated along X instead (see the companion below).
+    const off = 250_000;
+    const a = boxEl('A', 'IfcSlab', [0, 0, off], [10, 10, off + 0.2]);
+    const b = boxEl('B', 'IfcSlab', [0, 0, off + 0.16], [10, 10, off + 0.41]);
+    const [estimate, floor] = estimateAndFloor(a, b);
+    expect(estimate, 'fixture premise: the depth is within its Z floor').toBeLessThanOrEqual(floor);
     const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
     const res = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
     if (!res) throw new Error('expected a clash');
     expect(res.status).toBe('touch');
     expect(res.distanceKind).toBe('mesh');
     expect(res.distance).toBe(0);
+  });
+
+  it('still reports a coincident-footprint pair far out on an ORTHOGONAL axis as hard (#5405)', () => {
+    // The old pin's placement, 1,000,000 out along X: a genuine 0.04 m
+    // Z-overlap whose Z coordinates are small and precise.
+    const off = 1_000_000;
+    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.2]);
+    const b = boxEl('B', 'IfcSlab', [off, 0, 0.16], [off + 10, 10, 0.41]);
+    const res = pair(a, b);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBeCloseTo(-0.04, 6);
   });
 
   it('reports touch, not a mesh-labelled hard clash, for an enclosed box pair below the f32 precision floor', () => {
     // Same regression as above, for the "enclosed box layer" branch (one
     // element's AABB wholly inside the other's, no surface crossing at all):
-    // it also built its `NarrowResult` directly and never checked
-    // `precisionFloor`. Same true depth (0.04 m) and same 1,000,000-unit
-    // translation as the fixture above; must report `touch`, not `hard`.
-    const off = 1_000_000;
-    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.04]);
-    const b = boxEl('B', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.25]);
+    // it also built its `NarrowResult` directly and never checked the floor.
+    // Same 0.04 m along Z and same 250,000-along-Z placement; must report
+    // `touch`, not `hard`.
+    const off = 250_000;
+    const a = boxEl('A', 'IfcSlab', [0, 0, off], [10, 10, off + 0.04]);
+    const b = boxEl('B', 'IfcSlab', [0, 0, off], [10, 10, off + 0.25]);
+    const [estimate, floor] = estimateAndFloor(a, b);
+    expect(estimate, 'fixture premise: the depth is within its Z floor').toBeLessThanOrEqual(floor);
     const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
     const res = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
     if (!res) throw new Error('expected a clash');
@@ -577,60 +623,83 @@ describe('hard-clash distance provenance', () => {
     expect(res.distance).toBe(0);
   });
 
-  it('reports touch, not hard, for a crossing whose MTD lands exactly ON the f32 precision floor (depth.ts:195)', () => {
-    // `depthClashResult` gates on `floorDepth <= precisionFloor(...)`, but no
-    // existing fixture strikes that boundary bit-exactly: the touch/hard
-    // pair above sit a decade below and (via the "genuine crossing" pin in
-    // the paired hard-clash tests) well above it. This one is solved
-    // algebraically to land the z-axis MTD exactly ON `precisionFloor`'s
-    // returned value, so `<=` and a mutated `<` disagree on this fixture and
-    // only this fixture (a "close enough" gap would pass under both). Ported
-    // 1:1 from the Rust pin (`rust/clash/src/kernel_tests.rs`,
-    // `overlap_exactly_at_the_precision_floor_is_touch_not_hard`) so both
-    // kernels carry the same boundary.
-    //
-    // Two boxes crossing at right angles (A long in x, B long in y — a
-    // genuine transversal crossing of their side faces, unlike two boxes
-    // merely STACKED with identical x/y footprints, whose side faces are
-    // parallel and never register as a triangle "crossing" at all, routing
-    // the pair through a branch that never calls `precisionFloor`), thin
-    // (half 0.25) and separated by a tiny gap on z.
-    //
-    // Derivation: `precisionFloor` returns `extent * F32_ULP_SCALE` where
-    // `extent` is the max abs coordinate over both elements' bounds and
-    // `F32_ULP_SCALE = 2^-22`. Pin `extent` to a power of two via A's x-axis
-    // (A spans x = [32, 64], the dominant coordinate over both boxes since B
-    // is thin in x and short in z):
-    //   floor = 64.0 * 2^-22 = 2^-16 = 0.0000152587890625
-    // Both bars are 0.5 thick on z with A centred at z=60.0; B is shifted so
-    // the z overlap (A.max_z - B.min_z — the SAT minimum axis, since the x/y
-    // overlaps are 16.25 each, far larger) equals `floor` exactly:
-    //   B.center_z = A.center_z + 2*halfZ - floor
-    //              = 60.0 + 0.5 - 0.0000152587890625 = 60.4999847412109375
-    // This literal is exactly representable in f32 (60.5 minus an exact
-    // multiple — 4 — of f32's ULP at that magnitude, 2^-18): `boxEl` stores
-    // vertex positions in a `Float32Array`, so it round-trips bit-for-bit,
-    // and `bounds` is passed as the same literal directly (no arithmetic),
-    // matching the Rust fixture's AABB exactly. Verified independently
-    // against JS's own f32 rounding (`Math.fround`) and against the SAT
-    // formula (`rA + rB - dist`) before trusting this fixture.
-    const bZ = 60.499_984_741_210_938; // = Math.fround(60.5 - 2 ** -16), bit-exact
-    expect(Math.fround(bZ)).toBe(bZ);
-    const floor = 64.0 / 4_194_304; // extent(64) * F32_ULP_SCALE
-    expect(floor).toBe(0.0000152587890625);
-    expect(60.25 - (bZ - 0.25)).toBe(floor); // A.max_z - B.min_z === floor, bit-exact
+  it('still reports an enclosed box pair far out on an ORTHOGONAL axis as hard (#5405)', () => {
+    const off = 1_000_000;
+    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.04]);
+    const b = boxEl('B', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.25]);
+    const res = pair(a, b);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBeCloseTo(-0.04, 6);
+  });
 
-    const a = boxEl('A', 'IfcBeam', [32, -0.25, 59.75], [64, 0.25, 60.25]);
-    const b = boxEl('B', 'IfcBeam', [47.75, -16, bZ - 0.25], [48.25, 16, bZ + 0.25]);
-    const hardOnly: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
-    const hardRes = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), hardOnly, 0.001);
-    expect(hardRes).toBeNull();
+  it('carries the direction a crossing-vertex penetration was measured along (#5405)', () => {
+    // Mirrors `crossing_vertex_evidence_carries_the_direction_it_was_measured_along_5405`:
+    // a 1 m cube dipping 10 mm into the top of a slab.
+    const slab = boxEl('S', 'IfcSlab', [-5, -5, -0.5], [5, 5, 0.5]);
+    const cube = boxEl('C', 'IfcColumn', [-0.5, -0.5, 0.49], [0.5, 0.5, 1.49]);
+    const cm = new TriMesh(cube.positions!, cube.indices!);
+    const e = crossingVertexPenetration(cm, new TriMesh(slab.positions!, slab.indices!), new Uint8Array(cm.count).fill(1));
+    if (!e) throw new Error('expected vertices inside');
+    expect(e.depth).toBeCloseTo(0.01, 6);
+    expect(Math.abs(e.axis[0])).toBeLessThan(1e-6);
+    expect(Math.abs(e.axis[1])).toBeLessThan(1e-6);
+    expect(Math.abs(e.axis[2])).toBeCloseTo(1, 9);
+  });
 
-    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
-    const touchRes = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
-    if (!touchRes) throw new Error('expected the boundary touch to report');
-    expect(touchRes.status).toBe('touch');
-    expect(touchRes.distance).toBe(0);
+  it('reports on a hard result the floor of the depth it reports (#5639)', () => {
+    // Mirrors `a_hard_result_reports_the_floor_of_the_depth_it_reports_5639`.
+    const a = boundsEl([9_999, -1, 63], [10_001, 1, 64]);
+    const b = boundsEl([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64]);
+    const x: Vec3 = [1, 0, 0];
+    const xFloor = depthFloor(x, a.bounds, b.bounds);
+    const estFloor = estimateFloor(a.bounds, b.bounds);
+    expect(xFloor, 'fixture premise').toBeGreaterThan(100 * estFloor);
+    const hard = (box: BoxPenetration | null, estimate: number) => {
+      const r = depthClashResult(box, estimate, null, a, b, TOUCH_RULE, [0, 0, 0], a.bounds)!;
+      expect(r.status).toBe('hard');
+      return [r.distance, r.depthFloor];
+    };
+    expect(hard({ mtd: 0.1, axis: x, through: false }, 0.5)).toEqual([-0.1, xFloor]);
+    expect(hard({ mtd: 0.1, axis: x, through: true }, 0.5)).toEqual([-0.5, estFloor]);
+    expect(hard(null, 0.5)).toEqual([-0.5, estFloor]);
+  });
+
+  it('pins the floor boundary per candidate, each on its own direction (#5405)', () => {
+    // The boundary is inclusive (`<=`) for each of the three candidates, and
+    // each is judged against the floor OF ITS OWN DIRECTION. Both boxes sit
+    // 10,000 out along X and reach Z = 64, and their own sizes are 2 and 1, so
+    // the Z noise is exactly (64 + 2 + 1) * 2^-22 (position + size, see
+    // `BoxNoise`) while the X noise is ~150x larger. The old session-level pin reached
+    // this boundary through a crossing whose floor came from the X extent;
+    // projected onto Z the floor coincides with the tri-tri contact band
+    // (#5406, same rule), so such a crossing is contact before it gets
+    // here, and the boundary is pinned where it lives. Mirrors
+    // `a_depth_exactly_at_its_own_directions_floor_is_touch_and_one_ulp_above_is_hard_5405`.
+    const a = boundsEl([9_999, -1, 63], [10_001, 1, 64]);
+    const b = boundsEl([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64]);
+    const zFloor = 67 / 4_194_304;
+    const z: Vec3 = [0, 0, 1];
+    const x: Vec3 = [1, 0, 0];
+    const touch = (box: BoxPenetration | null, estimate: number, ev: VertexPenetration | null): boolean =>
+      depthClashResult(box, estimate, ev, a, b, TOUCH_RULE, [0, 0, 0], a.bounds)!.status === 'touch';
+    expect(touch({ mtd: zFloor, axis: z, through: false }, 0.5, null)).toBe(true);
+    expect(touch({ mtd: nextUp(zFloor), axis: z, through: false }, 0.5, null)).toBe(false);
+    expect(touch(null, 0.5, { depth: zFloor, axis: z })).toBe(true);
+    expect(touch(null, 0.5, { depth: nextUp(zFloor), axis: z })).toBe(false);
+    expect(touch({ mtd: 1e-3, axis: x, through: false }, 0.5, null), '1 mm along X, 10 km out in X').toBe(true);
+    expect(touch({ mtd: 1e-3, axis: z, through: false }, 0.5, null), '1 mm along Z, 10 km out in X').toBe(false);
+
+    // The AABB estimate on the axis it measures: C overlaps A by exactly
+    // (65 + 2 + 2) * 2^-22 on Z, the Z noise once Z reaches 65 with both
+    // elements 2 across.
+    const d = 69 / 4_194_304;
+    const c = boundsEl([9_999, -0.5, 64 - d], [10_001, 0.5, 65]);
+    const est = -signedGap(a.bounds, c.bounds);
+    expect(est).toBe(d);
+    expect(estimateFloor(a.bounds, c.bounds)).toBe(d);
+    expect(depthClashResult(null, est, null, a, c, TOUCH_RULE, [0, 0, 0], a.bounds)!.status).toBe('touch');
+    expect(depthClashResult(null, nextUp(est), null, a, c, TOUCH_RULE, [0, 0, 0], a.bounds)!.status).toBe('hard');
   });
 
   it('does not flip a buried plate flush with a recess floor on which side the f32 ULP fell (#5406)', () => {

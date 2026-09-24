@@ -376,7 +376,7 @@ fn mixed_authored_and_inferred_cutters_use_wall_normal_for_inferred_depth_3977()
 }
 
 #[test]
-fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
+fn inferred_vertical_axis_is_not_an_authored_vertical_depth_3977() {
     let angle = 3.0_f64.to_radians();
     let host = issue_3977_rotate(
         &issue_3977_prism(
@@ -405,6 +405,10 @@ fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
         "premise: the inferred shortest axis is vertical"
     );
     let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    assert!(
+        super::local_frame::vertical_depth_wall_frame(&host, &openings).is_none(),
+        "an inferred vertical axis must not qualify as an authored vertical extrusion"
+    );
     let context = VoidContext {
         merged_openings: openings.clone(),
         openings,
@@ -419,11 +423,17 @@ fn inferred_vertical_axis_does_not_enable_wall_local_cut_3977() {
         bounds,
         false,
     );
-    let guarded =
+    // #5410: the plan-rotated wall is cut in its own frame, taken from its
+    // thickness axis because the cutter authors no depth. The cutter keeps
+    // the wall normal there, never the inferred vertical: the slot is cut
+    // through the wall exactly as the world path cuts it.
+    let framed =
         GeometryRouter::new().apply_void_context_inner(host, &context, 3977, bounds, true);
-    assert_eq!(
-        guarded.positions, world_only.positions,
-        "an inferred vertical axis must remain on the established world-frame path"
+    assert!(mesh_is_closed_exact(&framed));
+    let (framed_volume, world_volume) =
+        (mesh_signed_volume(&framed).abs(), mesh_signed_volume(&world_only).abs());
+    assert!(
+        (framed_volume - world_volume).abs() / world_volume < 1.0e-4,
+        "wall-frame cut {framed_volume} must match the world-frame cut {world_volume}"
     );
-    assert_eq!(guarded.indices, world_only.indices);
 }

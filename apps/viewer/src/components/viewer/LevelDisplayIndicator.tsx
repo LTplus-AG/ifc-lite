@@ -12,7 +12,7 @@
  * with a one-click return to Stacked.
  *
  * Anchored top-left so it never covers the ViewCube (top-right) or the
- * Sun & Sky panel (top-32 right).
+ * Environment panel (top-32 right).
  */
 
 import { ChevronsUpDown, SquareStack, X } from 'lucide-react';

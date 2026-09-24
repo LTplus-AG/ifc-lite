@@ -29,12 +29,12 @@ const walls = query.walls().execute();
 
 // Get all doors and windows
 const openings = query
-  .ofType('IFCDOOR', 'IFCWINDOW')
+  .ofType('IfcDoor', 'IfcWindow')
   .execute();
 
 // Get only standard walls
 const standardWalls = query
-  .ofType('IFCWALLSTANDARDCASE')
+  .ofType('IfcWallStandardCase')
   .execute();
 ```
 
@@ -127,7 +127,11 @@ const groundFloorElements = groundFloor
   ? query.onStorey(groundFloor.expressId).execute()
   : [];
 
-// Get elements within a bounding box (requires processed geometry)
+// Get elements within a bounding box.
+// `inBounds` reads `store.spatialIndex`, which processing geometry does NOT
+// set on its own -- build it first (the viewer does this via
+// `buildSpatialIndexAsync`), or this throws
+// "Spatial index not available. Geometry must be processed first."
 const buildingElements = query
   .inBounds({ min: [0, 0, 0], max: [100, 100, 30] })
   .execute();
@@ -213,6 +217,18 @@ const physicalElements = query
 
 For complex analytics, use SQL:
 
+!!! warning "`properties` and `quantities` are empty for `.ifc` input"
+
+    A STEP parse deliberately leaves those two tables at zero rows and routes
+    reads through the on-demand maps instead (issue #577, and
+    `packages/query/src/entity-query.ts` says so at the `findByProperty`
+    docstring). Any SQL that joins them returns nothing for a `.ifc` file.
+
+    They carry rows for an **IFCX** store, which builds them through
+    `PropertyTableBuilder`, and for a cache written from one. For STEP, read
+    properties through `IfcQuery`'s `whereProperty` / `store.getProperties()`,
+    which go through the on-demand maps.
+
 ```typescript
 // sql() lazily initializes DuckDB on the first call - no enable step needed,
 // but @duckdb/duckdb-wasm must be installed or sql() throws.
@@ -249,7 +265,7 @@ const floorAreaByStorey = await query.sql(`
     JOIN entities e ON r.target_id = e.express_id
     WHERE s.type = 'IfcBuildingStorey'
       AND e.type = 'IfcSpace'
-      AND r.rel_type = 'ContainsElements'
+      AND r.rel_type = 'IfcRelContainedInSpatialStructure'
   )
   SELECT
     ss.storey_name,

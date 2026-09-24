@@ -50,6 +50,7 @@ import { getDrawingMarkupReadContext } from './drawing-markup-context.js';
  */
 function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string | null {
   if (dataStore.source.byteLength <= 0) return null;
+  // @raw-entity-enumeration-ok source byte offset is required by EntityExtractor; overlay attribute edits are applied by buildDrawingMarkupMetaLookup
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   const extractor = new EntityExtractor(dataStore.source);
@@ -67,7 +68,7 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
  * merging base file data with any overlay edits — property/quantity sets,
  * unlike ObjectType, ARE fully on-demand-extracted regardless of parse
  * tier, so `getForEntity`/`getQuantitiesForEntity` need no equivalent
- * byte-level fallback) and `dataStore` (for `readBaseObjectType` above).
+ * byte-level fallback) and `dataStore` (for the source ObjectType fallback).
  * Exported on its own so this wiring — the part unique to the viewer, as
  * opposed to `readDrawingMarkupFromParseResult`'s already-tested geometry/
  * quantity logic — is independently testable without needing a real
@@ -78,7 +79,12 @@ export function buildDrawingMarkupMetaLookup(
   dataStore: IfcDataStore,
 ): DrawingMarkupMetaLookup {
   return (expressId) => {
-    const objectType = readBaseObjectType(dataStore, expressId);
+    if (view.isDeleted(expressId)) return undefined;
+    const objectTypeEdit = view.getAttributeMutationsForEntity(expressId)
+      .find((attribute) => attribute.name === 'ObjectType');
+    const objectType = objectTypeEdit
+      ? objectTypeEdit.value || null
+      : readBaseObjectType(dataStore, expressId);
 
     const properties = new Map<string, string>();
     const pset = view.getForEntity(expressId).find((s) => s.name === DRAWING_MARKUP_PSET_NAME);

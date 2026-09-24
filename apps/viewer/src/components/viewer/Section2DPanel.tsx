@@ -5,9 +5,7 @@
 /** Workspace drawings with pan/zoom, hidden lines and vector export. */
 
 import { drawingAnnotationFrame } from '@/lib/model-placement/drawing-annotation-frame';
-import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,11 +17,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine, COMMON_SCALES } from '@ifc-lite/drawing-2d';
-import { type GeometryResult } from '@ifc-lite/geometry';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { DxfUnderlayPanel } from './DxfUnderlayPanel';
 import { ScanSectionPanel } from './ScanSectionPanel';
@@ -31,7 +27,6 @@ import { SheetSetupPanel } from './SheetSetupPanel';
 import { TitleBlockEditor } from './TitleBlockEditor';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { Drawing2DCanvas } from './Drawing2DCanvas';
-import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
@@ -40,36 +35,23 @@ import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
-import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
-import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
 import { SaveMarkupToModelButton, SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
 import { useTranslation } from '@/i18n';
+import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 
-interface Section2DPanelProps {
-  mergedGeometry?: GeometryResult | null;
-  computedIsolatedIds?: Set<number> | null;
-  modelIdToIndex?: Map<string, number>;
-}
-
-export function Section2DPanel({
-  mergedGeometry,
-  computedIsolatedIds,
-}: Section2DPanelProps = {}): React.ReactElement | null {
+/** The drawing's view. Its runtime (generation, persistence, the Section-tool
+ *  auto-open) lives in `DrawingRuntimeHost` and runs whether or not this is
+ *  mounted (#5492). */
+export function Section2DPanel(): React.ReactElement | null {
   const { t } = useTranslation();
-  // Both mounted unconditionally, before `!panelVisible` below, so each
-  // restore runs even with the panel closed — safe together, see
-  // `useDrawingMarkupRestoreOnLoad`'s module doc (#4153 vs #4159).
-  useDrawing2DPersistence();
-  useDrawingMarkupRestoreOnLoad();
+  const { geometryResult, sourceCoordinateInfo, generateDrawing, isRegenerating } = useDrawingRuntime();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
   // ═══════════════════════════════════════════════════════════════════════════
   const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
   const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
-  const suppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.suppressNextSection2DPanelAutoOpen);
-  const setSuppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.setSuppressNextSection2DPanelAutoOpen);
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
   const { drawing, hasReferences } = useDrawingWithReferences(sourceDrawing);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
@@ -77,9 +59,7 @@ export function Section2DPanel({
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
   const progress = useViewerStore((s) => s.drawing2DProgress);
   const progressPhase = useViewerStore((s) => s.drawing2DPhase);
-  const setDrawingProgress = useViewerStore((s) => s.setDrawing2DProgress);
   const drawingError = useViewerStore((s) => s.drawing2DError);
-  const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
   // LENGTHUNIT display override for the on-canvas measure distance/perimeter
@@ -162,33 +142,8 @@ export function Section2DPanel({
   const clearAllAnnotations2D = useViewerStore((s) => s.clearAllAnnotations2D);
 
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
-  const activeTool = useViewerStore((s) => s.activeTool);
   const models = useViewerStore((s) => s.models);
-  const { geometryResult: legacyGeometryResult, ifcDataStore } = useIfc();
-
-  const placement = useViewerStore((state) => state.modelPlacement);
-  const placedCoordinateInfo = usePlacementCoordinateInfo((mergedGeometry ?? legacyGeometryResult)?.coordinateInfo);
-  const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
-  const geometryResult = useMemo(() => { const source = mergedGeometry ?? legacyGeometryResult;
-    return source && drawingActive ? { ...placedViewGeometry(source), coordinateInfo: placedCoordinateInfo ?? source.coordinateInfo } : source;
-  }, [mergedGeometry, legacyGeometryResult, placement, placedCoordinateInfo, drawingActive]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // AUTO-SHOW PANEL EFFECT
-  // ═══════════════════════════════════════════════════════════════════════════
-  const prevActiveToolRef = useRef(activeTool);
-  useEffect(() => {
-    // Section tool was just activated
-    if (activeTool === 'section' && prevActiveToolRef.current !== 'section' && geometryResult?.meshes) {
-      if (suppressNextSection2DPanelAutoOpen) {
-        setSuppressNextSection2DPanelAutoOpen(false);
-        prevActiveToolRef.current = activeTool;
-        return;
-      }
-      setDrawingPanelVisible(true);
-    }
-    prevActiveToolRef.current = activeTool;
-  }, [activeTool, geometryResult, setDrawingPanelVisible, suppressNextSection2DPanelAutoOpen, setSuppressNextSection2DPanelAutoOpen]);
+  const { ifcDataStore } = useIfc();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCAL STATE
@@ -236,64 +191,6 @@ export function Section2DPanel({
     return map;
   }, [geometryResult]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  // Get visibility state from store for filtering
-  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
-  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
-
-  // Build combined Set of global IDs from multi-model visibility state
-  // This converts per-model local expressIds to global IDs using idOffset
-  const combinedHiddenIds = useMemo(() => {
-    const globalHiddenIds = new Set<number>(hiddenEntities); // Start with legacy hidden IDs
-
-    // Add hidden entities from each model (convert local expressId to global ID)
-    for (const [modelId, localHiddenIds] of hiddenEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localHiddenIds) {
-          globalHiddenIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-
-    return globalHiddenIds;
-  }, [hiddenEntities, hiddenEntitiesByModel, models]);
-
-  // Build combined Set of global IDs for isolation
-  const combinedIsolatedIds = useMemo(() => {
-    // If legacy isolation is active, use that (already contains global IDs)
-    if (isolatedEntities !== null) {
-      return isolatedEntities;
-    }
-
-    // Build from multi-model isolation
-    const globalIsolatedIds = new Set<number>();
-    for (const [modelId, localIsolatedIds] of isolatedEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localIsolatedIds) {
-          globalIsolatedIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-
-    return globalIsolatedIds.size > 0 ? globalIsolatedIds : null;
-  }, [isolatedEntities, isolatedEntitiesByModel, models]);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  const { generateDrawing, isRegenerating } = useDrawingGeneration({
-    geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
-    combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
-    models, panelVisible, activeTool, drawing: sourceDrawing,
-    setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
-  });
-
   const { viewTransform, setViewTransform, zoomIn, zoomOut, fitToView } = useViewControls({
     drawing, sectionPlane, containerRef,
     panelVisible, status, sheetEnabled, activeSheet,
@@ -314,8 +211,8 @@ export function Section2DPanel({
   // with the cut. Empty/missing bounds collapse to an inert range → hook
   // returns empty, the overlay simply does nothing.
   const ifcAnnotationsForDrawing = useMemo(() => drawingAnnotationFrame(
-    geometryResult?.coordinateInfo, (mergedGeometry ?? legacyGeometryResult)?.coordinateInfo, sectionPlane,
-  ), [geometryResult, mergedGeometry, legacyGeometryResult, sectionPlane]);
+    geometryResult?.coordinateInfo, sourceCoordinateInfo, sectionPlane,
+  ), [geometryResult, sourceCoordinateInfo, sectionPlane]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
     enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),

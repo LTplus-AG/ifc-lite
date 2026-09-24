@@ -13,6 +13,8 @@ pub mod parquet_data_model;
 mod parquet_instancing;
 mod parquet_layout;
 pub mod parquet_mesh_tables;
+mod parquet_shape_plan;
+pub mod parquet_stream_shapes;
 mod parquet_schema;
 mod parquet_vertex_columns;
 #[cfg(test)]
@@ -28,7 +30,7 @@ pub(crate) use parquet_instancing::baked_basis_zup;
 pub use parquet::{serialize_batch_with_layout, ParquetError, StreamingParquetCacheWriter};
 #[cfg(test)]
 pub use parquet::serialize_to_parquet;
-pub use parquet_layout::ParquetLayout;
+pub use parquet_layout::{ParquetLayout, StreamShapes};
 pub use parquet_data_model::serialize_data_model_to_parquet;
 pub use parquet_optimized::{
     serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,

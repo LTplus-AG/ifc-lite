@@ -215,6 +215,14 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     expect(y.distanceKind, `clash ${x.id} distanceKind must match`).toBe(x.distanceKind);
     expect(x.distanceKind, `clash ${x.id} must carry a distanceKind`).toBeDefined();
     expect(Math.abs(y.distance - x.distance)).toBeLessThan(EPS);
+    // The depth floor both kernels classified against, carried out on every
+    // `hard` clash (#5639): presence must match, and the value too — it is the
+    // same generated `depthFloor` / `estimateFloor` on both sides.
+    expect(y.depthFloor === undefined, `clash ${x.id} depthFloor presence must match`).toBe(x.depthFloor === undefined);
+    expect(x.depthFloor !== undefined, `clash ${x.id}: depthFloor iff hard`).toBe(x.status === 'hard');
+    if (x.depthFloor !== undefined && y.depthFloor !== undefined) {
+      expect(Math.abs(y.depthFloor - x.depthFloor)).toBeLessThan(EPS);
+    }
     for (let i = 0; i < 3; i += 1) {
       expect(Math.abs(y.point[i] - x.point[i])).toBeLessThan(EPS);
     }

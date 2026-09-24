@@ -75,6 +75,7 @@
 // wiring; external consumers reach its types through the root-level `pub use`
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
+pub mod analytic;
 pub(crate) mod bool2d;
 /// General 2D booleans over contour sets (union/difference/intersection),
 /// keeping every disjoint output shape. Distinct from `bool2d`, which is the
@@ -214,6 +215,7 @@ pub use processors::{
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
+pub use analytic::{extract_swept_disk, AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics, ExtractedProfile};
 pub use profile_skip::SkippedProfile;

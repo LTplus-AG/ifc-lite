@@ -81,11 +81,11 @@ pub(crate) fn extrude_rings_into<S: GeomScalar, M: MeshSink<S>>(
     }
 
     // Create side walls
-    create_side_walls(outer, depth, mesh);
+    create_side_walls(outer, S::from_f64(0.0), depth, Ring::Outer, mesh);
 
     // Create side walls for holes
     for hole in holes {
-        create_side_walls(hole, depth, mesh);
+        create_side_walls(hole, S::from_f64(0.0), depth, Ring::Hole, mesh);
     }
 
     // Apply transformation if provided
@@ -183,11 +183,33 @@ pub(crate) fn create_cap_mesh<S: GeomScalar, M: MeshSink<S>>(
     }
 }
 
-/// Create side walls for a profile boundary
-#[inline]
+/// Which side of a ring the solid lies on: inside an `Outer`, outside a `Hole`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Ring { Outer, Hole }
+
+/// THE orientation rule every side-wall builder shares: whether an edge's
+/// right-hand perpendicular (and the unmirrored quad) faces out of the solid.
+/// True for a CCW outer ring and a CW hole. Holes keyed off winding alone
+/// faced into the solid and corrupted void cuts (#5410).
+pub(crate) fn outward_is_right_hand<S: GeomScalar>(ring_pts: &[nalgebra::Point2<S>], ring: Ring) -> bool {
+    let n = ring_pts.len();
+    let signed_area2 = (0..n)
+        .map(|i| {
+            let (a, b) = (&ring_pts[i], &ring_pts[(i + 1) % n]);
+            a.x * b.y - b.x * a.y
+        })
+        .fold(S::from_f64(0.0), |acc, t| acc + t);
+    (signed_area2.value() >= 0.0) == (ring == Ring::Outer)
+}
+
+/// Side walls for a profile ring between `z0` and `z1`, wound and shaded
+/// OUTWARD from the solid whatever the ring's authored winding: into the void
+/// for a hole (#5410).
 pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
     boundary: &[nalgebra::Point2<S>],
-    depth: S,
+    z0: S,
+    z1: S,
+    ring: Ring,
     mesh: &mut M,
 ) {
     let n = boundary.len();
@@ -208,12 +230,13 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
     // Smooth radial normals are correct for circular-ish profiles, but produce
     // incorrect shading on rectangular/polygonal extrusions.
     let use_smooth_radial_normals = is_approximately_circular_profile(boundary, cx, cy);
+    let radial_sign = S::from_f64(if ring == Ring::Hole { -1.0 } else { 1.0 });
     let vertex_normals: Vec<Vector3<S>> = if use_smooth_radial_normals {
         boundary
             .iter()
             .map(|p| {
                 try_normalize3(
-                    &Vector3::new(p.x - cx, p.y - cy, S::from_f64(0.0)),
+                    &Vector3::new((p.x - cx) * radial_sign, (p.y - cy) * radial_sign, S::from_f64(0.0)),
                     1e-10,
                 )
                 .unwrap_or(Vector3::new(
@@ -227,24 +250,10 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
         Vec::new()
     };
 
-    // Orient the flat side-wall normals outward regardless of the profile's
-    // authored winding. An edge's cross-section normal is one of its two
-    // in-plane perpendiculars; which one points *out* of the solid depends on
-    // the loop's winding, so key it off the signed area (CCW > 0). Without
-    // this, a CCW-authored outer profile (e.g. the AC20-FZK-Haus roof slab,
-    // issue #1006 follow-up) got inward-facing side-wall normals and shaded
-    // inside-out under the renderer's normal-based, double-sided lighting.
-    // Holes are passed with the opposite (CW) winding, which flips the sign so
-    // their walls keep facing into the void — byte-identical to the previous
-    // behaviour for negative-area loops.
-    let signed_area2: S = (0..n)
-        .map(|i| {
-            let a = &boundary[i];
-            let b = &boundary[(i + 1) % n];
-            a.x * b.y - b.x * a.y
-        })
-        .fold(S::from_f64(0.0), |acc, t| acc + t);
-    let winding_sign = S::from_f64(if signed_area2.value() < 0.0 { -1.0 } else { 1.0 });
+    // Normals and faces keyed off the shared outward rule, not the authored
+    // winding (a CCW roof slab once shaded inside-out, #1006).
+    let outward_is_right_hand = outward_is_right_hand(boundary, ring);
+    let winding_sign = S::from_f64(if outward_is_right_hand { 1.0 } else { -1.0 });
 
     let base_index = mesh.vertex_count() as u32;
     let mut quad_count = 0u32;
@@ -261,8 +270,8 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
             continue;
         }
 
-        // Right-hand perpendicular (edge.y, -edge.x) is outward for a CCW loop;
-        // `winding_sign` corrects it for CW loops (and holes).
+        // Right-hand perpendicular (edge.y, -edge.x) is outward for a CCW
+        // outer loop (and a CW hole); `winding_sign` corrects the other two.
         let flat_normal = try_normalize3(
             &Vector3::new(edge.y, -edge.x, S::from_f64(0.0)),
             1e-10,
@@ -285,12 +294,12 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
         };
 
         // Bottom vertices
-        let v0_bottom = Point3::new(p0.x, p0.y, S::from_f64(0.0));
-        let v1_bottom = Point3::new(p1.x, p1.y, S::from_f64(0.0));
+        let v0_bottom = Point3::new(p0.x, p0.y, z0);
+        let v1_bottom = Point3::new(p1.x, p1.y, z0);
 
         // Top vertices
-        let v0_top = Point3::new(p0.x, p0.y, depth);
-        let v1_top = Point3::new(p1.x, p1.y, depth);
+        let v0_top = Point3::new(p0.x, p0.y, z1);
+        let v1_top = Point3::new(p1.x, p1.y, z1);
 
         // Add 4 vertices with smooth per-vertex normals
         let idx = base_index + (quad_count * 4);
@@ -308,9 +317,8 @@ pub(crate) fn create_side_walls<S: GeomScalar, M: MeshSink<S>>(
         // direction instead of cancelling — a closed but winding-INCONSISTENT
         // solid whose exact-kernel boolean leaves open rim edges (the #1007
         // gable-wall residue: a CW-authored wall profile extruded along +Z).
-        // `winding_sign` (CCW>0) selects the matching face order; for a CW loop
-        // we mirror the quad so the closed solid is consistently outward,
-        // byte-identical to before for the common CCW case.
+        // `winding_sign` selects the matching face order: a CCW outer or CW
+        // hole keeps it, the other two are mirrored.
         if winding_sign.value() > 0.0 {
             mesh.add_triangle(idx, idx + 1, idx + 2);
             mesh.add_triangle(idx, idx + 2, idx + 3);

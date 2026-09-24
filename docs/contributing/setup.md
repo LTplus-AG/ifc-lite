@@ -240,18 +240,25 @@ Install recommended extensions:
     "rust-lang.rust-analyzer",
     "tamasfe.even-better-toml",
     "bradlc.vscode-tailwindcss",
-    "esbenp.prettier-vscode",
-    "dbaeumer.vscode-eslint"
+    "oxc.oxc-vscode"
   ]
 }
 ```
 
 ### Settings
 
+!!! note "No Prettier, no ESLint, and no format-on-save"
+
+    This repo has no `.prettierrc` and no ESLint config, and neither is a
+    devDependency. Linting is [oxlint](https://oxc.rs/) via `pnpm lint`, whose
+    ERROR tier is the CI gate. Turning on format-on-save with a formatter the
+    repo does not configure reformats files against nobody's settings and
+    buries the real diff — the same reason `cargo fmt` is never run repo-wide
+    here (see AGENTS.md).
+
+
 ```json
 {
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer"
   },

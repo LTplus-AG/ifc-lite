@@ -487,7 +487,7 @@ describe('custom basemap — the browser-access banner can come back down', () =
 
   it('retracts ONLY the CORS message — a tile proves nothing about other warnings', async () => {
     const warn = tracker();
-    warn.set('No custom basemap is configured. Add a tile URL in Sun & Sky → Base map.');
+    warn.set('No custom basemap is configured. Add a tile URL in Environment → Base map.');
     const provider = fakeProvider(() => Promise.resolve({ width: 256 }));
     attachTileSuccessRetraction(provider, warn.update.bind(warn));
 

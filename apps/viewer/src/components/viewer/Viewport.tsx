@@ -43,6 +43,7 @@ import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
+import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
 import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -455,7 +456,7 @@ export function Viewport({
     rendererRef.current?.requestRender();
   }, [environment]);
 
-  // Sun cast shadows (#2670) — driven by the Sun & Sky panel. Standalone
+  // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
   // (the renderer then skips the depth pre-pass entirely).
   const shadowsEnabled = useViewerStore((s) => s.envShadowsEnabled);
@@ -1762,9 +1763,7 @@ export function Viewport({
   const canvasStyle = cesiumActive
     ? { opacity: 0 }
     : theme === 'colorful'
-      ? {
-          background: 'linear-gradient(180deg, #4a5a8a 0%, #6272a8 10%, #7e8dba 20%, #9aa3c8 32%, #b5b8d1 44%, #cdc3d4 56%, #dcccc8 68%, #e8d5be 80%, #f0ddb8 92%, #f5e2b6 100%)',
-        }
+      ? { background: COLORFUL_CANVAS_GRADIENT }
       : undefined;
 
   return (

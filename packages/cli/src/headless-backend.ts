@@ -238,11 +238,15 @@ export class HeadlessBackend implements BimBackend {
 
   private createSpacesAdapter(): SpacesBackendMethods {
     return {
-      listStoreys: () => listStoreys(this.dataStore),
+      // The session's edited model (#5249): deleted walls/storeys out, spaces
+      // and storeys created earlier in the session in.
+      listStoreys: () => listStoreys(this.dataStore, this.mutationView ?? undefined),
       // Spaces are written via the shared StoreEditor/MutablePropertyView, so
       // they're picked up by this backend's export adapter (StepExporter).
-      generate: (options?: GenerateSpacesAllOptions) =>
-        generateSpaces(this.getOrCreateStoreEditor(), this.dataStore, options),
+      generate: (options?: GenerateSpacesAllOptions) => {
+        const editor = this.getOrCreateStoreEditor();
+        return generateSpaces(editor, this.dataStore, options, editor.getMutationView());
+      },
     };
   }
 
@@ -278,6 +282,7 @@ export class HeadlessBackend implements BimBackend {
     function getEntityData(ref: EntityRef): EntityData | null {
       const overlay = overlayEntityData(getMutationView(), ref, store.schemaVersion);
       if (overlay !== undefined) return overlay;
+      // @raw-entity-enumeration-ok overlayEntityData already handles deleted and created ids; this is source membership for one remaining ref
       if (!store.entityIndex.byId.has(ref.expressId)) return null; // not parsed either
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;

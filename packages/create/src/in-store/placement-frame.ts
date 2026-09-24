@@ -41,6 +41,8 @@ export interface OverlayWallReader {
   isDeleted?(expressId: number): boolean;
   /** Retypes queued this session (#5249). */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
+  /** Queued positional attribute edits of one entity (#5249). */
+  getPositionalMutationsForEntity?(expressId: number): ReadonlyMap<number, IfcAttributeValue> | null;
 }
 
 export const AXIS_EPS = 1e-6;

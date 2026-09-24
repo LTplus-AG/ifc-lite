@@ -8,7 +8,7 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
-import { boxPenetration, containedSolidIsBuried, crossingVertexPenetration, depthClashResult } from './depth.js';
+import { boxPenetration, containedSolidIsBuried, crossingVertexPenetration, depthClashResult, type VertexPenetration } from './depth.js';
 
 export interface NarrowResult {
   status: ClashStatus;
@@ -21,6 +21,14 @@ export interface NarrowResult {
   distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
+  /**
+   * For a `hard` result, the f32 noise floor of `distance` along the
+   * direction it was measured (`depthFloor` / `estimateFloor`): the depth at
+   * or below which this pair would have been `touch`. Absent otherwise.
+   * Carried out so the reported touching band is decided by the same rule as
+   * the verdict (#5639). Mirrors the Rust `NarrowResult::depth_floor`.
+   */
+  depthFloor?: number;
 }
 
 
@@ -179,17 +187,16 @@ export function testPair(
     // that measures nothing (the eight Infra-Bridge pairs, see
     // `depthClashResult`). Since #5406 a pair flush to within the tri-tri
     // predicate's own f32 noise band no longer crosses at all; this still
-    // decides a crossing above that band but at or below `precisionFloor`.
-    let meshEvidence: number | null = null;
+    // decides a crossing above that band but at or below its precision floor.
+    // `null` means "no crossing vertex inside at all" (e.g. a thin member
+    // piercing straight through) — no evidence either way, not evidence of a
+    // sub-floor contact. The deeper side wins, the small side on a tie (the
+    // Rust kernel's order).
+    let meshEvidence: VertexPenetration | null = null;
     if (crossSmall !== null && crossLarge !== null) {
-      const d = Math.max(
-        crossingVertexPenetration(small, large, crossSmall),
-        crossingVertexPenetration(large, small, crossLarge),
-      );
-      // 0 means "no crossing vertex inside at all" (e.g. a thin member
-      // piercing straight through) — no evidence either way, not evidence
-      // of a sub-floor contact.
-      if (d > 0) meshEvidence = d;
+      const s = crossingVertexPenetration(small, large, crossSmall);
+      const l = crossingVertexPenetration(large, small, crossLarge);
+      meshEvidence = s !== null && l !== null && l.depth > s.depth ? l : (s ?? l);
     }
     return depthClashResult(
       boxPenetration(small, large),

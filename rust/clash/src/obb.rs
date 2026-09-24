@@ -49,9 +49,16 @@ pub struct Obb {
 /// `AXIS_NOISE_ULPS`.
 pub const AXIS_NOISE_ULPS: f64 = 8.0;
 
+/// An OBB-OBB minimum translation depth and its unit axis.
+#[derive(Clone, Copy, Debug)]
+pub struct ObbPenetration {
+    pub depth: f64,
+    pub axis: Vec3,
+}
+
 /// Exact penetration depth between two oriented boxes: the minimum overlap
 /// over the 15 canonical OBB-OBB separating-axis candidates. See the TS
-/// `obbPenetrationDepth` doc comment for the full rationale, including the
+/// `obbPenetration` doc comment for the full rationale, including the
 /// scale-relative conditioning guard on cross-product candidates (review:
 /// #2536): a candidate whose overlap verdict falls inside its own noise band
 /// — `extent_sum * AXIS_NOISE_ULPS * EPS / len`, the projection error the
@@ -61,7 +68,10 @@ pub const AXIS_NOISE_ULPS: f64 = 8.0;
 /// skip into a failure). It still contributes a depth candidate of ZERO,
 /// because the depth is a minimum and an unresolvable axis is the smallest
 /// candidate present — see the guard body and #5355.
-pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
+///
+/// Returns the depth with the UNIT axis it was measured along: the depth's
+/// precision floor is the pair's f32 noise projected onto that axis (#5405).
+pub fn obb_penetration(a: &Obb, b: &Obb) -> Option<ObbPenetration> {
     let t: Vec3 = [
         b.center[0] - a.center[0],
         b.center[1] - a.center[1],
@@ -82,6 +92,7 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
         + t[1].abs()
         + t[2].abs();
     let mut depth = f64::INFINITY;
+    let mut depth_axis: Vec3 = [0.0, 0.0, 0.0];
 
     let mut test_axis = |l: Vec3| -> bool {
         let len = dot(l, l).sqrt();
@@ -118,6 +129,7 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
             // the DEPTH: deleting the minimising axis can only over-report.
             if depth > 0.0 {
                 depth = 0.0;
+                depth_axis = u;
             }
             return true;
         }
@@ -126,6 +138,7 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
         }
         if overlap < depth {
             depth = overlap;
+            depth_axis = u;
         }
         true
     };
@@ -150,12 +163,15 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
     if depth == f64::INFINITY {
         None
     } else {
-        Some(depth)
+        Some(ObbPenetration {
+            depth,
+            axis: depth_axis,
+        })
     }
 }
 
 /// Projected radius of `o` onto unit axis `u`: half the length of `o`'s
-/// shadow on `u`. The same per-axis projection `obb_penetration_depth`'s
+/// shadow on `u`. The same per-axis projection `obb_penetration`'s
 /// `test_axis` computes for the 15-candidate SAT — factored out here so the
 /// through-penetration containment test below can reuse it for ANY axis,
 /// not only one drawn from a frame shared by both boxes.
@@ -226,14 +242,14 @@ fn pierces_along(p: &Obb, q: &Obb, center_delta: Vec3) -> bool {
 /// X-junction, each piercing the other clean through in thickness.
 ///
 /// Faithful port of the TS `isThroughPenetration` (review: #2536) — see its
-/// doc comment for the full rationale: `obb_penetration_depth` reports the
+/// doc comment for the full rationale: `obb_penetration` reports the
 /// minimum translation distance to separate the pair, which for this shape
 /// is dominated by the piercing member's own extent along the piercing
 /// axis, not by how much material it actually crossed.
 ///
 /// Tests containment against EACH box's own axes independently (via
 /// `pierces_along`'s general per-axis projection, the same projection
-/// `obb_penetration_depth` already computes for its 15 SAT candidates) —
+/// `obb_penetration` already computes for its 15 SAT candidates) —
 /// unlike an earlier version restricted to a frame shared by both boxes'
 /// axes up to sign, this also catches a member piercing through at a
 /// generic relative rotation (review: #2536 follow-up).

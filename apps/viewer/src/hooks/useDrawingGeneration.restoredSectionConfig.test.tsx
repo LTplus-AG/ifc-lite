@@ -14,7 +14,7 @@
  * actually drawn against.
  *
  * This mounts BOTH real hooks together (`useDrawing2DPersistence` +
- * `useDrawingGeneration`), exactly as `Section2DPanel.tsx` does, wired
+ * `useDrawingGeneration`), exactly as `DrawingRuntimeHost.tsx` does, wired
  * through a `sectionPlane` prop that is read live from the store — so the
  * fix under test (`useDrawingGeneration.ts` consuming
  * `consumeRestoredSectionConfig` and writing the converted plane back into
@@ -125,7 +125,7 @@ function stubModel(id: string, sourceFile: File): FederatedModel {
   } as FederatedModel;
 }
 
-// ─── Harness — mirrors Section2DPanel.tsx's wiring ─────────────────────────
+// ─── Harness — mirrors DrawingRuntimeHost.tsx's wiring ─────────────────────
 
 let runGenerate: (() => Promise<void>) | null = null;
 let lastDrawing: Drawing2D | null = null;

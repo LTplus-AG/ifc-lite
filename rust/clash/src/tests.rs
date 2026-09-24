@@ -564,29 +564,56 @@ fn a_plain_corner_overlap_at_a_generic_mutual_rotation_keeps_the_mesh_label() {
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
 }
 
+/// The AABB estimate of `parts[0]` vs `parts[1]` and its precision floor, as
+/// `depth_clash_result` sees them (from the f32-baked session AABBs).
+fn estimate_and_floor(parts: &[(Vec<f32>, Vec<u32>, Vec<f32>)]) -> (f64, f64) {
+    let aabb = |ab: &[f32]| {
+        let f = |i: usize| f64::from(ab[i]);
+        crate::aabb::Aabb::new([f(0), f(1), f(2)], [f(3), f(4), f(5)])
+    };
+    let (a, b) = (aabb(&parts[0].2), aabb(&parts[1].2));
+    (-crate::aabb::signed_gap(&a, &b), crate::aabb::estimate_floor(&a, &b))
+}
+
 #[test]
 fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Precedence pin (#2536 rebase over #2594): a pair can simultaneously be
     // a through-penetration (declines the box-exact `Mesh` label, falls back
     // to the AABB estimate) AND have that estimate at or below the f32
-    // precision floor for its coordinate magnitude — the two guards in
-    // `test_pair` fire on the same result. The floor wins: it is checked
-    // BEFORE the through-penetration guard decides `Mesh` vs `Estimate`, so
-    // this reports `Touch`, not a `Hard` clash labelled either way. Same
-    // wall/duct through-penetration shape as the aligned case above (true
-    // overlap 0.2 m), translated far enough from the origin (1,000,000
-    // units) that `precision_floor` grows past 0.2 m: floor = extent *
-    // 2^-22 ~ 1e6 * 2.384e-7 ~ 0.238 m > 0.2 m. Mirrors the TS fixture in
-    // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5),
-        box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    // precision floor — the two guards fire on the same result. The floor
+    // wins: it is checked BEFORE the through-penetration guard decides
+    // `Mesh` vs `Estimate`, so this reports `Touch`, not a `Hard` clash
+    // labelled either way. Same wall/duct shape as the aligned case above:
+    // the duct pierces the wall along Y, so the estimate (the wall's
+    // thickness) is measured along Y and its floor is the Y noise (#5405).
+    // The pair sits 1,500,000 out along Y, where that floor (~0.36 m) is
+    // above the f32-quantised thickness (0.25 m). Until #5405 this pin
+    // translated along X instead, and relied on the X magnitude inflating a
+    // floor it has nothing to do with — see the companion below. Mirrors
+    // the TS fixture in `engine-ts/depth-provenance.test.ts`.
+    let off = 1_500_000.0_f32;
+    let parts = [box_hxyz(0.0, off, 0.0, 2.5, 0.1, 1.5), box_hxyz(0.0, off, 0.0, 0.2, 1.0, 0.2)];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: estimate {estimate} within its Y floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn a_through_penetration_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The same pair 1,000,000 out along X — the old pin's placement. X is
+    // orthogonal to the Y-direction depth, so its magnitude says nothing
+    // about that depth's f32 noise; the old max-over-all-axes floor (~0.24 m
+    // from the X coordinate) swallowed the 0.2 m through-penetration here.
+    let off = 1_000_000.0_f32;
+    let parts = [box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5), box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2)];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert!((result.records[0].distance + 0.2).abs() < 1e-6, "{}", result.records[0].distance);
 }
 
 #[test]
@@ -692,43 +719,78 @@ fn an_enclosed_layer_is_labelled_mesh_measured() {
 fn a_coincident_footprint_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Structural pin, not just a value pin: this branch (surfaces coincide,
     // no triangle crossing, AABB penetration beyond tolerance) built its
-    // `NarrowResult` directly and never checked `precision_floor` — unlike
-    // the crossing branch (`a_through_penetration_below_the_precision_floor_
-    // reports_touch_not_a_labelled_hard_clash` above), which does. Same
-    // shape and true depth (0.04 m) as `coincident_footprint_layers_are_
-    // labelled_mesh_measured` above, translated 1,000,000 units out where
-    // `precision_floor` grows to ~0.238 m (> 0.04 m): must report `Touch`,
-    // not `Hard`/`Mesh`/-0.04. Mirrors the TS fixture in
+    // `NarrowResult` directly and never checked the precision floor —
+    // unlike the crossing branch, which does. Same shape as
+    // `coincident_footprint_layers_are_labelled_mesh_measured` above (true
+    // depth 0.04 m along Z), placed 250,000 out along Z, where the Z floor
+    // (~0.06 m) is above the f32-quantised depth: must report `Touch`, not
+    // `Hard`/`Mesh`. Until #5405 this translated along X instead (see the
+    // companion below). Mirrors the TS fixture in
     // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
-        box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    let off = 250_000.0_f32;
+    let parts = [
+        box_hxyz(5.0, 5.0, off + 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(5.0, 5.0, off + 0.285, 5.0, 5.0, 0.125),
+    ];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: depth {estimate} within its Z floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
 }
 
 #[test]
+fn a_coincident_footprint_pair_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The old pin's placement, 1,000,000 out along X: a genuine 0.04 m
+    // Z-overlap whose Z coordinates are small and precise. The old floor
+    // (~0.24 m, from X) called it `Touch`.
+    let off = 1_000_000.0_f32;
+    let parts = [
+        box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
+    ];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+    assert!((result.records[0].distance + 0.04).abs() < 1e-6, "{}", result.records[0].distance);
+}
+
+#[test]
 fn an_enclosed_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Same regression as above, for the enclosed-solid branch (one element's
     // AABB wholly inside the other's, no surface crossing at all): it also
-    // built its `NarrowResult` directly and never checked `precision_floor`.
-    // Same shape and true depth (0.04 m) as `an_enclosed_layer_is_labelled_
-    // mesh_measured` above, same 1,000,000-unit translation; must report
-    // `Touch`, not `Hard`. Mirrors the TS fixture in
-    // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
-        box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    // built its `NarrowResult` directly and never checked the floor. Same
+    // shape as `an_enclosed_layer_is_labelled_mesh_measured` above (0.04 m
+    // along Z), same 250,000-along-Z placement; must report `Touch`, not
+    // `Hard`. Mirrors the TS fixture in `engine-ts/depth-provenance.test.ts`.
+    let off = 250_000.0_f32;
+    let parts = [
+        box_hxyz(5.0, 5.0, off + 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(5.0, 5.0, off + 0.125, 5.0, 5.0, 0.125),
+    ];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: depth {estimate} within its Z floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn an_enclosed_pair_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The old pin's placement, 1,000,000 out along X.
+    let off = 1_000_000.0_f32;
+    let parts = [
+        box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
+    ];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+    assert!((result.records[0].distance + 0.04).abs() < 1e-6, "{}", result.records[0].distance);
 }
 
 #[test]

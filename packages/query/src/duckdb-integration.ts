@@ -136,6 +136,8 @@ export class DuckDBIntegration {
    * This approach works without Arrow dependencies and is more portable
    */
   private async registerTables(store: IfcDataStore): Promise<void> {
+    // conn is guaranteed non-null here — called only from init() after connect()
+    const conn = this.conn!;
     // @raw-entity-enumeration-ok SQL registration materializes the supplied parsed store once, without a mutation view
     console.log('[DuckDB] Registering tables from store with', store.entities.count, 'entities');
 

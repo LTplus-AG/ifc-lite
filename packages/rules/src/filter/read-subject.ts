@@ -141,11 +141,10 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
         for (const p of set.properties) {
           if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
           values.push(stringifyValue(p.value));
-          // Type-inherited rows are typed without `unit`; own rows carry it.
-          const explicit = 'unit' in p && typeof p.unit === 'string' ? p.unit : undefined;
-          valueUnits.push(explicit ?? projectUnitSymbol(store, p.dataType));
-          const explicitScale = 'unitSiScale' in p && typeof p.unitSiScale === 'number' ? p.unitSiScale : undefined;
-          valueSiScales.push(explicit !== undefined ? explicitScale : projectSiScale(store, p.dataType));
+          // Own and type-level rows alike carry the property's explicit
+          // `Unit` when it has one (both come from `extractPsetsFromIds`).
+          valueUnits.push(p.unit ?? projectUnitSymbol(store, p.dataType));
+          valueSiScales.push(p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType));
         }
       }
       return { ...fromStrings(values), valueUnits, valueSiScales };

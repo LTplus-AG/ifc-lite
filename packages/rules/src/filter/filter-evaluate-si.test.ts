@@ -11,6 +11,8 @@
  *   Wall A  Width 300 (mm, project unit), Height IFCLENGTHMEASURE 2500 (mm)
  *   Wall B  Width 0.2 with an explicit METRE unit
  *   Wall C  Label IFCLABEL '5' (no unit)
+ *   Wall D  Height only on its type: IFCLENGTHMEASURE 2.5 with an explicit
+ *           METRE unit (review, #5432: a type-level explicit unit counts)
  */
 
 import assert from 'node:assert/strict';
@@ -44,6 +46,11 @@ DATA;
 #130= IFCPROPERTYSINGLEVALUE('Height',$,IFCLABEL('5'),$);
 #131= IFCPROPERTYSET('0Pset00000000000000131A',$,'Pset_Dims',$,(#130));
 #132= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000132A',$,$,$,(#103),#131);
+#104= IFCWALL('0WallD0000000000000004A',$,'Wall D',$,$,$,$,$,$);
+#140= IFCPROPERTYSINGLEVALUE('Height',$,IFCLENGTHMEASURE(2.5),#32);
+#141= IFCPROPERTYSET('0Pset00000000000000141A',$,'Pset_Dims',$,(#140));
+#142= IFCWALLTYPE('0WType00000000000000142',$,'WT',$,$,(#141),$,$,$,.STANDARD.);
+#143= IFCRELDEFINESBYTYPE('0Rel00000000000000143A',$,$,$,(#104),#142);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -71,7 +78,7 @@ describe('valueUnit: si in search (#5225)', () => {
 
   it('compares a length property in SI and leaves a unit-less label as stored', async () => {
     const height = { kind: 'property', setName: 'Pset_Dims', propertyName: 'Height' } as const;
-    assert.deepEqual(await names({ ...height, op: 'gte', value: '2', valueUnit: 'si' }), ['Wall A', 'Wall C']);
+    assert.deepEqual(await names({ ...height, op: 'gte', value: '2', valueUnit: 'si' }), ['Wall A', 'Wall C', 'Wall D']);
     assert.deepEqual(await names({ ...height, op: 'gt', value: '3', valueUnit: 'si' }), ['Wall C']);
   });
 

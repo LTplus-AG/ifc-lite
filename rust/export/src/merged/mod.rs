@@ -25,6 +25,7 @@
 
 mod empty;
 mod guid;
+mod header;
 mod line_edit;
 mod plan;
 mod spatial;
@@ -33,7 +34,6 @@ mod units;
 use std::collections::{HashMap, HashSet};
 
 use crate::schema_detect::detect_schema;
-use crate::step_text::escape;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, leading_rooted_global_id};
@@ -156,15 +156,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         .or_else(|| models.first().map(|m| detect_schema(m.content)))
         .unwrap_or_else(|| "IFC4".to_string());
 
-    let mut out = String::new();
-    out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
-    out.push_str(&format!(
-        "FILE_NAME('','',(''),(''),'{}','ifc-lite-export','');\n",
-        escape(&opts.application)
-    ));
-    out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(&schema)));
-    out.push_str("ENDSEC;\nDATA;\n");
+    let mut out = header::merged_header(opts, &schema);
 
     let mut stats = MergedStats {
         models: models.len(),

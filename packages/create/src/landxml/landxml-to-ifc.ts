@@ -139,12 +139,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
   }
 
   const creator = new IfcCreator({
+    // Declared as `IFC4X3_ADD2` by `IfcCreator` itself, like all IFC4X3
+    // output (`fileSchemaIdentifier`, #5351).
     Schema: 'IFC4X3',
-    // The ISO identifier for the layouts written here. The bare `IFC4X3` token
-    // is resolved by IfcOpenShell — and the buildingSMART validator built on
-    // it — to a later development schema, under which this standard-conformant
-    // output fails validation (#5351).
-    FileSchemaIdentifier: 'IFC4X3_ADD2',
     Name: options.sourceFileName ?? 'LandXML conversion',
     Description: `Derived from LandXML ${source.schema} by the ifc-lite LandXML→IFC mapping v${LANDXML_IFC_MAPPING_VERSION}`,
     LengthUnit: 'METRE',

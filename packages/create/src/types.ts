@@ -546,16 +546,12 @@ export interface ProjectParams {
   Description?: string;
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   /**
-   * Declare IFC4X3 content as `IFC4X3_ADD2` — the ISO 16739-1:2024 identifier —
-   * in `FILE_SCHEMA`. Only valid with `Schema: 'IFC4X3'`; changes nothing but
-   * the header token.
-   *
-   * The attribute layouts `IfcCreator` writes for IFC4X3 are ADD2's. IfcOpenShell
-   * (and so the buildingSMART validation service) resolves the bare `IFC4X3`
-   * token to a later DEVELOPMENT schema whose layouts differ — e.g.
-   * `IfcTriangulatedFaceSet.Closed` before `Normals`, a 10-attribute
-   * `IfcMapConversion` — and rejects standard-conformant output under it. See #5351.
+   * @deprecated IFC4X3 output is now always declared as `IFC4X3_ADD2`, the
+   * ISO 16739-1:2024 identifier for the layouts `IfcCreator` writes (#5351),
+   * so this option changes nothing. It still refuses a `Schema` other than
+   * `'IFC4X3'`. Omit it.
    */
+  // TODO(remove-by: next @ifc-lite/create major, #5562)
   FileSchemaIdentifier?: 'IFC4X3_ADD2';
   /** Length unit: 'METRE' (default), 'MILLIMETRE', 'FOOT' */
   LengthUnit?: string;

@@ -1398,21 +1398,19 @@ describe('IfcCreator — computeRefDirection vertical-axis branch', () => {
 });
 
 /**
- * #5351 — `FileSchemaIdentifier`. The layouts `IfcCreator` writes for IFC4X3
- * are IFC4X3_ADD2's (ISO 16739-1:2024), but IfcOpenShell — and the
- * buildingSMART validator built on it — resolves the bare `IFC4X3` token to a
- * later development schema and rejects them. Declaring ADD2 is the fix; it
- * must change the header and nothing else.
+ * #5351 — the deprecated `FileSchemaIdentifier` (TODO(remove-by: next
+ * @ifc-lite/create major, #5562)). IFC4X3 output is now declared as
+ * IFC4X3_ADD2 without it (see `ifc-creator-file-schema.test.ts`), so passing
+ * it must change nothing, and it still refuses content of another schema.
  */
-describe('IfcCreator FileSchemaIdentifier (#5351)', () => {
-  it('declares IFC4X3_ADD2 in FILE_SCHEMA and changes nothing else', () => {
+describe('IfcCreator FileSchemaIdentifier, deprecated (#5351)', () => {
+  it('changes nothing: IFC4X3 output is declared IFC4X3_ADD2 with or without it', () => {
     const plain = new IfcCreator({ Schema: 'IFC4X3', Timestamp: 0, GuidSource: counterGuids() }).toIfc().content;
     const add2 = new IfcCreator({
       Schema: 'IFC4X3', FileSchemaIdentifier: 'IFC4X3_ADD2', Timestamp: 0, GuidSource: counterGuids(),
     }).toIfc().content;
-    expect(add2).toContain("FILE_SCHEMA(('IFC4X3_ADD2'));");
-    expect(plain).toContain("FILE_SCHEMA(('IFC4X3'));");
-    expect(add2.replace("'IFC4X3_ADD2'", "'IFC4X3'")).toBe(plain);
+    expect(plain).toContain("FILE_SCHEMA(('IFC4X3_ADD2'));");
+    expect(add2).toBe(plain);
   });
 
   it('refuses the ADD2 identifier on content of another schema', () => {

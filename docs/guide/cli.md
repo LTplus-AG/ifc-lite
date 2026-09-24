@@ -846,7 +846,7 @@ ifc-lite convert old-model.ifc --schema IFC4X3 --out modern.ifc
 ifc-lite convert model.ifc --schema IFC2X3 --out legacy.ifc --json
 ```
 
-Handles entity type mapping automatically (e.g., `IfcWallStandardCase` → `IfcWall` when upgrading from IFC2X3 to IFC4).
+Handles entity type mapping automatically (e.g., `IfcWallStandardCase` → `IfcWall` when upgrading from IFC2X3 to IFC4). An IFC4X3 target is declared as `FILE_SCHEMA(('IFC4X3_ADD2'))`, the ISO 16739-1:2024 identifier for the layouts ifc-lite writes (see [which schema identifier is written](exporting.md#which-schema-identifier-is-written)).
 
 **Flags:**
 

@@ -12,11 +12,11 @@
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import {
-  generateHeader,
   IfcParser,
   asSourceBytes,
 } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
+import { buildMergedHeader } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
@@ -489,7 +489,7 @@ export class MergedExporter {
   export(options: MergeExportOptions): MergeExportResult {
     const onProgress = options.onProgress;
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
-    const header = this.buildHeader(options, schema);
+    const header = buildMergedHeader(options, schema, this.models.length);
 
     // Baking edits into source bytes needs the async parser, so the sync path
     // cannot honour them. Fail loudly rather than silently dropping the edits.
@@ -617,7 +617,7 @@ export class MergedExporter {
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
     // See export(): merged files emit an ifc-lite provenance header by policy
     // (no single source header to preserve across federated models).
-    const header = this.buildHeader(options, schema);
+    const header = buildMergedHeader(options, schema, this.models.length);
 
     // Bake each model's pending edits into its source bytes before merging, so
     // federated export round-trips mutations like single-model export. Models
@@ -850,22 +850,6 @@ export class MergedExporter {
         `operation.`,
       );
     }
-  }
-
-  /**
-   * Build the ifc-lite provenance header. Merged files have no single source
-   * header to round-trip, so we deliberately emit our own rather than picking
-   * one model's FILE_DESCRIPTION arbitrarily.
-   */
-  private buildHeader(options: MergeExportOptions, schema: IfcSchemaVersion): string {
-    return generateHeader({
-      schema,
-      description: options.description || `Merged export of ${this.models.length} models from ifc-lite`,
-      author: options.author || '',
-      organization: options.organization || '',
-      application: options.application || 'ifc-lite',
-      filename: options.filename || 'merged.ifc',
-    });
   }
 
   /**

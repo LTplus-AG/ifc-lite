@@ -12,6 +12,7 @@
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { fileSchemaIdentifier } from '@ifc-lite/data';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
@@ -148,11 +149,12 @@ export class StepExporter {
         : undefined);
 
     // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
-    // are NOT converting schemas; conversion must emit the coarse target token.
+    // are NOT converting schemas; otherwise declare the target family's file
+    // identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
     const schemaToken: string =
       !converting && sourceHeader?.schemaIdentifiers?.[0]
         ? sourceHeader.schemaIdentifiers[0]
-        : schema;
+        : fileSchemaIdentifier(schema);
 
     // The one construction site for the state this export shares across its
     // seven phases, built in `step-pass-builder.ts` (#2475). `ExportPass` in

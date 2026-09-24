@@ -15,7 +15,8 @@
  * `ifcopenshell.validate` by hand once and never wired it in.
  *
  * This test re-exports two real third-party fixtures through `StepExporter`
- * and shells out to `tools/ifcopenshell_reference/validate_export.py`, which
+ * (and, in its own block, an IFC4X3 set: see `IFC4X3_CONVERTED` and
+ * `IFC4X3_ROUND_TRIP`, #5351) and shells out to `tools/ifcopenshell_reference/validate_export.py`, which
  * runs `ifcopenshell.validate.validate(file, logger, express_rules=True)` —
  * an external authority this codebase does not control. The two ORIGINAL
  * fixtures are validated too, as a control: if a fixture were itself
@@ -51,10 +52,27 @@ const VALIDATE_SCRIPT = resolve(TOOL_DIR, 'validate_export.py');
 
 const FIXTURES = ['ara3d/duplex.ifc', 'ara3d/IfcOpenHouse_IFC4.ifc'];
 
+/**
+ * IFC4X3 output (#5351). CONVERTED: IFC4 fixtures exported with
+ * `schema: 'IFC4X3'`, where the writer chooses the `FILE_SCHEMA` token itself.
+ * They carry the two entities whose layouts IfcOpenShell's development
+ * `IFC4X3` schema changed (`IfcMapConversion`, `IfcTriangulatedFaceSet`), so a
+ * bare `IFC4X3` token fails them. The two fixtures above cannot be converted
+ * to IFC4X3 at all (`IfcPresentationStyleAssignment` has no IFC4X3
+ * representation), hence these. ROUND_TRIP: IFC4X3_ADD2 fixtures re-exported
+ * in their own schema, where the source token is kept.
+ */
+const IFC4X3_CONVERTED = ['buildingsmart/Building-Architecture.ifc', 'buildingsmart/tessellated-item.ifc'];
+const IFC4X3_ROUND_TRIP = [
+  'ifc5/Georeferencing_georeferenced-bridge-deck.ifc',
+  'buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc',
+];
+const IFC4X3_FIXTURES = [...IFC4X3_CONVERTED, ...IFC4X3_ROUND_TRIP];
+
 const PYTHON = process.env.IFCOPENSHELL_PYTHON || 'python3';
 
-function fixturesAvailable(): boolean {
-  return FIXTURES.every((f) => existsSync(resolve(MODELS_DIR, f)));
+function fixturesAvailable(fixtures: string[] = FIXTURES): boolean {
+  return fixtures.every((f) => existsSync(resolve(MODELS_DIR, f)));
 }
 
 function ifcopenshellAvailable(): boolean {
@@ -68,10 +86,10 @@ function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
-async function reExport(name: string, outDir: string): Promise<string> {
+async function reExport(name: string, outDir: string, schema?: 'IFC4X3'): Promise<string> {
   const parser = new IfcParser();
   const store = await parser.parseColumnar(toArrayBuffer(readFileSync(resolve(MODELS_DIR, name))));
-  const result = new StepExporter(store).export({ schema: store.schemaVersion });
+  const result = new StepExporter(store).export({ schema: schema ?? store.schemaVersion });
   const outPath = join(outDir, name.replace(/\//g, '__'));
   writeFileSync(outPath, Buffer.from(result.content));
   return outPath;
@@ -121,6 +139,65 @@ describe.skipIf(!canRun)('StepExporter output is schema-conformant per IfcOpenSh
         outputs.push(await reExport(fixture, outDir));
       }
       expect(outputs.length).toBe(FIXTURES.length);
+      runValidateOrThrow(outputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+});
+
+const canRunIfc4x3 = fixturesAvailable(IFC4X3_FIXTURES) && ifcopenshellAvailable();
+if (!canRunIfc4x3) {
+  console.warn('[ifcopenshell-schema-conformance] IFC4X3 block SKIPPED: fixtures missing (run `pnpm fixtures`) or ifcopenshell unavailable.');
+}
+
+describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant per IfcOpenShell (#5351)', () => {
+  it(
+    'validates the ORIGINAL IFC4X3 fixtures as a control',
+    () => {
+      runValidateOrThrow(IFC4X3_FIXTURES.map((f) => resolve(MODELS_DIR, f)));
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'validates IFC4 fixtures converted to IFC4X3, declared as IFC4X3_ADD2',
+    async () => {
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-4x3-'));
+      const outputs: string[] = [];
+      for (const fixture of IFC4X3_CONVERTED) {
+        const out = await reExport(fixture, outDir, 'IFC4X3');
+        expect(readFileSync(out, 'utf8')).toContain("FILE_SCHEMA(('IFC4X3_ADD2'));");
+        outputs.push(out);
+      }
+      runValidateOrThrow(outputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'control: the same converted bytes declared as bare IFC4X3 fail, so the identifier is what makes the difference',
+    async () => {
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-4x3-bare-'));
+      for (const fixture of IFC4X3_CONVERTED) {
+        const out = await reExport(fixture, outDir, 'IFC4X3');
+        const bare = readFileSync(out, 'utf8').replace("FILE_SCHEMA(('IFC4X3_ADD2'));", "FILE_SCHEMA(('IFC4X3'));");
+        expect(bare).toContain("FILE_SCHEMA(('IFC4X3'));");
+        writeFileSync(out, bare);
+        const run = spawnSync(PYTHON, [VALIDATE_SCRIPT, out], { encoding: 'utf8' });
+        expect(run.status, `${fixture} validated under the bare IFC4X3 token:\n${run.stdout}`).not.toBe(0);
+      }
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'validates the round-trip re-export of IFC4X3_ADD2 fixtures',
+    async () => {
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-4x3-rt-'));
+      const outputs: string[] = [];
+      for (const fixture of IFC4X3_ROUND_TRIP) {
+        outputs.push(await reExport(fixture, outDir));
+      }
       runValidateOrThrow(outputs);
     },
     IFCOPENSHELL_TEST_TIMEOUT_MS,

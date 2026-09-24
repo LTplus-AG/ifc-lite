@@ -24,6 +24,7 @@ mod csv;
 pub mod csv_cell;
 mod dfjson;
 mod error;
+mod file_schema;
 mod frame;
 mod generated;
 mod geom;

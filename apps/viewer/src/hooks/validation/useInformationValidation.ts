@@ -37,6 +37,8 @@ export interface IdsInterchangeSummary {
   total: number;
   refused: ReadonlyArray<{ name: string; reasons: readonly string[] }>;
   notes: readonly string[];
+  /** Import only: IDS checks the imported rules do not make (a dropped `dataType`). */
+  dropped?: readonly string[];
 }
 
 function blankRuleSet(): RuleSetFile {
@@ -167,6 +169,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       total: imported + result.refused.length,
       refused: result.refused.map((r) => ({ name: r.specificationName, reasons: r.reasons })),
       notes: result.notes,
+      dropped: result.droppedChecks,
     });
     if (!result.file) {
       setError(null);

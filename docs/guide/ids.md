@@ -184,6 +184,7 @@ exported.notes;    // caveats for the exported set as a whole
 const imported = idsToRuleSet(parseIDS(idsXml));
 imported.file;     // a RuleSetFile, or null when nothing imported
 imported.refused;  // [{ specificationName, reasons: string[] }]
+imported.droppedChecks; // ['<rule>: Pset.Prop: data type IFCLABEL not checked', ...]
 ```
 
 **Export** covers `element` requirements and applicability built from `eq`,
@@ -212,11 +213,10 @@ case-insensitively.
 **Import** covers specifications whose facets are all entity, attribute,
 property, material or classification-presence facets, with simple values,
 patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
-as a `quantity` rule. An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
+as a `quantity` rule. A property facet's `dataType` has no rule equivalent, so it is imported without that check, and each dropped one is listed in `droppedChecks` (and in the panel's import summary). An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
 
 - `partOf` facets
 - `optional` and `prohibited` facets
-- a property `dataType`
 - a pattern on an entity name, or a pattern or enumeration on an attribute name
 - a non-string enumeration on a PredefinedType or GlobalId, or a bound that is not a finite number
 - length or digit restrictions

@@ -62,6 +62,16 @@ export function IdsSummary({ summary, onDismiss }: IdsSummaryProps) {
           </ul>
         </div>
       )}
+      {summary.dropped && summary.dropped.length > 0 && (
+        <div className="mt-1.5">
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('validationPanel.idsImport.droppedHeading')}
+          </h4>
+          <ul className="ml-3 mt-1 list-disc text-muted-foreground">
+            {summary.dropped.map((item, i) => <li key={`${item}-${i}`}>{item}</li>)}
+          </ul>
+        </div>
+      )}
       {summary.notes.length > 0 && (
         <div className="mt-1.5">
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">

@@ -35,6 +35,7 @@ export const validationPanelEn = {
   'validationPanel.idsImport.summary': 'Imported {converted} of {total} IDS specifications as rules.',
   'validationPanel.idsImport.none': 'No specification in this IDS has a rule equivalent, so nothing was imported.',
   'validationPanel.idsImport.refusedHeading': 'Not imported',
+  'validationPanel.idsImport.droppedHeading': 'Imported without these checks',
   'validationPanel.idsSummary.notesHeading': 'Note',
   'validationPanel.idsSummary.dismiss': 'Dismiss',
   'validationPanel.run': 'Run',

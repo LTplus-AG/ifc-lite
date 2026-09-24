@@ -1053,6 +1053,12 @@ jobs:
         run: node --test scripts/check-i18n-literals.test.mjs
       - name: Check for hardcoded viewer UI literals
         run: node scripts/check-i18n-literals.mjs
+      # #5607: the jsx-a11y ratchet itself runs in the Lint job (`pnpm lint`);
+      # its tests run here with the other ratchet gates' tests, and cover the
+      # shared comparison (scripts/lib/count-ratchet.mjs) the viewer smoke
+      # e2e's axe baseline also uses.
+      - name: Check jsx-a11y ratchet gate regressions
+        run: node --test scripts/check-jsx-a11y.test.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for
       # months (1.885 MiB shipped to every visitor) until a maintainer's own
       # grep found them (#4111, deleted by #4114). Nothing caught them when

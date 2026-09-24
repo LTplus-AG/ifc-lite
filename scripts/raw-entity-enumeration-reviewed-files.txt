@@ -67,6 +67,9 @@ packages/query/src/entity-query.ts
 packages/rules/src/engine/rule-engine.ts
 packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts
+apps/viewer/src/components/mcp/PlaygroundViewer.tsx
+apps/viewer/src/components/mcp/playground-dispatcher.ts
+apps/viewer/src/components/mcp/playground-scene-registry.ts
 apps/viewer/src/components/viewer/add-element-storeys.ts
 apps/viewer/src/components/viewer/bulk-property-editor-options.ts
 apps/viewer/src/components/viewer/hierarchy/effectiveGroupEntities.ts

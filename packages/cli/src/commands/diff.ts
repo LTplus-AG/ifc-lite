@@ -122,9 +122,11 @@ export async function diffCommand(args: string[]): Promise<void> {
   // Type-level comparison
   const types1 = new Map<string, number>();
   const types2 = new Map<string, number>();
+  // @raw-entity-enumeration-ok store1 was just loaded from the base file; no live overlay exists
   for (const [typeName, ids] of store1.entityIndex.byType) {
     types1.set(typeName, ids.length);
   }
+  // @raw-entity-enumeration-ok store2 was just loaded from the head file; no live overlay exists
   for (const [typeName, ids] of store2.entityIndex.byType) {
     types2.set(typeName, ids.length);
   }

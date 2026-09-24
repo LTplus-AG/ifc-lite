@@ -191,6 +191,7 @@ function scanRecordForDanglingRefs(
  */
 export function collectDanglingReferences(store: IfcDataStore): DanglingReference[] {
   const source = store.source;
+  // @raw-entity-enumeration-ok reference-integrity checks the source bytes against their parsed source index
   const byId = store.entityIndex.byId;
   const deferred = store.deferredEntityIndex;
   if (!source || source.byteLength === 0 || !byId) return [];
@@ -223,6 +224,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // 1. Check required spatial entities
   const requiredTypes = ['IFCPROJECT', 'IFCSITE', 'IFCBUILDING'];
   for (const reqType of requiredTypes) {
+    // @raw-entity-enumeration-ok CLI validation reads a freshly loaded file without a mutation view
     const ids = store.entityIndex.byType.get(reqType) ?? [];
     if (ids.length === 0) {
       issues.push({ severity: 'error', rule: 'required-entity', message: `Missing required entity: ${reqType}` });
@@ -232,6 +234,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 2. Check storeys
+  // @raw-entity-enumeration-ok structural validation reports the parsed file snapshot
   const storeyIds = store.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? [];
   if (storeyIds.length === 0) {
     issues.push({ severity: 'warning', rule: 'has-storeys', message: 'No IfcBuildingStorey entities found' });
@@ -263,6 +266,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // `IfcMaterial` or `IfcSurfaceStyle` here would report two same-named
   // materials as a duplicate GlobalId.
   const globalIds = new Map<string, number[]>();
+  // @raw-entity-enumeration-ok GlobalId uniqueness is checked on the parsed file being validated
   for (const [typeName, ids] of store.entityIndex.byType) {
     const chain = getInheritanceChainAcrossSchemas(typeName);
     if (!chain.includes('IfcRoot')) continue;
@@ -291,6 +295,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // 4. Check for unnamed elements
   let unnamedCount = 0;
   for (const pt of namedElementTypes(store.schemaVersion)) {
+    // @raw-entity-enumeration-ok naming validation scans the parsed file with no overlay
     const ids = store.entityIndex.byType.get(pt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);
@@ -310,6 +315,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   let withQuantities = 0;
   let withoutQuantities = 0;
   for (const qt of quantifiableTypes(store.schemaVersion)) {
+    // @raw-entity-enumeration-ok quantity completeness scans the parsed source file
     const ids = store.entityIndex.byType.get(qt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);

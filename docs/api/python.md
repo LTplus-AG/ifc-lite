@@ -145,11 +145,6 @@ cuts from external `IfcRelVoidsElement` openings. Extraction issues appear in
 `directrix_diagnostics`. With the flag omitted, both functions keep their
 existing output shape and skip this extraction.
 
-A remaining mesh boundary issue affects a bare `IfcCircle` directrix with
-`StartParam` set and `EndParam` omitted: its meshed tube currently sweeps a
-full turn while the analytic path and metrics follow the IFC domain end
-([#5744](https://github.com/LTplus-AG/ifc-lite/issues/5744)).
-
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

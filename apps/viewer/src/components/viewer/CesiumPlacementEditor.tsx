@@ -20,6 +20,7 @@ import {
 } from '@/lib/geo/cesium-placement';
 import { orthogonalHeightDeltaToViewerDeltaForGeometry, viewerHeightDeltaToOrthogonalHeightDeltaForGeometry } from '@/lib/geo/viewer-up-scale';
 import { findClampAnchorY } from '@/lib/geo/clamp-anchor';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
 import { cn } from '@/lib/utils';
 import { useViewerStore, type CesiumPlacementDraft } from '@/store';
@@ -293,7 +294,7 @@ export function CesiumPlacementEditor({
     const rect = panelRef.current.getBoundingClientRect();
     e.preventDefault();
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capturePointer(e.currentTarget, e.pointerId);
     panelDragRef.current = {
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
@@ -320,11 +321,7 @@ export function CesiumPlacementEditor({
     const drag = panelDragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     panelDragRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (_err) {
-      /* cleanup — safe to ignore: pointer already released by browser */
-    }
+    releasePointer(e.currentTarget, e.pointerId);
   }, []);
 
   const togglePanelCollapsed = useCallback(() => {
@@ -483,7 +480,7 @@ export function CesiumPlacementEditor({
     if (startWorldY === null) return;
     e.preventDefault();
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capturePointer(e.currentTarget, e.pointerId);
     dragStateRef.current = {
       mode: 'height',
       startDraft: activeDraft,
@@ -501,7 +498,7 @@ export function CesiumPlacementEditor({
     if (!startHit) return;
     e.preventDefault();
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capturePointer(e.currentTarget, e.pointerId);
     dragStateRef.current = {
       mode: 'xy',
       startDraft: activeDraft,
@@ -582,11 +579,7 @@ export function CesiumPlacementEditor({
   const handlePointerUp = useCallback((e: React.PointerEvent<Element>) => {
     if (!dragStateRef.current) return;
     dragStateRef.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (_err) {
-      /* cleanup — safe to ignore: pointer already released by browser */
-    }
+    releasePointer(e.currentTarget, e.pointerId);
   }, []);
 
   const handleReset = useCallback(() => {

@@ -25,6 +25,7 @@ import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
@@ -454,7 +455,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       invalidateSelectionPick(canvas);
       e.preventDefault();
       // Capture the pointer so move/up events fire even outside the canvas
-      canvas.setPointerCapture(e.pointerId);
+      capturePointer(canvas, e.pointerId);
       mouseState.isDragging = true;
       mouseState.button = e.button;
       mouseState.lastX = e.clientX;
@@ -684,8 +685,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseUp = (e: PointerEvent) => {
-      // Release pointer capture (safe to call even if not captured)
-      canvas.releasePointerCapture(e.pointerId);
+      releasePointer(canvas, e.pointerId);
 
       // Clear interaction flag so the animation loop restores post-processing
       if (isInteractingRef.current) {

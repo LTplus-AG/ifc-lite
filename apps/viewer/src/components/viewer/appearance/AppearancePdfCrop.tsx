@@ -5,6 +5,7 @@ import { useEffect, useState, type PointerEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { PdfRect } from '@/lib/appearance/pdf/types.js';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import type { AppearancePdfControls } from './pdf-controls.js';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
@@ -60,7 +61,7 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
           if (disabled || event.button !== 0) return;
           const start = point(event); if (!start.every(Number.isFinite)) return;
           event.preventDefault(); event.currentTarget.focus();
-          event.currentTarget.setPointerCapture?.(event.pointerId);
+          capturePointer(event.currentTarget, event.pointerId);
           setDrag({ id: event.pointerId, start, end: start });
         }}
         onPointerMove={event => { if (drag?.id === event.pointerId) setDrag({ ...drag, end: point(event) }); }}
@@ -71,7 +72,7 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
           if (!disabled && Math.abs(end[0] - drag.start[0]) * bounds.width >= 3 && Math.abs(end[1] - drag.start[1]) * bounds.height >= 3) {
             pdf.onCropChange(rectangle(drag.start, end));
           }
-          if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          releasePointer(event.currentTarget, event.pointerId);
           setDrag(null);
         }}>
         <img src={pdf.pagePreviewUrl} alt={t('appearance.pdfCrop.pageAlt', { pageNumber: pdf.pageNumber, documentName: pdf.documentName })} draggable={false} className="pointer-events-none block h-full w-full select-none" />

@@ -22,6 +22,7 @@ import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
 import { zoneColorForIndex, zoneWorldCorners, type Zone } from '@/lib/zones';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { computeZoneDragPatch, type DragKind, type DragState, type Vec2, type Vec3 } from './zoneDrag';
 
 type Project = (worldPos: Vec3) => Vec2 | null;
@@ -217,7 +218,7 @@ export function ZoneOverlay() {
     e.preventDefault();
     const screenPerUnit = probeScreenPerUnit(probeOrigin, probeDir);
     if (!screenPerUnit) return;
-    (e.target as SVGElement).setPointerCapture(e.pointerId);
+    capturePointer(e.target as SVGElement, e.pointerId);
 
     dragRef.current = {
       op,
@@ -243,13 +244,7 @@ export function ZoneOverlay() {
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    try {
-      (e.target as SVGElement).releasePointerCapture(e.pointerId);
-    } catch (error) {
-      // Expected when capture was already released (e.g. pointercancel then
-      // pointerup); logged so a genuine capture bug can't hide here.
-      console.debug('[zones] releasePointerCapture after drag was a no-op', error);
-    }
+    releasePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = null;
   };
 

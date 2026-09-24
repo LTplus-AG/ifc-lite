@@ -37,6 +37,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { getEntityCenter } from '@/utils/viewportUtils';
 import { dragTranslation } from '@/lib/model-placement/drag';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -193,7 +194,7 @@ export function GizmoOverlay() {
     e.preventDefault();
     const perMetre = axisPerMeter[axis];
     if (!perMetre) return;
-    (e.target as SVGElement).setPointerCapture(e.pointerId);
+    capturePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = {
       axis,
       originScreen,
@@ -235,7 +236,7 @@ export function GizmoOverlay() {
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    releasePointer(e.currentTarget, e.pointerId);
     dragRef.current = null;
   };
 

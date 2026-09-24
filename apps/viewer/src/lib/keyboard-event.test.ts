@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { eventKey, isTextEntryTarget } from './keyboard-event.js';
+import { eventKey, isTextEntryElement, isTextEntryTarget } from './keyboard-event.js';
 
 /**
  * Build a KeyboardEvent-shaped stub. The point of these helpers is exactly the
@@ -107,5 +107,19 @@ describe('isTextEntryTarget', () => {
     }
     assert.equal(isTextEntryTarget(eventOn(inRole('button'))), false);
     assert.equal(isTextEntryTarget(eventOn(inRole(null))), false);
+  });
+});
+
+describe('isTextEntryElement', () => {
+  it('answers for a bare element the same way isTextEntryTarget does for its event (#5596)', () => {
+    // Viewport's focus handoff checks document.activeElement, not an event.
+    assert.equal(isTextEntryElement({ tagName: 'SELECT' }), true);
+    assert.equal(isTextEntryElement({ tagName: 'INPUT' }), true);
+    assert.equal(
+      isTextEntryElement({ tagName: 'DIV', closest: (s: string) => (s.includes('[role=listbox]') ? {} : null) }),
+      true,
+    );
+    assert.equal(isTextEntryElement({ tagName: 'BUTTON', closest: () => null }), false);
+    assert.equal(isTextEntryElement(null), false);
   });
 });

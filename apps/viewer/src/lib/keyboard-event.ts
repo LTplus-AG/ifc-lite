@@ -54,23 +54,28 @@ const INPUT_ROLE_SELECTOR =
   '[role=combobox],[role=listbox],[role=slider],[role=menu],[role=menuitem]';
 
 /**
- * True when the event targets a surface that consumes plain key presses — a
+ * True when `target` is a surface that consumes plain key presses — a
  * text-entry element (`<input>`, `<textarea>`, a `contenteditable` host), a
  * native `<select>` (type-ahead), or an element inside an ARIA combobox,
  * listbox, slider or menu — so single-key shortcuts must not fire.
  *
  * Returns `false` for a missing or non-HTML target rather than throwing.
  */
-export function isTextEntryTarget(e: Event): boolean {
-  const target = e.target as (Partial<HTMLElement> | null);
-  if (!target) return false;
+export function isTextEntryElement(target: unknown): boolean {
+  const el = target as (Partial<HTMLElement> | null | undefined);
+  if (!el) return false;
   if (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.tagName === 'SELECT' ||
-    target.isContentEditable === true
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable === true
   ) {
     return true;
   }
-  return typeof target.closest === 'function' && target.closest(INPUT_ROLE_SELECTOR) !== null;
+  return typeof el.closest === 'function' && el.closest(INPUT_ROLE_SELECTOR) !== null;
+}
+
+/** {@link isTextEntryElement} for a key event's target. */
+export function isTextEntryTarget(e: Event): boolean {
+  return isTextEntryElement(e.target);
 }

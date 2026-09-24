@@ -93,7 +93,8 @@ def _layout_segments(alignment):
     return list(A.get_alignment_segment_nest(horizontal).RelatedObjects)
 
 
-def check(path: str, authored: dict) -> list[str]:
+def check(path: str, authored: dict) -> tuple[list[str], int]:
+    """Problems found, and how many alignments were actually compared."""
     import ifcopenshell
     import ifcopenshell.geom
     import ifcopenshell.ifcopenshell_wrapper as W
@@ -103,7 +104,15 @@ def check(path: str, authored: dict) -> list[str]:
     alignments = model.by_type("IfcAlignment")
     problems: list[str] = []
     if not alignments:
-        return ["no IfcAlignment in the file — nothing was checked"]
+        return ["no IfcAlignment in the file — nothing was checked"], 0
+
+    # Every authored alignment must be in the file: a refused (or dropped)
+    # alignment would otherwise pass as "checked" without being compared.
+    written = {alignment.Name for alignment in alignments}
+    for name in authored:
+        if name not in written:
+            problems.append(f"authored alignment {name!r} is not in the file")
+    checked = 0
 
     settings = ifcopenshell.geom.settings()
     for alignment in alignments:
@@ -127,6 +136,12 @@ def check(path: str, authored: dict) -> list[str]:
             problems.append(f"{name}: the last layout segment is not the zero-length terminator")
         if ours[-1].Transition != "DISCONTINUOUS":
             problems.append(f"{name}: the terminating curve segment is {ours[-1].Transition}, not DISCONTINUOUS")
+        # IfcCompositeCurve.CurveContinuous: an open curve has exactly one
+        # discontinuous segment, the last.
+        for index, segment in enumerate(ours[:-1]):
+            if segment.Transition == "DISCONTINUOUS":
+                problems.append(f"{name}: curve segment {index + 1} is DISCONTINUOUS in mid-curve")
+        checked += 1
 
         for index, (segment, our_curve) in enumerate(zip(layout, ours)):
             label = f"{name} segment {index + 1} ({segment.DesignParameters.PredefinedType})"
@@ -146,7 +161,7 @@ def check(path: str, authored: dict) -> list[str]:
                         f"{label}: evaluated {which} ({x:.4f}, {y:.4f}) is {miss:.4f} from the authored "
                         f"({expected[0]:.4f}, {expected[1]:.4f})"
                     )
-    return problems
+    return problems, checked
 
 
 def main(argv: list[str]) -> int:
@@ -162,13 +177,13 @@ def main(argv: list[str]) -> int:
         authored = json.load(handle)
     # Accept the generator's full fixture as well as a bare name -> points map.
     authored = authored.get("authored", authored)
-    problems = check(argv[1], authored)
+    problems, checked = check(argv[1], authored)
     if problems:
         print(f"check_alignment.py: {len(problems)} problem(s). FAIL.")
         for problem in problems:
             print(f"  - {problem}")
         return 1
-    print(f"check_alignment.py: {len(authored)} alignment(s) checked, 0 problems.")
+    print(f"check_alignment.py: {checked} alignment(s) checked, 0 problems.")
     return 0
 
 

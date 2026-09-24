@@ -38,9 +38,10 @@ deterministically triangulated.
 ## What is kept but not drawn
 
 These are parsed, preserved with stable source identities, and inspectable in the properties
-panel under **LandXML Source** — but they are not turned into geometry:
+panel under **LandXML Source**, but the viewer does not draw them:
 
-- horizontal alignments, stationing, cant and superelevation
+- horizontal alignments, stationing, cant and superelevation (IFC export writes horizontal
+  alignments as `IfcAlignment`, see [Export](#export); cant and superelevation are not exported)
 - profiles, vertical curves, roadways and cross-sections
 - COGO points, monuments, parcels and plan features
 - pipe networks, structures and pipes

@@ -266,6 +266,7 @@ function mapOne(
 
   const segments: HorizontalSegment[] = [];
   let previousAuthoredEnd: [number, number] | null = null;
+  let previousEvaluatedEnd: [number, number] | null = null;
   ordered.forEach((entry, index) => {
     const label = `segment ${index + 1}`;
     const { segment, authoredEnd } = mapPrimitive(entry.primitive, entry.sourceId, units, swap, resolve, label);
@@ -276,6 +277,16 @@ function mapOne(
       const gap = distance(previousAuthoredEnd, segment.start);
       if (gap > ALIGNMENT_POSITION_TOLERANCE_M) {
         refuse(`${label} starts ${gap.toFixed(3)} m from where segment ${index} ends`);
+      }
+    }
+    // The written curve joins the previous segment's EVALUATED end, not its
+    // authored one: each is within tolerance of the authored point, so the
+    // two can still be up to twice it apart. The writer only labels a join
+    // continuous within the tolerance, so check the join it will see.
+    if (previousEvaluatedEnd) {
+      const join = distance(previousEvaluatedEnd, segment.start);
+      if (join > ALIGNMENT_POSITION_TOLERANCE_M) {
+        refuse(`${label} starts ${join.toFixed(3)} m from where segment ${index}'s parameters end`);
       }
     }
 
@@ -290,6 +301,7 @@ function mapOne(
 
     segments.push({ ...segment, end: evaluated.point, endDirection: wrap(evaluated.direction) });
     previousAuthoredEnd = authoredEnd;
+    previousEvaluatedEnd = evaluated.point;
   });
 
   return {

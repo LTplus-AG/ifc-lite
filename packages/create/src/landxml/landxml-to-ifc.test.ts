@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { IfcCreator } from '../ifc-creator.js';
 import { num } from '../ifc-creator-math.js';
 import {
   landXmlToIfc, landXmlGlobalId, LANDXML_IFC_MAPPING_VERSION,
@@ -537,6 +538,36 @@ describe('landXmlToIfc — horizontal alignments (§11)', () => {
     expect(curve).toHaveLength(6);
     expect(curve[5]).toContain('IFCCURVESEGMENT(.DISCONTINUOUS.,');
     expect(curve.slice(0, 5).some((line) => line.includes('.DISCONTINUOUS.')), 'only the last may be').toBe(false);
+  });
+
+  it('writes a join within the mapping tolerance as continuous, never a mid-curve DISCONTINUOUS', () => {
+    // Authored joins reproduce only to a few millimetres. At IfcOpenShell's
+    // 1 mm position tolerance this 5 mm join was written .DISCONTINUOUS. in
+    // mid-curve, which IfcCompositeCurve.CurveContinuous forbids (#5370 review).
+    const at = (northing: number, easting: number) => ({ kind: 'coordinates' as const, point: { northing, easting } });
+    const line = (sourceId: string, ordinal: number, from: [number, number], to: [number, number]) => ({
+      sourceId, ordinal, primitive: { kind: 'line' as const, start: at(...from), end: at(...to), declaredLength: null },
+    });
+    const result = landXmlToIfc(alignmentOnly([{
+      sourceId: 'landxml:alignment:join', name: 'Join', staStart: 0,
+      segments: [line('s1', 0, [0, 0], [100, 0]), line('s2', 1, [100.005, 0], [200, 0])],
+    }]), { timestampMs: 0 });
+    expectExported(result);
+    const curve = result.content.split('\n').filter((row) => row.includes('=IFCCURVESEGMENT('));
+    expect(curve).toHaveLength(3);
+    expect(curve[0]).not.toContain('.DISCONTINUOUS.');
+    expect(curve[2]).toContain('IFCCURVESEGMENT(.DISCONTINUOUS.,');
+  });
+
+  it('refuses to write a mid-curve gap beyond the tolerance through the creator API', () => {
+    const creator = new IfcCreator({ Schema: 'IFC4X3', Name: 'gap', LengthUnit: 'METRE' });
+    const straight = (start: [number, number], end: [number, number]) => ({
+      sourceId: 's', type: 'LINE' as const, start, direction: 0, startRadius: 0, endRadius: 0,
+      length: Math.hypot(end[0] - start[0], end[1] - start[1]), end, endDirection: 0, startCurvature: 0, endCurvature: 0,
+    });
+    expect(() => creator.terrain().addAlignment({
+      Name: 'Gap', StartStation: 0, Segments: [straight([0, 0], [100, 0]), straight([100.5, 0], [200, 0])],
+    })).toThrow(/segment 2 starts 0\.500 m from where segment 1 ends/);
   });
 
   it('writes the start station on an IfcReferent in Pset_Stationing', () => {

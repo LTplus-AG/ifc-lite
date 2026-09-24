@@ -103,10 +103,13 @@ Never infer the order from coordinate magnitude without a declared CRS to bound 
 
 ## 3. Target schema
 
-IFC4X3. Note that the repo's exporter tag is `IFC4X3`; `IFC4X3_ADD2` (what
-IfcOpenShell 0.8.0 writes, and what the bonsai files declare) is not an exporter tag
-here — see `packages/export/src/attribute-real-slots.ts`. All entity and attribute
-definitions below were taken from `packages/codegen/schemas/IFC4X3.exp`.
+IFC4X3, written with IFC4X3_ADD2's entity layouts. `IfcCreator` is configured with the
+`IFC4X3` schema tag, which selects those layouts. Since v1.1 the converted file *declares*
+`FILE_SCHEMA(('IFC4X3_ADD2'))` through `ProjectParams.FileSchemaIdentifier` (§11). The
+bare `IFC4X3` token is resolved by IfcOpenShell, and by the buildingSMART validator built
+on it, to a later development schema whose layouts differ, so the same bytes declared as
+`IFC4X3` fail validation (#5351). All entity and attribute definitions below were taken
+from `packages/codegen/schemas/IFC4X3.exp`.
 
 ## 4. The v1 mapping
 
@@ -339,7 +342,7 @@ Recorded during implementation; they constrain the code but do not change the ma
   importing the viewer's `LandXmlTinDocument`, so the converter is testable without the
   viewer and the viewer's document type structurally satisfies it. A package that needs
   the viewer to be unit-tested is not a package.
-- **Target schema tag.** `IFC4X3`, per §3. `IfcCreator` already accepts that tag.
+- **Target schema tag.** `IfcCreator` is configured with `IFC4X3`, and since v1.1 the file declares `IFC4X3_ADD2` (§3, §11).
 
 ## 11. v1.1 — horizontal alignments
 
@@ -400,12 +403,24 @@ mismatch beyond tolerance refuses the alignment, naming the segment and the dist
 This is the check that catches a sign error in a spiral or a line: one turning the wrong way
 lands somewhere else, and the comparison says where.
 
+Each segment's **evaluated** end is also compared with the next segment's start, because
+that is the join the written curve has. Both points are within tolerance of the authored
+one, so they can still be up to twice the tolerance apart. The writer labels a join within
+the tolerance continuous, so it may never see a larger gap: `IfcCompositeCurve.CurveContinuous`
+allows an open curve exactly one `.DISCONTINUOUS.` segment, the last. The writer uses this
+tolerance for the transition code instead of IfcOpenShell's 1 mm, because authored joins
+reproduce only to a few millimetres, and it throws on a larger mid-curve gap rather than
+writing one.
+
 It **cannot** catch a flipped `rot` on a circular arc. Start, centre and end describe one
 circle, and the other rotation is simply the other arc of it (270° instead of 90°), which
 ends at the same point. The authored arc `length` is what distinguishes them, so when a
 curve declares one it must agree with the computed length, or the alignment is refused.
 Without a declared length the authored `rot` is taken at its word; the test suite records
 that limit rather than hiding it.
+
+The converted file declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, not the bare `IFC4X3` (§3,
+#5351). The layouts written are unchanged; only the declared identifier changed.
 
 ### 11.5 Still refused
 

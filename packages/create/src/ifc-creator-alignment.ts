@@ -18,7 +18,7 @@
  */
 
 import { esc, num } from './ifc-creator-math.js';
-import type { HorizontalSegment } from './landxml/alignment-mapping.js';
+import { ALIGNMENT_POSITION_TOLERANCE_M, type HorizontalSegment } from './landxml/alignment-mapping.js';
 
 /** The creator hooks this emitter needs. */
 export interface AlignmentContext {
@@ -51,11 +51,17 @@ export interface AlignmentResult {
 }
 
 /**
- * Curvature/position equality for the transition code, with the tolerances
- * IfcOpenShell's `get_curve_segment_transition_code` uses: 1 mm on position,
- * `numpy.allclose` defaults on direction and curvature.
+ * Direction and curvature equality for the transition code use the
+ * `numpy.allclose` defaults, as IfcOpenShell's
+ * `get_curve_segment_transition_code` does. Position does NOT use its 1 mm:
+ * authored LandXML joins reproduce only to a few millimetres (lengths and
+ * radii are rounded independently of the coordinates), so 1 mm would mark
+ * an ordinary join `.DISCONTINUOUS.` in mid-curve, which
+ * `IfcCompositeCurve.CurveContinuous` forbids for an open curve (exactly one,
+ * the last). Joins are compared at the mapping's own tolerance instead, and
+ * a real gap beyond it is refused before anything is written (#5370 review).
  */
-const POSITION_ATOL = 0.001;
+const POSITION_ATOL = ALIGNMENT_POSITION_TOLERANCE_M;
 const allclose = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-8 + 1e-5 * Math.abs(b);
 
 function transitionCode(segment: HorizontalSegment, next: HorizontalSegment): string {
@@ -173,6 +179,16 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
   }
   const guid = (role: string): string => params.guidFor?.(role) ?? ctx.newGlobalId();
   const layout = [...params.Segments, terminator(params.Segments[params.Segments.length - 1])];
+  params.Segments.slice(1).forEach((next, index) => {
+    const previous = params.Segments[index];
+    const gap = Math.hypot(previous.end[0] - next.start[0], previous.end[1] - next.start[1]);
+    if (gap > POSITION_ATOL) {
+      throw new Error(
+        `addAlignment: segment ${index + 2} starts ${gap.toFixed(3)} m from where segment ${index + 1} ends; `
+        + 'an open IfcCompositeCurve may be discontinuous only at its last segment',
+      );
+    }
+  });
 
   // Geometry: one curve segment per layout segment, the last DISCONTINUOUS —
   // `IfcCompositeCurve.CurveContinuous` requires exactly one for an open curve.

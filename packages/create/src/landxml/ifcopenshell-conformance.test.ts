@@ -152,4 +152,14 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(stdout).toMatch(/SegmentStart .* != IfcOpenShell/);
     expect(stdout).toMatch(/from the authored/);
   }, TIMEOUT_MS);
+
+  it('does not pass vacuously: an authored alignment missing from the file fails the check', () => {
+    // Before, only alignments IN the file were compared, and the count printed
+    // was the authored one: a refused alignment read as "3 checked" (#5370 review).
+    const source = alignmentSource();
+    const partial = { ...source, alignments: (source.alignments ?? []).slice(1) };
+    const [code, stdout] = run(ALIGNMENT_SCRIPT, [writeConverted(partial, 'alignment-partial'), ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/authored alignment '.+' is not in the file/);
+  }, TIMEOUT_MS);
 });

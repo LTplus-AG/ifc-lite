@@ -37,8 +37,8 @@ function renderShortcuts(platform: string) {
   return rows;
 }
 
-/** Every individual chord shown, splitting `A / B` cells. */
-const chords = (rows: { keys: string }[]) => new Set(rows.flatMap((row) => row.keys.split(' / ')));
+/** Every individual chord shown, splitting `A, B` cells. */
+const chords = (rows: { keys: string }[]) => new Set(rows.flatMap((row) => row.keys.split(', ')));
 
 describe('generated Shortcuts tab (#5836)', () => {
   it('lists bindings the handlers implement that the hand-written list omitted', () => {

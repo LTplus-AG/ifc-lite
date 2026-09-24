@@ -24,7 +24,7 @@ export function keyCommand(id: KeyCommandId): KeyCommandDefinition {
   return command;
 }
 
-/** All of a command's chords, e.g. `Del / Backspace / Space`, or `Alt+1…0` for a range. */
+/** All of a command's chords, e.g. `Del, Backspace, Space`, or `Alt+1…0` for a range. */
 export function formatCommandKeys(command: KeyCommandDefinition, apple: boolean = isApplePlatform()): string {
   const { keys } = command;
   if (command.display === 'range' && keys.length > 1) {
@@ -32,7 +32,7 @@ export function formatCommandKeys(command: KeyCommandDefinition, apple: boolean 
     const last = formatChord({ key: keys[keys.length - 1].key }, apple);
     return `${first}…${last}`;
   }
-  return keys.map((chord) => formatChord(chord, apple)).join(' / ');
+  return keys.map((chord) => formatChord(chord, apple)).join(', ');
 }
 
 /** The key hint for a command's tooltip or menu row. */

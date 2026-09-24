@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/mutations": patch
+"@ifc-lite/mutations": minor
 "@ifc-lite/flow-nodes": patch
 ---
 

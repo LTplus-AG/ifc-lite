@@ -17,6 +17,7 @@ import type { EntityExtractor } from './entity-extractor.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { resolvePropertyReferenceValue } from './property-reference-value.js';
 
 // ============================================================================
 // Property Value Parsing Helpers
@@ -183,12 +184,13 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
         }
 
         case 'IFCPROPERTYREFERENCEVALUE': {
-            // [Name, Description, PropertyReference]
-            const refValue = attrs[2];
-            if (typeof refValue === 'number') {
-                return { type: 0, value: `#${refValue}`, structure: 'reference' };
-            }
-            return { type: 0, value: null };
+            // [Name, Description, UsageName, PropertyReference]. Without a
+            // store the referenced object cannot be read, so only its id is
+            // known; `parsePropertyValueWithComplex` reads its Name (#5475).
+            const refValue = attrs[3];
+            return typeof refValue === 'number'
+                ? { type: 0, value: `#${refValue}`, structure: 'reference' }
+                : { type: 0, value: null, structure: 'reference' };
         }
 
         default: {
@@ -357,7 +359,7 @@ export function resolveComplexPropertyValue(
         const nestedName = typeof nestedAttrs[0] === 'string' ? nestedAttrs[0] : '';
         const nestedParsed = nestedEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY'
             ? resolveComplexPropertyValue(store, extractor, nestedEntity, depth + 1)
-            : parsePropertyValue(nestedEntity);
+            : parsePropertyValueWithComplex(store, extractor, nestedEntity);
 
         const display = nestedParsed.value != null ? String(nestedParsed.value) : '';
         if (!display) continue;
@@ -380,8 +382,12 @@ export function parsePropertyValueWithComplex(
     extractor: EntityExtractor,
     propEntity: IfcEntity
 ): ParsedIfcPropertyValue {
-    if (propEntity.type.toUpperCase() === 'IFCCOMPLEXPROPERTY') {
+    const type = propEntity.type.toUpperCase();
+    if (type === 'IFCCOMPLEXPROPERTY') {
         return resolveComplexPropertyValue(store, extractor, propEntity);
+    }
+    if (type === 'IFCPROPERTYREFERENCEVALUE') {
+        return resolvePropertyReferenceValue(store, extractor, propEntity);
     }
     return parsePropertyValue(propEntity);
 }

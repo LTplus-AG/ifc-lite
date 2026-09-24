@@ -20,6 +20,7 @@ import { Layers, Calculator, Boxes, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { useEffectiveMaterialStores } from '@/hooks/useEffectiveMaterialStores';
 import {
   buildMaterialUsageIndex,
   getMaterialDisplay,
@@ -28,7 +29,6 @@ import {
   extractTypeQuantitiesOnDemand,
   extractProjectUnits,
   ProjectUnits,
-  type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
@@ -180,25 +180,19 @@ function formatTotal(
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { t, locale, revision } = useTranslation();
   const { ifcDataStore, models } = useIfc();
+  const { stores: effectiveStores, ready: materialsReady } = useEffectiveMaterialStores(
+    models, ifcDataStore, true,
+  );
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // The store the selected material lives in, plus every loaded store (so the
   // totals merge same-named materials across a federation).
   const { selectedStore, allStores } = useMemo(() => {
-    const stores: IfcDataStore[] = [];
-    if (models.size > 0) {
-      for (const [, m] of models) {
-        if (m.ifcDataStore) stores.push(m.ifcDataStore as IfcDataStore);
-      }
-    } else if (ifcDataStore) {
-      stores.push(ifcDataStore as IfcDataStore);
-    }
-    const sel = modelId !== 'legacy'
-      ? (models.get(modelId)?.ifcDataStore as IfcDataStore | undefined) ?? (ifcDataStore as IfcDataStore | null) ?? undefined
-      : (ifcDataStore as IfcDataStore | null) ?? undefined;
-    return { selectedStore: sel, allStores: stores.length > 0 ? stores : (sel ? [sel] : []) };
-  }, [models, ifcDataStore, modelId]);
+    const stores = [...effectiveStores.values()];
+    const sel = effectiveStores.get(modelId) ?? effectiveStores.get('legacy');
+    return { selectedStore: sel, allStores: stores };
+  }, [effectiveStores, modelId]);
 
   const display = useMemo(() => {
     if (!selectedStore) return { name: t('properties.materialTotals.fallbackName', { id: materialId }), type: 'IfcMaterial' };
@@ -264,6 +258,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
         for (const { entityId, weight } of usage.entries) {
           result.elementCount += 1;
 
+          // @raw-entity-enumeration-ok effectiveStores holds a reparsed STEP snapshot with pending edits baked in.
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
@@ -304,6 +299,10 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     return result;
   }, [allStores, display.name]);
   const psetCount = psetGroups.reduce((sum, g) => sum + g.psets.length, 0);
+
+  if (!materialsReady) {
+    return <div role="status" aria-busy="true">{t('sources.sourceEntityList.loading')}</div>;
+  }
 
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">

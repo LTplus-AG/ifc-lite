@@ -994,6 +994,8 @@ export function buildIfcTypeTree(
  * Each row carries the using elements' global ids for click-to-isolate and the
  * representative material express id for the properties panel. Mirrors
  * {@link buildIfcTypeTree} but keyed on the parser's material usage index.
+ * Live callers pass reparsed effective stores; the index is cached by store
+ * identity and cannot observe a mutation view attached to the original store.
  */
 export function buildMaterialTree(
   models: Map<string, FederatedModel>,
@@ -1002,6 +1004,7 @@ export function buildMaterialTree(
   _isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  effectiveStores?: ReadonlyMap<string, IfcDataStore>,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1045,10 +1048,10 @@ export function buildMaterialTree(
 
   if (models.size > 0) {
     for (const [modelId, model] of models) {
-      if (model.ifcDataStore) processDataStore(model.ifcDataStore, modelId);
+      if (model.ifcDataStore) processDataStore(effectiveStores?.get(modelId) ?? model.ifcDataStore, modelId);
     }
   } else if (ifcDataStore) {
-    processDataStore(ifcDataStore, 'legacy');
+    processDataStore(effectiveStores?.get('legacy') ?? ifcDataStore, 'legacy');
   }
 
   const nodes: TreeNode[] = [];

@@ -31,8 +31,9 @@ name: Silent PR CI visibility
 # on that PR's own lines instead of leaving half of it for a later run.
 on:
   schedule:
-    # Every 30 minutes. Cheap (two `gh` reads, no checkout of anything to
-    # build, no `pnpm install` -- see scripts/scan-dirty-prs.mjs), and the
+    # Every 30 minutes. Cheap (one `gh` read per open PR plus two, no checkout
+    # of anything to build, no `pnpm install` -- see scripts/scan-dirty-prs.mjs
+    # and scripts/lib/open-pr-fetch.mjs for why per PR, #5729), and the
     # interval IS the detection latency: a PR that goes conflicted and is
     # fixed between two runs is never reported, by design.
     - cron: '*/30 * * * *'
@@ -101,7 +102,7 @@ jobs:
       # pr-review-signal.yml is a trigger that a dirty PR cannot suppress, and
       # adding a real dependency here would not remove that edge, just risk it.
       - name: Unit-test the scan itself
-        run: node --test scripts/lib/dirty-pr-scan.test.mjs scripts/scan-dirty-prs.test.mjs
+        run: node --test scripts/lib/dirty-pr-scan.test.mjs scripts/lib/open-pr-fetch.test.mjs scripts/scan-dirty-prs.test.mjs
 
       # The scan also reports its OWN cadence -- how long since the last
       # completed run, and an annotation past two missed ticks (#3776). It is

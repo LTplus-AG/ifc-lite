@@ -14,6 +14,7 @@ use std::cell::Cell;
 
 mod curves_2d;
 mod curves_3d;
+mod directrix;
 mod outline;
 mod placement;
 mod shapes;
@@ -22,7 +23,6 @@ mod simplify;
 #[cfg(test)]
 mod tests;
 
-use outline::trim_polyline;
 use simplify::{mirror_profile_about_y_axis, simplify_smooth_curve_polyline};
 
 /// Maximum recursion depth for nested curve processing.
@@ -612,113 +612,6 @@ impl ProfileProcessor {
                 (last - terminal).norm() > 1e-9
             }) {
                 result.push(terminal);
-            }
-        }
-
-        Ok(result)
-    }
-
-    /// Process composite curve into 3D points, honoring `IfcSweptDiskSolid`'s
-    /// `StartParam`/`EndParam`. Per IFC, a composite curve is parameterised so
-    /// segment `i` covers `[i, i+1]`. Segments fully outside `[start, end]` are
-    /// dropped; boundary segments are truncated by linearly interpolating along
-    /// their sampled point list (a per-segment normalised parameter).
-    ///
-    /// Non-conformant out-of-range `EndParam` values (notably Revit, which
-    /// emits a cumulative-per-segment parameter that can exceed `num_segments`)
-    /// are clamped to the upper bound of the spec domain — this matches the
-    /// authoring tool's effective intent (render the whole curve) without
-    /// guessing at a length-unit interpretation that proved wrong on real
-    /// files (see #631 follow-up notes).
-    pub fn get_composite_curve_points_trimmed(
-        &self,
-        curve: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        start_param: Option<f64>,
-        end_param: Option<f64>,
-    ) -> Result<Vec<Point3<f64>>> {
-        let segments_attr = curve
-            .get(0)
-            .ok_or_else(|| Error::geometry("CompositeCurve missing Segments".to_string()))?;
-        let segments = decoder.resolve_ref_list(segments_attr)?;
-        let num_segments = segments.len();
-        if num_segments == 0 {
-            return Ok(Vec::new());
-        }
-
-        let start = start_param.unwrap_or(0.0).max(0.0);
-        let end = end_param.unwrap_or(num_segments as f64).min(num_segments as f64);
-        if end <= start {
-            return Ok(Vec::new());
-        }
-
-        let mut result: Vec<Point3<f64>> = Vec::new();
-        for (idx, segment) in segments.into_iter().enumerate() {
-            let seg_start = idx as f64;
-            let seg_end = seg_start + 1.0;
-            // Skip segments fully outside the trim window
-            if seg_end <= start || seg_start >= end {
-                continue;
-            }
-
-            let parent_curve_attr = segment.get(2).ok_or_else(|| {
-                Error::geometry("CompositeCurveSegment missing ParentCurve".to_string())
-            })?;
-            let parent_curve = decoder
-                .resolve_ref(parent_curve_attr)?
-                .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
-            let same_sense = segment
-                .get(1)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                    _ => None,
-                })
-                .map(|e| e == "T" || e == "TRUE")
-                .unwrap_or(true);
-
-            let mut seg_points = self.get_curve_points_with_depth(&parent_curve, decoder, 1)?;
-            if !same_sense {
-                seg_points.reverse();
-            }
-            if seg_points.len() < 2 {
-                continue;
-            }
-
-            // Map global trim window to this segment's local [0,1] domain
-            let local_start = (start - seg_start).clamp(0.0, 1.0);
-            let local_end = (end - seg_start).clamp(0.0, 1.0);
-            if local_end <= local_start {
-                continue;
-            }
-
-            let trimmed = if local_start == 0.0 && local_end == 1.0 {
-                seg_points
-            } else {
-                trim_polyline(&seg_points, local_start, local_end)
-            };
-
-            if trimmed.is_empty() {
-                continue;
-            }
-            // Drop the first point of the next segment ONLY when it coincides with
-            // the last point already in `result` — i.e. the segments share their
-            // junction vertex and concatenating verbatim would duplicate it.
-            // Composite curves whose adjacent segments are not coordinate-identical
-            // at the boundary (e.g. floating-point drift, or segments stitched
-            // together at deliberately distinct points) must keep the first vertex
-            // or the directrix gets distorted.
-            const JUNCTION_EPS: f64 = 1e-6;
-            let mut iter = trimmed.into_iter();
-            if let Some(first) = iter.next() {
-                let coincident = result.last().is_some_and(|last| {
-                    (first.x - last.x).abs() < JUNCTION_EPS
-                        && (first.y - last.y).abs() < JUNCTION_EPS
-                        && (first.z - last.z).abs() < JUNCTION_EPS
-                });
-                if !coincident {
-                    result.push(first);
-                }
-                result.extend(iter);
             }
         }
 

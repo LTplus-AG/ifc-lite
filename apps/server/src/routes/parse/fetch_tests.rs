@@ -419,3 +419,45 @@ async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
     assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::OK);
     assert_eq!(state.cache.get_bytes(&geometry).await.unwrap().unwrap(), b"unchanged geometry");
 }
+
+/// #5542: this is the warm path of the client's `parseParquet()` (cache check,
+/// then this fetch). The stored header is the one the live parse wrote, so
+/// its stats say `from_cache: false`; replaying it verbatim told a warm caller
+/// its model had just been parsed, and `docs/guide/server.md` prints exactly
+/// that field. The replayed header must report the hit and keep everything
+/// else as stored.
+#[tokio::test]
+async fn issue_5542_get_cached_geometry_reports_from_cache() {
+    let state = test_state("5542-geometry-from-cache").await;
+    let hash = "fromcachehash";
+    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
+    let metadata_key =
+        parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let stored = super::parquet::ParquetMetadataHeader {
+        cache_key: cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default()),
+        metadata: crate::types::ModelMetadata::default(),
+        stats: crate::types::ProcessingStats { total_meshes: 5, ..Default::default() },
+        mesh_coordinate_space: None,
+        site_transform: None,
+        building_transform: None,
+        data_model_stats: None,
+    };
+    assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
+    state.cache.set_bytes(&parquet_key, b"parquet-bytes").await.unwrap();
+    state
+        .cache
+        .set_bytes(&metadata_key, &serde_json::to_vec(&stored).unwrap())
+        .await
+        .unwrap();
+
+    let response = get(&state, &format!("/api/v1/cache/geometry/{hash}")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let header: serde_json::Value = serde_json::from_str(
+        response.headers().get("X-IFC-Metadata").unwrap().to_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(header["stats"]["from_cache"], true, "replayed header: {header}");
+    let mut expected = serde_json::to_value(&stored).unwrap();
+    expected["stats"]["from_cache"] = serde_json::Value::Bool(true);
+    assert_eq!(header, expected, "only from_cache may differ from what was stored");
+}

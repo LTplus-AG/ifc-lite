@@ -147,6 +147,8 @@ export const ribbonToolbarEn = {
   'ribbon.analyze.document': 'Document',
   'ribbon.analyze.documentTooltip': 'A page over the model — text with live labels, logos, charts, BCF topics — printed to PDF',
   'ribbon.analyze.flow': 'Flow',
+  'ribbon.analyze.drawing': 'Drawing',
+  'ribbon.analyze.drawingTooltip': '2D drawing of the current section: plans, sections, measure, markup and export',
   'ribbon.analyze.flowTooltip': 'Node graphs over the model — query, edit, create; the same graph runs in CI',
   'ribbon.analyze.script': 'Script',
   'ribbon.analyze.scriptTooltip': 'Script editor',

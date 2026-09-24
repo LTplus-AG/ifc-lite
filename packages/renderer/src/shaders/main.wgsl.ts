@@ -69,6 +69,11 @@ export const mainShaderSource = `
           _pad2: f32,
         }
         @binding(0) @group(1) var<uniform> env: Environment;
+        // Selection highlight tint (#5484), set by Renderer.setOverlayTheme via
+        // updateSelectionColor — written only on theme change, never per frame.
+        // TRUE LINEAR-LIGHT RGB: re-lit by lightTerm below exactly like the WGSL
+        // constant it replaces, then ACES-tonemapped + gamma-encoded on output.
+        @binding(4) @group(1) var<uniform> selectionColor: vec4<f32>;
         const IRRADIANCE_CALIBRATION: f32 = ${IRRADIANCE_CALIBRATION};
         ${colorTransferWgsl}
 
@@ -491,7 +496,10 @@ export const mainShaderSource = `
           if (isSelected) {
             let shadeLum = dot(irradiance, vec3<f32>(0.299, 0.587, 0.114));
             let shade = clamp(shadeLum, 0.45, 1.2);
-            color = srgbToLinear(vec3<f32>(0.3, 0.6, 1.0)) * shade;
+            // selectionColor is already linear-light (set by Renderer.setOverlayTheme
+            // from the app theme, #5484) — no srgbToLinear here, unlike the constant
+            // it replaces.
+            color = selectionColor.rgb * shade;
           }
 
           // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour

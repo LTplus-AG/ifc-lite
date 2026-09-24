@@ -8,6 +8,7 @@ use super::cache_keys::{
     cache_key_from_parts, data_model_cache_key, has_current_data_model, has_cached_symbolic, has_parquet_metadata,
     parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key,
 };
+use super::replay_header::mark_header_from_cache;
 use super::ParseQuery;
 use crate::error::ApiError;
 use crate::AppState;
@@ -245,10 +246,14 @@ pub async fn get_cached_geometry(
             let response = Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "application/x-parquet-geometry")
+                // Stored as the live parse wrote it, `from_cache: false`
+                // included; this is the warm path of `parseParquet()` (#5542).
                 .header(
                     "X-IFC-Metadata",
-                    String::from_utf8(metadata)
-                        .map_err(|error| ApiError::Internal(error.to_string()))?,
+                    mark_header_from_cache(
+                        String::from_utf8(metadata)
+                            .map_err(|error| ApiError::Internal(error.to_string()))?,
+                    ),
                 )
                 .header(header::CONTENT_LENGTH, parquet.len())
                 .body(Body::from(parquet))

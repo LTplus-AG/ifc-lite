@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Command Palette's `export:anonymized` entry (#2934): sets
- * `anonymizedExportRequested`, the flag `AnonymizedExportDialog` (mounted
- * trigger-less in `ViewerLayout.tsx`) watches, and closes the palette —
- * same contract as `extensions:flavors` -> `flavorDialogRequested`.
+ * Command Palette's `export:anonymized` entry (#2934): opens the anonymized
+ * export dialog and closes the palette. Since #5601 the palette's Export rows
+ * come from the toolbar registry and open its dialogs through their own
+ * trigger (`usePaletteExportRunner.tsx`), so the row no longer sets
+ * `anonymizedExportRequested`; that flag is the entity context menu's.
  */
 
 import '@/test/setup-dom.js';
@@ -16,7 +17,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
+import { resolveEnglish } from '@/i18n/registry';
 import { CommandPalette } from './CommandPalette.js';
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -44,8 +47,13 @@ after(unmountAll);
 
 beforeEach(() => {
   unmountAll();
-  useViewerStore.setState({ anonymizedExportRequested: false });
+  // The registry gates this format on a loaded model (`requires: 'model'`).
+  useViewerStore.setState({
+    anonymizedExportRequested: false,
+    ifcDataStore: { source: { byteLength: 4 } } as unknown as IfcDataStore,
+  });
 });
+after(() => { useViewerStore.setState({ ifcDataStore: null }); });
 
 /** Flush the `requestAnimationFrame` `runCommand` defers a non-`immediate`
  *  command's action to. */
@@ -56,7 +64,7 @@ async function advance(ms: number): Promise<void> {
 }
 
 describe('CommandPalette — export:anonymized', () => {
-  it('running the command sets anonymizedExportRequested and closes the palette', async () => {
+  it('running the command opens the anonymized export dialog and closes the palette', async () => {
     let open = true;
     const onOpenChange = (next: boolean) => { open = next; };
     render(open, onOpenChange);
@@ -67,12 +75,12 @@ describe('CommandPalette — export:anonymized', () => {
     const input = document.body.querySelector('input') as HTMLInputElement;
     assert.ok(input, 'no search input');
     act(() => {
-      input.value = 'Export Anonymized';
+      input.value = 'Export anonymized';
       input.dispatchEvent(new window.Event('input', { bubbles: true }));
     });
 
     const option = [...document.body.querySelectorAll('[role="option"]')].find(
-      (el) => el.textContent?.includes('Export Anonymized Subset'),
+      (el) => /^Export anonymized subset/i.test(el.textContent ?? ''),
     );
     assert.ok(option, `no palette entry for anonymized export; saw ${
       [...document.body.querySelectorAll('[role="option"]')].map((el) => el.textContent).join(' | ')
@@ -83,7 +91,11 @@ describe('CommandPalette — export:anonymized', () => {
     });
     await advance(10);
 
-    assert.equal(useViewerStore.getState().anonymizedExportRequested, true);
+    const title = resolveEnglish('anonymizedExport.dialog.title');
+    assert.ok(
+      [...document.body.querySelectorAll('[role="dialog"]')].some((d) => d.textContent?.includes(title)),
+      'the anonymized export dialog must open',
+    );
     assert.equal(open, false, 'the palette must close after running a command');
   });
 });

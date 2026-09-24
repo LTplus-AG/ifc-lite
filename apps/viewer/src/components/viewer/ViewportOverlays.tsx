@@ -22,10 +22,12 @@ import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
-import { PointCloudPanel } from './PointCloudPanel';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+// Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
+// zero-net addition since this already lives inside the same viewport panel.
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -89,6 +91,23 @@ export function ViewportOverlays({
     setOnCameraRotationChange(handleRotationChange);
     return () => setOnCameraRotationChange(null);
   }, [setOnCameraRotationChange]);
+
+  // Surface the `pointclouds` side panel the first time a point cloud loads
+  // (#5507) — the same moment the old floating `PointCloudPanel` card used to
+  // appear, before it moved into the docked sidebar. Fires once per
+  // "0 -> some assets" transition, not on every render while assets stay
+  // loaded, so a user who switches away to another panel isn't yanked back.
+  // Resets when the last asset unloads so a later reload surfaces it again.
+  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
+  const pointCloudPanelIntroducedRef = useRef(false);
+  useEffect(() => {
+    if (pointCloudAssetCount > 0 && !pointCloudPanelIntroducedRef.current) {
+      pointCloudPanelIntroducedRef.current = true;
+      useViewerStore.getState().openWorkspacePanel('pointclouds');
+    } else if (pointCloudAssetCount === 0) {
+      pointCloudPanelIntroducedRef.current = false;
+    }
+  }, [pointCloudAssetCount]);
 
   // Register callback for real-time scale updates
   // Only update state if scale changed significantly (>1%) to avoid unnecessary re-renders
@@ -195,7 +214,9 @@ export function ViewportOverlays({
 
   return (
     <>
-      <PointCloudPanelMount />
+      {/* HUD kernel (#5485), no consumers migrated onto it yet; mounted
+          first so its regions exist before anything below portals in. */}
+      <ViewportHud />
       <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list
@@ -365,29 +386,4 @@ function BasepointToggleButton() {
       </TooltipContent>
     </Tooltip>
   );
-}
-
-
-/**
- * Tiny indirection so the panel can subscribe to its own slice without
- * pulling extra state into the parent overlay component.
- */
-function PointCloudPanelMount() {
-  const count = useViewerStore((s) => s.pointCloudAssetCount);
-  // BIM↔scan deviation is a CROSS-MODEL operation: the point cloud is one
-  // federated model, the BIM mesh is another. `renderer.computeDeviations()`
-  // builds its BVH from EVERY mesh in the scene (`collectAllSceneMeshes`),
-  // so the compute button must appear whenever ANY loaded model contributes
-  // triangles — not just the active one. Gating on `s.geometryResult` (the
-  // ACTIVE model's result) hid the button whenever the point cloud was the
-  // active model (its synthetic geometryResult has totalTriangles === 0),
-  // which is exactly the common case — so deviation could never be computed
-  // and the colour mode showed every point at the ramp centre (grey). Sum
-  // across all loaded models to mirror the scene the BVH is actually built from.
-  const triangleCount = useViewerStore((s) => {
-    let total = 0;
-    for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
-    return total;
-  });
-  return <PointCloudPanel assetCount={count} triangleCount={triangleCount} />;
 }

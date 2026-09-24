@@ -16,14 +16,14 @@
  * single effect keyed on it used to re-run for the new room and hand out a
  * link to an empty one; whoever opened it reconstructed nothing.
  *
- * Scope (#4444): with several models loaded the dialog asks what the room
- * carries — the active model only, or every loaded model, each in its own
- * room slot — and creates the room only once the user has confirmed, since a
- * room's scope is fixed by its seed. It defaults to every loaded model: the
- * workspace on screen IS the federation, and a room that silently dropped all
- * but one file was the defect. With one model there is no choice to make and
- * the room is created on open, as before. Re-opening the dialog on a live
- * room shows what was shared.
+ * Consent (#5599): creating the room uploads the model, so it waits for an
+ * explicit "Create link" at every model count; links default to view-only.
+ * Scope (#4444): with several models loaded that step also asks what the
+ * room carries — the active model only, or every loaded model, each in its
+ * own room slot — since a room's scope is fixed by its seed. It defaults to
+ * every loaded model: the workspace on screen IS the federation, and a room
+ * that silently dropped all but one file was the defect. Re-opening the
+ * dialog on a live room shows what was shared.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -75,11 +75,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const seedPhase = useViewerStore((s) => s.collabSeedPhase);
   const seedProgress = useViewerStore((s) => s.collabSeedProgress);
 
-  const [role, setRole] = useState<CollabRole>('editor');
+  const [role, setRole] = useState<CollabRole>('viewer');
   const [scope, setScope] = useState<ShareScope>('all');
-  // With several models loaded the room is created only on an explicit
-  // "Create link": its scope is fixed by the seed, so the choice has to be
-  // made before the room exists.
+  // The room is created only on an explicit "Create link": creating it
+  // uploads the model (#5599), and its scope is fixed by the seed (#4444).
   const [scopeConfirmed, setScopeConfirmed] = useState(false);
   const [link, setLink] = useState<string>('');
   // Room creation in flight (no room yet) / invite mint in flight.
@@ -130,8 +129,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);
   // A joiner's loaded models ARE the room's; the scope question is the owner's.
   const scopeIsChoice = shareScopeIsChoice(models) && !isJoiner;
-  // The room is not created until the user has said what goes in it.
-  const awaitingScope = scopeIsChoice && !collabRoomId && !scopeConfirmed;
+  // The room is not created until the owner has consented to the upload.
+  const awaitingConsent = !isJoiner && !collabRoomId && !scopeConfirmed;
   // Once the room exists its contents are what the seed put there: show that
   // count, not the radio's current value.
   const sharedModelCount = collabRoomId ? collabRoomModels.size : scope === 'all' ? seedableCount : 1;
@@ -147,7 +146,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       setScopeConfirmed(false);
       return;
     }
-    if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingScope) return;
+    if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
     const roomId = mintRoomId();
     setCreating(true);
     setLink('');
@@ -187,7 +186,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         setCreating(false);
       }
     })();
-  }, [open, hasModel, collabRoomId, startCollab, awaitingScope, scope]);
+  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope]);
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the
@@ -258,14 +257,14 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard may be blocked; the input is selectable as a fallback
+      toast.error(t('shareDialog.copyFailed')); // the input stays selectable as a fallback (#5600)
     }
-  }, [link]);
+  }, [link, t]);
 
-  const waiting = awaitingScope || (creating && !collabRoomId) || seedInFlight || minting;
+  const waiting = awaitingConsent || (creating && !collabRoomId) || seedInFlight || minting;
   const seedLabel = describeSeedPhase(seedPhase, seedProgress);
-  const linkFieldText = awaitingScope
-    ? t('shareDialog.linkField.awaitingScope')
+  const linkFieldText = awaitingConsent
+    ? t(scopeIsChoice ? 'shareDialog.linkField.awaitingScope' : 'shareDialog.linkField.awaitingConsent')
     : seedInFlight
       ? t('shareDialog.linkField.seedInFlight')
       : creating && !collabRoomId
@@ -291,11 +290,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
           </p>
         ) : (
           <div className="flex flex-col gap-4">
-            {scopeIsChoice && (
+            {(scopeIsChoice || awaitingConsent) && (
               <ShareScopeField
+                showScope={scopeIsChoice}
                 scope={scope}
                 onScopeChange={setScope}
-                editable={awaitingScope}
+                editable={awaitingConsent}
                 onConfirm={() => setScopeConfirmed(true)}
                 loadedCount={models.size}
                 seedableCount={seedableCount}

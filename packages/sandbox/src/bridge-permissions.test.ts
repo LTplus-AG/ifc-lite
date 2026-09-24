@@ -18,6 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { BimContext } from '@ifc-lite/sdk';
+import { parseCapability, type Capability } from '@ifc-lite/extensions';
 import { createSandbox } from './sandbox.js';
 import { DEFAULT_PERMISSIONS, type SandboxPermissions } from './types.js';
 
@@ -38,6 +39,7 @@ async function namespaceTypes(
         create: typeof bim.create,
         files: typeof bim.files,
         export: typeof bim.export,
+        network: typeof bim.network,
       })`,
       { typescript: false },
     );
@@ -45,6 +47,12 @@ async function namespaceTypes(
   } finally {
     sandbox.dispose();
   }
+}
+
+function grant(raw: string): Capability {
+  const parsed = parseCapability(raw);
+  if (!parsed.ok) throw new Error(`bad test fixture capability "${raw}"`);
+  return parsed.value;
 }
 
 describe('sandbox permission gate', () => {
@@ -58,6 +66,7 @@ describe('sandbox permission gate', () => {
       lens: false,
       export: false,
       files: false,
+      network: false,
     });
 
     // Every gate off: the `bim` object carries no namespace at all.
@@ -71,6 +80,7 @@ describe('sandbox permission gate', () => {
       create: 'undefined',
       files: 'undefined',
       export: 'undefined',
+      network: 'undefined',
     });
   });
 
@@ -99,6 +109,9 @@ describe('sandbox permission gate', () => {
     // `bim.create` reuses the `export` permission, so it follows export, not
     // its own name.
     expect(types.create).toBe('undefined');
+    // `network` was not listed at all — an omitted key must read as "off",
+    // same as every other permission.
+    expect(types.network).toBe('undefined');
   });
 
   it('gates bim.create on the export permission it declares', async () => {
@@ -129,6 +142,10 @@ describe('sandbox permission gate', () => {
     expect(DEFAULT_PERMISSIONS.lens).toBe(true);
     expect(DEFAULT_PERMISSIONS.export).toBe(true);
     expect(DEFAULT_PERMISSIONS.files).toBe(true);
+    // Network is deny-by-default like the two write capabilities — a
+    // graph must be explicitly derived to have a network.fetch grant
+    // before its sandbox gets this flag at all (see `script-node.ts`).
+    expect(DEFAULT_PERMISSIONS.network).toBe(false);
   });
 
   it('a default sandbox exposes the read API but neither write namespace', async () => {
@@ -143,5 +160,63 @@ describe('sandbox permission gate', () => {
     expect(types.export).toBe('object');
     expect(types.files).toBe('object');
     expect(types.create).toBe('object');
+    expect(types.network).toBe('undefined');
+  });
+});
+
+describe('sandbox network permission and grant gate', () => {
+  it('bim.network is undefined when the network permission is off, even with grants configured', async () => {
+    const sandbox = await createSandbox({} as BimContext, {
+      permissions: { network: false },
+      network: { grants: [grant('network.fetch:*')] },
+    });
+    try {
+      const result = await sandbox.eval('typeof bim.network', { typescript: false });
+      expect(result.value).toBe('undefined');
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('bim.network.fetch exists when the permission is on, but throws a clear denial for an ungranted host — never a raw fetch', async () => {
+    const sandbox = await createSandbox({} as BimContext, {
+      permissions: { network: true },
+      network: { grants: [grant('network.fetch:api.example.com')] },
+    });
+    try {
+      const typeResult = await sandbox.eval('typeof bim.network.fetch', { typescript: false });
+      expect(typeResult.value).toBe('function');
+
+      await expect(
+        sandbox.eval(`(async () => { await bim.network.fetch('https://evil.example.invalid/steal'); })();`, { typescript: false }),
+      ).rejects.toThrow(/network\.fetch refused/);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('bim.network.fetch refuses a non-https URL even with a matching grant', async () => {
+    const sandbox = await createSandbox({} as BimContext, {
+      permissions: { network: true },
+      network: { grants: [grant('network.fetch:api.example.com')] },
+    });
+    try {
+      await expect(
+        sandbox.eval(`(async () => { await bim.network.fetch('http://api.example.com/'); })();`, { typescript: false }),
+      ).rejects.toThrow(/https/);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('bim.network.fetch with the permission on but no grants at all denies every host', async () => {
+    const sandbox = await createSandbox({} as BimContext, { permissions: { network: true } });
+    try {
+      await expect(
+        sandbox.eval(`(async () => { await bim.network.fetch('https://api.example.com/'); })();`, { typescript: false }),
+      ).rejects.toThrow(/network\.fetch refused/);
+    } finally {
+      sandbox.dispose();
+    }
   });
 });

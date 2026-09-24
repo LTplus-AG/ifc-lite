@@ -31,7 +31,9 @@ export function SectionOverlay() {
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
+  // The drawing is a bottom-strip panel (#5493): open it through the table so
+  // it replaces whichever bottom panel is docked instead of hiding behind it.
+  const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
   const drawingPanelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
   const clearDrawing = useViewerStore((s) => s.clearDrawing2D);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
@@ -139,8 +141,8 @@ export function SectionOverlay() {
   const handleView2D = useCallback(() => {
     // Clear existing drawing to force regeneration with current settings
     clearDrawing();
-    setDrawingPanelVisible(true);
-  }, [clearDrawing, setDrawingPanelVisible]);
+    openPanelInHome('drawing');
+  }, [clearDrawing, openPanelInHome]);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const drag = useDraggablePanel(panelRef);

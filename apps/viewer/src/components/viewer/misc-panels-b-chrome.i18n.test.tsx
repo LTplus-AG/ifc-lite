@@ -127,6 +127,7 @@ it('FederationSetupControls: mounts without a dialog open, and its catalogue val
 it('ShareScopeField: renders the multi-model caption in English and translates it (#4918)', () => {
   const container = render(
     <ShareScopeField
+      showScope
       scope="all"
       onScopeChange={() => {}}
       editable
@@ -142,6 +143,7 @@ it('ShareScopeField: renders the multi-model caption in English and translates i
   assert.ok(container.textContent?.includes('All 3 loaded models'));
   assert.ok(container.textContent?.includes('Every loaded model is shared as its own model, so recipients see the whole workspace.'));
   assert.ok(container.textContent?.includes('Create link'));
+  assert.ok(container.textContent?.includes('Creating the link uploads the shared model data to the collaboration server'));
 
   registerLocale('sharescopefield-de', { 'shareScopeField.createLink': 'Link erstellen' });
   act(() => setLocale('sharescopefield-de'));

@@ -249,6 +249,145 @@ is the editor's cue to give it a multi-line editor: the Flow panel's
 inspector shows a monospace textarea, and the ⤢ button beside it opens the
 full CodeMirror editor (the same `bim.*` completions as the script console).
 
+## Network requests and secrets
+
+`http.request` issues one `https:` GET/POST to a host the graph explicitly
+grants. A `network.fetch:<host>` capability names the exact hostname (or a
+single-label wildcard, e.g. `network.fetch:*.example.com` — the `*` never
+spans a `.`); it is matched against `new URL(url).hostname`, never the raw
+URL string, so a spoofed suffix (`api.example.com.evil.net`) or a userinfo
+trick (`https://user@api.example.com@evil.net/`, whose real hostname is
+`evil.net`) does not match a grant for the real host. Only `https:` is
+supported — `http:`, `file:`, and `data:` are always refused — and a
+redirect response is refused rather than followed. See
+`packages/sandbox/src/network-request.ts` for the full policy and its
+rationale.
+
+In the viewer, `http.request` runs subject to the browser's own CORS
+enforcement: a host that does not send `Access-Control-Allow-Origin` for
+the request fails with an explicit "likely CORS" message, never a silent
+empty result. The CLI and MCP have no such restriction (Node's `fetch` is
+not CORS-limited).
+
+A node param may reference an environment secret with `{{secret:NAME}}`
+(inside a plain string or nested in a `json`-kind param, such as a header
+map). The graph must also declare `secret.read:NAME` as a capability —
+an undeclared or declared-but-unset reference is a **validation error
+raised before the run starts**, not a silently empty string. Secrets are
+resolved from `process.env` **only** by `ifc-lite flow run` and MCP's
+`run_flow`. The viewer's `HostFeatures.secrets` is always empty, so a graph
+needing a secret shows `unavailable` in the panel before it ever runs.
+`ifc-lite flow validate` checks against its own environment: a referenced
+secret counts as available there only when the graph declares it and the
+variable is set to a value at least 6 characters long (the redaction
+minimum below), the same conditions `flow run` enforces.
+
+Every secret value at least 6 characters long is redacted — as
+`<secret:NAME>` — from run logs, node outputs, error messages, and
+`--json`/MCP output, including a value that comes back inside a fetched
+response body (a server echoing an `Authorization` header, for example).
+Redaction happens once, right before output leaves the process, so it
+catches a secret wherever it resurfaces in the run's own result — not just
+at the point it was substituted into a param.
+
+```json
+{
+  "capabilities": ["network.fetch:api.example.com", "secret.read:API_TOKEN"],
+  "nodes": [
+    {
+      "id": "req",
+      "type": "http.request",
+      "params": {
+        "url": "https://api.example.com/status",
+        "headers": { "Authorization": "Bearer {{secret:API_TOKEN}}" }
+      }
+    }
+  ]
+}
+```
+
+### Running a graph in CI, with secrets from GitHub Actions
+
+A workflow can install the CLI, run a graph with a secret passed through
+`env:`, and publish the result — the graph declares exactly which secret
+it needs (`secret.read:API_TOKEN`) and which host it may reach
+(`network.fetch:api.example.com`); nothing beyond that is available to it,
+and the secret is redacted from anything the job uploads or comments.
+
+```yaml
+# .github/workflows/flow-audit.yml (illustrative — not run in this repo's CI)
+name: Flow audit
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # the summary comment
+
+jobs:
+  audit:
+    # Repository secrets are not passed to pull requests from forks, and the
+    # token cannot comment there, so run only for same-repository branches.
+    # Audit a fork's change after merge, or from a maintainer-triggered
+    # workflow. Never use `pull_request_target` with a checkout of the fork's
+    # code to reach the secret: that runs untrusted code with it.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ifc-lite CLI
+        run: npm install -g @ifc-lite/cli
+
+      - name: Run the audit graph
+        id: run
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        # `flow run` exits 1 when the graph fails. Keep that status, but
+        # write the summary output first so the comment step can report it.
+        run: |
+          set +e
+          ifc-lite flow run graphs/fire-rating-audit.flow.json model.ifc \
+            --out audit-result.ifc --json > run-summary.json
+          status=$?
+          set -e
+          echo "ok=$(jq -r .ok run-summary.json)" >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Publish the audited model as a layer
+        if: steps.run.outputs.ok == 'true'
+        run: ifc-lite layer publish audit-result.ifc --layer fire-rating-audit
+
+      - name: Comment the run summary on the PR
+        # Also after a failed run (the job still fails from the step above).
+        if: always() && steps.run.outputs.ok != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            // run-summary.json was already redacted by `flow run` itself —
+            // secrets never reach an artifact, an env dump, or this comment.
+            const summary = JSON.parse(fs.readFileSync('run-summary.json', 'utf-8'));
+            const body = `Flow audit: ${summary.ok ? 'passed' : 'FAILED'} (` +
+              Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ') + ')';
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+```
+
+`API_TOKEN` is scoped by two independent things: the repository secret
+(`${{ secrets.API_TOKEN }}`, GitHub's own access control) and the graph's
+own `secret.read:API_TOKEN` capability (`ifc-lite`'s — a graph that does
+not declare it cannot read the env var even though the workflow set it).
+Nothing the workflow uploads, comments, or logs can carry the raw value:
+`flow run --json` redacts it before it is ever written to
+`run-summary.json`, so every consumer downstream — the artifact, the PR
+comment, the job log — only ever sees `<secret:API_TOKEN>` if the value
+happened to surface at all.
+
 ## Editing a graph
 
 In the viewer's Flow panel:

@@ -1052,4 +1052,9 @@ declare const bim: {
     /** Trigger a browser file download with the given content. mimeType defaults to text/plain. */
     download(content: string, filename: string, mimeType?: string): void;
   };
+  /** Outbound HTTP requests, restricted to https: hosts covered by a granted network.fetch:<host> capability. */
+  network: {
+    /** Fetch an https: URL. `options.method` is GET (default) or POST; `options.headers`/`body` are optional. Throws if the host is not granted or the response exceeds the byte cap. */
+    fetch(url: string, options?: { method?: "GET" | "POST"; headers?: Record<string, string>; body?: string; timeoutMs?: number; maxBytes?: number }): Promise<{ status: number; headers: Record<string, string>; body: string; truncated: boolean }>;
+  };
 };

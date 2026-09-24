@@ -1426,3 +1426,62 @@ fn a_two_shell_element_with_one_shell_buried_is_hard_5473() {
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
 }
+
+/// #5717: a genuine interpenetration must not be vetoed by a sampling probe
+/// taken on a face the two elements happen to SHARE.
+///
+/// A curtain-wall panel and a mullion authored to the same height are flush
+/// on their tops and bottoms while genuinely overlapping laterally. Rotate
+/// that pair off the world axes and the mullion's top corners bake, through
+/// f32, a noise-width inside the panel's top face. `crossing_vertex_penetration`
+/// reports them as a ~0 "penetration", which sat at-or-below its floor and
+/// took the whole pair to `Touch` — discarding a 20 mm overlap that the
+/// exact box MTD had already measured correctly, and (with `report_touch`
+/// off) dropping the clash from the report entirely.
+///
+/// The probe is explicitly not a depth metric, so it may only guard the
+/// fabricated AABB estimate, never a certified box depth. Two boxes that are
+/// genuinely flush still report `Touch` through the MTD term instead, which
+/// the companion assertion below pins — without it, a fix that simply
+/// stopped reporting `Touch` at all would pass.
+///
+/// Kills: dropping the `measured.is_none() &&` guard in `depth_clash_result`.
+#[test]
+fn a_shared_face_does_not_veto_a_genuine_overlap_5717() {
+    const PEN: f32 = 0.02;
+    // 0.0 and 0.1 always passed; from ~0.3 the baked corners land inside.
+    for rot in [0.0f32, 0.1, 0.3, 0.4, std::f32::consts::FRAC_PI_4] {
+        let (c, s) = (rot.cos(), rot.sin());
+        let mullion = rotated_box_hxyz(0.0, 0.0, 0.0, 0.1, 0.1, 1.5, rot);
+
+        // Coplanar tops/bottoms (hz equal), overlapping laterally by PEN.
+        let panel = rotated_box_hxyz((0.125 - PEN) * c, (0.125 - PEN) * s, 0.0, 0.025, 0.75, 1.5, rot);
+        let got = session_of_parts(&[mullion.clone(), panel])
+            .run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        let rec = got.records.first().unwrap_or_else(|| {
+            panic!("rotation {rot}: a 20 mm overlap must report at all")
+        });
+        assert_eq!(
+            rec.status,
+            ClashStatus::Hard,
+            "rotation {rot}: a 20 mm overlap is a hard clash, not a touch"
+        );
+        assert!(
+            (rec.distance + f64::from(PEN)).abs() < 1e-3,
+            "rotation {rot}: depth {} should be about -{PEN}",
+            rec.distance
+        );
+
+        // Companion: the SAME pair, moved out to exactly flush, is still a
+        // touch. This is what stops the assertions above being satisfied by
+        // a kernel that never reports `Touch`.
+        let flush = rotated_box_hxyz(0.125 * c, 0.125 * s, 0.0, 0.025, 0.75, 1.5, rot);
+        let got = session_of_parts(&[mullion, flush])
+            .run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(
+            got.records.first().map(|r| r.status),
+            Some(ClashStatus::Touch),
+            "rotation {rot}: a flush pair is still a touch"
+        );
+    }
+}

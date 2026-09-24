@@ -57,10 +57,6 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const matchByContent = useViewerStore((s) => s.compareMatchByContent);
   const keyProperty = useViewerStore((s) => s.compareKeyProperty);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
-  // #5312 (#5214 finding 2, warn half): dirtyModels already tracks unsaved
-  // viewer edits (ExportDialog.tsx already consumes it) — Compare's data
-  // channel does not, so warn rather than silently comparing stale data.
-  const dirtyModels = useViewerStore((s) => s.dirtyModels);
   const selectedKey = useViewerStore((s) => s.compareSelectedKey);
   const setBaseModelId = useViewerStore((s) => s.setCompareBaseModelId);
   const setHeadModelId = useViewerStore((s) => s.setCompareHeadModelId);
@@ -154,13 +150,6 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
-
-  // Checked against BOTH the live A/B picker (before a run) and the ids the
-  // currently-shown result was built from (on the result) — a picker change
-  // made after running, with no re-run yet, must not go silent.
-  const unsavedEditsWarning = [baseModelId, headModelId, result?.baseModelId, result?.headModelId].some(
-    (id) => id != null && dirtyModels.has(id),
-  );
 
   // Products vs type objects (headline-count confusion, see `productTypeCounts.ts`).
   const split = useMemo(
@@ -274,7 +263,6 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 error={error}
                 geometryUnavailable={!!result?.geometryUnavailable}
                 placementOnlyGeometry={!!result?.placementOnlyGeometry}
-                unsavedEditsWarning={unsavedEditsWarning}
                 excludedTypes={excludedTypes}
                 changedTypeCounts={typeCounts}
                 onAddExcludedType={addExcludedType}

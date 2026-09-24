@@ -38,7 +38,7 @@ import type { ThemeMode } from '@/store/slices/uiSlice';
 
 /**
  * Grid buckets in the order their bubbles are lifted: lowest resolved
- * elevation first, non-finite elevations last, ties in Map order (#5583).
+ * elevation first, non-finite elevations last, ties in Map order (#5656).
  *
  * A structural grid is one axis system through every floor, but
  * `ensureBucket` (`symbolic-parse.ts`) buckets IfcGridAxis content by
@@ -240,7 +240,7 @@ export function buildSymbolicRichChannels(
     }
 
     if (effectiveGridEnabled) {
-      // #5583: a bubble repeated on every storey is lifted once, from the
+      // #5656: a bubble repeated on every storey is lifted once, from the
       // lowest storey that draws it — see `gridBucketsLowToHigh`.
       const seenTexts = new Set<string>();
       const seenFills = new Set<string>();

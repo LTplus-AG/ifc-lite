@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Issue #5583: a structural grid's axis bubble is authored once per axis, but
+ * Issue #5656: a structural grid's axis bubble is authored once per axis, but
  * `ensureBucket` (`symbolic-parse.ts`) buckets IfcGridAxis content by
  * elevation the same way it buckets IfcAnnotation content. A bubble that is
  * logically "axis 1" therefore lands in EVERY storey's `gridByStorey` bucket
@@ -129,7 +129,7 @@ const GRID_ONLY = {
   clipDepth: 0,
 };
 
-describe('grid bubbles draw once, not once per storey (#5583)', () => {
+describe('grid bubbles draw once, not once per storey (#5656)', () => {
   it('the fixture really does bucket the axis into three separate storeys', () => {
     const parsed = gridBubbleParse();
     assert.equal(parsed.gridByStorey.size, 3, 'one bucket per distinct elevation');
@@ -154,7 +154,7 @@ describe('grid bubbles draw once, not once per storey (#5583)', () => {
   });
 });
 
-describe('grid bubble dedup keeps what is not a duplicate (#5583)', () => {
+describe('grid bubble dedup keeps what is not a duplicate (#5656)', () => {
   it('a section clip around an upper storey still shows that storey\'s copy', () => {
     const { texts, fills } = buildSymbolicRichChannels([{ cached: gridBubbleParse() }], {
       ...GRID_ONLY,

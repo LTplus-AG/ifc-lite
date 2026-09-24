@@ -50,7 +50,7 @@ function directIndex(ctx: Ctx, candidates: readonly Candidate[], strategy: 'glob
   return index;
 }
 
-/** Every distinct GlobalId a row matches, restricted to the candidate pool. */
+/** The GlobalId of every distinct entity a row matches, restricted to the candidate pool. */
 function matchedGlobalIdsFor(
   ctx: Ctx,
   t: Table,
@@ -89,7 +89,10 @@ function matchedGlobalIdsFor(
   }
   const csvRows: CsvRow[] = t.rows.map((row) => ({ [column]: row[column] === null || row[column] === undefined ? '' : String(row[column]) }));
   const matchStrategy: MatchStrategy = strategy === 'tag' ? { type: 'tag', column } : { type: 'property', psetName: pset, propName: prop, column };
-  const perRow: Array<Set<string>> = csvRows.map(() => new Set<string>());
+  // Keyed by the entity (model + express id), not its GlobalId: two models
+  // can hold distinct entities under one GlobalId, and collapsing them to one
+  // string reported a row matching both as a unique match (#5377 review).
+  const perRow: Array<Map<string, string>> = csvRows.map(() => new Map<string, string>());
   const firstModelId = [...byModel.keys()][0];
   for (const [modelId, pool] of byModel) {
     const access = ctx.host.tables?.(modelId);
@@ -103,11 +106,11 @@ function matchedGlobalIdsFor(
       if (modelId === firstModelId) problems.push(...(result.warnings ?? []).map((w) => `row ${i}: ${w}`));
       for (const expressId of result.matchedEntityIds) {
         const gid = pool.get(expressId);
-        if (gid) perRow[i].add(gid);
+        if (gid) perRow[i].set(`${modelId}#${expressId}`, gid);
       }
     });
   }
-  return { perRow: perRow.map((ids) => [...ids]), problems };
+  return { perRow: perRow.map((ids) => [...ids.values()]), problems };
 }
 
 function withColumn(columns: readonly Column[], col: Column): Column[] {
@@ -149,10 +152,17 @@ export const connectorNodes: FlowNodeDef[] = [
       if (!t.columns.some((c) => c.name === column)) throw new Error(`table.joinByKey: no column "${column}"`);
       if (strategy === 'property' && (!p.pset || !p.prop)) throw new Error('table.joinByKey: strategy "property" needs both "pset" and "prop" params');
 
-      const candidates: Candidate[] = (i.entities as EntityRef[]).map((ref) => {
+      // One candidate per entity: the same entity listed twice is not two
+      // matches, so it must not make a row ambiguous.
+      const seen = new Set<string>();
+      const candidates: Candidate[] = [];
+      for (const ref of i.entities as EntityRef[]) {
         const address = toSdkRef(ctx, ref);
-        return { ref, modelId: address.modelId, expressId: address.expressId };
-      });
+        const identity = `${address.modelId}#${address.expressId}`;
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        candidates.push({ ref, modelId: address.modelId, expressId: address.expressId });
+      }
       const { perRow, problems } = matchedGlobalIdsFor(ctx, t, candidates, strategy, column, String(p.pset ?? ''), String(p.prop ?? ''));
       for (const msg of problems) ctx.log('warn', msg);
 

@@ -428,6 +428,23 @@ describe('model.applyTable', () => {
     expect(r.ok).toBe(true);
     expect(fake.mutations, 'no delete, no write — the property is left as it was').toEqual([]);
   });
+  it('leaves a property untouched for a blank string cell, which the CSV reader keeps as ""', async () => {
+    const fake = createFakeBim();
+    const readOut = (await registry.get('table.readCsv')!.run(testCtx(), { text: 'GlobalId,Note\nW1,\n' }, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Note', type: 'string' }], delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(readOut.table.rows).toEqual([{ GlobalId: 'W1', Note: '' }]);
+    const table: Table = {
+      ...readOut.table,
+      columns: readOut.table.columns.map((c) => (c.name === 'Note' ? { ...c, binding: { pset: 'Pset_WallCommon', prop: 'Note' } } : c)),
+    };
+    const handle: FlowNodeDef = { type: 'test.t6', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle]);
+    const d = doc([{ id: 't', type: 'test.t6' }, { id: 'a', type: 'model.applyTable' }], [edge('t', 'table', 'a', 'table')]);
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg, features: headlessFeatures() });
+    expect(r.ok).toBe(true);
+    expect(fake.mutations, 'a blank cell does not overwrite the value with ""').toEqual([]);
+  });
 });
 
 describe('typed cells are read exactly or reported (#5377 review)', () => {

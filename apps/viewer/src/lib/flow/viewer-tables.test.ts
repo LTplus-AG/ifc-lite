@@ -123,4 +123,44 @@ describe('table.joinByKey across models (#5377)', () => {
     assert.deepEqual(out.matched.rows, [{ Mark: 'T-B', GlobalId: globalIds.B }], 'T-B matches B’s own wall');
     assert.deepEqual(out.unmatched.rows, [{ Mark: 'T-A' }], 'T-A is model A’s mark, not a candidate’s');
   });
+
+  it('reports a row as ambiguous when distinct entities in two models share its GlobalId and both match', async () => {
+    // Collapsing matches by GlobalId string turned these two walls into one
+    // "unique" match, and applyTable's GlobalId-only lookup could then write
+    // to the wrong model (#5377 review).
+    const parse = async (step: string) => {
+      const bytes = new TextEncoder().encode(step);
+      return new IfcParser().parseColumnar(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        { disableWorkerScan: true },
+      );
+    };
+    const shared = '0wallS0000000000000000';
+    const storeA = await parse(wallModel(shared, 'T-1'));
+    const storeB = await parse(wallModel(shared, 'T-1'));
+    const views = new Map<string, MutablePropertyView>();
+    const modelOf = (id: string, dataStore: unknown) => ({ id, name: id, ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: 0, loadedAt: 0, idOffset: 0, maxExpressId: 200 });
+    const state = {
+      activeModelId: 'A',
+      ifcDataStore: null,
+      models: new Map([['A', modelOf('A', storeA)], ['B', modelOf('B', storeB)]]),
+      getMutationView: (id: string) => views.get(id) ?? null,
+      registerMutationView: (id: string, view: MutablePropertyView) => { views.set(id, view); },
+    };
+    const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
+    const bim = { entity: () => ({ globalId: shared }) };
+    const join = createStandardRegistry().get('table.joinByKey');
+    assert.ok(join, 'table.joinByKey is registered');
+    const out = await join.run(
+      { host: { bim, tables: viewerTableAccess(store), defaultModelId: 'A' }, laneKey: null, log: () => undefined } as never,
+      {
+        entities: [{ globalId: shared, modelId: 'A', expressId: 10 }, { globalId: shared, modelId: 'B', expressId: 10 }],
+        table: { columns: [{ name: 'Mark', type: 'string' as const }], key: 'Mark', rows: [{ Mark: 'T-1' }] },
+      },
+      { strategy: 'property', column: 'Mark', pset: 'Pset_Fabrication', prop: 'Mark' },
+    ) as { matched: { rows: unknown[] }; ambiguous: { rows: Array<Record<string, unknown>> } };
+
+    assert.deepEqual(out.matched.rows, [], 'not a unique match');
+    assert.deepEqual(out.ambiguous.rows, [{ Mark: 'T-1', MatchedGlobalIds: `${shared};${shared}` }]);
+  });
 });

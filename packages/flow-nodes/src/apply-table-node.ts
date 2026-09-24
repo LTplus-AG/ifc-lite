@@ -103,7 +103,9 @@ export const applyTableNode: FlowNodeDef = {
         // field as null too, so "null means delete" turned a typo in a
         // spreadsheet into silent data loss (#5377 review). Those cells were
         // already reported by the reader that produced them.
-        if (raw === null || raw === undefined) continue;
+        // An empty string is empty too: `table.readCsv` keeps a string column's
+        // blank cell as `''`, which would otherwise overwrite the value.
+        if (raw === null || raw === undefined || raw === '') continue;
         // Strict first: a table from any producer (not only this package's
         // readers) must not write `parseFloat`'s prefix of "12,5" as 12.
         const parsed = parseStrictCell(String(raw), column.type);

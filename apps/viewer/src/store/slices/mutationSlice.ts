@@ -800,9 +800,8 @@ function getOrCreateStoreEditor(
  * IfcLocalPlacement at the storey's elevation when one's missing
  * and patch the storey's attribute via the overlay.
  *
- * Idempotent: if the storey already has a placement (number or
- * `#X` string ref), this is a no-op. Returns true when a
- * placement was created.
+ * Idempotent: if the storey already has a placement (number or `#X`
+ * string ref), this is a no-op. Returns true when a placement was created.
  */
 function ensureStoreyPlacement(
   dataStore: import('@ifc-lite/parser').IfcDataStore,

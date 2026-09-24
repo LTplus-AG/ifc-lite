@@ -64,7 +64,7 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
+import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -233,13 +233,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
       const nameToEnums = new Map<string, number[]>();
       const presentTypes: { ifcType: string; label: string }[] = [];
-      for (const [ifcType, { labelKey, pattern }] of Object.entries(IFC_TYPE_MAP)) {
-        const enums: number[] = [];
-        for (const [typeEnum, typeName] of enumToTypeName) {
-          if (typeName.includes(pattern)) {
-            enums.push(typeEnum);
-          }
-        }
+      for (const [ifcType, { labelKey }] of Object.entries(IFC_TYPE_MAP)) {
+        const enums = classTargetEnums(ifcType, enumToTypeName);
         if (enums.length > 0) {
           nameToEnums.set(ifcType, enums);
           presentTypes.push({ ifcType, label: t(labelKey) });

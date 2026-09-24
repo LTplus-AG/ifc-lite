@@ -23,7 +23,8 @@
  * purely to keep this file under the ~400-line module-size guideline.
  */
 
-import { EntityExtractor } from './entity-extractor.js';
+import { CostEntityReader } from './cost-reader.js';
+import type { CostMutationOverlay } from './cost-overlay.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import { parseIso8601Duration } from './iso8601-duration.js';
 import {
@@ -89,20 +90,22 @@ export type { WorkCalendarInfo, WorkTimeInfo, RecurrencePatternInfo, TimePeriodI
  * IfcRelAssignsToControl / IfcRelNests / IfcWorkSchedule / IfcWorkPlan entity
  * and assembles a connected ScheduleExtraction.
  */
-export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction {
-  if (!store.source?.length) {
+export function extractScheduleOnDemand(store: IfcDataStore, options?: { overlay?: CostMutationOverlay }): ScheduleExtraction {
+  if (!store.source?.length && !options?.overlay) {
     return { workSchedules: [], tasks: [], sequences: [], workCalendars: [], hasSchedule: false };
   }
 
-  const byType = store.entityIndex.byType;
-  const taskIds = byType.get('IFCTASK') ?? [];
-  const workScheduleIds = byType.get('IFCWORKSCHEDULE') ?? [];
-  const workPlanIds = byType.get('IFCWORKPLAN') ?? [];
-  const relSeqIds = byType.get('IFCRELSEQUENCE') ?? [];
-  const relAssignsProcessIds = byType.get('IFCRELASSIGNSTOPROCESS') ?? [];
-  const relAssignsControlIds = byType.get('IFCRELASSIGNSTOCONTROL') ?? [];
-  const relNestsIds = byType.get('IFCRELNESTS') ?? [];
-  const workCalendarIds = byType.get('IFCWORKCALENDAR') ?? [];
+  // The same record reader used by cost extraction folds source edits, retypes,
+  // tombstones and creations through export-equivalent STEP records.
+  const reader = new CostEntityReader(store, options?.overlay);
+  const taskIds = reader.ids('IFCTASK');
+  const workScheduleIds = reader.ids('IFCWORKSCHEDULE');
+  const workPlanIds = reader.ids('IFCWORKPLAN');
+  const relSeqIds = reader.ids('IFCRELSEQUENCE');
+  const relAssignsProcessIds = reader.ids('IFCRELASSIGNSTOPROCESS');
+  const relAssignsControlIds = reader.ids('IFCRELASSIGNSTOCONTROL');
+  const relNestsIds = reader.ids('IFCRELNESTS');
+  const workCalendarIds = reader.ids('IFCWORKCALENDAR');
 
   // A calendar-only file (no tasks/schedules/sequences yet) still counts as
   // real 4D data worth surfacing, so it flips `hasAny`/`hasSchedule` exactly
@@ -119,7 +122,6 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     return { workSchedules: [], tasks: [], sequences: [], workCalendars: [], hasSchedule: false };
   }
 
-  const extractor = new EntityExtractor(store.source);
   const schemaIs2x3 = store.schemaVersion === 'IFC2X3';
 
   /** expressId -> task record (for cross-linking) */
@@ -129,9 +131,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
 
   // Pass 1: extract base IfcTask records.
   for (const expressId of taskIds) {
-    const ref = store.entityIndex.byId.get(expressId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(expressId);
     if (!entity) continue;
     const a = entity.attributes || [];
 
@@ -172,7 +172,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
         priority: asNumber(a[TASK_ATTR.Priority]),
         predefinedType: asEnum(a[TASK_ATTR.PredefinedType]),
         taskTime: taskTimeId !== undefined
-          ? extractTaskTime(extractor, store, taskTimeId)
+          ? extractTaskTime(reader, taskTimeId)
           : undefined,
         childGlobalIds: [],
         productExpressIds: [],
@@ -186,9 +186,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
 
   // Pass 2: walk IfcRelNests — build task hierarchy.
   for (const relId of relNestsIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(relId);
     if (!entity) continue;
     const a = entity.attributes || [];
     const parent = asRef(a[REL_NESTS_ATTR.RelatingObject]);
@@ -217,9 +215,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // lists elsewhere in this file, this pair is a multiset — dedup would
   // silently drop a legitimate repeated assignment.
   for (const relId of relAssignsProcessIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(relId);
     if (!entity) continue;
     const a = entity.attributes || [];
     const taskId = asRef(a[REL_ASSIGNS_TO_PROCESS_ATTR.RelatingProcess]);
@@ -228,8 +224,8 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     const task = taskByExpressId.get(taskId);
     if (!task) continue;
     for (const productId of products) {
-      // resolve product globalId lazily from the entity table if available
-      const gid = store.entities?.getGlobalId?.(productId) ?? undefined;
+      // Resolve the effective product GlobalId and skip tombstoned records.
+      const gid = reader.get(productId) ? reader.globalId(productId) : undefined;
       task.productExpressIds.push(productId);
       task.productGlobalIds.push(gid ?? '');
       if (gid) globalIdByExpressId.set(productId, gid);
@@ -240,9 +236,9 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // lives in `schedule-control-extractor.ts` alongside the calendar one.
   const workSchedules: WorkScheduleInfo[] = [];
   const scheduleByExpressId = new Map<number, WorkScheduleInfo>();
-  const collectSchedules = (ids: number[], kind: 'WorkSchedule' | 'WorkPlan') => {
+  const collectSchedules = (ids: readonly number[], kind: 'WorkSchedule' | 'WorkPlan') => {
     for (const id of ids) {
-      const info = extractWorkScheduleInfo(extractor, store, id, kind, globalIdByExpressId);
+      const info = extractWorkScheduleInfo(reader, id, kind, globalIdByExpressId);
       if (!info) continue;
       workSchedules.push(info);
       scheduleByExpressId.set(id, info);
@@ -257,9 +253,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // task/subtask hierarchy above, which only resolves parents through
   // taskByExpressId and silently skips a WorkPlan RelatingObject.
   for (const relId of relNestsIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(relId);
     if (!entity) continue;
     const a = entity.attributes || [];
     const parent = asRef(a[REL_NESTS_ATTR.RelatingObject]);
@@ -293,8 +287,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // calendar-assignment branch of Pass 5 live in
   // `schedule-control-extractor.ts` — split out purely for module size.
   const { workCalendars, calendarByExpressId } = extractWorkCalendars(
-    extractor,
-    store,
+    reader,
     schemaIs2x3 ? [] : workCalendarIds,
   );
 
@@ -315,9 +308,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // relation instances) gets both fields populated without either clobbering
   // the other.
   for (const relId of relAssignsControlIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(relId);
     if (!entity) continue;
     const a = entity.attributes || [];
     const controlId = asRef(a[REL_ASSIGNS_TO_CONTROL_ATTR.RelatingControl]);
@@ -361,9 +352,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
   // Pass 6: IfcRelSequence — dependency edges between tasks.
   const sequences: ScheduleSequenceInfo[] = [];
   for (const relId of relSeqIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const entity = extractor.extractEntity(ref);
+    const entity = reader.get(relId);
     if (!entity) continue;
     const a = entity.attributes || [];
     const relatingId = asRef(a[REL_SEQUENCE_ATTR.RelatingProcess]);
@@ -375,7 +364,7 @@ export function extractScheduleOnDemand(store: IfcDataStore): ScheduleExtraction
     const lagId = asRef(a[REL_SEQUENCE_ATTR.TimeLag]);
     const { seconds: timeLagSeconds, duration: timeLagDuration } =
       lagId !== undefined
-        ? extractLagTimeSeconds(extractor, store, lagId)
+        ? extractLagTimeSeconds(reader, lagId)
         : {};
     sequences.push({
       globalId: asString(a[REL_SEQUENCE_ATTR.GlobalId]) ?? '',

@@ -242,6 +242,7 @@ export { ScheduleNamespace } from './namespaces/schedule.js';
 export { StructuralNamespace } from './namespaces/structural.js';
 export { CostNamespace } from './namespaces/cost.js';
 export { createCostBackend } from './cost-backend.js';
+export { createEffectiveRecordOverlay } from './effective-record-overlay.js';
 export type { CostModelResolver, ResolvedCostModel } from './cost-backend.js';
 export { createCostStoreBackend } from './cost-store-backend.js';
 export { resolveLiveOwnerHistoryId } from './cost-owner-history.js';

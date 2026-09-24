@@ -11,8 +11,7 @@
  * `schedule-calendar-types.ts` was split from `schedule-types.ts`.
  */
 
-import { EntityExtractor } from './entity-extractor.js';
-import type { IfcDataStore } from './columnar-parser.js';
+import type { CostEntityReader } from './cost-reader.js';
 import type { ScheduleTaskInfo, WorkScheduleInfo } from './schedule-types.js';
 import { WORK_SCHEDULE_ATTR, WORK_PLAN_ATTR, asString, asEnum } from './schedule-types.js';
 import { extractWorkCalendar } from './schedule-calendar-types.js';
@@ -26,15 +25,12 @@ import type { WorkCalendarInfo } from './schedule-calendar-types.js';
  * passes can resolve a schedule by either key.
  */
 export function extractWorkScheduleInfo(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   expressId: number,
   kind: 'WorkSchedule' | 'WorkPlan',
   globalIdByExpressId: Map<number, string>,
 ): WorkScheduleInfo | null {
-  const ref = store.entityIndex.byId.get(expressId);
-  if (!ref) return null;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(expressId);
   if (!entity) return null;
   const a = entity.attributes || [];
   const layout = kind === 'WorkPlan' ? WORK_PLAN_ATTR : WORK_SCHEDULE_ATTR;
@@ -61,14 +57,13 @@ export function extractWorkScheduleInfo(
 
 /** Extract every IFCWORKCALENDAR express id into a WorkCalendarInfo, keyed both as a flat list and by express id (for the assignment walk below). */
 export function extractWorkCalendars(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
-  workCalendarIds: number[],
+  reader: CostEntityReader,
+  workCalendarIds: readonly number[],
 ): { workCalendars: WorkCalendarInfo[]; calendarByExpressId: Map<number, WorkCalendarInfo> } {
   const workCalendars: WorkCalendarInfo[] = [];
   const calendarByExpressId = new Map<number, WorkCalendarInfo>();
   for (const id of workCalendarIds) {
-    const info = extractWorkCalendar(extractor, store, id);
+    const info = extractWorkCalendar(reader, id);
     if (info) {
       workCalendars.push(info);
       calendarByExpressId.set(id, info);

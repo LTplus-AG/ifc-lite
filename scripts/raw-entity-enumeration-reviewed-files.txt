@@ -79,3 +79,9 @@ apps/viewer/src/utils/spatialHierarchy.ts
 packages/create/src/in-store/extract-walls.ts
 packages/create/src/in-store/resolve-source.ts
 packages/create/src/in-store/spatial-children.ts
+packages/parser/src/schedule-extractor.ts
+packages/parser/src/schedule-control-extractor.ts
+packages/parser/src/schedule-types.ts
+packages/parser/src/schedule-calendar-types.ts
+apps/viewer/src/sdk/adapters/schedule-adapter.ts
+apps/viewer/src/components/viewer/schedule/GanttPanel.tsx

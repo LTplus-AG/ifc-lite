@@ -22,8 +22,7 @@
  * `schedule-extractor.ts`'s `byType.get('IFCWORKCALENDAR')` walk.
  */
 
-import { EntityExtractor } from './entity-extractor.js';
-import type { IfcDataStore } from './columnar-parser.js';
+import type { CostEntityReader } from './cost-reader.js';
 import { asString, asNumber, asEnum, asRef, asRefList } from './schedule-types.js';
 import { deterministicGlobalId } from './deterministic-global-id.js';
 
@@ -120,13 +119,10 @@ export interface WorkCalendarInfo {
 }
 
 function extractTimePeriod(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   timePeriodId: number,
 ): TimePeriodInfo | undefined {
-  const ref = store.entityIndex.byId.get(timePeriodId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(timePeriodId);
   if (!entity) return undefined;
   if (entity.type.toUpperCase() !== 'IFCTIMEPERIOD') return undefined;
   const a = entity.attributes || [];
@@ -137,13 +133,10 @@ function extractTimePeriod(
 }
 
 function extractRecurrencePattern(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   patternId: number,
 ): RecurrencePatternInfo | undefined {
-  const ref = store.entityIndex.byId.get(patternId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(patternId);
   if (!entity) return undefined;
   if (entity.type.toUpperCase() !== 'IFCRECURRENCEPATTERN') return undefined;
   const a = entity.attributes || [];
@@ -156,7 +149,7 @@ function extractRecurrencePattern(
   const timePeriodIds = asRefList(a[RECURRENCE_PATTERN_ATTR.TimePeriods]);
   const timePeriods: TimePeriodInfo[] = [];
   for (const id of timePeriodIds) {
-    const tp = extractTimePeriod(extractor, store, id);
+    const tp = extractTimePeriod(reader, id);
     if (tp) timePeriods.push(tp);
   }
   return {
@@ -177,13 +170,10 @@ function asNumberList(value: unknown): number[] {
 }
 
 function extractWorkTime(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   workTimeId: number,
 ): WorkTimeInfo | undefined {
-  const ref = store.entityIndex.byId.get(workTimeId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(workTimeId);
   if (!entity) return undefined;
   if (entity.type.toUpperCase() !== 'IFCWORKTIME') return undefined;
   const a = entity.attributes || [];
@@ -193,7 +183,7 @@ function extractWorkTime(
     dataOrigin: asEnum(a[WORK_TIME_ATTR.DataOrigin]),
     userDefinedDataOrigin: asString(a[WORK_TIME_ATTR.UserDefinedDataOrigin]),
     recurrencePattern: recurrenceId !== undefined
-      ? extractRecurrencePattern(extractor, store, recurrenceId)
+      ? extractRecurrencePattern(reader, recurrenceId)
       : undefined,
     start: asString(a[WORK_TIME_ATTR.Start]),
     finish: asString(a[WORK_TIME_ATTR.Finish]),
@@ -208,13 +198,10 @@ function extractWorkTime(
  * IFCWORKCALENDAR.
  */
 export function extractWorkCalendar(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   calendarId: number,
 ): WorkCalendarInfo | undefined {
-  const ref = store.entityIndex.byId.get(calendarId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(calendarId);
   if (!entity) return undefined;
   if (entity.type.toUpperCase() !== 'IFCWORKCALENDAR') return undefined;
   const a = entity.attributes || [];
@@ -222,12 +209,12 @@ export function extractWorkCalendar(
   const exceptionTimeIds = asRefList(a[WORK_CALENDAR_ATTR.ExceptionTimes]);
   const workingTimes: WorkTimeInfo[] = [];
   for (const id of workingTimeIds) {
-    const wt = extractWorkTime(extractor, store, id);
+    const wt = extractWorkTime(reader, id);
     if (wt) workingTimes.push(wt);
   }
   const exceptionTimes: WorkTimeInfo[] = [];
   for (const id of exceptionTimeIds) {
-    const wt = extractWorkTime(extractor, store, id);
+    const wt = extractWorkTime(reader, id);
     if (wt) exceptionTimes.push(wt);
   }
   return {

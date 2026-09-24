@@ -36,6 +36,7 @@ mod overlay_frame;
 mod parsing;
 mod pipeline_diagnostics;
 mod simplify;
+mod swept_disk_descriptions;
 mod space_plate;
 mod space_plate_input;
 pub(crate) mod styling;

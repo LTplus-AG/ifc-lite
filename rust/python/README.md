@@ -22,8 +22,9 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 The module is `ifclite_geom` and exposes three functions, all taking the raw IFC
 file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
-same geometry and differ only in output format; `entity_data` reads attributes
-and property sets instead, without tessellating.
+same geometry and differ only in output format; pass
+`include_directrices=True` to include analytic swept-disk paths. `entity_data`
+reads attributes and property sets instead, without tessellating.
 
 ```python
 import ifclite_geom
@@ -57,7 +58,7 @@ print(first["ifc_type"], first["vertices"][0])  # [x, y, z] in metres
 
 ## API
 
-### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None) -> dict`
+### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> dict`
 
 The fast path. Vertices and faces come back as raw little-endian byte buffers so
 you can hand them straight to `numpy.frombuffer` with zero parsing.
@@ -89,12 +90,54 @@ verts = np.frombuffer(el["vertices"], dtype=np.float64).reshape(-1, 3)  # (V, 3)
 faces = np.frombuffer(el["faces"],    dtype=np.uint32 ).reshape(-1, 3)  # (F, 3)
 ```
 
-### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None) -> str`
+### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> str`
 
 The same geometry as a readable `ifc-lite-geometry-data` JSON document (a
 string; call `json.loads` on it). Vertices are `[x, y, z]` arrays and faces are
 `[a, b, c]` index arrays, so no numpy is required. Each element also carries
 `global_id` and `name` when the source entity has them.
+
+### Analytic swept-disk paths
+
+Pass `include_directrices=True` to either geometry function. The result adds
+`swept_disks`, keyed by occurrence STEP id, and `directrix_diagnostics`. Each
+occurrence can have multiple source `IfcSweptDiskSolid` items. A description
+preserves `solid_id`, `directrix_id`, `Radius`, `InnerRadius`, `mapping_path`,
+`source_modified`, `status`, and an ordered `Directrix` of typed line and
+circular-arc segments.
+Coordinates are in absolute IFC Z-up world metres, matching mesh vertices.
+For a complete description, `Radius` and `InnerRadius` are the effective world
+radii in metres. For an unsupported transform, they retain the authored radii
+converted to metres; the status indicates that no world circular radius is
+available. Angle values are in radians. The buffer path uses integer keys; the
+JSON path uses string object keys.
+
+```python
+data = ifclite_geom.geometry_data_buffers(ifc_bytes, include_directrices=True)
+for step_id, sweeps in data["swept_disks"].items():
+    for sweep in sweeps:
+        for segment in sweep["Directrix"]:
+            if segment["type"] == "line":
+                print(step_id, segment["start"], segment["end"])
+            else:  # circular arc
+                print(step_id, segment["center"], segment["radius"])
+```
+
+An arc also carries `normal`, `x_axis`, `start_angle`, and `sweep_angle` to
+define its orientation and travel. `status` is `{"type": "complete"}` or
+`{"type": "unsupported", "reason": ...}`; unsupported paths have no partial
+segments. `source_modified=True` means the sweep is a source operand and later
+booleans may alter the final solid. Inspect that field before using the source
+path for fabrication. The flag does not describe cuts from external
+`IfcRelVoidsElement` openings. Extraction issues appear in
+`directrix_diagnostics`. With
+the flag omitted, both functions keep their existing output shape and skip
+this extraction.
+
+For a partial composite sweep or a raw-circle sweep with solid-level bounds,
+the current triangle mesher may cover a different extent ([#5566](https://github.com/LTplus-AG/ifc-lite/issues/5566)).
+The analytic `Directrix` follows the IFC parameters; check this distinction
+when comparing it to the returned mesh.
 
 ### Tessellation quality
 

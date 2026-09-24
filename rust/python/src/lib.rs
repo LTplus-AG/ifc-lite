@@ -24,13 +24,21 @@
 
 use ifc_lite_export::{build_export_model_with_options, ExportModel, ModelOptions};
 use ifc_lite_processing::{
-    build_geometry_data_export, process_geometry_filtered_with_quality_and_ids,
-    GeometryDataExport, MeshCoordinateSpace, OpeningFilterMode, TessellationQuality,
+    build_geometry_data_export, extract_swept_disk_descriptions,
+    process_geometry_filtered_with_quality_and_ids, GeometryDataExport, MeshCoordinateSpace,
+    OpeningFilterMode, SweptDiskDescriptions, TessellationQuality,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use std::collections::HashSet;
+
+mod swept_disks;
+
+struct GeometryExportResult {
+    meshes: GeometryDataExport,
+    swept_disks: Option<SweptDiskDescriptions>,
+}
 
 /// Stack size for the geometry worker (256 MiB). IFC CSG recurses deeply
 /// (BSP-tree booleans, nested clips); the default thread stack overflows.
@@ -61,7 +69,8 @@ fn run_export(
     ifc_bytes: Vec<u8>,
     quality: TessellationQuality,
     ids: Option<HashSet<u32>>,
-) -> Result<GeometryDataExport, String> {
+    include_directrices: bool,
+) -> Result<GeometryExportResult, String> {
     std::thread::Builder::new()
         .stack_size(GEOMETRY_STACK_BYTES)
         .name("ifclite-geometry".into())
@@ -80,7 +89,10 @@ fn run_export(
             } else {
                 None
             };
-            build_geometry_data_export(&result.meshes, rtc, site_rotation)
+            let meshes = build_geometry_data_export(&result.meshes, rtc, site_rotation);
+            let swept_disks = include_directrices
+                .then(|| extract_swept_disk_descriptions(&ifc_bytes, ids.as_ref()));
+            GeometryExportResult { meshes, swept_disks }
         })
         .map_err(|e| format!("spawn failed: {e}"))?
         .join()
@@ -103,26 +115,27 @@ fn run_export(
 /// `ids` optionally restricts tessellation to those IFC STEP ids. `None` keeps
 /// every occurrence, while an empty set produces an empty geometry export.
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, quality = None, ids = None))]
+#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false))]
 fn geometry_data_buffers(
     py: Python<'_>,
     ifc_bytes: Vec<u8>,
     quality: Option<&str>,
     ids: Option<HashSet<u32>>,
+    include_directrices: bool,
 ) -> PyResult<Py<PyAny>> {
     let quality = parse_quality(quality)?;
     let export = py
-        .detach(|| run_export(ifc_bytes, quality, ids))
+        .detach(|| run_export(ifc_bytes, quality, ids, include_directrices))
         .map_err(PyRuntimeError::new_err)?;
 
     let out = PyDict::new(py);
-    out.set_item("up_axis", export.up_axis)?;
-    out.set_item("units", export.units)?;
-    out.set_item("rtc_offset", export.rtc_offset.to_vec())?;
-    out.set_item("element_count", export.element_count)?;
+    out.set_item("up_axis", export.meshes.up_axis)?;
+    out.set_item("units", export.meshes.units)?;
+    out.set_item("rtc_offset", export.meshes.rtc_offset.to_vec())?;
+    out.set_item("element_count", export.meshes.element_count)?;
 
     let els = PyDict::new(py);
-    for (id, el) in &export.elements {
+    for (id, el) in &export.meshes.elements {
         let d = PyDict::new(py);
         d.set_item("ifc_type", &el.ifc_type)?;
         // Mirror the JSON path so both exports carry the same identity fields;
@@ -149,6 +162,9 @@ fn geometry_data_buffers(
         els.set_item(*id, d)?;
     }
     out.set_item("elements", els)?;
+    if let Some(descriptions) = &export.swept_disks {
+        swept_disks::add_to_python(py, &out, descriptions)?;
+    }
     Ok(out.into_any().unbind())
 }
 
@@ -160,20 +176,26 @@ fn geometry_data_buffers(
 /// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
 /// `quality` and `ids` are as documented on [`geometry_data_buffers`].
 #[pyfunction]
-#[pyo3(signature = (ifc_bytes, quality = None, ids = None))]
+#[pyo3(signature = (ifc_bytes, quality = None, ids = None, *, include_directrices = false))]
 fn geometry_data_json(
     py: Python<'_>,
     ifc_bytes: Vec<u8>,
     quality: Option<&str>,
     ids: Option<HashSet<u32>>,
+    include_directrices: bool,
 ) -> PyResult<String> {
     let quality = parse_quality(quality)?;
     let export = py
-        .detach(|| run_export(ifc_bytes, quality, ids))
+        .detach(|| run_export(ifc_bytes, quality, ids, include_directrices))
         .map_err(PyRuntimeError::new_err)?;
-    export
+    let json = export.meshes
         .to_json()
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    match &export.swept_disks {
+        Some(descriptions) => swept_disks::add_to_json(json, descriptions)
+            .map_err(|e| PyValueError::new_err(e.to_string())),
+        None => Ok(json),
+    }
 }
 
 /// Run the attribute/property extraction off the calling thread.

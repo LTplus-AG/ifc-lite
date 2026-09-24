@@ -17,12 +17,21 @@ import { describe, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { evaluateFilterRules } from './filter-evaluate.js';
 import { isFilterRule, type FilterRule } from './filter-rules.js';
-import { readModelFact } from './filter-model-fact.js';
 import { runRuleSet } from '../engine/rule-engine.js';
 import { parseRuleSetFile } from '../rule-set/rule-set-io.js';
 import { parseRequirementText, requirementToText } from '../rule-set/requirement-text.js';
 import type { RuleSetFile } from '../rule-set/rule-set.js';
 import { ruleSetToIds } from '../ids/rule-set-to-ids.js';
+
+// The changed-test oracle deletes new production files before re-running
+// this test; load the new module at runtime so its absence fails an
+// assertion instead of preventing collection.
+const factModulePath = './filter-model-fact.js';
+const factModule: typeof import('./filter-model-fact.js') | null = await import(factModulePath).catch(() => null);
+function readModelFact(...args: Parameters<typeof import('./filter-model-fact.js').readModelFact>) {
+  assert.ok(factModule, './filter-model-fact.js must exist');
+  return factModule.readModelFact(...args);
+}
 
 const GEO = `ISO-10303-21;
 HEADER;

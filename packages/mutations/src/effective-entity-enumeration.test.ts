@@ -183,7 +183,15 @@ describe('single-class enumeration reads the created-entity class index (#5413)'
     const view = new MutablePropertyView(null, 'm');
     view.setExpressIdWatermark(3);
     const before = view.createEntity('IfcColumn', []);
-    const column = () => ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IFCCOLUMN']));
+    // A restore that dropped the index made this enumeration throw; report that
+    // as a value so the assertion below names the failure.
+    const column = (): number[] | 'enumeration threw' => {
+      try {
+        return ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IFCCOLUMN']));
+      } catch {
+        return 'enumeration threw';
+      }
+    };
 
     const added = view.runAtomic((draft) => draft.createEntity('IfcColumn', []));
     expect(column()).toEqual([before.expressId, added.expressId]);

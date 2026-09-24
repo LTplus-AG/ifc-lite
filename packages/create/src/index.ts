@@ -42,7 +42,9 @@ export {
 export {
   TRANSVERSE_MERCATOR_BOUNDS, checkCoordinateOrder, type CrsPlausibilityBounds,
 } from './landxml/coordinate-plausibility.js';
-export { alignmentMappingOf, collectRefusals, isMappableSurface, refusalReason } from './landxml/refusals.js';
+export {
+  alignmentMappingOf, alignmentRefusalMessage, collectRefusals, isMappableSurface, refusalReason,
+} from './landxml/refusals.js';
 export {
   ALIGNMENT_POSITION_TOLERANCE_M, cogoPointResolver, isAlignmentRecord, mapAlignments,
   type AlignmentMapping, type HorizontalSegment, type HorizontalSegmentType, type MappedAlignment,

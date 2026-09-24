@@ -176,6 +176,22 @@ describe('landXmlExportPlan (#4937)', () => {
     assert.equal(plan.surfaces, 2);
   });
 
+  it('names every refused alignment across merged documents, not only the first document\'s', () => {
+    // Summing the counts under the first document's sentence said "2" while
+    // naming one alignment and hiding the other's reason (#5370 review).
+    const alignment = (name: string) => ({ sourceId: `landxml:alignment:${name}`, name, staStart: 0, segments: [] });
+    const selected = landXmlModel(document({ alignments: [alignment('North')] as never }));
+    const other = { ...landXmlModel(document({ alignments: [alignment('South')] as never })), id: 'm2' };
+    const models = new Map([[selected.id, selected], [other.id, other]]) as never;
+    const plan = landXmlExportPlan(models, selected as never, true);
+    assert.ok(plan);
+    const refused = plan.refusals.find((refusal) => refusal.family === 'alignments');
+    assert.equal(refused?.count, 2);
+    assert.match(refused?.message ?? '', /^2 alignment records will not be included/);
+    assert.match(refused?.message ?? '', /'North': it has no horizontal geometry/);
+    assert.match(refused?.message ?? '', /'South': it has no horizontal geometry/);
+  });
+
   it('refuses a merged scope that holds covered records, naming the scope as the fix', () => {
     const other = { ...landXmlModel(document()), id: 'm2' };
     const models = new Map([[other.id, other]]) as never;

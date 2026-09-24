@@ -26,6 +26,9 @@ import type {
   LandXmlIfcAlignment, LandXmlIfcAlignmentPrimitive, LandXmlIfcLocation, LandXmlIfcRadius,
   LandXmlIfcRotation, LandXmlIfcUnits,
 } from './source-types.js';
+import { alignmentRecordProblem } from './alignment-record.js';
+
+export { isAlignmentRecord } from './alignment-record.js';
 
 export type HorizontalSegmentType = 'LINE' | 'CIRCULARARC' | 'CLOTHOID';
 
@@ -303,34 +306,26 @@ function mapOne(
  * An alignment is refused WHOLE rather than written with a gap: every station
  * after a missing segment would be wrong.
  */
-/**
- * Is this record shaped like a `LandXmlIfcAlignment`? The source field is
- * `unknown[]` (see `LandXmlIfcSource.alignments`), so the shape is checked
- * here rather than trusted: a record that fails is refused by name.
- */
-export function isAlignmentRecord(value: unknown): value is LandXmlIfcAlignment {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return typeof record.sourceId === 'string'
-    && typeof record.name === 'string'
-    && typeof record.staStart === 'number' && Number.isFinite(record.staStart)
-    && Array.isArray(record.segments);
-}
-
 export function mapAlignments(
   alignments: readonly unknown[] | undefined, units: LandXmlIfcUnits | null, swap: boolean,
   resolve: PointResolver,
 ): AlignmentMapping {
   const result: AlignmentMapping = { mapped: [], refused: [] };
   (alignments ?? []).forEach((candidate, index) => {
-    if (!isAlignmentRecord(candidate)) {
+    const problem = alignmentRecordProblem(candidate);
+    if (problem !== null) {
+      // Named by its own id and name when the header carries them, so a
+      // malformed segment is refused under the alignment it belongs to.
+      const header = candidate as { sourceId?: unknown; name?: unknown } | null;
+      const named = typeof header?.sourceId === 'string' && typeof header.name === 'string';
       result.refused.push({
-        sourceId: `alignment[${index}]`, name: `alignment ${index + 1}`,
-        reason: 'it is not an alignment record (it needs a sourceId, a name, a numeric staStart and a segments list)',
+        sourceId: named ? header.sourceId as string : `alignment[${index}]`,
+        name: named ? (header.name as string) || (header.sourceId as string) : `alignment ${index + 1}`,
+        reason: problem,
       });
       return;
     }
-    mapOneInto(result, candidate, units, swap, resolve);
+    mapOneInto(result, candidate as LandXmlIfcAlignment, units, swap, resolve);
   });
   return result;
 }

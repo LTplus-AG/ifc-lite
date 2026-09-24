@@ -248,7 +248,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     // Exporting AND refusing at once is the case §6 exists for; a silent
     // partial is the one outcome the mapping rules out.
     assert.match(text, /Not included in the IFC/);
-    assert.match(text, /2 alignments records will not be included/);
+    assert.match(text, /2 alignment records will not be included/);
     assert.equal(exportButton().disabled, false, 'a partial source still exports');
   });
 

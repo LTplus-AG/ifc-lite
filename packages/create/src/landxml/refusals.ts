@@ -12,7 +12,9 @@
 
 import type { LandXmlIfcSource, LandXmlIfcSurface } from './source-types.js';
 import type { LandXmlRefusal, LandXmlRefusedFamily } from './result-types.js';
-import { cogoPointResolver, isAlignmentRecord, mapAlignments, type AlignmentMapping } from './alignment-mapping.js';
+import {
+  cogoPointResolver, isAlignmentRecord, mapAlignments, type AlignmentMapping, type RefusedAlignment,
+} from './alignment-mapping.js';
 
 /**
  * Why each family is out of scope, in the operator's terms.
@@ -106,7 +108,7 @@ export function collectRefusals(
       family,
       count,
       message: family === 'alignments'
-        ? alignmentRefusalMessage(alignmentMapping)
+        ? alignmentRefusalMessage(alignmentMapping.refused)
         : `${count} ${family.replace(/-/g, ' ')} record${count === 1 ? '' : 's'} will not be included: ${FAMILY_REASONS[family]}.`,
     }));
 }
@@ -115,11 +117,11 @@ export function collectRefusals(
  * Name each refused alignment and why. A count alone ("2 alignments") leaves
  * the operator unable to tell a spiral type from a gap from a sign problem.
  */
-function alignmentRefusalMessage(mapping: AlignmentMapping): string {
-  const count = mapping.refused.length;
-  const shown = mapping.refused.slice(0, 3).map((entry) => `'${entry.name}': ${entry.reason}`);
+export function alignmentRefusalMessage(refused: readonly RefusedAlignment[]): string {
+  const count = refused.length;
+  const shown = refused.slice(0, 3).map((entry) => `'${entry.name}': ${entry.reason}`);
   const more = count > shown.length ? `; and ${count - shown.length} more` : '';
-  return `${count} alignments record${count === 1 ? '' : 's'} will not be included (${shown.join('; ')}${more}). `
+  return `${count} alignment record${count === 1 ? '' : 's'} will not be included (${shown.join('; ')}${more}). `
     + `${FAMILY_REASONS.alignments}.`;
 }
 

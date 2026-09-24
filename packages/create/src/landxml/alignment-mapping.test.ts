@@ -276,4 +276,22 @@ describe('mapAlignments — records that are not alignments (#5370 review)', () 
     expect(refused.map((entry) => entry.name)).toEqual(['alignment 1', 'alignment 2', 'alignment 3']);
     expect(refused[0].reason).toMatch(/not an alignment record/);
   });
+
+  it('refuses an alignment whose segment is malformed, under its own name, instead of throwing', () => {
+    // The header is valid, so only a check that reaches the segments sees the
+    // problem; before, the mapper dereferenced `primitive.kind` of `{}`.
+    const records = [
+      { sourceId: 'landxml:alignment:a', name: 'Empty segment', staStart: 0, segments: [{}] },
+      {
+        sourceId: 'landxml:alignment:b', name: 'Bad location', staStart: 0,
+        segments: [{ sourceId: 's', ordinal: 0, primitive: { kind: 'line', start: {}, end: {}, declaredLength: null } }],
+      },
+    ];
+    const { mapped, refused } = mapAlignments(records, METRES, false, noRefs);
+    expect(mapped).toEqual([]);
+    expect(refused).toEqual([
+      { sourceId: 'landxml:alignment:a', name: 'Empty segment', reason: expect.stringMatching(/segment 1 is not a line, curve or spiral/) },
+      { sourceId: 'landxml:alignment:b', name: 'Bad location', reason: expect.stringMatching(/segment 1 is not a line, curve or spiral/) },
+    ]);
+  });
 });

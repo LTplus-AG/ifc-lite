@@ -4781,6 +4781,7 @@
     "addWallToStore: function",
     "addWindowToStore: function",
     "alignmentMappingOf: function",
+    "alignmentRefusalMessage: function",
     "applyStylesInStore: function",
     "assignCostItemsToScheduleInStore: function",
     "assignObjectsToCostItemInStore: function",

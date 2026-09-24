@@ -21,8 +21,8 @@
  */
 
 import {
-  alignmentMappingOf, collectRefusals, isMappableSurface,
-  type LandXmlIfcSource, type LandXmlRefusal,
+  alignmentMappingOf, alignmentRefusalMessage, collectRefusals, isMappableSurface,
+  type LandXmlIfcSource, type LandXmlRefusal, type RefusedAlignment,
 } from '@ifc-lite/create';
 import type { FederatedModel } from '@/store';
 import { isLandXmlSchema, type LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
@@ -76,8 +76,15 @@ function isLandXmlModel(model: { sourceSchema?: string }): boolean {
   return model.sourceSchema !== undefined && isLandXmlSchema(model.sourceSchema);
 }
 
-/** Merge refusal rows of the same family across several models into one row. */
-function mergeRefusals(all: LandXmlRefusal[][]): LandXmlRefusal[] {
+/**
+ * Merge refusal rows of the same family across several models into one row.
+ *
+ * The alignments row is the exception to "keep the first sentence": it names
+ * each refused alignment and why, so it is rebuilt from every document's
+ * refusals. Keeping the first document's sentence under a summed count named
+ * one alignment while counting two (#5370 review).
+ */
+function mergeRefusals(all: LandXmlRefusal[][], refusedAlignments: readonly RefusedAlignment[]): LandXmlRefusal[] {
   const byFamily = new Map<string, LandXmlRefusal>();
   for (const refusal of all.flat()) {
     const existing = byFamily.get(refusal.family);
@@ -90,6 +97,8 @@ function mergeRefusals(all: LandXmlRefusal[][]): LandXmlRefusal[] {
     // as two different problems.
     existing.count += refusal.count;
   }
+  const alignments = byFamily.get('alignments');
+  if (alignments) alignments.message = alignmentRefusalMessage(refusedAlignments);
   return [...byFamily.values()];
 }
 
@@ -128,6 +137,7 @@ export function landXmlExportPlan(
   let missingCrs = false;
   let crsName: string | null = null;
   const refusals: LandXmlRefusal[][] = [];
+  const refusedAlignments: RefusedAlignment[] = [];
 
   for (const document of inScope) {
     // A document with no resolved units cannot be scaled to metres at all, so
@@ -146,6 +156,7 @@ export function landXmlExportPlan(
     if (datum) crsName ??= datum;
     else missingCrs = true;
     refusals.push(collectRefusals(source, alignmentMapping));
+    refusedAlignments.push(...alignmentMapping.refused);
   }
 
   // A LandXML model whose document has not been retained (a cache-restored
@@ -164,7 +175,7 @@ export function landXmlExportPlan(
     surfaces,
     surveyPoints,
     alignments,
-    refusals: mergeRefusals(refusals),
+    refusals: mergeRefusals(refusals, refusedAlignments),
     assumedUnit,
     missingCrs,
     crsName,

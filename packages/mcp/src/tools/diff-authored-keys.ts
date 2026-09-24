@@ -62,7 +62,12 @@ export function fallbackPairDuplicateAuthoredKeys(
       const ref = store.entityIndex.byId.get(fingerprint.ref);
       const entity = ref ? extractor.extractEntity(ref) : undefined;
       const sourceGlobalId = entity ? extractRootAttributesFromEntity(entity).globalId : undefined;
-      const globalId = editedGlobalId ?? createdGlobalId ?? (tableGlobalId || sourceGlobalId);
+      // An explicit empty edit clears GlobalId. Falling back to the source
+      // here would resurrect an identity the session no longer has; the
+      // fingerprint builder omits that source entity before this repair pass.
+      const globalId = editedGlobalId !== undefined ? editedGlobalId
+        : createdGlobalId !== undefined ? createdGlobalId
+        : (tableGlobalId || sourceGlobalId);
       if (!globalId) {
         throw new Error(`Cannot restore GlobalId for authored-key collision on #${fingerprint.ref}`);
       }

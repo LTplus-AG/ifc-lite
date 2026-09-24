@@ -248,6 +248,18 @@ describe('buildModelFingerprints on an IFC2X3 file', () => {
     expect(changed.get(added.expressId)?.key).toBe('prop:tagA');
   });
 
+  it('does not restore a parsed GlobalId after an explicit empty edit (#5249 review)', () => {
+    const dataStore = store('walls');
+    const view = new MutablePropertyView(dataStore.properties, 'walls');
+    expect(dataStore.entities.getGlobalId(70)).toBe(guid('OLDA'));
+    view.setAttribute(70, 'GlobalId', '');
+    const fingerprints = buildModelFingerprints(dataStore, overlayFromView(view, dataStore), {
+      keyProperty: 'Tag', duplicateAuthoredKeys: new Map(),
+    });
+    expect(fingerprints.some(fingerprint => fingerprint.ref === 70)).toBe(false);
+    expect(fingerprints.some(fingerprint => fingerprint.ref === 71)).toBe(true);
+  });
+
   it('reports a created Tag collision through model_diff (#5249)', async () => {
     await load('walls-created-tag', model(guid('OLDA'), guid('OLDB')));
     const create = mutationTools.find(tool => tool.name === 'entity_create');

@@ -17,7 +17,7 @@
  * only files).
  */
 
-import { strToU8, zip } from 'fflate';
+import { strToU8, zipSync } from 'fflate';
 
 export class BcfArchive {
   // A Map keeps insertion order. fflate takes a plain object, and every key
@@ -31,15 +31,15 @@ export class BcfArchive {
   }
 
   /**
-   * Pack every entry with DEFLATE (level 6) into a .bcfzip Blob. fflate's
-   * async `zip` deflates large entries (snapshots) in workers, so a big
-   * export does not block the caller's thread the way `zipSync` would.
+   * Pack every entry with DEFLATE (level 6) into a .bcfzip Blob.
+   *
+   * zipSync, not fflate's async `zip`: the async form starts one worker per
+   * entry over 160 kB with no cap (a clash export can have hundreds of
+   * snapshots), and in the browser it waits forever if a strict CSP blocks
+   * its blob: worker. The sync pass costs about what JSZip did (about 0.5 s
+   * for 50 MB of incompressible snapshots) but does not yield while it runs.
    */
-  toBlob(): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      zip(Object.fromEntries(this.entries), { level: 6 }, (err, bytes) =>
-        err ? reject(err) : resolve(new Blob([bytes], { type: 'application/zip' })),
-      );
-    });
+  toBlob(): Blob {
+    return new Blob([zipSync(Object.fromEntries(this.entries), { level: 6 })], { type: 'application/zip' });
   }
 }

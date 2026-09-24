@@ -158,9 +158,7 @@ describe('writeBCF ZIP "version needed to extract" field (#3612)', () => {
     expect(entry.lfh.versionNeeded).toBe(0x000a);
   });
 
-  it('packs a snapshot above fflate\'s 160 kB worker threshold byte-exactly, at version 2.0', async () => {
-    // fflate's async zip deflates entries over 160 kB in a worker; this drives
-    // that path, not only the in-thread one small entries take.
+  it('packs a large (400 kB) snapshot byte-exactly, at version 2.0', async () => {
     const snapshotData = new Uint8Array(400_000);
     let x = 12345;
     for (let i = 0; i < snapshotData.length; i++) {

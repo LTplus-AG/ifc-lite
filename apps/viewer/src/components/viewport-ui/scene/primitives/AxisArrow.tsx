@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils';
 import { useSceneLayer } from '../SceneLayers';
 import { useSceneProjector } from '../SceneProjectorProvider';
 import { OVERLAY_ARROWHEAD_ACCENT_MARKER, OVERLAY_ARROWHEAD_INK_MARKER } from '../OverlayDefs';
+import { isAnchorVisible, vec3Key } from '../projection';
+import { useWakeOnChange } from '../useWakeOnChange';
 import type { AnchorProjection, Vec3 } from '../types';
 
 export type AxisArrowVariant = 'accent' | 'ink' | 'axis-x' | 'axis-y' | 'axis-z';
@@ -69,8 +71,11 @@ export function AxisArrow({ foot, tip, lengthPx = 60, variant = 'accent', classN
     if (!projector) return;
     const applyLine = () => {
       const line = lineRef.current;
-      const footScreen = footProjection.current?.screen;
-      const tipScreen = tipProjection.current?.screen;
+      // `isAnchorVisible` also rejects an off-canvas-but-truthy `screen`
+      // (#5636 review) — a bare `?.screen` read here would draw an arrow
+      // anchored on a point that's really off-screen.
+      const footScreen = isAnchorVisible(footProjection.current) ? footProjection.current!.screen : null;
+      const tipScreen = isAnchorVisible(tipProjection.current) ? tipProjection.current!.screen : null;
       if (!line) return;
       if (!footScreen || !tipScreen) {
         line.style.display = 'none';
@@ -99,6 +104,12 @@ export function AxisArrow({ foot, tip, lengthPx = 60, variant = 'accent', classN
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projector, baseId, lengthPx]);
+
+  // Registration (above) only wakes the projector once, at mount. With a
+  // static camera, moving `foot` or `tip` by prop otherwise sits unread
+  // until an unrelated wake (#5636 review, same class as `useWorldAnchor`'s
+  // and `PlaneOutline`'s).
+  useWakeOnChange(projector, `${vec3Key(foot)}|${vec3Key(tip)}`);
 
   if (!svgLayer) return null;
 

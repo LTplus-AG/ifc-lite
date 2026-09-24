@@ -152,6 +152,40 @@ describe('AxisArrow', () => {
     const line = container.querySelector('[data-scene-primitive="axis-arrow"]') as SVGLineElement;
     assert.equal(line.style.display, 'none');
   });
+
+  it('stays hidden when tip is off-screen, even though its screen point is truthy (#5636 review)', () => {
+    // Foot projects fine; tip is world (5000, 5000) — a real, truthy screen
+    // point against the 800x600 stub canvas, but outside it.
+    const { container, flush } = renderScene(<AxisArrow foot={{ x: 0, y: 0, z: 0 }} tip={{ x: 5000, y: 5000, z: 0 }} />);
+    flush();
+    const line = container.querySelector('[data-scene-primitive="axis-arrow"]') as SVGLineElement;
+    assert.equal(line.style.display, 'none');
+    // Mutation check: reading `tipProjection.current?.screen` directly
+    // (dropping the `isAnchorVisible` gate) draws a line toward this
+    // off-canvas point instead of hiding — verified by reverting the fix.
+  });
+
+  it('re-projects when foot/tip change VALUE with a static camera (#5636 review)', () => {
+    let setTip!: (p: Vec3) => void;
+    function Harness() {
+      const [tip, setT] = useState<Vec3>({ x: 10, y: 0, z: 0 });
+      setTip = setT;
+      return <AxisArrow foot={{ x: 0, y: 0, z: 0 }} tip={tip} lengthPx={50} />;
+    }
+    const { container, source, flush } = renderScene(<Harness />);
+    flush();
+    const line = container.querySelector('[data-scene-primitive="axis-arrow"]') as SVGLineElement;
+    assert.equal(line.getAttribute('x2'), '50');
+    assert.equal(line.getAttribute('y2'), '0');
+    source.dirty = false; // camera stays put — only the tip prop moves
+    act(() => setTip({ x: 0, y: 10, z: 0 })); // direction rotates from +x to +y
+    flush();
+    assert.equal(line.getAttribute('x2'), '0');
+    assert.equal(line.getAttribute('y2'), '50');
+    // Mutation check: removing `useWakeOnChange(projector, \`${vec3Key(foot)}|${vec3Key(tip)}\`)`
+    // leaves no frame scheduled after the prop change, so this reads the
+    // stale `x2="50" y2="0"`.
+  });
 });
 
 describe('PlaneOutline', () => {
@@ -187,6 +221,21 @@ describe('PlaneOutline', () => {
     assert.equal(polygon.style.display, 'none');
     // Mutation check: using `.some()` instead of `.every()` for `allVisible`
     // would keep the polygon visible with a missing corner.
+  });
+
+  it('hides entirely if even one corner is off-screen, even though its screen point is truthy (#5636 review)', () => {
+    const corners = [
+      { x: 0, y: 0, z: 0 },
+      { x: 10, y: 0, z: 0 },
+      { x: 5000, y: 5000, z: 0 }, // real screen point, outside the 800x600 stub canvas
+    ];
+    const { container, flush } = renderScene(<PlaneOutline corners={corners} />);
+    flush();
+    const polygon = container.querySelector('[data-scene-primitive="plane-outline"]') as SVGPolygonElement;
+    assert.equal(polygon.style.display, 'none');
+    // Mutation check: `points.every((p) => p?.screen)` (dropping the
+    // `isAnchorVisible` gate, i.e. not checking `offScreen`) reads
+    // `display: ''` here instead — verified by reverting the fix.
   });
 
   it('re-projects when corner VALUES change without corners.length changing (#5636 review)', () => {
@@ -240,5 +289,15 @@ describe('Leader', () => {
     const line = container.querySelector('[data-scene-primitive="leader"]')!;
     assert.match(line.getAttribute('class') ?? '', /stroke-overlay-accent/);
     assert.equal(line.getAttribute('stroke-dasharray'), null);
+  });
+
+  it('stays hidden when its anchor is off-screen, even though its screen point is truthy (#5636 review)', () => {
+    const { container, flush } = renderScene(<Leader worldPoint={{ x: 5000, y: 5000, z: 0 }} offset={{ dx: 20, dy: -10 }} />);
+    flush();
+    const line = container.querySelector('[data-scene-primitive="leader"]') as SVGLineElement;
+    assert.equal(line.style.display, 'none');
+    // Mutation check: storing `projection.screen` directly (dropping the
+    // `isAnchorVisible` gate) draws a leader line off this off-canvas point
+    // instead of hiding — verified by reverting the fix.
   });
 });

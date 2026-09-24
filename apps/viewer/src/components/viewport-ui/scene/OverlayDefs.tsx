@@ -3,17 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Shared SVG `<defs>` for the scene overlay: one glow filter and one
- * arrowhead marker, defined once (#5486).
+ * Shared SVG `<defs>` for the scene overlay: one glow filter and two
+ * arrowhead markers, defined once (#5486).
  *
  * Today four components each define their own copy of the same glow filter
  * (`SectionVisualization` `#section-glow`, `AddElementOverlay`
  * `#add-elem-glow`, `MeasurementVisuals` `#glow` and `#snap-glow`) — same
- * `feGaussianBlur` + merge, four ids. `OverlayDefs` replaces all of them
- * with one instance, mounted once by `SceneOverlayRoot`; primitives
- * reference it by `OVERLAY_GLOW_FILTER` / `OVERLAY_ARROWHEAD_MARKER` instead
- * of inventing a local id (a second `<defs>` mounting the same id in the
- * same document is undefined behaviour — the browser picks one).
+ * `feGaussianBlur` + merge, four ids. `OverlayDefs` PROVIDES the one shared
+ * instance those four migrate onto — mounted once by `SceneOverlayRoot`,
+ * referenced by `OVERLAY_GLOW_FILTER` / `OVERLAY_ARROWHEAD_ACCENT_MARKER` /
+ * `OVERLAY_ARROWHEAD_INK_MARKER` instead of inventing a local id (a second
+ * `<defs>` mounting the same id in the same document is undefined behaviour
+ * — the browser picks one). This PR does NOT wire those four existing
+ * components onto it; no consumers are migrated here (that's #5510-#5512).
  */
 
 export const OVERLAY_GLOW_FILTER_ID = 'scene-overlay-glow';

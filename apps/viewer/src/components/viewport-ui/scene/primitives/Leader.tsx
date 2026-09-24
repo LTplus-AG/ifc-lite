@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useSceneLayer } from '../SceneLayers';
 import { useWorldAnchor } from '../useWorldAnchor';
+import { isAnchorVisible } from '../projection';
 import type { AnchorProjection, Vec3 } from '../types';
 
 export interface LeaderProps {
@@ -32,7 +33,10 @@ export function Leader({ worldPoint, offset, active = false, className }: Leader
 
   const { ref: anchorRef } = useWorldAnchor<SVGGElement>(() => worldPoint, {
     onProject: (projection: AnchorProjection) => {
-      lastScreenRef.current = projection.screen;
+      // `isAnchorVisible` also rejects an off-canvas-but-truthy `screen`
+      // (#5636 review) — a bare `projection.screen` read here would draw a
+      // leader line anchored on a point that's really off-screen.
+      lastScreenRef.current = isAnchorVisible(projection) ? projection.screen : null;
       applyLine();
     },
   });

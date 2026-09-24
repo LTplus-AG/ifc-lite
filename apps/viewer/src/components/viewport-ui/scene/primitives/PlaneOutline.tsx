@@ -20,6 +20,8 @@ import { useEffect, useId, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useSceneLayer } from '../SceneLayers';
 import { useSceneProjector } from '../SceneProjectorProvider';
+import { isAnchorVisible, vec3Key } from '../projection';
+import { useWakeOnChange } from '../useWakeOnChange';
 import type { AnchorProjection, Vec3 } from '../types';
 
 export interface PlaneOutlineProps {
@@ -46,7 +48,7 @@ export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
       const polygon = polygonRef.current;
       if (!polygon) return;
       const points = projections.current;
-      const allVisible = points.length >= 3 && points.every((p) => p?.screen);
+      const allVisible = points.length >= 3 && points.every(isAnchorVisible);
       if (!allVisible) {
         polygon.style.display = 'none';
         return;
@@ -76,14 +78,10 @@ export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
   // changes; the registered getters already read `latest.current` fresh, so
   // a coordinate move is picked up on the next dirty tick — but with a
   // static camera nothing schedules that next tick (#5636 review, same
-  // class as `useWorldAnchor`'s). `cornerKey` turns the corner VALUES into
-  // one dependency so this effect re-runs — and wakes the projector — on an
-  // actual coordinate change, not just on array-identity or length changes.
-  const cornerKey = corners.map((c) => `${c.x},${c.y},${c.z}`).join('|');
-  useEffect(() => {
-    projector?.notifyAnchorsChanged();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projector, cornerKey]);
+  // class as `useWorldAnchor`'s). Combining every corner's `vec3Key` into
+  // one dependency wakes the projector on an actual coordinate change, not
+  // just on array-identity or length changes.
+  useWakeOnChange(projector, corners.map(vec3Key).join('|'));
 
   if (!svgLayer) return null;
 

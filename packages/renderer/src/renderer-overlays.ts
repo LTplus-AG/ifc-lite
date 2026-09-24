@@ -60,7 +60,8 @@ import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
-import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
+import type { OverlayTheme } from './overlay-theme.js';
+import { OverlayThemeApplier } from './overlay-theme-uniforms.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately narrow:
@@ -134,12 +135,8 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
 export class RendererOverlays {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
-    // The overlay theme (#5484): overlayLine feeds the section-cut outline and
-    // every standalone line channel; sectionPlane feeds the preview gizmo. Kept
-    // here (not just forwarded) so it survives a pre-init `setTheme` call and a
-    // section2DOverlayRenderer/sectionPlaneRenderer re-creation — both are
-    // re-applied in `init()` below.
-    private overlayTheme: OverlayTheme = DEFAULT_OVERLAY_THEME;
+    // The overlay theme (#5484) — see overlay-theme-uniforms.ts.
+    private readonly themeApplier = new OverlayThemeApplier();
     private readonly symbolic: SymbolicOverlays;
     private clashSolidPipeline: ClashSolidPipeline | null = null;
 
@@ -167,8 +164,7 @@ export class RendererOverlays {
         this.sectionPlaneRenderer = new SectionPlaneRenderer(device, format, sampleCount);
         this.section2DOverlayRenderer = new Section2DOverlayRenderer(device, format, sampleCount);
         // Re-apply any theme set before this (re)creation so it isn't lost.
-        this.section2DOverlayRenderer.setOverlayLineColor(this.overlayTheme.overlayLine);
-        this.sectionPlaneRenderer.setPlaneColor(this.overlayTheme.sectionPlane);
+        this.themeApplier.reapply(this.sectionPlaneRenderer, this.section2DOverlayRenderer);
         this.symbolic.init(device, format, sampleCount);
         this.clashSolidPipeline = new ClashSolidPipeline(device, format, sampleCount);
     }
@@ -314,11 +310,7 @@ export class RendererOverlays {
 
     /** See `Renderer.setOverlayTheme` for the published contract. */
     setTheme(theme: OverlayTheme): void {
-        // Persist here so a pre-init call (and any later overlay
-        // re-creation) keeps the theme — init() re-applies it.
-        this.overlayTheme = theme;
-        this.section2DOverlayRenderer?.setOverlayLineColor(theme.overlayLine);
-        this.sectionPlaneRenderer?.setPlaneColor(theme.sectionPlane);
+        this.themeApplier.set(theme, this.sectionPlaneRenderer, this.section2DOverlayRenderer);
         this.host.requestRender();
     }
 

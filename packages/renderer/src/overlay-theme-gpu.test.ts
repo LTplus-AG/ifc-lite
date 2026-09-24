@@ -82,12 +82,12 @@ describe('RenderPipeline selection colour uniform (#5484)', () => {
     assert.deepEqual([...lastWrite(writes, 16)], [...DEFAULT_OVERLAY_THEME.selection].map(Math.fround));
   });
 
-  it('updateSelectionColor writes exactly the given RGBA into the 16-byte buffer, and only that call', () => {
+  it('selectionColorUniform.update() writes exactly the given RGBA into the 16-byte buffer, and only that call', () => {
     const { device, writes } = fakePipelineDevice();
     const pipeline = new RenderPipeline(fakeWebgpuDevice(device), 4, 4);
     const before = writes.filter((w) => w.size === 16).length;
 
-    pipeline.updateSelectionColor([0.11, 0.22, 0.33, 0.44]);
+    pipeline.selectionColorUniform.update([0.11, 0.22, 0.33, 0.44]);
 
     const selectionWrites = writes.filter((w) => w.size === 16);
     assert.equal(selectionWrites.length, before + 1, 'exactly one new 16-byte write, no per-frame duplication');

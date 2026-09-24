@@ -631,7 +631,7 @@ export class Renderer {
         this.pipeline = new RenderPipeline(this.device, width, height);
         // Re-apply any theme set before this (re)creation, or set by a prior
         // init() before a device-loss re-init, so it isn't lost (#5484).
-        this.pipeline.updateSelectionColor(this.overlayTheme.selection);
+        this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
         this.overlays.init(
             this.device.getDevice(),
@@ -3423,7 +3423,7 @@ export class Renderer {
      */
     setOverlayTheme(theme: OverlayTheme): void {
         this.overlayTheme = theme;
-        this.pipeline?.updateSelectionColor(theme.selection);
+        this.pipeline?.selectionColorUniform.update(theme.selection);
         this.overlays.setTheme(theme);
     }
 

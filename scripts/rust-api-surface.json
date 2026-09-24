@@ -257,6 +257,8 @@
   },
   "ifc-lite-processing": {
     "CoordinateInfo": "struct { is_geo_referenced: bool; origin_shift: [f64; 3] }",
+    "DirectrixMetrics": "struct (non_exhaustive)",
+    "DirectrixSegmentMetrics": "struct (non_exhaustive)",
     "ExportedElement": "struct { color: [f32; 4]; faces: Vec<[u32; 3]>; global_id: Option<String>; ifc_type: String; name: Option<String>; vertices: Vec<[f64; 3]> }",
     "GeometryDataExport": "struct { element_count: usize; elements: BTreeMap<u32, ExportedElement>; rtc_offset: [f64; 3]; schema: &'static str; units: &'static str; up_axis: &'static str; version: u32 }",
     "Georeferencing": "struct { crs_description: Option<String>; crs_name: Option<String>; eastings: f64; factor_x: f64; factor_y: f64; factor_z: f64; geodetic_datum: Option<String>; map_projection: Option<String>; map_unit: Option<String>; map_unit_scale: Option<f64>; map_zone: Option<String>; northings: f64; orthogonal_height: f64; rotation_degrees: f64; scale: f64; source: Option<String>; transform_matrix: [f64; 16]; vertical_datum: Option<String>; x_axis_abscissa: f64; x_axis_ordinate: f64 }",

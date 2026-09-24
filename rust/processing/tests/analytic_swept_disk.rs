@@ -10,6 +10,10 @@ fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(format!("../geometry/tests/fixtures/{name}.ifc")).unwrap()
 }
 
+fn assert_near(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() < 1e-10, "expected {expected}, got {actual}");
+}
+
 #[test]
 fn broken_product_representation_is_reported_but_absent_representation_is_valid() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
@@ -141,8 +145,16 @@ fn mapped_trimmed_line_has_world_metre_endpoints_and_radius() {
     assert_eq!(disk.mapping_path, [47]);
     assert_eq!(disk.radius, 0.0145);
     assert_eq!(disk.directrix.len(), 1);
+    let metrics = disk.directrix_metrics().unwrap();
+    assert_near(metrics.total_length, 2.75);
+    assert_eq!(metrics.segments.len(), 1);
+    assert_eq!(metrics.segments[0].segment_index, 0);
+    assert_near(metrics.segments[0].length, 2.75);
+    assert_eq!(metrics.segments[0].bend_angle, None);
     let value = serde_json::to_value(disk).unwrap();
     assert_eq!(value["status"]["type"], "complete");
+    assert_eq!(value["directrix_metrics"]["total_length"], 2.75);
+    assert_eq!(value["directrix_metrics"]["segments"][0]["segment_index"], 0);
     assert_eq!(value["Directrix"][0]["type"], "line");
     assert_eq!(
         value["Directrix"][0]["start"],
@@ -247,6 +259,52 @@ fn composite_bar_keeps_ordered_lines_and_xz_arcs() {
         assert_eq!(arc["center"][1], 0.0);
         assert_eq!(arc["radius"], 0.1015);
     }
+    // The authored U-bar has three straight runs and two 101.5 mm quarter bends.
+    let metrics = disk.directrix_metrics().unwrap();
+    let lengths = [0.322, 0.1015 * std::f64::consts::FRAC_PI_2, 0.245685133619932,
+        0.1015 * std::f64::consts::FRAC_PI_2, 0.250];
+    assert_near(metrics.total_length, lengths.iter().sum());
+    for (index, (segment, expected_length)) in metrics.segments.iter().zip(lengths).enumerate() {
+        assert_eq!(segment.segment_index, index);
+        assert_near(segment.length, expected_length);
+        if index == 1 || index == 3 {
+            assert_near(segment.bend_angle.unwrap(), std::f64::consts::FRAC_PI_2);
+        } else {
+            assert_eq!(segment.bend_angle, None);
+        }
+    }
+}
+
+#[test]
+fn l_bar_metrics_include_only_the_authored_quarter_bend() {
+    let result = extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_lbar"), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let metrics = result.elements[&78][0].directrix_metrics().unwrap();
+    assert_eq!(metrics.segments.len(), 3);
+    assert_near(metrics.total_length, 1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160);
+    assert_near(metrics.segments[1].bend_angle.unwrap(), std::f64::consts::FRAC_PI_2);
+    assert_eq!(metrics.segments[0].bend_angle, None);
+    assert_eq!(metrics.segments[2].bend_angle, None);
+}
+
+#[test]
+fn crank_bar_metrics_include_both_small_bends() {
+    let result = extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_crankbar"), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let metrics = result.elements[&79][0].directrix_metrics().unwrap();
+    assert_eq!(metrics.segments.len(), 5);
+    let bends = [0.0822700254876878, 0.0822700254876865];
+    let expected = 2.96012202484092 + 0.1305 * bends[0] + 0.561192138816509
+        + 0.1305 * bends[1] + 1.31913733788869;
+    assert_near(metrics.total_length, expected);
+    for (index, segment) in metrics.segments.iter().enumerate() {
+        assert_eq!(segment.segment_index, index);
+        match index {
+            1 => assert_near(segment.bend_angle.unwrap(), bends[0]),
+            3 => assert_near(segment.bend_angle.unwrap(), bends[1]),
+            _ => assert_eq!(segment.bend_angle, None),
+        }
+    }
 }
 
 #[test]
@@ -260,6 +318,9 @@ fn mapped_occurrence_scales_radius_and_places_directrix_once() {
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     let disk = &result.elements[&50][0];
     assert_eq!(disk.radius, 0.029);
+    let metrics = disk.directrix_metrics().unwrap();
+    assert_near(metrics.total_length, 5.5);
+    assert_near(metrics.segments[0].length, 5.5);
     let value = serde_json::to_value(disk).unwrap();
     assert_eq!(
         value["Directrix"][0]["start"],
@@ -338,6 +399,8 @@ fn nonuniform_mapped_disk_reports_unsupported_world_circle() {
     let value = serde_json::to_value(disk).unwrap();
     assert_eq!(value["status"]["type"], "unsupported");
     assert_eq!(value["Directrix"], serde_json::json!([]));
+    assert!(value["directrix_metrics"].is_null());
+    assert!(disk.directrix_metrics().is_none());
     assert_eq!(value["Radius"], 0.0145); // authored radius in metres; no world circle
 }
 
@@ -354,6 +417,7 @@ fn repeated_solid_in_boolean_keeps_both_source_contributions() {
     assert!(disks
         .iter()
         .all(|disk| disk.source_modified && disk.solid_id == 43));
+    assert!(disks.iter().all(|disk| disk.directrix_metrics().is_some_and(|m| (m.total_length - 2.75).abs() < 1e-10)));
 }
 
 #[test]

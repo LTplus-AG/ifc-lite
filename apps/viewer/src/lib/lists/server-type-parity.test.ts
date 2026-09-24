@@ -24,9 +24,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { createListDataProvider } from './adapter';
+import { configureMutationView } from '../../utils/configureMutationView.js';
 import { convertServerDataModel, type ServerParseResult } from '../../utils/serverDataModel';
 
 // IfcWallType with HasPropertySets (string / boolean / real / integer) + a Qto,
@@ -137,6 +139,23 @@ const parseResult: ServerParseResult = {
 };
 
 describe('server↔client Type parity (#1751/#1754)', () => {
+  it('keeps source type-owned sets when a live mutation view is present (#5249)', async () => {
+    const bytes = new TextEncoder().encode(FIXTURE);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const source = createListDataProvider(store);
+    const view = new MutablePropertyView(store.properties, 'model');
+    const live = createListDataProvider(store, '', undefined, view);
+    assert.deepEqual(live.getTypePropertySets?.(100), source.getTypePropertySets?.(100));
+    assert.deepEqual(live.getTypeQuantitySets?.(100), source.getTypeQuantitySets?.(100));
+    assert.ok(live.getTypePropertySets?.(100)?.some((set) => set.name === 'Pset_WallCommon'));
+    configureMutationView(view, store);
+    view.setProperty(200, 'Pset_WallCommon', 'Manufacturer', 'Edited maker');
+    view.setQuantity(200, 'Qto_WallBaseQuantities', 'Width', 300);
+    const edited = createListDataProvider(store, '', undefined, view);
+    assert.equal(edited.getTypePropertySets?.(100)?.[0]?.properties.find((prop) => prop.name === 'Manufacturer')?.value, 'Edited maker');
+    assert.equal(edited.getTypeQuantitySets?.(100)?.[0]?.quantities[0]?.value, 300);
+  });
+
   it('produces identical Lists results on both parse paths', async () => {
     // CLIENT (WASM/columnar) path.
     const bytes = new TextEncoder().encode(FIXTURE);

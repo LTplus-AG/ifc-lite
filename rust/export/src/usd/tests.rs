@@ -440,6 +440,8 @@ fn mesh_emittable_rejects_bad_index_and_origin() {
         instance: None,
         local_bounds: None,
         local_to_world: None,
+        metallic: None,
+        roughness: None,
     };
     assert!(mesh_emittable(&good));
 

@@ -1507,6 +1507,10 @@ export class MeshDataJs {
      */
     readonly materialId: number | undefined;
     /**
+     * IFC-authored metallic/roughness (#5582). `undefined` when unauthored.
+     */
+    readonly metallic: number | undefined;
+    /**
      * Get normals as Float32Array (copy to JS)
      */
     readonly normals: Float32Array;
@@ -1520,6 +1524,7 @@ export class MeshDataJs {
      * Get positions as Float32Array (copy to JS)
      */
     readonly positions: Float32Array;
+    readonly roughness: number | undefined;
     /**
      * Optional SurfaceColour for the "Shading" GLB-export choice — only
      * present when the file authored a distinct DiffuseColour. JS sees
@@ -2490,9 +2495,11 @@ export interface InitOutput {
     readonly meshdatajs_localBounds: (a: number, b: number) => void;
     readonly meshdatajs_localToWorld: (a: number, b: number) => void;
     readonly meshdatajs_materialId: (a: number) => number;
+    readonly meshdatajs_metallic: (a: number) => number;
     readonly meshdatajs_normals: (a: number) => number;
     readonly meshdatajs_origin: (a: number) => number;
     readonly meshdatajs_positions: (a: number) => number;
+    readonly meshdatajs_roughness: (a: number) => number;
     readonly meshdatajs_shadingColor: (a: number, b: number) => void;
     readonly meshdatajs_textureHeight: (a: number) => number;
     readonly meshdatajs_textureId: (a: number) => number;

@@ -35,7 +35,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
-import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -937,7 +937,10 @@ export class Scene {
    */
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking));
+    // #5582: material is the mesh's OWN authored finish regardless of a
+    // colour override — a recolour changes what a piece looks like, not
+    // what it is physically made of.
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1186,18 +1189,12 @@ export class Scene {
   }
 
   /**
-   * Generate color key for grouping meshes.
-   * Quantizes RGBA to 10-bit per channel and packs into a compact string.
-   * Avoids floating-point template literal overhead of the old approach.
+   * Colour key for grouping meshes: `chunk-grid.ts`'s `colorKey` (RGBA
+   * quantized to 1/1000), with the authored finish folded in (#5582) so one
+   * batch never mixes finishes.
    */
-  private colorKey(color: readonly [number, number, number, number]): string {
-    // Quantize to 1000 levels (same precision as before, but integer math only)
-    const r = Math.round(color[0] * 1000);
-    const g = Math.round(color[1] * 1000);
-    const b = Math.round(color[2] * 1000);
-    const a = Math.round(color[3] * 1000);
-    // Pack into single string with fixed-width separator for uniqueness
-    return `${r}|${g}|${b}|${a}`;
+  private colorKey(color: readonly [number, number, number, number], material?: MaterialKeySource): string {
+    return colorKey(color, material);
   }
 
   /**
@@ -2498,7 +2495,7 @@ export class Scene {
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
-      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
+      id: this.nextBatchId, colorKey: bucketKey ?? colorKey(color),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);

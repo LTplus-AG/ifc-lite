@@ -31,7 +31,8 @@ DATA;
 #11= IFCPROPERTYLISTVALUE('Colors',$,(IFCLABEL('Red'),IFCLABEL('Blue')),$);
 #12= IFCPROPERTYENUMERATEDVALUE('Grade',$,(IFCLABEL('C30')),$);
 #13= IFCPROPERTYTABLEVALUE('Load',$,(IFCINTEGER(1),IFCINTEGER(2)),(IFCREAL(10.),IFCREAL(20.)),$,$,$,$);
-#14= IFCPROPERTYSET('0Pset00000000000000014A',$,'Pset_Test',$,(#11,#12,#13));
+#16= IFCPROPERTYTABLEVALUE('Mixed',$,(IFCLABEL('Length'),IFCLABEL('Load')),(IFCREAL(0.5),IFCREAL(20.)),$,$,$,$);
+#14= IFCPROPERTYSET('0Pset00000000000000014A',$,'Pset_Test',$,(#11,#12,#13,#16));
 #15= IFCRELDEFINESBYPROPERTIES('0Rel00000000000000015A',$,$,$,(#10),#14);
 #20= IFCWALL('0WallB0000000000000020A',$,'Wall B',$,$,$,$,$,$);
 #21= IFCPROPERTYLISTVALUE('Colors',$,(IFCLABEL('Green')),$);
@@ -78,6 +79,21 @@ describe('list and table values match any candidate (#5475)', () => {
   it('search: a table cell matches, numerically too', async () => {
     assert.deepEqual(await names(prop('Load', 'eq', '20')), ['Wall A']);
     assert.deepEqual(await names(prop('Load', 'gte', '15')), ['Wall A']);
+  });
+
+  it('validation: a numeric eq matches a number cell of a table that also has text cells (review, #5545)', async () => {
+    const ruleSet: RuleSetFile = {
+      version: 1, name: 'x',
+      rules: [{
+        id: 'r', name: 'load 20',
+        applicability: { groups: [{ rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }], combinator: 'AND' }], authoredAs: 'chips' },
+        // '20.0' is not the string '20': only a per-member numeric compare matches it.
+        requirement: { kind: 'element', block: { groups: [{ rules: [prop('Mixed', 'eq', '20.0')], combinator: 'AND' }], authoredAs: 'chips' } },
+      }],
+    };
+    const report = await runRuleSet({ ruleSet, models: [{ id: 'm', store: await parse() }] });
+    const wallA = report.specificationResults[0].entityResults.find((e) => e.entityName === 'Wall A');
+    assert.equal(wallA?.passed, true);
   });
 
   it('search: a negated op holds only when no member has the value', async () => {

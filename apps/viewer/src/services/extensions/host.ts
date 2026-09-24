@@ -64,6 +64,8 @@ import { runInstalledExtensionTests, revalidateInstalledForSdk, type ExtensionTe
 import { FlavorService } from './flavor-service.js';
 import { runExtensionCommand } from './host-commands.js';
 import { runExtensionExporter, type ExporterOutput } from './host-exporters.js';
+import { forgetContributedFlowState, resolveFlowContributions, type ResolveFlowContributionsResult } from './host-flows.js';
+import { flowRegistry } from '@/lib/flow/runner.js';
 import {
   installFromBytes,
   previewBundleBytes,
@@ -269,8 +271,9 @@ export class ExtensionHostService {
   }
 
   /** Uninstall an extension and remove its bundle. */
-  uninstall(id: string): Promise<void> {
-    return uninstall(this.installerDeps(), id);
+  async uninstall(id: string): Promise<void> {
+    await uninstall(this.installerDeps(), id);
+    forgetContributedFlowState(id);
   }
 
   /** Enable/disable without uninstalling. */
@@ -350,6 +353,17 @@ export class ExtensionHostService {
   /** Read the current install state (storage snapshot). */
   async listInstalled(): Promise<InstalledExtensionRecord[]> {
     return this.storage.listExtensions();
+  }
+
+  /**
+   * Resolve every extension-contributed flow graph (`contributes.flows`,
+   * #5167). Implementation lives in `host-flows.ts`; this method injects
+   * the loader and the standard flow node registry `validateFlowWiring`
+   * needs.
+   */
+  async listContributedFlows(): Promise<ResolveFlowContributionsResult> {
+    const records = await this.storage.listExtensions();
+    return resolveFlowContributions({ loader: this.loader }, records, flowRegistry());
   }
 
   /** Subscribe to a slot. Forwards to the underlying registry. */

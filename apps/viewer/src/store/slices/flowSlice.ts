@@ -13,6 +13,7 @@
 
 import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
+import { isContributedFlowId } from '../../services/extensions/host-flows.js';
 import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
 import { clearPlayerValues } from '../../lib/flow/player-values.js';
 
@@ -64,6 +65,14 @@ export interface FlowSlice {
   deleteFlow: (id: string) => void;
   /** Import a validated document as a new saved graph (a fresh id when one collides). */
   importFlow: (doc: FlowDocument) => string | null;
+  /**
+   * Open an extension-contributed graph read-only. It is NOT a saved graph:
+   * `activeFlowId` is cleared so Save can never write it over the saved graph
+   * that was open before (#5431 review).
+   */
+  openContributedFlow: (doc: FlowDocument) => void;
+  /** Close whatever graph is open, saved or contributed. */
+  closeFlow: () => void;
   /** Replace the working copy (an editor edit); marks it dirty. */
   setFlowDoc: (doc: FlowDocument) => void;
   setFlowSelectedNodeId: (id: string | null) => void;
@@ -127,13 +136,20 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   importFlow: (doc) => {
     const { savedFlows } = get();
     if (!canCreateFlow(savedFlows.length) || !isFlowWithinSizeLimit(doc)) return null;
-    const id = savedFlows.some((f) => f.doc.id === doc.id) ? crypto.randomUUID() : doc.id;
+    // `ext:` ids are reserved for extension-contributed graphs: a saved graph
+    // carrying one would be taken for a contribution and closed or made
+    // read-only (#5431 review), so it gets a fresh id like a collision does.
+    const reserved = isContributedFlowId(doc.id);
+    const id = reserved || savedFlows.some((f) => f.doc.id === doc.id) ? crypto.randomUUID() : doc.id;
     const imported: FlowDocument = { ...doc, id };
     const next = [...savedFlows, { doc: imported, updatedAt: Date.now() }];
     saveFlows(next);
     set({ savedFlows: next, activeFlowId: id, flowDoc: imported, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
     return id;
   },
+
+  openContributedFlow: (doc) => set({ activeFlowId: null, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null }),
+  closeFlow: () => set({ activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null }),
 
   setFlowDoc: (doc) => set({ flowDoc: doc, flowDirty: true }),
   setFlowSelectedNodeId: (id) => set({ flowSelectedNodeId: id }),

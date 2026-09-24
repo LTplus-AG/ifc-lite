@@ -76,6 +76,15 @@ describe('manifestToContributions', () => {
     } as ManifestContributions);
     expect(out.every((c) => c.extensionId === 'ext-a')).toBe(true);
   });
+
+  it('translates flow graphs into the flowLibrary slot', () => {
+    const out = manifestToContributions('ext-a', {
+      flows: [{ id: 'g1', name: 'Graph One', path: 'flows/g1.flow.json' }],
+    } as ManifestContributions);
+    expect(out).toHaveLength(1);
+    expect(out[0].slot).toBe('flowLibrary');
+    expect(out[0].payload).toEqual({ id: 'g1', name: 'Graph One', path: 'flows/g1.flow.json' });
+  });
 });
 
 describe('ExtensionLoader — happy path', () => {

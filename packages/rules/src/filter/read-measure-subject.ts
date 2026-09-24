@@ -29,7 +29,7 @@ import {
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import type { PropertyRule, QuantityRule } from './filter-rules.js';
-import { nameMatches, propertyCandidates } from './filter-match.js';
+import { nameMatches, propertyCandidates, stringifyValue } from './filter-match.js';
 import { projectSiScale, projectUnitSymbol, quantityValueSiScale, QUANTITY_MEASURE_TYPE } from './measure-units.js';
 
 type MeasureSubject = Omit<PropertyRule, 'op' | 'value' | 'valueKind'> | Omit<QuantityRule, 'op' | 'value'>;
@@ -40,6 +40,8 @@ export interface MeasureValue {
   unit?: string;
   valueUnits: ReadonlyArray<string | undefined>;
   valueSiScales: ReadonlyArray<number | undefined>;
+  /** Properties only: one display value per matched property, a list or table as its joined text. */
+  displayValues?: ReadonlyArray<string>;
 }
 
 /** `expressId`'s type-level property sets via `IfcRelDefinesByType`. */
@@ -58,6 +60,7 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
   const values: string[] = [];
   const valueUnits: Array<string | undefined> = [];
   const valueSiScales: Array<number | undefined> = [];
+  const displayValues: string[] = [];
   for (const set of merged) {
     if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
     for (const p of set.properties) {
@@ -66,6 +69,7 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
       // share the property's unit.
       const unit = p.unit ?? projectUnitSymbol(store, p.dataType);
       const siScale = p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType);
+      displayValues.push(stringifyValue(p.value));
       for (const value of propertyCandidates(p)) {
         values.push(value);
         valueUnits.push(unit);
@@ -73,7 +77,7 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
       }
     }
   }
-  return { present: values.some((v) => v.trim().length > 0), values, valueUnits, valueSiScales };
+  return { present: values.some((v) => v.trim().length > 0), values, valueUnits, valueSiScales, displayValues };
 }
 
 /**

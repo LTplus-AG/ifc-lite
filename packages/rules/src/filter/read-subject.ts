@@ -79,6 +79,19 @@ export interface SubjectValue {
    * `valueUnits`; `undefined` for a value with no unit (#5225).
    */
   valueSiScales?: ReadonlyArray<number | undefined>;
+  /**
+   * Property subjects only: one value per matched property, a list, enumerated
+   * or table value as its joined display text, where `values` holds each
+   * member (#5475). The set checks (`unique`, `aggregate`, `compare`) read
+   * a property as ONE value, so they use these; element checks match members.
+   */
+  displayValues?: ReadonlyArray<string>;
+}
+
+/** `subject` read as whole values: each property once, as the set checks compare it (#5475). */
+export function readSubjectWhole(subject: Subject, ctx: ReadSubjectContext): SubjectValue {
+  const read = readSubject(subject, ctx);
+  return read.displayValues ? { ...read, values: read.displayValues } : read;
 }
 
 function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {

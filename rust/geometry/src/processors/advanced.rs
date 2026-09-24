@@ -86,7 +86,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                 // degrades to a per-face loss instead of aborting the whole
                 // solid (#5053) — and is still recorded in `empty_faces`
                 // below so the loss isn't silent.
-                let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
+                let (positions, indices) = match process_advanced_face(&face, decoder, quality, None) {
                     Ok(result) => result,
                     Err(ref e) => {
                         trace_capped_advanced_brep_face(face_id, e);

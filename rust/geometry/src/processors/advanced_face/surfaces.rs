@@ -31,14 +31,6 @@ use super::edge_loop::extract_edge_loop_points_for_bounds;
 /// Mirrors the FacetedBrep path in `processors/brep.rs`: pick the outer
 /// (or first) bound, project to 2D using its basis, project hole bounds
 /// using the SAME basis, and call `triangulate_polygon_with_holes` once.
-pub(super) fn process_planar_face(
-    face: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-) -> Result<(Vec<f32>, Vec<u32>)> {
-    process_planar_face_rebased(face, decoder, quality, None)
-}
-
 pub(super) fn process_planar_face_rebased(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -106,6 +98,18 @@ pub(crate) fn process_bspline_face(
     decoder: &mut EntityDecoder,
     weights: Option<&[Vec<f64>]>,
     quality: TessellationQuality,
+) -> Result<(Vec<f32>, Vec<u32>)> {
+    process_bspline_face_rebased(bspline, decoder, weights, quality, (0.0, 0.0, 0.0))
+}
+
+/// [`process_bspline_face`] in a frame shifted by `rtc`, so f32 narrowing
+/// happens after the national-grid offset is gone (#5698).
+pub(super) fn process_bspline_face_rebased(
+    bspline: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    weights: Option<&[Vec<f64>]>,
+    quality: TessellationQuality,
+    rtc: (f64, f64, f64),
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // Get degrees
     let u_degree = bspline.get_float(0).unwrap_or(3.0) as usize;
@@ -181,7 +185,15 @@ pub(crate) fn process_bspline_face(
 
     // Parse control points (only now — the work bound above already passed
     // on the raw, undecoded grid dimensions).
-    let control_points = parse_control_points(bspline, decoder)?;
+    let mut control_points = parse_control_points(bspline, decoder)?;
+    // Rebase the control net, not the samples (#5698): a B-spline is affine
+    // invariant, and evaluating at national-grid magnitude would amplify the
+    // basis' partition-of-unity rounding into micrometres. Exact for zero.
+    for point in control_points.iter_mut().flatten() {
+        point.x -= rtc.0;
+        point.y -= rtc.1;
+        point.z -= rtc.2;
+    }
 
     // Parse knot vectors
     let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
@@ -208,6 +220,7 @@ pub(super) fn process_cylindrical_face(
     surface: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
+    rtc: (f64, f64, f64),
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // Get the radius from IfcCylindricalSurface (attribute 1)
     let radius = surface
@@ -333,9 +346,9 @@ pub(super) fn process_cylindrical_face(
             let local_point = Point3::new(x, y, z);
             let world_point = axis_transform.transform_point(&local_point);
 
-            positions.push(world_point.x as f32);
-            positions.push(world_point.y as f32);
-            positions.push(world_point.z as f32);
+            positions.push((world_point.x - rtc.0) as f32);
+            positions.push((world_point.y - rtc.1) as f32);
+            positions.push((world_point.z - rtc.2) as f32);
         }
     }
 

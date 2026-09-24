@@ -158,7 +158,7 @@ impl GeometryRouter {
                 if let Some(map) = texture_index.get(&item.id) {
                     let proc = crate::processors::TriangulatedFaceSetProcessor::new();
                     if let Ok((mut sub_mesh, sub_uvs)) =
-                        proc.process_with_texture(&item, decoder, map)
+                        proc.process_with_texture(&item, decoder, map, None)
                     {
                         self.scale_mesh(&mut sub_mesh); // UVs are unaffected by scale
                         textured.push((sub_mesh, sub_uvs, map.attachment()));

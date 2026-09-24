@@ -29,7 +29,7 @@ import {
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import type { PropertyRule, QuantityRule } from './filter-rules.js';
-import { nameMatches, stringifyValue } from './filter-match.js';
+import { nameMatches, propertyCandidates } from './filter-match.js';
 import { projectSiScale, projectUnitSymbol, quantityValueSiScale, QUANTITY_MEASURE_TYPE } from './measure-units.js';
 
 type MeasureSubject = Omit<PropertyRule, 'op' | 'value' | 'valueKind'> | Omit<QuantityRule, 'op' | 'value'>;
@@ -62,11 +62,15 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
     if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
     for (const p of set.properties) {
       if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
-      values.push(stringifyValue(p.value));
-      // Own and type-level rows alike carry the property's explicit `Unit`
-      // when it has one (both come from `extractPsetsFromIds`).
-      valueUnits.push(p.unit ?? projectUnitSymbol(store, p.dataType));
-      valueSiScales.push(p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType));
+      // Every candidate of a list, enumerated or table value (#5475); they
+      // share the property's unit.
+      const unit = p.unit ?? projectUnitSymbol(store, p.dataType);
+      const siScale = p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType);
+      for (const value of propertyCandidates(p)) {
+        values.push(value);
+        valueUnits.push(unit);
+        valueSiScales.push(siScale);
+      }
     }
   }
   return { present: values.some((v) => v.trim().length > 0), values, valueUnits, valueSiScales };

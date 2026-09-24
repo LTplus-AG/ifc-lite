@@ -41,6 +41,8 @@ const WALL_GROSS_VOLUME = 5;
 // Distinct from GrossVolume, so picking the wrong quantity (7) and summing both
 // (12) each fail differently from the right answer.
 const WALL_LOCALISED_VOLUME = 7;
+/** The wall's standard side area; its footprint GrossArea (1) must not win or be added. */
+const WALL_GROSS_SIDE_AREA = 15;
 
 function buildModel(): ArrayBuffer {
   const creator = new IfcCreator({ Name: 'Template behaviour' });
@@ -52,7 +54,11 @@ function buildModel(): ArrayBuffer {
     Name: 'Qto_WallBaseQuantities',
     Quantities: [
       { Name: 'GrossVolume', Value: WALL_GROSS_VOLUME, Kind: 'IfcQuantityVolume' },
-      { Name: 'GrossSideArea', Value: 15, Kind: 'IfcQuantityArea' },
+      // Lower-priority siblings with distinct values: preferring or adding
+      // either one shows up in the reported figure.
+      { Name: 'NetVolume', Value: 4, Kind: 'IfcQuantityVolume' },
+      { Name: 'GrossSideArea', Value: WALL_GROSS_SIDE_AREA, Kind: 'IfcQuantityArea' },
+      { Name: 'GrossArea', Value: 1, Kind: 'IfcQuantityArea' },
     ],
   });
   // The exporter-specific duplicate every real authoring tool adds.
@@ -119,6 +125,12 @@ describe('quantity-takeoff', () => {
     const lines = await runTemplate('Quantity takeoff');
     const volume = Number(summaryRow(lines, 'IfcWallStandardCase')[3]);
     assert.equal(volume, WALL_GROSS_VOLUME);
+  });
+
+  it("reports the wall's GrossSideArea, not its footprint area or a sum", async () => {
+    const lines = await runTemplate('Quantity takeoff');
+    const area = Number(summaryRow(lines, 'IfcWallStandardCase')[2]);
+    assert.equal(area, WALL_GROSS_SIDE_AREA);
   });
 });
 

@@ -237,9 +237,8 @@ bim.create.addIfcPropertySet(h, stairId, {
     { Name: 'HandicapAccessible', NominalValue: false, Type: 'IfcBoolean' },
   ],
 });
-// Custom, not `Qto_*`: that prefix is buildingSMART's, and its only stair set targets IfcStairFlight.
 bim.create.addIfcElementQuantity(h, stairId, {
-  Name: 'Example_StairQuantities',
+  Name: 'Example_StairQuantities', // not Qto_*: buildingSMART's only stair set targets IfcStairFlight
   Quantities: [
     { Name: 'Length', Value: numRisers * treadL, Kind: 'IfcQuantityLength' },
     { Name: 'GrossVolume', Value: numRisers * treadL * stairW * riserH * 0.5, Kind: 'IfcQuantityVolume' },

@@ -45,6 +45,9 @@ const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').
 const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
 // Lazy: the Flow panel pulls in React Flow; it stays out of the first-paint bundle.
 const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((m) => ({ default: m.FlowPanel })));
+// Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
+// (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
+const DrawingPanel = lazy(() => import('@/components/viewer/Section2DPanel').then((m) => ({ default: m.Section2DPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
@@ -59,6 +62,10 @@ function DocumentPanelBody({ onClose }: { onClose: () => void }) {
 }
 function FlowPanelBody({ onClose }: { onClose: () => void }) {
   return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+}
+
+function DrawingPanelBody({ onClose }: { onClose: () => void }) {
+  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
 }
 
 function ChartsPanelBody({ onClose }: { onClose: () => void }) {
@@ -103,5 +110,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'flow': return <FlowPanelBody onClose={onClose} />;
     case 'document': return <DocumentPanelBody onClose={onClose} />;
     case 'cost': return <CostPanel onClose={onClose} />;
+    case 'drawing': return <DrawingPanelBody onClose={onClose} />;
   }
 }

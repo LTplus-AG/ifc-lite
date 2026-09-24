@@ -147,7 +147,7 @@ export async function ingestDxfFile(file: File): Promise<void> {
   if (store.models.size > 0) {
     // Surface the result immediately: the underlay renders in the 2D
     // drawing panel, so open it (the user still picks/moves the section).
-    store.setDrawing2DPanelVisible(true);
+    store.openPanelInHome('drawing');
     toast.success(
       `"${file.name}" imported as reference layer: ${count} elements on ${layerCount} layer${layerCount === 1 ? '' : 's'}${unitsNote}${georefNote}.`,
     );

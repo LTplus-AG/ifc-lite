@@ -17,6 +17,7 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',
+  'viewerShell.chunkLabel.drawingPanel': 'Drawing panel',
   'viewerShell.chunkLabel.documentPanel': 'Document panel',
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',

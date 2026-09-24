@@ -36,7 +36,7 @@ export interface UiEventProperties {
   tool_activated: { tool: string };
   tool_exited: { tool: string; via: ToolExitVia };
   view_reset: { trigger: ViewResetTrigger };
-  /** `code` is a classified error kind (e.g. `LoadErrorKind`), never a message. */
+  /** `code` is a fixed id (a `LoadErrorKind` or a per-path failure id), never a message. */
   error_shown: { code: string; surface: 'load_error' };
   file_open_rejected: { reason: FileOpenRejectReason };
   onboarding_surface: { surface: OnboardingSurfaceId; action: OnboardingAction };

@@ -49,6 +49,22 @@ describe('panel events (#5618)', () => {
   });
 });
 
+describe('panel events: repeats and a collapsed sidebar (#5618)', () => {
+  it('does not count a repeated open of an already-docked bottom panel', () => {
+    state().openPanelInHome('script', 'shortcut');
+    state().openPanelInHome('script', 'shortcut');
+    assert.deepEqual(captured, [['panel_opened', { panel_id: 'script', surface: 'shortcut' }]]);
+  });
+
+  it('counts reopening the active panel from a collapsed sidebar as an open', () => {
+    state().openWorkspacePanel('clash');
+    state().setSidebarMode('collapsed');
+    captured = [];
+    state().openWorkspacePanel('clash', 'palette');
+    assert.deepEqual(captured, [['panel_opened', { panel_id: 'clash', surface: 'palette' }]]);
+  });
+});
+
 describe('tool events (#5618)', () => {
   it('reports activation, the exit route, and nothing for a no-op switch', () => {
     state().setActiveTool('measure');

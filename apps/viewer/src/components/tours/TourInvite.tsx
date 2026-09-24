@@ -34,7 +34,10 @@ export function TourInvite() {
       <span>{t('tours.tourInvite.prompt')}</span>
       <button
         className="font-medium text-primary underline-offset-2 hover:underline"
-        onClick={() => startTour('welcome', 'invite')}
+        onClick={() => {
+          trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'start_tour' });
+          startTour('welcome', 'invite');
+        }}
       >
         {t('tours.tourInvite.start')}
       </button>

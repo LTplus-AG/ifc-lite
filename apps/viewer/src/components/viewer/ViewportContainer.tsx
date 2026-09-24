@@ -483,10 +483,7 @@ export function ViewportContainer() {
     const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
-      // Tell the user *why* — common case is a Recap project / SketchUp
-      // file dropped because they assumed our viewer would understand it.
-      const explanation = reportFileOpenRejected(allDropped);
-      if (explanation) toast.error(explanation);
+      reportFileOpenRejected(allDropped);
       return;
     }
 

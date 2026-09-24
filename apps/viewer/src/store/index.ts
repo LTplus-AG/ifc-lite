@@ -39,7 +39,7 @@ import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js'
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
-import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { bottomPanelFlags, isBottomPanel, isBottomPanelDocked, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { trackPanelOpened, withToolTelemetry, type UiSurface } from './uiTelemetry.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
@@ -356,7 +356,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
 
   openWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
-    trackPanelOpened(panel, surface, isBottomPanel(panel) ? undefined : get().sidebarActivePanel);
+    trackPanelOpened(panel, surface, isBottomPanel(panel) || get().sidebarMode !== 'expanded' ? undefined : get().sidebarActivePanel);
     // Docking into the sidebar: if the panel was floating or popped out, re-dock
     // it so the toolbar / command-palette / activity-bar entry points stay in
     // sync with the float + window channels (#1200/#1201/#1208) instead of
@@ -397,6 +397,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
 
   showWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    const alreadyDocked = isBottomPanel(panel) && isBottomPanelDocked(get(), panel);
     // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
@@ -406,7 +407,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // region instead of flipping side-panel flags it doesn't own (#1208).
     if (isBottomPanel(panel)) {
       set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
-      trackPanelOpened(panel, surface);
+      if (!alreadyDocked) trackPanelOpened(panel, surface);
       return;
     }
     if (panel === 'properties') {
@@ -445,13 +446,11 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
 
   toggleBottomPanel: (panel, surface) => {
     const [set, get] = args;
-    const s = get();
-    const flagActive = isBottomPanelOpen(s, panel);
-    const detached = s.floatingPanels.some((p) => p.id === panel) || s.poppedOutIds.includes(panel);
+    const docked = isBottomPanelDocked(get(), panel);
     // Re-dock any float / OS window for it first.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
-    if (flagActive && !detached) {
+    if (docked) {
       // Toggle off (only one bottom panel shows at a time).
       set(bottomPanelFlags(null));
     } else {
@@ -462,7 +461,6 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
 
   openPanelInHome: (panel, surface) => {
     const [, get] = args;
-    // showWorkspacePanel already routes each panel to its home region; one path, one tracked open.
     get().showWorkspacePanel(panel, surface);
   },
 }))));

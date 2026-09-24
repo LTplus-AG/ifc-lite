@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { toast } from '@/components/ui/toast';
 import { trackUiEvent } from '@/lib/analytics';
 import { splitDxfFiles } from './dxfIngest';
 import { describeUnsupportedFormat } from './unsupportedFormat';
@@ -12,13 +13,13 @@ import { describeUnsupportedFormat } from './unsupportedFormat';
  * underlays are routed separately, so a DXF-only pick is not a rejection.
  * Only the reason category leaves the browser, never a file name.
  *
- * Returns the user-facing explanation for the first file we recognise
- * (`name: why`), or null when there is none to show.
+ * Tells the user *why* when we recognise the format (a Recap project, a
+ * SketchUp file, ...), so no open path rejects a file silently.
  */
-export function reportFileOpenRejected(files: File[]): string | null {
+export function reportFileOpenRejected(files: File[]): void {
   const { modelFiles } = splitDxfFiles(files);
-  if (modelFiles.length === 0) return null;
+  if (modelFiles.length === 0) return;
   const explained = modelFiles.find((f) => describeUnsupportedFormat(f.name));
   trackUiEvent('file_open_rejected', { reason: explained ? 'unsupported_format' : 'unrecognized_format' });
-  return explained ? `${explained.name}: ${describeUnsupportedFormat(explained.name)}` : null;
+  if (explained) toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
 }

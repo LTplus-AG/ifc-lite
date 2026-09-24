@@ -13,12 +13,10 @@ import type { TranslationValue } from '../types';
  * own "Learn more" row, the Preferences tab's section headings (#5509 —
  * the SpaceMouse settings under it come from `spaceMousePanel.*` in
  * `misc-panels-a.en.ts`, which owns that component), and the tab strip.
- * Shortcut CATEGORY names,
- * DESCRIPTIONS, and key-combination glyphs come from `KEYBOARD_SHORTCUTS`
- * (`@/hooks/keyboard-shortcuts-list`) and stay out of the catalogue — model
- * content for this slice's own scope, same reasoning as every other data
- * table in this sweep. `LearnTab.tsx` (rendered as the fourth tab) has its
- * own catalogue outside this slice.
+ * The Shortcuts tab's rows are generated
+ * from `@/lib/commands/keyboard-commands` and translated by `commands.en.ts`
+ * (#5836). `LearnTab.tsx` (rendered as the fourth tab) has its own catalogue
+ * outside this slice.
  */
 export const keyboardShortcutsEn = {
   // Header

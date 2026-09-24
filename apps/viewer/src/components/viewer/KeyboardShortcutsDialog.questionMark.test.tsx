@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `?` is documented as the shortcuts key (`KEYBOARD_SHORTCUTS`, the welcome
+ * `?` is documented as the shortcuts key (`help.shortcuts` in `lib/commands`, the welcome
  * tour), so pressing it must open the Info dialog on the Shortcuts tab, not
  * About (#5606). Drives the real `useKeyboardShortcutsDialog` hook wired to the
  * real dialog, exactly as `ViewerLayout` does.

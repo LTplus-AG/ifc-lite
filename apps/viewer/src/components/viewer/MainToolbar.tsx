@@ -78,6 +78,7 @@ import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
+import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
@@ -89,7 +90,7 @@ interface ToolButtonProps {
   tool: Tool;
   icon: React.ElementType;
   label: string;
-  shortcut?: string;
+  shortcut?: KeyCommandId;
   activeTool: string;
   onToolChange: (tool: Tool) => void;
   /**
@@ -133,7 +134,7 @@ function ToolButton({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcutLabel(shortcut)})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -145,8 +146,7 @@ function ToolButton({
  * the user is actively editing; multi-model undo would need a
  * separate UX). Disabled when the active model's stack is empty.
  *
- * Keyboard shortcuts (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) are wired
- * in `useKeyboardShortcuts`.
+ * Their keys (`edit.undo` / `edit.redo`) are listed in `lib/commands`.
  */
 function UndoRedoButtons() {
   const { t } = useTranslation();
@@ -178,7 +178,7 @@ function UndoRedoButtons() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {t('mainToolbar.undo')} <span className="ml-2 text-xs opacity-60">⌘Z</span>
+          {t('mainToolbar.undo')} <span className="ml-2 text-xs opacity-60">{shortcutLabel('edit.undo')}</span>
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -197,7 +197,7 @@ function UndoRedoButtons() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {t('mainToolbar.redo')} <span className="ml-2 text-xs opacity-60">⌘⇧Z</span>
+          {t('mainToolbar.redo')} <span className="ml-2 text-xs opacity-60">{shortcutLabel('edit.redo')}</span>
         </TooltipContent>
       </Tooltip>
     </>
@@ -209,7 +209,7 @@ interface ActionButtonProps {
   icon: React.ElementType;
   label: string;
   onClick: () => void;
-  shortcut?: string;
+  shortcut?: KeyCommandId;
   disabled?: boolean;
 }
 
@@ -232,7 +232,7 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcutLabel(shortcut)})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -685,14 +685,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* ── Search (Tier-0 inline; ⌘F or / to focus) ── */}
+      {/* ── Search (Tier-0 inline; `search.focus` keys focus it) ── */}
       <SearchInline />
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Navigation Tools ── */}
-      <ToolButton tool="select" icon={MousePointer2} label={t('mainToolbar.toolSelect')} shortcut="V" activeTool={activeTool} onToolChange={setActiveTool} />
-      <ToolButton tool="walk" icon={PersonStanding} label={t('mainToolbar.toolWalk')} shortcut="C" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="select" icon={MousePointer2} label={t('mainToolbar.toolSelect')} shortcut="tool.select" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="walk" icon={PersonStanding} label={t('mainToolbar.toolWalk')} shortcut="tool.walk" activeTool={activeTool} onToolChange={setActiveTool} />
 
       {/* ── Edit Mode pill ──
           Single global switch that unlocks every authoring affordance
@@ -765,13 +765,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Measurement & Section ── */}
-      <ToolButton tool="measure" icon={Ruler} label={t('mainToolbar.toolMeasure')} shortcut="M" activeTool={activeTool} onToolChange={setActiveTool} />
-      <ToolButton tool="section" icon={Scissors} label={t('mainToolbar.toolSection')} shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="measure" icon={Ruler} label={t('mainToolbar.toolMeasure')} shortcut="tool.measure" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="section" icon={Scissors} label={t('mainToolbar.toolSection')} shortcut="tool.section" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton
         tool="annotate"
         icon={StickyNote}
         label={t('mainToolbar.toolAnnotate')}
-        shortcut="P"
+        shortcut="tool.annotate"
         activeTool={activeTool}
         onToolChange={setActiveTool}
         activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
@@ -838,19 +838,19 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
           </span>
-          <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="I" />
-          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={handleHide} shortcut="Del / Space" />
+          <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="basket.isolate" />
+          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={handleHide} shortcut="visibility.hideSelection" />
           <ActionButton
             icon={Crosshair}
             label={t('mainToolbar.frameSelection')}
             onClick={() => cameraCallbacks.frameSelection?.()}
-            shortcut="F"
+            shortcut="camera.frameSelection"
           />
         </div>
       )}
 
-      <ActionButton icon={Eye} label={t('mainToolbar.showAll')} onClick={handleShowAll} shortcut="A" />
-      <ActionButton icon={Maximize2} label={t('mainToolbar.fitAll')} onClick={() => cameraCallbacks.fitAll?.()} shortcut="Z" />
+      <ActionButton icon={Eye} label={t('mainToolbar.showAll')} onClick={handleShowAll} shortcut="visibility.showAll" />
+      <ActionButton icon={Maximize2} label={t('mainToolbar.fitAll')} onClick={() => cameraCallbacks.fitAll?.()} shortcut="camera.fitAll" />
 
       <DropdownMenu>
         <Tooltip>
@@ -892,7 +892,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Camera & View ── */}
-      <ActionButton icon={Home} label={t('mainToolbar.home')} onClick={handleHome} shortcut="H" />
+      <ActionButton icon={Home} label={t('mainToolbar.home')} onClick={handleHome} shortcut="camera.home" />
 
       {/*
         Cesium 3D World Context — sits next to Home as a raw button so

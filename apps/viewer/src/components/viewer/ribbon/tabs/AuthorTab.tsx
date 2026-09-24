@@ -62,7 +62,7 @@ export function AuthorTab() {
           tooltip={canEditInSession
             ? (editEnabled ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
             : t('ribbon.author.editLockedTooltip')}
-          shortcut="E"
+          shortcut="edit.toggleEditMode"
           active={editEnabled}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
@@ -72,14 +72,14 @@ export function AuthorTab() {
           <RibbonSmallButton
             icon={Undo}
             label={t('ribbon.author.undo')}
-            shortcut="⌘Z"
+            shortcut="edit.undo"
             disabled={!canUndo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'undo'); }}
           />
           <RibbonSmallButton
             icon={Redo}
             label={t('ribbon.author.redo')}
-            shortcut="⌘⇧Z"
+            shortcut="edit.redo"
             disabled={!canRedo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'redo'); }}
           />

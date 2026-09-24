@@ -99,7 +99,6 @@ export const ribbonToolbarEn = {
   'ribbon.elements.isolateTooltip': 'Isolate selection (set basket)',
   'ribbon.elements.hide': 'Hide',
   'ribbon.elements.hideTooltip': 'Hide selection',
-  'ribbon.elements.hideShortcut': 'Del / Space',
   'ribbon.elements.frame': 'Frame',
   'ribbon.elements.frameTooltip': 'Frame selection',
   'ribbon.elements.copyGuid': 'Copy guid',

@@ -3459,11 +3459,13 @@ export class Renderer {
     /**
      * Show (or clear) the clash-overlap box: the wireframe AABB of a focused
      * clash, drawn in `color` so the overlap region reads as a distinct third
-     * colour next to the two glowing clash elements (#1277). Pass `null` to
-     * clear. `min`/`max` are world-space corners (clash works in world frame).
+     * colour next to the two glowing clash elements (#1277). Omit `color` to
+     * draw it in the overlay theme's `clashOverlap` and keep following it
+     * across `setOverlayTheme` calls (#5490). Pass `null` to clear.
+     * `min`/`max` are world-space corners (clash works in world frame).
      */
     setClashOverlapBox(
-        box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
+        box: { min: [number, number, number]; max: [number, number, number]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashOverlapBox(box);
     }
@@ -3472,11 +3474,13 @@ export class Renderer {
      * Draw the focused clash's CONTACT geometry as 3D line segments — the real
      * shared-face polygon outlines / intersection lines, not the AABB box.
      * `vertices` is a flat line-list (x,y,z per endpoint, 2 endpoints per
-     * segment) in world frame. Pass `null` to clear. Shares the clash-box line
-     * buffer, so only one of this / setClashOverlapBox is shown at a time.
+     * segment) in world frame. Omit `color` to follow the overlay theme's
+     * `clashOverlap`, as for `setClashOverlapBox`. Pass `null` to clear. Shares
+     * the clash-box line buffer, so only one of this / setClashOverlapBox is
+     * shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }
@@ -3488,10 +3492,11 @@ export class Renderer {
      * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
      * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
      * which one is current for a given clash (solid when the kernel resolved
-     * one, box/lines as the fallback when it didn't).
+     * one, box/lines as the fallback when it didn't). Omit `color` to follow
+     * the overlay theme's `clashOverlap`, as for `setClashOverlapBox`.
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }

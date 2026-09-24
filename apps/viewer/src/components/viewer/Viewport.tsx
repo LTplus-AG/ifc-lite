@@ -33,7 +33,6 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
-import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
@@ -597,12 +596,11 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer) return;
     if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
-      renderer.setClashContactLines({
-        vertices: anchorWorldLineVertices(clashContactLines.vertices),
-        color: clashContactLines.color,
-      });
+      // No colour: the renderer draws the overlap in its theme's
+      // `clashOverlap` and recolours it on a theme switch (#5490).
+      renderer.setClashContactLines({ vertices: anchorWorldLineVertices(clashContactLines.vertices) });
     } else if (showClashRegionBox && clashOverlapBox) {
-      renderer.setClashOverlapBox({ ...clashOverlapBox, color: CLASH_COLOR_OVERLAP });
+      renderer.setClashOverlapBox(clashOverlapBox);
     } else {
       renderer.setClashContactLines(null);
     }
@@ -636,7 +634,6 @@ export function Viewport({
       renderer.setClashIntersectionSolid({
         positions: clashSolidMesh.positions,
         indices: clashSolidMesh.indices,
-        color: CLASH_COLOR_OVERLAP,
       });
     } else {
       renderer.setClashIntersectionSolid(null);

@@ -169,6 +169,29 @@ export function overlayCssVar(token: OverlayToken): `--${string}` {
   return token.startsWith('overlay-') ? `--${token}` : `--overlay-${token}`;
 }
 
+/**
+ * A token as a CSS colour value, `var(--overlay-axis-x)`, for the places a
+ * Tailwind utility cannot reach: an SVG presentation attribute or inline style
+ * whose colour is picked at runtime. Prefer the utility (`stroke-axis-x`)
+ * wherever the class is static.
+ */
+export function overlayColor(token: OverlayToken): string {
+  return `var(${overlayCssVar(token)})`;
+}
+
+/**
+ * The one X/Y/Z triad (#5490), as CSS colours keyed by IFC axis. Every
+ * axis-coded mark (the axis helper, the move and placement gizmos, the
+ * measure tool's shift-drag constraint axes) reads its colour here, so they
+ * cannot drift apart again. IFC is Z-up and the renderer frame is Y-up:
+ * renderer +Y is IFC Z and renderer -Z is IFC Y.
+ */
+export const IFC_AXIS_COLORS: Readonly<Record<'x' | 'y' | 'z', string>> = {
+  x: overlayColor('axis-x'),
+  y: overlayColor('axis-y'),
+  z: overlayColor('axis-z'),
+};
+
 /** `[r, g, b, a]` in 0..1. */
 export type Rgba = readonly [number, number, number, number];
 

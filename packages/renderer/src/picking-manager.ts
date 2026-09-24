@@ -50,14 +50,10 @@ export class PickingManager {
     }
 
     /**
-     * The pick target size and the CSS-px to pick-texel scale.
-     *
-     * The pick pass renders at the canvas's CSS-pixel size, not the drawing
-     * buffer's device-pixel size (#5383). Pointer input only resolves CSS
-     * pixels, so a HiDPI pick target would only cost more: the single-pixel
-     * pick copies the WHOLE depth image back (depth formats forbid partial
-     * copies), which at 2x would be 4x the bytes per click. It also keeps the
-     * splat picker's CSS-px point sizes in the same space the point draw uses.
+     * The pick target size and CSS-px to texel scale. The pick pass renders at
+     * the canvas's CSS size, not the device-pixel buffer (#5383): pointer input
+     * only resolves CSS px, the single pick copies the WHOLE depth image back
+     * (4x the bytes at DPR 2), and splat pick sizes stay in the draw's space.
      * Clamped to 8192, the WebGPU-guaranteed `maxTextureDimension2D`.
      */
     private pickViewport(): { width: number; height: number; scaleX: number; scaleY: number } | null {

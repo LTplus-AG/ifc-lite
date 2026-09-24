@@ -118,16 +118,53 @@ pub(super) fn encode_shard_routing_refusals_back(
     (ifc_lite_geometry::encode_refs(refs, &collated), rejected, dropped)
 }
 
+/// IFC classes the viewer shows and hides as a WHOLE class, by the mesh's
+/// `ifcType` (`IFC_TYPE_TO_VISIBILITY_KEY` in
+/// `apps/viewer/src/store/typeVisibilityFilter.ts`: Spaces, Zones, Openings,
+/// Virtual elements, Terrain & context, Annotations). Exact names, matched the
+/// way that table matches them.
+///
+/// The instanced shard carries an entity id and a colour per occurrence, and
+/// no class. Every class gate in the viewer (viewport, picking, PDF, Cesium,
+/// section) filters flat meshes by `ifcType`, so an occurrence of one of these
+/// classes that rode the shard ignored its toggle entirely (#5409). Keeping
+/// them flat is what lets the one gate see them. They are rarely repeated
+/// opaque shapes, so the draw-call cost is nil.
+///
+/// The wasm contract test builds its fixture from the TypeScript table and
+/// fails if any of its classes reaches the shard, so a class added there and
+/// not here is caught.
+pub(super) const CLASS_TOGGLED_TYPES: &[&str] = &[
+    "IfcSpace",
+    "IfcSpatialZone",
+    "IfcOpeningElement",
+    "IfcOpeningStandardCase",
+    "IfcVirtualElement",
+    "IfcSite",
+    "IfcGeographicElement",
+    "IfcAnnotation",
+];
+
+/// Does the viewer gate this class with a whole-class toggle? See
+/// [`CLASS_TOGGLED_TYPES`].
+pub(super) fn is_class_toggled(ifc_type: &str) -> bool {
+    CLASS_TOGGLED_TYPES.contains(&ifc_type)
+}
+
 /// May this mesh ride the instanced shard at all?
 ///
 /// Transparent (alpha below the cutoff), textured (the instanced pipeline has
-/// no UV slot) and type-product geometry (`geometry_class` 1 = orphan type map,
-/// 2 = instanced type map) must stay on the flat pipelines for correct
-/// blending, texturing and Model/Types view-mode gating. This is a gate on the
-/// mesh's own properties only — repetition is counted separately, by
+/// no UV slot), type-product geometry (`geometry_class` 1 = orphan type map,
+/// 2 = instanced type map) and class-toggled classes ([`CLASS_TOGGLED_TYPES`])
+/// must stay on the flat pipelines for correct blending, texturing,
+/// Model/Types view-mode gating and class-visibility gating. This is a gate on
+/// the mesh's own properties only — repetition is counted separately, by
 /// [`meets_instance_threshold`].
 pub(super) fn is_instancing_candidate(mesh: &MeshData) -> bool {
-    mesh.color[3] >= INSTANCED_ALPHA_CUTOFF && mesh.texture.is_none() && mesh.geometry_class == 0
+    mesh.color[3] >= INSTANCED_ALPHA_CUTOFF
+        && mesh.texture.is_none()
+        && mesh.geometry_class == 0
+        && !is_class_toggled(&mesh.ifc_type)
 }
 
 /// The rep-identity key this mesh contributes to the per-batch tally, or `None`

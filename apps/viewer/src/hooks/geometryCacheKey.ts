@@ -9,8 +9,11 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
 // RTC gate's un-rebased meshes and `needsShift: false` frame; bumping this
 // forces a re-tessellate so the corrected pre-pass output actually runs on
 // reload rather than being served from a cache built against the old gate.
+// #5409: openings now always carry the overlay colour, and class-toggled
+// classes never ride the instanced shard; an older entry would still serve
+// opaque grey openings on the shard, where the Openings toggle cannot reach.
 // Invalidate viewer-generated geometry without changing the public cache format.
-const GEOMETRY_OUTPUT_REVISION = 2;
+const GEOMETRY_OUTPUT_REVISION = 3;
 
 /**
  * Build the persisted geometry cache key for a loaded model.

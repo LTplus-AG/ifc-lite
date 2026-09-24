@@ -94,9 +94,9 @@ export interface ViewMeshInput {
  * filters, so hiding an instanced occurrence hides it in the PDF too.
  *
  * Instanced shard meshes carry no `ifcType` (the renderer's scene does not keep
- * one), so the class toggles cannot gate them — the same limitation the
- * viewport has, where `Scene.setInstancedVisibility` takes only the hide and
- * isolate sets. `isTypeVisible` treats a missing type as visible, matching it.
+ * one), and `isTypeVisible` treats a missing type as visible. That is safe
+ * because no class-toggled class ever reaches the shard: the wasm partition
+ * keeps them flat, where they carry their type (#5409).
  */
 export function collectViewMeshes(input: ViewMeshInput): MeshData[] {
   const isolatedIds = effectiveIsolatedIds(input.computedIsolatedIds, input.isolatedEntities);

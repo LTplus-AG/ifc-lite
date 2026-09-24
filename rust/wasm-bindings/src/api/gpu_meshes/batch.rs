@@ -833,9 +833,9 @@ impl IfcAPI {
         // flat MeshCollection and is consolidated + culled exactly as before the flip.
         //
         // Transparent (alpha < cutoff), textured (no UV slot in the instanced pipeline),
-        // and type-product (class 1/2) geometry are never instancing candidates — they
-        // must stay on the flat pipelines for correct blending / texturing / view-mode
-        // gating.
+        // type-product (class 1/2) and class-toggled (IfcSpace, IfcOpeningElement, …,
+        // #5409) geometry are never instancing candidates — they must stay on the flat
+        // pipelines for correct blending / texturing / view-mode / class-toggle gating.
         let mut candidates: Vec<ifc_lite_processing::MeshData> = Vec::new();
         let mut counts: rustc_hash::FxHashMap<u128, u32> = rustc_hash::FxHashMap::default();
         for out in outputs {

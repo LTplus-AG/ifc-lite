@@ -20,6 +20,7 @@
 //!   baseline) — through the SAME `ifc_lite_processing::recover_occurrences_flat`
 //!   the native orphan recovery uses, so the two cannot drift.
 
+use super::batch_partition::is_class_toggled;
 use ifc_lite_geometry::SharedMappedItemCache;
 use ifc_lite_processing::{recover_occurrences_flat, MeshData, RawInstanceOccurrence};
 use rustc_hash::FxHashMap;
@@ -75,6 +76,17 @@ pub(super) fn resolve_batch_occurrences(
 
     let mut shard: Vec<ShardOccurrence> = Vec::new();
     for (rep, occs) in groups {
+        // A class-toggled occurrence (#5409) never rides the shard, whatever its
+        // group's template is: the shard carries no class, so its toggle could
+        // not reach it. It recovers flat, and only the rest weigh on the gate.
+        let (occs, toggled): (Vec<_>, Vec<_>) =
+            occs.into_iter().partition(|occ| !is_class_toggled(&occ.ifc_type));
+        if !toggled.is_empty() {
+            recover_occurrences_flat(rep, &toggled, mapped_item_cache, rtc, recovered_flats);
+        }
+        if occs.is_empty() {
+            continue;
+        }
         // Keep as shard instances only when a shard-eligible in-batch template exists
         // (batch-local mode materializes one per source, so it normally does) AND the
         // group (template + occurrences) clears the instancing gate — matching the
@@ -190,6 +202,68 @@ mod resolve_batch_occurrences_tests {
         // occs.len() + 1 == MIN_OCCURRENCES + 1: comfortably kept.
         let occ_count = MIN_OCCURRENCES as u32;
         assert_eq!(shard_len_for(occ_count), occ_count as usize);
+    }
+
+    /// #5409: a class-toggled occurrence recovers flat even when its group's
+    /// template is shard-eligible and the group clears the gate, and it no
+    /// longer counts toward that gate. The physical occurrences of the same
+    /// group still ride the shard, so the split is per occurrence, not per group.
+    #[test]
+    fn class_toggled_occurrences_recover_flat_and_leave_the_rest_instanced() {
+        let mut source = ifc_lite_geometry::Mesh::new();
+        source.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        source.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        source.indices = vec![0, 1, 2];
+        let cache: SharedMappedItemCache = Arc::new(Mutex::new(FxHashMap::default()));
+        cache.lock().unwrap().insert(REP as u32, Arc::new(source));
+
+        let physical = MIN_OCCURRENCES as u32;
+        let mut raw: Vec<RawInstanceOccurrence> = (0..physical).map(make_occ).collect();
+        for (i, class) in ["IfcOpeningElement", "IfcSpace"].iter().enumerate() {
+            let mut occ = make_occ(100 + i as u32);
+            occ.ifc_type = (*class).to_string();
+            raw.push(occ);
+        }
+        let mut template_by_rep = FxHashMap::default();
+        template_by_rep.insert(REP, TemplateInfo { eligible: true });
+        let mut recovered_flats = Vec::new();
+        let shard = resolve_batch_occurrences(
+            raw,
+            &template_by_rep,
+            &cache,
+            [0.0, 0.0, 0.0],
+            MIN_OCCURRENCES,
+            &mut recovered_flats,
+        );
+
+        let shard_ids: Vec<u32> = shard.iter().map(|o| o.entity_id).collect();
+        assert_eq!(shard_ids, (0..physical).collect::<Vec<_>>(), "only physical occurrences instance");
+        let mut flat: Vec<(u32, String)> =
+            recovered_flats.iter().map(|m| (m.express_id, m.ifc_type.clone())).collect();
+        flat.sort();
+        assert_eq!(
+            flat,
+            vec![(100, "IfcOpeningElement".to_string()), (101, "IfcSpace".to_string())],
+            "class-toggled occurrences render flat, carrying their class"
+        );
+
+        // With only toggled occurrences beyond the gate, the physical remainder
+        // is judged on its own count: one short of the gate recovers flat.
+        let mut raw: Vec<RawInstanceOccurrence> = (0..(MIN_OCCURRENCES as u32 - 2)).map(make_occ).collect();
+        let mut opening = make_occ(100);
+        opening.ifc_type = "IfcOpeningElement".to_string();
+        raw.push(opening);
+        let mut recovered_flats = Vec::new();
+        let shard = resolve_batch_occurrences(
+            raw,
+            &template_by_rep,
+            &cache,
+            [0.0, 0.0, 0.0],
+            MIN_OCCURRENCES,
+            &mut recovered_flats,
+        );
+        assert!(shard.is_empty(), "a toggled occurrence must not lift a group over the gate");
+        assert_eq!(recovered_flats.len(), MIN_OCCURRENCES - 1);
     }
 
     /// #2985. A SUB-THRESHOLD occurrence never reaches the shard, so the wire

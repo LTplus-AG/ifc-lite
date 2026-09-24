@@ -305,7 +305,7 @@ describe('ClashPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'clash-pan
     useViewerStore.setState({ models: new Map() });
     const container = render(<ClashPanel onClose={() => {}} />);
     // Open the help disclosure so its four paragraphs are on screen.
-    const helpButton = [...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'How clash detection works');
+    const helpButton = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'How clash detection works');
     assert.ok(helpButton, 'help toggle button not found');
     act(() => helpButton!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
 

@@ -54,26 +54,26 @@
 # removed. A hand-picked number fails; a shrink that landed in another PR
 # stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
-   473 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
+   466 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    402 apps/viewer/src/components/extensions/FlavorDialog.tsx
    665 apps/viewer/src/components/mcp/data.ts
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   758 apps/viewer/src/components/viewer/AddElementPanel.tsx
+   750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
-   428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   540 apps/viewer/src/components/viewer/BCFPanel.tsx
-  1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
+   534 apps/viewer/src/components/viewer/BCFPanel.tsx
+  1020 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
-  1720 apps/viewer/src/components/viewer/ChatPanel.tsx
-  1303 apps/viewer/src/components/viewer/ClashPanel.tsx
+  1682 apps/viewer/src/components/viewer/ChatPanel.tsx
+  1302 apps/viewer/src/components/viewer/ClashPanel.tsx
   1053 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
-   423 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
+   409 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    845 apps/viewer/src/components/viewer/ExportDialog.tsx
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
@@ -85,24 +85,23 @@
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
-   548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
+   543 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1133 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
-   572 apps/viewer/src/components/viewer/properties/BsddCard.tsx
+   556 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
    985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2182 apps/viewer/src/components/viewer/PropertiesPanel.tsx
-  1729 apps/viewer/src/components/viewer/PropertyEditor.tsx
-   539 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
-   425 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
+  2156 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  1694 apps/viewer/src/components/viewer/PropertyEditor.tsx
+   535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
-   670 apps/viewer/src/components/viewer/ScriptPanel.tsx
+   628 apps/viewer/src/components/viewer/ScriptPanel.tsx
    734 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
@@ -122,7 +121,7 @@
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1181 apps/viewer/src/components/viewer/ViewportContainer.tsx
-   508 apps/viewer/src/components/viewer/ZonesPanel.tsx
+   500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
@@ -138,7 +137,6 @@
    436 apps/viewer/src/hooks/useIfcServer.ts
    443 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
-   453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts

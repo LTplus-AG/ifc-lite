@@ -412,7 +412,6 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                     </div>
                     <IconButton
                       label={t('sheetsPdf.titleBlock.removeRevisionLabel', { revision: rev.revision })}
-                      size="icon-sm"
                       className="h-6 w-6 text-destructive hover:text-destructive"
                       onClick={() => removeRevision(index)}
                     >

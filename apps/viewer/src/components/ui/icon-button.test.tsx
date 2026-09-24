@@ -67,6 +67,22 @@ describe('IconButton', () => {
     assert.equal(document.querySelector('[role="tooltip"]')?.textContent, 'Review scope');
   });
 
+  it('keeps extra tooltip text as the button description while the tooltip is closed', () => {
+    const host = render(<IconButton label="Fork" tooltip="Fork: edit this extension in the chat"><Plus /></IconButton>);
+    const button = host.querySelector('button')!;
+    assert.equal(document.querySelector('[role="tooltip"]'), null, 'tooltip is closed');
+    const describedBy = button.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'the button has a description');
+    const description = document.getElementById(describedBy);
+    assert.equal(description?.textContent, 'Fork: edit this extension in the chat');
+    assert.ok(description?.hidden, 'the description takes no layout');
+  });
+
+  it('adds no description when the tooltip only repeats the label', () => {
+    const host = render(<IconButton label="Undo" tooltip="Undo"><Plus /></IconButton>);
+    assert.equal(host.querySelector('button')!.getAttribute('aria-describedby'), null);
+  });
+
   it('forwards its ref and passes a Radix trigger through (asChild composition)', () => {
     const ref = createRef<HTMLButtonElement>();
     const host = render(
@@ -86,6 +102,22 @@ describe('IconButton', () => {
     });
     assert.ok(document.querySelector('[role="dialog"]'), 'the dialog trigger still opens its dialog');
     assert.equal(button.getAttribute('aria-label'), 'Open editor');
+  });
+
+  it('renders with no TooltipProvider above it (a tour card, a standalone dialog)', async () => {
+    // Radix throws "`Tooltip` must be used within `TooltipProvider`"; a button
+    // that used to carry a plain `title=` must not start crashing where the
+    // app shell's provider is absent.
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root!.render(<IconButton label="Close tour"><Plus /></IconButton>));
+    const button = container.querySelector('button')!;
+    assert.equal(button.getAttribute('aria-label'), 'Close tour');
+    await act(async () => {
+      button.focus();
+    });
+    assert.ok(document.querySelector('[role="tooltip"]'), 'its own provider still opens the tooltip');
   });
 
   it('requires a label at the type level', () => {

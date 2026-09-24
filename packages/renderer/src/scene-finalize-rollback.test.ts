@@ -7,6 +7,7 @@ import assert from 'node:assert';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
+import type { MeshData } from '@ifc-lite/geometry';
 
 /**
  * `finalizeStreamingInner` detaches the old drawables (streamingFragments = [],
@@ -48,6 +49,23 @@ function fakeBatch(id: number): BatchedMesh & {
 
 const device = {} as GPUDevice;
 const pipeline = {} as RenderPipeline;
+
+/**
+ * A bucket that received streamed meshes (batch id 2, re-grouped by the
+ * finalize) next to one from an earlier, already finalized model (batch id 3,
+ * left alone). Routing is stubbed to an identity so no real frame is needed.
+ */
+function seedStreamedAndUntouched(scene: Scene) {
+  const batch = fakeBatch(2);
+  const untouched = fakeBatch(3);
+  const md = { color: [1, 0, 0, 1], positions: new Float32Array(0), indices: new Uint32Array(0), expressId: 1 } as unknown as MeshData;
+  scene['buckets'].set('keyU', { key: 'keyU', meshData: [], batchedMesh: untouched, vertexBytes: 0 });
+  scene['buckets'].set('keyS', { key: 'keyS', meshData: [md], batchedMesh: batch, vertexBytes: 0 });
+  scene['streamedBucketKeys'].add('keyS');
+  scene['bucketBaseKey'] = () => 'keyS';
+  scene['resolveActiveBucket'] = (baseKey: string) => baseKey;
+  return { batch, untouched };
+}
 
 describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
   it('restores the previous drawables when the rebuild throws', () => {
@@ -125,20 +143,27 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.strictEqual(scene['partialBatchCache'].get('src:v1'), partial);
   });
 
-  it('drops cached partial batches once the replacement build succeeds', () => {
+  it('drops the cached partial batches of the replaced batches once the build succeeds, and no others', () => {
     const scene = new Scene();
-    const partial = fakeBatch(9);
+    const streamed = seedStreamedAndUntouched(scene);
+    const partialStreamed = fakeBatch(9);
+    const partialUntouched = fakeBatch(10);
     scene['streamingFragments'] = [fakeBatch(1)];
-    scene['partialBatchCache'].set('src:v1', partial);
-    scene['partialBatchCacheKeys'].set('src', 'src:v1');
+    // Partial caches are keyed by their SOURCE batch, `${colorKey}:${id}`.
+    scene['partialBatchCache'].set('c2:2:v1', partialStreamed);
+    scene['partialBatchCacheKeys'].set('c2:2', 'c2:2:v1');
+    scene['partialBatchCache'].set('c3:3:v1', partialUntouched);
+    scene['partialBatchCacheKeys'].set('c3:3', 'c3:3:v1');
     scene['rebuildPendingBatches'] = () => { /* succeeds */ };
 
     scene.finalizeStreaming(device, pipeline);
 
-    // Their colorKeys are stale against the new batches, so they must go.
-    assert.strictEqual(partial.vertexBuffer.destroyed, 1);
-    assert.strictEqual(scene['partialBatchCache'].size, 0);
-    assert.strictEqual(scene['partialBatchCacheKeys'].size, 0);
+    // The streamed bucket's batch is gone, so its partial is stale...
+    assert.strictEqual(streamed.batch.id, 2);
+    assert.strictEqual(partialStreamed.vertexBuffer.destroyed, 1);
+    // ...while the untouched model's batch and its partial are still valid (#5358).
+    assert.strictEqual(partialUntouched.vertexBuffer.destroyed, 0);
+    assert.strictEqual(scene['partialBatchCache'].get('c3:3:v1'), partialUntouched);
   });
 
   it('clears the in-progress flag even when the rebuild throws', () => {
@@ -151,21 +176,21 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.strictEqual(scene.isFinalizeInProgress(), false);
   });
 
-  it('keeps the replacement and frees the old drawables on success', () => {
+  it('keeps the replacement and frees the replaced drawables on success, and only those', () => {
     const scene = new Scene();
     const fragment = fakeBatch(1);
-    const batch = fakeBatch(2);
-    const replacement = fakeBatch(3);
+    const { batch, untouched } = seedStreamedAndUntouched(scene);
+    const replacement = fakeBatch(4);
     scene['streamingFragments'] = [fragment];
-    scene['batchedMeshes'] = [batch];
+    scene['batchedMeshes'] = [untouched, batch];
     scene['rebuildPendingBatches'] = () => {
-      scene['batchedMeshes'].push(replacement);
+      scene['batchedMeshes'].push(untouched, replacement);
     };
 
     scene.finalizeStreaming(device, pipeline);
 
     // The replacement is installed and must NOT be caught by any cleanup.
-    assert.deepStrictEqual(scene['batchedMeshes'], [replacement]);
+    assert.deepStrictEqual(scene['batchedMeshes'], [untouched, replacement]);
     assert.strictEqual(replacement.vertexBuffer.destroyed, 0);
     assert.strictEqual(replacement.indexBuffer.destroyed, 0);
     assert.deepStrictEqual(scene['streamingFragments'], []);
@@ -174,5 +199,7 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.strictEqual(fragment.indexBuffer.destroyed, 1);
     assert.strictEqual(batch.vertexBuffer.destroyed, 1);
     assert.strictEqual(batch.indexBuffer.destroyed, 1);
+    // Another model's batch is not rebuilt, so it is not freed (#5358).
+    assert.strictEqual(untouched.vertexBuffer.destroyed, 0);
   });
 });

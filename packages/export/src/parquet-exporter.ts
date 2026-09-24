@@ -7,13 +7,14 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges, relationshipTypeName } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
 import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
 import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
 import { appendCreatedParquetEntityRows } from './parquet-created-entity-rows.js';
+import { parquetRelationshipRows } from './parquet-relationship-rows.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -35,9 +36,9 @@ export class ParquetExporter {
      *
      * When supplied, tombstoned entities and rows that reference them are
      * dropped from every table (#2046), and overlay-created entities are
-     * appended to `Entities.parquet`. The other tables still column-copy
-     * parsed data, so authored relationship/property/quantity/geometry rows
-     * and edits to parsed attribute values remain separate gaps.
+     * appended to `Entities.parquet`. Relationship rows resolve authored
+     * records and edited endpoints; property/quantity/geometry payload edits
+     * remain separate gaps.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -72,7 +73,8 @@ export class ParquetExporter {
         files.set('Entities.parquet', await this.writeEntities());
         files.set('Properties.parquet', await this.writeProperties());
         files.set('Quantities.parquet', await this.writeQuantities());
-        files.set('Relationships.parquet', await this.writeRelationships());
+        const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, this.getEffective());
+        files.set('Relationships.parquet', await this.toParquet(relationshipRows));
         files.set('Strings.parquet', await this.writeStrings());
 
         // Geometry files (if available)
@@ -88,7 +90,7 @@ export class ParquetExporter {
         }
 
         // Metadata
-        files.set('Metadata.json', this.writeMetadata());
+        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size));
 
         return this.createZipArchive(files);
     }
@@ -232,43 +234,7 @@ export class ParquetExporter {
     }
 
     private async writeRelationships(): Promise<Uint8Array> {
-        const { relationships } = this.store;
-        const effective = this.getEffective();
-
-        // One row per `IfcRel*` STEP record, including any collapsed into
-        // an edge's `shadowedRelationshipIds` (#3760/#3782) — not one row
-        // per deduped edge; see `flattenRelationshipEdges`'s doc comment.
-        const sourceIds: number[] = [];
-        const targetIds: number[] = [];
-        const relTypes: string[] = [];
-        const relIds: number[] = [];
-
-        for (const row of flattenRelationshipEdges(relationships.forward)) {
-            // An edge naming a tombstoned entity on either end no longer
-            // has a live entity to relate — drop the row rather than
-            // leave a dangling SourceId/TargetId in the export.
-            //
-            // `relationshipId` gets the same treatment: an `IfcRel*` record
-            // is itself a row in Entities.parquet (the columnar parser
-            // indexes it like any other line), so emitting a RelId for a
-            // deleted one leaves a dangling reference too. Because each
-            // shadowed id is its own row here, this drops exactly the
-            // deleted record and keeps a live sibling — the same rule
-            // `edgeSurvives` applies to the CLI/MCP `related()` path
-            // (#3782 review).
-            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId) || effective.isDeleted(row.relationshipId))) continue;
-            sourceIds.push(row.sourceId);
-            targetIds.push(row.targetId);
-            relTypes.push(relationshipTypeName(row.type));
-            relIds.push(row.relationshipId);
-        }
-
-        return this.toParquet({
-            SourceId: sourceIds,
-            TargetId: targetIds,
-            RelType: relTypes,
-            RelId: relIds,
-        });
+        return this.toParquet(parquetRelationshipRows(this.store, this.mutationView, this.getEffective()));
     }
 
     private async writeStrings(): Promise<Uint8Array> {
@@ -509,7 +475,7 @@ export class ParquetExporter {
         });
     }
 
-    private writeMetadata(): Uint8Array {
+    private writeMetadata(relationshipCount: number): Uint8Array {
         const metadata = {
             version: '2.0.0',
             generator: 'IFC-Lite',
@@ -527,7 +493,7 @@ export class ParquetExporter {
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
                 propertyCount: this.store.properties.count,
-                relationshipCount: new Set([...this.store.relationships.forward.edgeRelIds, ...(this.store.relationships.forward.shadowedRelIds ?? [])]).size, // distinct IfcRel* records, not raw edges (#3760/#4205)
+                relationshipCount, // distinct exported IfcRel records, not raw edges (#3760/#4205)
             },
         };
 

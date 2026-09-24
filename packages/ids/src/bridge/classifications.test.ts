@@ -185,7 +185,8 @@ ${FOOTER}`;
 
   it('a relationship created this session classifies its material, through source and created references alike', async () => {
     const a = await withOverlay([], [
-      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, "'Pr_20_76'", "'Steel'", '#22', null, null] },
+      // Plain strings, as a StoreEditor authors them (the serializer quotes).
+      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, 'Pr_20_76', 'Steel', '#22', null, null] },
       { expressId: 31, type: 'IfcExternalReferenceRelationship', attributes: [null, null, '#30', ['#11']] },
     ]);
     expect(a.getClassifications(11)).toEqual([
@@ -194,6 +195,28 @@ ${FOOTER}`;
     // The source classification is untouched.
     expect(a.getClassifications(10)).toEqual([
       { system: 'Uniclass 2015', value: 'Pr_20_93_08', name: 'Concrete' },
+    ]);
+  });
+
+  it('a classification reference deleted this session leaves the material unresolved, not classified', async () => {
+    const a = await withOverlay([21], []);
+    expect(a.getClassifications(10)).toEqual([]);
+  });
+
+  it('a chain link deleted this session marks the classification unresolved', async () => {
+    const a = await withOverlay([22], []);
+    expect(a.getClassifications(10)).toEqual([
+      { system: '', value: 'Pr_20_93_08', name: 'Concrete', unresolved: true },
+    ]);
+  });
+
+  it('an authored typed-label value is unwrapped', async () => {
+    const a = await withOverlay([], [
+      { expressId: 30, type: 'IfcClassificationReference', attributes: [null, { typed: { type: 'IfcIdentifier', value: 'Pr_20_76' } }, 'Steel', '#22', null, null] },
+      { expressId: 31, type: 'IfcExternalReferenceRelationship', attributes: [null, null, '#30', ['#11']] },
+    ]);
+    expect(a.getClassifications(11)).toEqual([
+      { system: 'Uniclass 2015', value: 'Pr_20_76', name: 'Steel' },
     ]);
   });
 });

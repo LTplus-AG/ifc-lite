@@ -37,13 +37,15 @@ interface ClassRecord {
 export function resolveClassifications(
   store: IfcDataStore,
   expressId: number,
-  overlay?: EntityVisibilityView
+  externalReferences?: ExternalReferenceContext
 ): ClassificationInfo[] {
   const list: ClassRecord[] = [
     ...(extractClassificationsOnDemand(store, expressId) || []),
   ];
 
-  appendExternalReferenceClassifications(store, expressId, list, overlay);
+  appendExternalReferenceClassifications(
+    store, expressId, list, externalReferences ?? createExternalReferenceContext(store, undefined)
+  );
 
   const out: ClassificationInfo[] = [];
   for (const c of list) {
@@ -94,7 +96,7 @@ function appendExternalReferenceClassifications(
   store: IfcDataStore,
   expressId: number,
   list: ClassRecord[],
-  overlay?: EntityVisibilityView
+  context: ExternalReferenceContext
 ): void {
   if (!store.source?.length) {
     // Only fall back to "cannot determine" when:
@@ -119,15 +121,7 @@ function appendExternalReferenceClassifications(
     return;
   }
 
-  if (!store.entityIndex) return;
-  const read = effectiveRecordReader(store, overlay);
-  // The session's relationships (#5249): a deleted one no longer classifies
-  // anything, and one created this session does.
-  const erIds = Array.from(
-    iterateEffectiveEntities(store, overlay, ['IFCEXTERNALREFERENCERELATIONSHIP']),
-    (e) => e.expressId
-  );
-
+  const { read, relationshipIds: erIds } = context;
   for (const erId of erIds) {
     const erEntity = read(erId);
     if (!erEntity) continue;
@@ -277,43 +271,71 @@ interface RecordRead {
 }
 
 /**
- * Read one record of the session's effective model (#5249): `undefined` for an
- * entity deleted this session; a created entity's authored payload, with its
- * `#id` references as numbers and STEP-quoted strings unquoted, which is the
- * shape `EntityExtractor` yields for a parsed one; the source bytes otherwise.
+ * The session's external-reference relationships and a reader for the records
+ * they point at, built ONCE per accessor (#5249). `getClassifications` runs once
+ * per candidate, and `getNewEntities()` copies on every call, so rebuilding this
+ * per call would be O(candidates x created entities).
  */
-function effectiveRecordReader(
+export interface ExternalReferenceContext {
+  /** Effective `IfcExternalReferenceRelationship` ids: deleted out, created in. */
+  readonly relationshipIds: readonly number[];
+  /** One effective record, or `undefined` when absent or deleted. */
+  read(id: number): RecordRead | undefined;
+}
+
+export function createExternalReferenceContext(
   store: IfcDataStore,
   overlay: EntityVisibilityView | undefined
-): (id: number) => RecordRead | undefined {
+): ExternalReferenceContext {
+  if (!store.entityIndex) return { relationshipIds: [], read: () => undefined };
   const ex = new EntityExtractor(store.source);
   const created = new Map<number, { type: string; attributes: ReadonlyArray<unknown> }>();
   for (const entity of overlay?.getNewEntities() ?? []) {
     created.set(entity.expressId, { type: entity.type, attributes: entity.attributes ?? [] });
   }
   const retypes = overlay?.getTypeMutations?.();
-  return (id) => {
-    if (overlay?.isDeleted(id)) return undefined;
-    const retype = retypes?.get(id)?.newType;
-    const authored = created.get(id);
-    if (authored) {
-      return { type: retype ?? authored.type, attributes: authored.attributes.map(authoredValue) };
-    }
-    // @raw-entity-enumeration-ok point read of one source record, after the overlay answered for deleted and created ids
-    const ref = store.entityIndex.byId.get(id);
-    if (!ref) return undefined;
-    const entity = ex.extractEntity(ref);
-    if (!entity) return undefined;
-    return { type: retype ?? entity.type, attributes: entity.attributes ?? [] };
+  const relationshipIds = Array.from(
+    iterateEffectiveEntities(store, overlay, ['IFCEXTERNALREFERENCERELATIONSHIP']),
+    (e) => e.expressId
+  );
+  return {
+    relationshipIds,
+    read(id) {
+      if (overlay?.isDeleted(id)) return undefined;
+      const retype = retypes?.get(id)?.newType;
+      const authored = created.get(id);
+      if (authored) {
+        return { type: retype ?? authored.type, attributes: authored.attributes.map(authoredValue) };
+      }
+      // @raw-entity-enumeration-ok point read of one source record, after the overlay answered for deleted and created ids
+      const ref = store.entityIndex.byId.get(id);
+      if (!ref) return undefined;
+      const entity = ex.extractEntity(ref);
+      if (!entity) return undefined;
+      return { type: retype ?? entity.type, attributes: entity.attributes ?? [] };
+    },
   };
 }
 
+/**
+ * An authored attribute in the shape `EntityExtractor` yields for a parsed
+ * one: a `#id` reference as a number, `$`/`*` as absent, a typed wrapper or a
+ * `{ real }` number unwrapped. A plain string is the literal value. The STEP
+ * serializer (`serializeStepValue`) writes it quoted, so it is never
+ * pre-quoted here, and quote characters are kept as data.
+ */
 function authoredValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(authoredValue);
+  if (value && typeof value === 'object') {
+    if ('real' in value && typeof value.real === 'number') return value.real;
+    if ('typed' in value && value.typed && typeof value.typed === 'object' && 'value' in value.typed) {
+      return authoredValue(value.typed.value);
+    }
+    return value;
+  }
   if (typeof value !== 'string') return value;
   const ref = /^#(\d+)$/.exec(value.trim());
   if (ref) return Number(ref[1]);
   if (value === '$' || value === '*') return undefined;
-  const t = value.trim();
-  return t.length >= 2 && t.startsWith("'") && t.endsWith("'") ? t.slice(1, -1).replace(/''/g, "'") : value;
+  return value;
 }

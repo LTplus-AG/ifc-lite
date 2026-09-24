@@ -71,6 +71,68 @@ fn malformed_product_representation_shape_is_reported() {
 }
 
 #[test]
+fn malformed_selected_items_omit_valid_sibling_geometry_atomically() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let shape = "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));";
+    let cases = [
+        (
+            "#1001=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid');",
+            "missing Items",
+        ),
+        (
+            "#1001=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',#43);",
+            "malformed Items",
+        ),
+        (
+            "#1001=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43,$));",
+            "malformed Items",
+        ),
+        (
+            "#1001=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',());",
+            "malformed Items",
+        ),
+    ];
+    for (bad_rep, reason) in cases {
+        // #44 is a valid direct-body representation. #1001 is selected too,
+        // so returning #44 alone would misrepresent a partial extraction.
+        let model = source.replace(
+            shape,
+            &format!("{bad_rep}\n#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44,#1001));"),
+        );
+        let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{reason}: partial geometry escaped");
+        assert!(
+            result.diagnostics.iter().any(|d| {
+                d.contains("product #50") && d.contains("representation #1001") && d.contains(reason)
+            }),
+            "{reason}: {:?}",
+            result.diagnostics
+        );
+    }
+
+    let valid = source.replace(shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));");
+    let result = extract_swept_disk_descriptions(valid.as_bytes(), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.elements[&50][0].solid_id, 43);
+}
+
+#[test]
+fn malformed_sweep_beside_valid_sweep_omits_product_atomically() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let model = source.replace(
+        "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));",
+        "#1001=IFCSWEPTDISKSOLID(#999,14.5,$,$,$);\n#1002=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));\n#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44,#1002));",
+    );
+    let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50), "valid sibling must not escape");
+    assert!(
+        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("solid #1001")),
+        "{:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn mapped_trimmed_line_has_world_metre_endpoints_and_radius() {
     let result = extract_swept_disk_descriptions(&fixture("swept_disk_trimmed_line"), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
@@ -90,6 +152,36 @@ fn mapped_trimmed_line_has_world_metre_endpoints_and_radius() {
         value["Directrix"][0]["end"],
         serde_json::json!([2.75, 0.0, 0.0])
     );
+}
+
+#[test]
+fn invalid_mapping_target_omits_mapped_product_atomically() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let shape = "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));";
+    for target in ["$", "42.", "#10"] {
+        let bad_item = format!("#1001=IFCMAPPEDITEM(#45,{target});");
+        let model = source.replace(
+            shape,
+            &format!("{bad_item}\n#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47,#1001));"),
+        );
+        let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{target}: valid sibling escaped");
+        assert!(
+            result.diagnostics.iter().any(|d| {
+                d.contains("product #50") && d.contains("mapped item #1001") && d.contains("MappingTarget")
+            }),
+            "{target}: {:?}",
+            result.diagnostics
+        );
+    }
+
+    let wrong_type = source.replace(
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",
+        "#46=IFCCARTESIANPOINT((0.,0.,0.));",
+    );
+    let result = extract_swept_disk_descriptions(wrong_type.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50));
+    assert!(result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("MappingTarget #46")));
 }
 
 #[test]
@@ -169,6 +261,28 @@ fn deep_placement_is_reported_instead_of_claiming_world_coordinates() {
 }
 
 #[test]
+fn malformed_placement_chain_never_claims_world_directrix() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let product = "#50=IFCREINFORCINGBAR('0000000000000000000002',$,'Bar',$,$,#30,#49,'BAR-1',$,29.,0.,$,.NOTDEFINED.,$);";
+    let placement = "#30=IFCLOCALPLACEMENT($,#13);";
+    let cases = [
+        source.replace(product, &product.replace("#30,#49,", "#10,#49,")),
+        source.replace(placement, "#30=IFCLOCALPLACEMENT($,#10);"),
+        source.replace(placement, "#30=IFCLOCALPLACEMENT($,$);"),
+        source.replace(placement, "#30=IFCLOCALPLACEMENT(#10,#13);"),
+    ];
+    for (index, model) in cases.iter().enumerate() {
+        let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "case {index}: false world description");
+        assert!(
+            result.diagnostics.iter().any(|d| d.contains("product #50: placement:")),
+            "case {index}: {:?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
 fn nonuniform_mapped_disk_reports_unsupported_world_circle() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
     let source = source.replace(
@@ -237,11 +351,47 @@ fn malformed_boolean_operands_and_csg_root_omit_product_atomically() {
 
     let valid = source.replace(
         shape,
-        "#1001=IFCCSGSOLID(#43);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
+        "#1002=IFCBOOLEANRESULT(.UNION.,#43,#43);\n#1001=IFCCSGSOLID(#1002);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
     );
     let result = extract_swept_disk_descriptions(valid.as_bytes(), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
-    assert_eq!(result.elements[&50][0].solid_id, 43);
+    assert_eq!(result.elements[&50].len(), 2);
+    assert!(result.elements[&50].iter().all(|disk| disk.solid_id == 43));
+}
+
+#[test]
+fn invalid_boolean_operand_and_csg_root_types_omit_valid_sibling() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let shape = "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));";
+    let product_shape = "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));";
+    for (item, reason) in [
+        ("#1001=IFCBOOLEANRESULT(.UNION.,#43,#10);", "IfcBooleanOperand"),
+        ("#1001=IFCCSGSOLID(#10);", "IfcCsgSelect"),
+    ] {
+        let model = source
+            .replace(shape, &format!("{item}\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43,#1001));"))
+            .replace(product_shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));");
+        let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{reason}: valid sibling escaped");
+        assert!(
+            result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains(reason) && d.contains("#10")),
+            "{reason}: {:?}",
+            result.diagnostics
+        );
+    }
+
+    // IfcBlock is a valid IfcCsgPrimitive3D select member. The extractor does
+    // not describe that primitive, but must retain the swept-disk operand.
+    let valid_other = source
+        .replace(
+            shape,
+            "#1001=IFCBLOCK(#13,100.,100.,100.);\n#1002=IFCBOOLEANRESULT(.UNION.,#43,#1001);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','CSG',(#1002));",
+        )
+        .replace(product_shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));");
+    let result = extract_swept_disk_descriptions(valid_other.as_bytes(), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.elements[&50].len(), 1);
+    assert!(result.elements[&50][0].source_modified);
 }
 
 #[test]
@@ -311,6 +461,45 @@ fn repeated_mapped_directrices_exhaust_aggregate_output_atomically() {
             .diagnostics
             .iter()
             .any(|d| d.contains("directrix output exceeds work budget")),
+        "{:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn repeated_representations_bound_stack_before_expanding_second_items_list() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let items = vec!["#47"; 60_000].join(",");
+    let model = source
+        .replace(
+            "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",
+            &format!("#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',({items}));"),
+        )
+        .replace(
+            "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));",
+            "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48,#48));",
+        );
+    let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50));
+    assert!(
+        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("representation items exceed work budget")),
+        "{:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn oversized_raw_representations_list_is_bounded_before_resolution() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let reps = vec!["#48"; 100_001].join(",");
+    let model = source.replace(
+        "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));",
+        &format!("#49=IFCPRODUCTDEFINITIONSHAPE($,$,({reps}));"),
+    );
+    let result = extract_swept_disk_descriptions(model.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50));
+    assert!(
+        result.diagnostics.iter().any(|d| d.contains("product #50") && d.contains("Representations list exceeds work budget")),
         "{:?}",
         result.diagnostics
     );

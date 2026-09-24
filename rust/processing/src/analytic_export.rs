@@ -10,7 +10,14 @@ use std::collections::{BTreeMap, HashSet};
 
 use ifc_lite_core::{build_entity_index, has_geometry_by_name, DecodedEntity, EntityDecoder, EntityScanner, IfcType, MAX_MAPPED_ITEM_DEPTH};
 use ifc_lite_geometry::{analytic::{extract_swept_disk, AnalyticCurveSegment, AnalyticStatus}, meshed_representations, GeometryRouter};
-use nalgebra::{Matrix4, Vector3, Vector4};
+use nalgebra::Matrix4;
+
+mod transform;
+use transform::transform_disk;
+mod operands;
+use operands::{is_boolean_operand, is_csg_select};
+mod placement;
+use placement::validate_placement_chain;
 use serde::Serialize;
 
 const MAX_VISITED_ITEMS: usize = 100_000;
@@ -136,11 +143,15 @@ pub fn extract_swept_disk_descriptions(
         };
         if reps_attr
             .as_list()
-            .is_none_or(|items| items.iter().any(|item| item.as_entity_ref().is_none()))
+            .is_none_or(|items| items.is_empty() || items.iter().any(|item| item.as_entity_ref().is_none()))
         {
             result.diagnostics.push(format!(
                 "product #{id}: IfcProductDefinitionShape #{rep_id} has malformed Representations list"
             ));
+            continue;
+        }
+        if reps_attr.as_list().is_some_and(|items| items.len() > MAX_VISITED_ITEMS) {
+            result.diagnostics.push(format!("product #{id}: Representations list exceeds work budget"));
             continue;
         }
         let reps = match decoder.resolve_ref_list(reps_attr) {
@@ -152,6 +163,10 @@ pub fn extract_swept_disk_descriptions(
                 continue;
             }
         };
+        if let Err(error) = validate_placement_chain(&element, &mut decoder) {
+            result.diagnostics.push(format!("product #{id}: placement: {error}"));
+            continue;
+        }
         let transform = match router.resolve_scaled_placement_strict(&element, &mut decoder) {
             Ok(matrix) => Matrix4::from_column_slice(&matrix),
             Err(error) => {
@@ -162,11 +177,25 @@ pub fn extract_swept_disk_descriptions(
         let mut stack = Vec::new();
         let mut failed = false;
         for rep in meshed_representations(&element, &reps) {
-            let Some(items_attr) = rep.get(3) else { continue };
-            if items_attr.as_list().is_some_and(|items| items.len() > MAX_VISITED_ITEMS) {
-                result.diagnostics.push(format!("product #{id}: representation item list exceeds work budget"));
+            let Some(items_attr) = rep.get(3) else {
+                result.diagnostics.push(format!("product #{id}: representation #{} is missing Items", rep.id));
                 failed = true;
-                continue;
+                break;
+            };
+            let Some(item_refs) = items_attr.as_list() else {
+                result.diagnostics.push(format!("product #{id}: representation #{} has malformed Items", rep.id));
+                failed = true;
+                break;
+            };
+            if item_refs.is_empty() || item_refs.iter().any(|item| item.as_entity_ref().is_none()) {
+                result.diagnostics.push(format!("product #{id}: representation #{} has malformed Items", rep.id));
+                failed = true;
+                break;
+            }
+            if stack.len().saturating_add(item_refs.len()) > MAX_VISITED_ITEMS {
+                result.diagnostics.push(format!("product #{id}: representation items exceed work budget"));
+                failed = true;
+                break;
             }
             match decoder.resolve_ref_list(items_attr) {
                 Ok(items) => stack.extend(items.into_iter().rev().map(|item| WalkItem {
@@ -175,6 +204,7 @@ pub fn extract_swept_disk_descriptions(
                 Err(error) => {
                     result.diagnostics.push(format!("product #{id}: items: {error}"));
                     failed = true;
+                    break;
                 }
             }
         }
@@ -238,7 +268,11 @@ pub fn extract_swept_disk_descriptions(
                                 status: disk.status,
                             });
                         }
-                        Err(error) => result.diagnostics.push(format!("product #{id}, solid #{item_id}: {error}")),
+                        Err(error) => {
+                            result.diagnostics.push(format!("product #{id}, solid #{item_id}: {error}"));
+                            failed = true;
+                            break;
+                        }
                     }
                 }
                 IfcType::IfcMappedItem => {
@@ -247,11 +281,30 @@ pub fn extract_swept_disk_descriptions(
                         failed = true;
                         break;
                     }
+                    let Some(target_id) = node.item.get_ref(1) else {
+                        result.diagnostics.push(format!("product #{id}: mapped item #{item_id} has missing or invalid MappingTarget"));
+                        failed = true;
+                        break;
+                    };
+                    match decoder.decode_by_id(target_id) {
+                        Ok(target) if target.ifc_type.is_subtype_of(IfcType::IfcCartesianTransformationOperator) => {}
+                        Ok(target) => {
+                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id} MappingTarget #{target_id} has wrong type {}", target.ifc_type.name()));
+                            failed = true;
+                            break;
+                        }
+                        Err(error) => {
+                            result.diagnostics.push(format!("product #{id}: mapped item #{item_id} MappingTarget #{target_id}: {error}"));
+                            failed = true;
+                            break;
+                        }
+                    }
                     let mapped = (|| {
                         let map = decoder.decode_by_id(node.item.get_ref(0)?) .ok()?;
+                        if map.ifc_type != IfcType::IfcRepresentationMap { return None; }
                         let rep = decoder.decode_by_id(map.get_ref(1)?) .ok()?;
                         let items_attr = rep.get(3)?;
-                        if items_attr.as_list().is_some_and(|items| items.len() > MAX_VISITED_ITEMS) {
+                        if items_attr.as_list().is_none_or(|items| items.is_empty() || items.len() > MAX_VISITED_ITEMS || items.iter().any(|item| item.as_entity_ref().is_none())) {
                             return None;
                         }
                         let items = decoder.resolve_ref_list(items_attr).ok()?;
@@ -287,10 +340,15 @@ pub fn extract_swept_disk_descriptions(
                             break;
                         };
                         match decoder.decode_by_id(operand_id) {
-                            Ok(operand) => stack.push(WalkItem {
+                            Ok(operand) if is_boolean_operand(&operand.ifc_type) => stack.push(WalkItem {
                                 item: operand, transform: node.transform, path: node.path.clone(),
                                 ancestors: ancestors.clone(), source_modified: true,
                             }),
+                            Ok(operand) => {
+                                result.diagnostics.push(format!("product #{id}: boolean operand #{operand_id} has invalid IfcBooleanOperand type {}", operand.ifc_type.name()));
+                                failed = true;
+                                break;
+                            }
                             Err(error) => {
                                 result.diagnostics.push(format!("product #{id}: boolean operand #{operand_id}: {error}"));
                                 failed = true;
@@ -308,10 +366,14 @@ pub fn extract_swept_disk_descriptions(
                         break;
                     };
                     match decoder.decode_by_id(root_id) {
-                        Ok(root) => stack.push(WalkItem {
+                        Ok(root) if is_csg_select(&root.ifc_type) => stack.push(WalkItem {
                             item: root, transform: node.transform, path: node.path,
                             ancestors, source_modified: true,
                         }),
+                        Ok(root) => {
+                            result.diagnostics.push(format!("product #{id}: CSG root #{root_id} has invalid IfcCsgSelect type {}", root.ifc_type.name()));
+                            failed = true;
+                        }
                         Err(error) => {
                             result.diagnostics.push(format!("product #{id}: CSG root #{root_id}: {error}"));
                             failed = true;
@@ -326,63 +388,4 @@ pub fn extract_swept_disk_descriptions(
         }
     }
     result
-}
-
-fn transform_disk(
-    segments: &mut [AnalyticCurveSegment],
-    radius: f64,
-    inner_radius: Option<f64>,
-    transform: &Matrix4<f64>,
-    unit_scale: f64,
-) -> Result<(f64, Option<f64>), String> {
-    if transform.iter().any(|value| !value.is_finite()) {
-        return Err("occurrence transform has non-finite coordinates".into());
-    }
-    let basis = [0, 1, 2].map(|i| Vector3::new(transform[(0, i)], transform[(1, i)], transform[(2, i)]));
-    let scales = basis.map(|v| v.norm());
-    let scale = scales[0];
-    if !scale.is_finite() || scale <= 0.0 || !unit_scale.is_finite() || unit_scale <= 0.0
-        || scales.iter().any(|s| !s.is_finite() || (s - scale).abs() > scale * 1e-8)
-        || basis[0].dot(&basis[1]).abs() > scale * scale * 1e-8
-        || basis[0].dot(&basis[2]).abs() > scale * scale * 1e-8
-        || basis[1].dot(&basis[2]).abs() > scale * scale * 1e-8
-    {
-        return Err("nonuniform, degenerate, or invalid occurrence transform".into());
-    }
-    let orient = if basis[0].cross(&basis[1]).dot(&basis[2]) < 0.0 { -1.0 } else { 1.0 };
-    let point = |p: [f64; 3]| {
-        let q = transform * Vector4::new(p[0] * unit_scale, p[1] * unit_scale, p[2] * unit_scale, 1.0);
-        [q.x, q.y, q.z]
-    };
-    let direction = |p: [f64; 3], handedness: f64| {
-        let v = transform * Vector4::new(p[0], p[1], p[2], 0.0);
-        [v.x * handedness / scale, v.y * handedness / scale, v.z * handedness / scale]
-    };
-    for segment in segments {
-        match segment {
-            AnalyticCurveSegment::Line { start, end } => {
-                *start = point(*start);
-                *end = point(*end);
-            }
-            AnalyticCurveSegment::Arc { center, normal, x_axis, radius, .. } => {
-                *center = point(*center);
-                *normal = direction(*normal, orient);
-                *x_axis = direction(*x_axis, 1.0);
-                *radius *= unit_scale * scale;
-            }
-        }
-        let finite = match segment {
-            AnalyticCurveSegment::Line { start, end } => start.iter().chain(end.iter()).all(|v| v.is_finite()),
-            AnalyticCurveSegment::Arc { center, normal, x_axis, radius, start_angle, sweep_angle } =>
-                center.iter().chain(normal.iter()).chain(x_axis.iter()).all(|v| v.is_finite())
-                    && radius.is_finite() && start_angle.is_finite() && sweep_angle.is_finite(),
-        };
-        if !finite { return Err("transformed directrix has non-finite coordinates".into()); }
-    }
-    let world_radius = radius * unit_scale * scale;
-    let world_inner = inner_radius.map(|r| r * unit_scale * scale);
-    if !world_radius.is_finite() || world_inner.is_some_and(|r| !r.is_finite()) {
-        return Err("transformed disk radius is non-finite".into());
-    }
-    Ok((world_radius, world_inner))
 }

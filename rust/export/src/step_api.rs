@@ -151,4 +151,12 @@ pub struct StepStats {
     /// Non-zero means the file is not valid IFC4. Counted per slot, not per
     /// record. Zero for every other direction, including IFC2X3 -> IFC4.
     pub ifc4_required_slots_unfilled: usize,
+    /// Enum values the target schema does not define that a conversion wrote
+    /// as `.NOTDEFINED.` or `$`, or as `.USERDEFINED.` without room for the
+    /// member name (#5365). Non-zero means information was lost.
+    pub enum_values_lost: usize,
+    /// Enum values the target schema does not define and offers no valid
+    /// replacement for, so they were kept as written (#5365). Non-zero means
+    /// the file is not valid against its header.
+    pub enum_values_refused: usize,
 }

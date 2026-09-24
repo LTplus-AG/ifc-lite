@@ -28,10 +28,6 @@ pub(crate) struct Ifc4SlotCheck {
 }
 
 impl Ifc4SlotCheck {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Required slots left `$`. Counted per SLOT: one record can leave several.
     pub(crate) fn required_slots_unfilled(&self) -> usize {
         self.required_unfilled

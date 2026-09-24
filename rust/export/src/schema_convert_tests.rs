@@ -680,11 +680,11 @@ fn a_renamed_type_is_not_treated_as_unrepresented() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
     let line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
-    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let mut check = crate::schema_enum::ConversionChecks::new();
     let out = convert_step_line(line, "IFC4X3", "IFC4", 10, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "no value is fabricated: {out}");
-    assert_eq!(check.required_slots_unfilled(), 1);
-    assert!(check.warnings()[0].contains("not valid IFC4"), "{:?}", check.warnings());
+    assert_eq!(check.ifc4_slots.required_slots_unfilled(), 1);
+    assert!(check.ifc4_slots.warnings()[0].contains("not valid IFC4"), "{:?}", check.ifc4_slots.warnings());
 }
 
 /// #5307: a BOOLEAN flag is counted, never filled. `SameSense` is required in
@@ -693,20 +693,20 @@ fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_never_fills_a_boolean_flag() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let mut check = crate::schema_enum::ConversionChecks::new();
     let out = convert_step_line(line, "IFC5", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "SameSense keeps its $: {out}");
-    assert_eq!(check.required_slots_unfilled(), 1);
+    assert_eq!(check.ifc4_slots.required_slots_unfilled(), 1);
 }
 
 /// #5307 control: `IFC2X3 -> IFC4` is excluded, the scope line #5202 drew.
 #[test]
 fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let mut check = crate::schema_enum::ConversionChecks::new();
     let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
-    assert_eq!(check.required_slots_unfilled(), 0);
+    assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
 }
 
 /// #5307: a record whose arity is not IFC4's is not counted: position `i` need
@@ -714,8 +714,8 @@ fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$);"; // 2 attrs, table expects 3
-    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let mut check = crate::schema_enum::ConversionChecks::new();
     let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
-    assert_eq!(check.required_slots_unfilled(), 0);
+    assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
 }

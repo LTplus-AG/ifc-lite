@@ -6,7 +6,7 @@
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
-use crate::schema_ifc4_slots::Ifc4SlotCheck;
+use crate::schema_enum::ConversionChecks;
 use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
@@ -263,7 +263,7 @@ fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
 /// exporter cannot convert without having decided which owner history it
 /// writes, and cannot lose the count of what stayed `$`.
 ///
-/// IFC4X3/IFC5 -> IFC4 only: `ifc4_slots` counts IFC4-required `$` slots, never fills (#5307).
+/// `checks`: enum members the target lacks (#5365); IFC4-required `$` slots, counted (#5307).
 ///
 /// Errs for a type with no representation in `to` at all (#5116, [`crate::schema_unrepresented`]).
 pub fn convert_step_line(
@@ -272,19 +272,19 @@ pub fn convert_step_line(
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
-    ifc4_slots: Option<&mut Ifc4SlotCheck>,
+    checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
         return Ok(line.to_string());
     }
-    let converted = convert_record(line, cfrom, cto, express_id)?;
-    match ifc4_slots {
-        _ if cto == "IFC2X3" => return Ok(slots.apply(converted)),
-        Some(check) if cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5") => check.count(&converted),
-        _ => {}
+    let mut converted = convert_record(line, cfrom, cto, express_id)?;
+    if let Some(checks) = checks {
+        converted = checks.enums.apply(converted, cto);
+        let ifc4_downgrade = cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5");
+        ifc4_downgrade.then(|| checks.ifc4_slots.count(&converted));
     }
-    Ok(converted)
+    Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two

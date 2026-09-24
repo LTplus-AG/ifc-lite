@@ -37,6 +37,10 @@ export interface OverlayWallReader {
   getNewEntities(): Iterable<{ expressId: number; type: string; attributes: IfcAttributeValue[] }>;
   /** Resolve a positional attribute (with mutations applied). */
   getAttribute?(expressId: number, index: number): IfcAttributeValue | undefined;
+  /** Deleted this session (#5249): the entity is not part of the model. */
+  isDeleted?(expressId: number): boolean;
+  /** Retypes queued this session (#5249). */
+  getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
 }
 
 export const AXIS_EPS = 1e-6;

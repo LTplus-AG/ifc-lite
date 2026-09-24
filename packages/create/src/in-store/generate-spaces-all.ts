@@ -118,7 +118,7 @@ export function generateSpaces(
 
   // Per-space dedup: skip detected rooms that overlap an existing space, while
   // still emitting non-overlapping rooms on the same storey. `force` opts out.
-  const footprintsByStorey = options.force ? new Map() : existingSpaceFootprintsByStorey(store);
+  const footprintsByStorey = options.force ? new Map() : existingSpaceFootprintsByStorey(store, overlay);
 
   const minArea = options.minArea ?? 0.5;
   const topH = options.topStoreyHeight ?? DEFAULT_TOP_HEIGHT;

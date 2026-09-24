@@ -23,9 +23,10 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
  * default exposure is 0.85, so this factor puts that surface at unit
  * irradiance by luma. The default sky tint leaves the channels within about
  * 2% of that, and colours brighter than the highlight roll-off's 0.76
- * threshold compress (see color-transfer.wgsl.ts), so mid-tones render as
- * authored and pure white lands near 241/255. Every preset and user exposure
- * is scaled by the same factor, so their relative brightness holds.
+ * threshold compress (see color-transfer.wgsl.ts), so mid-tones render
+ * within about 2% of authored and pure white lands near 241/255. Every
+ * preset and user exposure is scaled by the same factor, so their relative
+ * brightness holds.
  * `color-pipeline.test.ts` re-derives it from the default rig.
  */
 const IRRADIANCE_CALIBRATION = 1.82;

@@ -12,6 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { runInNewContext } from 'node:vm';
 import { capturePointer, releasePointer, type PointerCaptureTarget } from './pointer-capture.js';
 
 interface FakeElement extends PointerCaptureTarget {
@@ -20,7 +21,7 @@ interface FakeElement extends PointerCaptureTarget {
   releaseCalls: number;
 }
 
-function fakeElement(opts: { active?: number[]; connected?: boolean; pointerLocked?: boolean; captureThrows?: Error } = {}): FakeElement {
+function fakeElement(opts: { active?: number[]; connected?: boolean; pointerLocked?: boolean; captureThrows?: unknown } = {}): FakeElement {
   const active = new Set(opts.active ?? [1]);
   const el: FakeElement = {
     isConnected: opts.connected ?? true,
@@ -29,7 +30,7 @@ function fakeElement(opts: { active?: number[]; connected?: boolean; pointerLock
     releaseCalls: 0,
     setPointerCapture(id: number) {
       el.captureCalls++;
-      if (opts.captureThrows) throw opts.captureThrows;
+      if (opts.captureThrows !== undefined) throw opts.captureThrows;
       if (!active.has(id)) throw new DOMException('No active pointer with the given id is found.', 'NotFoundError');
       if (opts.pointerLocked) throw new DOMException('Pointer lock is active.', 'InvalidStateError');
       el.captured.add(id);
@@ -68,6 +69,15 @@ describe('capturePointer (#5403)', () => {
     assert.equal(detached.captureCalls, 0);
     assert.equal(capturePointer(null, 1), false);
     assert.equal(capturePointer(undefined, 1), false);
+  });
+
+  it('treats a refusal raised in another window realm as a refusal (detached panels)', () => {
+    // A detached panel's element belongs to a second window, so its DOMException
+    // is not `instanceof` this realm's Error; an `instanceof` check rethrew it.
+    const foreign: unknown = runInNewContext("Object.assign(new Error('Pointer lock is active.'), { name: 'InvalidStateError' })");
+    assert.equal(foreign instanceof Error, false, 'precondition: the error comes from another realm');
+    const el = fakeElement({ captureThrows: foreign });
+    assert.equal(capturePointer(el, 1), false);
   });
 
   it('rethrows an error that is not a capture refusal', () => {

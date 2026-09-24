@@ -27,6 +27,23 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Opt-in swept-disk source descriptions (#5559)
+
+The analytic reader runs only when called explicitly; normal mesh loading does
+not traverse a directrix through this path. On AC20-FZK-Haus, five interleaved
+base/feature pairs of `perf_probe --iters 5 --json --fingerprint` (base
+`337aab4f4`, final feature stack) gave median parse/geometry/pipeline-total
+times of 6/20/27 ms versus 7/22/29 ms. The base's pipeline-total samples
+spanned 23–34 ms and the feature's 24–31 ms; the machine had other builds
+running, so the small median difference is not evidence of a speed change.
+Every run on both sides emitted 285 meshes, 35,940 vertices and 20,322
+triangles with ordered mesh FNV-1a64 `c4d504b83ff698ea`.
+
+Verdict: no mesh-output regression on this ordinary load, and no reliable
+performance claim from the contested host. The opt-in extraction's own cost
+needs a caller-level measurement on representative swept-disk models if it
+becomes a frequent operation; the default pipeline cannot measure that cost.
+
 ## LandXML credited-stream acceptance (#5050)
 
 The native, generated-source acceptance harness is deliberately independent of

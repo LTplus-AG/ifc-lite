@@ -19,6 +19,7 @@ export { default as FilePdf } from '~icons/viewer/file-pdf';
 export { default as Annotate } from '~icons/viewer/annotate';
 export { default as Measure } from '~icons/viewer/measure';
 export { default as Section } from '~icons/viewer/section';
+export { default as Drawing } from '~icons/viewer/drawing';
 export { default as Select } from '~icons/viewer/select';
 export { default as Walk } from '~icons/viewer/walk';
 export { default as DisplayAll } from '~icons/viewer/display-all';

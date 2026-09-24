@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, Puzzle, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, PencilRuler, Puzzle, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -46,7 +46,9 @@ export type WorkspacePanelId =
   | 'flow'
   | 'document'
   | 'cost'
-  | 'environment';
+  | 'environment'
+  | 'drawing'
+  | 'pointclouds';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -128,6 +130,19 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Flag-free like 'zones'/'loadReport'/'cost' above (#1869 precedent) —
   // docks in the right pane, no dedicated envPanelOpen visibility flag.
   { id: 'environment', title: 'Environment', short: 'Environment', Icon: Sun, group: 'author', region: 'side' },
+  // The 2D drawing of the current section (#5493): docks in the bottom strip
+  // instead of floating over the 3D view, so it can float or pop out like any
+  // other panel. APPENDED (no Alt shortcut); its runtime is DrawingRuntimeHost.
+  { id: 'drawing', title: 'Drawing', short: '2D', Icon: PencilRuler, group: 'work', region: 'bottom', prefersWide: true },
+  // Point cloud rendering controls + BIM<->scan deviation heatmap (#5507).
+  // Replaces the floating `PointCloudPanel` card that used to sit at
+  // `bottom-4 left-4`, colliding with the axis/scale cluster there. Flag-free
+  // like 'zones'/'loadReport'/'cost' above (#1869 precedent) — driven purely
+  // by `sidebarActivePanel`, no dedicated visibility boolean. APPENDED so the
+  // frozen Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar
+  // only shows its rail icon while `pointCloudAssetCount > 0`, the same way
+  // it hides the Room icon while collab is disabled.
+  { id: 'pointclouds', title: 'Point Clouds', short: 'Point Clouds', Icon: Scan, group: 'inspect', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and
@@ -169,6 +184,9 @@ export function migratePanelId(id: string): WorkspacePanelId | undefined {
   return LEGACY_PANEL_ID_MIGRATIONS[id];
 }
 
+/** The panels Alt+1..9 / Alt+0 open, in key order (Alt+0 is the tenth). */
+export const ALT_SHORTCUT_PANELS: readonly WorkspacePanelDef[] = WORKSPACE_PANELS.slice(0, 10);
+
 /**
  * Map an Alt+digit shortcut's `KeyboardEvent.code` to the workspace panel it
  * opens (#1200/#1208). Digit/Numpad 1-9 select the first nine panels; 0 selects
@@ -181,7 +199,7 @@ export function workspacePanelForShortcutCode(code: string): WorkspacePanelId | 
   const m = /^(?:Digit|Numpad)([0-9])$/.exec(code);
   if (!m) return undefined;
   const n = Number(m[1]);
-  return WORKSPACE_PANELS[n === 0 ? 9 : n - 1]?.id;
+  return ALT_SHORTCUT_PANELS[n === 0 ? 9 : n - 1]?.id;
 }
 
 /** The analysis / tool panels that toggle in the sidebar (everything except

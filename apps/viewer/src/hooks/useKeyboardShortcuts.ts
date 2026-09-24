@@ -11,6 +11,7 @@ import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
 import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 import {
@@ -46,7 +47,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const lastEscapeRef = useRef<number>(0);
 
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const hideEntities = useViewerStore((s) => s.hideEntities);
@@ -57,7 +57,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   // Measure tool specific actions
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const cancelMeasurement = useViewerStore((s) => s.cancelMeasurement);
-  const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const toggleSnap = useViewerStore((s) => s.toggleSnap);
   // Polyline (multi-click) mode (#2199).
   const activePolyline = useViewerStore((s) => s.activePolyline);
@@ -248,9 +247,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     }
 
     // Split tool — Esc exits Split and returns to Select. We catch
-    // it here before the global Esc handler so the user gets a
-    // gentle exit (clear hover, swap tool) rather than the global
-    // "clear all selection + visibility" cascade.
+    // it here before the global Esc handler so the hover is cleared
+    // along with the tool swap.
     if (activeTool === 'split' && key === 'escape') {
       e.preventDefault();
       const state = useViewerStore.getState();
@@ -352,27 +350,19 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         }
         return;
       }
-      // Clear all measurements with Ctrl+C or Cmd+C
-      if (key === 'c' && ctrl && !shift) {
-        e.preventDefault();
-        clearMeasurements();
-        return;
-      }
+      // No Ctrl+C or Delete/Backspace "clear measurements" here (#5598):
+      // Ctrl+C means copy everywhere else, and measurements are not part of
+      // workspace undo. Clearing is the panel's explicit, confirmed button.
       // Toggle snapping with S
       if (key === 's' && !ctrl && !shift) {
         e.preventDefault();
         toggleSnap();
         return;
       }
-      // Delete/Backspace clears measurements (when nothing is selected)
-      if ((key === 'delete' || key === 'backspace') && !ctrl && !shift && !selectedEntityId) {
-        e.preventDefault();
-        clearMeasurements();
-        return;
-      }
     }
 
-    // Escape: first press clears selection/tool, double-press closes all panels
+    // Escape: one step per press — leave the tool, else clear the selection; double-press
+    // also closes all panels. Never resets visibility; only A / Home do (#5595).
     if (key === 'escape') {
       e.preventDefault();
       const now = Date.now();
@@ -383,18 +373,15 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         // Double-escape: close all panels, return to starting view.
         const state = useViewerStore.getState();
         // Clears every sidebar panel through the choke point (bcf/ids/lens/
-        // clash/compare/extensions → Information). Bottom panels + overlays
-        // are closed explicitly.
+        // clash/compare/extensions → Information). Every bottom-strip panel
+        // closes from the table (#5493); the remaining overlays explicitly.
         state.showWorkspacePanel('properties');
         // Floats + popped-out OS windows are their own channel; the choke point
         // above only re-docks `properties`, so drop every float and close every
         // torn-off window so "close all" truly closes all (#1208).
         state.resetDockLayout();
         closeAllPanelWindows();
-        state.setScriptPanelVisible(false);
-        state.setListPanelVisible(false);
-        state.setGanttPanelVisible(false);
-        state.setDrawing2DPanelVisible(false);
+        useViewerStore.setState(bottomPanelFlags(null));
         state.setOverridesPanelVisible(false);
         state.setChatPanelVisible(false);
         state.setSheetPanelVisible(false);
@@ -402,9 +389,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         state.setRightPanelCollapsed(false);
       }
 
-      setSelectedEntityId(null);
-      resetVisibilityForHomeFromStore('esc');
-      setActiveTool('select', 'esc');
+      if (activeTool !== 'select') {
+        setActiveTool('select', 'esc');
+      } else {
+        useViewerStore.getState().clearEntitySelection();
+      }
     }
 
     // Theme toggle
@@ -417,7 +406,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // The dialog hook listens for '?' key globally
   }, [
     selectedEntityId,
-    setSelectedEntityId,
     activeTool,
     setActiveTool,
     hideEntities,
@@ -425,7 +413,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     toggleBasketPresentationVisible,
     activeMeasurement,
     cancelMeasurement,
-    clearMeasurements,
     toggleSnap,
     toggleEditEnabled,
     activePolyline, activeAngle, cancelAngle,

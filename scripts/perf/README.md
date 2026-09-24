@@ -44,6 +44,19 @@ performance claim from the contested host. The opt-in extraction's own cost
 needs a caller-level measurement on representative swept-disk models if it
 becomes a frequent operation; the default pipeline cannot measure that cost.
 
+## LV95 site-local vertices and RTC frames (#5684)
+
+Interleaved base-versus-branch native probes on AC20-FZK-Haus and ISSUE_129
+showed no stable timing change across run orders. Both fixtures kept identical
+mesh, vertex and triangle counts and ordered mesh fingerprints. A private bridge
+IFC reproduced the intended geometry change: a site-local thin
+member recovered faces lost when the old path subtracted the national-grid RTC
+offset from already-f32 vertices. The lesson is to rebase early only when doing
+so reduces object-space coordinate magnitude. For genuine raw-world coordinates
+in millimetre files, the guarded subtraction must still precede f32 unit
+scaling or a small face can quantize at national-grid magnitude. Items
+processed in different RTC frames must receive placement before they are merged.
+
 ## LandXML credited-stream acceptance (#5050)
 
 The native, generated-source acceptance harness is deliberately independent of

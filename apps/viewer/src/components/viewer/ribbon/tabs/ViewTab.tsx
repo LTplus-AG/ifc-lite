@@ -11,6 +11,7 @@ import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork,
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -50,9 +51,8 @@ export function ViewTab() {
   const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
 
-  // SpaceMouse panel state (3D mouse navigation, #1677)
-  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
-  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  // SpaceMouse connection state (3D mouse navigation, #1677); its settings
+  // moved to Preferences → Navigation (#5509).
   const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
 
   // Basket presentation state
@@ -178,9 +178,9 @@ export function ViewTab() {
             icon={SpaceMouse}
             label={t('ribbon.view.spaceMouse')}
             tooltip={t('ribbon.view.spaceMouseTooltip')}
-            active={spaceMousePanelOpen || spaceMouseConnected}
-            activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
-            onClick={toggleSpaceMousePanel}
+            active={spaceMouseConnected}
+            activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
+            onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }))}
           />
         </RibbonSmallStack>
       </RibbonGroup>

@@ -16,7 +16,8 @@ import type { WorkspacePanelId } from './panels/registry.js';
 /** The chrome an action was started from. */
 export type UiSurface = 'ribbon' | 'classic' | 'palette' | 'context' | 'shortcut' | 'mobile';
 
-export type ViewResetTrigger = 'esc' | 'home' | 'a' | 'show_all';
+/** Esc no longer resets the view (#5595), so it is not a trigger. */
+export type ViewResetTrigger = 'home' | 'a' | 'show_all';
 
 /** `switch` = another tool (or Select) was picked; `esc` = the Escape key. */
 export type ToolExitVia = 'esc' | 'switch';

@@ -23,6 +23,7 @@ import { trackUiEvent } from '@/lib/analytics';
 import { commandIdForAnalytics } from '@/lib/analytics-ui-events';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
+import { usePaletteExportRunner } from './usePaletteExportRunner';
 import {
   type Command,
   type Category,
@@ -106,6 +107,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   const { t } = useTranslation();
+  const { runExport, dialog: exportDialog } = usePaletteExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
@@ -118,7 +120,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     cesiumAvailable,
     activateRightPanel,
     activateBottomPanel,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable]);
+    runExport,
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport]);
 
 
   // ── Search: score, filter, sort ──
@@ -209,84 +212,88 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [flatItems, selectedIndex, runCommand]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden" aria-label={t('commandPalette.ariaLabel')} hideCloseButton>
-        {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b">
-          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('commandPalette.searchPlaceholder')}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
-            {t('commandPalette.escKey')}
-          </kbd>
-        </div>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden" aria-label={t('commandPalette.ariaLabel')} hideCloseButton>
+          {/* Search */}
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={t('commandPalette.searchPlaceholder')}
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+              {t('commandPalette.escKey')}
+            </kbd>
+          </div>
 
-        {/* Results */}
-        <div ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
-          {flatItems.length === 0 && (
-            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {t('commandPalette.noResults')}
-            </div>
-          )}
+          {/* Results */}
+          <div ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
+            {flatItems.length === 0 && (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                {t('commandPalette.noResults')}
+              </div>
+            )}
 
-          {grouped.map((group) => (
-            <div key={group.category || '__flat'}>
-              {group.category && (
-                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
-                  {t(CATEGORY_LABEL_KEY[group.category as Category])}
-                </div>
-              )}
-              {group.items.map(({ cmd, flatIdx }) => {
-                const Icon = cmd.icon;
-                return (
-                  <button
-                    key={`${group.category}:${cmd.id}`}
-                    role="option"
-                    data-index={flatIdx}
-                    aria-selected={flatIdx === selectedIndex}
-                    className={cn(
-                      'flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-                      flatIdx === selectedIndex
-                        ? 'bg-accent text-accent-foreground'
-                        : 'text-foreground hover:bg-accent/50',
-                    )}
-                    onClick={() => runCommand(cmd)}
-                    onMouseMove={() => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); }}
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span className="flex-1 truncate">{cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label}</span>
-                    {cmd.detail && (
-                      <span className="text-[11px] text-muted-foreground shrink-0">
-                        {cmd.detailKey ? t(cmd.detailKey, cmd.detailKeyParams) : cmd.detail}
-                      </span>
-                    )}
-                    {cmd.shortcut && (
-                      <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground shrink-0">
-                        {cmd.shortcut}
-                      </kbd>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+            {grouped.map((group) => (
+              <div key={group.category || '__flat'}>
+                {group.category && (
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
+                    {t(CATEGORY_LABEL_KEY[group.category as Category])}
+                  </div>
+                )}
+                {group.items.map(({ cmd, flatIdx }) => {
+                  const Icon = cmd.icon;
+                  return (
+                    <button
+                      key={`${group.category}:${cmd.id}`}
+                      role="option"
+                      data-index={flatIdx}
+                      aria-selected={flatIdx === selectedIndex}
+                      className={cn(
+                        'flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
+                        flatIdx === selectedIndex
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-foreground hover:bg-accent/50',
+                      )}
+                      onClick={() => runCommand(cmd)}
+                      onMouseMove={() => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); }}
+                    >
+                      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="flex-1 truncate">{cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label}</span>
+                      {cmd.detail && (
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          {cmd.detailKey ? t(cmd.detailKey, cmd.detailKeyParams) : cmd.detail}
+                        </span>
+                      )}
+                      {cmd.shortcut && (
+                        <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground shrink-0">
+                          {cmd.shortcut}
+                        </kbd>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
 
-        {/* Footer */}
-        <div className="flex items-center gap-4 px-3 py-1.5 border-t text-[10px] text-muted-foreground select-none">
-          <span><kbd className="font-mono">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-          <span><kbd className="font-mono">↵</kbd> {t('commandPalette.footer.run')}</span>
-          <span><kbd className="font-mono">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
-        </div>
-      </DialogContent>
-    </Dialog>
+          {/* Footer */}
+          <div className="flex items-center gap-4 px-3 py-1.5 border-t text-[10px] text-muted-foreground select-none">
+            <span><kbd className="font-mono">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
+            <span><kbd className="font-mono">↵</kbd> {t('commandPalette.footer.run')}</span>
+            <span><kbd className="font-mono">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Outside the palette's Dialog: an export dialog must outlive the palette closing. */}
+      {exportDialog}
+    </>
   );
 }

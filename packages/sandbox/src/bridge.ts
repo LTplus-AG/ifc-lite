@@ -17,6 +17,7 @@
 
 import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
+import type { Capability } from '@ifc-lite/extensions';
 import type { SandboxPermissions, LogEntry } from './types.js';
 import { DEFAULT_PERMISSIONS, SANDBOX_CONSOLE_LEVELS } from './types.js';
 import { HostWorkQueue } from './bridge-async.js';
@@ -36,6 +37,7 @@ export function buildBridge(
   sdk: BimContext,
   permissions: SandboxPermissions = {},
   context: BridgeCallContext,
+  networkGrants: readonly Capability[] = [],
 ): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
@@ -50,8 +52,8 @@ export function buildBridge(
   const hostWork = new HostWorkQueue();
   const bimHandle = vm.newObject();
   try {
-    // All namespaces are schema-driven (model, query, viewer, mutate, lens, export)
-    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context, hostWork);
+    // All namespaces are schema-driven (model, query, viewer, mutate, lens, export, network)
+    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context, hostWork, networkGrants);
 
     vm.setProp(vm.global, 'bim', bimHandle);
   } finally {

@@ -17,6 +17,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
@@ -66,6 +67,7 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
   // the whole session: a second instance would keep its own ownership map and
@@ -316,9 +318,8 @@ export function ViewerLayout() {
         <SearchModal />
         <TourHost />
         {/* Trigger-less: this instance exists so the entity context menu's
-            "Export anonymized…" and the Command Palette's "export:anonymized"
-            (both only set `anonymizedExportRequested`, no trigger of their own)
-            have a mounted dialog regardless of whether the export toolbar
+            "Export anonymized…" (which only sets `anonymizedExportRequested`,
+            no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog />

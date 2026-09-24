@@ -176,8 +176,10 @@ const HEX_RE = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i;
 
 /**
  * Parse a token value into sRGB-encoded `[r, g, b, a]` in 0..1: the convention
- * of the renderer's clear colour, `setOverlayLineColor` and the section-plane
- * uniform, which write their values to the swap chain unchanged.
+ * of the renderer's clear colour and `Renderer.setOverlayTheme`'s `overlayLine`,
+ * `sectionPlane`, `clashA`, `clashB` and `clashOverlap` fields, which write their
+ * values to the swap chain unchanged (see `rendererOverlayTheme` in
+ * `overlay-theme-renderer.ts`, and `OverlayTheme` in `@ifc-lite/renderer`).
  */
 export function tokenToRgba(value: string): Rgba {
   const m = HEX_RE.exec(value);

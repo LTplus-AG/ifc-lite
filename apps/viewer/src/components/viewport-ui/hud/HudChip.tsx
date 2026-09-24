@@ -1,0 +1,59 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { HudSurface } from './HudSurface';
+
+export interface HudChipAction {
+  onClick: () => void;
+  /** Translated accessible name — required since the button is icon-only. */
+  'aria-label': string;
+  icon: ReactNode;
+}
+
+export interface HudChipProps {
+  children: ReactNode;
+  icon?: ReactNode;
+  /** e.g. the parked-section chip's "resume" arrow (#5478 §6, item 18). */
+  resume?: HudChipAction;
+  /** e.g. dismiss for a chip the user can permanently clear. */
+  dismiss?: HudChipAction;
+  className?: string;
+}
+
+/**
+ * A short status chip — "Section parked · Resume", a solo/storey pill, a
+ * Cesium status flag — on the shared `HudSurface`, with an optional resume
+ * and/or dismiss action. Neither action renders text of its own; the caller
+ * supplies the translated `aria-label`.
+ */
+export function HudChip({ children, icon, resume, dismiss, className }: HudChipProps) {
+  return (
+    <HudSurface className={cn('flex items-center gap-1.5 px-2 py-1 text-xs', className)}>
+      {icon}
+      <span className="tabular-nums">{children}</span>
+      {resume && (
+        <button
+          type="button"
+          onClick={resume.onClick}
+          aria-label={resume['aria-label']}
+          className="rounded-sm p-0.5 text-overlay-accent hover:bg-overlay-accent-soft"
+        >
+          {resume.icon}
+        </button>
+      )}
+      {dismiss && (
+        <button
+          type="button"
+          onClick={dismiss.onClick}
+          aria-label={dismiss['aria-label']}
+          className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent"
+        >
+          {dismiss.icon}
+        </button>
+      )}
+    </HudSurface>
+  );
+}

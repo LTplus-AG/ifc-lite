@@ -95,9 +95,10 @@ export function useExportCommands() {
   }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleScreenshot = useCallback(() => {
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
+    // The 3D viewport's canvas, not merely the first on the page (#5601).
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
     try {
+      if (!canvas) throw new Error('no 3D viewport canvas on screen');
       downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
       toast.success('Screenshot saved');
     } catch (err) {

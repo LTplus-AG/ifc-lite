@@ -125,6 +125,7 @@ jobs:
 
       # The IFC4 pair, then the IFC4X3 set (#5351): two IFC4 fixtures the
       # test converts to IFC4X3 and two IFC4X3_ADD2 fixtures it round-trips.
+      # Hello_Wall carries a `$` FILE_NAME author/organization (#5470).
       - name: Fetch the fixtures this check needs
         run: >-
           node scripts/fixtures/fetch-fixtures.mjs
@@ -134,6 +135,7 @@ jobs:
           tests/models/buildingsmart/tessellated-item.ifc
           tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc
           tests/models/buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc
+          tests/models/ifc5/Hello_Wall_hello-wall.ifc
 
       - name: Re-export the fixtures and validate against IfcOpenShell
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts

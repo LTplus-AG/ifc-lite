@@ -167,6 +167,7 @@ impl GeometryRouter {
 
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
+        let mut rebased_mesh = Mesh::new();
         let mut captured_local_bounds: Option<[f32; 6]> = None;
 
         // Instancing: an element is cleanly shareable only when its whole body is
@@ -215,8 +216,18 @@ impl GeometryRouter {
                         None
                     };
                 }
-                combined_mesh.merge(&mesh);
+                // #5684: early f64 processors and ordinary f32 processors can
+                // return different RTC frames. Merge only like frames until
+                // placement has brought both into the world/RTC frame.
+                if mesh.rtc_applied {
+                    rebased_mesh.merge(&mesh);
+                } else {
+                    combined_mesh.merge(&mesh);
+                }
             }
+        }
+        if combined_mesh.positions.is_empty() {
+            std::mem::swap(&mut combined_mesh, &mut rebased_mesh);
         }
 
         // Re-attach single-item instance metadata so apply_placement can fold the
@@ -237,6 +248,13 @@ impl GeometryRouter {
 
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
+        if !rebased_mesh.positions.is_empty() {
+            hygiene.for_router(self).apply(&mut rebased_mesh);
+            self.apply_placement(element, decoder, &mut rebased_mesh)?;
+            // Mesh::merge accounts for each mesh's f64 origin. Keep the local
+            // bucket's origin so a distant raw item cannot quantize it early.
+            combined_mesh.merge(&rebased_mesh);
+        }
 
         Ok(combined_mesh)
     }
@@ -735,7 +753,8 @@ impl GeometryRouter {
             item.ifc_type,
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace
         ) || !self.has_rtc_offset()
-            || !self.representation_item_uses_raw_large_coordinates(item, decoder)
+            || !self.representation_item_first_vertex_meters(item, decoder)
+                .is_some_and(crate::coord_is_large)
         {
             return Ok(None);
         }
@@ -748,6 +767,11 @@ impl GeometryRouter {
         };
         let rtc_object_meters = inverse
             * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+        let can_rebase = self.representation_item_benefits_from_rtc(
+            item,
+            decoder,
+            (rtc_object_meters.x, rtc_object_meters.y, rtc_object_meters.z),
+        );
         let rtc_file_units = (
             rtc_object_meters.x / self.unit_scale,
             rtc_object_meters.y / self.unit_scale,
@@ -756,19 +780,26 @@ impl GeometryRouter {
         // Any processor for this type — built-in or a registered override —
         // gets the f64 RTC hook first, so it can rebase BEFORE narrowing to
         // f32. An override without the hook falls back to its ordinary
-        // `process` plus an f32 subtraction below, which cannot recover
-        // sub-ULP detail at national-grid magnitudes (#5026 review).
+        // `process`; final placement applies RTC in f64. Shifting already-f32
+        // output here cannot recover precision and can instead destroy it (#5684).
         let processor = self
             .processors
             .get(&item.ifc_type, self.schema)
             .expect("face processor is registered for this type");
-        let (result, rtc_applied_by_processor) = match processor.process_in_rtc_frame(
-            item,
-            decoder,
-            self.schema,
-            self.tessellation_quality,
-            rtc_file_units,
-        ) {
+        // A declined object-frame rebase must stay on this element-aware
+        // path: the generic direct-item path only knows world-space RTC.
+        let rtc_result = if can_rebase {
+            processor.process_in_rtc_frame(
+                item,
+                decoder,
+                self.schema,
+                self.tessellation_quality,
+                rtc_file_units,
+            )
+        } else {
+            None
+        };
+        let (result, rtc_applied_by_processor) = match rtc_result {
             Some(result) => (result, true),
             None => (
                 processor.process(item, decoder, self.schema, self.tessellation_quality),
@@ -786,12 +817,6 @@ impl GeometryRouter {
         }
         if !rtc_applied_by_processor {
             mesh.local_bounds = Some(mesh_bounds(&mesh));
-            for position in mesh.positions.chunks_exact_mut(3) {
-                position[0] = (position[0] as f64 - rtc_object_meters.x) as f32;
-                position[1] = (position[1] as f64 - rtc_object_meters.y) as f32;
-                position[2] = (position[2] as f64 - rtc_object_meters.z) as f32;
-            }
-            mesh.rtc_applied = true;
         } else {
             // Public bounds stay in the pre-RTC object frame (the contract
             // `local_to_world` pairs with), reconstituted from the rebased
@@ -963,7 +988,7 @@ impl GeometryRouter {
         if matches!(item.ifc_type, IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace)
             && !self.processors.has_override(item.ifc_type.clone())
             && self.has_rtc_offset()
-            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+            && self.representation_item_benefits_from_rtc(item, decoder, self.rtc_offset)
         {
             let processor = crate::processors::IfcFaceSurfaceProcessor::new();
             let rtc_file_units = (
@@ -992,7 +1017,7 @@ impl GeometryRouter {
         // are shifted uniformly during the final world transform.
         if item.ifc_type == IfcType::IfcFacetedBrep
             && self.has_rtc_offset()
-            && self.representation_item_uses_raw_large_coordinates(item, decoder)
+            && self.representation_item_benefits_from_rtc(item, decoder, self.rtc_offset)
         {
             let processor = crate::processors::FacetedBrepProcessor::new();
             let rtc_file_units = (
@@ -1020,26 +1045,25 @@ impl GeometryRouter {
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
-            // For raw world-coordinate meshes: apply RTC before unit scaling
-            // to avoid jitter from f32 truncation at world-space scale.
-            // This covers FaceBasedSurface, ShellBasedSurface, and any other
-            // processor that stores raw world-space coordinates as f32.
+            // For genuine raw coordinates, subtract RTC in file units BEFORE
+            // f32 unit scaling. At national-grid millimetre magnitudes, scaling
+            // first can quantize a 256 mm face to 0.5 m (#5684). Decline this
+            // shift for site-local coordinates: subtracting a distant RTC from
+            // those f32 vertices would instead destroy their small features.
             if self.has_rtc_offset()
                 && !mesh.rtc_applied
                 && !mesh.positions.is_empty()
-                && self.representation_item_uses_raw_large_coordinates(item, decoder)
+                && self.representation_item_benefits_from_rtc(item, decoder, self.rtc_offset)
             {
-                // Positions are in file units (pre-scale). RTC offset is in meters.
-                // Convert RTC to file units for consistent subtraction.
-                let rtc_fu = (
+                let rtc_file_units = (
                     self.rtc_offset.0 / self.unit_scale,
                     self.rtc_offset.1 / self.unit_scale,
                     self.rtc_offset.2 / self.unit_scale,
                 );
-                for chunk in mesh.positions.chunks_exact_mut(3) {
-                    chunk[0] = (chunk[0] as f64 - rtc_fu.0) as f32;
-                    chunk[1] = (chunk[1] as f64 - rtc_fu.1) as f32;
-                    chunk[2] = (chunk[2] as f64 - rtc_fu.2) as f32;
+                for position in mesh.positions.chunks_exact_mut(3) {
+                    position[0] = (position[0] as f64 - rtc_file_units.0) as f32;
+                    position[1] = (position[1] as f64 - rtc_file_units.1) as f32;
+                    position[2] = (position[2] as f64 - rtc_file_units.2) as f32;
                 }
                 mesh.rtc_applied = true;
             }

@@ -27,13 +27,11 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
-import { Section2DPanel } from './Section2DPanel';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementEditor } from './CesiumPlacementEditor';
-import { SpaceMousePanel } from './SpaceMousePanel';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
@@ -1131,9 +1129,6 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {/* SpaceMouse panel — WebHID 3D mouse connection + sensitivity (#1677).
-          Draggable; self-anchored below the ViewCube. */}
-      <SpaceMousePanel />
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}
@@ -1177,7 +1172,6 @@ export function ViewportContainer() {
       <ZoneAssignmentSyncMount />
       <BasketPresentationDock />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
-      <Section2DPanel />
     </div>
   );
 }

@@ -533,7 +533,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // tail, leaving the shiftedBounds / computeBounds paths below untouched.
       // `sceneBoundsFull` is the FULL AABB and is what feeds setSceneBounds —
       // near/far clipping + section ranges must still cover the far meshes.
-      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry) : null;
+      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry, { streaming: isStreaming }) : null;
       const robustEarly = rbEarly?.robust ?? null;
       let sceneBoundsFull: Bounds | null = null;
       if (robustEarly) {

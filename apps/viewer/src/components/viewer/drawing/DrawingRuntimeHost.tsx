@@ -33,8 +33,12 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
   useDrawing2DPersistence();
   useDrawingMarkupRestoreOnLoad();
 
-  const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
-  const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
+  // A drawing view is on screen when the panel is docked in the bottom strip,
+  // floating, or popped out (#5493). Opening another bottom panel clears the
+  // dock flag but leaves a floating / popped-out drawing showing.
+  const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible
+    || s.floatingPanels.some((p) => p.id === 'drawing') || s.poppedOutIds.includes('drawing'));
+  const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
   const suppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.suppressNextSection2DPanelAutoOpen);
   const setSuppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.setSuppressNextSection2DPanelAutoOpen);
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
@@ -68,10 +72,10 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
         prevActiveToolRef.current = activeTool;
         return;
       }
-      setDrawingPanelVisible(true);
+      openPanelInHome('drawing');
     }
     prevActiveToolRef.current = activeTool;
-  }, [activeTool, geometryResult, setDrawingPanelVisible, suppressNextSection2DPanelAutoOpen, setSuppressNextSection2DPanelAutoOpen]);
+  }, [activeTool, geometryResult, openPanelInHome, suppressNextSection2DPanelAutoOpen, setSuppressNextSection2DPanelAutoOpen]);
 
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);

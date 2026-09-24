@@ -57,6 +57,7 @@ function applyOverlayTokens(
  */
 function readSourceTokens(dataStore: IfcDataStore | null, expressId: number): string[] | null {
   if (!dataStore?.source) return null;
+  // @raw-entity-enumeration-ok this point lookup locates original STEP token bytes; the card merges positional overlay edits separately.
   const ref: EntityRef | undefined = dataStore.entityIndex.byId.get(expressId);
   if (!ref || ref.byteLength <= 0) return null;
   return extractRawStepTokens(dataStore.source, ref.byteOffset, ref.byteLength);

@@ -167,6 +167,16 @@ export interface PublishDraftInit {
   /** Local ref the published layer appends to. */
   refName: string;
   created?: string;
+  /**
+   * Author kind for the manifest (default `'human'`). A flow-graph publish is
+   * `'hybrid'` (03-provenance.md): the human who ran and published is the
+   * `principal`, the graph is the `tool`/`session`.
+   */
+  authorKind?: 'agent' | 'human' | 'hybrid';
+  /** Authoring tool, e.g. a flow graph's `flow:<graphId>` (03-provenance.md `author.tool`). */
+  authorTool?: string;
+  /** Groups the layers one task produced, e.g. a flow graph's id. */
+  authorSession?: string;
 }
 
 export interface PublishDraftResult {
@@ -198,7 +208,7 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   }
 
   const manifest = createProvenanceManifest({
-    author: { kind: 'human', principal: init.authorPrincipal },
+    author: { kind: init.authorKind ?? 'human', principal: init.authorPrincipal, tool: init.authorTool, session: init.authorSession },
     intent: init.intent,
     base: { kind: 'stack', id: computeStackHash(init.stackFiles.map((f) => f.header.id)) },
     identity_map: identityMap,

@@ -23,7 +23,11 @@ import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
 import { FlowExampleGallery, FlowExamplePicker } from './FlowExamples';
 import { FlowInspector } from './FlowInspector';
 import { FlowPalette } from './FlowPalette';
+import { FlowPlayer } from './FlowPlayer';
+import { FlowPublishButton } from './FlowPublishButton';
 import { useFlowRunner } from './useFlowRunner';
+
+type FlowView = 'editor' | 'player';
 
 const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
@@ -58,6 +62,7 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
   const { run, canRun } = useFlowRunner();
   const fileInput = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [view, setView] = useState<FlowView>('editor');
   const registry = flowRegistry();
 
   const reports = useMemo(() => {
@@ -131,9 +136,16 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
             <button type="button" className={button} disabled={!flowDirty} onClick={saveFlow}>{t('flowPanel.save')}</button>
             <button type="button" className={button} onClick={onDelete}>{t('flowPanel.delete')}</button>
             <span className="text-muted-foreground">{flowDirty ? t('flowPanel.unsaved') : t('flowPanel.saved')}</span>
-            <button type="button" className={`${button} inline-flex items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
-              <Play className="h-3 w-3" aria-hidden="true" />{flowRunning ? t('flowPanel.running') : t('flowPanel.run')}
-            </button>
+            <div className="inline-flex rounded border border-border" role="group" aria-label={t('flowPanel.view.ariaLabel')} data-flow-view-toggle>
+              <button type="button" className={`px-2 py-0.5 ${view === 'editor' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'editor'} onClick={() => setView('editor')}>{t('flowPanel.view.editor')}</button>
+              <button type="button" className={`px-2 py-0.5 ${view === 'player' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'player'} onClick={() => setView('player')}>{t('flowPanel.view.player')}</button>
+            </div>
+            {view === 'editor' && (
+              <button type="button" className={`${button} inline-flex items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
+                <Play className="h-3 w-3" aria-hidden="true" />{flowRunning ? t('flowPanel.running') : t('flowPanel.run')}
+              </button>
+            )}
+            <FlowPublishButton registry={registry} lastRun={lastRun} lastError={lastError} />
           </>
         )}
         {notice && <span className="text-amber-300">{notice}</span>}
@@ -141,16 +153,20 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       {flowDoc ? (
-        <ReactFlowProvider>
-          <div className="flex min-h-0 flex-1">
-            <PaletteWithDrop onAdd={onAddNode} />
-            <div className="relative min-w-0 flex-1">
-              <FlowCanvas doc={flowDoc} registry={registry} reports={reports} selectedNodeId={selectedNodeId} onDocChange={onDocChange} onSelect={setSelected} onConnectError={setNotice} />
-              {flowDoc.nodes.length === 0 && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground">{t('flowPanel.emptyCanvas')}</div>}
+        view === 'editor' ? (
+          <ReactFlowProvider>
+            <div className="flex min-h-0 flex-1">
+              <PaletteWithDrop onAdd={onAddNode} />
+              <div className="relative min-w-0 flex-1">
+                <FlowCanvas doc={flowDoc} registry={registry} reports={reports} selectedNodeId={selectedNodeId} onDocChange={onDocChange} onSelect={setSelected} onConnectError={setNotice} />
+                {flowDoc.nodes.length === 0 && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground">{t('flowPanel.emptyCanvas')}</div>}
+              </div>
+              <FlowInspector doc={flowDoc} registry={registry} nodeId={selectedNodeId} lastRun={lastRun} onDocChange={onDocChange} onSelect={setSelected} />
             </div>
-            <FlowInspector doc={flowDoc} registry={registry} nodeId={selectedNodeId} lastRun={lastRun} onDocChange={onDocChange} onSelect={setSelected} />
-          </div>
-        </ReactFlowProvider>
+          </ReactFlowProvider>
+        ) : (
+          <FlowPlayer doc={flowDoc} registry={registry} lastRun={lastRun} lastError={lastError} />
+        )
       ) : (
         <FlowExampleGallery onOpen={onOpenExample} />
       )}

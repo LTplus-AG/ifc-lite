@@ -51,13 +51,17 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     }
     running.current = true;
     setFlowRunning(true);
+    // Bracket the run so Publish can scope "this run's" pending mutations to
+    // those created inside it (mutation timestamps are set at creation,
+    // inside `runFlowInViewer`'s batch) — and not to later manual edits.
+    const start = Date.now();
     try {
       const result = await runFlowInViewer({
         doc: flowDoc, bim, pin, cache, inputs, tables: viewerTableAccess(useViewerStore),
       });
-      setFlowLastRun(result);
+      setFlowLastRun(result, undefined, { start, end: Date.now(), doc: flowDoc });
     } catch (err) {
-      setFlowLastRun(null, err instanceof Error ? err.message : String(err));
+      setFlowLastRun(null, err instanceof Error ? err.message : String(err), { start, end: Date.now(), doc: flowDoc });
     } finally {
       running.current = false;
     }

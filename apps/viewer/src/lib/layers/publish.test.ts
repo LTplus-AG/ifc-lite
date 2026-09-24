@@ -500,6 +500,48 @@ describe('publishViewerDraft retype + skipped reporting (#1717 geometry pass)', 
   });
 });
 
+describe('publishViewerDraft — graph provenance (#5167 Phase 2)', () => {
+  it('records author kind/tool/session when the caller (Flow Publish) supplies them, defaulting to a human author otherwise', async () => {
+    const store = await BrowserLayerStore.open();
+    const base = makeBase();
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [base],
+      mutations: [mutation({ psetName: 'Pset_FireSafety', propName: 'FireRating', newValue: 'REI90' })],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : undefined),
+      intent: 'Published from flow "Audit rooms" — wrote: graph/rooms',
+      authorPrincipal: 'viewer-user',
+      refName: 'local',
+      authorKind: 'hybrid',
+      authorTool: 'flow:graph-123',
+      authorSession: 'graph-123',
+    });
+    const manifest = getProvenance(store.loadLayer(result.layerId));
+    assert.strictEqual(manifest?.author.kind, 'hybrid');
+    assert.strictEqual(manifest?.author.tool, 'flow:graph-123');
+    assert.strictEqual(manifest?.author.session, 'graph-123');
+    assert.match(manifest?.intent ?? '', /graph\/rooms/);
+  });
+
+  it('the existing Draft-section call path (no overrides) still stamps a human author with no tool/session', async () => {
+    const store = await BrowserLayerStore.open();
+    const base = makeBase();
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [base],
+      mutations: [mutation({ psetName: 'Pset_FireSafety', propName: 'FireRating', newValue: 'REI90' })],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : undefined),
+      intent: 'Manual edit',
+      authorPrincipal: 'louis',
+      refName: 'local',
+    });
+    const manifest = getProvenance(store.loadLayer(result.layerId));
+    assert.strictEqual(manifest?.author.kind, 'human');
+    assert.strictEqual(manifest?.author.tool, undefined);
+    assert.strictEqual(manifest?.author.session, undefined);
+  });
+});
+
 describe('BrowserLayerStore integrity', () => {
   it('refuses a header id that does not match the content address', async () => {
     const store = await BrowserLayerStore.open();

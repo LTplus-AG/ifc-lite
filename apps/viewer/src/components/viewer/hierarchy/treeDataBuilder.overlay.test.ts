@@ -123,12 +123,28 @@ describe('model tree over the edited model (#5249)', () => {
   it('By Type: editing the source type binding replaces its parsed edges (#5249)', async () => {
     const ds = await parse();
     const view = new MutablePropertyView(null, 'legacy');
-    view.setPositionalAttribute(21, 4, [12]);
+    view.setPositionalAttribute(21, 4, [12], true);
     const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-IfcWallType']), false,
       new Set([10, 11, 12]), undefined, () => view);
     const typeRow = nodes.find((node) => node.type === 'ifc-type');
     assert.ok(typeRow);
     assert.deepEqual(typeRow.expressIds, [12], 'old parsed members do not survive the edited RelatedObjects');
+  });
+
+  it('By Type: named STEP-reference edits move source members to an authored type (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setExpressIdWatermark(31);
+    const created = view.createEntity('IfcWallType', ['0Type00000000000000032', null, 'WT-renamed-target']);
+    view.setAttribute(21, 'RelatedObjects', '#12');
+    view.setAttribute(21, 'RelatingType', `#${created.expressId}`);
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-IfcWallType']), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    const typeRows = nodes.filter((node) => node.type === 'ifc-type');
+    assert.deepEqual(typeRows.map((node) => ({ id: node.entityExpressId, ids: node.expressIds }))
+      .sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
+      [{ id: 20, ids: [] }, { id: created.expressId, ids: [12] }],
+      'named reference edits replace both source endpoints');
   });
 
   it('Groups: the deleted member is dropped from its group', async () => {

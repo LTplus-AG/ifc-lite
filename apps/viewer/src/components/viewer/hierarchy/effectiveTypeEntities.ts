@@ -4,7 +4,8 @@
 
 import { edgeSurvives, expandTypeNamesToDescendants, IFC_ENTITY_NAMES, RelationshipType } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import { resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations.js';
 import { effectiveTreeType } from './treeOverlay.js';
 
 export interface EffectiveTypeEntity {
@@ -47,7 +48,7 @@ export function* effectiveTypeEntities(
 
 interface TypeAssignments {
   byType: Map<number, number[]>;
-  rewrittenRelationIds: Set<number>;
+  rewrittenRelationIds: ReadonlySet<number>;
 }
 
 /** Authored and rewritten type bindings, indexed once per tree build. */
@@ -56,43 +57,19 @@ export function effectiveTypeAssignments(
   view: MutablePropertyView | null | undefined,
 ): TypeAssignments {
   const byType = new Map<number, number[]>();
-  const rewrittenRelationIds = new Set<number>();
-  const addRelation = (relation: { expressId: number; type: string; attributes: readonly unknown[] }) => {
-    if (view?.isDeleted(relation.expressId)) return;
-    const record = resolveEffectiveEntityRecord(relation, {
-      retype: view?.getEntityTypeMutation(relation.expressId)?.newType,
-      named: view?.getAttributeMutationsForEntity(relation.expressId)
-        .map(({ name, value }) => [name, value] as const) ?? [],
-      positional: view?.getPositionalMutationsForEntity(relation.expressId) ?? [],
-    }, store.schemaVersion);
-    if (record.type.toUpperCase() !== 'IFCRELDEFINESBYTYPE') return;
-    const related = record.attributes[4];
-    const typeId = record.attributes[5];
-    if (!Array.isArray(related) || typeof typeId !== 'number') return;
-    const bucket = byType.get(typeId) ?? [];
-    for (const id of related) if (typeof id === 'number') bucket.push(id);
-    byType.set(typeId, bucket);
-  };
-
-  for (const relation of view?.getNewEntities() ?? []) addRelation(relation);
-
-  // Only edited source relationships need their source record decoded. The
-  // parsed graph remains the fast path for every unedited relationship.
-  const changedIds = new Set(view?.getEffectiveChanges()
-    .filter((change) => change.kind === 'attribute' || change.kind === 'type')
-    .map((change) => change.entityId) ?? []);
-  for (const id of changedIds) {
-    if (view?.getNewEntity(id)) continue;
-    const positional = view?.getPositionalMutationsForEntity(id);
-    if (!positional?.has(4) && !positional?.has(5) && !view?.getEntityTypeMutation(id)) continue;
-    const relation = store.getEntity(id);
-    if (!relation) continue;
-    if (relation.type.toUpperCase() !== 'IFCRELDEFINESBYTYPE'
-      && effectiveTreeType(view, id, relation.type)?.toUpperCase() !== 'IFCRELDEFINESBYTYPE') continue;
-    rewrittenRelationIds.add(id);
-    addRelation(relation);
+  if (!view) return { byType, rewrittenRelationIds: new Set() };
+  // The shared relationship reader resolves STEP-style named refs (#12),
+  // positional edits and schema-specific slots the same way saved IFC does.
+  const effective = effectiveMutationRelationships(store, view);
+  for (const relation of effective.relationships) {
+    if (relation.relationshipType !== 'IfcRelDefinesByType') continue;
+    for (const typeId of relation.relating) {
+      const bucket = byType.get(typeId) ?? [];
+      bucket.push(...relation.related);
+      byType.set(typeId, bucket);
+    }
   }
-  return { byType, rewrittenRelationIds };
+  return { byType, rewrittenRelationIds: effective.supersededSourceIds };
 }
 
 /** Parsed bindings plus relations authored this session, without dead edges. */

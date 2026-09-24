@@ -7,7 +7,7 @@ import type { StoreApi } from './types.js';
 import { getModelForRef } from './model-compat.js';
 import { bcfWorldOffset } from '../../hooks/bcf/viewpoint-world-frame.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
-import { activeSectionPlane, clearSectionCut, showSectionCut } from '../../store/section-active.js';
+import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, showSectionCut } from '../../store/section-active.js';
 import {
   resolvePresentationColorMap,
   resolvePresentationIds,
@@ -169,7 +169,7 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
         axis: STORE_TO_AXIS[plane.axis] ?? 'y',
         position: plane.position,
         enabled: true,
-        flipped: plane.flipped,
+        flipped: cardinalSectionFlipped(plane),
       };
     },
     /**

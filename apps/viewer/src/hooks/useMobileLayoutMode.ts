@@ -18,7 +18,7 @@ import { useEffect } from 'react';
 import { useViewerStore } from '@/store';
 
 /** Narrow screens, and touch screens up to tablet width, use the mobile layout. */
-export function isMobileViewport(width: number, hasTouchScreen: boolean): boolean {
+function isMobileViewport(width: number, hasTouchScreen: boolean): boolean {
   return width < 768 || (hasTouchScreen && width < 1024);
 }
 

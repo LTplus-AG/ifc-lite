@@ -126,8 +126,12 @@ function scalarAttributeValue(raw: unknown): AttributeValue | undefined {
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     if ('real' in raw && typeof raw.real === 'number') return raw.real;
+    // A typed value is data, not a STEP token (#5249): the writer
+    // (`serializeTypedMarker`) emits it as-is inside its type wrapper, so a
+    // typed label reading `#22` or `.T.` is that text, never a ref or boolean.
     if ('typed' in raw && raw.typed && typeof raw.typed === 'object' && 'value' in raw.typed) {
-      return scalarAttributeValue(raw.typed.value);
+      const value: unknown = raw.typed.value;
+      return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : undefined;
     }
   }
   return undefined;

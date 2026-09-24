@@ -246,6 +246,14 @@ ${FOOTER}`;
     ]);
   });
 
+  it('a created entity\'s typed Name is its text, not a #ref or a boolean token (attribute facet path)', async () => {
+    const a = await withOverlay([], [
+      { expressId: 40, type: 'IfcWall', attributes: ['2Wall00000000000000040', null, { typed: { type: 'IfcLabel', value: '#22' } }, { typed: { type: 'IfcText', value: '.T.' } }] },
+    ]);
+    expect(a.getEntityName(40)).toBe('#22');
+    expect(a.getDescription(40)).toBe('.T.');
+  });
+
   it('an authored typed-label value is unwrapped', async () => {
     const a = await withOverlay([], [
       { expressId: 30, type: 'IfcClassificationReference', attributes: [null, { typed: { type: 'IfcIdentifier', value: 'Pr_20_76' } }, 'Steel', '#22', null, null] },

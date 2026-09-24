@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { sameOverlayValue } from './overlay-value-equality.js';
+import { NewEntityMap } from './new-entity-map.js';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
-  EntityTypeMutation, Mutation, NewEntity } from './types.js';
+  EntityTypeMutation, Mutation } from './types.js';
 
 
 /**
@@ -48,7 +49,7 @@ export class MutableOverlayState {
   protected attributeMutations: Map<string, AttributeMutation> = new Map(); // `${entityId}:attr:${attrName}`
   protected positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
   protected typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
-  protected newEntities: Map<number, NewEntity> = new Map();
+  protected newEntities: NewEntityMap = new NewEntityMap();
   protected tombstones: Set<number> = new Set();
   /**
    * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from

@@ -50,6 +50,14 @@ export interface EffectiveEntityOverlay {
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string }>;
   /** Retype intents by express id. Absent means the overlay carries none. */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
+  /** O(1) created-entity lookup. Absent (a plain-data snapshot): membership is built from `getNewEntities`. */
+  getNewEntity?(expressId: number): { readonly type: string } | null;
+  /**
+   * Created entities authored as one class, in creation order. Lets a
+   * single-class query skip the other created entities, which is what keeps
+   * per-element authoring linear (#5413). Absent: the full list is scanned.
+   */
+  getNewEntitiesOfType?(type: string): Iterable<{ readonly expressId: number; readonly type: string }>;
 }
 
 /** The parser's source index shape, without a parser dependency. */
@@ -89,12 +97,30 @@ export function* iterateEffectiveEntities(
   const byType = source.entityIndex.byType;
   const wanted = types && types.length > 0 ? new Set(types.map((type) => type.toUpperCase())) : null;
   const retypes = overlay?.getTypeMutations?.();
-  const created = overlay?.getNewEntities() ?? [];
-  const createdIds = new Set(created.map((entity) => entity.expressId));
+  // Created-entity membership, O(1) per id when the overlay can answer it;
+  // a snapshot overlay builds the set once, and only if a pass asks.
+  let createdIds: Set<number> | undefined;
+  const isCreated = (expressId: number): boolean => {
+    if (!overlay) return false;
+    if (overlay.getNewEntity) return overlay.getNewEntity(expressId) != null;
+    createdIds ??= new Set(overlay.getNewEntities().map((entity) => entity.expressId));
+    return createdIds.has(expressId);
+  };
+
+  // Snapshot the created entities now, as a copy, so writes made while the
+  // caller iterates are not seen (and cannot extend this walk). One requested
+  // class and no retype touching a created entity: that class's bucket IS the
+  // answer, in the same creation order the full list gives, at O(matches).
+  const only = wanted?.size === 1 ? [...wanted][0] : undefined;
+  const byClass = only !== undefined && overlay?.getNewEntitiesOfType
+    && ![...(retypes?.keys() ?? [])].some(isCreated)
+    ? overlay.getNewEntitiesOfType(only)
+    : undefined;
+  const created = byClass ? Array.from(byClass) : overlay?.getNewEntities() ?? [];
 
   if (sourceIds) {
     for (const expressId of sourceIds) {
-      if (expressId === 0 || createdIds.has(expressId) || overlay?.isDeleted(expressId)) continue;
+      if (expressId === 0 || isCreated(expressId) || overlay?.isDeleted(expressId)) continue;
       // @raw-entity-enumeration-ok the canonical accessor reads source class before applying queued retypes
       const sourceType = (source.entityIndex.byId.get(expressId)
         ?? source.deferredEntityIndex?.get(expressId))?.type
@@ -120,7 +146,7 @@ export function* iterateEffectiveEntities(
   // bucket's parsed list. Only queued retypes need this second pass.
   if (!sourceIds && wanted && retypes) {
     for (const [expressId, mutation] of retypes) {
-      if (expressId === 0 || createdIds.has(expressId) || overlay?.isDeleted(expressId)) continue;
+      if (expressId === 0 || isCreated(expressId) || overlay?.isDeleted(expressId)) continue;
       const type = mutation.newType.toUpperCase();
       if (!wanted.has(type)) continue;
       // @raw-entity-enumeration-ok the canonical accessor checks source bucket membership before adding retypes

@@ -177,9 +177,9 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
             eprintln!("skipping cross-batch parity on {fixture}: fixture missing — run `pnpm fixtures`");
             continue;
         };
-        let basis_slot = std::sync::Arc::new(std::sync::OnceLock::new());
+        let basis_slot = std::sync::OnceLock::new();
         let mut batches: Vec<Vec<MeshData>> = Vec::new();
-        let result = ifc_lite_processing::process_geometry_streaming_filtered_with_options(
+        let result = ifc_lite_processing::process_geometry_streaming_filtered_with_baked_basis(
             &content,
             crate::services::OpeningFilterMode::default(),
             ifc_lite_processing::StreamingOptions {
@@ -187,9 +187,9 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
                 initial_batch_size: 100,
                 throughput_batch_size: 1000,
                 retain_emitted_meshes: false,
-                baked_basis_out: Some(basis_slot.clone()),
                 ..Default::default()
             },
+            &basis_slot,
             |meshes, _, _| {
                 if !meshes.is_empty() {
                     batches.push(meshes.to_vec());

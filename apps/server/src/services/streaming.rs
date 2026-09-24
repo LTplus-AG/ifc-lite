@@ -5,8 +5,9 @@
 //! Streaming geometry processing with Server-Sent Events.
 //!
 //! Thin bridge over the canonical `ifc_lite_processing` pipeline: the
-//! blocking task runs `process_geometry_streaming_filtered_with_options`
-//! (the same code path as `POST /api/v1/parse` and the wasm
+//! blocking task runs `process_geometry_streaming_filtered_with_baked_basis`
+//! (`..._with_options` plus the frame published before the first batch,
+//! #5407; the same code path as `POST /api/v1/parse` and the wasm
 //! `processGeometryBatch` boundary) and forwards its batch callbacks through
 //! a bounded channel as [`StreamEvent`]s (see [`EVENT_BUFFER_EVENTS`]).
 //!
@@ -24,7 +25,7 @@ use crate::types::StreamEvent;
 use async_stream::stream;
 use futures::Stream;
 use ifc_lite_processing::{
-    extract_symbolic_data_with_provenance_in_frame, process_geometry_streaming_filtered_with_options, OpeningFilterMode,
+    extract_symbolic_data_with_provenance_in_frame, process_geometry_streaming_filtered_with_baked_basis, OpeningFilterMode,
     StreamingOptions, TessellationQuality,
 };
 use std::pin::Pin;
@@ -129,9 +130,9 @@ pub fn process_streaming(
         let mut last_type = String::new();
         // Filled by the pipeline once it has chosen the frame, before the
         // first batch (#5407).
-        let baked_basis = std::sync::Arc::new(std::sync::OnceLock::new());
+        let baked_basis = std::sync::OnceLock::new();
 
-        let result = process_geometry_streaming_filtered_with_options(
+        let result = process_geometry_streaming_filtered_with_baked_basis(
             &content,
             opening_filter,
             StreamingOptions {
@@ -142,9 +143,9 @@ pub fn process_streaming(
                 // in the ProcessingResult would double peak memory.
                 retain_emitted_meshes: false,
                 cancel: Some(std::sync::Arc::clone(&cancel_for_task)),
-                baked_basis_out: Some(std::sync::Arc::clone(&baked_basis)),
                 ..StreamingOptions::default()
             },
+            &baked_basis,
             |meshes, processed, total| {
                 if tx.is_closed() {
                     cancel_for_task.store(true, std::sync::atomic::Ordering::Relaxed);

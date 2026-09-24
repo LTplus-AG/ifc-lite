@@ -238,7 +238,7 @@ fn rotated_site_keeps_instancing_metadata() {
 }
 
 /// #5407: a streaming consumer is handed the baked basis BEFORE the first
-/// batch through `StreamingOptions::baked_basis_out`, and it must be the very
+/// batch through `process_geometry_streaming_filtered_with_baked_basis`, and it must be the very
 /// frame the finished result reports. The server's cross-batch Parquet stream
 /// collates each batch in it as it arrives; a basis that disagreed with the
 /// vertices would fail every rotated group's residual check and quietly share
@@ -248,17 +248,17 @@ fn rotated_site_keeps_instancing_metadata() {
 #[test]
 fn the_baked_basis_is_published_before_the_first_batch() {
     let ifc = model(Some(SITE_ROTATION_30DEG));
-    let slot = std::sync::Arc::new(std::sync::OnceLock::new());
+    let slot = std::sync::OnceLock::new();
     let mut seen_at_first_batch = None;
-    let result = process_geometry_streaming_filtered_with_options(
+    let result = ifc_lite_processing::process_geometry_streaming_filtered_with_baked_basis(
         ifc.as_bytes(),
         OpeningFilterMode::Default,
         StreamingOptions {
             initial_batch_size: 1,
             throughput_batch_size: 1,
-            baked_basis_out: Some(slot.clone()),
             ..StreamingOptions::default()
         },
+        &slot,
         |meshes, _, _| {
             if !meshes.is_empty() && seen_at_first_batch.is_none() {
                 seen_at_first_batch = Some(slot.get().copied());

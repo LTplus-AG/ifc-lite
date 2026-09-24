@@ -21,8 +21,10 @@
  * objects are excluded: they are not list-able elements.
  */
 
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { EntityTable } from '@ifc-lite/data';
+import { normalizeIfcTypeName, type IfcDataStore } from '@ifc-lite/parser';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 
 /** One selectable scope class: an IFC type present in the model, with count. */
 export interface ScopeTypeOption {
@@ -123,15 +125,38 @@ export interface ScopeTypeStore {
   entities: Pick<EntityTable, 'getByType' | 'getTypeName' | 'typeEnum'>;
 }
 
+/** A live model paired with its own overlay; plain stores retain source-only use. */
+export interface ScopeTypeStoreWithView {
+  store: IfcDataStore;
+  view?: MutablePropertyView;
+}
+
 /**
  * Enumerate the element classes present across the given stores, with total
  * instance counts, ready to render as scope chips. Sorted by the curated
  * order first, then alphabetically by label for any remaining classes.
  */
-export function collectScopeTypes(stores: ScopeTypeStore[]): ScopeTypeOption[] {
+export function collectScopeTypes(stores: readonly (ScopeTypeStore | ScopeTypeStoreWithView)[]): ScopeTypeOption[] {
   const byEnum = new Map<IfcTypeEnum, { label: string; count: number }>();
+  const add = (type: IfcTypeEnum, name: string, count: number): void => {
+    if (!isScopeTargetType(type, name)) return;
+    const label = SCOPE_TYPE_LABELS[type] ?? name;
+    const entry = byEnum.get(type);
+    if (entry) entry.count += count;
+    else byEnum.set(type, { label, count });
+  };
 
-  for (const store of stores) {
+  for (const input of stores) {
+    const paired = 'store' in input ? input : null;
+    const store = 'store' in input ? input.store : input;
+    if (paired?.view) {
+      // Restrict source rows to the table domain (including IFCX stores whose
+      // source type index is empty), then append overlay creations once.
+      for (const row of iterateEffectiveEntityIds(paired.store, paired.view, undefined, paired.store.entities.expressId)) {
+        add(IfcTypeEnumFromString(row.type), normalizeIfcTypeName(row.type), 1);
+      }
+      continue;
+    }
     // Enumerate present classes from the EntityTable's typeEnum column: it is
     // populated on every store shape, whereas entityIndex.byType stays
     // permanently empty for IFCX-ingested stores (and typeRanges is deprecated
@@ -143,14 +168,11 @@ export function collectScopeTypes(stores: ScopeTypeStore[]): ScopeTypeOption[] {
     for (let i = 0; i < column.length; i++) present.add(column[i] as IfcTypeEnum);
     for (const type of present) {
       if (type === IfcTypeEnum.Unknown) continue;
+      // @raw-entity-enumeration-ok plain store has no mutation view; the parsed type bucket is its effective membership
       const ids = store.entities.getByType(type);
       if (ids.length === 0) continue;
       const name = store.entities.getTypeName(ids[0]);
-      if (!isScopeTargetType(type, name)) continue;
-      const label = SCOPE_TYPE_LABELS[type] ?? name;
-      const entry = byEnum.get(type);
-      if (entry) entry.count += ids.length;
-      else byEnum.set(type, { label, count: ids.length });
+      add(type, name, ids.length);
     }
   }
 

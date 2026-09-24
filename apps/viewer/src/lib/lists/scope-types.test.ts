@@ -12,6 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { EntityTableBuilder, StringTable, IfcTypeEnum, type EntityTable } from '@ifc-lite/data';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectScopeTypes, isScopeTargetType, type ScopeTypeStore } from './scope-types.js';
 
 /** [expressId, STEP type name, hasGeometry, isType] */
@@ -26,6 +28,33 @@ function makeStore(rows: Row[]): ScopeTypeStore {
   }
   const entities: EntityTable = builder.build();
   return { entities };
+}
+
+async function parsedStore() {
+  const text = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'Tower',$,$,$,$,$,$);
+#20=IFCCARTESIANPOINT((0.,0.,0.));
+#21=IFCDIRECTION((0.,0.,1.));
+#22=IFCDIRECTION((1.,0.,0.));
+#23=IFCAXIS2PLACEMENT3D(#20,#21,#22);
+#24=IFCLOCALPLACEMENT($,#23);
+#25=IFCRECTANGLEPROFILEDEF(.AREA.,$,#23,1.,1.);
+#26=IFCEXTRUDEDAREASOLID(#25,#23,#21,1.);
+#27=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#26));
+#28=IFCPRODUCTDEFINITIONSHAPE($,$,(#27));
+#41=IFCWALL('0Wall00000000000000041',$,'Wall A',$,$,#24,#28,$,$);
+#42=IFCWALL('0Wall00000000000000042',$,'Wall B',$,$,#24,#28,$,$);
+#44=IFCDOOR('0Door00000000000000044',$,'Door A',$,$,#24,#28,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+  const bytes = new TextEncoder().encode(text);
+  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
 describe('collectScopeTypes (#1662)', () => {
@@ -91,6 +120,26 @@ describe('collectScopeTypes (#1662)', () => {
     const offered = collectScopeTypes([a, b]);
     const wall = offered.find((o) => o.type === IfcTypeEnum.IfcWall);
     assert.strictEqual(wall?.count, 3);
+  });
+
+  it('uses each model’s live entity set for chips and counts (#5249)', async () => {
+    const a = await parsedStore();
+    const b = await parsedStore();
+    const view = new MutablePropertyView(a.properties, 'a');
+    view.setExpressIdWatermark(100);
+    view.deleteEntity(42);
+    view.setEntityType(44, 'IfcWall');
+    view.createEntity('IfcWall', ['0NewWall000000000000041', '$', 'Added wall', '$', '$', '#24', '#28', '$', '$']);
+    view.createEntity('IfcDuctSegment', ['0NewDuct000000000000041', '$', 'Added duct', '$', '$', '#24', '#28', '$', '$']);
+    const removed = view.createEntity('IfcPipeSegment', ['0NewPipe000000000000041', '$', 'Removed pipe', '$', '$', '#24', '#28', '$', '$']);
+    view.deleteEntity(removed.expressId);
+
+    const offered = collectScopeTypes([{ store: a, view }, { store: b }]);
+    const count = (type: IfcTypeEnum) => offered.find((option) => option.type === type)?.count;
+    assert.strictEqual(count(IfcTypeEnum.IfcWall), 5, 'A: deleted wall, retyped door, new wall; B: two untouched walls');
+    assert.strictEqual(count(IfcTypeEnum.IfcDoor), 1, 'the untouched second model keeps its door');
+    assert.strictEqual(count(IfcTypeEnum.IfcDuctSegment), 1, 'an overlay-only class gets a chip');
+    assert.strictEqual(count(IfcTypeEnum.IfcPipeSegment), undefined, 'created then deleted is absent');
   });
 
   it('offers chips for IFCX-shaped stores whose entityIndex.byType is permanently empty (#1667 regression)', () => {

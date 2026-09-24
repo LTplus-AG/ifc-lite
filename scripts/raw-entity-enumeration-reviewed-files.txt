@@ -48,6 +48,7 @@ packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
 packages/query/src/duckdb-integration.ts
 packages/query/src/entity-query.ts
+packages/rules/src/engine/rule-engine.ts
 packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts
 apps/viewer/src/components/viewer/add-element-storeys.ts

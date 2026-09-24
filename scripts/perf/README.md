@@ -2049,7 +2049,7 @@ later transient uploads before normal finalization; it improved both pairs but
 missed the predeclared investment gate for a larger renderer redesign. That
 diagnostic deliberately reduces progressive display and must not ship.
 
-Both patches remain unapplied in the [complete screen evidence](evidence/viewer-ancestor-screen-5555/README.md).
+Both patches remain unapplied in the [complete screen evidence](../../docs/architecture/evidence/viewer-ancestor-screen-5555/README.md).
 The experiment reused identical frozen WASM with current JavaScript, so it is
 an investment screen, not source-matched shipping qualification. All attempts
 and provenance are retained. Lesson: a large inclusive React sample bucket does

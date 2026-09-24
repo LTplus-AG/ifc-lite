@@ -27,5 +27,5 @@ browser processes stopped. The WSL resource window restored its saved affinities
 `restoration.json` records the live-thread audit.
 
 For reproduction use the source base and archived patch with the production
-build and strict browser witness described in [the previous qualification](../physical-summary-5477/README.md). Keep the two variants separate and retain
+build and strict browser witness described in the previous qualification under `scripts/perf/evidence/physical-summary-5477/README.md`. Keep the two variants separate and retain
 the instrumentation and WASM provenance caveat above.

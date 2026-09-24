@@ -79,6 +79,10 @@ export class StubStoreEditor {
 export class StubView {
   private positional = new Map<number, Map<number, unknown>>();
 
+  isDeleted(_id: number): boolean { return false; }
+  getNewEntities(): OverlayEntity[] { return []; }
+  getTypeMutations(): Map<number, { newType: string }> { return new Map(); }
+
   getPositionalMutationsForEntity(id: number): Map<number, unknown> | null {
     return this.positional.get(id) ?? null;
   }

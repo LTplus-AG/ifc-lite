@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { reassignWallOpenings } from './wall-opening-reassign.js';
 
 import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
@@ -126,6 +127,32 @@ function makeStore(byType: Map<string, number[]>) {
 }
 
 describe('reassignWallOpenings', () => {
+  it('reassigns a newly created void relation while ignoring deleted and retyped ones (#5249)', () => {
+    const fx = makeFixture();
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(251);
+    view.deleteEntity(fx.ids.rel1);
+    view.setEntityType(fx.ids.rel2, 'IfcRelFillsElement', null, 'IfcRelVoidsElement');
+    const created = view.createEntity('IfcRelVoidsElement', ['new', null, null, null, 100, 201]);
+    const editor = new StubStoreEditor([
+      ...fx.entities,
+      { expressId: created.expressId, type: created.type, attributes: created.attributes },
+    ]);
+    const store = makeStore(new Map([['IFCRELVOIDSELEMENT', [fx.ids.rel1, fx.ids.rel2]]]));
+
+    const summary = reassignWallOpenings(
+      store, view, editor as unknown as Parameters<typeof reassignWallOpenings>[2],
+      fx.ids.sourceWall, fx.ids.leftWall, fx.ids.rightWall, 2.5,
+      fx.ids.leftPlacement, fx.ids.rightPlacement,
+    );
+
+    assert.strictEqual(summary.toLeft, 1);
+    assert.strictEqual(summary.toRight, 0);
+    assert.strictEqual(summary.skipped, 0);
+    assert.strictEqual(editor.getNewEntity(created.expressId)?.attributes[4], fx.ids.leftWall);
+    assert.strictEqual(editor.getNewEntity(fx.ids.rel1)?.attributes[4], fx.ids.sourceWall);
+    assert.strictEqual(editor.getNewEntity(fx.ids.rel2)?.attributes[4], fx.ids.sourceWall);
+  });
   it('moves a sub-distance opening to the left half without offset', () => {
     const fx = makeFixture();
     // Only opening 1 (X=1) — drop opening 2 from the fixture so we

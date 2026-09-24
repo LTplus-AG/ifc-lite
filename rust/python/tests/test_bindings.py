@@ -207,6 +207,74 @@ def test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources():
     assert all(entry["report"]["skipped_reason"] is None for entry in entries)
 
 
+def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
+    source = read(REBAR).decode()
+    source = source.replace(
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.NOTDEFINED.,$);",
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,'TAG-1','B500B',29.,0.,900.,.MAIN.,$);",
+    )
+    schedule = ifclite_geom.rebar_schedule(source.encode())
+    assert schedule["bar_entity_count"] == 1
+    assert schedule["represented_sweep_count"] == 1
+    assert schedule["length_unit_scale"] == pytest.approx(0.001)
+    row = schedule["rows"][125]
+    assert row["authored"]["Tag"]["value"] == {"kind": "text", "value": "TAG-1"}
+    assert row["authored"]["BarLength"]["value"] == {
+        "kind": "measure", "value_file_units": 900.0,
+        "value_si": pytest.approx(0.9), "si_unit": "m",
+    }
+    assert row["authored"]["BarLength"]["source"] == "occurrence"
+    assert row["authored"]["NominalDiameter"]["value"]["value_si"] == pytest.approx(0.029)
+    (sweep,) = row["sweeps"]
+    assert sweep["radius_m"] == pytest.approx(0.0145)
+    assert sweep["directrix_metrics"]["total_length"] != pytest.approx(0.9)
+    assert sweep["checks"]["findings"] == []
+    assert row["geometry_unavailable_reason"] is None
+    assert ifclite_geom.rebar_schedule(source.encode(), ids=set())["rows"] == {}
+
+
+def test_issue_5759_rebar_schedule_type_fallback_conflict_and_missing_geometry():
+    source = read(REBAR).decode().replace("FILE_SCHEMA(('IFC2X3'))", "FILE_SCHEMA(('IFC4'))")
+    source = source.replace(
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.NOTDEFINED.,$);",
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.MAIN.,$);",
+    )
+    source = source.replace(
+        "ENDSEC;\nEND-ISO-10303-21;",
+        "#9000=IFCREINFORCINGBARTYPE('type',$,'Type',$,$,$,$,$,$,.SHEAR.,32.,$,800.,$,'S1',$);\n"
+        "#9001=IFCRELDEFINESBYTYPE('rel',$,$,$,(#125),#9000);\n"
+        "ENDSEC;\nEND-ISO-10303-21;",
+    )
+    schedule = ifclite_geom.rebar_schedule(source.encode())
+    row = schedule["rows"][125]
+    assert row["type_id"] == 9000
+    assert row["authored"]["NominalDiameter"]["source"] == "occurrence"
+    assert row["authored"]["NominalDiameter"]["value"]["value_file_units"] == 29
+    assert row["authored"]["BarLength"]["source"] == "type"
+    assert row["authored"]["BarLength"]["value"]["value_si"] == pytest.approx(0.8)
+    assert row["authored"]["BendingShapeCode"]["value"]["value"] == "S1"
+    assert any("NominalDiameter differs" in message for message in row["diagnostics"])
+    assert any("PredefinedType differs" in message for message in row["diagnostics"])
+
+    absent = source.replace("#33,#124,$,$,29.", "#33,$,$,$,29.")
+    empty_row = ifclite_geom.rebar_schedule(absent.encode())["rows"][125]
+    assert empty_row["sweeps"] == []
+    assert empty_row["geometry_unavailable_reason"]
+
+
+def test_issue_5759_rebar_schedule_retains_unsupported_source_reason():
+    source = read(TRIMMED_BAR).decode().replace(
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#10,$,$,2.,1.);",
+    )
+    row = ifclite_geom.rebar_schedule(source.encode())["rows"][50]
+    assert row["geometry_unavailable_reason"] is None
+    (sweep,) = row["sweeps"]
+    assert sweep["status"]["type"] == "unsupported"
+    assert sweep["directrix_metrics"] is None
+    assert sweep["checks"]["skipped_reason"]
+
+
 def test_issue_5758_invalid_check_options_raise_even_when_no_ids_selected():
     for options in (
         {"zero_length_tolerance_m": float("nan")},

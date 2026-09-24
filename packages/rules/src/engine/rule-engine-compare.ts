@@ -14,7 +14,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CheckKind, EntityResult, FailureReasonCode } from '@ifc-lite/ids';
 import { numericOpMatches } from '../filter/filter-ops.js';
 import type { FilteredElement } from '../filter/filter-evaluate.js';
-import { readSubject } from '../filter/read-subject.js';
+import { readSubjectWhole } from '../filter/read-subject.js';
 import type { CompareRequirement } from '../rule-set/rule-set.js';
 import { OP_LABEL, type ValidationOpts } from './rule-engine-requirements.js';
 import { baseRow, describeSubject } from './rule-engine-sets.js';
@@ -43,8 +43,8 @@ export async function checkCompare(
     const store = storesById.get(el.modelId);
     if (!store) { await maybeYieldChunk(i + 1, applicable.length, ruleIndex, signal, onProgress); continue; }
     const ctx = { store, expressId: el.expressId };
-    const left = readSubject(requirement.left, ctx);
-    const right = readSubject(requirement.right, ctx);
+    const left = readSubjectWhole(requirement.left, ctx);
+    const right = readSubjectWhole(requirement.right, ctx);
     let passed = false;
     let reason: FailureReasonCode | undefined;
     let actual: string;

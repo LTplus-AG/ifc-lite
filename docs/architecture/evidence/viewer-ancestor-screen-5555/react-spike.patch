@@ -1,0 +1,150 @@
+diff --git a/apps/viewer/src/components/viewer/ViewerLayout.tsx b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+index b7f6d9d90..1903e2ab6 100644
+--- a/apps/viewer/src/components/viewer/ViewerLayout.tsx
++++ b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+@@ -24,7 +24,7 @@ import { isSafeMode } from '@/lib/safe-mode';
+ import { capturePointer } from '@/lib/pointer-capture';
+ import { ShieldAlert } from 'lucide-react';
+ import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
+-import { useIfc } from '@/hooks/useIfc';
++import { useIfcActions } from '@/hooks/useIfcActions';
+ import { useViewerStore } from '@/store';
+ import { isCollabEnabled } from '@/lib/collab/config';
+ import { toast } from '@/components/ui/toast';
+@@ -85,7 +85,7 @@ export function ViewerLayout() {
+   // cross-origin URL is a drive-by model-injection vector. We resolve the param
+   // against the current document and require its origin to match
+   // window.location.origin; a cross-origin URL is refused, never fetched.
+-  const { addModel: autoloadAddModel } = useIfc();
++  const { addModel: autoloadAddModel } = useIfcActions();
+   const autoloadDoneRef = useRef(false);
+   useEffect(() => {
+     if (autoloadDoneRef.current) return;
+@@ -262,8 +262,9 @@ export function ViewerLayout() {
+   const bottomViewportInset = useVisualViewportBottomInset();
+ 
+   // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
+-  const { models, geometryResult } = useIfc();
+-  const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
++  const hasModelsLoaded = useViewerStore((s) =>
++    s.models.size > 0 || ((s.geometryResult?.meshes?.length ?? 0) > 0)
++  );
+ 
+   // Detect mobile viewport — use both width check AND touch capability
+   useEffect(() => {
+diff --git a/apps/viewer/src/components/viewer/ViewportContainer.tsx b/apps/viewer/src/components/viewer/ViewportContainer.tsx
+index 2e0ef68dc..8befc2722 100644
+--- a/apps/viewer/src/components/viewer/ViewportContainer.tsx
++++ b/apps/viewer/src/components/viewer/ViewportContainer.tsx
+@@ -5,7 +5,8 @@
+ import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+ import { useFederatedGeometry } from './useFederatedGeometry';
+ import { modelIndices } from '@/lib/model-placement/model-indices';
+-import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
++import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
++import { useShallow } from 'zustand/react/shallow';
+ import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
+ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
+ import { Viewport } from './Viewport';
+@@ -41,7 +42,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
+ import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
+ import { isTypeVisible } from '@/store/typeVisibilityFilter';
+ import type { AggregationRelationships } from '@/utils/aggregation';
+-import { useIfc } from '@/hooks/useIfc';
++import { useIfcActions } from '@/hooks/useIfcActions';
+ import { useWebGPU } from '@/hooks/useWebGPU';
+ import type { RecentFileEntry } from '@/lib/recent-files';
+ import {
+@@ -74,7 +75,9 @@ export function ViewportContainer() {
+   // Mount-once hook — it self-gates on mode + gap + model changes.
+   useLevelDisplayEffect();
+ 
+-  const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
++  const { loadFile, loadFilesSequentially, addModel } = useIfcActions();
++  const loading = useViewerStore((s) => s.loading);
++  const clearAllModels = useViewerStore((s) => s.clearAllModels);
+   // Resolves a source provider's display title for toasts; null outside the
+   // SourceHostProvider tree (tests), in which case the machine name is shown.
+   const sourceHost = useOptionalSourceHost();
+@@ -110,18 +113,17 @@ export function ViewportContainer() {
+   const { t } = useTranslation();
+ 
+   const viewerStoreApi = getViewerStoreApi();
+-  const viewportStoreState = useSyncExternalStore(
+-    viewerStoreApi.subscribe,
+-    viewerStoreApi.getState,
+-    viewerStoreApi.getState,
+-  );
+-
+   const {
+     geometryResult,
+     ifcDataStore,
+     models,
+     geometryContentVersion,
+-  } = viewportStoreState;
++  } = useViewerStore(useShallow((s) => ({
++    geometryResult: s.geometryResult,
++    ifcDataStore: s.ifcDataStore,
++    models: s.models,
++    geometryContentVersion: s.geometryContentVersion,
++  })));
+   const storeModels = models;
+ 
+   // Multi-model: create mapping from modelId to modelIndex (stable order)
+diff --git a/apps/viewer/src/hooks/useIfc.ts b/apps/viewer/src/hooks/useIfc.ts
+index f3ac873f0..061b5fba4 100644
+--- a/apps/viewer/src/hooks/useIfc.ts
++++ b/apps/viewer/src/hooks/useIfc.ts
+@@ -18,9 +18,7 @@ import { useViewerStore } from '@/store';
+ import { IfcQuery } from '@ifc-lite/query';
+ import type { IfcDataStore } from '@ifc-lite/parser';
+ 
+-// Sub-hooks
+-import { useIfcLoader } from './useIfcLoader.js';
+-import { useIfcFederation } from './useIfcFederation.js';
++import { useIfcActions } from './useIfcActions.js';
+ 
+ export function useIfc() {
+   const {
+@@ -68,11 +66,9 @@ export function useIfc() {
+   // Track if we've already logged for this ifcDataStore
+   const lastLoggedDataStoreRef = useRef<typeof ifcDataStore>(null);
+ 
+-  // File loading (single-model path)
+-  const { loadFile } = useIfcLoader();
+-
+-  // Multi-model federation
++  // Keep the same per-caller loader and federation sessions as the legacy hook.
+   const {
++    loadFile,
+     addModel,
+     removeModel,
+     getQueryForModel,
+@@ -82,7 +78,7 @@ export function useIfc() {
+     findModelForEntity,
+     resolveGlobalId,
+     realignFederation,
+-  } = useIfcFederation(loadFile);
++  } = useIfcActions();
+ 
+   // Memoize query to prevent recreation on every render
+   // For single-model backward compatibility
+diff --git a/apps/viewer/src/hooks/useIfcActions.ts b/apps/viewer/src/hooks/useIfcActions.ts
+new file mode 100644
+index 000000000..c87bfd9f7
+--- /dev/null
++++ b/apps/viewer/src/hooks/useIfcActions.ts
+@@ -0,0 +1,13 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { useIfcLoader } from './useIfcLoader.js';
++import { useIfcFederation } from './useIfcFederation.js';
++
++/** Loading actions without subscribing the caller to the full viewer model state. */
++export function useIfcActions() {
++  const { loadFile } = useIfcLoader();
++  const federation = useIfcFederation(loadFile);
++  return { loadFile, ...federation };
++}

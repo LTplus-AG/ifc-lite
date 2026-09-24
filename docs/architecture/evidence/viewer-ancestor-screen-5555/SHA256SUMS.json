@@ -1,0 +1,11 @@
+{
+  "README.md": "8c8524eb157b471a0666f893a31aaf7d3fbb0fef9da4ccce3dcc359c79c87241",
+  "isolation-window.txt": "d8ad23f883165f6938f4f492743e253b410d0f3c4f391d5db507e79d083fc791",
+  "profile-summary.txt": "08023bff67a67fe35fa92deb3d548e30eb6b2be1868333ccd131b4afd620aca4",
+  "protocol.json": "c29cfc4f9fb8a6af3e6d584316221502b2a36e37efacd01b724282e0886a0d66",
+  "react-spike.patch": "8b42fc302545b4bda96cb40bdc3d2b44758503ed6805b2ef72c5da962feaba28",
+  "renderer-ablation.patch": "0da80bda238b26b1af56af7744634e668cb89ce29fb5a2f33d0abcc0dd081748",
+  "restoration.json": "53c9b30bae810467c0af0aa999256a510da2e2cc7369fe907a0b7d7fda16f19f",
+  "results.json": "8233bc6cefe404e0e20d4f8bfc85f03671d14c96a23f68559df3937b2dfdea5d",
+  "variant-manifests.json": "9f5fd57916118c2de4b6dbd72a8bd76673c225504630b1ca99403ff9a79c22b2"
+}

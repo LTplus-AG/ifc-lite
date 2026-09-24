@@ -26,7 +26,7 @@ async function fixture() {
   const exporter = new ParquetExporter(store, undefined, view);
   const rows = async () => tableFromIPC(readParquet(await exporter.exportTable('relationships')).intoIPCStream())
     .toArray().map(row => row.toJSON());
-  return { view, rows };
+  return { view, rows, exporter };
 }
 
 describe('Parquet effective relationship rows (#5249)', () => {
@@ -66,5 +66,23 @@ describe('Parquet effective relationship rows (#5249)', () => {
     expect(await rows()).toEqual([{
       SourceId: 2, TargetId: 3, RelType: 'IfcRelNests', RelId: 5,
     }]);
+  });
+
+  it('reports the distinct exported relationship records in Metadata.json', async () => {
+    const { view, exporter } = await fixture();
+    const created = view.createEntity('IfcRelAggregates', [
+      '0000000000000000000006', null, null, null, '#2', ['#3', '#4'],
+    ]);
+    const JSZip = (await import('jszip')).default;
+    const archive = await JSZip.loadAsync(await exporter.exportBOS({ includeGeometry: false }));
+    const relationEntry = archive.file('Relationships.parquet');
+    const metadataEntry = archive.file('Metadata.json');
+    if (!relationEntry || !metadataEntry) throw new Error('BOS archive is missing relationship or metadata entry');
+    const relations = tableFromIPC(readParquet(await relationEntry.async('uint8array')).intoIPCStream())
+      .toArray().map(row => row.toJSON());
+    const metadata = JSON.parse(await metadataEntry.async('string')) as { statistics: { relationshipCount: number } };
+
+    expect(relations.map(row => row.RelId)).toEqual([5, created.expressId, created.expressId]);
+    expect(metadata.statistics.relationshipCount).toBe(2);
   });
 });

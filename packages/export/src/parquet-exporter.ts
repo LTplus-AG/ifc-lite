@@ -73,7 +73,8 @@ export class ParquetExporter {
         files.set('Entities.parquet', await this.writeEntities());
         files.set('Properties.parquet', await this.writeProperties());
         files.set('Quantities.parquet', await this.writeQuantities());
-        files.set('Relationships.parquet', await this.writeRelationships());
+        const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, this.getEffective());
+        files.set('Relationships.parquet', await this.toParquet(relationshipRows));
         files.set('Strings.parquet', await this.writeStrings());
 
         // Geometry files (if available)
@@ -89,7 +90,7 @@ export class ParquetExporter {
         }
 
         // Metadata
-        files.set('Metadata.json', this.writeMetadata());
+        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size));
 
         return this.createZipArchive(files);
     }
@@ -474,7 +475,7 @@ export class ParquetExporter {
         });
     }
 
-    private writeMetadata(): Uint8Array {
+    private writeMetadata(relationshipCount: number): Uint8Array {
         const metadata = {
             version: '2.0.0',
             generator: 'IFC-Lite',
@@ -492,7 +493,7 @@ export class ParquetExporter {
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
                 propertyCount: this.store.properties.count,
-                relationshipCount: new Set([...this.store.relationships.forward.edgeRelIds, ...(this.store.relationships.forward.shadowedRelIds ?? [])]).size, // distinct IfcRel* records, not raw edges (#3760/#4205)
+                relationshipCount, // distinct exported IfcRel records, not raw edges (#3760/#4205)
             },
         };
 

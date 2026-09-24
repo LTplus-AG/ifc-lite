@@ -114,7 +114,7 @@ const entities = await exporter.exportTable('entities');
 
 Editing via `@ifc-lite/mutations`? Pass the `MutablePropertyView` as the third constructor
 argument to drop overlay-deleted entities (and every row that references one) from
-`Entities`, `Properties`, `Quantities` and `Relationships`:
+the Parquet tables and include overlay-created entities in `Entities.parquet`:
 
 ```typescript
 import { ParquetExporter } from '@ifc-lite/export';
@@ -122,10 +122,10 @@ import { ParquetExporter } from '@ifc-lite/export';
 const exporter = new ParquetExporter(store, geometryResult, mutationView);
 ```
 
-Property/quantity/attribute *edits* aren't reflected yet — the table writers
-column-copy straight out of the store rather than looping per entity, so
-there is nowhere for those to apply. `StepExporter`/`Ifc5Exporter` cover the
-full edit surface today.
+Created relationship/property/quantity/geometry rows and edits to parsed
+property/quantity/attribute values aren't reflected yet. Those table writers
+still column-copy the parsed store. `StepExporter`/`Ifc5Exporter` cover the full
+edit surface today.
 
 ## IFC5 IFCX — JSON + USD geometry
 

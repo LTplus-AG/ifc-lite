@@ -13,6 +13,7 @@ import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
 import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
 import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
+import { appendCreatedParquetEntityRows } from './parquet-created-entity-rows.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -32,18 +33,11 @@ export class ParquetExporter {
      * (README example, `tests/integration.test.ts`) keep working unchanged and
      * keep exporting the source model as parsed.
      *
-     * When supplied, entities the overlay tombstoned via
-     * `MutablePropertyView.deleteEntity()` — and every row that references
-     * one — are dropped from `Entities`, `Properties`, `Quantities`,
-     * `Relationships`, `SpatialHierarchy` and the geometry tables
-     * (`VertexBuffer`, `IndexBuffer`, `Meshes`) (#2046; geometry tables
-     * joined the set after they were found still emitting a deleted
-     * entity's mesh into an otherwise-filtered archive). Unlike
-     * `StepExporter`/`Ifc5Exporter`, this is deletion-only: unlike those
-     * two, the writers below column-copy typed arrays out of the store in
-     * one shot rather than looping per entity, so they cannot also apply
-     * the overlay's pset/quantity/attribute edits the way a per-entity
-     * emission pass can. That is a known, separate gap.
+     * When supplied, tombstoned entities and rows that reference them are
+     * dropped from every table (#2046), and overlay-created entities are
+     * appended to `Entities.parquet`. The other tables still column-copy
+     * parsed data, so authored relationship/property/quantity/geometry rows
+     * and edits to parsed attribute values remain separate gaps.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -125,12 +119,7 @@ export class ParquetExporter {
         const effective = this.getEffective();
 
         const expressId = Array.from(entities.expressId);
-        // Row i's identity IS expressId[i] (columnar layout, one row per
-        // parsed entity) — the same predicate every other column below is
-        // filtered by.
-        const keep = effective ? expressId.map((id) => !effective.isDeleted(id)) : null;
-
-        return this.toParquet(filterColumns({
+        const columns = {
             ExpressId: expressId,
             GlobalId: mapTypedArray(entities.globalId, i => strings.get(i)),
             Name: mapTypedArray(entities.name, i => strings.get(i)),
@@ -169,7 +158,12 @@ export class ParquetExporter {
             ContainedInStorey: Array.from(entities.containedInStorey),
             DefinedByType: Array.from(entities.definedByType),
             GeometryIndex: Array.from(entities.geometryIndex),
-        }, keep));
+        };
+        appendCreatedParquetEntityRows(columns, this.store, this.mutationView, effective);
+        // Source rows retain their columnar order; live creations follow in
+        // allocation order. Tombstones are filtered from both domains.
+        const keep = effective ? columns.ExpressId.map((id) => !effective.isDeleted(id)) : null;
+        return this.toParquet(filterColumns(columns, keep));
     }
 
     private async writeProperties(): Promise<Uint8Array> {

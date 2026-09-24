@@ -213,6 +213,12 @@ const quantsParquet = await exporter.exportTable('quantities');
 await saveFile('quantities.parquet', quantsParquet);
 ```
 
+Pass a `MutablePropertyView` as the third constructor argument to exclude
+deleted entities and include newly created ones in `Entities.parquet`. Created
+relationship, property, quantity, and geometry rows are not yet written to
+their respective Parquet tables; use STEP or IFC5 export for the full live edit
+surface.
+
 ### Parquet Schema
 
 Column names are PascalCase (ara3d BIM Open Schema style); entity types are

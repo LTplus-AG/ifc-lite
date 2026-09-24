@@ -6,9 +6,9 @@
  * The comparison under a two-way count ratchet: a measured `{ key: count }`
  * map against a committed baseline of the same shape. Shared by
  * `scripts/check-jsx-a11y.mjs` (key = source file, count = jsx-a11y
- * warnings) and the axe scan in `tests/e2e/viewer-smoke.e2e.spec.ts`
- * (key = axe rule id, count = violating nodes), so both gates agree on what
- * "went up" and "went down" mean (#5607).
+ * warnings) and the axe scan in `tests/e2e/axe-baseline.ts` (key = axe
+ * rule id, count = 1 while the rule is violated), so both gates agree on
+ * what "went up" and "went down" mean (#5607).
  *
  * Two-way, the same rule `check-i18n-literals.mjs` and
  * `check-unused-locals.mjs` apply: a count ABOVE its row is a regression,

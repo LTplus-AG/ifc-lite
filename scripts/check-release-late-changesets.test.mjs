@@ -160,6 +160,40 @@ test('files @changesets/read ignores are not pending changesets', (t) => {
   assert.equal(lateChangesets(repo).verdict, 'clean');
 });
 
+test('a Version Packages commit and a later changeset in ONE push fail against the push base', (t) => {
+  // The merge queue lands up to five entries in one push and Release runs
+  // once, on the tip. Here the Version Packages entry is clean on its own
+  // (HEAD~1), and the entry behind it adds a changeset (HEAD). Against HEAD~1
+  // the tip looks ordinary; against the push base it is a release that
+  // publishes nothing.
+  const repo = makeRepo(t, MAIN_WITH_LATE_CHANGESET, {
+    'packages/geometry/package.json': '7.5.1',
+    '.changeset/cozy-seals-knock.md': null,
+  });
+  apply(repo, { '.changeset/behind-in-queue.md': '---\n"@ifc-lite/parser": patch\n---\n\nfix\n' });
+  git(repo, ['add', '-A']);
+  git(repo, ['commit', '-qm', 'ordinary PR queued behind the version PR']);
+
+  assert.equal(lateChangesets(repo).verdict, 'clean', 'HEAD~1 alone cannot see the batch');
+  const result = lateChangesets(repo, { previousRev: 'HEAD~2' });
+  assert.equal(result.verdict, 'late-changesets');
+  assert.deepEqual(result.pending, ['behind-in-queue.md']);
+
+  assert.equal(cli(repo).status, 0);
+  const run = cli(repo, ['--base', 'HEAD~2', '--context', 'push']);
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /Since HEAD~2, 1 workspace version\(s\) moved/);
+  assert.match(run.stderr, /merge the refreshed PR on its own/);
+});
+
+test('an unreadable --base refuses (exit 2)', (t) => {
+  const repo = makeRepo(t, MAIN_WITH_LATE_CHANGESET, {});
+  const run = cli(repo, ['--base', '0123456789abcdef0123456789abcdef01234567']);
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /is not readable/);
+  assert.equal(cli(repo, ['--base']).status, 2, 'a --base without a value is a usage error');
+});
+
 test('an unreadable parent refuses (exit 2) rather than reading as clean', (t) => {
   // A depth-1 checkout: nothing to compare against. "Cannot tell" must not
   // pass, or a shallow checkout would switch the gate off silently.
@@ -167,7 +201,7 @@ test('an unreadable parent refuses (exit 2) rather than reading as clean', (t) =
   assert.equal(lateChangesets(repo).verdict, 'unknown');
   const run = cli(repo);
   assert.equal(run.status, 2);
-  assert.match(run.stderr, /HEAD~1 is not readable/);
+  assert.match(run.stderr, /base revision HEAD~1 is not readable/);
 });
 
 test('a tree that cannot be read refuses (exit 2)', (t) => {

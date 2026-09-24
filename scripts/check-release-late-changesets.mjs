@@ -16,12 +16,19 @@
  * 9e5994c7f, which bumped 20 manifests with `cozy-seals-knock.md` (added two
  * minutes earlier by 77ace0aa6) still in its tree.
  *
+ * The same hole opens without a stale PR: the merge queue lands up to five
+ * entries in ONE push and Release runs once, on its tip, so a Version
+ * Packages entry followed by an entry that adds a changeset publishes nothing
+ * either. Hence `--base`: the comparison spans everything one push can carry.
+ *
  * Two callers, one verdict:
  *
  *   - `.github/workflows/test.yml`, `changes` job (feeds the required
  *     `Build + WASM + Rust + Node` context). On `merge_group` the tentative
- *     commit is checked against its parent, so a stale Version Packages PR is
- *     kicked from the queue instead of landing. `--context merge`.
+ *     commit is checked against the current `main` tip, so a stale Version
+ *     Packages PR, or a changeset entry queued behind a Version Packages
+ *     entry, is kicked from the queue instead of landing. `--context merge`
+ *     (`push` on a push to main, where it can only report).
  *   - `.github/workflows/release.yml`, the backstop: a release commit that
  *     reaches `main` anyway turns its Release run red instead of silently
  *     opening a version PR. `--context release`.
@@ -40,10 +47,10 @@
  * step's `find` in release.yml. `.changeset/pre/` is not read; this repo does
  * not use pre mode.
  *
- * FAIL CLOSED. Exit 0 clean, 1 late changesets, 2 cannot tell (no readable
- * parent, a manifest that is not JSON, no git). "Cannot tell" is not "clean":
- * both workflows check out enough history for `HEAD~1` to resolve, so a 2 is a
- * wiring defect, and it must be as visible as the defect it would hide.
+ * FAIL CLOSED. Exit 0 clean, 1 late changesets, 2 cannot tell (unreadable
+ * base, a manifest that is not JSON, no git). "Cannot tell" is not "clean":
+ * both workflows make the base revision available, so a 2 is a wiring
+ * defect, and it must be as visible as the defect it would hide.
  *
  * Executable proof: `scripts/check-release-late-changesets.test.mjs`, against
  * real throwaway git repositories.
@@ -82,7 +89,8 @@ export function pendingChangesets(repoRoot) {
 }
 
 /**
- * The verdict for the checked-out tree against `previousRev`.
+ * The verdict for the checked-out tree against `previousRev`, which may be
+ * any number of commits back (see `--base` below).
  *
  * Returns `{ verdict, bumps, pending }` where `verdict` is `'clean'`,
  * `'late-changesets'` or `'unknown'` (no readable parent). `bumps` are the
@@ -100,9 +108,14 @@ export function lateChangesets(repoRoot, { previousRev = 'HEAD~1' } = {}) {
 
 const REMEDY = {
   merge:
-    'This is a stale Version Packages PR: the changesets listed below landed on main after it was last refreshed, ' +
-    'and merging it now would publish nothing (changesets/action only publishes a tree with no pending changesets). ' +
-    'Let the Release run for the latest main push refresh the Version Packages PR, then queue it again.',
+    'Landing this queue entry would put a Version Packages commit and pending changesets into one push to main, ' +
+    'which publishes nothing (changesets/action only publishes a tree with no pending changesets). ' +
+    'If this is the Version Packages PR, it is stale: let the Release run for the latest main push refresh it, then queue it again. ' +
+    'If this is an ordinary PR queued behind the Version Packages PR, queue it again once that PR has landed on main.',
+  push:
+    'This push put a Version Packages commit and pending changesets on main together, so its Release run publishes nothing. ' +
+    'Wait for that Release run to refresh the Version Packages PR, then merge the refreshed PR on its own; ' +
+    '`changeset publish` then ships every workspace version that is not on npm yet, including the ones bumped here.',
   release:
     'This release commit published NOTHING: changesets/action only publishes a tree with no pending changesets, ' +
     'so it took the version-PR path. Recover by merging the refreshed Version Packages PR on its own; ' +
@@ -124,18 +137,21 @@ function flagValue(argv, flag) {
 }
 
 /** The verdict as an exit status: 0 clean, 1 late changesets, 2 cannot tell. */
-function evaluate(context) {
+function evaluate(context, base) {
   let result;
   try {
-    result = lateChangesets(process.cwd());
+    result = lateChangesets(process.cwd(), { previousRev: base });
   } catch (err) {
-    process.stderr.write(`::error title=Late-changeset gate::could not be evaluated (${err.message})\n`);
+    process.stderr.write(
+      `::error title=Late-changeset gate::could not be evaluated (${err.message}). ` +
+        'Fix the unreadable package manifest or .changeset directory and re-run; this gate does not pass on "cannot tell".\n'
+    );
     return 2;
   }
   if (result.verdict === 'unknown') {
     process.stderr.write(
-      '::error title=Late-changeset gate::HEAD~1 is not readable, so this commit cannot be checked. ' +
-        'The checkout needs a fetch depth of at least 2.\n'
+      `::error title=Late-changeset gate::the base revision ${base} is not readable, so this commit cannot be checked. ` +
+        'The checkout must contain it (fetch it, or deepen the clone).\n'
     );
     return 2;
   }
@@ -143,22 +159,30 @@ function evaluate(context) {
     process.stdout.write(
       result.bumps.length > 0
         ? `release commit (${result.bumps.length} version bump(s)) with no pending changesets\n`
-        : `not a release commit (${result.pending.length} pending changeset(s))\n`
+        : `no version bump since ${base} (${result.pending.length} pending changeset(s))\n`
     );
     return 0;
   }
   process.stderr.write(
     `::error title=Release commit still carries changesets (#5647)::${REMEDY[context]}\n` +
-      `This commit bumps ${result.bumps.length} workspace version(s):\n` +
+      `Since ${base}, ${result.bumps.length} workspace version(s) moved:\n` +
       `${list(result.bumps.map((b) => `${b.path}: ${b.from} -> ${b.to}`))}\n` +
-      `and still carries ${result.pending.length} pending changeset(s):\n` +
+      `and the tree still carries ${result.pending.length} pending changeset(s):\n` +
       `${list(result.pending.map((p) => `.changeset/${p}`))}\n`
   );
   return 1;
 }
 
 /**
- * `--context merge|release` picks the remedy text (default `merge`).
+ * `--context merge|push|release` picks the remedy text (default `merge`).
+ *
+ * `--base <rev>` is what the tree is compared against (default `HEAD~1`).
+ * Pass the base of everything that will reach main in ONE push: the Release
+ * run happens once per push, on its tip, so a Version Packages commit and a
+ * changeset from a later commit of the same push publish nothing together.
+ * The merge queue lands up to five entries in one push, so test.yml passes
+ * the current `main` tip on `merge_group` and `github.event.before` on push;
+ * release.yml passes `github.event.before`.
  *
  * `--record <file>` appends `status=<0|1|2>` to `<file>` and exits 0 instead
  * of exiting with the status. release.yml passes `$GITHUB_OUTPUT`: it must
@@ -168,13 +192,19 @@ function evaluate(context) {
  * release.yml fails on anything that is not `0`.
  */
 function main(argv) {
-  const context = flagValue(argv, '--context') ?? 'merge';
+  // `null` (flag given without a value) must survive to the usage check, so
+  // default only `undefined` (flag absent); `??` would swallow both.
+  const withDefault = (v, dflt) => (v === undefined ? dflt : v);
+  const context = withDefault(flagValue(argv, '--context'), 'merge');
   const record = flagValue(argv, '--record');
-  if (!(context in REMEDY) || record === null) {
-    process.stderr.write('usage: check-release-late-changesets.mjs [--context merge|release] [--record <file>]\n');
+  const base = withDefault(flagValue(argv, '--base'), 'HEAD~1');
+  if (!(context in REMEDY) || record === null || base === null) {
+    process.stderr.write(
+      'usage: check-release-late-changesets.mjs [--context merge|push|release] [--base <rev>] [--record <file>]\n'
+    );
     return 2;
   }
-  const status = evaluate(context);
+  const status = evaluate(context, base);
   if (record === undefined) return status;
   appendFileSync(record, `status=${status}\n`);
   return 0;

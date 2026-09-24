@@ -55,10 +55,15 @@ Add support for IFC4X3 entities
 
 ### A Version Packages PR must be fresh when it lands
 
-changesets/action publishes only from a tree with **no** pending `.changeset/*.md`. The Version Packages PR is refreshed by the Release run for each push to `main`, which lags `main`, and the merge queue squashes the PR onto whatever landed ahead of it. If a PR with a changeset lands after the last refresh, the resulting release commit bumps versions and still carries that changeset, so it would open a new version PR and publish nothing (#5647). Two checks stop that from passing silently:
+changesets/action publishes only from a tree with **no** pending `.changeset/*.md`, and the Release workflow runs once per push to `main`, on its tip. So a push that carries a Version Packages commit *and* a pending changeset opens a new version PR and publishes nothing (#5647). That happens in two ways:
 
-- **Merge queue (fail closed).** `scripts/check-release-late-changesets.mjs` runs first in the `changes` job of `.github/workflows/test.yml`, which feeds the required `Build + WASM + Rust + Node` check. When the queued commit bumps versions of existing workspace packages *and* still carries pending changesets, it fails and the Version Packages PR is removed from the queue. Wait for the Release run for the latest `main` push to refresh the PR, then queue it again. It runs on pull requests and pushes too, where it only fails for that same shape.
-- **Release backstop (fail loudly).** If such a commit reaches `main` anyway (a bypass), its Release run still refreshes the Version Packages PR but ends **red** with a "Release commit still carries changesets" error, and the publish verifiers fail because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the stale commit bumped.
+- The Version Packages PR is stale. It is refreshed by the Release run for each push, which lags `main`, and the merge queue squashes it onto whatever landed ahead of it. A changeset that landed after the last refresh is still in the tree.
+- A PR with a changeset is queued behind the Version Packages PR and lands in the same push (the queue merges up to five entries at once).
+
+Two checks stop that from passing silently. Both run `scripts/check-release-late-changesets.mjs`, which compares the tree with the start of the push: it fails when versions of existing workspace packages moved in that range *and* changesets are pending at the tip.
+
+- **Merge queue (fail closed).** The check is the first step of the `changes` job in `.github/workflows/test.yml`. That job feeds the required `Build + WASM + Rust + Node` check. On `merge_group` it compares the queued commit with the current `main` tip, and a failing entry is removed from the queue. If it is the Version Packages PR, wait for the Release run for the latest `main` push to refresh it, then queue it again. If it is an ordinary PR queued behind the Version Packages PR, queue it again once that PR has landed. On pull requests and pushes the check only reports.
+- **Release backstop (fail loudly).** If such a push reaches `main` anyway (a bypass), its Release run still refreshes the Version Packages PR, then ends **red** with a "Release commit still carries changesets" error. The publish verifiers fail too, because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the earlier commit bumped.
 
 ## Release Workflow Diagram
 

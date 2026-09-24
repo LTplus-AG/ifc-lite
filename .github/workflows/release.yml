@@ -179,9 +179,19 @@ jobs:
       # a late verdict does not stop the job here. Anything but a recorded 0,
       # including no status at all because node never got that far, fails
       # that step: a broken gate is loud rather than silently clean.
+      #
+      # The base is `github.event.before`, not HEAD~1: this workflow runs once
+      # per push, on its tip, and the merge queue lands up to five entries in
+      # one push, so the Version Packages commit need not be the tip.
+      # `continue-on-error`: a crash here leaves `status` unset, which the
+      # final step turns red, without also skipping the publish or the
+      # version-PR refresh in between.
       - name: Check for changesets a release commit left pending
         id: late-changesets
-        run: node scripts/check-release-late-changesets.mjs --context release --record "$GITHUB_OUTPUT"
+        continue-on-error: true
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/check-release-late-changesets.mjs --context release --base "${BEFORE}" --record "$GITHUB_OUTPUT"
 
       # With `queue: max` (see `concurrency:`) a run can start well after its
       # push. A run with changesets pending only refreshes the version PR, and
@@ -633,7 +643,7 @@ jobs:
         if: ${{ !cancelled() && steps.late-changesets.outputs.status != '0' }}
         run: |
           if [ "${STATUS}" = "1" ]; then
-            echo "::error title=Release commit still carries changesets (#5647)::${GITHUB_SHA} bumps workspace versions but still carries pending changesets, so nothing was published. Merge the refreshed Version Packages PR on its own to publish; see the 'Check for changesets a release commit left pending' step for the list, and RELEASE.md."
+            echo "::error title=Release commit still carries changesets (#5647)::This push (up to ${GITHUB_SHA}) bumps workspace versions but its tip still carries pending changesets, so nothing was published. Merge the refreshed Version Packages PR on its own to publish; see the 'Check for changesets a release commit left pending' step for the list, and RELEASE.md."
           else
             echo "::error title=Late-changeset gate failed::scripts/check-release-late-changesets.mjs could not evaluate this commit (status '${STATUS}'). See the 'Check for changesets a release commit left pending' step."
           fi

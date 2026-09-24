@@ -18,12 +18,11 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { judge } from './lane-canary.mjs';
+import { judge, describeFindings, PLANTED_DEFECT } from './lane-canary.mjs';
 import { readInput, quotableLines } from './validate-findings.mjs';
 import { addedLineRanges, newFileLines } from './build-review-input.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MUST = ['session-timeout', 'timeoutMs'];
 // One path, read fresh per test: a second literal is a second thing to drift.
 const FIXTURE = join(HERE, 'lane-canary-fixture.json');
 const fixture = () => JSON.parse(readFileSync(FIXTURE, 'utf8'));
@@ -37,7 +36,7 @@ const finding = (extra = {}) => ({
 });
 
 test('THE PASSING CASE: findings that name the planted defect', () => {
-  const v = judge({ verdict: 'findings', findings: [finding()] }, MUST);
+  const v = judge({ verdict: 'findings', findings: [finding()] });
   assert.equal(v.ok, true, v.why);
 });
 
@@ -45,13 +44,13 @@ test('a CLEAN verdict is a FAILURE — that is the whole point of the canary', (
   // A token ping proves authentication. It does not prove the reviewer still
   // reviews: a rubric edit or a truncated prompt leaves a lane that answers
   // cleanly and finds nothing, and every per-PR check still looks normal.
-  const v = judge({ verdict: 'clean', findings: [] }, MUST);
+  const v = judge({ verdict: 'clean', findings: [] });
   assert.equal(v.ok, false);
   assert.match(v.why, /answering, not reviewing/);
 });
 
 test('`findings` with an EMPTY list contradicts itself and fails', () => {
-  const v = judge({ verdict: 'findings', findings: [] }, MUST);
+  const v = judge({ verdict: 'findings', findings: [] });
   assert.equal(v.ok, false);
   assert.match(v.why, /EMPTY findings list/);
 });
@@ -60,24 +59,57 @@ test('findings about something ELSE do not count as finding THIS one', () => {
   // Without this, a reviewer that had started hallucinating would keep the
   // canary green: any non-empty list would pass.
   const v = judge(
-    { verdict: 'findings', findings: [finding({ path: 'src/unrelated.ts', quote: 'const x = 1;', body: 'nit' })] },
-    MUST,
+    { verdict: 'findings', findings: [finding({ path: 'src/unrelated.ts', quote: 'const x = 1;', body: 'nit' })] }
   );
   assert.equal(v.ok, false);
-  assert.match(v.why, /none names/);
+  assert.match(v.why, /none on `src\/session-timeout.ts` explains the defect/);
+});
+
+test('#5621 RED->GREEN: a correct finding anchored on `return 0;` finds the defect', () => {
+  // Verbatim shape of findings from the first diagnosable canary run: the
+  // destructive fall-through is `return 0;`, a line that does not contain
+  // `timeoutMs`, so the old token judge refused a correct review as
+  // LANE_NOT_REVIEWING.
+  const onFallThrough = finding({
+    line: 7,
+    quote: 'return 0;',
+    body:
+      'When `raw` is `undefined`, `Number(raw)` is `NaN`, so the condition is false and this surviving export ' +
+      'now returns 0 instead of the previous `DEFAULT_TIMEOUT_MS`; callers that omit the argument will close ' +
+      'the session immediately.',
+  });
+  const v = judge({ verdict: 'findings', findings: [onFallThrough] });
+  assert.equal(v.ok, true, v.why);
+});
+
+test('#5621: a finding on the planted file that does not explain the mechanism still fails', () => {
+  // Anchored on the defect line, but about something else: it names the symbol
+  // the old judge wanted and is still not this defect.
+  const v = judge({
+    verdict: 'findings',
+    findings: [finding({ body: 'Rename timeoutMs to timeoutMillis for consistency.' })],
+  });
+  assert.equal(v.ok, false, v.why);
+});
+
+test('#5621: describeFindings prints every surviving finding with its source model', () => {
+  const text = describeFindings({ verdict: 'findings', findings: [finding({ source: 'model/a' })] });
+  assert.match(text, /src\/session-timeout\.ts:3 \(from model\/a\)/);
+  assert.match(text, /quote: if \(timeoutMs > 0\) \{/);
+  assert.match(text, /body: {2}Number\(undefined\) is NaN/);
+  assert.match(describeFindings({ verdict: 'clean', findings: [] }), /no surviving findings/);
 });
 
 test('a PARTIAL match still fails: naming the file is not naming the defect', () => {
   const v = judge(
-    { verdict: 'findings', findings: [{ path: 'src/session-timeout.ts', body: 'looks fine to me' }] },
-    MUST,
+    { verdict: 'findings', findings: [{ path: 'src/session-timeout.ts', body: 'looks fine to me' }] }
   );
   assert.equal(v.ok, false, 'mentions the file but never the symbol the defect is in');
 });
 
 test('a non-object response fails rather than throwing', () => {
   for (const bad of [null, 'clean', 42, undefined]) {
-    assert.equal(judge(bad, MUST).ok, false, JSON.stringify(bad));
+    assert.equal(judge(bad).ok, false, JSON.stringify(bad));
   }
 });
 
@@ -93,9 +125,9 @@ test('THE FIXTURE ACTUALLY CONTAINS THE DEFECT the canary demands be found', () 
   assert.match(patch, /timeoutMs > 0/, 'the one-ended bound');
   assert.match(patch, /return 0;/, 'the destructive fall-through');
   assert.equal(f.files[0].path, 'src/session-timeout.ts');
-  // And the strings the judge requires must be present in the diff, or the
-  // canary is asking for something the reviewer could not say.
-  for (const m of MUST) assert.ok(JSON.stringify(f).includes(m), `fixture must contain ${m}`);
+  // And the judge must be asking about the file the fixture actually sends, or
+  // the canary demands a finding the validator would drop as never sent.
+  assert.equal(f.files[0].path, PLANTED_DEFECT.path);
 });
 
 test('the fixture\'s ranges are what the BUILDER emits, and the quote is where it says', () => {

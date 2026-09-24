@@ -42,14 +42,13 @@
  * different instrument (an eval over many known findings) and it belongs in a
  * different file. Do not let a green canary be read as a recall measurement.
  */
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, '..', '..');
 
 /** Thrown for every fail-closed condition; `reason` is the machine-readable tag. */
 export class CanaryError extends Error {
@@ -61,18 +60,45 @@ export class CanaryError extends Error {
 }
 
 /**
+ * The planted defect, stated as what a finding about it must SAY rather than
+ * which token it must contain (#5621).
+ *
+ * `path` is the one file the fixture sends. `mechanism` is the defect itself:
+ * `Number(raw)` of a missing value is NaN, and NaN loses the one-ended
+ * `timeoutMs > 0` comparison and falls through to `return 0`. A finding that
+ * does not name NaN has not explained this defect, whatever line it sits on.
+ *
+ * The first judge demanded the literal symbol `timeoutMs` instead, and that
+ * refused a correct review. The destructive half of this defect is the
+ * `return 0;` line, which does not contain `timeoutMs`. On the 2026-09-24
+ * scheduled run the pool's one surviving finding was anchored there, so the
+ * canary reported LANE_NOT_REVIEWING. The first branch run with findings
+ * printed showed three of four correct findings in that shape, and the run
+ * went green only because the fourth happened to quote `if (timeoutMs > 0) {`.
+ * Only the line anchor decided the verdict, not the substance of the finding.
+ *
+ * The anchor needs no check here: `validate-findings.mjs` has already dropped
+ * any finding whose quote is not the text of an added line of this file.
+ */
+export const PLANTED_DEFECT = Object.freeze({
+  path: 'src/session-timeout.ts',
+  mechanism: /\bNaN\b/i,
+});
+
+/**
  * Does this review actually find the planted defect?
  *
  * TWO CONDITIONS, and the second is what stops a lucky pass. A model that
  * answers `findings` with a finding about something else has not found THIS
  * defect, and a canary satisfied by any non-empty list would go green on a
- * reviewer that had started hallucinating.
+ * reviewer that had started hallucinating. So at least one finding must be on
+ * the planted file AND its body must name the mechanism.
  *
- * @param {object} parsed - the reviewer's JSON output.
- * @param {string[]} mustMention - substrings the finding has to name.
+ * @param {object} parsed - the validator's findings.json.
+ * @param {{ path: string, mechanism: RegExp }} [planted]
  * @returns {{ ok: boolean, why: string }}
  */
-export function judge(parsed, mustMention) {
+export function judge(parsed, planted = PLANTED_DEFECT) {
   if (parsed === null || typeof parsed !== 'object') {
     return { ok: false, why: 'the reviewer returned something that is not an object' };
   }
@@ -90,17 +116,18 @@ export function judge(parsed, mustMention) {
   if (list.length === 0) {
     return { ok: false, why: 'verdict=findings with an EMPTY findings list, which contradicts itself' };
   }
-  const blob = JSON.stringify(list).toLowerCase();
-  const missing = mustMention.filter((m) => !blob.includes(m.toLowerCase()));
-  if (missing.length > 0) {
+  const found = list.filter(
+    (f) => f && f.path === planted.path && typeof f.body === 'string' && planted.mechanism.test(f.body),
+  );
+  if (found.length === 0) {
     return {
       ok: false,
       why:
-        `${list.length} finding(s), but none names ${missing.map((m) => JSON.stringify(m)).join(' or ')}. ` +
-        'Findings about something else do not show this defect was found.',
+        `${list.length} finding(s), but none on \`${planted.path}\` explains the defect ` +
+        `(its body must name ${planted.mechanism}). Findings about something else do not show this defect was found.`,
     };
   }
-  return { ok: true, why: `${list.length} finding(s), naming the planted defect` };
+  return { ok: true, why: `${list.length} finding(s), ${found.length} explaining the planted defect` };
 }
 
 /**
@@ -194,7 +221,7 @@ function main() {
   }
 
   console.log(describeFindings(parsed));
-  const verdict = judge(parsed, ['session-timeout', 'timeoutMs']);
+  const verdict = judge(parsed);
   if (!verdict.ok) {
     throw new CanaryError(
       'LANE_NOT_REVIEWING',

@@ -36,7 +36,6 @@ import { toast } from '@/components/ui/toast';
 import { notifyWallSplit } from '../wallSplitNotice.js';
 import { useTranslation } from '@/i18n';
 
-const ACCENT = '#a855f7'; // purple-500
 const PANEL_OFFSET_PX = 32;
 
 export function SplitNumericInput() {
@@ -149,9 +148,9 @@ export function SplitNumericInput() {
       }}
     >
       <div
-        className="bg-white dark:bg-zinc-900 border-2 shadow-lg rounded-md
+        className="bg-white dark:bg-zinc-900 border-2 border-overlay-accent shadow-lg rounded-md
           flex flex-col gap-1.5 p-2 text-xs"
-        style={{ borderColor: ACCENT, minWidth: 200 }}
+        style={{ minWidth: 200 }}
       >
         <div className="flex items-center gap-1">
           <button
@@ -159,7 +158,7 @@ export function SplitNumericInput() {
             onClick={() => setInputMode('metres')}
             className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase
               ${inputMode === 'metres'
-                ? 'bg-purple-600 text-white'
+                ? 'bg-overlay-accent text-overlay-halo'
                 : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
           >
             {t('splitTool.modeMetres')}
@@ -169,7 +168,7 @@ export function SplitNumericInput() {
             onClick={() => setInputMode('percent')}
             className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase
               ${inputMode === 'percent'
-                ? 'bg-purple-600 text-white'
+                ? 'bg-overlay-accent text-overlay-halo'
                 : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
           >
             %
@@ -194,13 +193,13 @@ export function SplitNumericInput() {
             onKeyDown={onKeyDown}
             className="flex-1 px-2 py-1 border border-zinc-300 dark:border-zinc-700
               bg-white dark:bg-zinc-950 text-xs font-mono rounded
-              focus:outline-none focus:ring-1 focus:ring-purple-500"
+              focus:outline-none focus:ring-1 focus:ring-overlay-accent"
           />
           <button
             type="button"
             onClick={() => commitAt(parsedDistance())}
-            className="px-2 py-1 bg-purple-600 text-white text-[10px]
-              font-medium rounded hover:bg-purple-700"
+            className="px-2 py-1 bg-overlay-accent text-overlay-halo text-[10px]
+              font-medium rounded hover:bg-overlay-accent/90"
           >
             {t('splitTool.cutButton')}
           </button>
@@ -214,7 +213,7 @@ export function SplitNumericInput() {
               onClick={() => snapTo(f)}
               className="px-1.5 py-0.5 rounded
                 bg-zinc-100 dark:bg-zinc-800
-                hover:bg-purple-100 dark:hover:bg-purple-950
+                hover:bg-overlay-accent-soft
                 text-zinc-700 dark:text-zinc-300 font-mono"
             >
               {(f * 100).toFixed(0)}%

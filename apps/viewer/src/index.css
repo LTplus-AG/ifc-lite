@@ -743,15 +743,6 @@ body {
   border-color: rgba(0, 0, 0, 0.10) !important;
 }
 
-/* Purple borders (property editor) stay purple but softened */
-.colorful .border-purple-200,
-.colorful .border-purple-300\/50,
-.colorful .border-purple-500\/30,
-.colorful .border-purple-700,
-.colorful .border-purple-800 {
-  border-color: rgba(157, 124, 216, 0.25) !important;
-}
-
 /* ── Text ── */
 .colorful .text-zinc-900,
 .colorful .text-zinc-800,

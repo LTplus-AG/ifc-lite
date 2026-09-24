@@ -50,7 +50,6 @@ type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
 const HANDLE_RADIUS = 7;
-const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
@@ -247,7 +246,7 @@ export function WallEndpointOverlay() {
         y1={startScreen.y}
         x2={endScreen.x}
         y2={endScreen.y}
-        stroke={HANDLE_COLOR}
+        className="stroke-overlay-accent"
         strokeWidth={1.5}
         strokeDasharray="4 4"
         opacity={0.5}
@@ -274,8 +273,7 @@ export function WallEndpointOverlay() {
             cx={screen.x}
             cy={screen.y}
             r={HANDLE_RADIUS}
-            fill="#fff"
-            stroke={HANDLE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2.5}
             pointerEvents="none"
           />

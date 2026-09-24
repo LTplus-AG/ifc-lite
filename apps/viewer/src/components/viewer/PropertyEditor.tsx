@@ -222,10 +222,10 @@ export function PropertyEditor({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5 shrink-0 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+              className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
               onClick={() => setIsEditing(true)}
             >
-              <PenLine className="h-3 w-3 text-purple-500" />
+              <PenLine className="h-3 w-3 text-overlay-accent" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left">{t('propertyEditor.inline.editProperty')}</TooltipContent>
@@ -236,7 +236,7 @@ export function PropertyEditor({
 
   // Editing view: inline input with type selector and action buttons
   return (
-    <div className="flex flex-col gap-2 p-2 -mx-2 bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded">
+    <div className="flex flex-col gap-2 p-2 -mx-2 bg-overlay-accent-soft border border-overlay-accent/40 rounded">
       {/* Value input */}
       <div className="flex items-center gap-2">
         {valueType === PropertyValueType.Boolean || valueType === PropertyValueType.Logical ? (
@@ -258,7 +258,7 @@ export function PropertyEditor({
                   }}
                   className={`px-2 py-0.5 text-xs rounded border transition-colors ${
                     active
-                      ? 'bg-purple-600 text-white border-purple-600'
+                      ? 'bg-overlay-accent text-overlay-halo border-overlay-accent'
                       : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                   } ${v === '' ? 'italic' : ''}`}
                 >

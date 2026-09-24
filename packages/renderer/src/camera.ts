@@ -364,6 +364,11 @@ export class Camera {
     return { m: new Float32Array(this.state.viewProjMatrix.m) };
   }
 
+  /** The reverse-Z projection matrix (perspective or orthographic); a copy. */
+  getProjMatrix(): Mat4 {
+    return { m: new Float32Array(this.state.projMatrix.m) };
+  }
+
   /**
    * Return the shared RTE frame for the current camera state. GPU consumers
    * must use this instead of deriving a second camera rebase.

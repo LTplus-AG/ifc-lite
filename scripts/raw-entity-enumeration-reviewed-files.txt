@@ -2,6 +2,7 @@
 #in these files needs an adjacent @raw-entity-enumeration-ok reason; the gate
 #does not grant an old-site baseline here. Keep a file listed after its last
 #raw access is removed so a future regression still fails.
+apps/viewer/src/store/slices/mutationSlice.ts
 packages/cache/src/adapt.ts
 packages/cache/src/sections/entities.ts
 packages/cache/src/sections/entity-index.ts

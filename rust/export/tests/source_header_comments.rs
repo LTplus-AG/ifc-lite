@@ -119,3 +119,18 @@ fn the_accepted_whitespace_set_is_exactly_the_ascii_one() {
     let nbsp = header("FILE_SCHEMA\u{00A0}(('IFC2X3'));");
     assert!(parse_source_header(&nbsp).is_none());
 }
+
+#[test]
+fn an_unset_author_and_organization_are_absent_not_empty() {
+    // #5470: both are LIST [1:?]. `$` means the source never stated a list,
+    // and reading it as an empty one made the writer emit an invalid `()`
+    // instead of its `('')` default. A literal `()` stays an empty list.
+    let src = header(
+        "FILE_DESCRIPTION(('d'),'2;1');\n\
+         FILE_NAME('a.ifc','ts',$,(),'pp','Bonsai','Nobody');\n\
+         FILE_SCHEMA(('IFC4'));",
+    );
+    let h = parse_source_header(&src).expect("header should parse");
+    assert_eq!(h.author, None);
+    assert_eq!(h.organization, Some(Vec::new()));
+}

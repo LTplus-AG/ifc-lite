@@ -107,8 +107,17 @@ function decodeOptString(arg: string): string | undefined {
  * empty yield `[]`. List entries that are unset are dropped.
  */
 function decodeStringList(arg: string): string[] {
+  return decodeOptStringList(arg) ?? [];
+}
+
+/**
+ * {@link decodeStringList}, but an unset (`$`, `*`) or missing argument is
+ * `undefined` rather than `[]`, so a writer can tell "never stated" from a
+ * literal `()` (#5470).
+ */
+function decodeOptStringList(arg: string): string[] | undefined {
   const t = arg.trim();
-  if (t === '' || t === '$' || t === '*') return [];
+  if (t === '' || t === '$' || t === '*') return undefined;
   if (!t.startsWith('(') || !t.endsWith(')')) {
     // Tolerate a bare single value where a list was expected.
     const single = decodeOptString(t);
@@ -208,8 +217,8 @@ export function parseSourceHeader(
   //            preprocessor_version, originating_system, authorization )
   let name: string | undefined;
   let timeStamp: string | undefined;
-  let author: string[] = [];
-  let organization: string[] = [];
+  let author: string[] | undefined;
+  let organization: string[] | undefined;
   let preprocessorVersion: string | undefined;
   let originatingSystem: string | undefined;
   let authorization: string | undefined;
@@ -217,8 +226,8 @@ export function parseSourceHeader(
     const parts = splitTopLevel(nameRecord);
     name = decodeOptString(parts[0] ?? '');
     timeStamp = decodeOptString(parts[1] ?? '');
-    author = decodeStringList(parts[2] ?? '');
-    organization = decodeStringList(parts[3] ?? '');
+    author = decodeOptStringList(parts[2] ?? '');
+    organization = decodeOptStringList(parts[3] ?? '');
     preprocessorVersion = decodeOptString(parts[4] ?? '');
     originatingSystem = decodeOptString(parts[5] ?? '');
     authorization = decodeOptString(parts[6] ?? '');

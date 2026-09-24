@@ -25,7 +25,9 @@ const MAX_HEADER_BYTES: usize = 64 * 1024;
 /// The `HEADER` records a source file carried, decoded to Unicode.
 ///
 /// Field-for-field the `IfcSourceHeader` of `@ifc-lite/data`. Absent optional
-/// fields are `None`; absent lists are empty.
+/// fields are `None`; absent lists are empty, except the two `FILE_NAME` lists,
+/// which are `None` for `$` so a writer can tell "never stated" from a literal
+/// `()` (#5470).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SourceHeader {
     /// `FILE_DESCRIPTION` item list — the MVD/view-definition claim.
@@ -36,10 +38,10 @@ pub struct SourceHeader {
     pub name: Option<String>,
     /// `FILE_NAME[1]` — the source's date-time stamp.
     pub time_stamp: Option<String>,
-    /// `FILE_NAME[2]`.
-    pub author: Vec<String>,
-    /// `FILE_NAME[3]`.
-    pub organization: Vec<String>,
+    /// `FILE_NAME[2]`; `None` for `$` or no `FILE_NAME` record.
+    pub author: Option<Vec<String>>,
+    /// `FILE_NAME[3]`; `None` for `$` or no `FILE_NAME` record.
+    pub organization: Option<Vec<String>>,
     /// `FILE_NAME[4]` — the tool that WROTE the source file.
     pub preprocessor_version: Option<String>,
     /// `FILE_NAME[5]` — the authoring application behind it.
@@ -128,17 +130,26 @@ fn decode_opt_string(arg: &str) -> Option<String> {
 /// unset entries are dropped. A bare single value where a list was expected is
 /// tolerated, as on the TS side.
 fn decode_string_list(arg: &str) -> Vec<String> {
+    decode_opt_string_list(arg).unwrap_or_default()
+}
+
+/// [`decode_string_list`], but an unset (`$`, `*`) or missing argument is
+/// `None` rather than an empty list, so a writer can tell "never stated" from a
+/// literal `()` (#5470).
+fn decode_opt_string_list(arg: &str) -> Option<Vec<String>> {
     let t = arg.trim();
     if t.is_empty() || t == "$" || t == "*" {
-        return Vec::new();
+        return None;
     }
     if !(t.starts_with('(') && t.ends_with(')')) {
-        return decode_opt_string(t).into_iter().collect();
+        return Some(decode_opt_string(t).into_iter().collect());
     }
-    split_top_level(&t[1..t.len() - 1])
-        .iter()
-        .filter_map(|a| decode_opt_string(a))
-        .collect()
+    Some(
+        split_top_level(&t[1..t.len() - 1])
+            .iter()
+            .filter_map(|a| decode_opt_string(a))
+            .collect(),
+    )
 }
 
 /// Read all declared schema identifiers from the complete header.
@@ -252,8 +263,8 @@ pub fn parse_source_header(content: &[u8]) -> Option<SourceHeader> {
         let at = |n: usize| parts.get(n).map(String::as_str).unwrap_or("");
         header.name = decode_opt_string(at(0));
         header.time_stamp = decode_opt_string(at(1));
-        header.author = decode_string_list(at(2));
-        header.organization = decode_string_list(at(3));
+        header.author = decode_opt_string_list(at(2));
+        header.organization = decode_opt_string_list(at(3));
         header.preprocessor_version = decode_opt_string(at(4));
         header.originating_system = decode_opt_string(at(5));
         header.authorization = decode_opt_string(at(6));

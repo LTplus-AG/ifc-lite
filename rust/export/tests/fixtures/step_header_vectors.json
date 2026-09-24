@@ -99,6 +99,21 @@
       ]
     },
     {
+      "name": "an unset ($) author and organization are absent, not empty",
+      "why": "IfcOpenShell and Bonsai write FILE_NAME's author and organization as $ (#5470). Both are LIST [1:?] OF STRING, so () is not a valid value for them; $ says the source never stated a list, and only a list the source never stated is back-filled with (''). The case above keeps a literal () as (); this one is its counterpart.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');\nFILE_NAME('hello-wall.ifc','2024-09-23T20:57:12+02:00',$,$,'IfcOpenShell 0.8.0','Bonsai 0.8.0','Nobody');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC4",
+      "options": { "timeStamp": "20240301T091500" },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');",
+        "FILE_NAME('export.ifc','20240301T091500',(''),(''),'ifc-lite','Bonsai 0.8.0','Nobody');",
+        "FILE_SCHEMA(('IFC4'));",
+        "ENDSEC;"
+      ]
+    },
+    {
       "name": "non-ASCII is decoded on read and re-encoded on write",
       "why": "Part 21 6.3.3.4 limits a literal's plain-text bytes to 32-126, so 'Muller' with an umlaut must leave as \\X2\\00FC\\X0\\ whether it arrived raw or already encoded. Both halves must therefore DECODE the source value and re-encode it, not copy the bytes: a half that copied would emit raw UTF-8 for the first author, and a half that re-escaped without decoding would double the backslashes of the second.",
       "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Ansicht f\\X2\\00FC\\X0\\r B\\X2\\00FC\\X0\\ro'),'2;1');\nFILE_NAME('b.ifc','ts',('Müller','J\\X2\\00F6\\X0\\rgen'),('Büro'),'pp','ARCHICAD 27','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",

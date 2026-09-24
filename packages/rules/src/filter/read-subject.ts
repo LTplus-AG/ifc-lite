@@ -37,20 +37,16 @@
  */
 
 import {
-  extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
-  extractTypePropertiesOnDemand,
-  mergeInheritedPropertySets,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { RelationshipType, QuantityType, collectSpatialAncestors } from '@ifc-lite/data';
+import { RelationshipType, collectSpatialAncestors } from '@ifc-lite/data';
 import type { Subject } from '../rule-set/rule-set.js';
-import { nameMatches, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
+import { stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
-import { projectSiScale, projectUnitSymbol, quantityValueSiScale, QUANTITY_MEASURE_TYPE } from './measure-units.js';
+import { readMeasureSubject } from './read-measure-subject.js';
 import { assignedGroupNames } from './filter-group-rule.js';
 
 /** What `readSubject` needs about the element it reads. No `mutationView` —
@@ -89,23 +85,6 @@ function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {
   return { present: defined.some((v) => v.trim().length > 0), values: defined };
 }
 
-function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string | undefined {
-  return projectUnitSymbol(store, QUANTITY_MEASURE_TYPE[quantityType as QuantityType]);
-}
-
-/** `expressId`'s type-level property sets via `IfcRelDefinesByType`, the
- *  on-demand-only twin of `filter-evaluate.ts`'s `getInheritedTypePsets`
- *  (no per-run cache / mutation overlay here — see the module doc). */
-function inheritedTypePsets(store: IfcDataStore, expressId: number) {
-  if (!store.relationships) return [];
-  const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
-  if (typeIds.length === 0) return [];
-  const typeId = typeIds[0];
-  if (store.source && store.source.length > 0) {
-    return extractTypePropertiesOnDemand(store, expressId)?.properties ?? [];
-  }
-  return (store.properties?.getForEntity?.(typeId) ?? []) as ReturnType<typeof extractPropertiesOnDemand>;
-}
 
 /** `expressId`'s relating TYPE object's Name, via `IfcRelDefinesByType` — the
  *  read-only twin of `filter-evaluate.ts`'s `relatingTypeNameOf`. */
@@ -130,42 +109,9 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const found = extractAllEntityAttributes(store, expressId).find((a) => a.name.toLowerCase() === wanted);
       return fromStrings([found === undefined ? undefined : stringifyValue(found.value)]);
     }
-    case 'property': {
-      const own = extractPropertiesOnDemand(store, expressId);
-      const merged = mergeInheritedPropertySets(own, inheritedTypePsets(store, expressId));
-      const values: string[] = [];
-      const valueUnits: Array<string | undefined> = [];
-      const valueSiScales: Array<number | undefined> = [];
-      for (const set of merged) {
-        if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
-        for (const p of set.properties) {
-          if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
-          values.push(stringifyValue(p.value));
-          // Own and type-level rows alike carry the property's explicit
-          // `Unit` when it has one (both come from `extractPsetsFromIds`).
-          valueUnits.push(p.unit ?? projectUnitSymbol(store, p.dataType));
-          valueSiScales.push(p.unit !== undefined ? p.unitSiScale : projectSiScale(store, p.dataType));
-        }
-      }
-      return { ...fromStrings(values), valueUnits, valueSiScales };
-    }
-    case 'quantity': {
-      const values: number[] = [];
-      const valueUnits: Array<string | undefined> = [];
-      const valueSiScales: Array<number | undefined> = [];
-      for (const qset of extractQuantitiesOnDemand(store, expressId)) {
-        if (!nameMatches(subject.setName, qset.name, subject.setNameKind)) continue;
-        for (const q of qset.quantities) {
-          if (!nameMatches(subject.quantityName, q.name, subject.quantityNameKind)) continue;
-          values.push(q.value);
-          // An explicit `IfcPhysicalSimpleQuantity.Unit` overrides the
-          // project assignment, for display as much as for the check.
-          valueUnits.push(q.explicitUnit ?? quantityUnitSymbol(store, q.type));
-          valueSiScales.push(quantityValueSiScale(store, q));
-        }
-      }
-      return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits, valueSiScales };
-    }
+    case 'property':
+    case 'quantity':
+      return readMeasureSubject(subject, store, expressId);
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();
       const refs = extractClassificationsOnDemand(store, expressId).filter(

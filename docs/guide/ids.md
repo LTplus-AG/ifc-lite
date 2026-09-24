@@ -148,7 +148,7 @@ out of scope, and is called out as such:
 | Case sensitivity (opt-in insensitive match) | Covered: per-rule `caseSensitive`, default `true` (IDS parity) |
 | Class inheritance (exact-type match, no subclass expansion) | Covered: `exactClass` on an `ifcType` rule, default `false` |
 | Float tolerance | Covered: per-rule `tolerance` (relative, default `1e-6`) |
-| Grouped/aggregated object info inheritance | Deferred |
+| Grouped/aggregated object info inheritance | Covered: `inherit: 'aggregation'` on a property/quantity rule, subject or list condition takes the nearest `IfcRelAggregates` ancestor's value when the element has none; `inherit: 'type'` adds the type's quantity sets (properties always read the type) (#5433) |
 | Dates | Covered: `compare` with `valueType: 'date'` (ISO-8601 only) |
 | Cardinality on applicability / counts | Covered: `cardinality.minApplicable`/`maxApplicable`, plus `aggregate count` without `groupBy` |
 

@@ -256,6 +256,10 @@ export function createListDataProvider(
       return store.entities.getName(storeyId) || '';
     },
 
+    getAggregateParents(entityId: number): number[] {
+      return store.relationships?.getRelated(entityId, RelationshipType.Aggregates, 'inverse') ?? [];
+    },
+
     getContainerName(entityId: number): string {
       return ancestry().containerOf(entityId);
     },

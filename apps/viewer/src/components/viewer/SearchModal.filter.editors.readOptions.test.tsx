@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The SI toggle on property and quantity rows (#5225): an imported IDS rule
- * shows as SI, and toggling writes or clears `valueUnit` without touching
- * the rest of the rule.
+ * The SI toggle (#5225) and the inherit selector (#5433) on property and
+ * quantity rows: each writes or clears its own field without touching the
+ * rest of the rule, and a property row offers no no-op 'type' choice.
  */
 
 import '@/test/setup-dom.js';
@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
+import { act } from 'react';
 import type { FilterRule } from '@ifc-lite/rules';
 import { RuleRow } from './SearchModal.filter.editors.js';
 
@@ -57,5 +58,39 @@ describe('RuleRow — SI toggle (#5225)', () => {
     assert.equal(siButton(container).getAttribute('aria-pressed'), 'true');
     click(siButton(container));
     assert.equal((commits.at(-1) as { valueUnit?: string }).valueUnit, undefined);
+  });
+});
+
+function inheritSelect(container: HTMLElement): HTMLSelectElement {
+  const select = container.querySelector('select[aria-label="Where a missing value may come from"]');
+  assert.ok(select instanceof window.HTMLSelectElement, 'no inherit selector rendered');
+  return select;
+}
+
+function choose(select: HTMLSelectElement, value: string): void {
+  act(() => {
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+describe('RuleRow — inherit selector (#5433)', () => {
+  it('a quantity row offers type and aggregation and writes the choice', () => {
+    const commits: FilterRule[] = [];
+    const rule: FilterRule = { kind: 'quantity', setName: 'Qto_BeamBaseQuantities', quantityName: 'Length', op: 'gte', value: 5 };
+    const select = inheritSelect(renderRow(rule, commits));
+    assert.deepEqual([...select.options].map((o) => o.value), ['', 'type', 'aggregation']);
+    choose(select, 'type');
+    assert.deepEqual(commits.at(-1), { ...rule, inherit: 'type' });
+  });
+
+  it('a property row offers only aggregation, and clearing removes the field', () => {
+    const commits: FilterRule[] = [];
+    const rule: FilterRule = { kind: 'property', setName: 'Pset_Asm', propertyName: 'FireRating', op: 'isSet', value: '', inherit: 'aggregation' };
+    const select = inheritSelect(renderRow(rule, commits));
+    assert.deepEqual([...select.options].map((o) => o.value), ['', 'aggregation']);
+    assert.equal(select.value, 'aggregation');
+    choose(select, '');
+    assert.equal((commits.at(-1) as { inherit?: string }).inherit, undefined);
   });
 });

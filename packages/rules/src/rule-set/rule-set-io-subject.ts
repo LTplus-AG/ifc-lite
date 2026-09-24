@@ -49,7 +49,9 @@ export function parseSubject(raw: unknown, where: string): Subject {
     }
     if (s.setNameKind !== undefined && !TEXT_KINDS.has(s.setNameKind as string)) fail(`${where}: bad "setNameKind"`);
     if (s[nameKindField] !== undefined && !TEXT_KINDS.has(s[nameKindField] as string)) fail(`${where}: bad "${nameKindField}"`);
+    if (s.inherit !== undefined && s.inherit !== 'type' && s.inherit !== 'aggregation') fail(`${where}: bad "inherit"`);
     return {
+      ...(s.inherit !== undefined ? { inherit: s.inherit } : {}),
       kind,
       setName: s.setName,
       ...(s.setNameKind !== undefined ? { setNameKind: s.setNameKind } : {}),

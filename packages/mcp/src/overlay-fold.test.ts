@@ -19,8 +19,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { foldedTypeCounts, foldedEntityCount, pendingMutationsField, type PendingOverlay, type CreatedEntity } from './overlay.js';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { foldedTypeCounts, foldedEntityCount, overlayFromView, pendingMutationsField, type PendingOverlay, type CreatedEntity } from './overlay.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
 
 function fakeStore(byType: Record<string, number[]>, entityCount?: number): IfcDataStore {
@@ -148,6 +149,24 @@ describe('pendingMutationsField', () => {
 });
 
 describe('foldRelationshipRows', () => {
+  it('rebuilds a parsed endpoint edited without undo history (#5249)', async () => {
+    const ifc = `ISO-10303-21;
+HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,$,$);
+#3=IFCWALL('0000000000000000000003',$,'Replacement',$,$,$,$,$,$);
+#12=IFCWALL('0000000000000000000012',$,'Original',$,$,$,$,$,$);
+#13=IFCRELAGGREGATES('0000000000000000000013',$,$,$,#1,(#12));
+ENDSEC;END-ISO-10303-21;`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(ifc).buffer as ArrayBuffer);
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setPositionalAttribute(13, 5, ['#3'], true);
+    const pending = overlayFromView(view, store);
+
+    expect(pending?.supersededRelationshipIds.has(13)).toBe(true);
+    expect(pending?.relationshipEdges(1, 'IfcRelAggregates').map(edge => edge.targetId)).toEqual([3]);
+  });
+
   it('preserves group entity types in the legacy projection (#5009 review)', () => {
     const pending = {
       deleted: new Set<number>(),

@@ -147,6 +147,17 @@ describe('model tree over the edited model (#5249)', () => {
       'named reference edits replace both source endpoints');
   });
 
+  it('By Type: explicitly clearing Name uses the id label instead of the parsed name (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setAttribute(20, 'Name', '');
+    view.setPositionalAttribute(10, 2, '');
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(nodes0(ds)), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    assert.equal(nodes.find(node => node.type === 'ifc-type' && node.entityExpressId === 20)?.name, '#20');
+    assert.equal(nodes.find(node => node.type === 'element' && node.expressIds?.includes(10))?.name, '#10');
+  });
+
   it('Groups: the deleted member is dropped from its group', async () => {
     const { ds, view, geometric } = await edited();
     const collapsed = buildGroupTree(new Map(), ds, new Set(), false, geometric, 'all', () => view);

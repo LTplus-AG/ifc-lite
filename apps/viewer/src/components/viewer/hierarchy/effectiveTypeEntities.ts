@@ -24,8 +24,10 @@ export function effectiveTreeEntityName(
   const editedName = view?.getAttributeMutationsForEntity(expressId)
     .find((mutation) => mutation.name === 'Name')?.value;
   const positionalName = view?.getPositionalMutationsForEntity(expressId)?.get(2);
-  return (typeof positionalName === 'string' ? positionalName : editedName)
-    || (typeof authoredName === 'string' ? authoredName : '') || `#${expressId}`;
+  const effectiveName = positionalName !== undefined ? positionalName
+    : editedName !== undefined ? editedName : authoredName;
+  return typeof effectiveName === 'string' && effectiveName.length > 0
+    ? effectiveName : `#${expressId}`;
 }
 
 /** Type rows in the edited model, including types created after parsing (#5249). */

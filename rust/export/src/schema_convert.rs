@@ -6,7 +6,7 @@
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
-use crate::schema_ifc4_slots::Ifc4SlotFill;
+use crate::schema_ifc4_slots::Ifc4SlotCheck;
 use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
@@ -263,14 +263,7 @@ fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
 /// exporter cannot convert without having decided which owner history it
 /// writes, and cannot lose the count of what stayed `$`.
 ///
-/// On a downgrade to IFC4 from IFC4X3 or IFC5, `ifc4_slots` is the IFC4 twin
-/// (#5307, the Rust twin of #5202): fills BOOLEAN required slots IFC4X3/IFC5
-/// left optional-and-`$`, and counts every other one (including enums) that
-/// stays `$` under IFC4's stricter cardinality; see
-/// [`crate::schema_ifc4_slots`]. `IFC2X3 -> IFC4` is deliberately excluded —
-/// IFC2X3's own mandatory/optional shape was never audited for this table,
-/// so applying it there risked silently rewriting an already-correct
-/// conversion, the same scope line #5202 drew on the TypeScript side.
+/// IFC4X3/IFC5 -> IFC4 only: `ifc4_slots` counts IFC4-required `$` slots, never fills (#5307).
 ///
 /// Errs for a type with no representation in `to` at all (#5116, [`crate::schema_unrepresented`]).
 pub fn convert_step_line(
@@ -279,23 +272,19 @@ pub fn convert_step_line(
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
-    ifc4_slots: Option<&mut Ifc4SlotFill>,
+    ifc4_slots: Option<&mut Ifc4SlotCheck>,
 ) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
         return Ok(line.to_string());
     }
     let converted = convert_record(line, cfrom, cto, express_id)?;
-    Ok(if cto == "IFC2X3" {
-        slots.apply(converted)
-    } else if cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5") {
-        match ifc4_slots {
-            Some(fill) => fill.apply(converted),
-            None => Ifc4SlotFill::new().apply(converted),
-        }
-    } else {
-        converted
-    })
+    match ifc4_slots {
+        _ if cto == "IFC2X3" => return Ok(slots.apply(converted)),
+        Some(check) if cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5") => check.count(&converted),
+        _ => {}
+    }
+    Ok(converted)
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two
@@ -412,13 +401,6 @@ fn convert_record(line: &str, cfrom: &'static str, cto: &'static str, express_id
 /// True when `to` names IFC2X3, the one target whose `OwnerHistory` is mandatory.
 pub(crate) fn targets_ifc2x3(to: &str) -> bool {
     canon(to) == "IFC2X3"
-}
-
-/// True when this is a downgrade to IFC4 from IFC4X3 or IFC5 — the only
-/// direction [`Ifc4SlotFill`] applies to (#5307, Rust twin of #5202).
-pub(crate) fn targets_ifc4_downgrade(from: &str, to: &str) -> bool {
-    let (cfrom, cto) = (canon(from), canon(to));
-    cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5")
 }
 
 /// True when converting between these schemas changes entity types/attributes.

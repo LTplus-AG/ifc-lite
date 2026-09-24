@@ -83,34 +83,20 @@ pub fn export_step_to_writer<W: std::io::Write>(
 
 /// Write one record this exporter SYNTHESIZES (a property set, its properties,
 /// the relationship that attaches it), through the IFC2X3 required-slot fills
-/// when the output is IFC2X3, or the IFC4 ones (#5307) when the output is an
-/// IFC4X3/IFC5 -> IFC4 downgrade.
+/// when the output is IFC2X3.
 ///
 /// These records never reach `convert_step_line` — they are built here, after
 /// the emit loop — so before #4714 they went out with `$` in `OwnerHistory`,
 /// which IFC2X3 requires, even when the file had an owner history to point
 /// them at. Source records are filled inside the converter; these are filled
-/// here, through the same objects, so both land in the same counters. None of
-/// `IFCPROPERTYSINGLEVALUE`/`IFCPROPERTYSET`/`IFCRELDEFINESBYPROPERTIES`'s own
-/// IFC4-required slots (`Name`, `GlobalId`, `HasProperties`,
-/// `RelatedObjects`, `RelatingPropertyDefinition`) can hold `$` in a line this
-/// function writes — every one is always given a real value — so this is
-/// parity with the IFC2X3 path rather than a fill that ever fires today.
+/// here, through the same object, so both land in the same counters.
 fn write_synthesized<W: std::io::Write>(
     out: &mut W,
     line: String,
     targets_ifc2x3: bool,
     slot_fill: &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
-    targets_ifc4_downgrade: bool,
-    ifc4_slot_fill: &mut crate::schema_ifc4_slots::Ifc4SlotFill,
 ) -> std::io::Result<()> {
-    let line = if targets_ifc2x3 {
-        slot_fill.apply(line)
-    } else if targets_ifc4_downgrade {
-        ifc4_slot_fill.apply(line)
-    } else {
-        line
-    };
+    let line = if targets_ifc2x3 { slot_fill.apply(line) } else { line };
     out.write_all(line.as_bytes())?;
     out.write_all(b"\n")
 }
@@ -178,16 +164,14 @@ fn emit<W: std::io::Write>(
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(
         owner_histories.into_iter().find(|id| included.contains(id)),
     );
-    // The slots IFC4 requires a value in on a downgrade from IFC4X3/IFC5
-    // (#5307, the Rust twin of #5202).
-    let mut ifc4_slot_fill = crate::schema_ifc4_slots::Ifc4SlotFill::new();
+    // Counts the slots IFC4 requires that a downgrade from IFC4X3/IFC5 leaves
+    // `$` (#5307, the Rust twin of #5202). Never fills one.
+    let mut ifc4_slots = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
     // valid IFC2X3.
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
-    // Same reasoning, for the IFC4X3/IFC5 -> IFC4 downgrade (#5307).
-    let targets_ifc4_downgrade = crate::schema_convert::targets_ifc4_downgrade(&source_schema, &schema);
 
     // Root-attribute edits, resolved per (entity, attribute) as they are read.
     // A list plus a last-wins rule made "the value at this index" a derived
@@ -236,7 +220,7 @@ fn emit<W: std::io::Write>(
                         &schema,
                         *id,
                         &mut slot_fill,
-                        Some(&mut ifc4_slot_fill),
+                        Some(&mut ifc4_slots),
                     )?;
                     out.write_all(converted.as_bytes())?;
                 } else {
@@ -268,7 +252,7 @@ fn emit<W: std::io::Write>(
                     &schema,
                     *copy_id,
                     &mut slot_fill,
-                    Some(&mut ifc4_slot_fill),
+                    Some(&mut ifc4_slots),
                 )?;
                 out.write_all(converted.as_bytes())?;
             } else {
@@ -309,7 +293,7 @@ fn emit<W: std::io::Write>(
                 attribute_edits_refused,
                 owner_history_unfilled: slot_fill.owner_history_unfilled(),
                 required_slots_unfilled: slot_fill.required_slots_unfilled(),
-                ifc4_required_slots_unfilled: ifc4_slot_fill.required_slots_unfilled(),
+                ifc4_required_slots_unfilled: ifc4_slots.required_slots_unfilled(),
             });
         };
         for ((express_id, pset_name), props) in &groups {
@@ -331,7 +315,7 @@ fn emit<W: std::io::Write>(
                     escape(pname),
                     value
                 );
-                write_synthesized(out, line, targets_ifc2x3, &mut slot_fill, targets_ifc4_downgrade, &mut ifc4_slot_fill)?;
+                write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
                 prop_refs.push(next);
                 next += 1;
                 written += 1;
@@ -345,7 +329,7 @@ fn emit<W: std::io::Write>(
                 escape(pset_name),
                 refs_str
             );
-            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill, targets_ifc4_downgrade, &mut ifc4_slot_fill)?;
+            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
             written += 1;
             let rid = next;
             next += 1;
@@ -353,7 +337,7 @@ fn emit<W: std::io::Write>(
                 "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
                 crate::schema_convert::placeholder_guid(rid),
             );
-            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill, targets_ifc4_downgrade, &mut ifc4_slot_fill)?;
+            write_synthesized(out, line, targets_ifc2x3, &mut slot_fill)?;
             written += 1;
         }
     }
@@ -368,7 +352,7 @@ fn emit<W: std::io::Write>(
         attribute_edits_refused,
         owner_history_unfilled: slot_fill.owner_history_unfilled(),
         required_slots_unfilled: slot_fill.required_slots_unfilled(),
-        ifc4_required_slots_unfilled: ifc4_slot_fill.required_slots_unfilled(),
+        ifc4_required_slots_unfilled: ifc4_slots.required_slots_unfilled(),
     })
 }
 

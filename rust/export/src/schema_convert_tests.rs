@@ -675,76 +675,47 @@ fn a_renamed_type_is_not_treated_as_unrepresented() {
 }
 
 /// #5307 (Rust twin of #5202's finding 2). `IfcProjectedCRS.Name` is optional
-/// in IFC4X3/IFC5 but mandatory in IFC4. Before this fix, `convert_step_line`
-/// only ever consulted an IFC4 required-slot table when `cto == "IFC2X3"`;
-/// a `$` written into this slot by a valid IFC4X3 source passed straight
-/// through into an output file whose own header declares it IFC4.
-///
-/// Confirmed live on `upstream/main` (c926f8b3) by execution before this fix
-/// existed: the identical fixture came back byte-for-byte unchanged, because
-/// no `cto == "IFC4"` branch existed in `convert_step_line` at all.
+/// in IFC4X3/IFC5 but mandatory in IFC4. The `$` stays (a label is never
+/// invented) and is counted.
 #[test]
 fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
     let line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
-    let mut fill4 = crate::schema_ifc4_slots::Ifc4SlotFill::new();
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 10, &mut none(), Some(&mut fill4)).unwrap();
-    // Name has no honest default (it's a label), so it stays `$` -- nothing
-    // is invented -- but is now COUNTED rather than silently passed through.
-    assert_eq!(out, line, "no measure/label/identifier is fabricated: {out}");
-    assert_eq!(fill4.required_slots_unfilled(), 1);
-    assert!(fill4.warnings()[0].contains("not valid IFC4"), "{:?}", fill4.warnings());
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 10, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "no value is fabricated: {out}");
+    assert_eq!(check.required_slots_unfilled(), 1);
+    assert!(check.warnings()[0].contains("not valid IFC4"), "{:?}", check.warnings());
 }
 
-/// #5307: a BOOLEAN required slot IS filled (`.F.`, the schema's own "claims
-/// nothing" default), the same policy the IFC2X3 downgrade already uses for
-/// BOOLEAN slots. `IfcCompositeCurveSegment.SameSense` is mandatory in both
-/// IFC4X3 and IFC4, so this line's `$` there is already invalid under IFC4X3
-/// too -- exercising the fill in isolation from the "legitimately optional
-/// upstream" case the previous test covers.
+/// #5307: a BOOLEAN flag is counted, never filled. `SameSense` is required in
+/// IFC4X3 as well, and `.F.` would reverse the segment (review of #5341, the
+/// same finding that removed the fill from the TypeScript twin in #5347).
 #[test]
-fn ifc4x3_to_ifc4_downgrade_fills_a_boolean_required_slot() {
+fn ifc4x3_to_ifc4_downgrade_never_fills_a_boolean_flag() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut fill4 = crate::schema_ifc4_slots::Ifc4SlotFill::new();
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut fill4)).unwrap();
-    assert_eq!(out, "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.F.,#6);", "{out}");
-    assert_eq!(fill4.required_slots_unfilled(), 0, "the BOOLEAN slot was filled, not counted");
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC5", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "SameSense keeps its $: {out}");
+    assert_eq!(check.required_slots_unfilled(), 1);
 }
 
-/// #5307 control: `IFC2X3 -> IFC4` is a separate, already-well-tested upgrade
-/// path and is deliberately EXCLUDED from this fill -- IFC2X3's own
-/// mandatory/optional shape was never audited for the IFC4 required-slot
-/// table, so applying it there would risk silently rewriting an
-/// already-correct conversion. Same scope line #5202 drew on the TypeScript
-/// side. A `$` a valid IFC2X3 source legitimately carries in this slot must
-/// come out exactly as written.
+/// #5307 control: `IFC2X3 -> IFC4` is excluded, the scope line #5202 drew.
 #[test]
-fn ifc2x3_to_ifc4_upgrade_is_not_touched_by_the_ifc4_fill() {
+fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut fill4 = crate::schema_ifc4_slots::Ifc4SlotFill::new();
-    let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut none(), Some(&mut fill4)).unwrap();
-    assert_eq!(out, line, "IFC2X3 -> IFC4 is excluded from the IFC4 fill: {out}");
-    assert_eq!(fill4.required_slots_unfilled(), 0);
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "{out}");
+    assert_eq!(check.required_slots_unfilled(), 0);
 }
 
-/// #5307: a record whose attribute count is not the one IFC4 declares is left
-/// untouched and not counted -- same guard as
-/// `Ifc2x3SlotFill::fill_required`. Writing into slot 1 of a 2-attribute
-/// record when the table expects 3 would land on the wrong attribute.
+/// #5307: a record whose arity is not IFC4's is not counted: position `i` need
+/// not be attribute `i`.
 #[test]
 fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$);"; // 2 attrs, table expects 3
-    let mut fill4 = crate::schema_ifc4_slots::Ifc4SlotFill::new();
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut fill4)).unwrap();
-    assert_eq!(out, line, "arity mismatch: left alone: {out}");
-    assert_eq!(fill4.required_slots_unfilled(), 0, "not established, so not counted");
-}
-
-/// #5307: omitting the fill object (`None`) still applies the schema's own
-/// defaults -- same "still filled, count lost" contract `convertStepLine`'s
-/// TypeScript twin documents for its own `ifc4Slots?` parameter.
-#[test]
-fn ifc4x3_to_ifc4_downgrade_applies_the_fill_even_with_no_fill_object_passed() {
-    let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), None).unwrap();
-    assert_eq!(out, "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.F.,#6);", "{out}");
+    let mut check = crate::schema_ifc4_slots::Ifc4SlotCheck::new();
+    let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
+    assert_eq!(out, line, "{out}");
+    assert_eq!(check.required_slots_unfilled(), 0);
 }

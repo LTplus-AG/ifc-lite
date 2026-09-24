@@ -59,9 +59,9 @@
 # signature to propagate a clean error through (unlike the single-model
 # step.rs path, which does). Falls back to the prior pass-through behavior
 # and reports every affected type in stats.warnings instead.
-# #5307 (Rust twin of #5202): thread an Ifc4SlotFill through the merge loop
-# alongside the existing Ifc2x3SlotFill, +7 lines.
-     454 rust/export/src/merged/mod.rs
+# #5307 (Rust twin of #5202): an Ifc4SlotCheck alongside the Ifc2x3SlotFill
+# (declare, pass, report its warning), +4 lines.
+     451 rust/export/src/merged/mod.rs
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
@@ -73,10 +73,9 @@
 # (a fresh, well-under-budget module); this is only the one call site plus
 # the Result-returning signature changes that ripple through convert_record's
 # existing early returns.
-# #5307 (Rust twin of #5202): the IFC4X3/IFC5 -> IFC4 required-slot fill
-# branch in convert_step_line, the ifc4_slots parameter, and
-# targets_ifc4_downgrade, +23 lines.
-     431 rust/export/src/schema_convert.rs
+# #5307 (Rust twin of #5202): the ifc4_slots parameter, its doc line and the
+# IFC4X3/IFC5 -> IFC4 count arm in convert_step_line, +5 lines.
+     413 rust/export/src/schema_convert.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this

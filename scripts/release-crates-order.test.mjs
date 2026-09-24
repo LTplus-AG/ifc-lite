@@ -101,7 +101,7 @@ function crateDirs() {
   return map;
 }
 
-test('every published crate comes after the crates it pins by version', () => {
+test('every published crate comes after the crates it pins by version, and those are published too', () => {
   const order = publishOrder();
   const dirs = crateDirs();
   const position = new Map(order.map((name, i) => [name, i]));
@@ -111,7 +111,11 @@ test('every published crate comes after the crates it pins by version', () => {
     const dir = dirs.get(crate);
     assert.ok(dir, `${crate} is in CRATES but has no rust/*/Cargo.toml`);
     for (const dep of versionedIfcDeps(dir)) {
-      if (!position.has(dep)) continue; // not published; irrelevant to order
+      if (!position.has(dep)) {
+        // ifc-lite-landxml went unpublished this way and failed the release after #5078.
+        violations.push(`  ${crate} (position ${i}) pins ${dep} by version, but ${dep} is not in CRATES`);
+        continue;
+      }
       if (position.get(dep) > i) {
         violations.push(
           `  ${crate} (position ${i}) pins ${dep} by version, but ${dep} is published later (position ${position.get(dep)})`
@@ -126,8 +130,9 @@ test('every published crate comes after the crates it pins by version', () => {
     `\nrelease-crates.mjs would publish a crate before something it pins by version.\n` +
       `cargo publish resolves versioned dependencies — INCLUDING dev-dependencies —\n` +
       `against crates.io, so this fails the real publish on main, after npm has already\n` +
-      `gone out. Reorder CRATES, or drop the version from the dependency (a bare\n` +
-      `{ path = "..." } dev-dep is stripped at publish time, as rust/core does).\n\n` +
+      `gone out. Add or reorder CRATES. For a dev-dependency only, dropping the version\n` +
+      `also works (a bare { path = "..." } dev-dep is stripped at publish time, as\n` +
+      `rust/core does); a normal or build dependency without a version cannot publish.\n\n` +
       violations.join('\n')
   );
 });

@@ -16,7 +16,8 @@ import { join } from 'path';
 
 // Dependency order: geometry depends on core; clash is dependency-free;
 // processing depends on core+geometry; ffi (cdylib C bindings) depends on
-// processing; wasm depends on core+geometry+clash+processing.
+// processing; landxml depends on geometry; wasm depends on
+// core+geometry+clash+processing+landxml.
 export const CRATES = [
   'ifc-lite-core',
   // ifc-lite-clash must precede ifc-lite-geometry. geometry carries a
@@ -38,6 +39,10 @@ export const CRATES = [
   'ifc-lite-clash',
   'ifc-lite-geometry',
   'ifc-lite-processing',
+  // ifc-lite-landxml depends on geometry and must precede wasm, which pins it
+  // by version. It was missing from this list, so the release after #5078
+  // failed at wasm with "no matching package named `ifc-lite-landxml`".
+  'ifc-lite-landxml',
   // ifc-lite-export must precede ffi/wasm: wasm-bindings pins it by version
   // (HBJSON/KMZ exporters, #1235) and cargo resolves that against crates.io
   // at publish time. NOTE: the crate's FIRST publish cannot go through

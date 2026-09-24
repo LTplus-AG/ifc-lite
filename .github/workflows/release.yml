@@ -207,8 +207,8 @@ jobs:
 
       # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)
       # crates.io access token. A Trusted Publisher must be configured on
-      # crates.io for EACH published crate (ifc-lite-core, -geometry, -clash,
-      # -processing, -ffi, -wasm) pointing at this repo + this workflow
+      # crates.io for EACH crate in CRATES (scripts/lib/crates-io.mjs)
+      # pointing at this repo + this workflow
       # before its first automated publish. A brand-new crate name (e.g.
       # ifc-lite-ffi) must additionally be bootstrapped once with a personal
       # API token — `cargo publish -p <crate> --token …` — to claim the name,

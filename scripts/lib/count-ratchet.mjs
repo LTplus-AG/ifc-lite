@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The comparison under a two-way count ratchet: a measured `{ key: count }`
- * map against a committed baseline of the same shape. Shared by
+ * The comparison under a count ratchet: a measured `{ key: count }` map
+ * against a committed baseline of the same shape. Shared by
  * `scripts/check-jsx-a11y.mjs` (key = source file, count = jsx-a11y
- * warnings) and the axe scan in `tests/e2e/axe-baseline.ts` (key = axe
- * rule id, count = 1 while the rule is violated), so both gates agree on
- * what "went up" and "went down" mean (#5607).
+ * warnings) and the axe scan in `tests/e2e/axe-baseline.ts` (key = axe rule
+ * id, count = violating nodes, `region` as present/absent), so both gates
+ * agree on what "went up" and "went down" mean (#5607).
  *
  * A count ABOVE its row is a regression; a count BELOW its row (including a
  * key that is gone entirely) is an improvement. A key missing from the
@@ -36,4 +36,22 @@ export function compareToBaseline(counts, baseline) {
     else if (count < allowed) improvements.push({ key, count, allowed });
   }
   return { regressions, improvements };
+}
+
+/**
+ * One named row of a multi-row baseline (the axe scan keeps a row per screen
+ * state), compared with {@link compareToBaseline}. A missing file (`null`)
+ * or a missing row is reported as `missing`, never compared against `{}`:
+ * an empty allowance would read a scan nobody recorded as clean
+ * (absence-reads-as-success, review on #5638).
+ *
+ * @param {Record<string, number>} counts
+ * @param {Record<string, Record<string, number>> | null} baseline
+ * @param {string} row
+ * @returns {{ missing: true } | { missing: false, regressions: Array<{ key: string, count: number, allowed: number }>, improvements: Array<{ key: string, count: number, allowed: number }> }}
+ */
+export function compareToBaselineRow(counts, baseline, row) {
+  const allowance = baseline?.[row];
+  if (allowance === undefined || allowance === null) return { missing: true };
+  return { missing: false, ...compareToBaseline(counts, allowance) };
 }

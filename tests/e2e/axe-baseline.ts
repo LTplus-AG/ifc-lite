@@ -7,64 +7,59 @@
  *
  * The viewer ships with accessibility violations today (no `main` landmark,
  * no `h1`, ...). Failing on all of them would be a big-bang fix; ignoring
- * them lets the list grow. So each scanned screen state has a row in
- * `viewer-smoke.axe-baseline.json` listing the axe rules it violates, and
- * the scan is compared with `scripts/lib/count-ratchet.mjs`, the same
- * two-way comparison the jsx-a11y lint ratchet uses: a newly violated rule
- * fails, and a rule no longer violated fails until its entry is removed, so
- * the baseline cannot keep slack for the next regression to spend.
+ * them lets them grow. So each scanned screen state has a row in
+ * `viewer-smoke.axe-baseline.json` mapping an axe rule id to its violating-
+ * node count, compared with `compareToBaselineRow` from
+ * `scripts/lib/count-ratchet.mjs` (unit-tested there): a new violation, of a
+ * new rule or one more node of a known rule, fails; a fixed one fails until
+ * its row is lowered; a missing file or row fails rather than reading as an
+ * empty allowance.
  *
- * The ratchet is per RULE, not per violating node. Node counts follow how
- * much UI happens to be on screen, not how many defects there are: `region`
- * flags every block outside a landmark, and on CI's software WebGPU a lost
- * device changes what renders, so the loaded view measured 65 nodes locally
- * in every run and 66 on CI for the same commit. Per-file counts are the
- * jsx-a11y lint ratchet's job (scripts/check-jsx-a11y.mjs), which reads
- * source and cannot vary with runtime state.
+ * `region` alone is counted as present/absent (1), not by node. It flags
+ * every block outside a landmark, so its node count follows how much UI is on
+ * screen, not how many defects there are: the loaded view measured 65 nodes
+ * locally in every run and 66 on CI's software WebGPU for the same commit,
+ * while every other rule's count matched. Its defect is "no landmarks", which
+ * presence captures.
  *
- * Re-record after a deliberate change with `AXE_BASELINE_UPDATE=1` on the
- * smoke run; the file is rewritten with the rules measured.
+ * Re-record after a deliberate change with `AXE_BASELINE_UPDATE=1`; a
+ * re-record that would RAISE a row also needs `AXE_BASELINE_ALLOW_RAISE=1`,
+ * the same guard as `--allow-raise` on scripts/check-jsx-a11y.mjs.
  */
 
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { compareToBaseline } from '../../scripts/lib/count-ratchet.mjs';
+import { compareToBaseline, compareToBaselineRow } from '../../scripts/lib/count-ratchet.mjs';
 
 const BASELINE_PATH = join(process.cwd(), 'tests', 'e2e', 'viewer-smoke.axe-baseline.json');
+const BASELINE_REL = 'tests/e2e/viewer-smoke.axe-baseline.json';
 
-/**
- * The toast stack (`apps/viewer/src/components/ui/toast.tsx`) is left out of
- * the scan. Its contents are transient and environment-dependent: under
- * software WebGPU it fills with "graphics device was lost" notices, and
- * whether any is on screen at scan time is timing, so its unnamed close
- * buttons made `button-name` come and go across identical runs. The smoke
- * already treats those device errors as runner noise (`E2E_GPU_STRICT=0`).
- */
-const TOAST_STACK = '[role="status"][aria-live="polite"].fixed.bottom-4.right-4';
+/** Rules whose node count measures layout, not defects: counted as present (1). */
+const PRESENCE_ONLY_RULES = new Set(['region']);
+
+type Counts = Record<string, number>;
 
 export interface AxeBaselineResult {
   /** Human-readable failure, or null when the scan matches its baseline row. */
   failure: string | null;
-  /** Violated rule ids, sorted. */
-  rules: string[];
+  counts: Counts;
 }
 
 /** `null` when the file is absent: only a re-record may start from nothing. */
-function readBaseline(): Record<string, string[]> | null {
+function readBaseline(): Record<string, Counts> | null {
   if (!existsSync(BASELINE_PATH)) return null;
-  return JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Record<string, string[]>;
+  return JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Record<string, Counts>;
 }
-
-/** A rule set as the `{ key: count }` shape count-ratchet compares. */
-const asCounts = (rules: string[]): Record<string, number> => Object.fromEntries(rules.map((r) => [r, 1]));
 
 /** Scan the page and compare with the baseline row for `state`. */
 export async function checkAxeBaseline(page: Page, state: string): Promise<AxeBaselineResult> {
-  const results = await new AxeBuilder({ page }).exclude(TOAST_STACK).analyze();
+  const results = await new AxeBuilder({ page }).analyze();
   const violations = [...results.violations].sort((a, b) => a.id.localeCompare(b.id));
-  const rules = violations.map((v) => v.id);
+  const counts: Counts = Object.fromEntries(
+    violations.map((v) => [v.id, PRESENCE_ONLY_RULES.has(v.id) ? 1 : v.nodes.length]),
+  );
   const detail = new Map(violations.map((v) => [
     v.id,
     `${v.help} (${v.impact ?? 'n/a'}, ${v.nodes.length} node(s))\n` +
@@ -73,31 +68,36 @@ export async function checkAxeBaseline(page: Page, state: string): Promise<AxeBa
 
   const baseline = readBaseline();
   if (process.env.AXE_BASELINE_UPDATE === '1') {
-    const next = { ...baseline, [state]: rules };
+    const raised = compareToBaseline(counts, baseline?.[state] ?? {}).regressions;
+    if (raised.length > 0 && process.env.AXE_BASELINE_ALLOW_RAISE !== '1') {
+      return {
+        failure: `refusing to raise the axe baseline for "${state}" (${raised
+          .map(({ key, allowed, count }) => `${key}: ${allowed} -> ${count}`)
+          .join(', ')}). Fix the violations, or re-run with AXE_BASELINE_ALLOW_RAISE=1 if the increase is deliberate. Nothing was written.`,
+        counts,
+      };
+    }
+    const next = { ...baseline, [state]: counts };
     const sorted = Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
     writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
-    console.log(`[e2e] axe baseline for "${state}" re-recorded: ${rules.join(', ')}`);
-    return { failure: null, rules };
+    console.log(`[e2e] axe baseline for "${state}" re-recorded: ${JSON.stringify(counts)}`);
+    return { failure: null, counts };
   }
 
-  // A missing file or row is not an empty allowance: it would read a scan
-  // nobody recorded as clean, so it fails like any other mismatch.
-  const row = baseline?.[state];
-  if (row === undefined) {
+  const cmp = compareToBaselineRow(counts, baseline, state);
+  if (cmp.missing) {
     return {
-      failure: `no axe baseline row for "${state}" in tests/e2e/viewer-smoke.axe-baseline.json. ` +
-        'Record one with AXE_BASELINE_UPDATE=1.',
-      rules,
+      failure: `no axe baseline row for "${state}" in ${BASELINE_REL}. Record one with AXE_BASELINE_UPDATE=1.`,
+      counts,
     };
   }
-  const { regressions, improvements } = compareToBaseline(asCounts(rules), asCounts(row));
   const lines = [
-    ...regressions.map(({ key }) => `  NEW   ${key}: ${detail.get(key) ?? ''}`),
-    ...improvements.map(({ key }) => `  FIXED ${key}: no longer violated - remove it from the baseline`),
+    ...cmp.regressions.map(({ key, count, allowed }) => `  NEW   ${key}: ${count}, baseline ${allowed} - ${detail.get(key) ?? ''}`),
+    ...cmp.improvements.map(({ key, count, allowed }) => `  FIXED ${key}: ${count}, baseline ${allowed} - lower its row in the baseline`),
   ];
   const failure = lines.length === 0
     ? null
-    : `axe scan of "${state}" differs from tests/e2e/viewer-smoke.axe-baseline.json:\n${lines.join('\n')}\n` +
+    : `axe scan of "${state}" differs from ${BASELINE_REL}:\n${lines.join('\n')}\n` +
       'Fix new violations. For fixed ones (or a deliberate change) re-record with AXE_BASELINE_UPDATE=1.';
-  return { failure, rules };
+  return { failure, counts };
 }

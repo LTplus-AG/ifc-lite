@@ -116,9 +116,14 @@ function measure(root) {
   if (result.error) fail(`could not run oxlint: ${result.error.message}`);
   if (result.signal) fail(`oxlint was killed by ${result.signal}; its report is incomplete.`);
 
+  // oxlint 1.83 prints a plain-text "No files found to lint." line BEFORE the
+  // JSON when a run lints nothing, so parse from the report's opening brace;
+  // otherwise the zero-files guard below is unreachable and an empty tree
+  // reads as a parse error instead of what it is.
+  const jsonStart = result.stdout.indexOf('{');
   let report;
   try {
-    report = JSON.parse(result.stdout);
+    report = JSON.parse(jsonStart >= 0 ? result.stdout.slice(jsonStart) : result.stdout);
   } catch (err) {
     fail(`oxlint's JSON report did not parse (${err.message}). stderr:\n${result.stderr}`);
   }

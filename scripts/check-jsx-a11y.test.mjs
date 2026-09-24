@@ -156,6 +156,27 @@ test('a file fixed to zero drops its row', () => {
   });
 });
 
+test('zero files linted fails closed rather than certifying an empty tree', () => {
+  withTree(1, (root) => {
+    // Every target exists but holds nothing oxlint would lint.
+    for (const { dir } of TARGETS) rmSync(join(root, dir), { recursive: true, force: true });
+    for (const { dir } of TARGETS) mkdirSync(join(root, dir), { recursive: true });
+    const r = run(root, '--update', '--allow-raise');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /0 file\(s\) linted; exiting 0 would certify a tree nobody looked at/);
+  });
+});
+
+test('a report that does not parse fails closed', () => {
+  withTree(1, (root) => {
+    // A config oxlint rejects: it prints an error, not a JSON report.
+    writeFileSync(join(root, '.oxlintrc.json'), '{ this is not json');
+    const r = run(root, '--update', '--allow-raise');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /oxlint's JSON report did not parse/);
+  });
+});
+
 test('a missing lint target fails closed rather than going unmeasured', () => {
   withTree(1, (root) => {
     rmSync(join(root, 'examples'), { recursive: true, force: true });

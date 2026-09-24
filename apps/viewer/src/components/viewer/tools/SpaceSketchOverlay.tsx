@@ -26,6 +26,7 @@ import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
 import { editError } from '@/lib/space-edit-error';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
 import { type Room, type Boundary } from '@/lib/space-plate-session';
 import { wallRectsFromMeshes, type WallRect } from '@/lib/wall-rects-from-meshes';
@@ -1112,7 +1113,7 @@ export function SpaceSketchOverlay() {
     // Middle-mouse drag pans the view in any mode (Issue 4).
     if (pointerButton(e) === 'middle') {
       panningRef.current = true;
-      svgRef.current?.setPointerCapture(e.pointerId);
+      capturePointer(svgRef.current, e.pointerId);
       return;
     }
     // Right-click (incl. macOS Ctrl-click) is the remove gesture — handled in
@@ -1182,7 +1183,7 @@ export function SpaceSketchOverlay() {
       otherVertsRef.current = start
         ? uniqueVerts(rooms).filter((p) => Math.hypot(p[0] - start[0], p[1] - start[1]) > 1e-6)
         : uniqueVerts(rooms);
-      svgRef.current?.setPointerCapture(e.pointerId);
+      capturePointer(svgRef.current, e.pointerId);
       return;
     }
 
@@ -1210,7 +1211,7 @@ export function SpaceSketchOverlay() {
     //    draws). Otherwise start drawing a new room.
     if (e.shiftKey) {
       panningRef.current = true;
-      svgRef.current?.setPointerCapture(e.pointerId);
+      capturePointer(svgRef.current, e.pointerId);
       return;
     }
     const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
@@ -1222,12 +1223,12 @@ export function SpaceSketchOverlay() {
   const endDrag = useCallback((e: React.PointerEvent) => {
     if (panningRef.current) {
       panningRef.current = false;
-      svgRef.current?.releasePointerCapture(e.pointerId);
+      releasePointer(svgRef.current, e.pointerId);
       return;
     }
     if (dragRef.current == null) return;
     dragRef.current = null; dragStartRef.current = null; setSnapPos(null);
-    svgRef.current?.releasePointerCapture(e.pointerId);
+    releasePointer(svgRef.current, e.pointerId);
     const session = sessionRef.current;
     if (draggedRef.current) { session?.commitDrag(); commit(); }
     else session?.cancelDrag(); // a click without a drag → discard the snapshot

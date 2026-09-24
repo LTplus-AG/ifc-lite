@@ -8,6 +8,7 @@ import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { modelCenter } from '@/lib/model-placement/scene';
 import { addTranslation, constrainTranslation, orthogonalAxis, toRenderTranslation, type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
 import { dragTranslation, type DragBasis, type ScreenVector } from '@/lib/model-placement/drag';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
 const AXES = ['x', 'y', 'z'] as const;
 const COLORS = ['#ef4444', '#10b981', '#3b82f6'];
@@ -43,7 +44,7 @@ export function PlacementGizmo({ disabled, onError }: { disabled: boolean; onErr
     const basis = axes.flatMap((axis) => vectors[axis] ? [{ axis, screen: vectors[axis]! }] : []);
     if (basis.length !== axes.length || !dragTranslation(basis, { x: 0, y: 0 })) return;
     event.preventDefault(); event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointer(event.currentTarget, event.pointerId);
     const constraint = axes.map((axis) => AXES[axis]).join('') as MoveConstraint;
     useViewerStore.getState().setMoveConstraint(constraint);
     drag.current = { start: { x: event.clientX, y: event.clientY }, basis,
@@ -68,7 +69,7 @@ export function PlacementGizmo({ disabled, onError }: { disabled: boolean; onErr
     if (cancel && active && active.ids === useViewerStore.getState().modelPlacement.preview?.modelIds) {
       useViewerStore.getState().previewModelTranslation(active.before);
     }
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    releasePointer(event.currentTarget, event.pointerId);
   };
   const handlers = { onPointerMove: move, onPointerUp: (event: PointerEvent<SVGElement>) => end(event),
     onPointerCancel: (event: PointerEvent<SVGElement>) => end(event, true), onLostPointerCapture: () => { drag.current = null; } };

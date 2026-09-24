@@ -43,6 +43,7 @@ import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -175,7 +176,7 @@ export function WallEndpointOverlay() {
   const startDrag = (which: 'start' | 'end', e: React.PointerEvent<SVGElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    (e.target as SVGElement).setPointerCapture(e.pointerId);
+    capturePointer(e.target as SVGElement, e.pointerId);
     // A yaw about the vertical axis never touches elevation, so only the
     // translation's Z applies — no need to round-trip through the full
     // rotate-then-translate transform for a single scalar.
@@ -219,11 +220,7 @@ export function WallEndpointOverlay() {
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    try {
-      (e.target as SVGElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* pointer already released — safe to ignore */
-    }
+    releasePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = null;
   };
 

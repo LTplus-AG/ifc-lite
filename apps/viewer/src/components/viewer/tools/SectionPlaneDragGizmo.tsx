@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { useTranslation } from '@/i18n';
 import { customPlaneCenter, useViewerStore } from '@/store';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
 /**
  * Click+drag arrow that translates the custom section plane along its
@@ -82,11 +83,12 @@ export function SectionPlaneDragGizmo(props: {
     if (!proj) return;
     e.stopPropagation();
     e.preventDefault();
-    (e.target as Element).setPointerCapture(e.pointerId);
     const dx = proj.p1.x - proj.p0.x;
     const dy = proj.p1.y - proj.p0.y;
     const ppm = Math.hypot(dx, dy);
     if (ppm < 1e-3) return; // edge-on view — drag would be unstable
+    // Capture only once a drag will start: an edge-on bail would leave it held.
+    capturePointer(e.target as Element, e.pointerId);
     dragStateRef.current = {
       active: true,
       startDistance: customPlane.distance,
@@ -113,11 +115,7 @@ export function SectionPlaneDragGizmo(props: {
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
     if (dragStateRef.current?.active) {
       dragStateRef.current.active = false;
-      try {
-        (e.target as Element).releasePointerCapture(e.pointerId);
-      } catch (_err) {
-        /* cleanup — safe to ignore: pointer already released by browser */
-      }
+      releasePointer(e.target as Element, e.pointerId);
       onDragEnd();
     }
   }, [onDragEnd]);

@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeFitFromPoints, PAD, type Fit, type Pt } from '@/lib/space-sketch-geometry';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { clampToCanvas, zoomStep } from './space-viewport';
 
 const DEFAULT_W = 420;
@@ -130,7 +131,7 @@ export function useSpaceViewport(): UseSpaceViewport {
       e.preventDefault();
       e.stopPropagation();
       resizeRef.current = { x: e.clientX, y: e.clientY, w: sizeRef.current.w, h: sizeRef.current.h };
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      capturePointer(e.currentTarget, e.pointerId);
     }, []),
     onPointerMove: useCallback((e: React.PointerEvent) => {
       const r = resizeRef.current;
@@ -142,7 +143,7 @@ export function useSpaceViewport(): UseSpaceViewport {
     }, []),
     onPointerUp: useCallback((e: React.PointerEvent) => {
       resizeRef.current = null;
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      releasePointer(e.currentTarget, e.pointerId);
     }, []),
   };
 

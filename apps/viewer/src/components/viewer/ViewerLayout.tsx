@@ -21,6 +21,7 @@ import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
+import { capturePointer } from '@/lib/pointer-capture';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
@@ -571,14 +572,9 @@ function MobileBottomSheet({
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const sheet = sheetRef.current;
     if (!sheet) return;
-    dragRef.current = {
-      startY: e.clientY,
-      startT: performance.now(),
-      startHeight: sheet.getBoundingClientRect().height,
-      active: true,
-    };
+    dragRef.current = { startY: e.clientY, startT: performance.now(), startHeight: sheet.getBoundingClientRect().height, active: true };
     sheet.style.transition = 'none';
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capturePointer(e.currentTarget, e.pointerId);
   }, []);
 
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {

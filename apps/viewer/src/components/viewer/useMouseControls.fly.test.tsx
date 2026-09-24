@@ -120,6 +120,24 @@ describe('useMouseControls right-button fly mode', () => {
     canvas.dispatchEvent(pointer('pointerup', 2, 460, 300));
   });
 
+  /**
+   * #5403: the canvas refuses capture while fly mode holds pointer lock
+   * (InvalidStateError) or once the pointer is no longer active. The raw call
+   * sat at the top of pointerdown and aborted the handler, so the drag never
+   * started and the throw reached PostHog.
+   */
+  it('a pointerdown whose capture the canvas refuses still starts the drag (#5403)', () => {
+    const { canvas, camera } = mount();
+    Object.assign(canvas, {
+      setPointerCapture: () => { throw new DOMException('Pointer lock is active.', 'InvalidStateError'); },
+    });
+    const target0 = camera.getTarget();
+    canvas.dispatchEvent(pointer('pointerdown', 2, 400, 300));
+    canvas.dispatchEvent(pointer('pointermove', 2, 460, 300));
+    assert.ok(camera.getTarget().x > target0.x + 0.1, 'the right-drag still turns the view');
+    canvas.dispatchEvent(pointer('pointerup', 2, 460, 300));
+  });
+
   it('the wheel does not zoom while flying, and zooms again after release', () => {
     const { canvas, camera } = mount();
     canvas.dispatchEvent(pointer('pointerdown', 2, 400, 300));

@@ -21,6 +21,7 @@
 import { useCallback, type PointerEvent as ReactPointerEvent } from 'react';
 import { useViewerStore } from '@/store';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { usePanelControls } from './usePanelControls';
 
 const DRAG_THRESHOLD = 5;
@@ -66,7 +67,7 @@ export function usePanelDetachDrag(id: WorkspacePanelId): (e: ReactPointerEvent<
           floatPanel(id); // lift into a live float, same tick as positioning
           place(ev.clientX, ev.clientY);
           document.body.style.cursor = 'grabbing';
-          try { document.body.setPointerCapture(pid); } catch { /* keeps tracking outside the window */ }
+          capturePointer(document.body, pid);
         } else {
           place(ev.clientX, ev.clientY);
         }
@@ -76,7 +77,7 @@ export function usePanelDetachDrag(id: WorkspacePanelId): (e: ReactPointerEvent<
         window.removeEventListener('pointerup', onUp, true);
         window.removeEventListener('pointercancel', onUp, true);
         document.body.style.cursor = '';
-        try { document.body.releasePointerCapture(pid); } catch { /* noop */ }
+        releasePointer(document.body, pid);
         if (started && isPointerOutsideWindow(ev.clientX, ev.clientY)) {
           // Dragged off the window (onto another screen) → hand off to an OS / PiP window.
           useViewerStore.getState().closeFloatingPanel(id);

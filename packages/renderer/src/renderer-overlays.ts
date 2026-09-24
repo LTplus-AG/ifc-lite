@@ -25,11 +25,6 @@
  * here — this class keeps only the draw ORDER, which is the one thing the two
  * families share.
  *
- * Behaviour that needs those objects but does not own them can still leave:
- * `render-section-draw.ts` holds the section gizmo + cut-cap draw, receiving
- * both renderers as arguments. Passing a GPU object costs nothing; co-owning
- * one is what the paragraph above rules out.
- *
  * Doc comments for the published methods live on the matching `Renderer`
  * delegates, which are what consumers see in the emitted `.d.ts`; they are not
  * duplicated here.

@@ -603,7 +603,7 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
     const { pass, calls } = makePass();
     renderer.draw(pass, { ...OPTIONS, showOutlines: false, showFills: true, capStyle: CAP_STYLE });
-    assert.ok(!calls.some((c) => /^draw:/.test(c)), 'no outline draw');
+    assert.ok(!calls.some((c) => c.startsWith('draw:')), 'no outline draw');
     assert.ok(calls.some((c) => c.startsWith('drawIndexed:')), 'fill still drawn');
   });
 

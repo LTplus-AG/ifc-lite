@@ -33,9 +33,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
   const primaryRef = useViewerStore((state) => state.selectedEntity);
   const hidden = useViewerStore((state) => state.hiddenEntities);
-  const hiddenByModel = useViewerStore((state) => state.hiddenEntitiesByModel);
   const isolated = useViewerStore((state) => state.isolatedEntities);
-  const isolatedByModel = useViewerStore((state) => state.isolatedEntitiesByModel);
   const classFilter = useViewerStore((state) => state.classFilter);
   const lensHidden = useViewerStore((state) => state.lensHiddenIds);
   const [result, setResult] = useState<SelectedSweptDisksState>(EMPTY);
@@ -84,9 +82,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       }
       if (hidden.has(globalId) || lensHidden.has(globalId)
         || (isolated !== null && !isolated.has(globalId))
-        || (classFilter !== null && !classFilter.ids.has(globalId))
-        || hiddenByModel.get(ref.modelId)?.has(ref.expressId)
-        || (isolatedByModel.get(ref.modelId) && !isolatedByModel.get(ref.modelId)?.has(ref.expressId))) continue;
+        || (classFilter !== null && !classFilter.ids.has(globalId))) continue;
       const ids = grouped.get(ref.modelId) ?? [];
       ids.push(ref.expressId);
       grouped.set(ref.modelId, ids);
@@ -112,7 +108,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     });
     return () => { active = false; };
   }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef,
-    hidden, hiddenByModel, isolated, isolatedByModel, classFilter, lensHidden]);
+    hidden, isolated, classFilter, lensHidden]);
 
   return result;
 }

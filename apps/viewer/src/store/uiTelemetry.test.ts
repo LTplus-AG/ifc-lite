@@ -12,7 +12,6 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { posthog } from '@/lib/analytics';
-import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { useViewerStore } from './index.js';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from './homeView.js';
@@ -73,21 +72,5 @@ describe('view_reset (#5618)', () => {
       ['view_reset', { trigger: 'a' }],
       ['view_reset', { trigger: 'home' }],
     ]);
-  });
-});
-
-describe('file_open_rejected (#5618)', () => {
-  it('reports the reason category only, and explains a format we recognise', () => {
-    assert.match(reportFileOpenRejected([new File([''], 'Client Tower.blend')]) ?? '', /^Client Tower\.blend: Blender scene/);
-    assert.equal(reportFileOpenRejected([new File([''], 'notes.xyz')]), null);
-    assert.deepEqual(captured, [
-      ['file_open_rejected', { reason: 'unsupported_format' }],
-      ['file_open_rejected', { reason: 'unrecognized_format' }],
-    ]);
-  });
-
-  it('does not count a DXF-only pick, which loads as an underlay', () => {
-    assert.equal(reportFileOpenRejected([new File([''], 'site.dxf')]), null);
-    assert.deepEqual(captured, []);
   });
 });

@@ -1376,6 +1376,12 @@ fn a_box_buried_in_the_l_prism_is_still_hard_wherever_it_sits_5473() {
     }
 }
 
+/// An `[minx, miny, minz, maxx, maxy, maxz]` part AABB as an [`Aabb`].
+fn aabb_of(b: &[f32]) -> crate::aabb::Aabb {
+    let f = |i: usize| f64::from(b[i]);
+    crate::aabb::Aabb::new([f(0), f(1), f(2)], [f(3), f(4), f(5)])
+}
+
 #[test]
 fn a_duplicate_of_its_container_is_buried_in_it_5473() {
     // Every vertex of an exact duplicate lies ON the container's surface, so
@@ -1384,12 +1390,13 @@ fn a_duplicate_of_its_container_is_buried_in_it_5473() {
     // the first one read "outside" (its ray exits at once). The duplicate's
     // own vertex centroid, inside it and away from every face, is what
     // `contained_solid_is_buried` falls back on — and it is inside.
-    let (positions, indices, _) = box_hxyz(2.0, -1.0, 0.5, 0.5, 0.3, 0.2);
+    let (positions, indices, bounds) = box_hxyz(2.0, -1.0, 0.5, 0.5, 0.3, 0.2);
+    let bb = aabb_of(&bounds);
     let reversed: Vec<f64> = positions.chunks_exact(3).rev().flatten().map(|&c| f64::from(c)).collect();
     let remapped: Vec<u32> = indices.iter().map(|&i| 7 - i).collect();
     let dup = TriMesh::new(reversed, remapped);
     assert!(!dup.contains_point(dup.vertex(0)), "fixture premise: the first corner reads outside");
-    assert!(crate::depth::contained_solid_is_buried(&dup, &dup));
+    assert!(crate::depth::contained_solid_is_buried(&dup, &dup, &bb, &bb));
 }
 
 #[test]
@@ -1399,11 +1406,11 @@ fn a_solid_resting_on_its_containers_face_from_outside_is_not_buried_5473() {
     // (0.4 above the face) decides "outside"; an implementation that
     // answered "buried" for every contact would pass the duplicate test
     // above and fail here.
-    let (slab_positions, slab_indices, _) = box_hxyz(0.0, 0.0, 0.0, 5.0, 5.0, 1.0);
+    let (slab_positions, slab_indices, slab_bounds) = box_hxyz(0.0, 0.0, 0.0, 5.0, 5.0, 1.0);
     let slab = TriMesh::new(slab_positions.iter().map(|&c| f64::from(c)).collect(), slab_indices);
-    let (positions, indices, _) = box_hxyz(0.0, 0.0, 1.2, 0.5, 0.5, 0.2);
+    let (positions, indices, bounds) = box_hxyz(0.0, 0.0, 1.2, 0.5, 0.5, 0.2);
     let resting = TriMesh::new(positions.iter().map(|&c| f64::from(c)).collect(), indices);
-    assert!(!crate::depth::contained_solid_is_buried(&resting, &slab));
+    assert!(!crate::depth::contained_solid_is_buried(&resting, &slab, &aabb_of(&bounds), &aabb_of(&slab_bounds)));
 }
 
 #[test]
@@ -1483,5 +1490,99 @@ fn a_shared_face_does_not_veto_a_genuine_overlap_5717() {
             Some(ClashStatus::Touch),
             "rotation {rot}: a flush pair is still a touch"
         );
+    }
+}
+
+/// The complement of `l_part` over [1,3]x[0,2]: the notch square
+/// [1,2]x[1,2] plus an arm [2,3]x[0,2], z 0..1, shifted `dy` along Y. At
+/// `dy = 0` it meets the L flush on three faces (y = 1 and x = 1 around the
+/// notch, x = 2 along the arm) and nowhere overlaps it. Their AABB overlap
+/// is [1,2]x[0,2]x[0,1], whose centre (1.5, 1, 0.5) lies exactly ON the
+/// shared face y = 1.
+fn complementary_l(dy: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let foot: [[f32; 2]; 6] = [[2.0, 0.0], [3.0, 0.0], [3.0, 2.0], [1.0, 2.0], [1.0, 1.0], [2.0, 1.0]];
+    let mut positions = Vec::with_capacity(36);
+    for z in [0.0f32, 1.0] {
+        for [x, y] in foot {
+            positions.extend_from_slice(&[x, y + dy, z]);
+        }
+    }
+    // Fan from the reflex vertex (2,1) = index 5 (bottom) / 11 (top).
+    let mut indices: Vec<u32> = vec![5, 1, 0, 5, 2, 1, 5, 3, 2, 5, 4, 3];
+    indices.extend_from_slice(&[11, 6, 7, 11, 7, 8, 11, 8, 9, 11, 9, 10]);
+    for k in 0..6u32 {
+        let n = (k + 1) % 6;
+        indices.extend_from_slice(&[k, n, n + 6, k, n + 6, k + 6]);
+    }
+    let aabb = vec![1.0, dy, 0.0, 3.0, 2.0 + dy, 1.0];
+    (positions, indices, aabb)
+}
+
+const INTERLOCK_PLACEMENTS: [(f64, f64, [f64; 3]); 8] = [
+    (0.0, 0.0, [0.0, 0.0, 0.0]),
+    (0.0, 0.0, [7.4, 0.0, 0.0]),
+    (0.0, 0.0, [3.7, -12.9, 2.35]),
+    (0.0, 0.0, [123.456, -45.678, 9.1]),
+    (0.0, 0.0, [1000.0, 0.0, 0.0]),
+    (0.3, 0.0, [0.0, 0.0, 0.0]),
+    (0.3, 0.0, [123.456, -45.678, 9.1]),
+    (1.1, -0.61, [1000.0, 0.0, 0.0]),
+];
+
+#[test]
+fn flush_interlocking_ls_are_a_touch_at_every_placement_not_the_aabb_estimate_5751() {
+    // Two L prisms interlocking flush: no triangle crosses, their AABBs
+    // overlap by 1 m, and the AABB-overlap probe sits ON the shared face.
+    // Its ray parity was a coin flip, and "inside both" reported the pair
+    // Hard at the AABB estimate (-1.0, the overlap width: an element
+    // dimension, not a depth), differently at different placements. A probe
+    // now counts only when clearly inside both solids.
+    for (yaw, roll, off) in INTERLOCK_PLACEMENTS {
+        let parts = [placed(&l_part(), yaw, roll, off), placed(&complementary_l(0.0), yaw, roll, off)];
+        let session = session_of_parts(&parts);
+        let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert!(
+            hard_only.records.is_empty(),
+            "yaw {yaw}, roll {roll}, offset {off:?}: {:?}",
+            hard_only.records.iter().map(|r| (r.status, r.distance)).collect::<Vec<_>>()
+        );
+        let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(with_touch.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(with_touch.records[0].status, ClashStatus::Touch, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+#[test]
+fn interlocking_ls_driven_20mm_into_each_other_are_hard_at_every_placement_5751() {
+    // Companion: the same pair with the complement pushed 20 mm into the L
+    // along -Y, a real shared volume. It must stay Hard everywhere, or a
+    // probe rule that never trusted anything would pass above.
+    for (yaw, roll, off) in INTERLOCK_PLACEMENTS {
+        let parts = [placed(&l_part(), yaw, roll, off), placed(&complementary_l(-0.02), yaw, roll, off)];
+        let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+#[test]
+fn a_1mm_aligned_overlap_through_the_probe_is_hard_far_out_on_an_orthogonal_axis_5751() {
+    // The probe path's genuine-volume case at a thin margin: a long and a
+    // short bar sharing all their side planes (so no triangle pair crosses)
+    // and overlapping 1 mm end to end. The AABB-overlap probe is 0.5 mm from
+    // the nearest surface along X. Placed 10 km out along Y — orthogonal to
+    // that clearance — it must still be trusted: the probe's own floor
+    // projected onto X is ~1e-6 m, where a max-over-all-axes floor (10,000 *
+    // 2^-22 ~ 2.4 mm) would call the 0.5 mm clearance "on the surface" and
+    // lose a real 1 mm clash.
+    for off in [[0.0, 0.0, 0.0], [0.0, 10_000.0, 0.0]] {
+        let parts = [
+            placed(&box_hxyz(0.0, 0.0, 0.0, 5.0, 0.5, 0.5), 0.0, 0.0, off),
+            placed(&box_hxyz(5.499, 0.0, 0.0, 0.5, 0.5, 0.5), 0.0, 0.0, off),
+        ];
+        let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.0001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "offset {off:?}");
+        assert!((result.records[0].distance + 0.001).abs() < 1e-5, "offset {off:?}: {}", result.records[0].distance);
     }
 }

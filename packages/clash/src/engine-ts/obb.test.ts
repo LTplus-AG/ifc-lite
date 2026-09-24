@@ -129,7 +129,7 @@ function oldMaxPenetrationInto(mesh: TriMesh, other: TriMesh, crossFlags: Uint8A
     if (crossFlags[t] === 0) continue;
     for (const v of mesh.tri(t)) {
       if (!other.containsPoint(v)) continue;
-      const d = other.distanceToSurface(v);
+      const d = other.closestOnSurface(v)[0];
       if (d > depth) depth = d;
     }
   }

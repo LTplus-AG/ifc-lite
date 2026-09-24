@@ -200,7 +200,8 @@ export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFl
  * - the box MTD, when both elements are certified boxes (`box`);
  * - the crossing-vertex penetration, for a CONTAINED pair with a crossing
  *   vertex inside the other solid (`meshEvidence`) — evidence for this gate
- *   only, never a reported depth (see `crossingVertexPenetration`).
+ *   only, never a reported depth (see `crossingVertexPenetration`), and
+ *   only where the reported depth would be the ESTIMATE (#5717).
  *
  * Each candidate is tested against the floor OF ITS OWN DIRECTION — the
  * pair's per-axis f32 noise projected onto the direction that candidate was
@@ -210,7 +211,10 @@ export function crossingVertexPenetration(mesh: TriMesh, other: TriMesh, crossFl
  * `hard` at the origin, and near the origin the X extent pinned the threshold
  * for contacts that have no X component at all.
  *
- * The pair is `hard` only when EVERY available candidate clears its floor.
+ * The pair is `hard` only when every candidate that BEARS ON THE REPORTED
+ * NUMBER clears its floor — all three when the report is the estimate, and
+ * the estimate and the MTD when the box path certified a depth, since a
+ * sampling probe may not overrule an exact one (#5717).
  * That is what makes the floor unreachable by depth-source selection:
  * a sub-floor box MTD cannot be promoted by the through-penetration guard
  * swapping in a larger AABB estimate; a sub-floor crossing-vertex
@@ -240,10 +244,28 @@ export function depthClashResult(
   // candidate never counts as below its floor, on either side.
   const estFloor = estimateFloor(elA.bounds, elB.bounds);
   const boxFloor = box != null ? depthFloor(box.axis, elA.bounds, elB.bounds) : null;
+  // Whether the pair has a CERTIFIED depth, i.e. whether the number this
+  // function would report is the exact box MTD or the AABB estimate. Hoisted
+  // above the floor test because the mesh-evidence term needs it too.
+  const measured = box != null && !box.through;
   const belowFloor =
     estimate <= estFloor ||
     (box != null && boxFloor != null && box.mtd <= boxFloor) ||
-    (meshEvidence != null && meshEvidence.depth <= depthFloor(meshEvidence.axis, elA.bounds, elB.bounds));
+    // Mesh evidence guards the ESTIMATE, and only the estimate (#5717).
+    // `crossingVertexPenetration` is not a depth metric — its own doc
+    // comment says so, and it underestimates by an amount that depends on
+    // tessellation. That is harmless when it is the only thing standing
+    // between a flush contained pair and a fabricated AABB estimate, the
+    // case it was added for. It is not harmless against a certified box
+    // MTD: a vertex lying ON a face the two boxes share reads as a
+    // sub-floor "penetration" once rotation pushes it a noise-width
+    // inside, and vetoed a 20 mm overlap the exact box depth had measured
+    // correctly. Two boxes that are genuinely flush already report 0
+    // through the MTD term above (#5355), so nothing here needs the
+    // probe's second opinion.
+    (!measured &&
+      meshEvidence != null &&
+      meshEvidence.depth <= depthFloor(meshEvidence.axis, elA.bounds, elB.bounds));
   if (belowFloor) {
     if (!rule.reportTouch) return null;
     // distance is exactly 0 here (the classification, not a measurement, is
@@ -256,7 +278,6 @@ export function depthClashResult(
   // the AABB estimate is the honest number (see `boxPenetration`).
   // The reported depth carries ITS OWN floor out with it (#5639), so the
   // reported touching band is decided by the same rule as this verdict.
-  const measured = box != null && !box.through;
   return {
     status: 'hard',
     distance: -(measured ? box.mtd : estimate),

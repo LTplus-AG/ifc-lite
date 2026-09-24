@@ -236,3 +236,50 @@ fn rotated_site_keeps_instancing_metadata() {
          keeping it would buy nothing"
     );
 }
+
+/// #5407: a streaming consumer is handed the baked basis BEFORE the first
+/// batch through `StreamingOptions::baked_basis_out`, and it must be the very
+/// frame the finished result reports. The server's cross-batch Parquet stream
+/// collates each batch in it as it arrives; a basis that disagreed with the
+/// vertices would fail every rotated group's residual check and quietly share
+/// nothing, which is the #4118 failure moved from the end of a parse to the
+/// start. Checked under a yawed site, the case where the basis is not a pure
+/// translation, and before the first batch, which is when it is read.
+#[test]
+fn the_baked_basis_is_published_before_the_first_batch() {
+    let ifc = model(Some(SITE_ROTATION_30DEG));
+    let slot = std::sync::Arc::new(std::sync::OnceLock::new());
+    let mut seen_at_first_batch = None;
+    let result = process_geometry_streaming_filtered_with_options(
+        ifc.as_bytes(),
+        OpeningFilterMode::Default,
+        StreamingOptions {
+            initial_batch_size: 1,
+            throughput_batch_size: 1,
+            baked_basis_out: Some(slot.clone()),
+            ..StreamingOptions::default()
+        },
+        |meshes, _, _| {
+            if !meshes.is_empty() && seen_at_first_batch.is_none() {
+                seen_at_first_batch = Some(slot.get().copied());
+            }
+        },
+        |_| {},
+        |_| {},
+    );
+    assert_eq!(result.mesh_coordinate_space, MeshCoordinateSpace::SiteLocal);
+    let expected = ifc_lite_processing::native_to_baked(
+        result.mesh_coordinate_space,
+        result.site_transform.as_deref(),
+        result.metadata.coordinate_info.origin_shift,
+    );
+    assert_eq!(
+        seen_at_first_batch.expect("the model must emit a batch"),
+        Some(expected),
+        "the basis must be published before the first batch, and be the result's frame"
+    );
+    assert_ne!(
+        expected[0], 1.0,
+        "control: the site yaw must make the basis more than a translation"
+    );
+}

@@ -127,6 +127,9 @@ pub fn process_streaming(
         let mut started = false;
         let mut batch_number = 0usize;
         let mut last_type = String::new();
+        // Filled by the pipeline once it has chosen the frame, before the
+        // first batch (#5407).
+        let baked_basis = std::sync::Arc::new(std::sync::OnceLock::new());
 
         let result = process_geometry_streaming_filtered_with_options(
             &content,
@@ -139,6 +142,7 @@ pub fn process_streaming(
                 // in the ProcessingResult would double peak memory.
                 retain_emitted_meshes: false,
                 cancel: Some(std::sync::Arc::clone(&cancel_for_task)),
+                baked_basis_out: Some(std::sync::Arc::clone(&baked_basis)),
                 ..StreamingOptions::default()
             },
             |meshes, processed, total| {
@@ -165,6 +169,7 @@ pub fn process_streaming(
                     let _ = tx.blocking_send(StreamEvent::Batch {
                         meshes: meshes.to_vec(),
                         batch_number,
+                        baked_basis: baked_basis.get().copied(),
                     });
                 }
                 let _ = tx.blocking_send(StreamEvent::Progress {

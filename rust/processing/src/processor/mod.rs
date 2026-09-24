@@ -193,6 +193,10 @@ pub struct StreamingOptions {
     /// reproduces the historical materialized output byte-for-byte, so determinism /
     /// parity / every exporter are unaffected (none arm this).
     pub enable_instancing: bool,
+    /// Receives [`native_to_baked`] for the frame this pass bakes vertices in,
+    /// set once, after frame selection and BEFORE the first batch is emitted,
+    /// so a streaming consumer can collate in the baked frame (#5407).
+    pub baked_basis_out: Option<Arc<std::sync::OnceLock<[f64; 16]>>>,
 }
 
 impl Default for StreamingOptions {
@@ -209,6 +213,7 @@ impl Default for StreamingOptions {
             entity_index: None,
             cancel: None,
             enable_instancing: false,
+            baked_basis_out: None,
         }
     }
 }
@@ -1098,6 +1103,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let coord_space = frame.coordinate_space();
     let has_rtc_offset = frame.needs_shift();
     router.set_rtc_offset(frame.rtc_offset());
+    site_local::publish_baked_basis(options.baked_basis_out.as_deref(), frame, site_transform.as_deref());
     let preprocess_time = preprocess_start.elapsed();
     preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
     drop(preprocess_span);

@@ -309,6 +309,32 @@ The viewer's own federated "Add" currently takes the non-streaming
 `@ifc-lite/renderer` hosts that stream federated models, and for any finalize
 that runs with other models resident.
 
+## Cross-batch shared shapes on the Parquet stream (#5407)
+
+**Won, opt-in.** `?parquet_layout=shared-shapes&stream_shapes=cross-batch` on
+`/parse/parquet-stream` sends each distinct shape once per stream instead of once
+per batch. Across five fixtures (office, advanced_model, skolebygg, Holter
+Tower, and a 342 MB architectural model), the client payload dropped 2.2x to
+6.8x against the batch-local shared stream. It planned exactly the buffered
+route's vertex rows, and landed 8-43% above the buffered route's bytes, which is
+per-batch Parquet framing (17-132 batches). Peak server RSS stayed within
+run-to-run noise of the batch-local stream, and every unchanged mode was
+byte-identical to base.
+
+Two lessons, both found by measuring rather than by design:
+
+- **A content-hash registry alone is not enough.** Hash-only sharing across
+  batches recovered only a third of the gap on the office model (841k vs 295k
+  buffered vertices), because rotated repeats are not bit-identical. Stage 1
+  (the rotation-aware collator) had to reach across batches too. That means
+  keeping each instanced representation's first emitted mesh, not only
+  collator templates: a representation seen once per batch is never collated
+  inside any one batch.
+- **The stream needs the baked basis before its first batch.** Without it,
+  site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
+  buffered route run with no basis, 2-5x worse. The frame is chosen before
+  meshing, so `StreamingOptions::baked_basis_out` publishes it then.
+
 ## The native probe (`perf_probe`)
 
 `rust/processing/examples/perf_probe.rs`, wrapped by `probe.sh`. It drains the

@@ -19,6 +19,7 @@ import { SourceHostProvider } from './services/sources/SourceHostProvider';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
+import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
 import { OverlayThemeSync } from './components/viewport-ui/OverlayThemeSync';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
@@ -97,6 +98,7 @@ export function App({ sourceProviders }: AppProps = {}) {
           </Suspense>
         </ChunkErrorBoundary>
         <Toaster />
+        <StaleDeploymentNotice />
         <Analytics />
       </>
     );
@@ -110,6 +112,7 @@ export function App({ sourceProviders }: AppProps = {}) {
           </Suspense>
         </ChunkErrorBoundary>
         <Toaster />
+        <StaleDeploymentNotice />
         <Analytics />
       </>
     );
@@ -122,6 +125,7 @@ export function App({ sourceProviders }: AppProps = {}) {
           <OverlayThemeSync />
           <ViewerLayout />
           <Toaster />
+          <StaleDeploymentNotice />
           <Analytics />
         </SourceHostProvider>
       </ExtensionHostProvider>

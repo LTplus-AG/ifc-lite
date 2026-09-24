@@ -358,6 +358,7 @@
     "extract_georeferencing_with_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_swept_disk_definitions": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_swept_disk_descriptions": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "extract_swept_disk_views": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_symbolic_data": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_symbolic_data_with_provenance": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "extract_symbolic_data_with_provenance_in_frame": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

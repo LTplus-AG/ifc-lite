@@ -331,7 +331,10 @@ Authored attributes use exact EXPRESS names and record whether they came from
 the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
 raw IFC value and an SI conversion. Each source sweep separately carries
 world-space radius, centreline length and bend angles, geometric checks, and
-source identity. Mapped repetitions remain separate. An authored `BarLength`
+reusable `source` identity. Mapped repetitions remain separate, while repeated
+uses of one representation map share a source key. If the independent definition
+output budget is exhausted, `source` is `None` with a row diagnostic; the
+world-space schedule sweep remains available. An authored `BarLength`
 can differ from the derived centreline length; neither value is a certified
 cutting length. IFC bar entities and represented sweeps do not imply a physical
 bar count.

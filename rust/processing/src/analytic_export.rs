@@ -121,3 +121,12 @@ pub fn extract_extrusion_definitions(
     walk::extract(content, ids, false, false, true)
         .extrusions.expect("extrusion collection requested")
 }
+
+/// Return both world descriptions and reusable raw source definitions in one
+/// bounded representation walk. Both views share the same decoded source cache.
+pub fn extract_swept_disk_views(
+    content: &[u8], ids: Option<&HashSet<u32>>,
+) -> (SweptDiskDescriptions, SweptDiskDefinitions) {
+    let result = walk::extract(content, ids, true, true, false);
+    (result.descriptions, result.definitions.expect("definition collection requested"))
+}

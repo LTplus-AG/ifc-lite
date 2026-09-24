@@ -98,7 +98,10 @@ fn issue_5759_reused_mapping_and_csg_operands_remain_occurrence_distinct() {
     for id in [50, 51] {
         assert_eq!(schedule.rows[&id].sweeps[0].mapping_path, vec![47]);
         assert_eq!(schedule.rows[&id].sweeps[0].solid_id, 43);
+        assert!(schedule.rows[&id].sweeps[0].source.is_some());
     }
+    assert_eq!(schedule.rows[&50].sweeps[0].source,
+        schedule.rows[&51].sweeps[0].source);
 
     let modified = MAPPED.replace(
         "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));",
@@ -116,6 +119,7 @@ fn issue_5759_reused_mapping_and_csg_operands_remain_occurrence_distinct() {
     assert!(sweeps
         .iter()
         .all(|sweep| sweep.source_modified && sweep.checks.source_modified));
+    assert_eq!(sweeps[0].source, sweeps[1].source);
 }
 
 #[test]

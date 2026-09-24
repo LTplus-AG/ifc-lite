@@ -47,7 +47,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const lastEscapeRef = useRef<number>(0);
 
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const hideEntities = useViewerStore((s) => s.hideEntities);
@@ -248,9 +247,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     }
 
     // Split tool — Esc exits Split and returns to Select. We catch
-    // it here before the global Esc handler so the user gets a
-    // gentle exit (clear hover, swap tool) rather than the global
-    // "clear all selection + visibility" cascade.
+    // it here before the global Esc handler so the hover is cleared
+    // along with the tool swap.
     if (activeTool === 'split' && key === 'escape') {
       e.preventDefault();
       const state = useViewerStore.getState();
@@ -363,7 +361,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
     }
 
-    // Escape: first press clears selection/tool, double-press closes all panels
+    // Escape: one step per press — leave the tool, else clear the selection; double-press
+    // also closes all panels. Never resets visibility; only A / Home do (#5595).
     if (key === 'escape') {
       e.preventDefault();
       const now = Date.now();
@@ -390,9 +389,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         state.setRightPanelCollapsed(false);
       }
 
-      setSelectedEntityId(null);
-      resetVisibilityForHomeFromStore();
-      setActiveTool('select');
+      if (activeTool !== 'select') {
+        setActiveTool('select');
+      } else {
+        useViewerStore.getState().clearEntitySelection();
+      }
     }
 
     // Theme toggle
@@ -405,7 +406,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // The dialog hook listens for '?' key globally
   }, [
     selectedEntityId,
-    setSelectedEntityId,
     activeTool,
     setActiveTool,
     hideEntities,

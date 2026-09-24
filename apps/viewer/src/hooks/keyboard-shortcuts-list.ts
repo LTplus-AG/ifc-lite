@@ -52,8 +52,8 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'T', description: 'Toggle theme', category: 'UI' },
   { key: 'Alt+1…0', description: `Open a panel from the rail (${altPanelTitles(false)}; ${altPanelTitles(true)} open at the bottom)`, category: 'UI' },
   { key: 'Alt+\\', description: 'Toggle sidebar (expand ⇄ collapse to icons)', category: 'UI' },
-  { key: 'Esc', description: 'Reset all (clear selection, basket, isolation)', category: 'Selection' },
-  { key: 'Esc Esc', description: 'Close all panels (return to starting view)', category: 'UI' },
+  { key: 'Esc', description: 'Cancel the current step, leave the tool, then clear the selection (keeps visibility)', category: 'Selection' },
+  { key: 'Esc Esc', description: 'Close all panels (keeps visibility)', category: 'UI' },
   { key: 'Ctrl+K', description: 'Command palette', category: 'UI' },
   { key: '?', description: 'Show keyboard shortcuts', category: 'Help' },
 ] as const;

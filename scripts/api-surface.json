@@ -5620,6 +5620,7 @@
     "FlavorSwitchOptions: interface",
     "FlavorSwitchResult: interface",
     "FlavorSwitcherCallbacks: interface",
+    "FlowGraphContribution: interface",
     "FormatBundleForPromptOptions: interface",
     "FormattedBundle: interface",
     "GroupNode: interface",
@@ -5801,6 +5802,7 @@
     "migrateSavedScripts: function",
     "mineSequences: function",
     "needsSdkRepair: function",
+    "normaliseBundlePath: function",
     "opMatchesScopeClaim: function",
     "overallTier: function",
     "overlayParagraphDiff: function",
@@ -5845,6 +5847,7 @@
   "@ifc-lite/extensions/bundle": [
     "UnpackResult: interface",
     "buildBundleFromFiles: function",
+    "normaliseBundlePath: function",
     "packBundle: function",
     "unpackBundle: function",
     "unpackBundleWithSignature: function"

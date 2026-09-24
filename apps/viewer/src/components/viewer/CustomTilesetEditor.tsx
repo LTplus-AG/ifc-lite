@@ -5,7 +5,7 @@
 /**
  * Input surface for the custom 3D Tiles URL (issue #3607).
  *
- * Lives under the Base map selector in the Sun & Sky panel, shown only when
+ * Lives under the Base map selector in the Environment panel, shown only when
  * the `custom-3dtiles` source is picked. One field: this build validates only
  * the URL's shape (http(s), no embedded credentials) — whether it actually
  * resolves to a tileset is a runtime concern surfaced by `CesiumOverlay`'s

@@ -104,6 +104,7 @@ export class Vec3 {
     MinDot(v0: Vec3, v1: Vec3, v2: Vec3): number { return Scalars.FoldMin(Scalars.FoldMin(Scalars.FoldMin(((1) / 0), v0.Dot(this)), v1.Dot(this)), v2.Dot(this)); }
     MaxDot(v0: Vec3, v1: Vec3, v2: Vec3): number { return Scalars.FoldMax(Scalars.FoldMax(Scalars.FoldMax((-((1) / 0)), v0.Dot(this)), v1.Dot(this)), v2.Dot(this)); }
     PairNoise(a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3): Vec3 { return new Vec3(Scalars.AxisNoise(this.X, a1.X, a2.X, b0.X, b1.X, b2.X), Scalars.AxisNoise(this.Y, a1.Y, a2.Y, b0.Y, b1.Y, b2.Y), Scalars.AxisNoise(this.Z, a1.Z, a2.Z, b0.Z, b1.Z, b2.Z)); }
+    DepthFloor(a: Box3, b: Box3): number { return this.Band(a.BoxNoise(b)); }
     Band(noise: Vec3): number { return (((Math.abs(this.X) * noise.X) + (Math.abs(this.Y) * noise.Y)) + (Math.abs(this.Z) * noise.Z)); }
     SeparatedOn(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3): boolean { return (((this.MaxDot(a0, a1, a2) - this.MinDot(b0, b1, b2)) <= this.Band(noise)) || ((this.MaxDot(b0, b1, b2) - this.MinDot(a0, a1, a2)) <= this.Band(noise))); }
     EdgeAxisSeparates(eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3, eps: number): boolean { return ((this.Cross(eb).LenSq() > ((eps * this.LenSq()) * eb.LenSq()))) ? this.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2, noise) : false; }
@@ -135,6 +136,9 @@ export class Box3 {
     MinOverlap(b: Box3): number { return Scalars.OverlapStep(Scalars.OverlapStep(Scalars.OverlapStep(((1) / 0), this.GapX(b), this.OverlapX(b)), this.GapY(b), this.OverlapY(b)), this.GapZ(b), this.OverlapZ(b)); }
     SignedGap(b: Box3): number { return (this.Penetrating(b)) ? (-this.MinOverlap(b)) : Math.sqrt(this.SquaredGap(b)); }
     OverlapBounds(b: Box3): Box3 { return new Box3(new Vec3(Scalars.ClampedLo(Scalars.Max2(this.Min.X, b.Min.X), Scalars.Min2(this.Max.X, b.Max.X)), Scalars.ClampedLo(Scalars.Max2(this.Min.Y, b.Min.Y), Scalars.Min2(this.Max.Y, b.Max.Y)), Scalars.ClampedLo(Scalars.Max2(this.Min.Z, b.Min.Z), Scalars.Min2(this.Max.Z, b.Max.Z))), new Vec3(Scalars.ClampedHi(Scalars.Max2(this.Min.X, b.Min.X), Scalars.Min2(this.Max.X, b.Max.X)), Scalars.ClampedHi(Scalars.Max2(this.Min.Y, b.Min.Y), Scalars.Min2(this.Max.Y, b.Max.Y)), Scalars.ClampedHi(Scalars.Max2(this.Min.Z, b.Min.Z), Scalars.Min2(this.Max.Z, b.Max.Z)))); }
+    Span(): number { return Scalars.Max2(Scalars.Max2((this.Max.X - this.Min.X), (this.Max.Y - this.Min.Y)), (this.Max.Z - this.Min.Z)); }
+    BoxNoise(b: Box3): Vec3 { return new Vec3((Scalars.AxisNoise(this.Min.X, this.Max.X, b.Min.X, b.Max.X, 0, 0) + ((this.Span() + b.Span()) * ((1) / 4194304))), (Scalars.AxisNoise(this.Min.Y, this.Max.Y, b.Min.Y, b.Max.Y, 0, 0) + ((this.Span() + b.Span()) * ((1) / 4194304))), (Scalars.AxisNoise(this.Min.Z, this.Max.Z, b.Min.Z, b.Max.Z, 0, 0) + ((this.Span() + b.Span()) * ((1) / 4194304)))); }
+    EstimateFloor(b: Box3): number { return (((((this.GapZ(b) > 0)) ? false : true) && (this.OverlapZ(b) < Scalars.OverlapStep(Scalars.OverlapStep(((1) / 0), this.GapX(b), this.OverlapX(b)), this.GapY(b), this.OverlapY(b))))) ? this.BoxNoise(b).Z : (((((this.GapY(b) > 0)) ? false : true) && (this.OverlapY(b) < Scalars.OverlapStep(((1) / 0), this.GapX(b), this.OverlapX(b))))) ? this.BoxNoise(b).Y : this.BoxNoise(b).X; }
 }
 export class Error {
     static Create(): Error { return new Error(); }
@@ -280,6 +284,102 @@ export function aabbContains(outer: FlatBox3, inner: FlatBox3): boolean {
 
 export function boundsOfPoints(a: FlatVec3, b: FlatVec3): { min: [number, number, number]; max: [number, number, number] } {
     return { min: [((a[0] < b[0]) ? a[0] : b[0]), ((a[1] < b[1]) ? a[1] : b[1]), ((a[2] < b[2]) ? a[2] : b[2])], max: [((a[0] > b[0]) ? a[0] : b[0]), ((a[1] > b[1]) ? a[1] : b[1]), ((a[2] > b[2]) ? a[2] : b[2])] };
+}
+
+export function depthFloor(axis: FlatVec3, a: FlatBox3, b: FlatBox3): number {
+    const t0 = Math.abs(0);
+    const t1 = Math.abs(b.max[0]);
+    const t2 = Math.abs(b.min[0]);
+    const t3 = Math.abs(a.max[0]);
+    const t4 = Math.abs(a.min[0]);
+    const t5 = ((t4 > 1) ? t4 : 1);
+    const t6 = ((t3 > t5) ? t3 : t5);
+    const t7 = ((t2 > t6) ? t2 : t6);
+    const t8 = ((t1 > t7) ? t1 : t7);
+    const t9 = ((t0 > t8) ? t0 : t8);
+    const t10 = (1 / 4194304);
+    const t11 = (a.max[0] - a.min[0]);
+    const t12 = (a.max[1] - a.min[1]);
+    const t13 = ((t11 > t12) ? t11 : t12);
+    const t14 = (a.max[2] - a.min[2]);
+    const t15 = (b.max[0] - b.min[0]);
+    const t16 = (b.max[1] - b.min[1]);
+    const t17 = ((t15 > t16) ? t15 : t16);
+    const t18 = (b.max[2] - b.min[2]);
+    const t19 = ((((t13 > t14) ? t13 : t14) + ((t17 > t18) ? t17 : t18)) * t10);
+    const t20 = Math.abs(b.max[1]);
+    const t21 = Math.abs(b.min[1]);
+    const t22 = Math.abs(a.max[1]);
+    const t23 = Math.abs(a.min[1]);
+    const t24 = ((t23 > 1) ? t23 : 1);
+    const t25 = ((t22 > t24) ? t22 : t24);
+    const t26 = ((t21 > t25) ? t21 : t25);
+    const t27 = ((t20 > t26) ? t20 : t26);
+    const t28 = ((t0 > t27) ? t0 : t27);
+    const t29 = Math.abs(b.max[2]);
+    const t30 = Math.abs(b.min[2]);
+    const t31 = Math.abs(a.max[2]);
+    const t32 = Math.abs(a.min[2]);
+    const t33 = ((t32 > 1) ? t32 : 1);
+    const t34 = ((t31 > t33) ? t31 : t33);
+    const t35 = ((t30 > t34) ? t30 : t34);
+    const t36 = ((t29 > t35) ? t29 : t35);
+    const t37 = ((t0 > t36) ? t0 : t36);
+    return (((Math.abs(axis[0]) * ((((t0 > t9) ? t0 : t9) * t10) + t19)) + (Math.abs(axis[1]) * ((((t0 > t28) ? t0 : t28) * t10) + t19))) + (Math.abs(axis[2]) * ((((t0 > t37) ? t0 : t37) * t10) + t19)));
+}
+
+export function estimateFloor(a: FlatBox3, b: FlatBox3): number {
+    const t0 = (b.min[2] - a.max[2]);
+    const t1 = (a.min[2] - b.max[2]);
+    const t2 = (b.min[1] - a.max[1]);
+    const t3 = (a.min[1] - b.max[1]);
+    const t4 = (((t2 > t3) ? t2 : t3) > 0);
+    const t5 = (b.min[0] - a.max[0]);
+    const t6 = (a.min[0] - b.max[0]);
+    const t7 = (1 / 0);
+    const t8 = (((a.max[0] < b.max[0]) ? a.max[0] : b.max[0]) - ((a.min[0] > b.min[0]) ? a.min[0] : b.min[0]));
+    const t9 = ((((t5 > t6) ? t5 : t6) > 0) ? t7 : ((t8 < t7) ? t8 : t7));
+    const t10 = (((a.max[1] < b.max[1]) ? a.max[1] : b.max[1]) - ((a.min[1] > b.min[1]) ? a.min[1] : b.min[1]));
+    const t11 = (t10 < t9);
+    const t12 = Math.abs(0);
+    const t13 = Math.abs(b.max[2]);
+    const t14 = Math.abs(b.min[2]);
+    const t15 = Math.abs(a.max[2]);
+    const t16 = Math.abs(a.min[2]);
+    const t17 = ((t16 > 1) ? t16 : 1);
+    const t18 = ((t15 > t17) ? t15 : t17);
+    const t19 = ((t14 > t18) ? t14 : t18);
+    const t20 = ((t13 > t19) ? t13 : t19);
+    const t21 = ((t12 > t20) ? t12 : t20);
+    const t22 = (1 / 4194304);
+    const t23 = (a.max[0] - a.min[0]);
+    const t24 = (a.max[1] - a.min[1]);
+    const t25 = ((t23 > t24) ? t23 : t24);
+    const t26 = (a.max[2] - a.min[2]);
+    const t27 = (b.max[0] - b.min[0]);
+    const t28 = (b.max[1] - b.min[1]);
+    const t29 = ((t27 > t28) ? t27 : t28);
+    const t30 = (b.max[2] - b.min[2]);
+    const t31 = ((((t25 > t26) ? t25 : t26) + ((t29 > t30) ? t29 : t30)) * t22);
+    const t32 = Math.abs(b.max[1]);
+    const t33 = Math.abs(b.min[1]);
+    const t34 = Math.abs(a.max[1]);
+    const t35 = Math.abs(a.min[1]);
+    const t36 = ((t35 > 1) ? t35 : 1);
+    const t37 = ((t34 > t36) ? t34 : t36);
+    const t38 = ((t33 > t37) ? t33 : t37);
+    const t39 = ((t32 > t38) ? t32 : t38);
+    const t40 = ((t12 > t39) ? t12 : t39);
+    const t41 = Math.abs(b.max[0]);
+    const t42 = Math.abs(b.min[0]);
+    const t43 = Math.abs(a.max[0]);
+    const t44 = Math.abs(a.min[0]);
+    const t45 = ((t44 > 1) ? t44 : 1);
+    const t46 = ((t43 > t45) ? t43 : t45);
+    const t47 = ((t42 > t46) ? t42 : t46);
+    const t48 = ((t41 > t47) ? t41 : t47);
+    const t49 = ((t12 > t48) ? t12 : t48);
+    return ((((((t0 > t1) ? t0 : t1) > 0) ? false : true) && ((((a.max[2] < b.max[2]) ? a.max[2] : b.max[2]) - ((a.min[2] > b.min[2]) ? a.min[2] : b.min[2])) < (t4 ? t9 : (t11 ? t10 : t9)))) ? ((((t12 > t21) ? t12 : t21) * t22) + t31) : (((t4 ? false : true) && t11) ? ((((t12 > t40) ? t12 : t40) * t22) + t31) : ((((t12 > t49) ? t12 : t49) * t22) + t31)));
 }
 
 export function triTriIntersect(a0: FlatVec3, a1: FlatVec3, a2: FlatVec3, b0: FlatVec3, b1: FlatVec3, b2: FlatVec3, eps: number = 1e-12): boolean {

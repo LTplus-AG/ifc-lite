@@ -27,6 +27,23 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Opt-in swept-disk source descriptions (#5559)
+
+The analytic reader runs only when called explicitly; normal mesh loading does
+not traverse a directrix through this path. On AC20-FZK-Haus, five interleaved
+base/feature pairs of `perf_probe --iters 5 --json --fingerprint` (base
+`337aab4f4`, final feature stack) gave median parse/geometry/pipeline-total
+times of 6/20/27 ms versus 7/22/29 ms. The base's pipeline-total samples
+spanned 23–34 ms and the feature's 24–31 ms; the machine had other builds
+running, so the small median difference is not evidence of a speed change.
+Every run on both sides emitted 285 meshes, 35,940 vertices and 20,322
+triangles with ordered mesh FNV-1a64 `c4d504b83ff698ea`.
+
+Verdict: no mesh-output regression on this ordinary load, and no reliable
+performance claim from the contested host. The opt-in extraction's own cost
+needs a caller-level measurement on representative swept-disk models if it
+becomes a frequent operation; the default pipeline cannot measure that cost.
+
 ## LandXML credited-stream acceptance (#5050)
 
 The native, generated-source acceptance harness is deliberately independent of
@@ -1917,6 +1934,22 @@ selector itself. Applying it to the established horizontal-depth route changed
 real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
+
+## Hole-wall winding and host-derived wall frames (#5410)
+
+Correctness change, no performance claim. Extruded profile holes now emit side
+walls wound into the void, so a voided host reaches the exact kernel as a
+consistently wound solid, and a plan-rotated wall whose cutters author no depth
+is cut in its own frame. Native `perf_probe` base `04dd98f96` vs branch, three
+interleaved rounds of best-of-3 per fixture, median parse / geometry / total ms:
+AC20-FZK-Haus 8 / 28 / 36 -> 9 / 24 / 33 (byte-identical ordered fingerprint),
+ISSUE_129 30 / 1,164 / 1,194 -> 30 / 1,157 / 1,182, Holter 463 / 945 / 1,409
+-> 465 / 598 / 1,146 (Holter's totals spread 977-1,711 ms on base, so its
+geometry delta is noise, not a win). Mesh, vertex, triangle and CSG-failure
+counts are identical on all three; ISSUE_129 and Holter fingerprints differ
+only in normals of holed extrusions, which the output orienter used to flip and
+recompute. The lesson: an extruder's winding is an input contract of the
+kernel, not a rendering detail the output orienter may repair afterwards.
 
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 

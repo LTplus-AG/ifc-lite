@@ -13,8 +13,9 @@
  * Everything that could leave without dragging a GPU resource across a module
  * boundary has left — the WGSL to `shaders/section-2d-overlay.wgsl.ts`, the
  * 2D→3D lift and cap triangulation to `section-2d-lift.ts`, the per-family
- * vertex buffer to `section-2d-line-buffer.ts`. What is left is one nullable,
- * `init()`-created / `dispose()`-destroyed GPU object (two pipelines, one
+ * vertex buffer to `section-2d-line-buffer.ts`, the cap pipeline descriptors
+ * to `section-cap-pipelines.ts`. What is left is one nullable,
+ * `init()`-created / `dispose()`-destroyed GPU object (three pipelines, one
  * bind-group layout, one bind group, one uniform buffer holding a 160-byte
  * record per draw site) plus the published API over it: one
  * `setLineOverlay`/`hasLineOverlay`/`drawLineOverlay` trio covering every
@@ -23,6 +24,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { createSectionCapPipelines } from './section-cap-pipelines.js';
 import { packRteDrawableDelta } from './relative-to-eye.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
@@ -61,6 +63,7 @@ export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOpti
 export class Section2DOverlayRenderer {
   private device: GPUDevice;
   private fillPipeline: GPURenderPipeline | null = null;
+  private fillDepthPipeline: GPURenderPipeline | null = null;
   private linePipeline: GPURenderPipeline | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
@@ -149,69 +152,10 @@ export class Section2DOverlayRenderer {
     const fillShader = this.device.createShaderModule({ code: SECTION_2D_CAP_FILL_WGSL });
     const lineShader = this.device.createShaderModule({ code: SECTION_2D_OVERLAY_LINE_WGSL });
 
-    // Pipeline for filled polygons
-    this.fillPipeline = this.device.createRenderPipeline({
-      layout: pipelineLayout,
-      vertex: {
-        module: fillShader,
-        entryPoint: 'vs_main',
-        buffers: [
-          {
-            arrayStride: 28, // 3 position + 4 color = 7 floats
-            attributes: [
-              { shaderLocation: 0, offset: 0, format: 'float32x3' as const },
-              { shaderLocation: 1, offset: 12, format: 'float32x4' as const },
-            ],
-          },
-        ],
-      },
-      fragment: {
-        module: fillShader,
-        entryPoint: 'fs_main',
-        // The main render pass has two colour attachments (main colour +
-        // picker objectId). Pipelines used inside that pass must declare
-        // matching targets — the objectId slot writes nothing so the pass's
-        // picking IDs underneath are preserved.
-        targets: [
-          {
-            format: this.format,
-            blend: {
-              color: {
-                srcFactor: 'src-alpha' as const,
-                dstFactor: 'one-minus-src-alpha' as const,
-                operation: 'add' as const,
-              },
-              alpha: {
-                srcFactor: 'one' as const,
-                dstFactor: 'one-minus-src-alpha' as const,
-                operation: 'add' as const,
-              },
-            },
-          },
-          { format: 'rgba8unorm' as const, writeMask: 0 },
-        ],
-      },
-      primitive: {
-        topology: 'triangle-list' as const,
-        cullMode: 'none' as const,
-      },
-      depthStencil: {
-        format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
-        depthWriteEnabled: false,
-        // 'greater-equal' (reverse-Z): draw the cap fill when its depth is at
-        // least as close as whatever the main opaque pass already wrote. The
-        // cap polygons live exactly on the section plane, which coincides
-        // with below-plane top faces — 'greater-equal' lets them tie cleanly
-        // there. Where nearer model geometry (e.g. a wall in front of the
-        // cut, viewed at an angle) wrote a closer depth, the cap fails the
-        // test and is occluded — the user no longer sees cap hatch painted
-        // through model elements that ought to be in front of it.
-        depthCompare: 'greater-equal' as const,
-      },
-      multisample: {
-        count: this.sampleCount,
-      },
-    });
+    // Pipelines for filled polygons: the cap colour, and its depth (#5384).
+    const cap = createSectionCapPipelines(this.device, pipelineLayout, fillShader, this.format, this.sampleCount);
+    this.fillPipeline = cap.fill;
+    this.fillDepthPipeline = cap.depth;
 
     // Pipeline for lines
     this.linePipeline = this.device.createRenderPipeline({
@@ -499,7 +443,7 @@ export class Section2DOverlayRenderer {
   ): void {
     this.init();
 
-    if (!this.fillPipeline || !this.linePipeline || !this.uniformBuffer || !this.bindGroup) {
+    if (!this.fillPipeline || !this.fillDepthPipeline || !this.linePipeline || !this.uniformBuffer || !this.bindGroup) {
       return;
     }
 
@@ -515,8 +459,8 @@ export class Section2DOverlayRenderer {
     // (users could see a 0.3m gap between the plane preview and the cap).
     // The fill pipeline uses depthCompare 'greater-equal' (reverse-Z) so the
     // cap ties cleanly with coincident below-plane top faces and is occluded
-    // by nearer model geometry — see the depthStencil comment on
-    // `fillPipeline` above. There is no stencil test; the fill is restricted
+    // by nearer model geometry — see the depthStencil comment in
+    // `section-cap-pipelines.ts`. There is no stencil test; the fill is restricted
     // to the actual cap polygons by the triangle-plane intersection geometry
     // `SectionCutter` produces, not by a stencil gate.
     // Cap vertices are stored relative to capAnchor so that the RTE path can
@@ -591,6 +535,9 @@ export class Section2DOverlayRenderer {
       pass.setBindGroup(0, this.bindGroup, [capOffset]);
       pass.setVertexBuffer(0, this.fillVertexBuffer);
       pass.setIndexBuffer(this.fillIndexBuffer, 'uint32');
+      pass.drawIndexed(this.fillIndexCount);
+      // Then its depth, colour-masked, for the post passes (section-cap-pipelines.ts).
+      pass.setPipeline(this.fillDepthPipeline);
       pass.drawIndexed(this.fillIndexCount);
     }
 

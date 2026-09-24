@@ -13,7 +13,7 @@
  * client's clock after N such writes is N.)
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCollabSession, stateVectorCovers, type CollabSession } from '@ifc-lite/collab';
 import { confirmRelayHoldsState, type ConfirmRelayInput, type RelayProbe } from './relay-confirm.js';
@@ -109,7 +109,13 @@ describe('confirmRelayHoldsState (#4446)', () => {
     }
   });
 
-  it('backs off between probes: 250 → 500 → 1000 ms, capped, first probe immediate', async () => {
+  it('backs off between probes: 20 → 40 → 80 ms, capped, first probe immediate', async () => {
+    // A fake clock (node:test's `mock.timers`) replaces the real-timer wall-clock
+    // assertions this test used to make: under CPU contention a `setTimeout(r, 80)`
+    // can fire a few ms late, and a lower bound close to the nominal delay was
+    // observed to fail once ("later gaps capped at ~80 ms, got 77,80"). Advancing
+    // a virtual clock makes the backoff schedule exact and load-independent, and
+    // this test runs in real time close to zero.
     const owner = await ownerWith(1);
     try {
       const at: number[] = [];
@@ -121,15 +127,44 @@ describe('confirmRelayHoldsState (#4446)', () => {
           return relay.collab.fetchRoomStateVector();
         },
       };
-      const t0 = Date.now();
-      await confirmRelayHoldsState(inputFor(owner, collab, { intervalMs: 20, maxIntervalMs: 80, maxWaitMs: 300 }));
-      assert.ok(at[0] - t0 < 15, 'first probe fired immediately');
+      mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+      let ok: boolean;
+      try {
+        const resultPromise = confirmRelayHoldsState(
+          inputFor(owner, collab, { intervalMs: 20, maxIntervalMs: 80, maxWaitMs: 300 }),
+        );
+        // Advance the virtual clock in 1 ms steps so each `setTimeout` in the
+        // production backoff loop gets its own turn to schedule the next one,
+        // and the recorded gaps land on exact millisecond boundaries; 400 steps
+        // of virtual time comfortably covers the 300 ms cap.
+        for (let i = 0; i < 400; i++) {
+          mock.timers.tick(1);
+          // Drain the microtask queue fully (via a REAL setImmediate, not the
+          // mocked clock) before the next tick, so the production loop's
+          // `await` chain settles at each 1 ms mark instead of racing ahead.
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => { setImmediate(resolve); });
+        }
+        ok = await resultPromise;
+      } finally {
+        mock.timers.reset();
+      }
+      assert.equal(ok, false, 'the relay never catches up, so the wait times out');
+      assert.equal(at[0], 0, 'first probe fired immediately');
       const gaps = at.slice(1).map((t, i) => t - at[i]);
-      // Timer resolution is coarse; check the ordering and the cap rather than exact values.
-      assert.ok(gaps.length >= 4, `expected several probes, got gaps ${gaps.join(',')}`);
-      assert.ok(gaps[0] >= 18 && gaps[0] < 60, `first gap ~20 ms, got ${gaps[0]}`);
-      assert.ok(gaps[1] >= 38 && gaps[1] < 100, `second gap ~40 ms, got ${gaps[1]}`);
-      assert.ok(gaps.slice(2).every((g) => g >= 78 && g < 200), `later gaps capped at ~80 ms, got ${gaps.slice(2).join(',')}`);
+      // The fake clock is exact; a gap can still land 1-2 ms past its nominal
+      // value because it takes the production code a couple of microtask turns,
+      // after a probe resolves, to register the next `setTimeout` — turns this
+      // harness's tick loop can straddle. That slack is fixed by the harness,
+      // not by wall-clock scheduling, so it does not reintroduce flakiness.
+      const nominal = [20, 40, 80, 80];
+      assert.deepEqual(gaps.length, nominal.length, `expected ${nominal.length} probes, got gaps ${gaps.join(',')}`);
+      gaps.forEach((gap, i) => {
+        assert.ok(
+          gap >= nominal[i] && gap <= nominal[i] + 3,
+          `gap ${i} should be ${nominal[i]} (+0..3 ms of harness slack), got ${gap}`,
+        );
+      });
     } finally {
       owner.dispose();
     }

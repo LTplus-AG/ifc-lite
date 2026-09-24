@@ -110,6 +110,7 @@ export function extractClassificationsOnDemand(
     const results: ClassificationInfo[] = [];
 
     for (const classRefId of classRefIds) {
+        // @raw-entity-enumeration-ok source classification association ids require source byte offsets for EntityExtractor
         const ref = store.entityIndex.byId.get(classRefId);
         if (!ref) continue;
 
@@ -196,6 +197,7 @@ export interface ClassificationSystemNames {
  * a national system) — this returns all of them, sorted alphabetically.
  */
 export function extractClassificationSystemsOnDemand(store: IfcDataStore): ClassificationSystemNames {
+    // @raw-entity-enumeration-ok this parser API enumerates systems in the parsed source; live viewer sessions use effectiveClassificationSystems
     const ids = store.entityIndex.byType.get('IFCCLASSIFICATION');
     if (!ids || ids.length === 0) return { names: [], unresolved: false };
     if (!store.source?.length) {
@@ -210,6 +212,7 @@ export function extractClassificationSystemsOnDemand(store: IfcDataStore): Class
     const names = new Set<string>();
 
     for (const id of ids) {
+        // @raw-entity-enumeration-ok each source classification id needs its STEP byte span to decode Name
         const ref = store.entityIndex.byId.get(id);
         if (!ref) continue;
 
@@ -255,6 +258,7 @@ function walkClassificationChain(
         }
         visited.add(currentId);
 
+        // @raw-entity-enumeration-ok chain cursor follows source ReferencedSource links and decodes each STEP record
         const ref = store.entityIndex.byId.get(currentId);
         if (!ref) return { codes, chainUnresolved: true };
 

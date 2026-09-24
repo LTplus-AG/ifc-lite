@@ -531,18 +531,18 @@ struct Stats {
 /// Closed form of the divergence functional the mesher's emitted mesh carries.
 ///
 /// Family A (solid): `det(shear) * xdim * ydim * depth`, i.e. the true volume.
-/// Family B (with a void): `det(shear) * depth * (A_outer + A_hole / 3)`.
-/// The `+ A_hole/3` is **not** a typo and not the solid's volume: see DESIGN.md
-/// section "the hole-wall orientation finding". Battery-wide worst deviation
-/// against this oracle is 1.358479e-12 (see battery.json); an earlier version
-/// of this comment claimed 1e-13, which is false by ~13.6x and was never
-/// asserted anywhere. Corrected 2026-07-29 by the G4 re-attestation.
+/// Family B (with a void): `det(shear) * depth * (A_outer - A_hole)`, also the
+/// solid's volume. It read `(A_outer + A_hole / 3)` until #5410, which is what
+/// the hole walls wound into the solid (DESIGN.md, "the hole-wall orientation
+/// finding") made the functional; #5410 winds them into the void. Measured
+/// worst deviation against this oracle across the six seeded batteries after
+/// that change: 1.243e-12 (B/seed-2026).
 fn oracle(x: &[f64], with_hole: bool) -> f64 {
     let dirn = (x[3] * x[3] + x[4] * x[4] + x[5] * x[5]).sqrt();
     let det = (x[5] / dirn).abs();
     let a_outer = x[0] * x[1];
     let a_hole = if with_hole { 4.0 * x[12] * x[13] } else { 0.0 };
-    det * x[2] * (a_outer + a_hole / 3.0)
+    det * x[2] * (a_outer - a_hole)
 }
 
 fn run_family<const N: usize>(seed: u64, npoints: usize, with_hole: bool, names: &[&str]) -> Stats {
@@ -887,16 +887,19 @@ fn dual_sqrt_at_zero_is_finite() {
     }
 }
 
-/// The emitted mesh for a holed profile is winding-INCONSISTENT: `create_side_walls`
-/// orients every loop's walls outward from that loop's own interior, so a hole's
-/// walls face into the solid instead of into the void. The divergence functional of
-/// the emitted mesh is therefore `depth * det * (A_outer + A_hole/3)`, not the solid
-/// volume `depth * det * (A_outer - A_hole)`. Production compensates downstream
-/// (`extrude_profile_watertight` runs `orient_mesh_outward`; the exact CSG kernel
-/// re-orients), so this is a property of the raw mesher, not a shipped defect.
-/// Pinned here because the scalar-adjoint oracle depends on it.
+/// The emitted mesh for a holed profile is the consistently wound solid, so its
+/// divergence functional is the solid volume `depth * det * (A_outer - A_hole)`.
+///
+/// Until #5410 it was not: `create_side_walls` oriented every ring's walls
+/// outward from that ring's own interior, so a hole's walls faced into the
+/// solid and the functional came out as `depth * det * (A_outer + A_hole/3)`.
+/// This test pinned that as "a property of the raw mesher, not a shipped
+/// defect", on the belief that the exact CSG kernel re-orients its operands.
+/// It re-orients only a globally inside-out operand (by signed volume); a
+/// host with inverted hole walls reached it as-is, and a void host whose
+/// profile voids coincide with its openings came back corrupted.
 #[test]
-fn holed_extrusion_is_winding_inconsistent() {
+fn holed_extrusion_is_the_consistently_wound_solid() {
     let x = vec![
         4.0, 0.75, 6.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.1, -0.05, 1.0, 0.2,
     ];
@@ -904,14 +907,9 @@ fn holed_extrusion_is_winding_inconsistent() {
     let a_outer = x[0] * x[1];
     let a_hole = 4.0 * x[12] * x[13];
     let solid = x[2] * (a_outer - a_hole);
-    let inconsistent = x[2] * (a_outer + a_hole / 3.0);
     assert!(
-        (emitted - inconsistent).abs() / inconsistent < 1e-12,
-        "emitted {emitted} != winding-inconsistent closed form {inconsistent}"
-    );
-    assert!(
-        (emitted - solid).abs() / solid > 0.1,
-        "emitted {emitted} unexpectedly equals the solid volume {solid}"
+        (emitted - solid).abs() / solid < 1e-12,
+        "emitted {emitted} != solid volume {solid}"
     );
 }
 

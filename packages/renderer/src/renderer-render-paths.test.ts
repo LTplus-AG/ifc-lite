@@ -77,6 +77,8 @@ interface Harness {
         passes: string[];
         /** number of GPU textures allocated after the harness is constructed */
         createdTextures: number;
+        /** label and size of every texture allocated, in call order */
+        textures: { label: string; width: number; height: number }[];
         /** label of every texture whose `destroy()` fired (shadow depth-texture
          *  release on toggle-off). */
         destroyedTextures: string[];
@@ -114,7 +116,7 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, destroyedTextures: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -221,6 +223,7 @@ function makeHarness(): Harness {
                 case 'createBindGroup': return () => ({});
                 case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => {
                     stats.createdTextures++;
+                    stats.textures.push({ label: desc.label ?? '', width: desc.size.width, height: desc.size.height });
                     return {
                         width: desc.size.width,
                         height: desc.size.height,
@@ -1609,5 +1612,84 @@ describe('rendered clipping query for exact correspondence picking (#4381)', () 
         assert.equal(h.renderer.hasActiveClipping(), false);
         await h.settle();
         h.renderer.destroy();
+    });
+});
+
+// Ambient occlusion (#5384) is `visualEnhancement.contactShading`. These drive
+// the real render() loop and read the encoded pass labels and the textures the
+// frame allocates, so "AO ran at half resolution" is observed, not assumed.
+describe('ambient occlusion post pass (#5384)', () => {
+    const AO_PASSES = ['ao', 'ao-blur-h', 'ao-blur-v', 'ao-composite'];
+    const aoFrame = (quality: 'off' | 'low' | 'high'): RenderOptions => ({
+        visualEnhancement: {
+            enabled: true,
+            contactShading: { quality, intensity: 0.8, radius: 1 },
+            separationLines: { enabled: false },
+        },
+    });
+    const aoTargets = (h: Harness) => h.stats.textures.filter((t) => t.label === 'ao-target' || t.label === 'ao-scratch');
+
+    it('encodes AO, a separable blur and the composite after the scene pass', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        const firstAo = h.stats.passes.indexOf('ao');
+        assert.ok(firstAo > 0, `expected the AO passes after the scene pass, got ${JSON.stringify(h.stats.passes)}`);
+        assert.deepStrictEqual(h.stats.passes.slice(firstAo, firstAo + 4), AO_PASSES);
+    });
+
+    it('works at half resolution on low and full resolution on high', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        assert.deepStrictEqual(
+            aoTargets(h).map((t) => [t.width, t.height]),
+            [[128, 128], [128, 128]],
+            'the 256 px canvas gets 128 px AO and blur targets',
+        );
+        h.stats.textures.length = 0;
+        h.render(aoFrame('high'));
+        assert.deepStrictEqual(aoTargets(h).map((t) => [t.width, t.height]), [[256, 256], [256, 256]]);
+        assert.ok(h.stats.destroyedTextures.includes('ao-target'), 'the half-resolution target is released on the switch');
+    });
+
+    it('allocates nothing while off and releases its targets when switched off', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('off'));
+        assert.ok(!h.stats.passes.includes('ao'), 'no AO pass while off');
+        assert.deepStrictEqual(aoTargets(h), [], 'no AO targets while off');
+
+        h.render(aoFrame('low'));
+        assert.ok(h.stats.passes.includes('ao'));
+        h.stats.passes.length = 0;
+        h.render(aoFrame('off'));
+        assert.ok(!h.stats.passes.includes('ao'), 'the toggle-off frame must not encode AO');
+        assert.deepStrictEqual(
+            h.stats.destroyedTextures.filter((l) => l === 'ao-target' || l === 'ao-scratch').sort(),
+            ['ao-scratch', 'ao-target'],
+            'toggle-off must release the screen-sized targets, not hold them for the session',
+        );
+    });
+
+    it('keeps its targets across frames of the same size and quality', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        h.render(aoFrame('low'));
+        assert.strictEqual(aoTargets(h).length, 2, 'targets are created once, not per frame');
+        assert.strictEqual(h.stats.passes.filter((l) => l === 'ao-composite').length, 2);
+    });
+
+    it('releases its targets when the renderer is destroyed', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        await h.settle();
+        h.renderer.destroy();
+        assert.deepStrictEqual(
+            h.stats.destroyedTextures.filter((l) => l === 'ao-target' || l === 'ao-scratch').sort(),
+            ['ao-scratch', 'ao-target'],
+        );
     });
 });

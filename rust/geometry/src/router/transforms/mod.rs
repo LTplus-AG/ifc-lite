@@ -264,19 +264,59 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
+        Ok(self.get_placement_transform_from_element_with_status(element, decoder)?.0)
+    }
+
+    /// Return the placement and whether the shared depth guard truncated its
+    /// parent chain. Exact geometry descriptions must not report the partial
+    /// transform as a complete world placement.
+    pub(super) fn get_placement_transform_from_element_with_status(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<(Matrix4<f64>, bool)> {
         // Get ObjectPlacement (attribute 5)
         let placement_attr = match element.get(5) {
             Some(attr) if !attr.is_null() => attr,
-            _ => return Ok(Matrix4::identity()), // No placement
+            _ => return Ok((Matrix4::identity(), false)), // No placement
         };
 
         let placement = match decoder.resolve_ref(placement_attr)? {
             Some(p) => p,
-            None => return Ok(Matrix4::identity()),
+            None => return Ok((Matrix4::identity(), false)),
         };
 
-        // Recursively get combined transform from placement hierarchy
-        self.get_placement_transform(&placement, decoder)
+        let walk = self.get_placement_transform_with_depth(&placement, decoder, 0)?;
+        Ok((walk.transform, walk.truncated))
+    }
+
+    /// Exact counterpart to `resolve_scaled_placement`: refuses a world
+    /// placement when the shared reference-walk guard truncated its chain.
+    pub fn resolve_scaled_placement_strict(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<[f64; 16]> {
+        if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
+            if decoder.resolve_ref(attr)?.is_none() {
+                return Err(crate::Error::geometry(format!(
+                    "ObjectPlacement for #{} cannot be resolved",
+                    element.id
+                )));
+            }
+        }
+        let (mut transform, truncated) =
+            self.get_placement_transform_from_element_with_status(element, decoder)?;
+        if truncated {
+            return Err(crate::Error::geometry(format!(
+                "placement chain for #{} exceeded maximum depth",
+                element.id
+            )));
+        }
+        self.scale_transform(&mut transform);
+        let mut result = [0.0; 16];
+        result.copy_from_slice(transform.as_slice());
+        Ok(result)
     }
 
 }

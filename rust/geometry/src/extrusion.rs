@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::mesh::Mesh;
 use crate::profile::{Profile2D, Profile2DWithVoids, Triangulation, VoidInfo};
 use crate::extrusion_generic::{
-    apply_transform_generic, create_cap_mesh, create_side_walls, extrude_rings_into,
+    apply_transform_generic, create_cap_mesh, create_side_walls, extrude_rings_into, Ring,
 };
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 
@@ -82,9 +82,9 @@ pub fn extrude_profile_watertight(
     let mut mesh = Mesh::new();
     create_cap_mesh(&tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
     create_cap_mesh(&tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
-    create_side_walls(&profile.outer, depth, &mut mesh);
+    create_side_walls(&profile.outer, depth, Ring::Outer, &mut mesh);
     for hole in &profile.holes {
-        create_side_walls(hole, depth, &mut mesh);
+        create_side_walls(hole, depth, Ring::Hole, &mut mesh);
     }
     // The CDT emits cap triangles in arbitrary orientation, so the assembled
     // solid closes as a 2-manifold but with INCONSISTENT winding — harmless for
@@ -159,11 +159,11 @@ pub fn extrude_profile_with_voids(
     );
 
     // Create side walls for outer boundary
-    create_side_walls(&profile_with_holes.outer, depth, &mut mesh);
+    create_side_walls(&profile_with_holes.outer, depth, Ring::Outer, &mut mesh);
 
     // Create side walls for holes (including through-voids)
     for hole in &profile_with_holes.holes {
-        create_side_walls(hole, depth, &mut mesh);
+        create_side_walls(hole, depth, Ring::Hole, &mut mesh);
     }
 
     // Handle partial-depth voids
@@ -338,9 +338,9 @@ pub fn extrude_profile_lofted(
     );
     create_cap_mesh(&start_tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
     create_cap_mesh(&end_tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
-    create_lofted_side_walls(&outer_start, &outer_end, depth, false, &mut mesh);
+    create_lofted_side_walls(&outer_start, &outer_end, depth, Ring::Outer, &mut mesh);
     for (sh, eh) in &lofted_hole_pairs {
-        create_lofted_side_walls(sh, eh, depth, true, &mut mesh);
+        create_lofted_side_walls(sh, eh, depth, Ring::Hole, &mut mesh);
     }
     if let Some(mat) = transform {
         apply_transform(&mut mesh, &mat);
@@ -406,22 +406,21 @@ fn resample_loop(loop_pts: &[Point2<f64>], target: usize) -> Vec<Point2<f64>> {
     out
 }
 
-/// Side walls between two paired loops at z=0 and z=depth.
-/// `is_hole` flips winding so hole walls face inward.
+/// Side walls between two paired loops at z=0 and z=depth, wound outward from
+/// the solid by the same rule as [`create_side_walls`]: `ring` says which side
+/// of the loop the solid is on, the bottom loop's winding says which way the
+/// loop runs.
 fn create_lofted_side_walls(
     bottom: &[Point2<f64>],
     top: &[Point2<f64>],
     depth: f64,
-    is_hole: bool,
+    ring: Ring,
     mesh: &mut Mesh,
 ) {
     let n = bottom.len();
     if n < 2 || top.len() != n {
         return;
     }
-    // Orient outward by the bottom loop's winding, matching `create_side_walls`
-    // so tapered faces shade the same direction as uniform extrusions in the
-    // untapered limit (and outward regardless of authored winding).
     let signed_area2: f64 = (0..n)
         .map(|i| {
             let a = &bottom[i];
@@ -429,7 +428,17 @@ fn create_lofted_side_walls(
             a.x * b.y - b.x * a.y
         })
         .sum();
-    let winding_sign = if signed_area2 < 0.0 { -1.0 } else { 1.0 };
+    let ccw = signed_area2 >= 0.0;
+    // `edge_a × edge_b` and the unmirrored quad face out of a CCW outer loop
+    // and out of a CW hole (into its void); the other two are mirrored. This
+    // used to key triangles off `is_hole` alone and normals off the winding
+    // alone, so a CW hole got inward walls (the #5410 defect) and a CW outer
+    // loop got walls wound against its own normals.
+    let outward_is_right_hand = match ring {
+        Ring::Outer => ccw,
+        Ring::Hole => !ccw,
+    };
+    let winding_sign = if outward_is_right_hand { 1.0 } else { -1.0 };
     let base_index = mesh.vertex_count() as u32;
     let mut quad_count = 0u32;
     for i in 0..n {
@@ -442,18 +451,6 @@ fn create_lofted_side_walls(
         let v1 = Point3::new(p1.x, p1.y, 0.0);
         let v2 = Point3::new(q1.x, q1.y, depth);
         let v3 = Point3::new(q0.x, q0.y, depth);
-        // Outward normal from the actual 3D quad. `edge_a × edge_b` is outward
-        // for a CCW loop; `winding_sign` corrects CW loops — and per
-        // `Profile2D::add_hole`'s contract holes are already authored CW, so
-        // this alone already leaves hole walls facing into the solid (away
-        // from the loop's own interior, i.e. the void), exactly matching
-        // `create_side_walls`' convention (see
-        // `extrusion_generic::create_side_walls`, which applies `winding_sign`
-        // ONLY, with no separate hole flip). A second `is_hole` flip here
-        // used to double-flip the sign back to facing OUT of the solid, into
-        // the void — confirmed by `probe_lofted_hole_normal_vs_uniform_hole_normal`,
-        // which compares this path against the uniform-extrusion path in the
-        // untapered limit (they must agree; they didn't).
         let edge_a = v1 - v0;
         let edge_b = v3 - v0;
         let normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
@@ -465,12 +462,12 @@ fn create_lofted_side_walls(
         mesh.add_vertex(v1, normal);
         mesh.add_vertex(v2, normal);
         mesh.add_vertex(v3, normal);
-        if is_hole {
-            mesh.add_triangle(idx, idx + 2, idx + 1);
-            mesh.add_triangle(idx, idx + 3, idx + 2);
-        } else {
+        if outward_is_right_hand {
             mesh.add_triangle(idx, idx + 1, idx + 2);
             mesh.add_triangle(idx, idx + 2, idx + 3);
+        } else {
+            mesh.add_triangle(idx, idx + 2, idx + 1);
+            mesh.add_triangle(idx, idx + 3, idx + 2);
         }
         quad_count += 1;
     }

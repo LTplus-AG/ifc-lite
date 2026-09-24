@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Manual "time of day" sun control for the Sun & Sky panel (#2670).
+ * Manual "time of day" sun control for the Environment panel (#2670).
  *
  * A toggle plus a time slider that sweeps the sun along an east→west arc, so
  * shadows can be moved on ANY model without georeference. When a real
@@ -49,7 +49,7 @@ export function SunTimeControls() {
                 type="button"
                 onClick={() => setTime(13)}
                 title={t('viewportLighting.sunTimeControls.resetTitle')}
-                className={cn('tabular-nums transition-colors', Math.abs(time - 13) > 1e-3 && 'text-foreground hover:text-teal-600')}
+                className={cn('tabular-nums transition-colors', Math.abs(time - 13) > 1e-3 && 'text-foreground hover:text-primary')}
               >
                 {formatHourOfDay(time)}
               </button>
@@ -61,7 +61,7 @@ export function SunTimeControls() {
               step={0.25}
               value={time}
               onChange={(e) => setTime(Number(e.target.value))}
-              className="w-full accent-teal-600"
+              className="w-full accent-primary"
             />
           </label>
           {solarActive && (

@@ -2271,6 +2271,22 @@ not establish that removing a framework or a few subscriptions buys the same
 wall time; test the actual change, and measure the avoidable upload work before
 committing to permanent renderer pages.
 
+## High-coordinate mapped-operator precision (#5792)
+
+Mapped translations beyond the local f32 precision range now stay in the f64
+mesh origin through the final world/RTC transform. Normal-size mapped items
+retain their prior vertex path. Historical pre-rebase interleaved fresh-process native
+base-versus-branch pairs on AC20 and ISSUE_129 showed identical mesh counts,
+triangle counts and ordered mesh fingerprints. ISSUE_129 had a small,
+consistent geometry and total-time cost; AC20 timings were close to run
+variation. This is a correctness fix with an earlier minor full-load cost, not
+a speedup. The current main-versus-rebased-head worker-pool verdict remains
+pending on an otherwise idle host.
+
+The lesson is that protecting high-coordinate geometry at the mapped-item
+boundary can affect the normal path even when its mesh bytes are unchanged;
+measure the whole worker pipeline rather than only the rare mapped case.
+
 ## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
 
 Five interleaved native base-versus-branch runs covered AC20-FZK-Haus and the

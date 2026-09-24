@@ -178,4 +178,33 @@ describe('single-class enumeration reads the created-entity class index (#5413)'
     expect(ids(iterateEffectiveEntityIds(source(), view, ['IFCCOLUMN']))).toEqual([kept.expressId]);
     expect(ids(iterateEffectiveEntityIds(source(), view, ['IFCBEAM']))).toEqual([moved.expressId]);
   });
+
+  it('survives atomic commit and rollback, whose snapshots clone the index away', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    const before = view.createEntity('IfcColumn', []);
+    // A restore that dropped the index made this enumeration throw; report that
+    // as a value so the assertion below names the failure.
+    const column = (): number[] | 'enumeration threw' => {
+      try {
+        return ids(iterateEffectiveEntityIds(source(), indexedOnly(view), ['IFCCOLUMN']));
+      } catch {
+        return 'enumeration threw';
+      }
+    };
+
+    const added = view.runAtomic((draft) => draft.createEntity('IfcColumn', []));
+    expect(column()).toEqual([before.expressId, added.expressId]);
+
+    const prepared = view.prepareAtomic((draft) => draft.createEntity('IfcColumn', []));
+    prepared.commit();
+    expect(column()).toEqual([before.expressId, added.expressId, prepared.result.expressId]);
+    prepared.rollback();
+    expect(column()).toEqual([before.expressId, added.expressId]);
+
+    // Writes after a restore keep the index in step too.
+    const later = view.createEntity('IfcColumn', []);
+    view.deleteEntity(before.expressId);
+    expect(column()).toEqual([added.expressId, later.expressId]);
+  });
 });

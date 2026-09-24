@@ -23,11 +23,7 @@ export interface MaterialInfo {
     layers?: MaterialLayerInfo[];
     profiles?: MaterialProfileInfo[];
     constituents?: MaterialConstituentInfo[];
-    /**
-     * Members of an IfcMaterialList. Each entry surfaces the material's
-     * Name plus optional Category — IDS material checks match against
-     * either, so callers must propagate both.
-     */
+    /** IfcMaterialList members expose Name and Category for IDS matching. */
     materials?: Array<{ name: string; category?: string }>;
     /** The graph proves a material association, but this store has no source
      *  bytes to read it (server-parsed, #5227). Every other field is unset. */
@@ -66,12 +62,9 @@ export interface MaterialConstituentInfo {
 }
 
 /**
- * Resolve the OCCURRENCE-LEVEL material definition ids directly associated
- * with an entity (no type fallback): every IfcRelAssociatesMaterial that
- * targets it, deduped and ordered by the rel's express id — the same rule
- * that decides the single-entry `onDemandMaterialMap` winner, so index 0
- * always equals the map's entry. Falls back to the map when no relationship
- * graph is available (minimal/test stores).
+ * Occurrence-level IfcRelAssociatesMaterial definitions, deduped and ordered
+ * by relationship id. Index 0 matches the onDemandMaterialMap winner.
+ * Minimal stores without a relationship graph use that map directly.
  */
 function resolveOwnMaterialDefIds(store: IfcDataStore, entityId: number): number[] {
     if (store.relationships) {
@@ -152,13 +145,9 @@ export function extractAllMaterialsOnDemand(
 }
 
 /**
- * Extract materials for a single entity ON-DEMAND.
- * Uses the onDemandMaterialMap built during parsing.
- * Falls back to relationship graph when on-demand map is not available (e.g., server-loaded models).
- * Also checks type-level material assignments via IfcRelDefinesByType.
- * Resolves the full material structure (layers, profiles, constituents, lists).
- * Returns the entity's PRIMARY material (lowest-rel-express-id association);
- * use {@link extractAllMaterialsOnDemand} when every association matters.
+ * Decode the PRIMARY material definition (lowest relationship id), including
+ * type-level assignments and its layers, profiles, constituents, or list.
+ * Use {@link extractAllMaterialsOnDemand} for every association.
  */
 export function extractMaterialsOnDemand(
     store: IfcDataStore,
@@ -695,6 +684,7 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
     let forward = store.onDemandMaterialMap;
     if (!forward && store.relationships) {
         const rebuilt = new Map<number, number[]>();
+        // @raw-entity-enumeration-ok source-only server graph fallback; live viewer callers pass a reparsed effective store (#5687)
         for (const entityId of store.entityIndex.byId.keys()) {
             const defs = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
             if (defs.length > 0) rebuilt.set(entityId, defs);

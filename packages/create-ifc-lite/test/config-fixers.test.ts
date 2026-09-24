@@ -14,10 +14,12 @@ import { join } from 'node:path';
  */
 
 const execFileSyncMock = vi.hoisted(() => vi.fn());
+const spawnSyncMock = vi.hoisted(() => vi.fn());
 
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('child_process')>()),
   execFileSync: execFileSyncMock,
+  spawnSync: spawnSyncMock,
 }));
 
 type Fixers = typeof import('../src/utils/config-fixers.js');
@@ -30,11 +32,27 @@ let dir: string;
  * --json` to fixture data. `versions` lists the published versions of a package
  * (oldest first, as npm returns them); `deps` maps "<pkg>@<version>" to that
  * version's dependency map.
+ *
+ * `missingArtifacts` lists "<pkg>@<version>" specs the registry knows about but
+ * has no tarball for, which `npm pack --dry-run` reports as E404.
  */
 function stubRegistry(
   versions: Record<string, string[]>,
-  deps: Record<string, Record<string, string>> = {}
+  deps: Record<string, Record<string, string>> = {},
+  missingArtifacts: string[] = []
 ) {
+  spawnSyncMock.mockImplementation((_cmd: string, args: string[]) => {
+    const packArgs = args[0] === '/d' ? args.slice(4) : args;
+    const spec = packArgs[1];
+    if (missingArtifacts.includes(spec)) {
+      return {
+        status: 1,
+        stdout: '',
+        stderr: `npm error code E404\nnpm error 404 Not Found - GET .../${spec}.tgz - Not found\n`,
+      };
+    }
+    return { status: 0, stdout: '[]', stderr: '' };
+  });
   execFileSyncMock.mockImplementation((_cmd: string, args: string[]) => {
     const viewArgs = args[0] === '/d' ? args.slice(4) : args;
     const [, spec, field] = viewArgs;
@@ -51,6 +69,11 @@ function stubRegistry(
 beforeEach(async () => {
   vi.resetModules();
   execFileSyncMock.mockReset();
+  spawnSyncMock.mockReset();
+  // Default: every tarball is downloadable. `stubRegistry` overrides this for
+  // the cases that need a missing artifact, and tests that drive
+  // `execFileSyncMock` directly still get a sane answer.
+  spawnSyncMock.mockImplementation(() => ({ status: 0, stdout: '[]', stderr: '' }));
   dir = mkdtempSync(join(tmpdir(), 'ifclite-fixers-'));
   fixers = await import('../src/utils/config-fixers.js');
 });
@@ -100,6 +123,41 @@ describe('getPackageVersion', () => {
       { 'pkg@2.0.0': { '@ifc-lite/core': '^7.7.7' }, 'pkg@1.0.0': { '@ifc-lite/core': '^1.0.0' } }
     );
     expect(fixers.getPackageVersion('pkg')).toBe('^1.0.0');
+  });
+
+  /**
+   * #5570: `@ifc-lite/server-client@3.1.0` was `dist-tags.latest`, was listed in
+   * the packument, and advertised a `dist.tarball` that 404'd -- a publish that
+   * registered the version without storing the artifact. Every
+   * `--template server` scaffold then died at `npm install` on a URL npm itself
+   * had handed it, because this resolver only checked the candidate's
+   * DEPENDENCIES, never that the candidate itself could be downloaded.
+   */
+  it('skips a version whose own tarball is missing from the registry', () => {
+    stubRegistry({ pkg: ['3.0.1', '3.1.0'] }, {}, ['pkg@3.1.0']);
+    expect(fixers.getPackageVersion('pkg')).toBe('^3.0.1');
+  });
+
+  it('throws rather than scaffolding when no candidate has a tarball', () => {
+    stubRegistry({ pkg: ['1.0.0', '1.0.1'] }, {}, ['pkg@1.0.0', 'pkg@1.0.1']);
+    expect(() => fixers.getPackageVersion('pkg')).toThrow(
+      /Failed to resolve the latest published version of pkg/
+    );
+  });
+
+  /**
+   * A network blip, a proxy, or a private registry that needs auth for
+   * artifacts must not silently push a scaffold back onto an older version, so
+   * only npm's explicit "not there" codes reject a candidate.
+   */
+  it('keeps the newest version when the tarball probe fails for any other reason', () => {
+    stubRegistry({ pkg: ['1.0.0', '2.0.0'] });
+    spawnSyncMock.mockImplementation(() => ({
+      status: 1,
+      stdout: '',
+      stderr: 'npm error code ECONNRESET\nnpm error network socket hang up\n',
+    }));
+    expect(fixers.getPackageVersion('pkg')).toBe('^2.0.0');
   });
 
   it('ignores non-@ifc-lite dependencies entirely when judging installability', () => {

@@ -1,0 +1,49 @@
+{
+  "base": {
+    "checkoutHead": "d05f5423a7caf761f0a2e12d064d85e84355d031",
+    "variant": "base",
+    "sourceHashes": {
+      "apps/viewer/src/components/viewer/ViewerLayout.tsx": "d121c82c4c017a2c284a1e7490d1a7f0f38e2c743cd7431df57439fd03fb3981",
+      "apps/viewer/src/components/viewer/ViewportContainer.tsx": "b5b043652d207c4bf09a9ebd3a2b43aa50c9e0543cdd81155ac5eeb6315f5c5a",
+      "apps/viewer/src/hooks/useIfc.ts": "157dc228a0707bb0f295309f5dbbccc25e08a3bad0eafd6c0526d9016824fbe4",
+      "apps/viewer/src/hooks/useIfcActions.ts": "ABSENT",
+      "packages/renderer/src/scene.ts": "e48a2cbb797672f7bed459ef9534adda0ab1905a36057ef986d2a0f47f8a7df5"
+    },
+    "mainProbeSha256": "a97d83ddeb3cb4893f73e32e3af04597a52623b90f0251e090d43a4308f7fa9a",
+    "wasmSha256": "dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5",
+    "entryJsSha256": "3e229df5a0d66606931466ba54748229acb92e9387b748d8e74ba4498a57e1a6",
+    "runtimeJsSha256": "1b72005116f415416a89f25d56572852914a1a075be12a2b659fd3690d904306"
+  },
+  "react": {
+    "checkoutHead": "d05f5423a7caf761f0a2e12d064d85e84355d031",
+    "variant": "react",
+    "sourceHashes": {
+      "apps/viewer/src/components/viewer/ViewerLayout.tsx": "dea3bd3a119143d7df48807d32ed27196bc70772324c6853a9ff85c4b24a5c99",
+      "apps/viewer/src/components/viewer/ViewportContainer.tsx": "5264f71e524151a222e50321d814439b1e67c96bc9fce1e3a8a28fc4069000dd",
+      "apps/viewer/src/hooks/useIfc.ts": "e525b8ac997f774d6acd605a461a2ee339627b573fe195619046181dec03ddaf",
+      "apps/viewer/src/hooks/useIfcActions.ts": "33975e57c6480343717a623a8c3c231512fe56f9e9d11c4856f1464b6d2de8da",
+      "packages/renderer/src/scene.ts": "e48a2cbb797672f7bed459ef9534adda0ab1905a36057ef986d2a0f47f8a7df5"
+    },
+    "mainProbeSha256": "a97d83ddeb3cb4893f73e32e3af04597a52623b90f0251e090d43a4308f7fa9a",
+    "wasmSha256": "dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5",
+    "entryJsSha256": "2adaedbd5051832b9fcdebc67c935df36d6af95536b18d4e3eda55b5393e5eee",
+    "runtimeJsSha256": "1b72005116f415416a89f25d56572852914a1a075be12a2b659fd3690d904306",
+    "patchSha256": "8b42fc302545b4bda96cb40bdc3d2b44758503ed6805b2ef72c5da962feaba28"
+  },
+  "ablation": {
+    "checkoutHead": "d05f5423a7caf761f0a2e12d064d85e84355d031",
+    "variant": "ablation",
+    "sourceHashes": {
+      "apps/viewer/src/components/viewer/ViewerLayout.tsx": "d121c82c4c017a2c284a1e7490d1a7f0f38e2c743cd7431df57439fd03fb3981",
+      "apps/viewer/src/components/viewer/ViewportContainer.tsx": "b5b043652d207c4bf09a9ebd3a2b43aa50c9e0543cdd81155ac5eeb6315f5c5a",
+      "apps/viewer/src/hooks/useIfc.ts": "157dc228a0707bb0f295309f5dbbccc25e08a3bad0eafd6c0526d9016824fbe4",
+      "apps/viewer/src/hooks/useIfcActions.ts": "ABSENT",
+      "packages/renderer/src/scene.ts": "0a0f88a20e22e164969035e1551f7bd690bc564f5dc0208eaefdaa3c0ee74960"
+    },
+    "mainProbeSha256": "a97d83ddeb3cb4893f73e32e3af04597a52623b90f0251e090d43a4308f7fa9a",
+    "wasmSha256": "dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5",
+    "entryJsSha256": "232f6a8658251c009fdbd638327b25bd01d9d850854481c22187f3d65d9c04b8",
+    "runtimeJsSha256": "1b72005116f415416a89f25d56572852914a1a075be12a2b659fd3690d904306",
+    "patchSha256": "0da80bda238b26b1af56af7744634e668cb89ce29fb5a2f33d0abcc0dd081748"
+  }
+}

@@ -2037,3 +2037,22 @@ The lesson is that a small boundary-accounting guard can repair many reused
 Boolean items. Full-load counts and ordered fingerprints reveal its reach
 where a single-element test cannot, while variable host timing should not be
 sold as a speed verdict.
+
+## Viewer ancestor subscriptions and transient-upload screen (#5555)
+
+A post-summary-fix production profile showed distributed React reconciliation
+and renderer staging rather than another dominant metadata panel. Narrowing
+subscriptions in the two viewer ancestors improved one interleaved Holter pair
+and regressed the other, so the bounded screen did not justify shipping it.
+A separate diagnostic retained only the first streaming preview and skipped
+later transient uploads before normal finalization; it improved both pairs but
+missed the predeclared investment gate for a larger renderer redesign. That
+diagnostic deliberately reduces progressive display and must not ship.
+
+Both patches remain unapplied in the [complete screen evidence](evidence/viewer-ancestor-screen-5555/README.md).
+The experiment reused identical frozen WASM with current JavaScript, so it is
+an investment screen, not source-matched shipping qualification. All attempts
+and provenance are retained. Lesson: a large inclusive React sample bucket does
+not establish that removing a framework or a few subscriptions buys the same
+wall time; test the actual change, and measure the avoidable upload work before
+committing to permanent renderer pages.

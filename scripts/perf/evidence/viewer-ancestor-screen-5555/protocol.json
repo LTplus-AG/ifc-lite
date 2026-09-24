@@ -1,0 +1,21 @@
+{
+  "issue": 5555,
+  "base": "d05f5423a",
+  "scope": "bounded investment screen; no shipping qualification",
+  "variants": {
+    "react": {
+      "patchSha256": "8b42fc302545b4bda96cb40bdc3d2b44758503ed6805b2ef72c5da962feaba28",
+      "behavior": "narrow ancestor subscriptions; same loader lifetimes"
+    },
+    "renderer-ablation": {
+      "patchSha256": "0da80bda238b26b1af56af7744634e668cb89ce29fb5a2f33d0abcc0dd081748",
+      "behavior": "first preview only then normal final scene; reduced progressive display; NEVER SHIP"
+    }
+  },
+  "wasm": "identical frozen dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5; not rebuilt from current base for preliminary JS screen",
+  "fixture": "Holter first load per fresh Chromium process",
+  "schedule": "two alternating AB/BA pairs per candidate, no profiling, preserve all results and errors",
+  "boundary": "strict full model/canvas/finalized scene/placed spatial index readiness, post-timing picking/properties and counts",
+  "decision": "React proceed only with clear repeatable gain; renderer proceed to architecture only if both pairs suggest roughly >=500ms saved; final shipping requires source-matched WASM, five-pair noise qualification, controls and broader correctness",
+  "resources": "Windows benchmark CCD mask0xFFF000; bounded max300s competing WSL workload affinity window with independent watchdog and restoration; no timings concurrent with owned builds"
+}

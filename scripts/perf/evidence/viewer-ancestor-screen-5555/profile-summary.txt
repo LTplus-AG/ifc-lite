@@ -1,0 +1,14 @@
+Prior frozen #5477 candidate production diagnostic (not an A/B timing claim)
+Base checkout: 83284a947d9adb9e1ece28f9d5ee7166722be1e5
+Served candidate entry JS SHA256: 02d8d172b304536de26be88af9b7c7e3f359eb670dde363b1fcb727d24b5a5a1
+Served WASM SHA256: dfc3350a8deabeb3f28d7b7a8af25a760069a2a8c5bae3ec6a8175331a7b03d5
+CDP Profiler samplingInterval=500us. Fresh Windows Chromium first-load Holter, production static server port 5276, server+launcher+8 Chrome PIDs verified 0xFFF000 before file input. Profile starts before setInputFiles and stops at strict full placed-index/finalize readiness. No browser/production source edits; external witness/runner hashes are in method/preload JSON.
+
+Outcome: 7.387s profiled readiness (diagnostic only); stream 4.845s, model complete 5.436s, consolidation 6.984s, index 7.387s. Same 56,697 meshes / 755,426 triangles; target #148571 one closed piece with 0 open edges and placed index hit; no page errors. CDP profile 6,734 samples / 3,011 nodes / ~7.85s span. Source map unavailable; source attribution uses preserved function names and production bundle line locations.
+
+Selected inclusive main-thread sample-weighted spans; overlaps possible, not additive:
+React scheduler subtree 1,398 samples (~1.37s); GPU flushPending 310 (~0.30s); WebGPU renderFrame 229 (~0.24s); geometry worker callback on main 377 (~0.30s); full source hash 292 (~0.33s); cache encode 281 (~0.24s); placed index 181 (~0.18s); MapLibre render 190 (~0.20s); metadata panel 118 (~0.10s); hierarchy panel 101 (~0.09s). GC 274 samples (4.1%), idle 845 (12.5%), (program) 872 (12.9%). Broader disjoint GPU staging/flush attribution 620 samples (9.2%). Main-thread profiler cannot see CPU inside eight WASM geometry workers.
+
+Top direct sampled user-land leaf within React: GF at main-dlBqXHiU.js:41266, which builds a Set over geometryResult.meshes, 80 samples (~66ms). No single metadata/hierarchy component now dominates the React subtotal. Before stream, callbacks and geometry staging compete with the eight workers; after stream, React (~0.56s weighted), cache encode (~0.24s), placed index (~0.18s), scene staging, and both WebGPU/MapLibre drawing overlap. Console logs show cache write 5.096-6.901s and GeomSync finalize 6.241-6.984s (693ms), then index ready 7.387s.
+
+Raw artifacts with same prefix: .cpuprofile, .json, .console.log, .method.json, .preload.json, .png. Profiling observer and runner source: physical-summary-5477-candidate-profile.mts and physical-summary-5477-candidate-profile-run.ps1. Task server stopped after capture; no task Chromium remains.

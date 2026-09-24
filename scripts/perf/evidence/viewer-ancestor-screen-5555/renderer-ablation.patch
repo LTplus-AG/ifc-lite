@@ -1,0 +1,12 @@
+--- a/packages/renderer/src/scene.ts
++++ b/packages/renderer/src/scene.ts
+@@ -1964,6 +1964,9 @@
+    */
+   private createStreamingFragments(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline): void {
+     if (meshDataArray.length === 0) return;
++    // DIAGNOSTIC ONLY: retain first preview, suppress later transient uploads.
++    // Final canonical batches still contain all meshes. Never ship this behavior.
++    if (!this.ephemeralStreamingMode && this.streamingFragments.length > 0) return;
+ 
+     // Group new meshes by color (and grid cell, when chunking) for efficient
+     // fragment batches. Fragments of one mesh share the PARENT's key: they

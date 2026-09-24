@@ -270,6 +270,28 @@ bounded direct decomposition and two retained counterexamples prevent repeating
 that failure. Small point-to-plane residuals remain no substitute for spatially
 distributed check correspondences, as the CRAS evidence demonstrates.
 
+## Incremental streaming finalize (#5358)
+
+**Won.** `Scene.finalizeStreaming` / `finalizeStreamingAsync` used to dissolve
+and rebuild every bucket in the scene, so each streamed federated add re-merged
+and re-uploaded the whole federation (O(N²) over N models) and briefly held two
+GPU copies of all of it. Finalize now rebuilds only the buckets that received
+streamed meshes since the last finalize (plus any key already pending); the
+in-place colour re-group it exists for only ever concerns those meshes.
+
+Measured with the real `Scene` streaming + finalize + merge/quantize/upload code
+over a byte-counting fake `GPUDevice` (10 synthetic models × 20,000 box pieces,
+24 colours, two interleaved base/branch runs): the finalize of the 10th add went
+from 645-819 ms to about 53 ms (flat per add; the 1st add is unchanged), and the
+transient GPU bytes above the resident set during a finalize went from "the
+whole federation" (155.7 MB at the 10th add) to "the new model" (15.6 MB). The
+final resident bytes and batch counts are identical. The lesson is that the fake
+device measures the CPU half exactly and the GPU half as bytes, not driver time.
+The viewer's own federated "Add" currently takes the non-streaming
+`appendToBatches` path and never reached this finalize, so the win is for
+`@ifc-lite/renderer` hosts that stream federated models, and for any finalize
+that runs with other models resident.
+
 ## The native probe (`perf_probe`)
 
 `rust/processing/examples/perf_probe.rs`, wrapped by `probe.sh`. It drains the

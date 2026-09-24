@@ -80,6 +80,9 @@ function seedTwoBuckets(scene: Scene): void {
   const mdB = fakeMeshData([0, 1, 0, 1]);
   scene['buckets'].set('keyA', { key: 'keyA', meshData: [mdA], batchedMesh: null, vertexBytes: 0 });
   scene['buckets'].set('keyB', { key: 'keyB', meshData: [mdB], batchedMesh: null, vertexBytes: 0 });
+  // Both received streamed meshes, so the finalize re-groups them (#5358).
+  scene['streamedBucketKeys'].add('keyA');
+  scene['streamedBucketKeys'].add('keyB');
   scene['bucketBaseKey'] = (md: MeshData) => (md === mdA ? 'keyA' : 'keyB');
   scene['resolveActiveBucket'] = (baseKey: string) => baseKey;
 }
@@ -159,6 +162,7 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
     };
     // Force a second chunk so the throw is a later continuation.
     scene['buckets'].set('keyC', { key: 'keyC', meshData: [fakeMeshData([0, 0, 1, 1])], batchedMesh: null, vertexBytes: 0 });
+    scene['streamedBucketKeys'].add('keyC');
     const baseKey = scene['bucketBaseKey'];
     scene['bucketBaseKey'] = (md: MeshData) => (md.color[2] === 1 ? 'keyC' : baseKey(md));
 
@@ -203,9 +207,11 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
     const partial = fakeBatch(9);
     scene['streamingFragments'] = [fragment];
     scene['batchedMeshes'] = [oldBatch];
-    scene['partialBatchCache'].set('src:v1', partial);
-    scene['partialBatchCacheKeys'].set('src', 'src:v1');
+    // The partial cache of the batch being replaced (keyed `${colorKey}:${id}`).
+    scene['partialBatchCache'].set('c2:2:v1', partial);
+    scene['partialBatchCacheKeys'].set('c2:2', 'c2:2:v1');
     seedTwoBuckets(scene);
+    scene['buckets'].get('keyA')!.batchedMesh = oldBatch;
 
     const created: Array<ReturnType<typeof fakeBatch>> = [];
     scene['createBatchedMesh'] = () => {
@@ -310,6 +316,8 @@ describe('Scene.finalizeStreamingAsync — GPU-failure rollback', () => {
     scene['buckets'].set('keyA', { key: 'keyA', meshData: [mdA], batchedMesh: null, vertexBytes: 0 });
     scene['buckets'].set('keyC', { key: 'keyC', meshData: [], batchedMesh: coldShell, vertexBytes: 0 });
     scene['coldBuckets'].add('keyC');
+    scene['streamedBucketKeys'].add('keyB');
+    scene['streamedBucketKeys'].add('keyA');
     // mdB's colour was mutated in place during streaming and now re-groups
     // into the cold bucket keyC.
     scene['bucketBaseKey'] = (md: MeshData) => (md === mdB ? 'keyC' : 'keyA');

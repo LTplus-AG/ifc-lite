@@ -144,6 +144,11 @@ function fixtureFile(): RuleSetFile {
         requirement: { kind: 'unique', subject: { kind: 'group' } },
       },
       {
+        id: 'r7', name: 'One author per model',
+        applicability: anyBlock,
+        requirement: { kind: 'unique', subject: { kind: 'modelFact', fact: 'header.author' } },
+      },
+      {
         id: 'r5', name: 'Widths in millimetres',
         applicability: anyBlock,
         requirement: {

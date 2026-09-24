@@ -65,6 +65,7 @@ export const searchFiltersEn = {
   'searchModal.filterEditors.groupClassAriaLabel': 'Group class, e.g. IfcSystem — leave blank for any group',
   'searchModal.filterEditors.groupNamePlaceholder': 'Group name',
   'searchModal.filterEditors.siUnits': 'SI',
+  'searchModal.filterEditors.modelFactAriaLabel': 'Fact about the element\'s model',
   'searchModal.filterEditors.inherit.ariaLabel': 'Where a missing value may come from',
   'searchModal.filterEditors.inherit.own': 'Own value',
   'searchModal.filterEditors.inherit.type': 'or from type',

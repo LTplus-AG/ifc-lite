@@ -32,7 +32,7 @@ import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
 import { ElevationEditor } from './SearchModal.filter.editors.elevation';
-import { ClassificationEditor, GroupEditor } from './SearchModal.filter.editors.membership';
+import { ClassificationEditor, GroupEditor, ModelFactEditor } from './SearchModal.filter.editors.membership';
 import { ReadOptionControls } from './SearchModal.filter.editors.readOptions';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
 import type { ModelTag } from '@ifc-lite/rules';
@@ -169,6 +169,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
       )}
 
       {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
+      {rule.kind === 'modelFact' && <ModelFactEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor

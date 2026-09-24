@@ -32,6 +32,7 @@ export function describeSubject(subject: Subject): string {
     case 'attribute': return subject.name;
     case 'classification': return subject.system ? `Classification[${subject.system}]` : 'Classification';
     case 'group': return subject.groupClass ? `Group[${subject.groupClass}]` : 'Group';
+    case 'modelFact': return `model.${subject.fact}`;
     default: return subject.kind;
   }
 }

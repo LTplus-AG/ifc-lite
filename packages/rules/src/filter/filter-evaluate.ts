@@ -94,6 +94,7 @@ import {
 } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
+import { matchModelFactRule } from './filter-model-fact.js';
 import { readsThroughSubject } from './subject-read-options.js';
 import { matchRuleThroughSubject } from './subject-match.js';
 
@@ -548,6 +549,7 @@ function evaluateRule(
     }
     case 'parent': return matchParentRule(rule, ctx.store, expressId);
     case 'group': return matchGroupRule(rule, ctx.store, expressId);
+    case 'modelFact': return matchModelFactRule(rule, ctx.store);
   }
 }
 

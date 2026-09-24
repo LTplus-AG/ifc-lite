@@ -120,5 +120,6 @@ export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
     case 'type':           return Rule.typeName('contains', '');
     case 'parent':         return Rule.parent('contains', '');
     case 'group':          return Rule.group('isSet', '');
+    case 'modelFact':      return Rule.modelFact('georef.crs', 'isSet', '');
   }
 }

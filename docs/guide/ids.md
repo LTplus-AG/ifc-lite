@@ -139,7 +139,7 @@ out of scope, and is called out as such:
 | System/group membership (`IfcRelAssignsToGroup`) | Covered: `group` rule kind (applicability and `element` requirements), optionally scoped to a group class such as `IfcSystem` (subclasses included) |
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
 | Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
-| Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |
+| Georeferencing (`IfcMapConversion`, CRS), project units, header fields | Covered: a `modelFact` rule/subject (`georef.crs`, `georef.eastings`, `units.length`, `header.author`, …) that every value operator works on, read from the element's model (#5442) |
 | Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
 | OR logic in requirements | Covered: an `element` requirement is a `RuleBlock` with OR-ed groups |

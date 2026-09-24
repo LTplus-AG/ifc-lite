@@ -13,7 +13,7 @@ Before, these rules compared the joined display string, so results change for ex
 - `Colors = "Red, Blue"` used to pass and now fails.
 - `Colors != Red` used to pass and now fails.
 
-In search, negated operators also stop passing on a single non-matching property set when a regex set name matches several sets. That is the NONE rule validation already applied.
+Each bound of a range is checked against the members on its own, so on a table `>= 15 AND <= 5` passes when some cell is ≥ 15 and another is ≤ 5. In search, negated operators also stop passing on a single non-matching property set when a regex set name matches several sets. That is the NONE rule validation already applied.
 
 The set checks (`unique`, `aggregate`, `compare`) still read each property as one whole value, the joined text, so their results do not change.
 

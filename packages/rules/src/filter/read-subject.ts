@@ -91,7 +91,13 @@ export interface SubjectValue {
 /** `subject` read as whole values: each property once, as the set checks compare it (#5475). */
 export function readSubjectWhole(subject: Subject, ctx: ReadSubjectContext): SubjectValue {
   const read = readSubject(subject, ctx);
-  return read.displayValues ? { ...read, values: read.displayValues } : read;
+  if (!read.displayValues) return read;
+  // Per-member unit arrays no longer line up with one value per property; drop them.
+  return {
+    present: read.displayValues.some((v) => v.trim().length > 0),
+    values: read.displayValues,
+    ...(read.unit !== undefined ? { unit: read.unit } : {}),
+  };
 }
 
 function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {

@@ -88,6 +88,12 @@ describe('list and table values match any candidate (#5475)', () => {
     assert.deepEqual(await names(anySet), ['Wall B', 'Wall C']);
   });
 
+  it('search: a rule read through the subject reader (inherit / SI) applies the same NONE rule (review, #5545)', async () => {
+    assert.deepEqual(await names({ ...prop('Colors', 'ne', 'Red'), inherit: 'aggregation' } as FilterRule), ['Wall B', 'Wall C', 'Wall D']);
+    assert.deepEqual(await names({ ...prop('Colors', 'ne', 'Red'), valueUnit: 'si' } as FilterRule), ['Wall B', 'Wall C', 'Wall D']);
+    assert.deepEqual(await names({ ...prop('Colors', 'eq', 'Blue'), valueUnit: 'si' } as FilterRule), ['Wall A', 'Wall C']);
+  });
+
   it('a type-level list is read member by member; an empty list still exists for search isSet', async () => {
     assert.deepEqual(await names(prop('Colors', 'eq', 'White')), ['Wall C']);
     const tags = { kind: 'property', setName: 'Pset_Test', propertyName: 'Tags', op: 'isSet', value: '' } as const;

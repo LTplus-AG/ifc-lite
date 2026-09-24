@@ -157,7 +157,8 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   return matching.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind));
 }
 
-const NEGATED_VALUE_OP: Partial<Record<ValueOp, ValueOp>> = { ne: 'eq', notContains: 'contains', notMatches: 'matches' };
+/** A negated value op's positive form: the negation holds when NO candidate satisfies it (#5475). */
+export const NEGATED_VALUE_OP: Partial<Record<ValueOp, ValueOp>> = { ne: 'eq', notContains: 'contains', notMatches: 'matches' };
 
 /** One entity's generic named attributes, as `extractAllEntityAttributes`
  *  returns them — schema-driven, string/number/boolean values only. */

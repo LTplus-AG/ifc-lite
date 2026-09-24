@@ -40,6 +40,7 @@ import {
 import {
   planEmptyContainerDrops,
   EMPTY_MODEL_VIEW,
+  isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
 import { DecompositionClaims, claimDecompositionParents, applyRelParentStrip, type DecompositionClaimInput } from './merged-decomposition-parents.js';
@@ -800,7 +801,7 @@ export class MergedExporter {
     setup: MergeSetup,
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
-    const claims = new DecompositionClaims(options.schema || 'IFC4');
+    const claims = new DecompositionClaims(options.schema || 'IFC4', isStructureRelation);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -811,8 +812,8 @@ export class MergedExporter {
         this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, mode.lengthFactor, sharedRemap, new Set(), setup);
       }
       const visibility = this.computeIncludedEntityIds(model, options, entities, source);
-      const claimParents = (canonical: ReadonlyMap<number, number>) => {
-        const withheld = { sharedRemap: canonical, skipEntityIds: new Set<number>(), relParentStrip: new Map<number, Set<number>>() };
+      const claimParents = () => {
+        const withheld = { sharedRemap, skipEntityIds: new Set<number>(), relParentStrip: new Map<number, Set<number>>() };
         this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
         return withheld;
       };

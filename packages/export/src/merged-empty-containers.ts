@@ -67,21 +67,27 @@ export interface EmptyContainerModelView {
   /** True when the model unifies into the first model's project / unit space. */
   compatible: boolean;
   /**
-   * Run this model's one-parent claim pass (#5471), given each of its
-   * containers' merged node, and return the aggregation edges it withholds.
-   * Called once per model in merge order, on a claim set of the plan's own.
-   * Omitted: every edge counts.
+   * Run this model's one-parent claim pass (#5471) and return the aggregation
+   * edges it withholds. Called once per model in merge order, on a claim set
+   * of the plan's own. Omitted: every edge counts.
    *
    * The drops must be known before emission, yet the emit-time claim pass
    * withholds aggregation edges, and a container that loses its only edge is
-   * empty (#5725). This pass runs with no drops applied, and that already is
+   * empty (#5725). This pass runs with no drops applied, and that is already
    * the fixed point: a claim that would differ once drops are known needs a
    * dropped parent, but a parent whose kept edge reaches a kept child is kept
-   * itself. The one approximation is `canonical`. It covers container
-   * unification, both spatial and by GlobalId, but not a non-spatial member
-   * that unifies only by GlobalId.
+   * itself. That holds only if this pass never withholds an edge the emit pass
+   * writes, or a still-full child loses its only parent. So it may see LESS
+   * than the emit pass, never more. It claims only through
+   * {@link isStructureRelation} types, and resolves ids through `sharedRemap`
+   * (spatial unification, which the emit pass repeats exactly), not through
+   * this module's GlobalId canonicalisation, which the emit pass does not
+   * always repeat (a GlobalId duplicated within one model, or an
+   * `assume-shared` emitter in another unit). What it misses is an edge the
+   * emit pass withholds and this one counts, which only keeps a container
+   * (#3643's behaviour before #5725).
    */
-  claimParents?: (canonical: ReadonlyMap<number, number>) => WithheldParents;
+  claimParents?: () => WithheldParents;
 }
 
 /** Aggregation edges the one-parent pass keeps out of the output (#5725). */
@@ -99,6 +105,11 @@ export interface EmptyContainerPlan {
   /** Containers dropped, counted in the MERGED model (a container unified
    *  across three inputs counts once). */
   droppedCount: number;
+}
+
+/** True when `typeUpper` is a relationship the analysis counts as spatial structure. */
+export function isStructureRelation(typeUpper: string): boolean {
+  return typeUpper in STRUCTURE_RELATIONS;
 }
 
 /** True when `typeUpper` is a droppable spatial container type. */
@@ -141,7 +152,7 @@ export function planEmptyContainerDrops(models: EmptyContainerModelView[]): Empt
     const canon = canonicalContainers(view, guidNode);
     containersByModel.push(canon);
     for (const node of canon.values()) nodes.add(node);
-    recordEdges(view, canon, hasContent, parents, view.claimParents?.(canon));
+    recordEdges(view, canon, hasContent, parents, view.claimParents?.());
     recordBlocks(view, canon, blocked);
   }
 

@@ -429,3 +429,54 @@ describe('model.applyTable', () => {
     expect(fake.mutations, 'no delete, no write — the property is left as it was').toEqual([]);
   });
 });
+
+describe('typed cells are read exactly or reported (#5377 review)', () => {
+  it('refuses a real, integer or boolean cell that is only a prefix of a value', async () => {
+    // `parseFloat('12,5')` is 12 and `parseFloat('60abc')` is 60; any word
+    // but true/yes/1 used to become `false`. A European CSV wrote 12.
+    const text = 'GlobalId,Width,Count,Flag\nW1,"12,5",1,ja\nW2,60abc,2.7,true\nW3,12.5,3,no\n';
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text }, {
+      columns: [
+        { name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' },
+        { name: 'Count', type: 'integer' }, { name: 'Flag', type: 'boolean' },
+      ],
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.rows).toEqual([
+      { GlobalId: 'W1', Width: null, Count: 1, Flag: null },
+      { GlobalId: 'W2', Width: null, Count: null, Flag: true },
+      { GlobalId: 'W3', Width: 12.5, Count: 3, Flag: false },
+    ]);
+    expect(out.problems).toEqual([
+      'row 2: column "Width": cannot parse "12,5" as real',
+      'row 2: column "Flag": cannot parse "ja" as boolean',
+      'row 3: column "Width": cannot parse "60abc" as real',
+      'row 3: column "Count": cannot parse "2.7" as integer',
+    ]);
+  });
+
+  it('strips a UTF-8 byte-order mark so the first header is found', async () => {
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text: '﻿"GlobalId",Width\nW1,1\n' }, {
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.columns[0].name).toBe('GlobalId');
+    expect(out.table.key).toBe('GlobalId');
+  });
+});
+
+describe('readXlsxTable — object-valued cells (#5377 review)', () => {
+  it('reads rich text as its text and reports an error cell instead of writing "[object Object]"', async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['GlobalId', 'Note']);
+    ws.addRow(['W1', { richText: [{ text: 'fire ' }, { font: { bold: true }, text: 'rated' }] }]);
+    ws.addRow(['W2', { error: '#N/A' }]);
+    const bytes = new Uint8Array(await wb.xlsx.writeBuffer());
+    const out = await readXlsxTable(bytes, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Note', type: 'string' }],
+    });
+    expect(out.table.rows).toEqual([{ GlobalId: 'W1', Note: 'fire rated' }, { GlobalId: 'W2', Note: null }]);
+    expect(out.problems).toEqual(['row 3: column "Note": spreadsheet error #N/A']);
+  });
+});

@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from '@/sdk/adapters/types.js';
+import { createStandardRegistry } from '@ifc-lite/flow-nodes';
 import { viewerTableAccess } from './viewer-tables.js';
 
 const STEP = [
@@ -60,5 +61,66 @@ describe('viewerTableAccess (#5167)', () => {
     const { store } = await storeWithModel();
     assert.ok(viewerTableAccess(store)('m'));
     assert.equal(viewerTableAccess(store)('missing'), undefined);
+  });
+});
+
+/**
+ * #5377 review — express ids are per MODEL. Both models below have a wall
+ * `#10`, with different marks. Before the fix, joinByKey matched every
+ * candidate against the ACTIVE model's table and mapped the hit back by
+ * express id alone: row "T-A" matched model A's #10 and came back as model
+ * B's wall, so a later applyTable would have written to the wrong entity.
+ */
+describe('table.joinByKey across models (#5377)', () => {
+  function wallModel(gid: string, mark: string): string {
+    return [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('t.ifc','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
+      "#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,$,$);",
+      `#10=IFCWALL('${gid}',$,'Wall',$,$,$,$,$,$);`,
+      `#100=IFCPROPERTYSINGLEVALUE('Mark',$,IFCLABEL('${mark}'),$);`,
+      "#101=IFCPROPERTYSET('0pset00000000000000p01',$,'Pset_Fabrication',$,(#100));",
+      "#102=IFCRELDEFINESBYPROPERTIES('0rel000000000000000r01',$,$,$,(#10),#101);",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+  }
+
+  it('matches each candidate within its own model’s table', async () => {
+    const parse = async (step: string) => {
+      const bytes = new TextEncoder().encode(step);
+      return new IfcParser().parseColumnar(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        { disableWorkerScan: true },
+      );
+    };
+    const storeA = await parse(wallModel('0wallA0000000000000000', 'T-A'));
+    const storeB = await parse(wallModel('0wallB0000000000000000', 'T-B'));
+    const views = new Map<string, MutablePropertyView>();
+    const modelOf = (id: string, dataStore: unknown) => ({ id, name: id, ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: 0, loadedAt: 0, idOffset: 0, maxExpressId: 200 });
+    const state = {
+      activeModelId: 'A', // the ACTIVE model is A; every candidate is in B
+      ifcDataStore: null,
+      models: new Map([['A', modelOf('A', storeA)], ['B', modelOf('B', storeB)]]),
+      getMutationView: (id: string) => views.get(id) ?? null,
+      registerMutationView: (id: string, view: MutablePropertyView) => { views.set(id, view); },
+    };
+    const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
+    const globalIds: Record<string, string> = { A: '0wallA0000000000000000', B: '0wallB0000000000000000' };
+    const bim = { entity: (addr: { modelId: string; expressId: number }) => ({ globalId: globalIds[addr.modelId] }) };
+
+    const join = createStandardRegistry().get('table.joinByKey');
+    assert.ok(join, 'table.joinByKey is registered');
+    const table = {
+      columns: [{ name: 'Mark', type: 'string' as const }], key: 'Mark',
+      rows: [{ Mark: 'T-A' }, { Mark: 'T-B' }],
+    };
+    const out = await join.run(
+      { host: { bim, tables: viewerTableAccess(store), defaultModelId: 'A' }, laneKey: null, log: () => undefined } as never,
+      { entities: [{ globalId: globalIds.B, modelId: 'B', expressId: 10 }], table },
+      { strategy: 'property', column: 'Mark', pset: 'Pset_Fabrication', prop: 'Mark' },
+    ) as { matched: { rows: Array<Record<string, unknown>> }; unmatched: { rows: Array<Record<string, unknown>> } };
+
+    assert.deepEqual(out.matched.rows, [{ Mark: 'T-B', GlobalId: globalIds.B }], 'T-B matches B’s own wall');
+    assert.deepEqual(out.unmatched.rows, [{ Mark: 'T-A' }], 'T-A is model A’s mark, not a candidate’s');
   });
 });

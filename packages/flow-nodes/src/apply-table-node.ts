@@ -19,6 +19,7 @@
  */
 
 import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
+import { isStrictlyTyped } from './strict-cell.js';
 import type { Column, EntityRef } from '@ifc-lite/flow';
 import { ENTITY_LIST, SCALAR_LIST, TABLE_ITEM, requireCapability, toSdkRef, type FlowNodeDef } from './host.js';
 import { VALUE_TYPE_BY_COLUMN_TYPE, tableOf } from './table-nodes.js';
@@ -104,7 +105,9 @@ export const applyTableNode: FlowNodeDef = {
         // already reported by the reader that produced them.
         if (raw === null || raw === undefined) continue;
         const valueType = VALUE_TYPE_BY_COLUMN_TYPE[column.type];
-        const parsed = parseValue(String(raw), valueType);
+        // Strict first: a table from any producer (not only this package's
+        // readers) must not write `parseFloat`'s prefix of "12,5" as 12.
+        const parsed = isStrictlyTyped(String(raw), column.type) ? parseValue(String(raw), valueType) : PARSE_INVALID;
         // A cell that fails to parse as its column's declared type is
         // reported and left unwritten — never coerced to 0/''/false. Other
         // columns on the same row still write; only this cell is skipped.

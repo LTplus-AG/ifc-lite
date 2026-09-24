@@ -32,6 +32,8 @@ function isJoinStrategy(v: unknown): v is JoinStrategy {
 
 interface Candidate {
   readonly ref: EntityRef;
+  /** The model the express id belongs to — express ids are per-model. */
+  readonly modelId: string;
   readonly expressId: number;
 }
 
@@ -75,26 +77,37 @@ function matchedGlobalIdsFor(
   }
 
   // tag / property: reuse csv-match.ts's whole-model index, then restrict the
-  // result to the candidate pool by express id.
-  const access = ctx.host.tables?.();
-  if (!access) {
-    throw new Error(`table.joinByKey: strategy "${strategy}" needs a host that provides bulk entity access (bim host.tables); this host does not`);
+  // result to the candidate pool by express id. Express ids are PER MODEL, so
+  // each model's candidates are matched against that model's own table: one
+  // shared table would let a local id in the active model resolve to a
+  // same-numbered candidate in another model and write to the wrong entity.
+  const byModel = new Map<string, Map<number, string>>();
+  for (const candidate of candidates) {
+    let pool = byModel.get(candidate.modelId);
+    if (!pool) byModel.set(candidate.modelId, (pool = new Map()));
+    pool.set(candidate.expressId, candidate.ref.globalId);
   }
-  const poolByExpressId = new Map<number, string>(candidates.map((c) => [c.expressId, c.ref.globalId]));
   const csvRows: CsvRow[] = t.rows.map((row) => ({ [column]: row[column] === null || row[column] === undefined ? '' : String(row[column]) }));
   const matchStrategy: MatchStrategy = strategy === 'tag' ? { type: 'tag', column } : { type: 'property', psetName: pset, propName: prop, column };
-  const matchContext = buildMatchContext(access.entities, access.mutationView, access.strings, matchStrategy, csvRows);
-  const perRow = csvRows.map((row, i) => {
-    const result = matchRowAgainstContext(row, i, matchStrategy, matchContext);
-    problems.push(...(result.warnings ?? []).map((w) => `row ${i}: ${w}`));
-    const globalIds = new Set<string>();
-    for (const expressId of result.matchedEntityIds) {
-      const gid = poolByExpressId.get(expressId);
-      if (gid) globalIds.add(gid);
+  const perRow: Array<Set<string>> = csvRows.map(() => new Set<string>());
+  const firstModelId = [...byModel.keys()][0];
+  for (const [modelId, pool] of byModel) {
+    const access = ctx.host.tables?.(modelId);
+    if (!access) {
+      throw new Error(`table.joinByKey: strategy "${strategy}" needs a host that provides bulk entity access (host.tables) for model "${modelId}"; this host does not`);
     }
-    return [...globalIds];
-  });
-  return { perRow, problems };
+    const matchContext = buildMatchContext(access.entities, access.mutationView, access.strings, matchStrategy, csvRows);
+    csvRows.forEach((row, i) => {
+      const result = matchRowAgainstContext(row, i, matchStrategy, matchContext);
+      // A warning is about the row, not the model: report it once.
+      if (modelId === firstModelId) problems.push(...(result.warnings ?? []).map((w) => `row ${i}: ${w}`));
+      for (const expressId of result.matchedEntityIds) {
+        const gid = pool.get(expressId);
+        if (gid) perRow[i].add(gid);
+      }
+    });
+  }
+  return { perRow: perRow.map((ids) => [...ids]), problems };
 }
 
 function withColumn(columns: readonly Column[], col: Column): Column[] {
@@ -136,7 +149,10 @@ export const connectorNodes: FlowNodeDef[] = [
       if (!t.columns.some((c) => c.name === column)) throw new Error(`table.joinByKey: no column "${column}"`);
       if (strategy === 'property' && (!p.pset || !p.prop)) throw new Error('table.joinByKey: strategy "property" needs both "pset" and "prop" params');
 
-      const candidates: Candidate[] = (i.entities as EntityRef[]).map((ref) => ({ ref, expressId: toSdkRef(ctx, ref).expressId }));
+      const candidates: Candidate[] = (i.entities as EntityRef[]).map((ref) => {
+        const address = toSdkRef(ctx, ref);
+        return { ref, modelId: address.modelId, expressId: address.expressId };
+      });
       const { perRow, problems } = matchedGlobalIdsFor(ctx, t, candidates, strategy, column, String(p.pset ?? ''), String(p.prop ?? ''));
       for (const msg of problems) ctx.log('warn', msg);
 

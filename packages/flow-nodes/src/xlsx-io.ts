@@ -21,6 +21,7 @@
 import ExcelJS from 'exceljs';
 import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
+import { isStrictlyTyped } from './strict-cell.js';
 import { COLUMN_TYPES, type Cell, type Column, type ColumnType, type Table } from '@ifc-lite/flow';
 import { VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
 
@@ -47,15 +48,33 @@ function columnType(spec: XlsxColumnSpec | undefined): ColumnType {
   return typeof t === 'string' && (COLUMN_TYPES as readonly string[]).includes(t) ? (t as ColumnType) : 'string';
 }
 
-/** A worksheet cell's value as a plain string for typed re-parsing; ExcelJS
- *  gives back a `Date`/rich-text/formula object for some cell kinds, and only
- *  the plain scalar ones round-trip through `parseValue`. */
-function cellText(v: ExcelJS.CellValue): string {
+/** A cell that has no usable text: an Excel error or a kind this reader cannot read. */
+class UnreadableCell extends Error {}
+
+/**
+ * A worksheet cell's value as plain text for typed re-parsing. ExcelJS hands
+ * back objects for several cell kinds, and every one is handled explicitly:
+ * falling through to `String(v)` produced `"[object Object]"`, which a string
+ * column accepted and `model.applyTable` then wrote (#5377 review).
+ * - rich text `{ richText: [{ text }] }` → the runs joined (partially
+ *   formatted text is ordinary in mapping sheets);
+ * - a formula `{ formula, result }` → its cached result, itself read again;
+ * - a hyperlink `{ text, hyperlink }` → its text;
+ * - an error `{ error: '#N/A' }`, or any other object → UnreadableCell, so
+ *   the caller reports the cell instead of writing garbage.
+ */
+function cellText(v: ExcelJS.CellValue | unknown): string {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return v.toISOString();
-  if (typeof v === 'object' && 'result' in v) return String((v as { result?: unknown }).result ?? '');
-  if (typeof v === 'object' && 'text' in v) return String((v as { text?: unknown }).text ?? '');
-  return String(v);
+  if (typeof v !== 'object') return String(v);
+  const cell = v as Record<string, unknown>;
+  if (Array.isArray(cell.richText)) {
+    return (cell.richText as Array<{ text?: unknown }>).map((run) => String(run.text ?? '')).join('');
+  }
+  if ('error' in cell) throw new UnreadableCell(`spreadsheet error ${String(cell.error)}`);
+  if ('result' in cell) return cellText(cell.result);
+  if ('text' in cell && typeof cell.text !== 'object') return String(cell.text ?? '');
+  throw new UnreadableCell('a cell kind this reader cannot read');
 }
 
 /** Read one worksheet into a typed `Table`. Row 1 is the header; a row whose
@@ -76,7 +95,13 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
 
   const headerRow = ws.getRow(1);
   const header: string[] = [];
-  headerRow.eachCell({ includeEmpty: false }, (cell) => header.push(cellText(cell.value)));
+  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    try {
+      header.push(cellText(cell.value));
+    } catch (error) {
+      throw new Error(`header column ${colNumber}: ${(error as Error).message}`);
+    }
+  });
   const declared = options.columns;
   const names = declared && declared.length > 0 ? declared.map((c) => c.name) : header;
   const columns: Column[] = names.map((name, idx) => ({ name, type: columnType(declared?.[idx]) }));
@@ -86,8 +111,15 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
   for (let r = 2; r <= ws.rowCount; r += 1) {
     const excelRow = ws.getRow(r);
     if (excelRow.cellCount === 0) continue;
-    const cellsInRow: string[] = [];
-    for (let c = 1; c <= header.length; c += 1) cellsInRow.push(cellText(excelRow.getCell(c).value));
+    const cellsInRow: Array<string | UnreadableCell> = [];
+    for (let c = 1; c <= header.length; c += 1) {
+      try {
+        cellsInRow.push(cellText(excelRow.getCell(c).value));
+      } catch (error) {
+        if (!(error instanceof UnreadableCell)) throw error;
+        cellsInRow.push(error);
+      }
+    }
     let widest = 0;
     excelRow.eachCell({ includeEmpty: false }, (_cell, colNumber) => { widest = Math.max(widest, colNumber); });
     if (widest > header.length) problems.push(`row ${r}: expected ${header.length} column(s), got ${widest}`);
@@ -95,6 +127,11 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
     const row: Record<string, Cell> = {};
     columns.forEach((col, idx) => {
       const raw = cellsInRow[idx] ?? '';
+      if (raw instanceof UnreadableCell) {
+        problems.push(`row ${r}: column "${col.name}": ${raw.message}`);
+        row[col.name] = null;
+        return;
+      }
       if (raw === '') {
         row[col.name] = null;
         return;
@@ -103,7 +140,7 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
         row[col.name] = raw;
         return;
       }
-      const parsed = parseValue(raw, VALUE_TYPE_BY_COLUMN_TYPE[col.type]);
+      const parsed = isStrictlyTyped(raw, col.type) ? parseValue(raw, VALUE_TYPE_BY_COLUMN_TYPE[col.type]) : PARSE_INVALID;
       if (parsed === PARSE_INVALID) {
         problems.push(`row ${r}: column "${col.name}": cannot parse "${raw}" as ${col.type}`);
         row[col.name] = null;

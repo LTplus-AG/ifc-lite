@@ -92,6 +92,10 @@ function splitRows(text: string, delimiter: string): string[][] {
  *  file ending in a newline) are dropped; a genuinely blank line elsewhere
  *  is kept as a one-empty-field row and reported like any other mismatch. */
 export function parseCsvText(text: string, delimiter = ','): CsvParseResult {
+  // Excel's "CSV UTF-8" export starts with a byte-order mark. Left in, it
+  // becomes part of the first header ("\uFEFFGlobalId"), so the default
+  // GlobalId key is not found — and a quoted first header keeps its quotes.
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const all = splitRows(text, delimiter).filter((r, idx, arr) => !(idx === arr.length - 1 && r.length === 1 && r[0] === ''));
   if (all.length === 0) return { header: [], rows: [] };
   const [header, ...dataRows] = all;

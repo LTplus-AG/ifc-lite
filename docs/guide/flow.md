@@ -137,9 +137,9 @@ quietly erase a value.
 }
 ```
 ```json
-{ "id": "read", "type": "table.readCsv", "params": { "columns": [{ "name": "Tag", "type": "string" }, { "name": "FireRating", "type": "string" }] } },
+{ "id": "read", "type": "table.readCsv", "params": { "columns": [{ "name": "Mark", "type": "string" }, { "name": "FireRating", "type": "string" }] } },
 { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
-{ "id": "join", "type": "table.joinByKey", "params": { "strategy": "tag", "column": "Tag" } },
+{ "id": "join", "type": "table.joinByKey", "params": { "strategy": "property", "column": "Mark", "pset": "Pset_Fabrication", "prop": "Mark" } },
 { "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "FireRating", "pset": "Pset_WallCommon", "prop": "FireRating" }] } }
 ```
 
@@ -147,6 +147,10 @@ quietly erase a value.
 (`ReadCsv → JoinByKey → ApplyTable`) end to end against a real model, including a
 duplicate match value that must land in `ambiguous`, not get resolved to either
 entity.
+
+`strategy: "tag"` works in the viewer. Headless (`ifc-lite flow run`, MCP) it
+currently matches nothing, because the CLI's columnar parser does not populate `Tag`
+(#1765). Use a `property` join, as above, until it does.
 
 ## Creating elements, and re-running
 

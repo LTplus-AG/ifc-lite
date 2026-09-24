@@ -312,20 +312,22 @@ export function rebuildOnDemandMaps(
   const onDemandQuantityMap = new Map<number, number[]>();
   const onDemandMaterialMap = new Map<number, number[]>();
 
-  // Use entityIndex.byType if available (needed for cache loads where entity table
-  // doesn't include IfcPropertySet/IfcElementQuantity entities)
-  // Fall back to entities.getByType() for fresh parses where entity table has these types
+  // Cache loads may omit property sets from the entity table.
   let propertySets: number[];
   let quantitySets: number[];
 
+  // @raw-entity-enumeration-ok cache hydration tests the source index before rebuilding parsed associations
   if (entityIndex?.byType) {
     // byType keys are upper case: the parser, the v4 cache columns and the v3
     // rebuild in useIfcCache all normalise them (#4712).
+    // @raw-entity-enumeration-ok cache hydration rebuilds source-only property associations before a mutation view exists
     propertySets = entityIndex.byType.get('IFCPROPERTYSET') ?? [];
+    // @raw-entity-enumeration-ok cache hydration rebuilds source-only quantity associations before a mutation view exists
     quantitySets = entityIndex.byType.get('IFCELEMENTQUANTITY') ?? [];
   } else {
-    // Fallback for when entityIndex is not provided
+    // @raw-entity-enumeration-ok source-only fallback while hydrating a parsed cache with no entity index
     propertySets = entities.getByType(IfcTypeEnum.IfcPropertySet);
+    // @raw-entity-enumeration-ok source-only fallback while hydrating a parsed cache with no entity index
     quantitySets = entities.getByType(IfcTypeEnum.IfcElementQuantity);
   }
 
@@ -374,6 +376,7 @@ export function rebuildOnDemandMaps(
   // model-wide usage index). Requires entityIndex.byType to enumerate material
   // definitions — the cached graph preserves AssociatesMaterial edges.
   let materialDefCount = 0;
+  // @raw-entity-enumeration-ok cache hydration tests the source index before rebuilding material associations
   if (entityIndex?.byType) {
     // Determinism parity with the columnar parser: the map preserves EVERY
     // association (multiple IfcRelAssociatesMaterial on one element are
@@ -383,6 +386,7 @@ export function rebuildOnDemandMaps(
     // edge relationshipId — which the cached CSR columns preserve — or a
     // cache load could disagree with a fresh parse of the same file.
     const materialRelIds = new Map<number, number[]>();
+    // @raw-entity-enumeration-ok source-only cache hydration before any live mutation view exists
     for (const [typeKey, ids] of entityIndex.byType) {
       // Source nodes of AssociatesMaterial edges: every class an
       // IfcMaterialSelect can resolve to. Anything omitted here is an

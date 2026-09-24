@@ -172,6 +172,7 @@ export const miscPanelsBEn = {
   'shareDialog.mintFailedReusing':
     'Could not mint a fresh link - reusing your current invite (same access).',
   'shareDialog.linkField.awaitingScope': 'Choose what to share, then create the link',
+  'shareDialog.linkField.awaitingConsent': 'Create the link to share this model',
   'shareDialog.linkField.seedInFlight': 'Link is ready once the upload finishes…',
   'shareDialog.linkField.creatingRoom': 'Creating room…',
   'shareDialog.linkField.generating': 'Generating link…',
@@ -193,6 +194,8 @@ export const miscPanelsBEn = {
   'shareScopeField.scopeAriaLabel': 'Share scope',
   'shareScopeField.activeOnly': 'Active model only',
   'shareScopeField.createLink': 'Create link',
+  'shareScopeField.uploadNotice':
+    'Creating the link uploads the shared model data to the collaboration server, so people with the link can open it.',
 
   // ---- LoadReportPanel.tsx ------------------------------------------------
   'loadReportPanel.selectAndFrameTitle': 'Select and frame this entity',

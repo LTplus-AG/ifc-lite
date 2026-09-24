@@ -14,12 +14,18 @@ import { openFileTab, openViewer, roomCounts, storeState, texturedMeshFingerprin
 export const IN_FLIGHT = /Connecting to the room…|Uploading model structure…|Uploading geometry|Confirming the upload/;
 export const WAITING_TEXT = 'Link is ready once the upload finishes…';
 
-/** Open File → Share and return the dialog's three gate surfaces. */
+/**
+ * Open File → Share, prove opening it uploaded nothing (#5599), consent with
+ * "Create link", and return the dialog's three gate surfaces.
+ */
 export async function openShare(page: Page) {
   await openFileTab(page);
   await page.getByRole('button', { name: 'Share' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/uploads the shared model data to the collaboration server/)).toBeVisible();
+  expect(await storeState<string | null>(page, 'state.collabRoomId'), 'opening Share creates no room').toBeNull();
+  await dialog.getByRole('button', { name: 'Create link' }).click();
   return { dialog, status: dialog.getByRole('status'), copy: dialog.getByRole('button', { name: /^(Copy|Copied)$/ }), link: dialog.locator('#share-link') };
 }
 

@@ -263,6 +263,13 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);
   });
 
+  it('keeps a small outbuilding one model-length away (PR #5460 review)', () => {
+    const meshes: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 10; i++) meshes.push(box([i, 0, 0], [i + 1, 1, 1]));
+    meshes.push(box([25, 0, 0], [26, 1, 1]));
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
   it('never drops a majority: three meshes far apart stay framed together', () => {
     const meshes = [box([0, 0, 0], [1, 1, 1]), box([100, 0, 0], [101, 1, 1]), box([200, 0, 0], [201, 1, 1])];
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);

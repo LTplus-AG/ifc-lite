@@ -169,10 +169,13 @@ const CLUSTER_GRID_CELLS = 10;
  *  its own diagonals: a 2 m glyph 30 m out, not a part a few metres off. */
 const DETACHED_GAP_OVER_OWN_SIZE = 3;
 /** ...and either be small next to the main cluster (Infra-Bridge's glyph by
- *  a 60 m bridge pair), or sit farther out than the main cluster is big (the
- *  same glyph 30 m from a 10 m house). A second structure of comparable size
- *  nearby is neither, so it stays. */
+ *  a 60 m bridge pair), or sit more than DETACHED_GAP_OVER_MAIN_SIZE main
+ *  diagonals out (the same glyph ~31 m from a ~14 m house, 2.2x). A second
+ *  structure of comparable size nearby is neither, so it stays. */
 const DETACHED_MAX_SIZE_OF_MAIN = 0.1;
+/** A small outbuilding one model-length away (1.5x) is part of the site and
+ *  stays framed; only content two model-lengths out counts as detached. */
+const DETACHED_GAP_OVER_MAIN_SIZE = 2;
 
 /**
  * Mark the meshes of small clusters that sit detached from the model's main
@@ -182,7 +185,7 @@ const DETACHED_MAX_SIZE_OF_MAIN = 0.1;
  * detached when it is far for its size (gap to the main cluster over
  * DETACHED_GAP_OVER_OWN_SIZE of its own diagonals) and either small next to
  * the main cluster (diagonal at most DETACHED_MAX_SIZE_OF_MAIN of its) or
- * farther from it than the main cluster's own diagonal. Only a strict minority
+ * farther from it than DETACHED_GAP_OVER_MAIN_SIZE of its diagonals. Only a strict minority
  * of meshes is ever dropped.
  */
 function detachedMinorityClusters(
@@ -256,7 +259,7 @@ function detachedMinorityClusters(
     );
     const own = diag(u);
     const farForItsSize = gap > DETACHED_GAP_OVER_OWN_SIZE * own;
-    const minorNextToMain = own <= DETACHED_MAX_SIZE_OF_MAIN * mainDiag || gap > mainDiag;
+    const minorNextToMain = own <= DETACHED_MAX_SIZE_OF_MAIN * mainDiag || gap > DETACHED_GAP_OVER_MAIN_SIZE * mainDiag;
     if (farForItsSize && minorNextToMain) { drop[k] = 1; dropped += meshes[k]; }
   }
   if (dropped === 0 || dropped >= count - dropped) return null;

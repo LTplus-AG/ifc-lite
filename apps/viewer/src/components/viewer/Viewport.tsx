@@ -455,7 +455,7 @@ export function Viewport({
     rendererRef.current?.requestRender();
   }, [environment]);
 
-  // Sun cast shadows (#2670) — driven by the Sun & Sky panel. Standalone
+  // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
   // (the renderer then skips the depth pre-pass entirely).
   const shadowsEnabled = useViewerStore((s) => s.envShadowsEnabled);

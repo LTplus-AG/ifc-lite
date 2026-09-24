@@ -24,7 +24,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { runGpuUpload } from './gpu-upload-guard';
-/** Sun cast-shadow render options, driven by the Sun & Sky panel (#2670). */
+/** Sun cast-shadow render options, driven by the Environment panel (#2670). */
 export interface SunShadowSettings {
   enabled: boolean;
   resolution: number;
@@ -51,7 +51,7 @@ export interface UseAnimationLoopParams {
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
   /** Lighting environment (sun, hemisphere ambient, exposure, sky pass). */
   environmentRef: MutableRefObject<LightingEnvironment>;
-  /** Sun cast-shadow settings (Sun & Sky panel), or null when disabled. */
+  /** Sun cast-shadow settings (Environment panel), or null when disabled. */
   sunShadowsRef: MutableRefObject<SunShadowSettings | null>;
   sectionPlaneRef: MutableRefObject<SectionPlane>;
   sectionRangeRef: MutableRefObject<{ min: number; max: number } | null>;

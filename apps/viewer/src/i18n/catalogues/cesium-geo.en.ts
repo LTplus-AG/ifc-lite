@@ -11,7 +11,7 @@ import type { TranslationValue } from '../types';
  * floating panel — deltas, nudge/rotate controls, the map-absolute
  * guard warning, and the apply/reset actions), `CustomBasemapEditor.tsx`
  * and `CustomTilesetEditor.tsx` (the custom XYZ-tile and 3D-Tiles input
- * surfaces under the Sun & Sky panel's Base map selector, including their
+ * surfaces under the Environment panel's Base map selector, including their
  * third-party-privacy disclosures), `CesiumOverlay.tsx` (the globe's own
  * loading/error/basemap-warning banners), and `AxisHelper.tsx` (the 3D
  * axis-triad labels). `Eastings`, `Northings`, and `OrthogonalHeight` are
@@ -102,9 +102,9 @@ export const cesiumGeoEn = {
 
   // CesiumOverlay
   'cesiumGeo.overlay.loadingLabel': 'Loading 3D context...',
-  'cesiumGeo.overlay.noCustomBasemapWarning': 'No custom basemap is configured. Add a tile URL in Sun & Sky > Base map.',
+  'cesiumGeo.overlay.noCustomBasemapWarning': 'No custom basemap is configured. Add a tile URL in Environment > Base map.',
   'cesiumGeo.overlay.customBasemapUnavailable': 'That tile URL could not be used as a basemap.',
-  'cesiumGeo.overlay.noCustomTilesetWarning': 'No custom 3D Tiles URL is configured. Add one in Sun & Sky > Base map.',
+  'cesiumGeo.overlay.noCustomTilesetWarning': 'No custom 3D Tiles URL is configured. Add one in Environment > Base map.',
   'cesiumGeo.overlay.initFailed': 'Cesium initialization failed',
 
   // AxisHelper

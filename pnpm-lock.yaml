@@ -1231,6 +1231,9 @@ importers:
 
   packages/flow-nodes:
     dependencies:
+      '@ifc-lite/bcf-api':
+        specifier: workspace:^
+        version: link:../bcf-api
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data

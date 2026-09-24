@@ -64,7 +64,7 @@ fn a_genuine_shallow_crossing_still_crosses_at_every_height_5406() {
     // that height (>= 25x the noise band) must still cross, or a predicate
     // that answered `false` for every near-coplanar pair would pass above.
     // Below 1.0 the band keeps its unit-magnitude floor (the same
-    // `max(1, |c|)` as `precision_floor`), so the ULP is taken there.
+    // `max(1, |c|)` as the depth path's precision floor), so the ULP is taken there.
     for z in HEIGHTS {
         let zf = f64::from(z as f32);
         let tilt = 100.0 * ulp32(zf.max(1.0));

@@ -212,6 +212,55 @@ library Triangles
             a0.Y.AxisNoise(a1.Y, a2.Y, b0.Y, b1.Y, b2.Y),
             a0.Z.AxisNoise(a1.Z, a2.Z, b0.Z, b1.Z, b2.Z));
 
+    // An element's size: its AABB's largest extent.
+    Span(b: Box3): Number
+        => ((b.Max.X - b.Min.X).Max2(b.Max.Y - b.Min.Y)).Max2(b.Max.Z - b.Min.Z);
+
+    // Per-axis noise of a depth between two elements' surfaces, for the
+    // narrow phase's precision floor (#5405). Two terms, both scaled by
+    // 2^-22 (`F32_ULP_SCALE`):
+    //
+    // - POSITION: the f32 rounding of that axis's own coordinates,
+    //   `max(1, |c|)` over both boxes (`AxisNoise`, the tri-tri band's rule).
+    //   It grows with distance from the origin, but only along the axis the
+    //   distance lies on.
+    // - SIZE: `Span(a) + Span(b)`, each element's largest extent. Placement
+    //   and tessellation arithmetic mixes axes at element scale before the
+    //   final rounding, so a surface's error grows with the size of the
+    //   element it belongs to, on every axis. A depth is the difference of
+    //   two surfaces, one from each element, so their errors add. Measured on
+    //   real models: an 8.4 m wall pair at y ~ 0 carries 3.05e-6 of y error,
+    //   far above y's own ULP and within (8.38 + 8.38) * 2^-22 = 4.0e-6.
+    //   Invariant under translation, so it cannot reintroduce the origin
+    //   dependence this floor exists to remove.
+    BoxNoise(a: Box3, b: Box3): Vec3
+        => new Vec3(
+            a.Min.X.AxisNoise(a.Max.X, b.Min.X, b.Max.X, 0.0, 0.0) + ((a.Span + b.Span) * (1.0 / 4194304.0)),
+            a.Min.Y.AxisNoise(a.Max.Y, b.Min.Y, b.Max.Y, 0.0, 0.0) + ((a.Span + b.Span) * (1.0 / 4194304.0)),
+            a.Min.Z.AxisNoise(a.Max.Z, b.Min.Z, b.Max.Z, 0.0, 0.0) + ((a.Span + b.Span) * (1.0 / 4194304.0)));
+
+    // The precision floor of a depth measured along the UNIT direction
+    // `axis`: the pair's per-axis f32 noise projected onto that direction.
+    // A penetration depth at or below it cannot be told apart from input
+    // rounding, so the pair is Touch, not Hard (#5405). Projected, not a max
+    // over all axes: a model far out in X hands a Z-direction depth no X
+    // noise at all.
+    DepthFloor(axis: Vec3, a: Box3, b: Box3): Number
+        => axis.Band(a.BoxNoise(b));
+
+    // The precision floor of the AABB estimate `-SignedGap`: `MinOverlap`
+    // measures along whichever world axis has the smallest overlap, so the
+    // floor is that axis's own noise. Picks the axis with the same strict `<`
+    // fold as `MinOverlap` (x, then y, then z), so the two always agree.
+    EstimateFloor(a: Box3, b: Box3): Number
+        => ((a.GapZ(b) > 0.0 ? false : true)
+                && (a.OverlapZ(b) < (1.0 / 0.0).OverlapStep(a.GapX(b), a.OverlapX(b)).OverlapStep(a.GapY(b), a.OverlapY(b))))
+            ? a.BoxNoise(b).Z
+            : (((a.GapY(b) > 0.0 ? false : true)
+                    && (a.OverlapY(b) < (1.0 / 0.0).OverlapStep(a.GapX(b), a.OverlapX(b))))
+                ? a.BoxNoise(b).Y
+                : a.BoxNoise(b).X);
+
     // The noise band of a projection onto `axis` (unnormalised): each
     // axis's noise weighted by that axis's own component, so a coordinate
     // axis orthogonal to `axis` contributes nothing however far from the

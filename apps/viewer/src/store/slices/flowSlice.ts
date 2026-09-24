@@ -14,6 +14,26 @@
 import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
 import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
+import { clearPlayerValues } from '../../lib/flow/player-values.js';
+
+/** A finished run's time window and the graph document that ran in it. */
+export interface FlowRunWindow {
+  readonly start: number;
+  readonly end: number;
+  /**
+   * The document AS RUN. Publish derives its provenance (graph id, writing
+   * nodes, tracking keys) from this, not from the working copy: an edit made
+   * after the run must not be credited with the run's writes (#5380 review).
+   */
+  readonly doc: FlowDocument;
+  /**
+   * Ids of the pending mutations this run created: pending when it finished,
+   * not pending when it started. Publish selects by these ids, not by time: an
+   * inclusive millisecond window also took in a manual edit made in the same
+   * millisecond the run ended (#5380 review).
+   */
+  readonly mutationIds: ReadonlySet<string>;
+}
 
 export interface FlowSlice {
   flowPanelVisible: boolean;
@@ -27,6 +47,13 @@ export interface FlowSlice {
   flowRunning: boolean;
   flowLastRun: RunResult | null;
   flowLastError: string | null;
+  /**
+   * When the last run started and finished, and the graph version it ran.
+   * Publish scopes "this run's" mutations to this CLOSED window: an
+   * open-ended "since the run started" would also sweep in edits the user
+   * made by hand afterwards and publish them under the graph's provenance.
+   */
+  flowLastRunWindow: FlowRunWindow | null;
 
   setFlowPanelVisible: (visible: boolean) => void;
   /** Create, save and open a new graph. Returns `null` when the graph limit is reached. */
@@ -41,7 +68,7 @@ export interface FlowSlice {
   setFlowDoc: (doc: FlowDocument) => void;
   setFlowSelectedNodeId: (id: string | null) => void;
   setFlowRunning: (running: boolean) => void;
-  setFlowLastRun: (run: RunResult | null, error?: string | null) => void;
+  setFlowLastRun: (run: RunResult | null, error?: string | null, window?: FlowRunWindow | null) => void;
 }
 
 export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set, get) => ({
@@ -54,6 +81,7 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   flowRunning: false,
   flowLastRun: null,
   flowLastError: null,
+  flowLastRunWindow: null,
 
   setFlowPanelVisible: (visible) => set({ flowPanelVisible: visible }),
 
@@ -63,14 +91,14 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     const doc = newFlowDocument(name.trim() || 'Untitled flow');
     const next = [...savedFlows, { doc, updatedAt: Date.now() }];
     saveFlows(next);
-    set({ savedFlows: next, activeFlowId: doc.id, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null });
+    set({ savedFlows: next, activeFlowId: doc.id, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
     return doc.id;
   },
 
   openFlow: (id) => {
     const saved = get().savedFlows.find((f) => f.doc.id === id);
     if (!saved) return;
-    set({ activeFlowId: id, flowDoc: saved.doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null });
+    set({ activeFlowId: id, flowDoc: saved.doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
   },
 
   saveFlow: () => {
@@ -88,10 +116,12 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
     saveFlows(next);
     // The sidecar is the graph's; a graph deleted here and re-imported later
-    // under the same id must not inherit tracked elements it never made.
+    // under the same id must not inherit tracked elements it never made. The
+    // Player's last-used inputs are the graph's too, for the same reason.
     BrowserTrackingStore.clear(id);
+    clearPlayerValues(id);
     const closing = get().activeFlowId === id;
-    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null } : {}) });
+    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null } : {}) });
   },
 
   importFlow: (doc) => {
@@ -101,12 +131,12 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     const imported: FlowDocument = { ...doc, id };
     const next = [...savedFlows, { doc: imported, updatedAt: Date.now() }];
     saveFlows(next);
-    set({ savedFlows: next, activeFlowId: id, flowDoc: imported, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null });
+    set({ savedFlows: next, activeFlowId: id, flowDoc: imported, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
     return id;
   },
 
   setFlowDoc: (doc) => set({ flowDoc: doc, flowDirty: true }),
   setFlowSelectedNodeId: (id) => set({ flowSelectedNodeId: id }),
   setFlowRunning: (running) => set({ flowRunning: running }),
-  setFlowLastRun: (run, error = null) => set({ flowLastRun: run, flowLastError: error, flowRunning: false }),
+  setFlowLastRun: (run, error = null, window = null) => set({ flowLastRun: run, flowLastError: error, flowLastRunWindow: window, flowRunning: false }),
 });

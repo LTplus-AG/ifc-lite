@@ -14,8 +14,14 @@ import { useCallback, useEffect, useRef } from 'react';
 import { MemoCache } from '@ifc-lite/flow';
 import { useBim } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
+import type { FlowRunWindow } from '@/store/slices/flowSlice';
 import { invalidateForExternalChange, runFlowInViewer } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
+
+/** Ids of every pending mutation, on every model. */
+function pendingMutationIds(): Set<string> {
+  return new Set([...useViewerStore.getState().undoStacks.values()].flat().map((mutation) => mutation.id));
+}
 
 export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean } {
   const bim = useBim();
@@ -51,13 +57,28 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     }
     running.current = true;
     setFlowRunning(true);
+    // Record which pending mutations the run creates (pending after it, not
+    // before), so Publish takes exactly those and never a later manual edit.
+    const start = Date.now();
+    const pendingBefore = pendingMutationIds();
+    const record = (): FlowRunWindow => ({
+      start,
+      end: Date.now(),
+      doc: flowDoc,
+      mutationIds: new Set([...pendingMutationIds()].filter((id) => !pendingBefore.has(id))),
+    });
+    // Another graph opened while this one ran: its panel must not show, or
+    // publish, this run (#5380 review). `openFlow` already cleared the result.
+    const stillOpen = (): boolean => useViewerStore.getState().flowDoc?.id === flowDoc.id;
     try {
       const result = await runFlowInViewer({
         doc: flowDoc, bim, pin, cache, inputs, tables: viewerTableAccess(useViewerStore),
       });
-      setFlowLastRun(result);
+      if (stillOpen()) setFlowLastRun(result, undefined, record());
+      else setFlowRunning(false);
     } catch (err) {
-      setFlowLastRun(null, err instanceof Error ? err.message : String(err));
+      if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
+      else setFlowRunning(false);
     } finally {
       running.current = false;
     }

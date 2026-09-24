@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { viewerTeardown } from '@/store/teardown-registry';
 import { BrowserTrackingStore, loadSavedFlows, newFlowDocument } from '@/lib/flow/persistence';
+import { loadPlayerValues, savePlayerValues } from '@/lib/flow/player-values';
 
 class MemoryStorage {
   readonly store = new Map<string, string>();
@@ -64,16 +65,39 @@ describe('flowSlice', () => {
     assert.equal(loadSavedFlows().length, 0);
   });
 
+  it('delete also clears the graph\'s Player values, so a later graph under the same id starts clean', () => {
+    // Like the tracking sidecar, the last-used inputs belong to the graph: an
+    // import reusing the id must not be pre-filled with them (#5380 review).
+    const id = useViewerStore.getState().createFlow('A')!;
+    savePlayerValues(id, { Width: 42 });
+    assert.deepEqual(loadPlayerValues(id), { Width: 42 });
+    useViewerStore.getState().deleteFlow(id);
+    assert.deepEqual(loadPlayerValues(id), {});
+  });
+
   it('a session reset closes the panel and drops the run, but keeps the saved graphs and the working copy', () => {
     useViewerStore.getState().createFlow('Kept');
-    useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x' });
+    useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x'), mutationIds: new Set() } });
     useViewerStore.setState(viewerTeardown({ kind: 'session-reset' }, useViewerStore.getState()));
     const s = useViewerStore.getState();
     assert.equal(s.flowPanelVisible, false);
     assert.equal(s.flowRunning, false);
     assert.equal(s.flowLastError, null);
+    assert.equal(s.flowLastRunWindow, null);
     assert.equal(s.savedFlows.length, 1);
     assert.equal(s.flowDoc?.name, 'Kept');
+  });
+
+  it('setFlowLastRun records the run\'s closed window, for Publish to scope "this run\'s" mutations', () => {
+    const ranDoc = newFlowDocument('ran');
+    useViewerStore.getState().setFlowLastRun(
+      { ok: true, writes: 1, outputs: new Map(), graphOutputs: [], reports: [], log: [] }, undefined, { start: 999, end: 1005, doc: ranDoc, mutationIds: new Set(['m1']) },
+    );
+    // Both ends, not just the start: an open-ended window would sweep in the
+    // user's own later edits and publish them under the graph's provenance.
+    assert.deepEqual(useViewerStore.getState().flowLastRunWindow, { start: 999, end: 1005, doc: ranDoc, mutationIds: new Set(['m1']) });
+    useViewerStore.getState().setFlowLastRun(null, 'boom');
+    assert.equal(useViewerStore.getState().flowLastRunWindow, null, 'an omitted window defaults to null, not the previous run\'s');
   });
 
   it('BrowserTrackingStore refuses sets pinned to another model state', () => {

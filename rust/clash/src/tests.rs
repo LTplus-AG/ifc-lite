@@ -590,32 +590,43 @@ fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_
 }
 
 #[test]
-fn a_contained_non_box_pair_flush_at_f32_noise_scale_reports_touch_not_hard() {
-    // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
-    // an element authored FLUSH against a surface inside another element's
-    // AABB. The crossing exists (f32 rounding pushes the surfaces through
-    // each other by ~1 ULP), but every crossing vertex sits within f32 noise
-    // of the other surface — while the AABB estimate, the number the depth
-    // rework would report for this non-box contained pair, is the contained
-    // element's own extent (~0.475 m here, 4.084 m on the bridge), far above
-    // the floor. Floor-testing only the reported estimate promotes the pair
-    // to `Hard` at a number that measures nothing; the crossing-vertex
-    // evidence (`crossing_vertex_penetration`) must gate it back to `Touch`.
-    // Plate side-band vertices at 0.875 - 6e-8 / 0.875 + 1.2e-7 straddle the
-    // tub's recess floor (z = 0.875) by ~1-2 f32 ULP; the floor here is
-    // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence. Mirrors
-    // the TS fixture in `engine-ts/depth-provenance.test.ts`.
-    let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, 0.875 + 1.2e-7)]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
-    assert_eq!(result.records.len(), 1);
-    assert_eq!(result.records[0].status, ClashStatus::Touch);
-    assert_eq!(result.records[0].distance, 0.0);
+fn a_buried_plate_flush_with_a_recess_floor_does_not_flip_on_which_side_the_ulp_fell_5406() {
+    // The tub/plate shape of the eight Infra-Bridge pairs (#2536): a plate
+    // whose body sits INSIDE the tub's solid (z 0.4 up to the recess floor
+    // at z = 0.875), top authored flush with that floor. Where f32 rounding
+    // put the plate's top relative to the floor is noise, and it used to
+    // decide the verdict: straddling the floor by 1-2 ULP it read as a
+    // crossing, and the crossing-vertex evidence gated it to `Touch`; one ULP
+    // BELOW, or bit-identically ON the floor, there was no crossing, so the
+    // enclosed-solid test found the plate buried and reported `Hard` at the
+    // 0.475 m estimate. Measured on main before #5406: Touch / Hard / Hard.
+    //
+    // #5406 makes the three placements one case: the predicate reads a
+    // crossing within f32 noise as contact, so none of them crosses, and all
+    // three report what the geometry is — a plate buried in the tub (its
+    // vertices are 0.475 m inside it), labelled `Estimate` because the tub
+    // is not a box.
+    let placements: [(&str, f32); 3] = [
+        ("straddling by 1-2 ULP", 0.875 + 1.2e-7),
+        ("bit-identically on the floor", 0.875),
+        ("one ULP below", f32::from_bits(0.875f32.to_bits() - 1)),
+    ];
+    for (label, z_top) in placements {
+        let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, z_top)]);
+        let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(result.records.len(), 1, "{label}");
+        let rec = &result.records[0];
+        assert_eq!(rec.status, ClashStatus::Hard, "{label}: the plate is buried in the tub");
+        assert_eq!(rec.distance_kind, DistanceKind::Estimate, "{label}: the tub is not a box");
+        assert!((rec.distance + 0.475).abs() < 1e-6, "{label}: {}", rec.distance);
+    }
 }
 
 #[test]
 fn a_contained_non_box_pair_with_a_real_above_floor_crossing_stays_hard() {
-    // Discriminating companion to the flush pin above: the same tub/plate
-    // shape with the plate genuinely 10 mm through the recess floor. The
+    // Companion to the buried-plate test above: the same tub/plate shape
+    // with the plate genuinely 10 mm through the recess floor, far above the
+    // f32 noise, so it DOES cross (the flush placements above do not). The
     // crossing-vertex evidence (~0.01 m) clears the floor, so the gate must
     // NOT suppress it — the pair stays `Hard`, reported at the AABB estimate
     // with the honest `Estimate` label (non-box pair, no certified depth).
@@ -1225,4 +1236,110 @@ fn a_non_box_is_still_not_a_box_5355() {
         crate::obb::detect_obb(&mesh).is_none(),
         "a triangular prism has a 4th face-normal family and is not a box"
     );
+}
+
+/// `(positions, indices, aabb)` rotated by `Rz(yaw) * Rx(roll)`, translated
+/// by `off`, re-baked through f32, with the AABB taken from the baked
+/// vertices.
+fn placed(
+    part: &(Vec<f32>, Vec<u32>, Vec<f32>),
+    yaw: f64,
+    roll: f64,
+    off: [f64; 3],
+) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let (cz, sz, cx, sx) = (yaw.cos(), yaw.sin(), roll.cos(), roll.sin());
+    let mut positions = Vec::with_capacity(part.0.len());
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for v in part.0.chunks_exact(3) {
+        let [x, y, z] = [f64::from(v[0]), f64::from(v[1]), f64::from(v[2])];
+        let (y, z) = (cx * y - sx * z, sx * y + cx * z);
+        let w = [cz * x - sz * y + off[0], sz * x + cz * y + off[1], z + off[2]];
+        for k in 0..3 {
+            let c = w[k] as f32;
+            positions.push(c);
+            min[k] = min[k].min(c);
+            max[k] = max[k].max(c);
+        }
+    }
+    (positions, part.1.clone(), vec![min[0], min[1], min[2], max[0], max[1], max[2]])
+}
+
+/// Placements of the L prism and its notch box. Rolled -0.7 rad about X
+/// the box's AABB stays inside the L's and the old probe vertex's ray
+/// parity reads "inside" (found by sweeping yaw/roll; most orientations
+/// happen to read "outside", which is what made the tie easy to miss).
+const NOTCH_PLACEMENTS: [(f64, f64, [f64; 3]); 6] = [
+    (0.0, 0.0, [0.0, 0.0, 0.0]),
+    (0.0, 0.0, [3.7, -12.9, 2.35]),
+    (0.0, -0.7, [0.0, 0.0, 0.0]),
+    (0.0, -0.7, [3.7, -12.9, 2.35]),
+    (0.0, -0.7, [123.456, -45.678, 9.1]),
+    (0.0, -0.7, [1000.0, 0.0, 0.0]),
+];
+
+#[test]
+fn a_box_exactly_filling_a_notch_is_a_touch_wherever_it_sits_5473() {
+    // A unit box filling the L prism's notch [1,2]x[1,2]x[0,1] exactly: its
+    // AABB lies inside the L's (at every placement here), no triangle
+    // crosses, and EVERY one of its vertices is on the L's surface. The
+    // enclosed-solid test used to ray-cast the box's vertex 0 — on that
+    // surface, so a coin flip that a rotation or translation re-rolls. The
+    // box's interior is outside the L; the probe is now chosen off the L's
+    // surface (the box's centroid here), so this is a touch at every
+    // placement, never a buried solid.
+    let notch_box = box_hxyz(1.5, 1.5, 0.5, 0.5, 0.5, 0.5);
+    for (yaw, roll, off) in NOTCH_PLACEMENTS {
+        let session = session_of_parts(&[placed(&l_part(), yaw, roll, off), placed(&notch_box, yaw, roll, off)]);
+        let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert!(
+            hard_only.records.is_empty(),
+            "yaw {yaw}, roll {roll}, offset {off:?}: {:?}",
+            hard_only.records.iter().map(|r| (r.status, r.distance)).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn a_box_buried_in_the_l_prism_is_still_hard_wherever_it_sits_5473() {
+    // Companion: a box inside the L's solid corner square, touching nothing
+    // — buried at every placement, or a probe that never said "inside"
+    // would pass above.
+    let buried = box_hxyz(0.5, 0.5, 0.5, 0.3, 0.3, 0.3);
+    for (yaw, roll, off) in NOTCH_PLACEMENTS {
+        let session = session_of_parts(&[placed(&l_part(), yaw, roll, off), placed(&buried, yaw, roll, off)]);
+        let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+#[test]
+fn a_duplicate_of_its_container_is_buried_in_it_5473() {
+    // Every vertex of an exact duplicate lies ON the container's surface, so
+    // no vertex can decide by ray parity: each reads inside or outside
+    // depending on where its ray leaves. Listing the corners max-first makes
+    // the first one read "outside" (its ray exits at once). The duplicate's
+    // own vertex centroid, inside it and away from every face, is what
+    // `contained_solid_is_buried` falls back on — and it is inside.
+    let (positions, indices, _) = box_hxyz(2.0, -1.0, 0.5, 0.5, 0.3, 0.2);
+    let reversed: Vec<f64> = positions.chunks_exact(3).rev().flatten().map(|&c| f64::from(c)).collect();
+    let remapped: Vec<u32> = indices.iter().map(|&i| 7 - i).collect();
+    let dup = TriMesh::new(reversed, remapped);
+    assert!(!dup.contains_point(dup.vertex(0)), "fixture premise: the first corner reads outside");
+    assert!(crate::depth::contained_solid_is_buried(&dup, &dup));
+}
+
+#[test]
+fn a_solid_resting_on_its_containers_face_from_outside_is_not_buried_5473() {
+    // Companion: a box standing on a slab's top face, outside the slab's
+    // solid, with its bottom corners ON that face. The farthest candidate
+    // (0.4 above the face) decides "outside"; an implementation that
+    // answered "buried" for every contact would pass the duplicate test
+    // above and fail here.
+    let (slab_positions, slab_indices, _) = box_hxyz(0.0, 0.0, 0.0, 5.0, 5.0, 1.0);
+    let slab = TriMesh::new(slab_positions.iter().map(|&c| f64::from(c)).collect(), slab_indices);
+    let (positions, indices, _) = box_hxyz(0.0, 0.0, 1.2, 0.5, 0.5, 0.2);
+    let resting = TriMesh::new(positions.iter().map(|&c| f64::from(c)).collect(), indices);
+    assert!(!crate::depth::contained_solid_is_buried(&resting, &slab));
 }

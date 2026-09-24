@@ -103,6 +103,61 @@ function precisionFloor(elA: ClashElement, elB: ClashElement): number {
 }
 
 /**
+ * Whether `inner` — AABB-contained in `outer`, with no triangle pair crossing
+ * beyond f32 noise — is buried in `outer`'s solid (#5473).
+ *
+ * With no crossing, `inner`'s surface lies entirely on one side of `outer`'s
+ * up to touching it, so ONE probe point decides by ray parity — provided the
+ * probe is not itself on `outer`'s surface, where parity is a coin flip
+ * decided by f32 rounding. The old probe, `inner`'s first vertex, is exactly
+ * that point for a flush pair (an element resting against the inside of
+ * another's AABB touches it AT its vertices), so a rigid translation
+ * re-rolled the verdict. Candidates now are `inner`'s vertex centroid (when
+ * that lies inside `inner`) and then every vertex; the first one clearly off
+ * `outer`'s surface decides, else the farthest. Any off-surface candidate
+ * gives the same answer as the farthest, so "clearly" is only an early exit
+ * and needs no precision: {@link PROBE_CLEAR_ULPS} f32 ULPs of the probe's
+ * largest coordinate. The centroid is what still decides a pair whose
+ * vertices ALL sit on `outer`'s surface — an element exactly filling a notch
+ * (outside) versus a duplicate of part of `outer` (inside). Visit order and
+ * strict comparisons keep the pick bit-identical to the Rust
+ * `contained_solid_is_buried`.
+ */
+export function containedSolidIsBuried(inner: TriMesh, outer: TriMesh): boolean {
+  if (inner.count === 0) return false;
+  const clear = (p: Vec3, d: number): boolean => {
+    const m = Math.max(Math.max(Math.max(Math.abs(p[0]), Math.abs(p[1])), Math.abs(p[2])), 1);
+    return d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m;
+  };
+  let probe: Vec3 | null = null;
+  let farthest = -Infinity;
+  const c = inner.vertexCentroid();
+  if (inner.containsPoint(c)) {
+    farthest = outer.distanceToSurface(c);
+    probe = c;
+    if (clear(c, farthest)) return outer.containsPoint(c);
+  }
+  const n = inner.vertexCount();
+  for (let i = 0; i < n; i += 1) {
+    const v = inner.vertex(i);
+    const d = outer.distanceToSurface(v);
+    if (clear(v, d)) return outer.containsPoint(v);
+    if (d > farthest) {
+      farthest = d;
+      probe = v;
+    }
+  }
+  return probe !== null && outer.containsPoint(probe);
+}
+
+/**
+ * How far off `outer`'s surface a probe must be for `containedSolidIsBuried`
+ * to stop looking, in f32 ULPs of its largest coordinate. Generous on
+ * purpose: it only decides when to stop early, never the verdict.
+ */
+const PROBE_CLEAR_ULPS = 64;
+
+/**
  * Deepest penetration of `mesh`'s crossing-triangle VERTICES into `other`:
  * the maximum distance-to-surface of `other` over the vertices of the
  * triangles flagged in `crossFlags` (the pairs the narrow phase saw

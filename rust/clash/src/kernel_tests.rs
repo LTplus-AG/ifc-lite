@@ -287,18 +287,22 @@ fn sub_tolerance_aabb_penetration_is_not_promoted_to_a_hard_clash() {
 }
 
 #[test]
-fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
-    // Two bars crossing at right angles (genuine, non-coplanar triangle
-    // intersections — same construction as `crossing_members_report_the_
-    // real_penetration_depth`), positioned far from the origin (z ~ 60,
-    // where float32 ULP is 2^-18 ≈ 3.8e-6) so the x/y overlap is a generous
-    // 0.5 m but the z overlap is squeezed to 1e-5 m: above one f32 ULP at
-    // this scale (so it round-trips as a real, non-zero, minimum-axis
-    // overlap) but below `precision_floor`'s scaled floor (~60.75/2^22 ≈
-    // 1.45e-5 m). This is exactly the shape of the Infra-Bridge.ifc false
-    // positives (#2536-follow-up): a genuine mesh crossing whose measured
-    // depth cannot be distinguished from f32 rounding noise at this
-    // coordinate scale, so it must be reported as `Touch`, not `Hard`.
+fn a_crossing_within_f32_noise_is_a_touch_not_hard() {
+    // Two bars crossing at right angles, positioned far from the origin
+    // (z ~ 60, where float32 ULP is 2^-18 ≈ 3.8e-6) so the x/y overlap is a
+    // generous 0.5 m but the z overlap is squeezed to 1e-5 m: above one f32
+    // ULP at this scale but below the f32 noise of these coordinates
+    // (~60.75 * 2^-22 ≈ 1.45e-5 m). This is the shape of the Infra-Bridge.ifc
+    // false positives (#2536-follow-up): a crossing that cannot be told apart
+    // from f32 rounding at this coordinate scale must be `Touch`, not `Hard`.
+    //
+    // Until #5406 the tri-tri predicate reported this as a crossing (its
+    // separation test was an exact tie) and `precision_floor` demoted it to a
+    // `Touch` at the depth path's constant 0.0. The predicate now reads
+    // overlap within the f32 noise band of the tested axis as contact itself,
+    // so the pair never reaches the depth path: still `Touch`, still no
+    // `Hard`, and the reported distance is the mesh-measured one, which for
+    // surfaces in contact to within that noise is itself noise-scale.
     let a = box_mesh([50.0, 0.0, 60.0], [2.0, 0.25, 0.25]);
     let b = box_mesh([50.0, 0.0, 60.5 - 0.00001], [0.25, 2.0, 0.25]);
     let session = session_of(&[a, b]);
@@ -306,7 +310,7 @@ fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
     let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert!(
         hard_only.records.is_empty(),
-        "a sub-precision-floor crossing must not report as a hard clash, got {:?}",
+        "a crossing within f32 noise must not report as a hard clash, got {:?}",
         hard_only
             .records
             .iter()
@@ -317,13 +321,18 @@ fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
     let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(with_touch.records.len(), 1, "the touch itself is real information and must still report");
     assert_eq!(with_touch.records[0].status, ClashStatus::Touch);
-    assert_eq!(with_touch.records[0].distance, 0.0);
+    let noise = 4.0 * crate::world_frame_corpus::ulp32(60.75);
+    assert!(
+        with_touch.records[0].distance.abs() <= noise,
+        "a touch within f32 noise reports a noise-scale distance, got {} (4 ULP = {noise})",
+        with_touch.records[0].distance
+    );
 }
 
 #[test]
 fn genuine_small_overlap_above_the_precision_floor_stays_hard() {
     // Same crossing-bars construction and coordinate scale as
-    // `sub_precision_floor_crossing_reclassifies_as_touch_not_hard` (floor ≈
+    // `a_crossing_within_f32_noise_is_a_touch_not_hard` (floor ≈
     // 1.45e-5 m), but the z overlap (1e-4 m) is ~7x the floor: a real,
     // measurable penetration that must NOT be swallowed by the
     // precision-floor gate. Guards against an over-generalized fix that

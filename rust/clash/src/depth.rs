@@ -96,6 +96,63 @@ pub(crate) fn crossing_vertex_penetration(
     depth
 }
 
+/// Whether `inner` — AABB-contained in `outer`, with no triangle pair
+/// crossing beyond f32 noise — is buried in `outer`'s solid (#5473).
+///
+/// With no crossing, `inner`'s surface lies entirely on one side of
+/// `outer`'s up to touching it, so ONE probe point decides by ray parity —
+/// provided the probe is not itself on `outer`'s surface, where parity is a
+/// coin flip decided by f32 rounding. The old probe, `inner`'s first vertex,
+/// is exactly that point for a flush pair (an element resting against the
+/// inside of another's AABB touches it AT its vertices), so a rigid
+/// translation re-rolled the verdict. Candidates now are `inner`'s vertex
+/// centroid (when that lies inside `inner`) and then every vertex; the
+/// first one clearly off `outer`'s surface decides, else the farthest. Any
+/// off-surface candidate gives the same answer as the farthest, so "clearly"
+/// is only an early exit and needs no precision: [`PROBE_CLEAR_ULPS`] f32
+/// ULPs of the probe's largest coordinate. The centroid is what still
+/// decides a pair whose vertices ALL sit on `outer`'s surface — an element
+/// exactly filling a notch (outside) versus a duplicate of part of `outer`
+/// (inside). Visit order and strict comparisons keep the pick bit-identical
+/// to the TS `containedSolidIsBuried`.
+pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> bool {
+    if inner.count == 0 {
+        return false;
+    }
+    let clear = |p: Vec3, d: f64| {
+        let m = p[0].abs().max(p[1].abs()).max(p[2].abs()).max(1.0);
+        d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m
+    };
+    let mut probe: Option<Vec3> = None;
+    let mut farthest = f64::NEG_INFINITY;
+    let centroid = inner.vertex_centroid();
+    if inner.contains_point(centroid) {
+        farthest = outer.distance_to_surface(centroid);
+        probe = Some(centroid);
+        if clear(centroid, farthest) {
+            return outer.contains_point(centroid);
+        }
+    }
+    for i in 0..inner.vertex_count() {
+        let v = inner.vertex(i as u32);
+        let d = outer.distance_to_surface(v);
+        if clear(v, d) {
+            return outer.contains_point(v);
+        }
+        if d > farthest {
+            farthest = d;
+            probe = Some(v);
+        }
+    }
+    probe.is_some_and(|p| outer.contains_point(p))
+}
+
+/// How far off `outer`'s surface a probe must be for
+/// `contained_solid_is_buried` to stop looking, in f32 ULPs of its largest
+/// coordinate. Generous on purpose: it only decides when to stop early,
+/// never the verdict.
+const PROBE_CLEAR_ULPS: f64 = 64.0;
+
 /// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
 /// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
 /// larger magnitudes the ULP only grows. Same term/reasoning as

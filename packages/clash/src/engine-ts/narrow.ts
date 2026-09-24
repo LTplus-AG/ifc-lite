@@ -8,7 +8,7 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
-import { boxPenetration, crossingVertexPenetration, depthClashResult } from './depth.js';
+import { boxPenetration, containedSolidIsBuried, crossingVertexPenetration, depthClashResult } from './depth.js';
 
 export interface NarrowResult {
   status: ClashStatus;
@@ -177,7 +177,9 @@ export function testPair(
     // extent), so without it a flush contained pair — whose only measurable
     // penetration is f32 noise — would be promoted to `hard` at a number
     // that measures nothing (the eight Infra-Bridge pairs, see
-    // `depthClashResult`).
+    // `depthClashResult`). Since #5406 a pair flush to within the tri-tri
+    // predicate's own f32 noise band no longer crosses at all; this still
+    // decides a crossing above that band but at or below `precisionFloor`.
     let meshEvidence: number | null = null;
     if (crossSmall !== null && crossLarge !== null) {
       const d = Math.max(
@@ -200,17 +202,18 @@ export function testPair(
   // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
   // inside the other's, so it may be buried (e.g. equipment inside a slab). With
   // no surface crossing the inner solid is entirely inside OR entirely outside
-  // the other, so ray-casting ONE representative vertex of the contained mesh
-  // against the other solid decides it — and ray casting (not an AABB test)
-  // correctly returns "outside" when the inner sits in a concave notch.
+  // the other, so ray-casting ONE probe point of the contained mesh against the
+  // other solid decides it — and ray casting (not an AABB test) correctly
+  // returns "outside" when the inner sits in a concave notch. The probe is
+  // chosen off the other's surface, see `containedSolidIsBuried` (#5473).
   // Test B-contains-A first, then A-contains-B, so the inner pick is
   // deterministic (and identical to the Rust kernel) on equal AABBs.
   // Either way there is no surface crossing. When both elements are boxes the
   // exact box-box depth is available (see `boxPenetration`) and is reported
   // as measured; otherwise the AABB gap is an estimate, not a measured depth.
   const enclosed = aabbContains(elB.bounds, elA.bounds)
-    ? triA.count > 0 && triB.containsPoint(triA.tri(0)[0])
-    : aabbContains(elA.bounds, elB.bounds) && triB.count > 0 && triA.containsPoint(triB.tri(0)[0]);
+    ? containedSolidIsBuried(triA, triB)
+    : aabbContains(elA.bounds, elB.bounds) && containedSolidIsBuried(triB, triA);
   if (enclosed) {
     // `depthClashResult` may return `null` here (below the f32 floor and
     // `!rule.reportTouch`) — that is a suppressed touch, not "no clash",

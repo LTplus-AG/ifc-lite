@@ -633,32 +633,49 @@ describe('hard-clash distance provenance', () => {
     expect(touchRes.distance).toBe(0);
   });
 
-  it('reports touch for a CONTAINED non-box pair whose crossing is flush at f32 noise scale, even though its AABB estimate is above the floor', () => {
-    // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
-    // an element authored FLUSH against a surface inside another element's
-    // AABB. The crossing exists (f32 rounding pushes the surfaces through
-    // each other by ~1 ULP), but every crossing vertex sits within f32 noise
-    // of the other surface — while the AABB estimate, the number the depth
-    // rework would report for this non-box contained pair, is the contained
-    // element's own extent (~0.475 m here, 4.084 m on the bridge), far above
-    // the floor. Floor-testing only the reported estimate promotes the pair
-    // to `hard` at a number that measures nothing; the crossing-vertex
-    // evidence (`crossingVertexPenetration`) must gate it back to `touch`.
-    // Plate side-band vertices at 0.875 - 6e-8 / 0.875 + 1.2e-7 straddle the
-    // tub's recess floor (z = 0.875) by ~1-2 f32 ULP; floor here is
-    // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence.
-    const tub = tubEl('T', 'IfcWall');
-    const plate = bandedPlateEl('P', 'IfcMember', 0.875 - 6e-8, 0.875 + 1.2e-7);
+  it('does not flip a buried plate flush with a recess floor on which side the f32 ULP fell (#5406)', () => {
+    // The tub/plate shape of the eight Infra-Bridge pairs (#2536): a plate
+    // whose body sits INSIDE the tub's solid (z 0.4 up to the recess floor
+    // at z = 0.875), top authored flush with that floor. Where f32 rounding
+    // put the plate's top relative to the floor is noise, and it used to
+    // decide the verdict: straddling the floor by 1-2 ULP it read as a
+    // crossing, and the crossing-vertex evidence gated it to `touch`; one ULP
+    // BELOW, or bit-identically ON the floor, there was no crossing, so the
+    // enclosed-solid test found the plate buried and reported `hard` at the
+    // 0.475 m estimate. Measured on main before #5406: touch / hard / hard.
+    //
+    // #5406 makes the three placements one case: the predicate reads a
+    // crossing within f32 noise as contact, so none of them crosses, and all
+    // three report what the geometry is — a plate buried in the tub (its
+    // vertices are 0.475 m inside it), labelled `estimate` because the tub is
+    // not a box. Mirrors `a_buried_plate_flush_with_a_recess_floor_does_not_
+    // flip_on_which_side_the_ulp_fell_5406` in `rust/clash/src/tests.rs`.
+    const oneUlpBelow = (() => {
+      const f = new Float32Array([0.875]);
+      new Uint32Array(f.buffer)[0] -= 1;
+      return f[0]!;
+    })();
+    const placements: Array<[string, number]> = [
+      ['straddling by 1-2 ULP', 0.875 + 1.2e-7],
+      ['bit-identically on the floor', 0.875],
+      ['one ULP below', oneUlpBelow],
+    ];
     const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
-    const res = testPair(tub, new TriMesh(tub.positions!, tub.indices!), plate, new TriMesh(plate.positions!, plate.indices!), touchRule, 0.001);
-    if (!res) throw new Error('expected a clash');
-    expect(res.status).toBe('touch');
-    expect(res.distance).toBe(0);
+    for (const [label, zTop] of placements) {
+      const tub = tubEl('T', 'IfcWall');
+      const plate = bandedPlateEl('P', 'IfcMember', 0.875 - 6e-8, zTop);
+      const res = testPair(tub, new TriMesh(tub.positions!, tub.indices!), plate, new TriMesh(plate.positions!, plate.indices!), touchRule, 0.001);
+      if (!res) throw new Error(`${label}: expected a clash`);
+      expect(res.status, label).toBe('hard');
+      expect(res.distanceKind, label).toBe('estimate');
+      expect(res.distance, label).toBeCloseTo(-0.475, 6);
+    }
   });
 
   it('keeps a CONTAINED non-box pair hard when its crossing vertices measure a real, above-floor depth', () => {
-    // Discriminating companion to the flush pin above: the same tub/plate
-    // shape with the plate genuinely 10 mm through the recess floor. The
+    // Companion to the buried-plate test above: the same tub/plate shape
+    // with the plate genuinely 10 mm through the recess floor, far above the
+    // f32 noise, so it DOES cross (the flush placements above do not). The
     // crossing-vertex evidence (~0.01 m) clears the floor, so the gate must
     // NOT suppress it — the pair stays `hard`, reported at the AABB estimate
     // with the honest `estimate` label (non-box pair, no certified depth).

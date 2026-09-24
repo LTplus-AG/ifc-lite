@@ -30,34 +30,13 @@
 
 use crate::mesh::Mesh;
 
-/// Far-from-origin offset magnitude (metres). 10 km: the f32 ULP there is
-/// ~0.98 mm and `extent * 2^-22` reads ~2.4 mm — the regime of every
-/// reproduced defect in the class.
-pub(crate) const WORLD_FRAME_OFFSET_M: f64 = 10_000.0;
-
-/// Corpus placement. The far case offsets along X ONLY, so tests of
-/// Z-behaviour (a Z plane normal, a Z clearance) catch max-over-axes
-/// tolerance overreach instead of coincidentally agreeing with it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorldFrameCase {
-    /// Counter-case: near the origin. A "fix" that simply widens or
-    /// tightens every tolerance fails here.
-    AtOrigin,
-    /// `WORLD_FRAME_OFFSET_M` out along X, baked through f32.
-    FarBaked,
-}
-
-pub(crate) const WORLD_FRAME_CASES: [WorldFrameCase; 2] =
-    [WorldFrameCase::AtOrigin, WorldFrameCase::FarBaked];
-
-impl WorldFrameCase {
-    pub(crate) fn offset(self) -> [f64; 3] {
-        match self {
-            WorldFrameCase::AtOrigin => [0.0, 0.0, 0.0],
-            WorldFrameCase::FarBaked => [WORLD_FRAME_OFFSET_M, 0.0, 0.0],
-        }
-    }
-}
+// The placements and `ulp32` are the dependency-free corpus core, compiled
+// from `rust/clash` so both crates' world-frame suites share one definition
+// (#5406; the file's header records why it is shared by path rather than
+// promoted to a crate or duplicated).
+#[path = "../../clash/src/world_frame_corpus.rs"]
+mod corpus;
+pub(crate) use corpus::{ulp32, WorldFrameCase, WORLD_FRAME_CASES};
 
 /// Closed axis-aligned box mesh spanning `[min, max]`, placed per the corpus
 /// case with the offset BAKED THROUGH f32 (per-face vertices, outward
@@ -117,16 +96,6 @@ pub(crate) fn placed_box_mesh(case: WorldFrameCase, min: [f64; 3], max: [f64; 3]
             .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
     m
-}
-
-/// Unit of least precision of an f32 at the given magnitude (exact, via the
-/// bit pattern).
-pub(crate) fn ulp32(magnitude: f64) -> f64 {
-    let f = (magnitude.abs()) as f32;
-    if f == 0.0 {
-        return f64::from(f32::from_bits(1));
-    }
-    f64::from(f32::from_bits(f.to_bits() + 1)) - f64::from(f)
 }
 
 /// The CORRECT f32 noise bound for a signed distance along plane normal `n`:

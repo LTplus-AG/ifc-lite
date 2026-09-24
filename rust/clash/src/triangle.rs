@@ -16,15 +16,19 @@ use crate::vec3::{add, dist_sq, dot, scale, sub, Vec3};
 
 const EPS: f64 = 1e-12;
 
-/// Exact triangle-triangle intersection via the Separating Axis Theorem.
+/// Triangle-triangle intersection via the Separating Axis Theorem.
 ///
 /// Tests the 2 face normals plus the up-to-9 edge-edge cross-product axes
-/// (axes whose squared length is `<= 1e-12` are skipped). Returns `true` only
-/// when the triangle *interiors* overlap; bare touching (coincident
-/// faces/edges/vertices) reports `false`. The `<=` comparison makes exact
-/// contact count as separation (a touch), not interpenetration. The SAT body
-/// lives in the generated `Vec3::TriTriIntersect`; this is a byte-compatible
-/// adapter over the crate's `[f64; 3]` triangle vertices.
+/// (an edge pair within `sin^2 <= 1e-12` of parallel contributes no axis).
+/// Returns `true` only when the triangle *interiors* overlap by more than
+/// the f32 quantisation of the six vertices; touching — coincident or
+/// coplanar faces, an edge or vertex on a face — reports `false`, including
+/// when the contact is off by that noise, as flush surfaces from f32 buffers
+/// usually are (#5406). The noise band is per axis and projected onto each
+/// tested axis, so an axis orthogonal to it contributes nothing however far
+/// from the origin it puts the pair. The SAT body lives in the generated
+/// `Vec3::TriTriIntersect` (`tools/plato/clash_math.plato`); this is a
+/// byte-compatible adapter over the crate's `[f64; 3]` triangle vertices.
 pub fn tri_tri_intersect(
     a0: Vec3,
     a1: Vec3,
@@ -213,3 +217,7 @@ pub fn tri_tri_distance(
 
     (best.sqrt(), p_a, p_b)
 }
+
+#[cfg(test)]
+#[path = "triangle_tests.rs"]
+mod tests;

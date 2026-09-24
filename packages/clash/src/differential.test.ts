@@ -166,6 +166,36 @@ function boxWithTransform(key: string, tag: string, center: Vec3, size: number, 
   return { key, ref: refCounter++, model: 'm', tag, positions, indices, bounds: { min, max }, transform };
 }
 
+/** Rotation `Rz(rz) * Ry(ry) * Rx(rx)`, row-major. */
+function rotationZyx(rz: number, ry: number, rx: number): number[][] {
+  const [cz, sz, cy, sy, cx, sx] = [Math.cos(rz), Math.sin(rz), Math.cos(ry), Math.sin(ry), Math.cos(rx), Math.sin(rx)];
+  return [
+    [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+    [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+    [-sy, cy * sx, cy * cx],
+  ];
+}
+
+/** Box with half-extents `half` centred at `center`, both in the frame `r`,
+ *  baked to f32 world positions (bounds from the baked vertices). */
+function rotatedBox(key: string, tag: string, r: number[][], center: Vec3, half: Vec3): ClashElement {
+  const rot = (v: Vec3): Vec3 => [0, 1, 2].map((k) => r[k]![0]! * v[0] + r[k]![1]! * v[1] + r[k]![2]! * v[2]) as unknown as Vec3;
+  const c = rot(center);
+  const v: number[] = [];
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const [sx, sy, sz] of BOX_CORNER_ORDER) {
+    const w = rot([sx * half[0], sy * half[1], sz * half[2]]);
+    for (let a = 0; a < 3; a += 1) {
+      const f = Math.fround(w[a]! + c[a]!);
+      v.push(f);
+      if (f < min[a]!) min[a] = f;
+      if (f > max[a]!) max[a] = f;
+    }
+  }
+  return { key, ref: refCounter++, model: 'm', tag, positions: new Float32Array(v), indices: BOX_IDX, bounds: { min, max } };
+}
+
 const ts = createClashEngine({ backend: 'ts' });
 const wasm = new WasmClashEngine();
 
@@ -402,6 +432,35 @@ describe('differential: WASM kernel === TS kernel', () => {
     ];
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(1);
+  });
+
+  it('agrees on a flush pair coplanar only to within f32 rounding, and on a 20 mm coplanar gap (#5406)', async () => {
+    // A 50 mm panel and a mullion under a three-axis rotation, baked through
+    // f32, so their flush faces are coplanar only to within rounding: the
+    // tri-tri predicate must read that as contact (touch), and two coplanar
+    // end faces 20 mm apart as a 20 mm gap, on BOTH kernels. They share the
+    // generated predicate; this is what proves the TS flattening codemod and
+    // the Rust output still agree on it end to end. Same scene as
+    // `rust/clash/src/world_frame_tests.rs`.
+    const r = rotationZyx(1.1, 0.37, -0.61);
+    const touchRule: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcPlate', b: 'IfcMember', mode: 'hard', reportTouch: true }];
+    const flush = [
+      rotatedBox('P', 'IfcPlate', r, [1, 2, 1.5], [0.025, 0.75, 1.5]),
+      rotatedBox('M', 'IfcMember', r, [1.125, 2, 1.5], [0.1, 0.1, 1.5]),
+    ];
+    const a = await ts.run(flush, touchRule);
+    assertParity(a, await wasm.run(flush, touchRule));
+    expect(a.clashes.map((c) => c.status)).toEqual(['touch']);
+
+    const clearanceRule: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcPlate', b: 'IfcMember', mode: 'clearance', clearance: 0.05 }];
+    const gap = [
+      rotatedBox('P', 'IfcPlate', r, [1, 2, 1.5], [0.025, 0.75, 1.5]),
+      rotatedBox('M', 'IfcMember', r, [1.145, 2, 1.5], [0.1, 0.1, 1.5]),
+    ];
+    const g = await ts.run(gap, clearanceRule);
+    assertParity(g, await wasm.run(gap, clearanceRule));
+    expect(g.clashes.map((c) => c.status)).toEqual(['clearance']);
+    expect(g.clashes[0]!.distance).toBeCloseTo(0.02, 6);
   });
 
   it('agrees on the mesh label for coincident-footprint BOX layers', async () => {

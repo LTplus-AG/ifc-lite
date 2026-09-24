@@ -34,6 +34,7 @@ import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 import { effectiveClassificationSystems } from './effective-classification-systems';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -44,7 +45,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
-  const mutationView = useViewerStore((s) => s.mutationViews.get(model.id));
+  const mutationView = useViewerStore((s) => s.getMutationView?.(normalizeMutationModelId(s, model.id)));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Format file size
@@ -88,6 +89,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
   const stats = useMemo(
     () => computeModelStats(dataStore, model.geometryResult, {
+      mutationView,
       // A completed cache hit may validly contain no geometry result. That is
       // a known-empty model, unlike the same null while streaming.
       geometryReady:
@@ -102,7 +104,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         return ref?.modelId === model.id ? ref.expressId : undefined;
       },
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState],
+    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState, mutationView, mutationVersion],
   );
 
   // Extract georeferencing info

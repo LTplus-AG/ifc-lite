@@ -12,7 +12,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { MODEL_FACTS, type FilterRule } from '@ifc-lite/rules';
+import type { FilterRule } from '@ifc-lite/rules';
 import { render, cleanup } from '@/test/render.js';
 import { RULE_KIND_LABEL } from './filter-rule-labels.js';
 import { blankRuleOfKind } from './FilterRuleControls.js';
@@ -44,7 +44,15 @@ describe('RuleRow — model fact rule (#5442)', () => {
     );
     const select = container.querySelector('select[aria-label="Fact about the element\'s model"]');
     assert.ok(select instanceof window.HTMLSelectElement, 'no fact selector rendered');
-    assert.deepEqual([...select.options].map((o) => o.value), [...MODEL_FACTS]);
+    // Pinned, not derived from MODEL_FACTS, so a fact dropped from the
+    // vocabulary fails here instead of vanishing from both sides.
+    assert.deepEqual([...select.options].map((o) => o.value), [
+      'georef.crs', 'georef.geodeticDatum', 'georef.verticalDatum', 'georef.mapProjection', 'georef.mapZone',
+      'georef.eastings', 'georef.northings', 'georef.orthogonalHeight', 'georef.scale',
+      'units.length', 'units.area', 'units.volume', 'units.angle', 'units.mass', 'units.time',
+      'header.fileName', 'header.timeStamp', 'header.author', 'header.organization', 'header.originatingSystem',
+      'header.preprocessorVersion', 'header.authorization', 'header.description', 'header.schema',
+    ]);
     act(() => {
       select.value = 'units.area';
       select.dispatchEvent(new Event('change', { bubbles: true }));

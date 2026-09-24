@@ -4,7 +4,7 @@ IFClite is designed to be fast and lightweight. This page covers bundle size, pa
 
 ## Bundle Size
 
-The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 3.4 MB, about 1.2 MB gzipped over the wire. It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
+The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 7.9 MB, about 2.6 MB gzipped over the wire (measured on the published `@ifc-lite/wasm` tarball: `npm pack @ifc-lite/wasm` then `gzip -9 -c pkg/ifc-lite_bg.wasm | wc -c`). It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
 
 You can reproduce the measurement with `scripts/measure-bundle-size.sh`.
 

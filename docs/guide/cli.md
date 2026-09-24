@@ -1367,7 +1367,7 @@ never report success on zero evidence.
 
 Each recipe's `rules` file runs against ONE model at a time, mirroring the
 `ids` loop — a rule federated across every model in the recipe (`targets`,
-`unique` scope `'federation'`) is [`check`](#check--rule-set-validation)'s
+`unique` scope `'federation'`) is [`check`](#check-rule-set-validation)'s
 job, not `delivery`'s.
 
 The consolidated report records, per model, its declared path and a SHA-256

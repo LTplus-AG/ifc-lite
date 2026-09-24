@@ -289,11 +289,13 @@ function reportMapConversionRefusedNoCrs(warnings: string[]): void {
 function findPreferredGeometricRepresentationContextId(effective: EffectiveEntityIndex, ctx: GeorefLookupContext): number | null {
   if (!ctx.entityExtractor) return null;
 
+  // @raw-entity-enumeration-ok effective.byType chooses live contexts; source byId only restricts to records this source-byte reader can decode
   const contextIds = (effective.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])
     .filter((id) => ctx.dataStore.entityIndex.byId.has(id));
   let first3dContext: number | null = null;
 
   for (const contextId of contextIds) {
+    // @raw-entity-enumeration-ok point read of one source-backed effective context selected above
     const contextRef = ctx.dataStore.entityIndex.byId.get(contextId);
     const context = contextRef ? ctx.entityExtractor.extractEntity(contextRef) : null;
     if (!context) continue;

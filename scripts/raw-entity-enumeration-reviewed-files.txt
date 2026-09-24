@@ -10,12 +10,15 @@ packages/clash/src/adapters/step.ts
 packages/create/src/in-store/resolve-anchor.ts
 packages/create/src/in-store/style-entity-reader.ts
 packages/data/src/effective-entities.ts
+packages/export/src/appearance-dependencies.ts
 packages/export/src/ifc5-effective-rows.ts
 packages/export/src/effective-index.ts
 packages/export/src/entity-iteration.ts
 packages/export/src/georef-closure.ts
 packages/export/src/ifc5-tree-scope.ts
+packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
+packages/export/src/step-georeferencing.ts
 packages/ids/src/bridge/data-accessor.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts

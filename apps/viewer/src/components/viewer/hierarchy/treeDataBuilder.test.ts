@@ -1041,6 +1041,14 @@ function createIfcxShapedDataStore(): IfcDataStore {
 }
 
 describe('buildGroupTree — IFCX-shaped store (empty entityIndex)', () => {
+  it('accepts a table-backed store with no STEP index object (#5249)', () => {
+    const ds = createIfcxShapedDataStore();
+    const indexless = { ...ds, entityIndex: undefined } as unknown as IfcDataStore;
+    const nodes = buildGroupTree(new Map(), indexless, new Set(), false, new Set([2, 3]));
+    assert.deepStrictEqual(nodes.filter(n => n.type === 'group').map(n => n.name),
+      ['Water Supply', 'Misc']);
+  });
+
   it('lists groups with real members despite empty byType/byId', () => {
     const ds = createIfcxShapedDataStore();
     const nodes = buildGroupTree(

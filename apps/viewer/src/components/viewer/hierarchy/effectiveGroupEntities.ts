@@ -23,9 +23,17 @@ export function effectiveGroupIds(
   view: MutablePropertyView | null | undefined,
 ): Map<string, number[]> {
   const byClass = new Map<string, number[]>();
+  // Some table-backed stores expose no STEP index at all. The iterator only
+  // needs its empty structural shape when the columnar IDs provide the domain.
+  // @raw-entity-enumeration-ok these source buckets are handed to the canonical iterator, which applies live membership and class edits
+  const entityIndex = {
+    byType: store.entityIndex?.byType ?? new Map<string, number[]>(),
+    byId: store.entityIndex?.byId ?? new Map<number, { type: string }>(),
+  };
   // @raw-entity-enumeration-ok an empty STEP index identifies an IFCX source domain supplied to the effective iterator
-  const sourceIds = store.entityIndex.byType.size === 0 ? columnarIds(store) : undefined;
-  for (const entity of iterateEffectiveEntityIds(store, view, GROUP_ENTITY_TYPES, sourceIds)) {
+  const sourceIds = entityIndex.byType.size === 0 ? columnarIds(store) : undefined;
+  const source = { entityIndex, deferredEntityIndex: store.deferredEntityIndex, entities: store.entities };
+  for (const entity of iterateEffectiveEntityIds(source, view, GROUP_ENTITY_TYPES, sourceIds)) {
     const type = IFC_ENTITY_NAMES[entity.type] ?? entity.type;
     const bucket = byClass.get(type) ?? [];
     bucket.push(entity.expressId);
@@ -69,8 +77,17 @@ export function effectiveGroupMembers(
   const relationGone = (id: number): boolean =>
     assignments.supersededSourceIds.has(id)
     || !GROUP_RELATIONS.has((effectiveTreeType(view, id, 'IfcRelAssignsToGroup') ?? '').toUpperCase());
-  for (const edge of store.relationships.forward.getEdges(groupId, RelationshipType.AssignsToGroup)) {
-    if (edgeSurvives(edge, relationGone)) memberIds.add(edge.target);
+  const sourceEdges = store.relationships?.forward?.getEdges?.(groupId, RelationshipType.AssignsToGroup);
+  if (sourceEdges) {
+    for (const edge of sourceEdges) {
+      if (edgeSurvives(edge, relationGone)) memberIds.add(edge.target);
+    }
+  } else if (store.relationships) {
+    // Table-backed source facades may expose only getRelated. They have no
+    // relation IDs to fold, and are used without a live mutation overlay.
+    for (const id of store.relationships.getRelated(groupId, RelationshipType.AssignsToGroup, 'forward')) {
+      memberIds.add(id);
+    }
   }
   for (const id of assignments.byGroup.get(groupId) ?? []) memberIds.add(id);
 
@@ -78,7 +95,7 @@ export function effectiveGroupMembers(
   for (const id of memberIds) {
     if (view?.isDeleted(id)) continue;
     // @raw-entity-enumeration-ok point lookup of an effective relationship target, with created and deleted entities handled here
-    const parsedType = store.entityIndex.byId.get(id)?.type
+    const parsedType = store.entityIndex?.byId?.get(id)?.type
       ?? store.deferredEntityIndex?.get(id)?.type
       ?? store.entities.getTypeName(id);
     const authoredType = view?.getNewEntity(id)?.type;

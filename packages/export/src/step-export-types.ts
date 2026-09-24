@@ -33,10 +33,9 @@ import type { EffectiveEntityIndex } from './effective-index.js';
 import type { createSourceRefReader } from './source-ref-bounds.js';
 import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
+import type { EnumReconciliation } from './schema-converter-enums.js';
 
-/**
- * Options for STEP export
- */
+/** Options for STEP export */
 export interface StepExportOptions {
   /** IFC schema version for the output file (any version, will convert if needed) */
   schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -381,6 +380,7 @@ export interface ExportPass {
   /** Counts IFC4-required slots an IFC4X3/IFC5 source left `$` (#5202);
    *  never fills one. Its warning joins the result like {@link slotFill}'s. */
   readonly ifc4Slots: Ifc4SlotCheck;
+  readonly enums: EnumReconciliation; // enum members the target lacks (#5365)
   /** Express ids `convertStepLine` will OMIT outright this export
    *  (`computeWithheldRefIds`, #4206) — empty unless `schema` is IFC2X3 and
    *  the source holds an entity of a `WITHHOLDABLE_UNROOTED_TYPES` type.

@@ -188,6 +188,7 @@ nav:
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Coverage Ledger: architecture/coverage-ledger.md
+    - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
     - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
     - Rendering Pipeline: architecture/rendering-pipeline.md

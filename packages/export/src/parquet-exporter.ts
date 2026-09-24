@@ -529,15 +529,13 @@ export class ParquetExporter {
         return columnsToParquet(columns, floatColumns, PARQUET_UINT32_COLUMNS);
     }
 
+    // fflate, not JSZip: JSZip writes "version needed to extract" 1.0 on
+    // DEFLATE entries, where the ZIP APPNOTE requires 2.0 (#3612).
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {
-        const JSZip = (await import('jszip')).default;
-        const zip = new JSZip();
-
-        for (const [name, data] of files) {
-            zip.file(name, data);
-        }
-
-        return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+        const { zipSync } = await import('fflate');
+        // Entry names are file names with an extension, never integer-like
+        // keys, so the object keeps the Map's insertion order.
+        return zipSync(Object.fromEntries(files));
     }
 }
 

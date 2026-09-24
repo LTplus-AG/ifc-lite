@@ -8,7 +8,6 @@
  * Creates .bcfzip files from BCFProject structure
  */
 
-import JSZip from 'jszip';
 import type {
   BCFProject,
   BCFTopic,
@@ -43,7 +42,7 @@ import {
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
-import { fixZipVersionNeeded } from './writer-zip-version.js';
+import { BcfArchive } from './writer-archive.js';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -52,7 +51,7 @@ import { fixZipVersionNeeded } from './writer-zip-version.js';
  * @returns Blob containing the .bcfzip file
  */
 export async function writeBCF(project: BCFProject): Promise<Blob> {
-  const zip = new JSZip();
+  const zip = new BcfArchive();
 
   // Write version file
   writeVersionFile(zip, project.version);
@@ -68,10 +67,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }
 
-  // Generate zip file, then patch JSZip's wrong version-needed field (#3612).
-  return fixZipVersionNeeded(
-    await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
-  );
+  return zip.toBlob();
 }
 
 /**
@@ -88,7 +84,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
  * content against an empty content model). So for 3.0 the element must be
  * self-closing with no child content at all, not merely omit DetailedVersion.
  */
-function writeVersionFile(zip: JSZip, version: '2.1' | '3.0'): void {
+function writeVersionFile(zip: BcfArchive, version: '2.1' | '3.0'): void {
   const content =
     version === '3.0'
       ? `<?xml version="1.0" encoding="UTF-8"?>
@@ -125,7 +121,7 @@ function writeVersionFile(zip: JSZip, version: '2.1' | '3.0'): void {
  * the schema error for a dangling reference; omitting the element keeps the
  * schema error. Empty does neither.
  */
-function writeProjectFile(zip: JSZip, project: BCFProject, version: '2.1' | '3.0'): void {
+function writeProjectFile(zip: BcfArchive, project: BCFProject, version: '2.1' | '3.0'): void {
   const projectId = project.projectId || generateUuid();
   const nameElement = project.name ? `\n    <Name>${escapeXml(project.name)}</Name>` : '';
   const rootElement = version === '3.0' ? 'ProjectInfo' : 'ProjectExtension';
@@ -187,12 +183,11 @@ function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: str
 
 /** Write a topic folder with all its contents. */
 async function writeTopicFolder(
-  zip: JSZip,
+  zip: BcfArchive,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  // Every entry below passes createFolders:false: JSZip otherwise adds a "<guid>/" directory entry, which Solibri refuses (#3612).
   const folderName = sanitizeZipComponent(topic.guid, usedFolderNames, 'topic');
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
@@ -280,7 +275,7 @@ function resolveSnapshotBytes(viewpoint: BCFViewpoint): Uint8Array | undefined {
 
 /** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
-  zip: JSZip, folderName: string,
+  zip: BcfArchive, folderName: string,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointFileNames: ViewpointFileName[],
@@ -503,14 +498,14 @@ function writeMarkupFile(
 
   content += `\n</Markup>`;
 
-  zip.file(`${folderName}/markup.bcf`, content, { createFolders: false });
+  zip.file(`${folderName}/markup.bcf`, content);
 }
 
 /**
  * Write viewpoint files (bcfv and snapshot)
  */
 async function writeViewpointFiles(
-  zip: JSZip, folderName: string,
+  zip: BcfArchive, folderName: string,
   viewpoint: BCFViewpoint,
   fileNames: ViewpointFileName,
   version: '2.1' | '3.0',
@@ -589,14 +584,14 @@ async function writeViewpointFiles(
 
   content += `\n</VisualizationInfo>`;
 
-  zip.file(`${folderName}/${filename}`, content, { createFolders: false });
+  zip.file(`${folderName}/${filename}`, content);
 
   // Write the snapshot the caller already resolved (see writeTopicFolder /
   // resolveSnapshotBytes) -- this function no longer decodes the `data:` URL
   // itself, so it can never write a file that the markup reference (written
   // earlier, off the same resolution) disagrees with (#3962).
   if (snapshot !== undefined) {
-    zip.file(`${folderName}/${snapshotName}`, snapshot, { createFolders: false });
+    zip.file(`${folderName}/${snapshotName}`, snapshot);
   }
 }
 

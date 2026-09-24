@@ -9,7 +9,8 @@
  * always uses DEFLATE (method 8), which the ZIP APPNOTE (4.4.3) requires
  * 0x0014 (2.0) for, so the archives this package writes are out of spec on
  * their own terms. Found while investigating #3612; whether this explains
- * the import failures reported there is not established.
+ * the import failures reported there is not established. The writer now
+ * packs with fflate (writer-archive.ts), which writes 2.0 itself.
  *
  * This test parses the REAL writer's REAL output with a hand-written parser
  * — never JSZip. A self round-trip (write with JSZip, read back with JSZip)
@@ -20,8 +21,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createBCFProject, createBCFTopic, addTopicToProject, writeBCF } from './index.js';
-import { fixZipVersionNeeded } from './writer-zip-version.js';
+import { createBCFProject, createBCFTopic, addTopicToProject, writeBCF, readBCF } from './index.js';
 
 const LOCAL_FILE_HEADER_SIG = 0x04034b50;
 const CENTRAL_DIRECTORY_SIG = 0x02014b50;
@@ -152,18 +152,41 @@ describe('writeBCF ZIP "version needed to extract" field (#3612)', () => {
     }
   });
 
-  it('preserves entry count and byte length unchanged, only rewriting 2 bytes per header (fixZipVersionNeeded unit check)', async () => {
-    const before = await writeBCF(buildSampleProject()); // already patched by writeBCF
-    // Call the patch function again directly to check it is idempotent and
-    // byte-length preserving in isolation (not just via writeBCF's wiring).
-    const after = await fixZipVersionNeeded(before);
+  it.each(['2.1', '3.0'] as const)(
+    'writes 2.0 on every entry kind, including viewpoint and snapshot, and reads back (BCF %s)',
+    async (version) => {
+      const project = createBCFProject({ name: 'ZIP metadata test', version });
+      const topic = createBCFTopic({ title: 'With viewpoint', author: 'tester@example.com' });
+      topic.viewpoints.push({
+        guid: 'b0646c0b-0000-4000-8000-000000000001',
+        perspectiveCamera: {
+          cameraViewPoint: { x: 0, y: 0, z: 10 },
+          cameraDirection: { x: 0, y: 1, z: 0 },
+          cameraUpVector: { x: 0, y: 0, z: 1 },
+          fieldOfView: 45,
+          aspectRatio: 16 / 9,
+        },
+        // 1x1 PNG
+        snapshot:
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      });
+      addTopicToProject(project, topic);
 
-    const beforeBuf = new Uint8Array(await before.arrayBuffer());
-    const afterBuf = new Uint8Array(await after.arrayBuffer());
+      const blob = await writeBCF(project);
+      const entries = parseZip(new Uint8Array(await blob.arrayBuffer()));
+      const names = entries.map((e) => e.name);
+      expect(names.some((n) => n.endsWith('.bcfv'))).toBe(true);
+      expect(names.some((n) => n.endsWith('.png'))).toBe(true);
+      for (const entry of entries) {
+        expect(entry.cd.versionNeeded, `central directory header for ${entry.name}`).toBe(0x0014);
+        expect(entry.lfh.versionNeeded, `local file header for ${entry.name}`).toBe(0x0014);
+        expect(entry.name.endsWith('/'), `directory entry ${entry.name}`).toBe(false);
+      }
 
-    expect(afterBuf.length).toBe(beforeBuf.length);
-    expect(parseZip(afterBuf).length).toBe(parseZip(beforeBuf).length);
-    // Idempotent: re-patching an already-patched archive changes nothing.
-    expect(Array.from(afterBuf)).toEqual(Array.from(beforeBuf));
-  });
+      const read = await readBCF(blob);
+      const back = read.topics.get(topic.guid);
+      expect(back?.title).toBe('With viewpoint');
+      expect(back?.viewpoints).toHaveLength(1);
+    },
+  );
 });

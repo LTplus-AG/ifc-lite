@@ -229,3 +229,76 @@ fn raw_circle_solid_bounds_select_exact_arc_and_keep_inner_radius() {
     assert_eq!(*start_angle, 0.0);
     assert!((sweep_angle - 0.79).abs() < 1e-12);
 }
+
+#[test]
+fn typed_solid_bounds_and_radii_preserve_line_extent() {
+    // STEP typed values are common in exported IFC. A typed StartParam must
+    // limit the line just like the equivalent bare numeric attribute.
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCSWEPTDISKSOLID(#4,IFCPOSITIVELENGTHMEASURE(2.),IFCPOSITIVELENGTHMEASURE(1.),IFCPARAMETERVALUE(2.),IFCPARAMETERVALUE(5.));";
+    let mut decoder = EntityDecoder::new(data);
+    let entity = decoder.decode_by_id(5).unwrap();
+    let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
+    assert_eq!(disk.status, AnalyticStatus::Complete);
+    assert_eq!((disk.radius, disk.inner_radius), (2.0, Some(1.0)));
+    assert_eq!(
+        disk.segments,
+        vec![AnalyticCurveSegment::Line {
+            start: [2.0, 0.0, 0.0],
+            end: [5.0, 0.0, 0.0]
+        }]
+    );
+}
+
+#[test]
+fn typed_solid_bounds_select_circle_arc() {
+    let data = "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCAXIS2PLACEMENT2D(#1,$);\n#3=IFCCIRCLE(#2,20.);\n#4=IFCSWEPTDISKSOLID(#3,1.,$,IFCPARAMETERVALUE(0.25),IFCPARAMETERVALUE(0.79));";
+    let mut decoder = EntityDecoder::new(data);
+    let entity = decoder.decode_by_id(4).unwrap();
+    let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
+    assert_eq!(disk.status, AnalyticStatus::Complete);
+    let AnalyticCurveSegment::Arc {
+        start_angle,
+        sweep_angle,
+        ..
+    } = &disk.segments[0]
+    else {
+        panic!("expected arc");
+    };
+    assert!((*start_angle - 0.25).abs() < 1e-12);
+    assert!((*sweep_angle - 0.54).abs() < 1e-12);
+}
+
+#[test]
+fn typed_solid_bounds_select_composite_parent_domain() {
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(10.)),.T.,.PARAMETER.);\n#6=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);\n#7=IFCCARTESIANPOINT((10.,0.,0.));\n#8=IFCLINE(#7,#3);\n#9=IFCTRIMMEDCURVE(#8,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(10.)),.T.,.PARAMETER.);\n#10=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#9);\n#11=IFCCOMPOSITECURVE((#6,#10),.F.);\n#12=IFCSWEPTDISKSOLID(#11,1.,$,IFCPARAMETERVALUE(5.),IFCPARAMETERVALUE(15.));";
+    let mut decoder = EntityDecoder::new(data);
+    let entity = decoder.decode_by_id(12).unwrap();
+    let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
+    assert_eq!(disk.status, AnalyticStatus::Complete);
+    assert_eq!(
+        disk.segments,
+        vec![
+            AnalyticCurveSegment::Line {
+                start: [5.0, 0.0, 0.0],
+                end: [10.0, 0.0, 0.0]
+            },
+            AnalyticCurveSegment::Line {
+                start: [10.0, 0.0, 0.0],
+                end: [15.0, 0.0, 0.0]
+            },
+        ]
+    );
+}
+
+#[test]
+fn malformed_present_typed_measure_is_an_error() {
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCSWEPTDISKSOLID(#4,1.,$,IFCPARAMETERVALUE('bad'),IFCPARAMETERVALUE(5.));\n#6=IFCSWEPTDISKSOLID(#4,1.,IFCPOSITIVELENGTHMEASURE('bad'),IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(5.));";
+    let mut decoder = EntityDecoder::new(data);
+    for id in [5, 6] {
+        let entity = decoder.decode_by_id(id).unwrap();
+        assert!(
+            extract_swept_disk(&entity, &mut decoder).is_err(),
+            "malformed typed measure at #{id} was treated as absent"
+        );
+    }
+}

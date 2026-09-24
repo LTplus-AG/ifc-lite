@@ -11,7 +11,7 @@ mod helpers;
 mod tests;
 
 use crate::{Error, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 /// An ordered directrix primitive. Angles are radians in the circle's local frame.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -140,11 +140,10 @@ pub fn extract_swept_disk(
     let directrix_id = entity
         .get_ref(0)
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid missing Directrix".to_string()))?;
-    let radius = entity
-        .get_float(1)
+    let radius = read_optional_numeric(entity.get(1), "Radius")?
         .filter(|r| r.is_finite() && *r > 0.0)
         .ok_or_else(|| Error::geometry("IfcSweptDiskSolid has invalid Radius".to_string()))?;
-    let inner_radius = entity.get_float(2);
+    let inner_radius = read_optional_numeric(entity.get(2), "InnerRadius")?;
     if inner_radius.is_some_and(|r| !r.is_finite() || r <= 0.0 || r >= radius) {
         return Err(Error::geometry(
             "IfcSweptDiskSolid has invalid InnerRadius".to_string(),
@@ -156,8 +155,8 @@ pub fn extract_swept_disk(
             Error::geometry("IfcSweptDiskSolid Directrix cannot be resolved".to_string())
         })?;
     let mut walk = curve::CurveWalk::default();
-    let start = entity.get_float(3);
-    let end = entity.get_float(4);
+    let start = read_optional_numeric(entity.get(3), "StartParam")?;
+    let end = read_optional_numeric(entity.get(4), "EndParam")?;
     let has_trim = start.is_some() || end.is_some();
     let extracted = if directrix.ifc_type == IfcType::IfcLine && (start.is_none() || end.is_none())
     {
@@ -305,4 +304,17 @@ fn trimmed_line_solid_bounds_redundant(
     // IfcTrimmedCurve's own domain starts at zero, independent of where its
     // Trim1 lies on the basis curve. Solid bounds are relative to that domain.
     Ok(close(start, 0.0) && close(end, span))
+}
+
+/// STEP typed numeric wrappers are decoded by `AttributeValue::as_float` in
+/// `ifc-lite-core`. Distinguish an omitted optional value from a present value
+/// with malformed contents, which must not silently widen a directrix.
+fn read_optional_numeric(value: Option<&AttributeValue>, field: &str) -> Result<Option<f64>> {
+    match value {
+        None | Some(AttributeValue::Null | AttributeValue::Derived) => Ok(None),
+        Some(value) => value
+            .as_float()
+            .map(Some)
+            .ok_or_else(|| Error::geometry(format!("IfcSweptDiskSolid has invalid {field}"))),
+    }
 }

@@ -73,3 +73,6 @@ apps/viewer/src/sdk/local-backend.ts
 apps/viewer/src/test/appearance-controller.harness.tsx
 apps/viewer/src/utils/serverDataModel.ts
 apps/viewer/src/utils/spatialHierarchy.ts
+packages/create/src/in-store/extract-walls.ts
+packages/create/src/in-store/resolve-source.ts
+packages/create/src/in-store/spatial-children.ts

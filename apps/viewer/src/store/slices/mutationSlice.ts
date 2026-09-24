@@ -2456,6 +2456,8 @@ export const createMutationSlice: StateCreator<
         // detection without needing a flush to STEP first.
         {
           getNewEntities: () => view.getNewEntities(),
+          isDeleted: (id) => view.isDeleted(id),
+          getTypeMutations: () => view.getTypeMutations(),
         },
       );
     } catch (err) {
@@ -2533,7 +2535,7 @@ export const createMutationSlice: StateCreator<
 
     let newId: number;
     try {
-      const source = resolveDuplicateSource(dataStore, sourceExpressId);
+      const source = resolveDuplicateSource(dataStore, sourceExpressId, editor);
       const result = duplicateInStore(editor, source, { ...options, offset: ifcDelta });
       newId = result.newId;
     } catch (err) {

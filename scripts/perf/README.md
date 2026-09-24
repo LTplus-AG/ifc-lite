@@ -1950,6 +1950,11 @@ counts are identical on all three; ISSUE_129 and Holter fingerprints differ
 only in normals of holed extrusions, which the output orienter used to flip and
 recompute. The lesson: an extruder's winding is an input contract of the
 kernel, not a rendering detail the output orienter may repair afterwards.
+After review folded the three side-wall builders onto one shared orientation
+helper, a re-run against `ea4cc3718` (eight interleaved rounds) gave AC20 and
+ISSUE_129 byte-identical fingerprints to main; ISSUE_129 per-round best totals
+spread 1,178-1,951 ms on main and 1,143-1,873 ms on the branch on a loaded
+host, so the medians' order (1,391 vs 1,476 ms) is not a signal either way.
 
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 

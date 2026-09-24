@@ -11,6 +11,8 @@
  */
 
 import { logger, parseVerbosity } from './logger.js';
+import { fatal } from './output.js';
+import { COMMANDS_WITH_OUT } from './out-flag-commands.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
 import { scheduleCommand } from './commands/schedule.js';
@@ -50,13 +52,20 @@ import { checkCommand } from './commands/check.js';
 import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readCliVersion } from './version.js';
-import { buildHelp } from './help.js';
+import { readPackageVersion } from '@ifc-lite/data';
+import { buildHelp, buildCommandHelp } from './help.js';
 
 // package.json sits one level above both `src/` and `dist/`.
-const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
+const VERSION = readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
 
 /** Command being executed, captured for the top-level error handler. */
+/**
+ * Commands that handle `--help` themselves, with more detail than the global
+ * `Commands:` block carries. Their handlers already tested for it; before
+ * #5527 that branch was simply unreachable.
+ */
+const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext']);
+
 let activeCommand = '';
 /** True when --debug was passed (stack traces on error). */
 let debugFlag = false;
@@ -69,9 +78,23 @@ async function main(): Promise<void> {
   debugFlag = verbosity.debug;
   const args = verbosity.rest;
 
-  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+  const wantsHelp = args.includes('--help') || args.includes('-h');
+  if (args.length === 0) {
     process.stdout.write(buildHelp(VERSION) + '\n');
     return;
+  }
+  if (wantsHelp) {
+    // `--help` used to be answered globally BEFORE dispatch, with the command
+    // still sitting in `args`, so all 37 subcommands printed the same page and
+    // the real help written in `layer`/`ref`/`ext` was unreachable (#5527).
+    const requested = args[0];
+    if (HELP_DELEGATING_COMMANDS.has(requested)) {
+      // These three write richer help of their own; let them answer.
+    } else {
+      const commandHelp = buildCommandHelp(VERSION, requested);
+      process.stdout.write((commandHelp ?? buildHelp(VERSION)) + '\n');
+      return;
+    }
   }
 
   if (args.includes('--version') || args.includes('-v')) {
@@ -82,6 +105,14 @@ async function main(): Promise<void> {
   const command = args[0];
   activeCommand = command;
   const commandArgs = args.slice(1);
+
+  if (commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
+    fatal(
+      `\`${command}\` does not write to a file: it has no --out. ` +
+        `Redirect its output instead, e.g. \`ifc-lite ${command} ... > out.json\`. ` +
+        `Commands that do take --out: ${[...COMMANDS_WITH_OUT].sort().join(', ')}.`,
+    );
+  }
 
   switch (command) {
     case 'info':

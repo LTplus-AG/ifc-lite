@@ -4,6 +4,7 @@
 
 import { effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
+import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
 import type { GroupSubFilter } from './groupEntityTypes.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
@@ -19,7 +20,7 @@ import {
   type SpatialNode,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { buildMaterialUsageIndex, extractGroupMembersOnDemand } from '@ifc-lite/parser';
+import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
@@ -1166,42 +1167,21 @@ export function buildGroupTree(
   const entries: GroupEntry[] = [];
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
-    const byType = dataStore.entityIndex?.byType;
     const entities = dataStore.entities;
     if (!entities) return;
-
-    // IFCX ingest builds `entityIndex` permanently EMPTY (there are no STEP
-    // byte spans to index — see buildIfcxDataStore), so an empty byType must
-    // not read as "no groups": fall back to ONE scan of the EntityTable's
-    // type-name column, restricted to the group classes (the scope-chips
-    // pattern, #1662). STEP stores keep the O(1) index path untouched.
-    let fallbackByType: Map<string, number[]> | null = null;
-    if (!byType || byType.size === 0) {
-      fallbackByType = new Map();
-      const wanted = new Set<string>(GROUP_ENTITY_TYPES.map((t) => t.toUpperCase()));
-      for (let i = 0; i < entities.count; i++) {
-        const expressId = entities.expressId[i];
-        const upper = entities.getTypeName(expressId).toUpperCase();
-        if (!wanted.has(upper)) continue;
-        const bucket = fallbackByType.get(upper);
-        if (bucket) bucket.push(expressId);
-        else fallbackByType.set(upper, [expressId]);
-      }
-      if (fallbackByType.size === 0) return;
-    }
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
     const view = overlay?.(modelId);
+    const groups = effectiveGroupIds(dataStore, view);
+    const assignments = effectiveGroupAssignments(dataStore, view);
 
     for (let rank = 0; rank < GROUP_ENTITY_TYPES.length; rank++) {
       const typeName = GROUP_ENTITY_TYPES[rank];
       if (!groupMatchesSubFilter(typeName, subFilter)) continue;
-      const groupIds = byType?.get(typeName.toUpperCase()) ?? fallbackByType?.get(typeName.toUpperCase());
+      const groupIds = groups.get(typeName);
       if (!groupIds || groupIds.length === 0) continue;
 
       for (const groupId of groupIds) {
-        if (effectiveTreeType(view, groupId, typeName) === null) continue;
-        const members = extractGroupMembersOnDemand(dataStore, groupId)
-          .filter((member) => effectiveTreeType(view, member.id, member.type) !== null);
+        const members = effectiveGroupMembers(dataStore, groupId, view, assignments);
         // Empty group: a dead click, skip (mirror the empty-material skip).
         if (members.length === 0) continue;
 
@@ -1251,12 +1231,10 @@ export function buildGroupTree(
 
         // Name with ObjectType fallback for unnamed systems — same display
         // logic as the properties panel's Groups & Zones card (#1075).
-        const name = entities.getName(groupId);
-        const objectType = entities.getObjectType?.(groupId);
         entries.push({
           modelId,
           groupExpressId: groupId,
-          name: name || objectType || `${typeName} #${groupId}`,
+          name: effectiveGroupName(dataStore, view, groupId, typeName),
           ifcType: typeName,
           typeRank: rank,
           memberRows: Array.from(rowByGlobalId.values()),

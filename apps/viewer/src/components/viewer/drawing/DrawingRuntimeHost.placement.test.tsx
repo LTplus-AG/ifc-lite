@@ -10,7 +10,7 @@ import { render, cleanup } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { Section2DPanel } from './Section2DPanel';
+import { DrawingRuntimeHost } from './DrawingRuntimeHost';
 
 it('does not map the model mesh collection on placement previews while the drawing panel is closed (#4226)', () => {
   let maps = 0;
@@ -24,10 +24,10 @@ it('does not map the model mesh collection on placement previews while the drawi
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: null, geometryResult: geometry }), modelPlacement: emptyPlacementState(),
     drawing2DPanelVisible: false, activeModelId: null, ifcDataStore: null, activeTool: 'select' });
   try {
-    const ui = render(<Section2DPanel mergedGeometry={geometry} />);
+    const ui = render(<DrawingRuntimeHost mergedGeometry={geometry} />);
     const initialMaps = maps;
     act(() => { const s = useViewerStore.getState(); s.openReposition(['m']); s.previewModelTranslation([100, 0, 0]); });
-    assert.equal(ui.textContent, ''); assert.equal(maps, initialMaps, 'a hidden drawing panel does no placement mesh mapping');
+    assert.equal(ui.textContent, '', 'the runtime has no view'); assert.equal(maps, initialMaps, 'a hidden drawing panel does no placement mesh mapping');
   } finally { cleanup(); }
 });
 
@@ -73,7 +73,7 @@ it('keeps translated section lines when only the 2D panel closes (#4226)', async
     drawing2DDisplayOptions: { ...s.drawing2DDisplayOptions, show3DOverlay: true },
     sectionPlane: { ...s.sectionPlane, axis: 'down', position: 50, enabled: true } });
   try {
-    render(<Section2DPanel mergedGeometry={geometry} />);
+    render(<DrawingRuntimeHost mergedGeometry={geometry} />);
     act(() => { const state = useViewerStore.getState(); state.openReposition(['m']); state.previewModelTranslation([100, 0, 0]); state.applyModelTranslation(); state.closeReposition(); state.setActiveTool('section'); });
     const waitDrawing = async () => {
       for (let i = 0; i < 100; i++) {

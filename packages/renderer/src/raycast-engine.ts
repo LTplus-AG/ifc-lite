@@ -195,20 +195,17 @@ export class RaycastEngine {
     }
 
     /**
-     * Scale CSS pixel coordinates to canvas pixel coordinates.
-     * Returns null if the canvas rect has zero dimensions.
+     * The canvas's CSS-pixel size, the space the caller's x/y are in. Rays,
+     * snap radii and point-snap tolerances are all authored in CSS pixels, so
+     * everything here stays in that space rather than the drawing buffer's
+     * device pixels (#5383). Null if the canvas rect has zero dimensions.
      */
-    private scaleCoordinates(x: number, y: number): { scaledX: number; scaledY: number } | null {
+    private cssViewport(): { width: number; height: number } | null {
         const rect = this.canvas.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) {
             return null;
         }
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        return {
-            scaledX: x * scaleX,
-            scaledY: y * scaleY,
-        };
+        return { width: rect.width, height: rect.height };
     }
 
     /**
@@ -216,7 +213,7 @@ export class RaycastEngine {
      * This is more accurate than pick() as it returns the exact surface point
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
+     * The ray is built in that same CSS space (see cssViewport).
      */
     raycastScene(
         x: number,
@@ -225,11 +222,11 @@ export class RaycastEngine {
         clip?: PickClipState | null,
     ): { intersection: Intersection; snap?: SnapTarget } | null {
         try {
-            const scaled = this.scaleCoordinates(x, y);
-            if (!scaled) return null;
+            const viewport = this.cssViewport();
+            if (!viewport) return null;
 
             // Create ray from screen coordinates
-            const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
+            const ray = this.camera.unprojectToRay(x, y, viewport.width, viewport.height);
 
             // Get all mesh data from scene
             const allMeshData = this.collectVisibleMeshData(options, ray);
@@ -263,7 +260,7 @@ export class RaycastEngine {
                     meshesToTest, // Pass all meshes near the ray
                     intersection,
                     { position: cameraPos, fov: cameraFov },
-                    this.canvas.height,
+                    viewport.height,
                     options.snapOptions, target => !pointClipped(clip, target.position.x, target.position.y, target.position.z),
                 ) || undefined;
             }
@@ -283,7 +280,7 @@ export class RaycastEngine {
      * This provides the "stick and slide along edges" experience
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
-     * These are scaled internally to match the actual canvas pixel dimensions.
+     * The ray is built in that same CSS space (see cssViewport).
      */
     raycastSceneMagnetic(
         x: number,
@@ -292,8 +289,8 @@ export class RaycastEngine {
         options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
     ): MagneticSnapResult & { intersection: Intersection | null } {
         try {
-            const scaled = this.scaleCoordinates(x, y);
-            if (!scaled) {
+            const viewport = this.cssViewport();
+            if (!viewport) {
                 return {
                     intersection: null,
                     snapTarget: null,
@@ -310,7 +307,7 @@ export class RaycastEngine {
             }
 
             // Create ray from screen coordinates
-            const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
+            const ray = this.camera.unprojectToRay(x, y, viewport.width, viewport.height);
 
             // Get all mesh data from scene. Unlike before #1860, an empty
             // scene no longer short-circuits here — a point-cloud-only
@@ -338,7 +335,7 @@ export class RaycastEngine {
                     meshesToTest,
                     intersection,
                     { position: cameraPos, fov: cameraFov },
-                    this.canvas.height,
+                    viewport.height,
                     currentEdgeLock,
                     options?.snapOptions || {}
                 );
@@ -352,7 +349,7 @@ export class RaycastEngine {
             // magnetism exactly like mesh vertex/edge magnetism.
             const snapCamera: PointCloudSnapCamera = {
                 fov: cameraFov,
-                canvasHeightPx: this.canvas.height,
+                canvasHeightPx: viewport.height,
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
             };
             const maxPointDistance = intersection ? intersection.distance : Infinity;

@@ -38,10 +38,16 @@ import {
 /** One ordinary mouse-wheel notch, as Chrome sends it. */
 const NOTCH_DELTA_Y = 120;
 
-function makeCanvas(): HTMLCanvasElement {
+/**
+ * An 800 x 600 CSS-px canvas whose drawing buffer is `pixelRatio` times that,
+ * as the renderer sizes it (#5383). happy-dom does no layout, so the CSS box
+ * is stubbed; without it `getBoundingClientRect()` is 0 x 0.
+ */
+function makeCanvas(pixelRatio = 1): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = 800;
-  canvas.height = 600;
+  canvas.width = 800 * pixelRatio;
+  canvas.height = 600 * pixelRatio;
+  canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 800, height: 600 });
   document.body.appendChild(canvas);
   return canvas;
 }
@@ -153,6 +159,24 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
     assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
     assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
     assert.strictEqual(subject.getDistance(), reference.getDistance());
+  });
+
+  it('anchors at the cursor on a HiDPI canvas, in CSS px on both sides (#5383)', () => {
+    // Off-centre cursor, so a wrong extent visibly moves the anchor. The
+    // reference is the anchor the user pointed at: CSS cursor over CSS box.
+    const e = wheelEvent();
+    Object.defineProperties(e, {
+      clientX: { value: 700, configurable: true },
+      clientY: { value: 100, configurable: true },
+    });
+    const reference = new Camera();
+    reference.zoom(NOTCH_DELTA_Y, false, 700, 100, 800, 600, false);
+
+    const subject = new Camera();
+    applyWheelZoom(e, { camera: subject, canvas: makeCanvas(2), fastZoom: false, fineModifierHeld: false });
+
+    assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
+    assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
   });
 
   it('calls preventDefault when the modifier is active, so the browser does not zoom the page', () => {

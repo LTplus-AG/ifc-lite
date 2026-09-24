@@ -16,6 +16,7 @@ import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
 import { capturePointRteSnapshot, isPointRteSnapshotCurrent } from './pick-rte-snapshot.js';
+import { computeDrawingBufferSize } from './renderer-viewport.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -46,6 +47,24 @@ export class PickingManager {
         this.picker = picker;
         this.canvas = canvas;
         this.createMeshFromDataFn = createMeshFromDataFn;
+    }
+
+    /**
+     * The pick target size and the CSS-px to pick-texel scale.
+     *
+     * The pick pass renders at the canvas's CSS-pixel size, not the drawing
+     * buffer's device-pixel size (#5383). Pointer input only resolves CSS
+     * pixels, so a HiDPI pick target would only cost more: the single-pixel
+     * pick copies the WHOLE depth image back (depth formats forbid partial
+     * copies), which at 2x would be 4x the bytes per click. It also keeps the
+     * splat picker's CSS-px point sizes in the same space the point draw uses.
+     * Clamped to 8192, the WebGPU-guaranteed `maxTextureDimension2D`.
+     */
+    private pickViewport(): { width: number; height: number; scaleX: number; scaleY: number } | null {
+        const rect = this.canvas.getBoundingClientRect();
+        const size = computeDrawingBufferSize(rect.width, rect.height, 1, 8192);
+        if (!size) return null;
+        return { width: size.width, height: size.height, scaleX: size.width / rect.width, scaleY: size.height / rect.height };
     }
 
     /** Renderer wires this on init so the manager can fetch point nodes lazily. */
@@ -179,16 +198,13 @@ export class PickingManager {
             return null;
         }
 
-        // Scale CSS pixel coordinates to canvas pixel coordinates
-        // The canvas.width may differ from CSS width due to 64-pixel alignment for WebGPU
-        const rect = this.canvas.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
+        // Scale CSS pixel coordinates to pick-texture texels (see pickViewport).
+        const viewport = this.pickViewport();
+        if (!viewport) {
             return null;
         }
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const scaledX = x * scaleX;
-        const scaledY = y * scaleY;
+        const scaledX = x * viewport.scaleX;
+        const scaledY = y * viewport.scaleY;
 
         // Skip picker during streaming for consistent performance
         // Picking during streaming would be slow and incomplete anyway
@@ -197,7 +213,7 @@ export class PickingManager {
         }
 
         if (this.prepareBatchedPick(options) === 'cpu') {
-            const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
+            const ray = this.camera.unprojectToRay(scaledX, scaledY, viewport.width, viewport.height);
             const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
             if (!hit) return null;
             // The CPU fallback is the COMMON path — anything over
@@ -240,8 +256,8 @@ export class PickingManager {
         const result = await this.picker.pick(
             scaledX,
             scaledY,
-            this.canvas.width,
-            this.canvas.height,
+            viewport.width,
+            viewport.height,
             meshes,
             viewProj,
             pointNodes,
@@ -295,18 +311,16 @@ export class PickingManager {
         clip?: PickClipState | null,
     ): Promise<Set<number>> {
         if (!this.picker) return new Set();
-        const rect = this.canvas.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return new Set();
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const sx0 = x0 * scaleX, sy0 = y0 * scaleY;
-        const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
+        const viewport = this.pickViewport();
+        if (!viewport) return new Set();
+        const sx0 = x0 * viewport.scaleX, sy0 = y0 * viewport.scaleY;
+        const sx1 = x1 * viewport.scaleX, sy1 = y1 * viewport.scaleY;
         if (options?.isStreaming) return new Set();
 
         if (this.prepareBatchedPick(options) === 'cpu') {
             const boxHits = this.scene.selectRect(
                 sx0, sy0, sx1, sy1,
-                this.canvas.width, this.canvas.height,
+                viewport.width, viewport.height,
                 this.camera.getRelativeToEyeFrame().getViewProjection().m,
                 options?.hiddenIds,
                 options?.isolatedIds,
@@ -341,7 +355,7 @@ export class PickingManager {
             try {
                 pointHits = await this.picker.pickRect(
                     sx0, sy0, sx1, sy1,
-                    this.canvas.width, this.canvas.height,
+                    viewport.width, viewport.height,
                     [],
                     this.camera.getViewProjMatrix().m,
                     cpuPointSnap.nodes,
@@ -372,7 +386,7 @@ export class PickingManager {
         const pointRteSnapshot = capturePointRteSnapshot(this.camera);
         const hits = await this.picker.pickRect(
             sx0, sy0, sx1, sy1,
-            this.canvas.width, this.canvas.height,
+            viewport.width, viewport.height,
             meshes,
             viewProj,
             pointSnap?.nodes ?? undefined,

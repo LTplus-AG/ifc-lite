@@ -171,8 +171,10 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     false,
     mouseX,
     mouseY,
-    opts.canvas.width,
-    opts.canvas.height,
+    // The cursor is in CSS px, so the extent must be too. The drawing buffer
+    // (`canvas.width`) is in device px and drifted the anchor (#5383).
+    rect.width,
+    rect.height,
     opts.fastZoom,
   );
 }

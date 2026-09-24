@@ -90,8 +90,11 @@ export interface OverlayDrawContext {
     /** The bounds this frame resolved the section slider against. */
     modelBounds: ModelBounds | null;
     camera: Camera;
+    /** Viewport size in CSS px (drawing buffer / `pixelRatio`): glyph sizes are CSS px. */
     canvasWidth: number;
     canvasHeight: number;
+    /** Drawing-buffer px per CSS px; see `SectionDrawContext.pixelRatio`. */
+    pixelRatio?: number;
     relativeToEyeFrame?: RelativeToEyeFrame;
     rteViewProj?: Float32Array;
     rteCamera?: readonly [number, number, number];

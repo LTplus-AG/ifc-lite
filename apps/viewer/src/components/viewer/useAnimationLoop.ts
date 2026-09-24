@@ -380,8 +380,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           lastCameraStateRef.current = currentCameraState;
           updateMeasurementScreenCoords((worldPos) => {
             // CSS-space coords so the measure line/labels track the geometry
-            // under the cursor (buffer width is alignToWebGPU-rounded down from
-            // the CSS width; raw buffer coords drift left — issue #1107).
+            // under the cursor (raw coords are drawing-buffer device px, not
+            // CSS px — issues #1107, #5383).
             return projectToCssScreen(camera, canvas, worldPos);
           });
         }

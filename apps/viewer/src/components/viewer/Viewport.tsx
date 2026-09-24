@@ -768,7 +768,8 @@ export function Viewport({
     if (!canvas || !renderer) return;
 
     const camera = renderer.getCamera();
-    const viewportHeight = canvas.height;
+    const viewportHeight = canvas.clientHeight; // CSS px, like the 96px bar (#5383)
+    if (viewportHeight <= 0) return;
     const scaleBarPixels = 96; // w-24 = 6rem = 96px
 
     let worldSize: number;
@@ -813,27 +814,8 @@ export function Viewport({
     let resizeObserver: ResizeObserver | null = null;
     let unsubscribeViewportHealth: (() => void) | null = null;
 
-    // Helper to align canvas dimensions to WebGPU requirements
-    // WebGPU texture row pitch must be aligned to 256 bytes
-    // For RGBA (4 bytes/pixel), width should be multiple of 64 pixels
-    const alignToWebGPU = (size: number): number => {
-      return Math.max(64, Math.floor(size / 64) * 64);
-    };
-
-    // Cap at the conservative WebGPU floor; the renderer re-clamps using the actual
-    // adapter limit once the device is initialized. Without this, tall iframe layouts
-    // can ask for canvas dimensions that exceed 8192 and every texture creation fails.
-    const MAX_CANVAS_DIM = 8192;
-
-    // Use CSS pixel dimensions for canvas. The Renderer.render() method manages
-    // its own dimension alignment via getBoundingClientRect() — do NOT apply DPR
-    // here as it creates a mismatch that causes constant context reconfiguration.
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
-    const height = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
-    canvas.width = width;
-    canvas.height = height;
-
+    // The renderer owns the drawing-buffer size: `init()` and every frame size
+    // it to the element's device pixels (#5383), so nothing here sizes it.
     const renderer = new Renderer(canvas);
     rendererRef.current = renderer;
 
@@ -1053,7 +1035,7 @@ export function Viewport({
           // building to a railway picks the right pose on Home press.
           // See packages/renderer/src/camera-fit-policy.ts.
           const canvas = rendererRef.current?.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           camera.fitBoundsAdaptive(
             { min: geometryBoundsRef.current.min, max: geometryBoundsRef.current.max },
             { animate: true, duration: 500, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -1273,7 +1255,7 @@ export function Viewport({
           // Pass the real viewport short side (as the Home handler does) so the
           // fit is viewport-accurate for any policy.
           const canvas = rendererRef.current?.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           camera.fitBoundsAdaptive(
             { min, max },
             { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -1283,10 +1265,9 @@ export function Viewport({
         orbit: orbitCamera,
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
           // Project 3D world position to 2D CSS-pixel screen coordinates.
-          // projectToCssScreen rescales the drawing-buffer result (buffer width
-          // is alignToWebGPU-rounded *down* from the CSS width) so DOM overlays
-          // — gizmos, section visuals, the measure/snap indicator — sit under
-          // the cursor instead of drifting left (issue #1107).
+          // projectToCssScreen rescales the drawing-buffer result (device px)
+          // to CSS px so DOM overlays — gizmos, section visuals, the
+          // measure/snap indicator — sit under the cursor (#1107, #5383).
           const c = canvasRef.current;
           if (!c) return null;
           return projectToCssScreen(camera, c, worldPos);
@@ -1354,16 +1335,19 @@ export function Viewport({
       // one toast, one tagged capture, per failure.
       unsubscribeViewportHealth = subscribeViewportHealth(renderer);
 
-      // ResizeObserver — let renderer handle its own dimension alignment
+      // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
-        const rect = canvas.getBoundingClientRect();
-        const w = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
-        const h = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
-        renderer.resize(w, h);
         renderCurrent();
       });
-      resizeObserver.observe(canvas);
+      // The device-pixel box also fires when only the pixel ratio changes (window
+      // moved to another display, browser zoom), which the CSS box does not.
+      try {
+        resizeObserver.observe(canvas, { box: 'device-pixel-content-box' });
+      } catch (err) {
+        console.debug('[Viewport] device-pixel-content-box unsupported; observing the CSS box', err);
+        resizeObserver.observe(canvas);
+      }
 
       // Initial render
       renderCurrent();

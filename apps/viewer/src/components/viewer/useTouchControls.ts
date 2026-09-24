@@ -115,7 +115,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Anchor to the scene centre (stable) rather than the drifting camera
       // target, projected onto the finger ray (issue #1107, item 3). Matches
       // the mouse orbit fallback in useMouseControls.
-      camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, canvas.width, canvas.height));
+      camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, rect.width, rect.height));
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
@@ -215,7 +215,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           camera.pan(panDx, panDy, false);
         } else if (touchState.twoFingerGesture === 'pinch') {
           const rect = canvas.getBoundingClientRect();
-          camera.zoom(zoomDelta * 3, false, centerX - rect.left, centerY - rect.top, canvas.width, canvas.height);
+          camera.zoom(zoomDelta * 3, false, centerX - rect.left, centerY - rect.top, rect.width, rect.height);
         }
         // While gesture is 'none' (detecting), don't apply either — avoids jitter
 

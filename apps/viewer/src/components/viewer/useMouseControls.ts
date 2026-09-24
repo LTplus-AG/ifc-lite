@@ -537,7 +537,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           }
         } else {
           // No geometry hit or large model — anchor the pivot to the scene centre.
-          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, canvas.width, canvas.height));
+          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, rect.width, rect.height));
         }
       }
 

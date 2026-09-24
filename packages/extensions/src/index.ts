@@ -32,6 +32,7 @@ export type {
   DockSlot,
   ExporterContribution,
   ExtensionManifest,
+  FlowGraphContribution,
   IdsValidatorContribution,
   KeybindingContribution,
   LensContribution,

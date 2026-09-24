@@ -22,6 +22,7 @@
  * Spec: docs/architecture/ai-customization/04-ai-authoring.md §6.
  */
 
+import { normaliseBundlePath as normalise } from '../bundle/path.js';
 import type {
   Bundle,
   ValidationError,
@@ -111,6 +112,3 @@ export function crossReferenceBundle(
   return { ok: true, value: true };
 }
 
-function normalise(p: string): string {
-  return p.replace(/\\/g, '/').replace(/^\.\//, '');
-}

@@ -43,12 +43,13 @@ import {
   type SpatialZoneInput,
 } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { StoreEditor } from '@ifc-lite/mutations';
+import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
   renderToWorldViewer,
   type RenderFrameOffsets,
 } from '@/components/viewer/tools/measure-modes/coordinates';
 import { viewerToIfcAxes } from '@/lib/geo/coordinate-frame';
+import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import type { Zone, ZoneSet } from './types.js';
 
 /** One element's membership, as the assignment engine reports it. */
@@ -155,16 +156,16 @@ export function emitSpatialZones(
   zoneSet: ZoneSet,
   members: ZoneMembership[],
   frame: RenderFrameOffsets,
-  options: { rebased?: boolean; storeyId?: number } = {},
+  options: { view: MutablePropertyView; rebased?: boolean; storeyId?: number },
 ): EmitResult {
   const empty = { zonesEmitted: 0, elementsReferenced: 0, zonesReplaced: 0 };
   if (options.rebased) return { ...empty, refusal: 'rescaled-by-alignment' };
 
-  const storeyId = options.storeyId ?? firstStoreyId(store);
+  const storeyId = options.storeyId ?? firstEffectiveStoreyId(store, options.view);
   if (storeyId === null) return { ...empty, refusal: 'no-anchor' };
   let anchor;
   try {
-    anchor = resolveSpatialAnchor(store, storeyId);
+    anchor = resolveSpatialAnchor(store, storeyId, options.view);
   } catch {
     // Thrown for a model with no representation context or an unplaced storey.
     // A refusal the panel can put in a sentence beats an exception from a
@@ -305,12 +306,4 @@ function refsOf(attributes: readonly unknown[]): number[] {
     }
   }
   return out;
-}
-
-/** The anchor needs a storey for its owner history and body context; any storey
- *  serves, since the zones themselves are placed absolutely and referenced
- *  rather than contained. */
-function firstStoreyId(store: IfcDataStore): number | null {
-  const storeys = store.entityIndex.byType?.get('IFCBUILDINGSTOREY');
-  return storeys && storeys.length > 0 ? storeys[0] : null;
 }

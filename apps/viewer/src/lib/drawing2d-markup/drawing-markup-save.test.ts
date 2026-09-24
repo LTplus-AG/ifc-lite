@@ -26,6 +26,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { DRAWING_MARKUP_OBJECTTYPE } from '@ifc-lite/create';
 import { useViewerStore } from '@/store/index.js';
 import { saveDrawingMarkupToModel, type SaveMarkupInput } from './drawing-markup-save.js';
+import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 
 const STOREY_ID = 30;
 
@@ -118,6 +119,22 @@ describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
   let store: IfcDataStore;
   beforeEach(async () => {
     store = await seedStore();
+  });
+
+  it('uses a live overlay-created storey after the source storey is deleted (#5249)', () => {
+    const context = getDrawingMarkupModelContext('m1');
+    assert.ok(context);
+    assert.equal(context.editor.removeEntity(STOREY_ID), true);
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).refusal, 'no-anchor');
+
+    const replacement = context.editor.addEntity('IfcBuildingStorey', [
+      '0storey000000000000001', '#4', 'Level 1', null, null, '#20', null, null, '.ELEMENT.', 3,
+    ]);
+    const outcome = saveDrawingMarkupToModel('m1', ONE_MEASURE);
+    assert.equal(outcome.refusal, null);
+    assert.equal(outcome.measuresSaved, 1);
+    assert.match(exportStep(store), new RegExp(`IFCBUILDINGSTOREY\\('0storey000000000000001'`));
+    assert.ok(replacement.expressId > STOREY_ID);
   });
 
   it('writes one tagged IfcAnnotation per markup item, and marks the model dirty', () => {

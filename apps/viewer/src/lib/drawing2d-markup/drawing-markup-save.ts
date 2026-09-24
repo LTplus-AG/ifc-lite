@@ -66,6 +66,7 @@ import {
   type TextMarkupParams,
 } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
+import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 
 /**
@@ -154,11 +155,6 @@ export function removeDrawingMarkupFromStore(editor: StoreEditor): number {
 
   for (const id of doomed) editor.removeEntity(id);
   return annotationCount;
-}
-
-function firstStoreyId(store: IfcDataStore): number | null {
-  const storeys = store.entityIndex.byType?.get('IFCBUILDINGSTOREY');
-  return storeys && storeys.length > 0 ? storeys[0] : null;
 }
 
 /**
@@ -294,13 +290,13 @@ export function saveDrawingMarkupToModel(
 
   const context = getDrawingMarkupModelContext(modelId);
   if (!context) return { ...EMPTY_COUNTS, refusal: 'no-model' };
-  const { editor, dataStore } = context;
+  const { editor, dataStore, view } = context;
 
-  const storeyId = firstStoreyId(dataStore);
+  const storeyId = firstEffectiveStoreyId(dataStore, view);
   if (storeyId === null) return { ...EMPTY_COUNTS, refusal: 'no-anchor' };
   let anchor;
   try {
-    anchor = resolveSpatialAnchor(dataStore, storeyId);
+    anchor = resolveSpatialAnchor(dataStore, storeyId, view);
   } catch {
     return { ...EMPTY_COUNTS, refusal: 'no-anchor' };
   }

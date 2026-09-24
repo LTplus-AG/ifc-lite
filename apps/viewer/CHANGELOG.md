@@ -1,5 +1,22 @@
 # @ifc-lite/viewer
 
+## 3.1.1
+
+### Patch Changes
+
+- [#5565](https://github.com/LTplus-AG/ifc-lite/pull/5565) [`69dceea`](https://github.com/LTplus-AG/ifc-lite/commit/69dceeac3743944ad476e4338d38712f5cd1f12d) Thanks [@louistrue](https://github.com/louistrue)! - Every opening now hides with the Openings toggle and draws in the translucent opening overlay ([#5409](https://github.com/LTplus-AG/ifc-lite/issues/5409)). An opening with an authored style (Revit writes grey onto opening geometry through `IfcIndexedColourMap` and `IfcStyledItem`) rendered as an opaque solid, and the opaque, repeated ones were sent to the GPU-instanced shard, which carries no class, so the toggle could not hide them. `IfcOpeningElement` and its subtypes now always take the opening overlay colour, and no class the viewer toggles as a whole class (spaces, zones, openings, virtual elements, site and terrain, annotations) is ever instanced, so each toggle reaches every occurrence of its class. `IfcOpeningStandardCase` now follows the Openings toggle too. Cached geometry from earlier builds is re-tessellated once.
+- Updated dependencies [[`2bae848`](https://github.com/LTplus-AG/ifc-lite/commit/2bae8482ffc606951ebb3626ba1910ea15630395), [`223f4d7`](https://github.com/LTplus-AG/ifc-lite/commit/223f4d71f26d074ba949f77031dc24f559da34ca), [`0576221`](https://github.com/LTplus-AG/ifc-lite/commit/0576221cbd57276bce8da8d709045e2ae398a0df), [`4d19160`](https://github.com/LTplus-AG/ifc-lite/commit/4d19160676b6c9b1cb3e2d5b183486aa5c0e5450), [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`69dceea`](https://github.com/LTplus-AG/ifc-lite/commit/69dceeac3743944ad476e4338d38712f5cd1f12d), [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3), [`8cf2887`](https://github.com/LTplus-AG/ifc-lite/commit/8cf288755fdf9c0c5ceefd48913b2686b84f27e7)]:
+  - @ifc-lite/export@4.7.1
+  - @ifc-lite/clash@2.3.3
+  - @ifc-lite/wasm@10.0.1
+  - @ifc-lite/mcp@0.20.1
+  - @ifc-lite/data@5.2.0
+  - @ifc-lite/create@2.9.1
+  - @ifc-lite/parser@8.2.0
+  - @ifc-lite/ids@3.0.1
+  - @ifc-lite/lists@2.3.1
+  - @ifc-lite/rules@0.3.1
+
 ## 3.1.0
 
 ### Minor Changes

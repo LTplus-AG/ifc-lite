@@ -47,7 +47,7 @@ import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { resolveEnergyExportMutationSource } from './energy-export-source';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -235,7 +235,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       }
 
       const blob = new Blob([out as BlobPart], { type: 'application/json' });
-      downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.${spec.ext}`);
+      downloadBlob(blob, modelExportFilename(selectedModel.name, spec.ext));
 
       const msg = t('geometryExport.energy.exportedMessage', {
         formatLabel: spec.label,

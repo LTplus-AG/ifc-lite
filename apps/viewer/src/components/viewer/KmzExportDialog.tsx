@@ -38,7 +38,7 @@ import type { InstancedModelRange } from '@/utils/instancedExport';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 
@@ -146,7 +146,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
     setIsExporting(true);
     setExportResult(null);
     try {
-      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
+      const baseName = sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' });
       const result = await buildKmzForModel({
         geometryResult: selectedModel.geometryResult,
         instancedModelRange: selectedModel.instancedModelRange,
@@ -163,7 +163,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       }
 
       const blob = new Blob([new Uint8Array(result)], { type: 'application/vnd.google-earth.kmz' });
-      downloadBlob(blob, `${baseName}.kmz`);
+      downloadBlob(blob, modelExportFilename(selectedModel.name, 'kmz'));
       const msg = t('geometryExport.kmz.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);

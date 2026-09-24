@@ -403,7 +403,7 @@ fn issue_5266_non_step_tokens_refuse_the_list_instead_of_vanishing() {
     // A missing value, a trailing comma or a missing comma between points
     // would shorten or shift the list, so the tokenizer refuses them and so
     // does the walk.
-    for list in [&b"((1.,,2.,3.),(4.,5.,6.))"[..], b"((1.,2.,))", b"((1.,2.,3.)(4.,5.,6.))", b"((,1.))"] {
+    for list in [&b"((1.,,2.,3.),(4.,5.,6.))"[..], b"((1.,2.,))", b"((1.,2.,3.)(4.,5.,6.))", b"((,1.))", b"((1.,2.,3.)", b"((1.,2.,3.)))"] {
         assert_eq!(parse_coordinates_direct_f64(list), Vec::<f64>::new(), "{}", String::from_utf8_lossy(list));
     }
     // A refused CoordList is `None` from the entity reader, not an empty

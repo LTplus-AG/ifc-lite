@@ -16,9 +16,9 @@ use crate::parser::{is_step_space, parse_step_numeric, skip_step_trivia};
 /// every value one whole STEP numeric literal read through the shared grammar
 /// ([`parse_step_numeric`]). Anything else is `None`, the same as the
 /// tokenizer refusing the record: a corrupted token (`1.52.3`), a non-STEP
-/// one (`nan`, `$`), a dropped comma (`1.52 .3`), a missing value (`1.,,2.`)
-/// or a trailing comma (`(1.,2.,)`). A refused list is never read as a
-/// shorter or shifted one (#5266).
+/// one (`nan`, `$`), a dropped comma (`1.52 .3`), a missing value (`1.,,2.`),
+/// a trailing comma (`(1.,2.,)`) or an unbalanced list (`((1.,2.,3.)`). A
+/// refused list is never read as a shorter or shifted one (#5266).
 ///
 /// `COMMENTS` is a const so the hot, comment-free instantiation carries no
 /// comment check at all (#4720 / #4735): callers dispatch to the `true`
@@ -31,7 +31,8 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
     let (mut pos, len) = (0, bytes.len());
     // `after_item`: a value or a closed list was just read, so `,` or `)`
     // must come next. `after_comma`: a `,` was just read, so an item must.
-    let (mut after_item, mut after_comma) = (false, false);
+    // `depth`: open lists, which must all close by the end of input.
+    let (mut after_item, mut after_comma, mut depth) = (false, false, 0usize);
     loop {
         if COMMENTS {
             pos = skip_step_trivia(bytes, pos)?;
@@ -46,12 +47,14 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
                 (after_item, after_comma) = (false, true);
                 pos += 1;
             }
-            b')' if !after_comma => {
+            b')' if !after_comma && depth > 0 => {
                 after_item = true;
+                depth -= 1;
                 pos += 1;
             }
             b'(' if !after_item => {
                 after_comma = false;
+                depth += 1;
                 pos += 1;
             }
             _ if !after_item => {
@@ -63,7 +66,7 @@ pub(super) fn read_coordinate_list<T: fast_float2::FastFloat, const COMMENTS: bo
             _ => return None,
         }
     }
-    (!after_comma).then_some(result)
+    (!after_comma && depth == 0).then_some(result)
 }
 
 /// [`parse_coordinates_direct`] that says when it refused the list (`None`)

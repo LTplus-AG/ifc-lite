@@ -238,11 +238,15 @@ export class HeadlessBackend implements BimBackend {
 
   private createSpacesAdapter(): SpacesBackendMethods {
     return {
-      listStoreys: () => listStoreys(this.dataStore),
+      // The session's edited model (#5249): deleted walls/storeys out, spaces
+      // and storeys created earlier in the session in.
+      listStoreys: () => listStoreys(this.dataStore, this.mutationView ?? undefined),
       // Spaces are written via the shared StoreEditor/MutablePropertyView, so
       // they're picked up by this backend's export adapter (StepExporter).
-      generate: (options?: GenerateSpacesAllOptions) =>
-        generateSpaces(this.getOrCreateStoreEditor(), this.dataStore, options),
+      generate: (options?: GenerateSpacesAllOptions) => {
+        const editor = this.getOrCreateStoreEditor();
+        return generateSpaces(editor, this.dataStore, options, editor.getMutationView());
+      },
     };
   }
 

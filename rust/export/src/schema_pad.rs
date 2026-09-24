@@ -177,11 +177,19 @@ static PAD_2X3_TO_4X3: &[(&str, usize)] = &[
     ("IFCZONE", 6),
 ];
 
-/// `IFC4` -> `IFC4X3`: 5 source types whose attribute list the target
+/// `IFC4` -> `IFC4X3`: 7 source types whose attribute list the target
 /// schema EXTENDS by appending. `(SOURCE TYPE, target positional count)`,
 /// sorted for binary search.
+///
+/// The two `IFCCARTESIANPOINTLIST*` rows were missing (#5755). They were
+/// derived from `packages/data`'s IFC4 table, which lists `TagList` for IFC4.
+/// The IFC4 EXPRESS (`packages/codegen/schemas/IFC4_ADD2_TC1.exp`) and
+/// IfcOpenShell's `IFC4` both have `[CoordList]` only; IFC4X3 appends the
+/// optional `TagList`.
 static PAD_4_TO_4X3: &[(&str, usize)] = &[
     ("IFCANNOTATION", 8),
+    ("IFCCARTESIANPOINTLIST2D", 2),
+    ("IFCCARTESIANPOINTLIST3D", 2),
     ("IFCDERIVEDUNIT", 4),
     ("IFCOBJECTPLACEMENT", 1),
     ("IFCRELINTERFERESELEMENTS", 10),

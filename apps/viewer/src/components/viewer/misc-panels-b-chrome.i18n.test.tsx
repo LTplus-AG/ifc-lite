@@ -39,7 +39,8 @@ import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
-import { SaveMarkupToModelButton } from './SaveMarkupToModelButton';
+import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExportChangesButton } from './ExportChangesButton';
 
 const STORE_RESET = {
@@ -301,17 +302,19 @@ it('BottomStrip: the drag-grip catalogue value resolves (#4918)', () => {
 
 // ---- SaveMarkupToModelButton -----------------------------------------------
 
-it('SaveMarkupToModelButton: renders the tooltip title in English and translates it (#4918)', () => {
-  const container = render(<SaveMarkupToModelButton />);
-  const button = container.querySelector('button')!;
-  assert.equal(
-    button.getAttribute('title'),
-    'Save drawing markup into the model (overlay only — Export Changes writes it to a file)',
+it('SaveMarkupToModelMenuItem: renders its label in English and translates it (#4918)', () => {
+  render(
+    <DropdownMenu open>
+      <DropdownMenuTrigger>open</DropdownMenuTrigger>
+      <DropdownMenuContent><SaveMarkupToModelMenuItem /></DropdownMenuContent>
+    </DropdownMenu>,
   );
+  const item = document.querySelector('[role="menuitem"]')!;
+  assert.equal(item.textContent, 'Save Markup to Model');
 
-  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.title': 'Markup ins Modell speichern' });
+  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.menuItemLabel': 'Markup ins Modell speichern' });
   act(() => setLocale('savemarkuptomodelbutton-de'));
-  assert.equal(button.getAttribute('title'), 'Markup ins Modell speichern');
+  assert.equal(item.textContent, 'Markup ins Modell speichern');
 });
 
 // ---- ExportChangesButton ----------------------------------------------------

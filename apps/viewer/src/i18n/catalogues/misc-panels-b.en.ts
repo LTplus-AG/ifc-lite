@@ -250,8 +250,6 @@ export const miscPanelsBEn = {
   'bottomStrip.gripTitle': 'Drag to float · drag onto another screen to pop out',
 
   // ---- SaveMarkupToModelButton.tsx -------------------------------------------
-  'saveMarkupToModelButton.title':
-    'Save drawing markup into the model (overlay only — Export Changes writes it to a file)',
   'saveMarkupToModelButton.menuItemLabel': 'Save Markup to Model',
 
   // ---- ExportChangesButton.tsx -----------------------------------------------

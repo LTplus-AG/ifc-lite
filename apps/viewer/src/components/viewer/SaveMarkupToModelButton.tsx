@@ -3,13 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Save 2D drawing markup into the IFC model" (#4153) — the button.
- *
- * Two render shapes sharing one handler (`useSaveDrawingMarkupHandler`):
- * `SaveMarkupToModelButton` for the wide toolbar, `SaveMarkupToModelMenuItem`
- * for the narrow layout's overflow `DropdownMenu` — `Section2DPanel.tsx`
- * renders whichever its own width breakpoint picked, same as every other
- * action in that toolbar.
+ * "Save 2D drawing markup into the IFC model" (#4153) — the Export menu item
+ * of the Drawing panel (`drawing/DrawingExportMenu.tsx`, #5494).
  *
  * ## Wording is deliberately NOT "Saved" / "Save to file"
  * `saveDrawingMarkupToModel` writes into the model's `StoreEditor` overlay
@@ -22,7 +17,6 @@
 
 import { useCallback, useState } from 'react';
 import { Save } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -49,7 +43,7 @@ function refusalText(refusal: SaveMarkupRefusal | 'no-active-model'): string {
   }
 }
 
-/** Shared handler behind both the toolbar icon button and the overflow-menu item. */
+/** The handler behind the menu item. */
 function useSaveDrawingMarkupHandler() {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const measure2DResults = useViewerStore((s) => s.measure2DResults);
@@ -93,18 +87,7 @@ function useSaveDrawingMarkupHandler() {
   return { handleSave, isSaving, disabled: !activeModelId || isSaving };
 }
 
-/** Toolbar icon-button variant, for the wide layout. */
-export function SaveMarkupToModelButton() {
-  const { t } = useTranslation();
-  const { handleSave, disabled } = useSaveDrawingMarkupHandler();
-  return (
-    <Button variant="ghost" size="icon-sm" onClick={handleSave} disabled={disabled} title={t('saveMarkupToModelButton.title')}>
-      <Save className="h-4 w-4" />
-    </Button>
-  );
-}
-
-/** Overflow-menu item variant, for the narrow layout's `DropdownMenu`. */
+/** The Drawing panel's Export menu item. */
 export function SaveMarkupToModelMenuItem() {
   const { t } = useTranslation();
   const { handleSave, disabled } = useSaveDrawingMarkupHandler();

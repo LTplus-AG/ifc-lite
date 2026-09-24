@@ -63,7 +63,8 @@ mod types;
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 pub use analytic_export::{check_swept_disk, extract_analytic_quantity_sources,
     AnalyticQuantitySources, extract_swept_disk_definitions,
-    extract_swept_disk_descriptions, extract_extrusion_definitions,
+    extract_swept_disk_descriptions, extract_swept_disk_views,
+    extract_extrusion_definitions,
     extrusion_nominal_quantities, DirectrixMetrics,
     DirectrixSegmentMetrics, ExtrusionNominalQuantities, SweptDiskCheckError,
     SweptDiskCheckFinding, SweptDiskCheckOptions, SweptDiskCheckReport,

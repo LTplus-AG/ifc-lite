@@ -287,6 +287,7 @@ class AuthoredRebarAttribute(TypedDict):
 
 class RebarSweep(TypedDict):
     occurrence_index: int
+    source: Optional[SweptDiskSourceKey]  # None when definition output budget was exhausted
     solid_id: int
     directrix_id: int
     mapping_path: List[int]

@@ -333,6 +333,8 @@ def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
     assert row["authored"]["BarLength"]["source"] == "occurrence"
     assert row["authored"]["NominalDiameter"]["value"]["value_si"] == pytest.approx(0.029)
     (sweep,) = row["sweeps"]
+    assert sweep["source"]["solid_id"] == sweep["solid_id"]
+    assert sweep["source"]["context"]["kind"] == "direct"
     assert sweep["radius_m"] == pytest.approx(0.0145)
     assert sweep["directrix_metrics"]["total_length"] != pytest.approx(0.9)
     assert sweep["checks"]["findings"] == []

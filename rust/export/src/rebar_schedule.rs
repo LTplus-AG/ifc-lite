@@ -11,8 +11,8 @@ use ifc_lite_core::{
     EntityScanner,
 };
 use ifc_lite_processing::{
-    check_swept_disk, extract_swept_disk_descriptions, DirectrixMetrics, SweptDiskCheckError,
-    SweptDiskCheckOptions, SweptDiskCheckReport,
+    check_swept_disk, extract_swept_disk_views, DirectrixMetrics, SweptDiskCheckError,
+    SweptDiskCheckOptions, SweptDiskCheckReport, SweptDiskInstance, SweptDiskSourceKey,
 };
 use serde::Serialize;
 
@@ -56,6 +56,9 @@ pub struct AuthoredRebarAttribute {
 #[non_exhaustive]
 pub struct RebarSweep {
     pub occurrence_index: usize,
+    /// Reusable raw source identity; absent only if the definition output
+    /// budget omitted this product while the world description remained.
+    pub source: Option<SweptDiskSourceKey>,
     pub solid_id: u32,
     pub directrix_id: u32,
     pub mapping_path: Vec<u32>,
@@ -218,11 +221,14 @@ pub fn build_rebar_schedule(
             }
         }
     }
-    let descriptions = extract_swept_disk_descriptions(
+    let (descriptions, definitions) = extract_swept_disk_views(
         content,
         Some(&bars.keys().copied().collect::<HashSet<_>>()),
     );
     diagnostics.extend(descriptions.diagnostics.iter().cloned());
+    let known_diagnostics: HashSet<&str> = descriptions.diagnostics.iter().map(String::as_str).collect();
+    diagnostics.extend(definitions.diagnostics.iter()
+        .filter(|message| !known_diagnostics.contains(message.as_str())).cloned());
     if !known_schema {
         diagnostics.push(format!(
             "unsupported FILE_SCHEMA {schema_label}; authored attributes omitted"
@@ -300,8 +306,22 @@ pub fn build_rebar_schedule(
         }
         if let Some(disks) = descriptions.elements.get(&id) {
             for (occurrence_index, disk) in disks.iter().enumerate() {
+                let source = definitions.instances.get(&id).and_then(|instances| {
+                    let matches = |instance: &SweptDiskInstance| {
+                        instance.ordinal == occurrence_index && instance.solid_id == disk.solid_id
+                    };
+                    instances.get(occurrence_index).filter(|instance| matches(instance))
+                        .or_else(|| instances.iter().find(|instance| matches(instance)))
+                        .map(|instance| instance.source.clone())
+                });
+                if source.is_none() {
+                    row.diagnostics.push(format!(
+                        "sweep {occurrence_index}: reusable source key unavailable; definition output budget may be exhausted"
+                    ));
+                }
                 row.sweeps.push(RebarSweep {
                     occurrence_index,
+                    source,
                     solid_id: disk.solid_id,
                     directrix_id: disk.directrix_id,
                     mapping_path: disk.mapping_path.clone(),

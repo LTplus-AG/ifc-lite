@@ -101,6 +101,43 @@ class SweptDiskChecks(TypedDict):
     elements: Dict[int, List[SweptDiskCheckEntry]]  # occurrence STEP ID
     diagnostics: List[str]  # representation traversal problems
 
+class SweptDiskSourceKey(TypedDict):
+    model_sha256: str
+    schema: Optional[str]
+    length_unit_scale_bits: int  # exact f64 bit pattern
+    context: Dict[str, Any]  # direct representation_id or mapped representation_map_path
+    solid_id: int
+
+class SweptDiskDefinition(TypedDict):
+    key: SweptDiskSourceKey
+    directrix_id: int
+    Radius: float  # raw IFC file length units
+    InnerRadius: Optional[float]  # raw IFC file length units
+    Directrix: List[DirectrixSegment]  # raw IFC file length units
+    status: DirectrixStatus
+
+class SweptDiskInstance(TypedDict):
+    ordinal: int
+    source: SweptDiskSourceKey
+    product_id: int
+    solid_id: int
+    mapping_path: List[int]
+    source_modified: bool
+    world_from_source: Optional[List[float]]  # column-major f64, file units to world metres
+    status: DirectrixStatus
+
+class SweptDiskDefinitions(TypedDict):
+    up_axis: str
+    source_units: str
+    world_units: str
+    coordinate_space: str
+    model_sha256: str
+    schema: Optional[str]
+    length_unit_scale: float
+    sources: List[SweptDiskDefinition]
+    instances: Dict[int, List[SweptDiskInstance]]
+    diagnostics: List[str]
+
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -240,6 +277,18 @@ def check_swept_disks(
     Raises:
         ValueError: invalid tolerance.
         RuntimeError: extraction worker failed.
+    """
+    ...
+
+def swept_disk_definitions(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+) -> SweptDiskDefinitions:
+    """Extract reusable raw `IfcSweptDiskSolid` sources and f64 world instances.
+
+    `world_from_source` maps raw file-unit IFC Z-up coordinates to absolute
+    world metres; `None` means the transform was invalid. Nonuniform world
+    disks have unsupported instance status, while their source is preserved.
     """
     ...
 

@@ -545,9 +545,12 @@ pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryD
 // Optional authored swept-disk descriptions and measurements, keyed by product occurrence ID
 pub use analytic_export::{
     check_swept_disk, extract_swept_disk_descriptions,
+    extract_swept_disk_definitions,
     DirectrixMetrics, DirectrixSegmentMetrics, SweptDiskCheckError,
     SweptDiskCheckFinding, SweptDiskCheckOptions, SweptDiskCheckReport,
     SweptDiskDescriptions, SweptDiskFindingCode, SweptDiskOccurrence,
+    SweptDiskDefinition, SweptDiskDefinitions, SweptDiskInstance,
+    SweptDiskSourceKey, SweptDiskSourceContext,
 };
 
 pub use georeferencing::{
@@ -581,6 +584,24 @@ explicit status, no partial directrix, and the method returns `None`. For an
 unsupported transform, radii retain their authored values converted to metres;
 no world circular radius is implied. The existing mesh export remains a
 separate operation.
+
+`extract_swept_disk_definitions(ifc_bytes, ids)` provides an opt-in
+source/instance form without changing the flattened result above. A source
+contains authored `Radius`, `InnerRadius`, and `Directrix` in raw IFC file
+length units. Its key includes the IFC-byte SHA-256, `FILE_SCHEMA`, exact f64
+length-unit-scale bits, solid STEP id, and either the top-level representation
+id or ordered `IfcRepresentationMap` ids. Repeated mapped items that use the
+same representation map share a source but remain separate instances with
+deterministic ordinals and mapped-item paths. `source_modified` still marks CSG
+operands.
+
+Each instance's column-major f64 `world_from_source` maps raw source
+coordinates directly into absolute IFC Z-up metres; it includes the file-unit
+scale, product placement and nested mapped transforms. A source radius is not
+a world radius until the uniform instance scale is applied. Nonuniform world
+disks carry an unsupported instance status; invalid matrices have `None` and
+an unsupported status. The source remains available for inspection. Work and
+output budgets are reported in `diagnostics` when reached.
 
 `check_swept_disk(&occurrence, &options)` checks the extracted source geometry
 without decoding or tessellating it again. `SweptDiskCheckOptions::default()`

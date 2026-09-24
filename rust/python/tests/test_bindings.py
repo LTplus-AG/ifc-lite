@@ -181,6 +181,23 @@ def test_issue_5758_swept_disk_checks_use_rust_source_geometry():
     assert ifclite_geom.check_swept_disks(read(REBAR), ids=set())["elements"] == {}
 
 
+def test_issue_5785_reusable_source_definitions_keep_file_units_and_world_frame():
+    view = ifclite_geom.swept_disk_definitions(read(TRIMMED_BAR), ids={50})
+    assert view["schema"] == "IFC2X3"
+    assert view["length_unit_scale"] == 0.001
+    assert len(view["sources"]) == 1
+    source = view["sources"][0]
+    assert source["Radius"] == 14.5
+    assert source["key"]["context"] == {
+        "kind": "mapped", "representation_map_path": [45]
+    }
+    (instance,) = view["instances"][50]
+    assert instance["source"] == source["key"]
+    assert instance["mapping_path"] == [47]
+    assert instance["world_from_source"][0] == 0.001
+    assert ifclite_geom.swept_disk_definitions(read(TRIMMED_BAR), ids=set())["instances"] == {}
+
+
 def test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources():
     source = read(TRIMMED_BAR).decode()
     unsupported = source.replace(

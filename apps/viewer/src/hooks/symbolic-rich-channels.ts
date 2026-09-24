@@ -28,12 +28,51 @@
 
 import type {
   AnnotationFill2D,
+  AnnotationsForStorey,
   AnnotationText2D,
   ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { resolveBucketY } from './useSymbolicAnnotations.js';
 import { legibleAnnotationTextColor } from '@/lib/annotation-ink';
 import type { ThemeMode } from '@/store/slices/uiSlice';
+
+/**
+ * The one storey whose grid bubbles (text + fill) are drawn (issue #5583).
+ *
+ * A structural grid is one axis system extended through every floor, but
+ * `ensureBucket` (`symbolic-parse.ts`) buckets IfcGridAxis content by
+ * elevation the same way it buckets IfcAnnotation content, so a bubble
+ * authored once per axis but assigned per-storey lands in EVERY storey's
+ * `gridByStorey` bucket. A multi-storey structural model (Snowdon_Towers is
+ * the reported case) then stacks one circle-and-label per floor down every
+ * column, burying the model under overlapping duplicates of the same label.
+ *
+ * Grid LINES keep their per-storey bucket (a floor's grid lines are genuine
+ * per-floor content — `symbolic-line-channels.ts` is unaffected here), but a
+ * bubble is a reference label, not floor-specific content, so only the
+ * lowest-elevation storey's bubbles are lifted. Ties / all-null elevations
+ * fall back to the first bucket in Map iteration order, which is stable for
+ * a given parse.
+ */
+function pickPrimaryGridBubbleStorey(
+  gridByStorey: ReadonlyMap<number, AnnotationsForStorey>,
+): number | undefined {
+  let bestKey: number | undefined;
+  let bestElevation: number | null = null;
+  for (const [key, bucket] of gridByStorey) {
+    if (bestKey === undefined) {
+      bestKey = key;
+      bestElevation = bucket.storeyElevation;
+      continue;
+    }
+    const elevation = bucket.storeyElevation;
+    if (elevation !== null && (bestElevation === null || elevation < bestElevation)) {
+      bestKey = key;
+      bestElevation = elevation;
+    }
+  }
+  return bestKey;
+}
 
 /**
  * A text annotation lifted into 3D world space.
@@ -198,12 +237,17 @@ export function buildSymbolicRichChannels(
     }
 
     if (effectiveGridEnabled) {
+      // #5583: draw bubbles from only the primary (lowest) storey — see
+      // `pickPrimaryGridBubbleStorey` — so a per-storey-duplicated axis label
+      // does not stack one circle per floor down every column.
+      const primaryBubbleStorey = pickPrimaryGridBubbleStorey(cached.gridByStorey);
       // Issue #862: the section cut clips GRID content only — IfcAnnotation
       // deliberately bypasses this, the same rule the line channels follow.
       if (clipEnabled) {
         const lo = clipPos - clipDepth;
         const hi = clipPos + clipDepth;
-        for (const bucket of cached.gridByStorey.values()) {
+        for (const [key, bucket] of cached.gridByStorey) {
+          if (key !== primaryBubbleStorey) continue;
           const y = resolveBucketY(bucket.storeyElevation, fallbackY);
           if (y < lo || y > hi) continue;
           for (const t of bucket.texts) pushGridText(t, y);
@@ -214,7 +258,8 @@ export function buildSymbolicRichChannels(
           for (const f of cached.gridLooseFills) pushGridFill(f, fallbackY);
         }
       } else {
-        for (const bucket of cached.gridByStorey.values()) {
+        for (const [key, bucket] of cached.gridByStorey) {
+          if (key !== primaryBubbleStorey) continue;
           const y = resolveBucketY(bucket.storeyElevation, fallbackY);
           for (const t of bucket.texts) pushGridText(t, y);
           for (const f of bucket.fills) pushGridFill(f, y);

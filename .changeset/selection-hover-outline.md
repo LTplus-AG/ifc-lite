@@ -8,4 +8,4 @@ A new selection/hover mask pass (`selection-mask-pass.ts`) draws the selected ge
 
 - `RenderOptions.hoveredId?: number | null` — the entity to pre-highlight, or `null`/absent for none.
 - New viewer setting "Hover highlight" (Main toolbar → Helpers), on by default, independent of "Hover tooltips".
-- **Known limitation**: only non-instanced selected/hovered meshes get the mask (an instanced occurrence's "selected" bit lives in per-instance vertex data the mask pass does not read, to avoid touching `main.wgsl.ts`, shared with the concurrent specular PR #5386). Filed as a follow-up.
+- **Known limitation**: only non-instanced selected/hovered meshes get the mask (an instanced occurrence's "selected" bit lives in per-instance vertex data the mask pass does not read, to avoid touching `main.wgsl.ts`, shared with the concurrent specular PR #5386). Follow-up: [#5745](https://github.com/LTplus-AG/ifc-lite/issues/5745).

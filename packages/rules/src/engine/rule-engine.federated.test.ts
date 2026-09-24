@@ -10,12 +10,13 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { runRuleSet, resolveTargetModels } from './rule-engine.js';
 import type { InformationRule, RuleSetFile } from '../rule-set/rule-set.js';
 import { Rule } from '../filter/filter-rules.js';
 import type { EvaluatorModel } from '../filter/filter-evaluate.js';
 
-function wallStep(globalId: string, name: string): string {
+function wallStep(globalId: string, name: string, withPropertyAtom = false): string {
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -31,14 +32,18 @@ DATA;
 #31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40= IFCLOCALPLACEMENT($,#21);
 #100= IFCWALL('${globalId}',$,'${name}',$,$,#40,$,'tag',$);
+${withPropertyAtom ? "#201= IFCPROPERTYSINGLEVALUE('Code',$,IFCTEXT('A'),$);" : ''}
 ENDSEC;
 END-ISO-10303-21;
 `;
 }
 
-async function parseWall(globalId: string, name: string): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(wallStep(globalId, name));
-  return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+async function parseWall(globalId: string, name: string, deferPropertyAtomIndex = false): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(wallStep(globalId, name, deferPropertyAtomIndex));
+  return new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    { deferPropertyAtomIndex },
+  );
 }
 
 function stateFor(models: { id: string; fingerprint?: string; store: IfcDataStore }[]): EvaluatorModel[] {
@@ -55,6 +60,37 @@ function allWallsRuleSet(targets?: RuleSetFile['targets']): RuleSetFile {
 }
 
 describe('runRuleSet — federated targeting by sourceFingerprint (#5138)', () => {
+  it('uses effective classes and entity counts independently for two edited models (#5249)', async () => {
+    const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A', true);
+    const storeB = await parseWall('0WallB0000000000000000B', 'Wall in B');
+    assert.ok(storeA.deferredEntityIndex?.has(201));
+    assert.equal(storeA.entityIndex.byType.has('IFCPROPERTYSINGLEVALUE'), false);
+    const viewA = new MutablePropertyView(null, 'm1');
+    const viewB = new MutablePropertyView(null, 'm2');
+    viewA.setExpressIdWatermark(100);
+    viewB.setExpressIdWatermark(100);
+    viewA.deleteEntity(100);
+    viewB.setEntityType(100, 'IfcDoor', undefined, 'IfcWall');
+    const createdA = viewA.createEntity('IfcWall', ['0NewWallA0000000000001', '$', 'New A', '$', '$', '#40', '$', 'tag', '$']);
+    const createdB = viewB.createEntity('IfcWall', ['0NewWallB0000000000001', '$', 'New B', '$', '$', '#40', '$', 'tag', '$']);
+    const ruleSet = allWallsRuleSet();
+    ruleSet.rules[0].applicability.groups[0].rules[0] = {
+      kind: 'ifcType', values: ['IfcWall'], op: 'in', exactClass: true,
+    };
+
+    const report = await runRuleSet({ ruleSet, models: [
+      { id: 'm1', store: storeA, mutationView: viewA },
+      { id: 'm2', store: storeB, mutationView: viewB },
+    ] });
+    assert.deepEqual(report.modelInfo.map(({ modelId, entityCount }) => [modelId, entityCount]), [
+      ['m1', storeA.entityCount], // one source delete and one authored create
+      ['m2', storeB.entityCount + 1], // retype preserves the source row
+    ]);
+    assert.deepEqual(report.specificationResults[0].entityResults.map(({ modelId, expressId }) => [modelId, expressId]), [
+      ['m1', createdA.expressId], ['m2', createdB.expressId],
+    ]);
+  });
+
   it('resolveTargetModels narrows to the fingerprint named in targets.modelFingerprints', async () => {
     const storeA = await parseWall('0WallA0000000000000000A', 'Wall in A');
     const storeB = await parseWall('0WallB0000000000000000B', 'Wall in B');

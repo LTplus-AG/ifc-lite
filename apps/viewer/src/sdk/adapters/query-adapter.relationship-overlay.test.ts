@@ -115,13 +115,11 @@ test('viewer exact relationship queries fold authored records and endpoint overr
 
   // Edits that bypass undo history still belong to the effective relationship view.
   view.setPositionalAttribute(5, 5, ['#3'], true);
-  assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
-    { modelId: 'default', expressId: 3 },
-  ]);
+  assert.deepEqual(query.relationships(building).relations
+    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [3]);
   view.removePositionalMutation(5, 5);
-  assert.deepEqual(query.related(building, 'IfcRelAggregates', 'forward'), [
-    { modelId: 'default', expressId: 4 },
-  ]);
+  assert.deepEqual(query.relationships(building).relations
+    ?.filter(edge => edge.relationshipId === 5).map(edge => edge.entity.id), [4]);
 
   const createdWall = writes.addEntity('default', {
     type: 'IfcWall',

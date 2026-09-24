@@ -169,13 +169,14 @@ dropped without being reported.
 
 ```typescript
 import { parseIDS } from '@ifc-lite/ids';
-import { idsToRuleSet, ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
+import { idsToRuleSet, ruleSetToIds, type EvaluatorModel, type RuleSetFile } from '@ifc-lite/rules';
 
 declare const ruleSet: RuleSetFile;
 declare const idsXml: string;
+declare const models: EvaluatorModel[]; // the models the rule set runs on
 
 // Rule set -> IDS 1.0: rules IDS can express become specifications.
-const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'] });
+const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'], models });
 exported.xml;      // IDS XML, or null when no rule could be exported
 exported.refused;  // [{ ruleId, ruleName, reasons: string[] }]
 exported.notes;    // caveats for the exported set as a whole
@@ -205,15 +206,26 @@ other rule is refused with each reason listed:
 - a regex that uses JavaScript-only syntax
 - applicable-count bounds IDS 1.0 can't state
 
-Two caveats are reported as notes. IDS compares measure values in SI units,
-while the rule engine compares the stored value. IDS matches property-set and
-property names case-sensitively, while the engine matches literal names
+**Units.** IDS states every measure value in SI units (metres, m², m³). A
+property or quantity rule can compare in SI too: `valueUnit: 'si'` (the
+**SI** toggle on the chip) converts each value with its own unit, meaning
+an explicit `Unit` on the property or quantity, else the project unit for its
+measure type, before comparing. Such a rule exports unchanged. A numeric
+rule without it compares the model's stored numbers. The export converts its
+operand to SI with the unit the given `models` store that value in, and
+refuses the rule when there are no models, when no model has the value, or
+when the models disagree. Import sets `valueUnit: 'si'` on every numeric
+property and quantity check, so an imported IDS gives the same verdicts on
+a millimetre model as on a metre one.
+
+One caveat is reported as a note. IDS matches property-set and property
+names case-sensitively, while the engine matches literal names
 case-insensitively.
 
 **Import** covers specifications whose facets are all entity, attribute,
 property, material or classification-presence facets, with simple values,
 patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
-as a `quantity` rule. A property facet's `dataType` has no rule equivalent, so it is imported without that check, and each dropped one is listed in `droppedChecks` (and in the panel's import summary). An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
+as a `quantity` rule. A property facet's `dataType` has no rule equivalent, so it is imported without that check, and each dropped one is listed in `droppedChecks` (and in the panel's import summary). An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. These block a specification, with the reason:
 
 - `partOf` facets
 - `optional` and `prohibited` facets

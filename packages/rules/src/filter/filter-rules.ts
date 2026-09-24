@@ -15,6 +15,7 @@
 
 import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
+import type { SubjectReadOptions } from './subject-read-options.js';
 
 // ── Operator enums ────────────────────────────────────────────────────────────
 
@@ -183,7 +184,7 @@ export interface AttributeRule {
   valueKind?: TextKind;
 }
 
-export interface PropertyRule {
+export interface PropertyRule extends SubjectReadOptions {
   kind: 'property';
   setName: string;
   /** How `setName` reads — a regex set name is what lets one rule reach both
@@ -199,7 +200,7 @@ export interface PropertyRule {
   valueKind?: TextKind;
 }
 
-export interface QuantityRule {
+export interface QuantityRule extends SubjectReadOptions {
   kind: 'quantity';
   setName: string;
   /** How `setName` reads. */
@@ -295,7 +296,6 @@ export type FilterRule =
   | GroupRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
-
 /** Combine an array of per-rule booleans according to AND/OR semantics. */
 export function combineRuleResults(combinator: Combinator, results: readonly boolean[]): boolean {
   if (results.length === 0) return false;

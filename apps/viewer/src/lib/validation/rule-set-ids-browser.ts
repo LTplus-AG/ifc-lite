@@ -17,6 +17,7 @@ import {
   type IdsToRuleSetResult,
   type RuleSetFile,
   type RuleSetToIdsResult,
+  type EvaluatorModel,
 } from '@ifc-lite/rules';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
@@ -42,8 +43,14 @@ export function idsVersionsForSchemas(schemas: Iterable<string>): IFCVersion[] {
  * `<name>.ids`. Returns the conversion result either way, so the caller can
  * show what was refused and why.
  */
-export function exportRuleSetAsIds(file: RuleSetFile, ifcVersions: IFCVersion[]): RuleSetToIdsResult {
-  const result = ruleSetToIds(file, { ifcVersions });
+export function exportRuleSetAsIds(
+  file: RuleSetFile,
+  ifcVersions: IFCVersion[],
+  models: ReadonlyArray<EvaluatorModel>,
+): RuleSetToIdsResult {
+  // The models resolve the unit each model-unit numeric check is stored in,
+  // so it can be written to the IDS in SI (#5225).
+  const result = ruleSetToIds(file, { ifcVersions, models });
   if (result.xml !== null) {
     const name = sanitizeFilename(file.name, { fallback: 'ruleset' });
     downloadFile(result.xml, `${name}.ids`, 'application/xml');

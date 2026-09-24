@@ -26,7 +26,7 @@
 
 import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
 import type { FilterGroup } from '../filter/filter-groups.js';
-import type { FilterRule, NumericOp, TextKind } from '../filter/filter-rules.js';
+import type { FilterRule, NumericOp, PropertyRule, QuantityRule, TextKind } from '../filter/filter-rules.js';
 import { escapeXsdLiteral, hasAstralCaveat, jsRegexOf, jsRegexToIdsPattern, type JsRegex } from './ids-regex.js';
 
 export type FacetRole = 'applicability' | 'requirement';
@@ -40,7 +40,7 @@ const NEGATED_OPS = new Set(['ne', 'notContains', 'notMatches', 'isNotSet', 'not
 /** A `/body/flags` literal: how a name with no declared kind says "pattern". */
 const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/;
 
-type Mapped = { facet: IDSFacet; boundsKey?: string; note?: string } | { reason: string };
+type Mapped = { facet: IDSFacet; boundsKey?: string } | { reason: string };
 
 function simpleOrEnumeration(values: readonly string[]): IDSConstraint {
   return values.length === 1
@@ -97,8 +97,34 @@ function valueConstraint(op: string, value: string, valueKind: TextKind | undefi
   }
 }
 
-const UNITS_NOTE =
-  'IDS compares measure values in SI units; the rule engine compares the value as stored in the model';
+/**
+ * How a numeric check on a value stored in model units reaches SI, which
+ * IDS states every measure in (#5225 decision). `scale` converts the
+ * rule's operand to SI; `unitless` means the value has no unit, so it
+ * exports as it is; `unknown` carries why the unit could not be settled.
+ */
+export type StoredUnitScale =
+  | { kind: 'scale'; scale: number }
+  | { kind: 'unitless' }
+  | { kind: 'unknown'; reason: string };
+
+export type StoredUnitScaleOf = (rule: PropertyRule | QuantityRule) => StoredUnitScale;
+
+const NO_MODEL: StoredUnitScaleOf = () => ({
+  kind: 'unknown',
+  reason: 'the value is compared in model units, and converting it to the SI units IDS uses needs a loaded model',
+});
+
+/** `c` with every number multiplied by `scale`. */
+function scaleConstraint(c: IDSConstraint, scale: number): IDSConstraint {
+  if (c.type === 'simpleValue') return { ...c, value: String(Number(c.value) * scale) };
+  if (c.type !== 'bounds') return c;
+  const out = { ...c };
+  for (const key of ['minInclusive', 'minExclusive', 'maxInclusive', 'maxExclusive'] as const) {
+    if (out[key] !== undefined) out[key] = (out[key] as number) * scale;
+  }
+  return out;
+}
 
 const ASTRAL_NOTE =
   'A pattern without the "u" flag reads an emoji or other character outside the Basic Multilingual Plane as two ' +
@@ -121,7 +147,7 @@ function regexNote(rule: FilterRule): string | undefined {
   return regexes.some(hasAstralCaveat) ? ASTRAL_NOTE : undefined;
 }
 
-function mapRule(rule: FilterRule): Mapped {
+function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
   if ('op' in rule && NEGATED_OPS.has(rule.op)) {
     return { reason: `a negated condition ("${rule.op}") cannot be expressed in IDS 1.0` };
   }
@@ -167,11 +193,17 @@ function mapRule(rule: FilterRule): Mapped {
         : valueConstraint(rule.op, rule.value, rule.valueKind);
       if (typeof value === 'string') return { reason: value };
       const key = `${rule.kind}:${rule.setName}:${isQuantity ? rule.quantityName : rule.propertyName}`;
-      const numeric = isQuantity || value?.type === 'bounds' || (value?.type === 'simpleValue' && Number.isFinite(Number(value.value)));
+      const numeric = value !== null && (isQuantity || value.type === 'bounds'
+        || (value.type === 'simpleValue' && value.value.trim() !== '' && Number.isFinite(Number(value.value))));
+      let exported = value;
+      if (numeric && value && rule.valueUnit !== 'si') {
+        const stored = scaleOf(rule);
+        if (stored.kind === 'unknown') return { reason: stored.reason };
+        if (stored.kind === 'scale') exported = scaleConstraint(value, stored.scale);
+      }
       return {
-        facet: { type: 'property', propertySet: setName, baseName, ...(value ? { value } : {}) },
+        facet: { type: 'property', propertySet: setName, baseName, ...(exported ? { value: exported } : {}) },
         boundsKey: value?.type === 'bounds' ? key : undefined,
-        note: numeric ? UNITS_NOTE : undefined,
       };
     }
     case 'material': {
@@ -257,7 +289,7 @@ function facetValue(facet: IDSFacet): IDSConstraint | undefined {
 }
 
 /** Map one group. Every reason is collected, not just the first. */
-export function groupToFacets(group: FilterGroup, role: FacetRole): GroupFacets {
+export function groupToFacets(group: FilterGroup, role: FacetRole, scaleOf: StoredUnitScaleOf = NO_MODEL): GroupFacets {
   const reasons: string[] = [];
   const notes = new Set<string>();
   if (group.rules.length === 0) {
@@ -279,9 +311,8 @@ export function groupToFacets(group: FilterGroup, role: FacetRole): GroupFacets 
   const byBoundsKey = new Map<string, IDSFacet>();
   for (const rule of group.rules) {
     if (rule.kind === 'ifcType' || rule.kind === 'predefinedType') continue;
-    const mapped = mapRule(rule);
+    const mapped = mapRule(rule, scaleOf);
     if ('reason' in mapped) { reasons.push(mapped.reason); continue; }
-    if (mapped.note) notes.add(mapped.note);
     const astral = regexNote(rule);
     if (astral) notes.add(astral);
     const existing = mapped.boundsKey ? byBoundsKey.get(mapped.boundsKey) : undefined;

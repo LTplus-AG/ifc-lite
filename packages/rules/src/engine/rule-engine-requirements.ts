@@ -42,6 +42,7 @@ import {
 import type { FilterGroup } from '../filter/filter-groups.js';
 import type { FilteredElement } from '../filter/filter-evaluate.js';
 import { readSubject, type ReadSubjectContext, type SubjectValue } from '../filter/read-subject.js';
+import { toSiValues } from '../filter/subject-match.js';
 import {
   matchStringAnyNone,
   numericOpMatches,
@@ -170,7 +171,10 @@ function isElementRule(rule: FilterRule): rule is ElementRule {
 }
 
 function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: ValidationOpts): RuleOutcome {
-  const subject = readSubject(rule, ctx);
+  // `valueUnit: 'si'` (#5225): compare SI values, the same reading search uses.
+  const subject = (rule.kind === 'property' || rule.kind === 'quantity') && rule.valueUnit === 'si'
+    ? toSiValues(readSubject(rule, ctx))
+    : readSubject(rule, ctx);
   const facetType = checkKindOf(rule.kind);
   const label = subjectLabel(rule);
   const actual = actualOf(subject);

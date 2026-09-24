@@ -53,6 +53,7 @@ export function isFilterRule(value: unknown): value is FilterRule {
       (r.valueKind === undefined || r.valueKind === 'literal' || r.valueKind === 'regex')
     );
   }
+  if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
   return (
     kind === 'model' ||
     kind === 'storey' ||
@@ -68,6 +69,12 @@ export function isFilterRule(value: unknown): value is FilterRule {
     kind === 'elevation' ||
     kind === 'type'
   );
+}
+
+/** `SubjectReadOptions` fields, when present, must hold a value the engine knows. */
+function validReadOptions(value: object): boolean {
+  const r = value as { valueUnit?: unknown };
+  return r.valueUnit === undefined || r.valueUnit === 'si';
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

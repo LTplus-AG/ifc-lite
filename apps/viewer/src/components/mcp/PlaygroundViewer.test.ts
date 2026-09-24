@@ -22,10 +22,12 @@
 
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
 import { loadPlaygroundGeometry } from './PlaygroundViewer.js';
 import { dispatch, parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { playgroundGeometrySource } from './playground-geometry-source.js';
 
 function ifc4(body: string): string {
   return [
@@ -171,6 +173,45 @@ it('meshes the effective playground entity set after create and delete (#5249)',
     processMock.mock.restore();
     disposeMock.mock.restore();
   }
+});
+
+it('removes a deleted wall mesh from the real architecture sample (#5249)', async () => {
+  const bytes = new Uint8Array(await readFile(
+    new URL('../../../public/samples/building-architecture.ifc', import.meta.url),
+  ));
+  const model = await parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'building-architecture.ifc');
+  let original: MeshData[] = [];
+  await loadPlaygroundGeometry(model, {
+    isCancelled: () => false,
+    setPhase: () => undefined,
+    setPhaseMsg: () => undefined,
+    onMeshes: (meshes) => { original = meshes; },
+  });
+
+  const wall = original.find((mesh) => model.store.entityIndex.byId.get(mesh.expressId)?.type === 'IFCWALL');
+  assert.ok(wall, 'the bundled building model must produce a wall mesh before the edit');
+
+  const deleted = await dispatch(model, 'entity_delete', { express_id: wall.expressId });
+  assert.equal(deleted.isError, false, deleted.text);
+  const created = await dispatch(model, 'entity_create', {
+    type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsTA', null, 'New door'],
+  });
+  assert.equal(created.isError, false, created.text);
+  const newId = (created.structured as { expressId: number }).expressId;
+
+  let live: MeshData[] = [];
+  await loadPlaygroundGeometry(model, {
+    isCancelled: () => false,
+    setPhase: () => undefined,
+    setPhaseMsg: () => undefined,
+    onMeshes: (meshes) => { live = meshes; },
+  });
+  assert.ok(live.length > 0, 'the edited building still has drawable geometry');
+  assert.equal(live.some((mesh) => mesh.expressId === wall.expressId), false,
+    'the deleted wall must disappear from the live mesh result');
+  const source = await playgroundGeometrySource(model);
+  assert.equal(source.store.entityIndex.byId.has(newId), true,
+    'the created entity is present in the STEP snapshot used for meshing');
 });
 
 describe('loadPlaygroundGeometry phase messages stay reactive to locale (#4918 slice 5b review)', () => {

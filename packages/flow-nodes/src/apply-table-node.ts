@@ -18,11 +18,10 @@
  * `PARSE_INVALID` contract, which this reuses rather than re-deriving.
  */
 
-import { PARSE_INVALID } from '@ifc-lite/mutations';
-import { parseStrictCell } from './strict-cell.js';
+import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
 import type { Column, EntityRef } from '@ifc-lite/flow';
 import { ENTITY_LIST, SCALAR_LIST, TABLE_ITEM, requireCapability, toSdkRef, type FlowNodeDef } from './host.js';
-import { tableOf } from './table-nodes.js';
+import { VALUE_TYPE_BY_COLUMN_TYPE, tableOf } from './table-nodes.js';
 
 interface ColumnMapping {
   readonly column: string;
@@ -106,9 +105,11 @@ export const applyTableNode: FlowNodeDef = {
         // An empty string is empty too: `table.readCsv` keeps a string column's
         // blank cell as `''`, which would otherwise overwrite the value.
         if (raw === null || raw === undefined || raw === '') continue;
-        // Strict first: a table from any producer (not only this package's
-        // readers) must not write `parseFloat`'s prefix of "12,5" as 12.
-        const parsed = parseStrictCell(String(raw), column.type);
+        // Re-parsed, not trusted: a table from any producer (not only this
+        // package's readers) goes through the same whole-cell `parseValue`,
+        // which refuses "12,5" rather than writing 12. Text is trimmed like
+        // `CsvConnector`'s own cell splitter does.
+        const parsed = parseValue(String(raw).trim(), VALUE_TYPE_BY_COLUMN_TYPE[column.type]);
         // A cell that fails to parse as its column's declared type is
         // reported and left unwritten — never coerced to 0/''/false. Other
         // columns on the same row still write; only this cell is skipped.

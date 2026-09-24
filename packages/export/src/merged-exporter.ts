@@ -671,7 +671,7 @@ export class MergedExporter {
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') {
-        // @raw-entity-enumeration-ok async merge first bakes and reparses every edited model
+        // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
       }
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';

@@ -22,6 +22,8 @@ import { extractWallSegmentsForStorey, existingSpaceFootprintsByStorey } from '.
 import { resolveDuplicateSource } from './resolve-source.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addSpaceToStore } from './space.js';
+import { addWallToStore } from './wall.js';
+import { listStoreys } from './generate-spaces-all.js';
 
 const IFC = `ISO-10303-21;
 HEADER;
@@ -139,5 +141,45 @@ describe('in-store authoring over the edited model (#5249)', () => {
     const { store, editor } = await session();
     editor.removeEntity(50);
     expect(() => resolveDuplicateSource(store, 50, editor)).toThrow(/deleted/);
+  });
+});
+
+describe('in-store authoring review follow-up (#5249)', () => {
+  it('Auto Spaces: a created wall retyped away is not a divider; a created one is counted once', async () => {
+    const { store, view, editor } = await session();
+    const anchor = resolveSpatialAnchor(store, 4, view)!;
+    const created = addWallToStore(editor, anchor, { Start: [0, 5, 0], End: [5, 5, 0], Thickness: 0.2, Height: 3 }).wallId;
+    const withCreated = extractWallSegmentsForStorey(store, 4, view).contributingWallIds;
+    expect(withCreated.filter((id) => id === created)).toHaveLength(1);
+    editor.setEntityType(created, 'IfcFurniture');
+    expect(extractWallSegmentsForStorey(store, 4, view).contributingWallIds).not.toContain(created);
+  });
+
+  it('Auto Spaces: a positional edit that moves a wall out of the containment removes it', async () => {
+    const { store, view } = await session();
+    view.setPositionalAttribute(79, 4, ['#50']);
+    expect(dividers(store, view)).toEqual([50]);
+  });
+
+  it('listStoreys: a deleted storey is not listed', async () => {
+    const { store, editor, view } = await session();
+    expect(listStoreys(store, view).map((s) => s.id)).toEqual([4]);
+    editor.removeEntity(4);
+    expect(listStoreys(store, view)).toEqual([]);
+  });
+
+  it('Space Sketch dedup on a millimetre model: parsed spaces are scaled to metres, baked ones are not', async () => {
+    const mm = IFC.replace("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)");
+    const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(mm).buffer);
+    const view = new MutablePropertyView(store.properties ?? null, 'm');
+    const editor = new StoreEditor(store, view);
+    const parsed = existingSpaceFootprintsByStorey(store, view).get(4)!;
+    // The parsed space's profile spans 1..3 x 0..2 native units = 0.001..0.003 m.
+    expect(Math.max(...parsed[0].map((p) => p[0]))).toBeCloseTo(0.003);
+    addSpaceToStore(editor, resolveSpatialAnchor(store, 4, view)!, { Profile: 'rectangle', Position: [10, 10, 0], Width: 4, Depth: 3, Height: 2.8 });
+    const all = existingSpaceFootprintsByStorey(store, view).get(4)!;
+    const baked = all.find((fp) => fp !== undefined && Math.max(...fp.map((p) => p[0])) > 5)!;
+    // Authored in metres: not divided by 1000 again.
+    expect(Math.max(...baked.map((p) => p[0]))).toBeGreaterThan(10);
   });
 });

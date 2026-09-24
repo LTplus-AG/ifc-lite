@@ -25,6 +25,7 @@ import {
   type BoundaryMode,
 } from './generate-spaces.js';
 import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
+import { createOverlayLookup, effectiveStoreyIds } from './spatial-children.js';
 
 /** Snap tolerances tried, in order, when `snap: 'auto'`. First that encloses
  *  rooms wins (least over-merging); else the largest is used. */
@@ -92,14 +93,27 @@ export interface GenerateSpacesAllResult {
   skippedExisting: number;
 }
 
-/** Every IfcBuildingStorey with resolved name + elevation, low → high. */
-export function listStoreys(store: IfcDataStore): StoreyInfo[] {
+/**
+ * Every IfcBuildingStorey of the effective model (#5249) with resolved name +
+ * elevation, low → high: a storey deleted this session is not listed, and one
+ * created this session is, named and elevated from its authored payload.
+ */
+export function listStoreys(store: IfcDataStore, overlay?: OverlayWallReader): StoreyInfo[] {
   const elevs = store.spatialHierarchy?.storeyElevations;
-  const list = store.getEntitiesByType('IfcBuildingStorey').map((s) => ({
-    id: s.expressId,
-    name: store.entities.getName(s.expressId) || `Storey #${s.expressId}`,
-    elevation: elevs?.get(s.expressId) ?? 0,
-  }));
+  const lookup = createOverlayLookup(overlay);
+  const created = new Map(Array.from(overlay?.getNewEntities() ?? [], (e) => [e.expressId, e.attributes]));
+  const list = effectiveStoreyIds(store, lookup).map((id) => {
+    const authored = created.get(id);
+    if (authored) {
+      const name = typeof authored[2] === 'string' && authored[2] ? authored[2] : `Storey #${id}`;
+      return { id, name, elevation: typeof authored[9] === 'number' ? authored[9] : 0 };
+    }
+    return {
+      id,
+      name: store.entities.getName(id) || `Storey #${id}`,
+      elevation: elevs?.get(id) ?? 0,
+    };
+  });
   list.sort((a, b) => a.elevation - b.elevation);
   return list;
 }
@@ -110,7 +124,7 @@ export function generateSpaces(
   options: GenerateSpacesAllOptions = {},
   overlay?: OverlayWallReader,
 ): GenerateSpacesAllResult {
-  const all = listStoreys(store);
+  const all = listStoreys(store, overlay);
   const want = options.storeys;
   const selected = want === undefined || want === 'all'
     ? all

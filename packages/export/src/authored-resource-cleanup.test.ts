@@ -113,12 +113,15 @@ describe('authored appearance graph cleanup #4243', () => {
   it('resolves URI ownership with no deletion candidates and ignores references inside strings', async () => {
     const f = await fixture();
     f.editor.setPositionalAttribute(12, 5, `original-#${f.style}.png`);
-    const before = new StepExporter(f.store, f.view).export({ schema: 'IFC4', applyMutations: true }).content;
+    // The header timestamp is pinned: two exports straddling a second
+    // boundary otherwise differ in FILE_NAME alone, and this equality flaked.
+    const pinned = { schema: 'IFC4', applyMutations: true, timeStamp: '20240101T000000' } as const;
+    const before = new StepExporter(f.store, f.view).export(pinned).content;
     const cleanup = planAuthoredResourceCleanup(f.store, f.view, new Set());
     expect(cleanup.entityIds.size).toBe(0);
     expect(cleanup.retainedImageUris).toEqual(new Set([`original-#${f.style}.png`, 'authored.png']));
     expect(f.collect()).toEqual(new Set([f.image, f.texture, f.style]));
-    const after = new StepExporter(f.store, f.view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const after = new StepExporter(f.store, f.view).export(pinned).content;
     expect(after).toEqual(before); // Planning never mutates the effective export.
     f.editor.removeEntity(f.image);
     expect(planAuthoredResourceCleanup(f.store, f.view, new Set()).retainedImageUris)

@@ -18,7 +18,7 @@ export { invertAppearancePartition, validateAppearancePartition, type Appearance
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
-import { resizeRendererViewport } from './renderer-viewport.js';
+import { measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -253,6 +253,8 @@ export class Renderer {
     private readonly referenceImages = createReferenceImageManager(this);
     getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
     private postProcessor: PostProcessor | null = null;
+    /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
+    private pixelRatio = 1;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
     // Procedural sky background — created lazily on the first frame that
@@ -604,15 +606,15 @@ export class Renderer {
             return;
         }
 
-        // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
-        // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
-        // can't overflow on tall/wide layouts (see render() for the per-frame clamp).
-        const rect = this.canvas.getBoundingClientRect();
+        // Size the buffer to the element's device pixels, the same sizing every
+        // frame applies (#5383); an unlaid-out canvas keeps its attributes. Both
+        // are clamped to the GPU's max 2D texture dimension so the initial
+        // pipeline allocations can't overflow on tall/wide layouts.
         const maxDim = this.device.getMaxTextureDimension();
-        const rawWidth = this.canvas.width || Math.max(1, Math.floor(rect.width));
-        const rawHeight = this.canvas.height || Math.max(1, Math.floor(rect.height));
-        const width = Math.min(rawWidth, maxDim);
-        const height = Math.min(rawHeight, maxDim);
+        const measured = measureDrawingBuffer(this.canvas, maxDim);
+        this.pixelRatio = measured?.pixelRatio ?? 1;
+        const width = Math.max(1, Math.min(measured?.width ?? this.canvas.width, maxDim));
+        const height = Math.max(1, Math.min(measured?.height ?? this.canvas.height, maxDim));
 
         // Set pixel dimensions if not already set, or if we clamped them down
         if (!this.canvas.width || !this.canvas.height || this.canvas.width !== width || this.canvas.height !== height) {
@@ -1647,21 +1649,13 @@ export class Renderer {
             return;
         }
 
-        // Validate canvas dimensions
-        // Align width to 64 pixels for WebGPU texture row alignment (256 bytes / 4 bytes per pixel)
-        // and clamp both axes to the GPU's max 2D texture dimension. Some hosts (e.g. tall iframes
-        // on high-DPR displays) can produce canvas dimensions that exceed 8192 and would otherwise
-        // make every depth/colour texture allocation a validation error.
-        const rect = this.canvas.getBoundingClientRect();
-        const maxDim = this.device.getMaxTextureDimension();
-        const rawWidth = Math.max(1, Math.floor(rect.width));
-        const widthAligned = Math.max(64, Math.floor(rawWidth / 64) * 64);
-        const width = Math.min(widthAligned, Math.floor(maxDim / 64) * 64);
-        const rawHeight = Math.max(1, Math.floor(rect.height));
-        const height = Math.min(rawHeight, maxDim);
-
-        // Skip rendering if canvas is too small
-        if (width < 64 || height < 10) { this._renderSkipCount++; return; }
+        // Drawing buffer = the element's device-pixel size (capped ratio, clamped
+        // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension());
+        // Skip rendering while the canvas is collapsed or too small.
+        if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
+        const { width, height } = measured;
+        this.pixelRatio = measured.pixelRatio;
 
         // Update canvas pixel dimensions if needed
         const dimensionsChanged = this.canvas.width !== width || this.canvas.height !== height;
@@ -2350,7 +2344,7 @@ export class Renderer {
                         mode: this.camera.getProjectionMode(),
                         fovYRadians: this.camera.getFOV(),
                         orthoHalfHeight: this.camera.getOrthoSize(),
-                        viewportHeightPx: this.canvas.height,
+                        viewportHeightPx: this.canvas.height / this.pixelRatio, // CSS px, like the thresholds
                     };
                 }
 
@@ -3089,7 +3083,7 @@ export class Renderer {
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
                     clipBox: options.clipBox,
-                    viewport: { width: this.canvas.width, height: this.canvas.height },
+                    viewport: { width: this.canvas.width / this.pixelRatio, height: this.canvas.height / this.pixelRatio },
                 });
             }
 
@@ -3107,8 +3101,8 @@ export class Renderer {
                 viewProj,
                 modelBounds: this.getModelBounds(),
                 camera: this.camera,
-                canvasWidth: this.canvas.width,
-                canvasHeight: this.canvas.height,
+                canvasWidth: this.canvas.width / this.pixelRatio, // CSS px: glyph sizes are CSS px
+                canvasHeight: this.canvas.height / this.pixelRatio, pixelRatio: this.pixelRatio,
                 relativeToEyeFrame,
                 rteViewProj: relativeToEyeFrame.getViewProjection().m,
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
@@ -3131,10 +3125,10 @@ export class Renderer {
                     depthView: this.pipeline.getDepthOnlyTextureView(),
                     objectIdView: this.pipeline.getObjectIdTextureView(),
                     contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
-                    radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),
+                    radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)) * this.pixelRatio, // taps are texels
                     intensity: contactEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.contactShading.intensity)) : 0.0,
                     separationQuality: visualEnhancement.separationLines.quality === 'high' ? 'high' : 'low',
-                    separationRadius: Math.min(2.0, Math.max(1.0, visualEnhancement.separationLines.radius)),
+                    separationRadius: Math.min(2.0, Math.max(1.0, visualEnhancement.separationLines.radius)) * this.pixelRatio,
                     separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
                     enableSeparationLines: separationEnabled,
                 });
@@ -3156,7 +3150,7 @@ export class Renderer {
                     },
                     {
                         strength: this.edlOptions.strength,
-                        radiusPx: this.edlOptions.radiusPx,
+                        radiusPx: this.edlOptions.radiusPx * this.pixelRatio,
                         highQuality: this.edlOptions.highQuality,
                     },
                 );

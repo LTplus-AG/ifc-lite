@@ -6,13 +6,11 @@
  * Project a world position to CSS-pixel screen coordinates.
  *
  * `camera.projectToScreen` returns coordinates in the canvas DRAWING-BUFFER
- * space (`0..canvas.width`). The buffer width is aligned *down* to a multiple
- * of 64 (`alignToWebGPU` in Viewport), so it is a little narrower than the
- * canvas's CSS box. DOM overlays — the measure gizmo / line, the move and
- * section gizmos, the snap indicator — are positioned in CSS pixels, so using
- * the raw buffer coordinates makes them drift left, increasingly toward the
- * right edge (issue #1107). Scaling buffer-space → CSS px puts them back under
- * the cursor.
+ * space (`0..canvas.width`), which is device pixels: the CSS box times the
+ * display's pixel ratio (#5383). DOM overlays — the measure gizmo / line, the
+ * move and section gizmos, the snap indicator — are positioned in CSS pixels,
+ * so the raw buffer coordinates would land off the cursor (issue #1107).
+ * Scaling buffer-space → CSS px puts them back under it.
  */
 export function projectToCssScreen(
   camera: {

@@ -124,7 +124,7 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
     // is metres away. Project a known source-space vertex and require the
     // snap detector to reconstruct that exact f64 coordinate instead.
     const snapVertex = { x: COMMON_ORIGIN[0], y: COMMON_ORIGIN[1] + 10, z: COMMON_ORIGIN[2] };
-    const snapScreen = camera.projectToScreen(snapVertex, canvas.width, canvas.height);
+    const snapScreen = camera.projectToScreen(snapVertex, canvas.clientWidth, canvas.clientHeight); // CSS px, like raycastScene
     const snappedVertex = snapScreen
       ? renderer.raycastScene(snapScreen.x, snapScreen.y, {
         snapOptions: { snapToVertices: true, snapToEdges: false, snapToFaces: false, screenSnapRadius: 24 },

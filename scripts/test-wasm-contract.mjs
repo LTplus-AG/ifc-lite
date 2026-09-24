@@ -30,6 +30,7 @@ import {
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
 import { runShardRefusalBoundaryTests } from './lib/shard-refusal-boundary.mjs';
+import { runClassToggleShardContract } from './lib/class-toggle-shard-contract.mjs';
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun, runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
@@ -2149,6 +2150,11 @@ await runPrepassClassBoundaryTests(api, test);
 // host reads both through a `??` fallback, which turns a boundary regression
 // into "this file refused nothing". Same module split, same reason.
 await runShardRefusalBoundaryTests(api, test);
+
+// ===== Class-toggled classes never ride the instanced shard (#5409) =====
+// The fixture is built from the viewer's class-toggle table, so a class added
+// there and not to the Rust partition fails here.
+await runClassToggleShardContract(IfcAPI, test);
 
 
 finishContractRun(api, passed, failed, skipped);

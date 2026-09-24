@@ -270,8 +270,23 @@ pub fn produce_element_meshes(
     let keep_order = !ctx.indexed_colour_full.is_empty()
         && element_color::element_reaches_indexed_colour(job.entity, ctx.indexed_colour_full, decoder);
     let previous_order = router.set_preserve_triangle_order(keep_order);
-    let (meshes, instance_occurrences) = produce_inner(job, ctx, decoder, router, &mut hasher);
+    let (mut meshes, mut instance_occurrences) = produce_inner(job, ctx, decoder, router, &mut hasher);
     router.set_preserve_triangle_order(previous_order);
+
+    // A class with a fixed display colour (openings, #5409) overrides whatever
+    // colour the style precedence resolved, on every mesh AND every don't-bake
+    // occurrence, so no path (sub-mesh, palette split, fallback) can leak one.
+    if let Some(fixed) = crate::style::fixed_display_color_for_type(&job.ifc_type) {
+        let fixed = fixed.to_array();
+        for mesh in &mut meshes {
+            mesh.color = fixed;
+            mesh.texture = None;
+            mesh.uvs = None;
+        }
+        for occurrence in &mut instance_occurrences {
+            occurrence.color = fixed;
+        }
+    }
 
     // Drain the router's per-element CSG diagnostics on EVERY return path so
     // a warm (batch-reused) router starts the next element clean.

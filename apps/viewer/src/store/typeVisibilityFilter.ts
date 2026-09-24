@@ -32,6 +32,12 @@ export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey>;
  * IFC class → toggle key. When the mapped toggle is `false` the class is
  * hidden from the viewport / export.
  *
+ * Every consumer gates FLAT meshes by `ifcType`, and the GPU-instanced shard
+ * carries no class, so the wasm partition keeps these classes off the shard
+ * (`CLASS_TOGGLED_TYPES`, `rust/wasm-bindings/src/api/gpu_meshes/batch_partition.rs`).
+ * A class added here must be added there too; the wasm contract test builds
+ * its fixture from this table and fails if one reaches the shard (#5409).
+ *
  * `IfcGeographicElement` (terrain, `.TERRAIN.` etc.) rides the `site` toggle:
  * the Site row is labelled "Terrain & context" and users reasonably expect
  * modelled terrain to disappear with it (issue #1480). It renders as a normal
@@ -42,6 +48,9 @@ const IFC_TYPE_TO_VISIBILITY_KEY: Readonly<Record<string, TypeVisibilityKey>> = 
   IfcSpace: 'spaces',
   IfcSpatialZone: 'spatialZones',
   IfcOpeningElement: 'openings',
+  // IFC4's standard-case opening is an opening too; matched by exact name
+  // like every row here, so it needs its own (#5409).
+  IfcOpeningStandardCase: 'openings',
   IfcVirtualElement: 'virtualElements',
   IfcSite: 'site',
   IfcGeographicElement: 'site',

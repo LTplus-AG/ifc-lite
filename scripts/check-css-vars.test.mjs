@@ -55,6 +55,12 @@ test('extractVarReferences finds a fallback-less reference and its line', () => 
   assert.equal(refs[0].line, 2);
 });
 
+test('extractVarReferences sees a reference with CSS comments around the name (review on #5584)', () => {
+  const src = 'stroke="var(--missing /* note */)"\nfill="var(/* a */ --other /* b */, red)"';
+  const refs = extractVarReferences(src);
+  assert.deepEqual(refs.map((r) => [r.name, r.hasFallback, r.line]), [['--missing', false, 1], ['--other', true, 2]]);
+});
+
 test('extractVarReferences marks a var(--x, fallback) reference as having a fallback', () => {
   const src = `background: var(--background, #fff);`;
   const refs = extractVarReferences(src);

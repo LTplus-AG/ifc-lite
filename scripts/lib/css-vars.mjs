@@ -58,7 +58,10 @@ export function extractDefinedCssVars(cssContent) {
  */
 export function extractVarReferences(sourceContent) {
   const refs = [];
-  const re = /var\(\s*(--[a-zA-Z0-9-]+)\s*([,)])/g;
+  // CSS comments may sit on either side of the name (`var(--x /* note */)`);
+  // skipping them is what keeps such a reference visible to the gate.
+  const gap = String.raw`(?:\s|\/\*[\s\S]*?\*\/)*`;
+  const re = new RegExp(String.raw`var\(` + gap + String.raw`(--[a-zA-Z0-9_-]+)` + gap + '([,)])', 'g');
   let m;
   while ((m = re.exec(sourceContent))) {
     const name = m[1];

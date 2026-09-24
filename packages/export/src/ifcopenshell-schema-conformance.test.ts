@@ -45,6 +45,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
+import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 const MODELS_DIR = resolve(__dirname, '../../../tests/models');
 const TOOL_DIR = resolve(__dirname, '../../../tools/ifcopenshell_reference');
@@ -186,6 +187,30 @@ describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant 
         const run = spawnSync(PYTHON, [VALIDATE_SCRIPT, out], { encoding: 'utf8' });
         expect(run.status, `${fixture} validated under the bare IFC4X3 token:\n${run.stdout}`).not.toBe(0);
       }
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'validates the MergedExporter output of the two converted fixtures, as IFC4 and IFC4X3 (#5471)',
+    async () => {
+      // Building-Architecture aggregates its Building under a Site;
+      // tessellated-item aggregates its Building straight under the Project.
+      // The Buildings unify, and the merge used to give the result both
+      // parents, failing IfcSpatialStructureElement.WR41.
+      const parser = new IfcParser();
+      const models: MergeModelInput[] = [];
+      for (const fixture of IFC4X3_CONVERTED) {
+        const buffer = toArrayBuffer(readFileSync(resolve(MODELS_DIR, fixture)));
+        models.push({ id: fixture, name: fixture, dataStore: await parser.parseColumnar(buffer) });
+      }
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-merged-'));
+      const outputs = (['IFC4', 'IFC4X3'] as const).map((schema) => {
+        const out = join(outDir, `merged-${schema}.ifc`);
+        writeFileSync(out, Buffer.from(new MergedExporter(models).export({ schema }).content));
+        return out;
+      });
+      runValidateOrThrow(outputs);
     },
     IFCOPENSHELL_TEST_TIMEOUT_MS,
   );

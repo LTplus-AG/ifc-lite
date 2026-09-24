@@ -377,7 +377,7 @@ describe('MergedExporter', () => {
     // Model2: same-named Building#2 (unified) aggregates [Storey#3 'GF' (matches
     // model1's), Storey#4 'Roof' (no match)] via RelAgg#5. The building and the
     // 'GF' storey both unify with model1's; 'Roof' does not, so the rel is only
-    // PARTIALLY redundant and today's skipRedundantRelAggregates keeps it whole.
+    // PARTIALLY redundant: kept for 'Roof', with the already-parented 'GF' stripped.
     const model2 = buildModel('m2', 'Struct', [
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
       [2, 'IFCBUILDING', "#2=IFCBUILDING('g5',$,'B',$,$,$,$,$,$,$);"],

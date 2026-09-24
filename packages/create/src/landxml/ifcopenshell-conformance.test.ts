@@ -57,6 +57,7 @@ const ALIGNMENT_SCRIPT = resolve(TOOL_DIR, 'check_alignment.py');
 const REFERENT_SCRIPT = resolve(TOOL_DIR, 'check_referents.py');
 const ALIGNMENT_FIXTURE = resolve(TOOL_DIR, 'alignment_fixture.json');
 const VERTICAL_SCRIPT = resolve(TOOL_DIR, 'check_vertical.py');
+const CANT_PROBE_SCRIPT = resolve(TOOL_DIR, 'probe_cant_mapping.py');
 const PYTHON = process.env.IFCOPENSHELL_PYTHON || 'python3';
 
 const canRun = spawnSync(PYTHON, ['-c', 'import ifcopenshell, ifcopenshell.validate'], { stdio: 'ignore' }).status === 0;
@@ -200,6 +201,36 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     const [code, stdout] = run(VERTICAL_SCRIPT, [writeConverted(partial, 'vertical-partial'), ALIGNMENT_FIXTURE]);
     expect(code, stdout).toBe(1);
     expect(stdout).toMatch(/authored profile of alignment '.+' is not in the file/);
+  }, TIMEOUT_MS);
+
+  it('refuses cant only while its premise holds: the pinned IfcOpenShell cannot regenerate cant geometry (§13.2)', () => {
+    // The refusal rests on a measured fact about the oracle, so the fact is
+    // measured here. If a pinned-version bump fixes IfcOpenShell's cant
+    // mapping, this goes red: re-examine mapping spec §13.2, because cant
+    // geometry may then be provable and the refusal no longer justified.
+    const [code, stdout] = run(CANT_PROBE_SCRIPT, []);
+    expect(code, stdout).toBe(0);
+    const probe = JSON.parse(stdout) as {
+      mirror_distinguished: boolean; centre_rotation_tilted: boolean; centre_linear_transition: string;
+    };
+    const premise = 'IfcOpenShell\'s cant mapping changed — revisit the cant refusal in mapping spec §13.2';
+    expect(probe.mirror_distinguished, premise).toBe(false);
+    expect(probe.centre_rotation_tilted, premise).toBe(false);
+    expect(probe.centre_linear_transition, premise).toBe('ZeroDivisionError');
+
+    // And the alignment carrying that cant is still written, horizontal only,
+    // as a schema-conformant file.
+    const source = alignmentSource();
+    const [first, ...rest] = (source.alignments ?? []) as LandXmlIfcAlignment[];
+    const withCant = {
+      ...source,
+      alignments: [{ ...first, cant: { name: 'Rail', gauge: 1.435 }, cantStations: [{ station: 0, appliedCant: 150 }] }, ...rest],
+    };
+    const path = writeConverted(withCant, 'alignment-with-cant');
+    expect(readFileSync(path, 'utf8')).not.toMatch(/IFCALIGNMENTCANT|IFCSEGMENTEDREFERENCECURVE/);
+    const [validCode, validOut] = run(VALIDATE_SCRIPT, [path]);
+    expect(validOut, validOut).toContain('0 issues');
+    expect(validCode).toBe(0);
   }, TIMEOUT_MS);
 
   it('does not pass vacuously: an authored alignment missing from the file fails the check', () => {

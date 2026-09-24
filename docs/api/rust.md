@@ -417,6 +417,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 Geometry processing and mesh generation. CSG (void cutting, boolean clipping) runs on the in-tree pure-Rust exact mesh-arrangement kernel (`src/kernel/`) on every target, native and wasm32 alike.
 
+`ifc_lite_geometry::extract_swept_disk(entity, decoder)` reads an authored
+`IfcSweptDiskSolid` into `AnalyticSweptDisk`, with an ordered `segments` list of
+`AnalyticCurveSegment::Line` and `Arc` values. The result is in representation-local
+IFC length units; `AnalyticStatus::Unsupported` carries a reason and no partial
+segments when the directrix cannot be described exactly. The processing API below
+places those segments in product world coordinates.
+
 ### Features
 
 ```toml

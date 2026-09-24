@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Sun cast-shadow controls for the Sun & Sky panel (#2670).
+ * Sun cast-shadow controls for the Environment panel (#2670).
  *
  * A toggle that turns the sun shadow pass on, a "Sun angle" slider that sets
  * the physical shadow softness (the sun's angular size in degrees — Blender's
@@ -64,7 +64,7 @@ export function ShadowControls() {
                 type="button"
                 onClick={() => setSunAngle(0.53)}
                 title={t('viewportLighting.shadowControls.softnessResetTitle')}
-                className={cn('tabular-nums transition-colors', Math.abs(sunAngle - 0.53) > 1e-3 && 'text-foreground hover:text-teal-600')}
+                className={cn('tabular-nums transition-colors', Math.abs(sunAngle - 0.53) > 1e-3 && 'text-foreground hover:text-primary')}
               >
                 {sunAngle.toFixed(2)}°
               </button>
@@ -76,7 +76,7 @@ export function ShadowControls() {
               step={0.05}
               value={sunAngle}
               onChange={(e) => setSunAngle(Number(e.target.value))}
-              className="w-full accent-teal-600"
+              className="w-full accent-primary"
             />
           </label>
 

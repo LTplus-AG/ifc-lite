@@ -2458,6 +2458,7 @@ export const createMutationSlice: StateCreator<
           getNewEntities: () => view.getNewEntities(),
           isDeleted: (id) => view.isDeleted(id),
           getTypeMutations: () => view.getTypeMutations(),
+          getPositionalMutationsForEntity: (id) => view.getPositionalMutationsForEntity(id),
         },
       );
     } catch (err) {

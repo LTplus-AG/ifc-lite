@@ -67,7 +67,7 @@ export const TOUCHING_EPSILON = 1e-4;
  * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
  * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
  * larger magnitudes the ULP only grows. Same term (and reasoning) as
- * `precisionFloor` in `engine-ts/narrow.ts` and `narrowPhase`'s `planeEps` in
+ * the narrow phase's `depthFloor` (`math/aabb.ts`) and `narrowPhase`'s `planeEps` in
  * `contact/narrow-phase.ts` — kept local because this is a different job
  * (the *reported* touching band, not the narrow-phase's own depth floor) on
  * a `Clash`, which doesn't carry the element bounds those two derive from.
@@ -91,7 +91,7 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * itself, in the same world coordinates as the elements — so that is the
  * scale source: the max absolute coordinate over the clash's own contact
  * box. Floored at {@link TOUCHING_EPSILON} (not the raw single-unit f32
- * floor `precisionFloor` uses) so a clash near the origin gets exactly the
+ * floor `depthFloor` uses) so a clash near the origin gets exactly the
  * old fixed band, unchanged.
  */
 function touchingEpsilonFor(c: Clash): number {

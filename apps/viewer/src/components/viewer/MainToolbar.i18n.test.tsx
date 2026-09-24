@@ -71,7 +71,6 @@ const STATE = {
   cesiumEnabled: true,
   cesiumPlacementEditMode: false,
   basketPresentationVisible: false,
-  envPanelOpen: false,
   spaceMousePanelOpen: false,
   mergeLayers: false,
 } as Partial<ReturnType<typeof useViewerStore.getState>>;

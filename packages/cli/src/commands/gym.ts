@@ -94,7 +94,7 @@ import { createInterface } from 'node:readline';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { loadIfcFile, loadIfcBytes } from '../loader.js';
-import { getFlag, fatal } from '../output.js';
+import { getFlag, fatal, routeConsoleDiagnosticsToStderr } from '../output.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -154,6 +154,10 @@ export interface GymIO {
 }
 
 export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> {
+  // The gym protocol is newline-delimited JSON on stdout in both directions,
+  // so parser/geometry console diagnostics must go to stderr before the first
+  // model load or the consumer's very first read is not JSON.
+  routeConsoleDiagnosticsToStderr();
   const modelPath = getFlag(args, '--model');
   const seedFlag = getFlag(args, '--seed');
   if (!modelPath && seedFlag === undefined) fatal(USAGE);

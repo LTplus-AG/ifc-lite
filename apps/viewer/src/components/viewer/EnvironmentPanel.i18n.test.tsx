@@ -3,14 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `SunSkyPanel.tsx` and its two sub-panels, `ShadowControls.tsx` and
- * `SunTimeControls.tsx` (both rendered inline by `SunSkyPanel` in
- * standalone/WebGPU mode — #4918 viewport/lighting slice's
- * `viewport-lighting.en.ts` catalogue). Covers the header, the standalone
- * environment picker (including the `CONTEXT_SOURCES`/`SWEEP_MODES`
- * `labelKey` tables' rendered option text), the shadow and manual
- * time-of-day sub-panels, and — once `cesiumAvailable`/`solarEnabled` are
- * set on the store — the sun-study controls and its readout grid. The
+ * `EnvironmentPanel.tsx` (#5506: the docked side panel that replaced the
+ * floating "Sun & Sky" panel, `SunSkyPanel.tsx`) and its two sub-panels,
+ * `ShadowControls.tsx` and `SunTimeControls.tsx` (both rendered inline by
+ * `EnvironmentPanel` in standalone/WebGPU mode — #4918 viewport/lighting
+ * slice's `viewport-lighting.en.ts` catalogue). Covers the header, the
+ * standalone environment picker (including the `CONTEXT_SOURCES`/
+ * `SWEEP_MODES` `labelKey` tables' rendered option text), the shadow and
+ * manual time-of-day sub-panels, and — once `cesiumAvailable`/`solarEnabled`
+ * are set on the store — the sun-study controls and its readout grid. The
  * world-context (Cesium-enabled) base-map picker needs `cesiumEnabled` on
  * the store and is left to manual verification, same reasoning
  * `HierarchyPanel.i18n.test.tsx` gives for chrome that needs a loaded
@@ -27,7 +28,7 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { viewportLightingEn as ViewportLightingEnType } from '@/i18n/catalogues/viewport-lighting.en';
 import { useViewerStore } from '@/store';
-import { SunSkyPanel } from './SunSkyPanel.js';
+import { EnvironmentPanel } from './EnvironmentPanel.js';
 
 // Dynamic + try/catch (not a static import): a revert of this slice's
 // production change deletes viewport-lighting.en.ts entirely, and a static
@@ -57,7 +58,7 @@ const PANEL_KEYS = (Object.keys(viewportLightingEn) as Key[]).filter(
     key.startsWith('viewportLighting.sunTimeControls.'),
 );
 const PSEUDO: Catalogue = Object.fromEntries(PANEL_KEYS.map((key) => [key, markValue(key, viewportLightingEn[key])]));
-const PSEUDO_LOCALE = 'sun-sky-panel-pseudo';
+const PSEUDO_LOCALE = 'environment-panel-pseudo';
 
 /** Collects each element's OWN text (not the concatenated subtree), so a
  *  short value like "Sky" cannot false-positive-match as a substring of an
@@ -79,7 +80,6 @@ function readable(container: HTMLElement): Set<string> {
 beforeEach(() => {
   setLocale('en');
   useViewerStore.setState({
-    envPanelOpen: true,
     cesiumEnabled: false,
     cesiumAvailable: true,
     solarEnabled: true,
@@ -92,7 +92,6 @@ afterEach(() => {
   cleanup();
   setLocale('en');
   useViewerStore.setState({
-    envPanelOpen: false,
     cesiumAvailable: false,
     solarEnabled: false,
     envShadowsEnabled: false,
@@ -100,9 +99,9 @@ afterEach(() => {
   });
 });
 
-describe('SunSkyPanel localization (#4918 viewport/lighting slice)', () => {
+describe('EnvironmentPanel localization (#4918 viewport/lighting slice, #5506 side panel)', () => {
   it('translates the header, standalone environment/shadow/time-of-day controls, and the sun study', () => {
-    const container = render(<SunSkyPanel />);
+    const container = render(<EnvironmentPanel />);
     const english = readable(container);
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
@@ -142,9 +141,18 @@ describe('SunSkyPanel localization (#4918 viewport/lighting slice)', () => {
   });
 
   it('translates the sweep-mode select options via their labelKey/hintKey table', () => {
-    const container = render(<SunSkyPanel />);
+    const container = render(<EnvironmentPanel />);
     const options = Array.from(container.querySelectorAll('button')).map((b) => b.textContent ?? '');
     assert.ok(options.includes(viewportLightingEn['viewportLighting.sunSkyPanel.sunStudy.sweepModes.day.label'] as string));
     assert.ok(options.includes(viewportLightingEn['viewportLighting.sunSkyPanel.sunStudy.sweepModes.year.label'] as string));
+  });
+
+  it('renders a close button that calls onClose (#5506: the panel is docked, not floating — the host supplies onClose)', () => {
+    let closed = false;
+    const container = render(<EnvironmentPanel onClose={() => { closed = true; }} />);
+    const closeButton = container.querySelector('button[title="Close Environment panel"]');
+    assert.ok(closeButton, 'expected a close button wired to the registry title');
+    act(() => { (closeButton as HTMLButtonElement).click(); });
+    assert.strictEqual(closed, true, 'onClose must fire — mutating the click handler away must fail this test');
   });
 });

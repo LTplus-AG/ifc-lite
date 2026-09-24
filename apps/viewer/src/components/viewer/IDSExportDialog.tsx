@@ -108,10 +108,18 @@ export function IDSExportDialog({
     loadIntoBcfPanel: false,
   });
 
-  const isExporting = progress !== null && progress.phase !== 'done';
+  // `onExport` may do async setup before it publishes a progress value, so the
+  // in-flight promise counts as exporting too, not only a non-done `progress`.
+  const [running, setRunning] = useState(false);
+  const isExporting = running || (progress !== null && progress.phase !== 'done');
 
   const handleExport = useCallback(async () => {
-    await onExport(settings);
+    setRunning(true);
+    try {
+      await onExport(settings);
+    } finally {
+      setRunning(false);
+    }
     // Don't close — let the progress indicator finish, then user closes
   }, [onExport, settings]);
 

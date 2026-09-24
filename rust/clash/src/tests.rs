@@ -1343,3 +1343,24 @@ fn a_solid_resting_on_its_containers_face_from_outside_is_not_buried_5473() {
     let resting = TriMesh::new(positions.iter().map(|&c| f64::from(c)).collect(), indices);
     assert!(!crate::depth::contained_solid_is_buried(&resting, &slab));
 }
+
+#[test]
+fn a_two_shell_element_with_one_shell_buried_is_hard_5473() {
+    // Review of #5564: an element may be several disconnected shells. Its
+    // first shell floats clear inside the L prism's notch (outside the L's
+    // solid, away from every face), its second is buried in the L's solid
+    // corner; neither touches the L, so nothing crosses. The notch shell's
+    // vertices come first and are clearly outside, which must not end the
+    // search: the buried shell makes the pair a hard clash.
+    let (notch_p, notch_i, _) = box_hxyz(1.5, 1.5, 0.5, 0.3, 0.3, 0.3);
+    let (buried_p, buried_i, _) = box_hxyz(0.5, 0.5, 0.5, 0.3, 0.3, 0.3);
+    let mut positions = notch_p;
+    positions.extend_from_slice(&buried_p);
+    let mut indices = notch_i;
+    indices.extend(buried_i.iter().map(|&i| i + 8));
+    let aabb = vec![0.2, 0.2, 0.2, 1.8, 1.8, 0.8];
+    let session = session_of_parts(&[l_part(), (positions, indices, aabb)]);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+}

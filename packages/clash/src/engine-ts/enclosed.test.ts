@@ -104,6 +104,18 @@ describe('enclosed-solid probe (#5473)', () => {
     }
   });
 
+  it('reports a two-shell element with one shell buried as hard (review of #5564)', () => {
+    // The first shell floats clear in the notch (outside the L), the second
+    // is buried in the L's solid corner; nothing crosses. The clearly-outside
+    // shell must not end the search. Mirrors
+    // `a_two_shell_element_with_one_shell_buried_is_hard_5473`.
+    const positions = [...boxPositions([1.5, 1.5, 0.5], [0.3, 0.3, 0.3]), ...boxPositions([0.5, 0.5, 0.5], [0.3, 0.3, 0.3])];
+    const indices = new Uint32Array([...BOX_INDICES, ...BOX_INDICES.map((i) => i + 8)]);
+    const l = placed('L', L_POSITIONS, L_INDICES, 0, 0, [0, 0, 0]);
+    const two = placed('T', positions, indices, 0, 0, [0, 0, 0]);
+    expect(testPair(l, mesh(l), two, mesh(two), HARD, 0.001)?.status).toBe('hard');
+  });
+
   it('finds a duplicate of its container buried in it, from the centroid', () => {
     // Corners listed max-first, so the first one reads "outside": no vertex
     // of a duplicate can decide, its centroid does.

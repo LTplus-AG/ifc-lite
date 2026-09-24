@@ -5,13 +5,14 @@
 /**
  * The model tree over the model as edited (#5249).
  *
- * The "By Class", "By Type" and "Groups" builders scan the parsed entity
- * table or the parsed type index. The mutation overlay never writes into
- * either. `useHierarchyTree` already folds overlay-created products into the
+ * The "By Class", "By Type" and "Groups" builders read parsed entity
+ * tables or type indexes alongside the mutation overlay. The overlay never
+ * writes back into those source structures. `useHierarchyTree` folds created products into the
  * class tree (`authoredProducts`), but a deleted entity stayed listed:
  * `removeEntity` prunes its mesh, so it dropped into the grayed "Other" bucket
  * instead of disappearing. A retyped entity stayed under its parsed class.
- * Every row those builders emit goes through {@link effectiveTreeType}.
+ * Parsed rows use {@link effectiveTreeType}; the type and group builders also
+ * enumerate authored entities and edited relationship endpoints (#5249).
  */
 
 import { normalizeIfcTypeName } from '@ifc-lite/parser';

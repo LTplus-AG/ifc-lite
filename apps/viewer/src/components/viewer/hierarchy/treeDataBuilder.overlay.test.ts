@@ -170,6 +170,47 @@ describe('model tree over the edited model (#5249)', () => {
     assert.equal(every.has(11), false);
     assert.ok(every.has(10));
   });
+
+  it('Groups: an authored group and assignment render with authored and source members (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setExpressIdWatermark(31);
+    const group = view.createEntity('IfcGroup', ['0Grp000000000000000032', null, 'Authored group']);
+    const wall = view.createEntity('IfcWall', ['0Wall00000000000000033', null, 'Authored wall']);
+    view.createEntity('IfcRelAssignsToGroup', ['0Rel000000000000000034', null, null, null,
+      [10, wall.expressId], null, group.expressId]);
+    const expanded = new Set([`group-legacy-${group.expressId}`]);
+    const nodes = buildGroupTree(new Map(), ds, expanded, false, new Set([10]), 'all', () => view);
+    const groupRow = nodes.find(node => node.entityExpressId === group.expressId);
+    assert.equal(groupRow?.name, 'Authored group');
+    assert.deepEqual(nodes.filter(node => node.type === 'group-member'
+      && node.id.startsWith(`groupmember-legacy-${group.expressId}-`))
+      .map(node => node.expressIds?.[0]).sort((a, b) => (a ?? 0) - (b ?? 0)),
+    [10, wall.expressId]);
+  });
+
+  it('Groups: rewritten assignment moves members to its effective group (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setExpressIdWatermark(31);
+    const group = view.createEntity('IfcGroup', ['0Grp000000000000000032', null, 'Moved group']);
+    view.setAttribute(31, 'RelatedObjects', '#12');
+    view.setAttribute(31, 'RelatingGroup', `#${group.expressId}`);
+    const nodes = buildGroupTree(new Map(), ds, new Set([`group-legacy-${group.expressId}`]),
+      false, new Set([10, 11, 12]), 'all', () => view);
+    assert.equal(nodes.some(node => node.entityExpressId === 30), false,
+      'the source group loses the rewritten assignment');
+    assert.deepEqual(nodes.filter(node => node.type === 'group-member')
+      .map(node => node.expressIds?.[0]), [12]);
+  });
+
+  it('Groups: deleting the source assignment removes its group row (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.deleteEntity(31);
+    assert.deepEqual(buildGroupTree(new Map(), ds, new Set(), false,
+      new Set([10, 11]), 'all', () => view), []);
+  });
 });
 
 /** Expand every node of the unedited By Type tree so occurrence rows exist. */

@@ -57,6 +57,7 @@ packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts
 apps/viewer/src/components/viewer/add-element-storeys.ts
 apps/viewer/src/components/viewer/bulk-property-editor-options.ts
+apps/viewer/src/components/viewer/hierarchy/effectiveGroupEntities.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/hooks/has-entity-type.ts

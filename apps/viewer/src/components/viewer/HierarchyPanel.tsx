@@ -6,7 +6,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
-import { extractGroupMembersOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { SectionHeader } from './hierarchy/SectionHeader';
@@ -440,12 +441,11 @@ export function HierarchyPanel() {
         ? toGlobalIdFromModels(models, modelId, groupExpressId)
         : groupExpressId;
 
-      // Members can be hidden-by-default classes (IfcSpace / IfcSpatialZone in
-      // an IfcZone): flip only the toggles the group actually needs, or the
-      // isolated set would render nothing (lifted from PropertiesPanel's
-      // handleIsolateGroupMembers, #1075 / PR #1094 review).
+      // Reveal hidden-by-default classes among the effective members before
+      // isolating; otherwise spaces or zones in an edited assignment stay invisible.
       if (dataStore) {
-        const members = extractGroupMembersOnDemand(dataStore, groupExpressId);
+        const view = useViewerStore.getState().mutationViews.get(modelId);
+        const members = effectiveGroupMembers(dataStore, groupExpressId, view, effectiveGroupAssignments(dataStore, view));
         if (!typeVisibility.spaces && members.some((m) => m.type === 'IfcSpace')) {
           toggleTypeVisibility('spaces');
         }

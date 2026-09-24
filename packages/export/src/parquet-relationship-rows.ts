@@ -16,13 +16,21 @@ export function parquetRelationshipRows(
   const rows = { SourceId: [] as number[], TargetId: [] as number[], RelType: [] as string[], RelId: [] as number[] };
   const overlay = view ? resolveEffectiveRelationshipOverlay(store, {
     createdEntities: () => view.getNewEntities(),
-    mutatedEntityIds: () => [...new Set([
-      ...view.getMutations()
-        .filter(mutation => mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE')
-        .map(mutation => mutation.entityId),
-      ...view.getTypeMutations().keys(),
-      ...view.getAttributeMutationsByEntity().keys(),
-    ])].filter(id => !view.isDeleted(id)),
+    mutatedEntityIds: () => {
+      const ids = new Set<number>([
+        ...view.getTypeMutations().keys(),
+        ...view.getAttributeMutationsByEntity().keys(),
+      ]);
+      // Positional edits may deliberately skip undo history. Ask the live
+      // overlay for each effective IfcRel record rather than replaying history.
+      for (const [type, relationIds] of effective?.byType ?? []) {
+        if (!type.startsWith('IFCREL')) continue;
+        for (const id of relationIds) {
+          if (view.getPositionalMutationsForEntity(id)?.size) ids.add(id);
+        }
+      }
+      return [...ids].filter(id => !view.isDeleted(id));
+    },
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
     positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
     entityType: id => view.getEntityTypeMutation(id)?.newType,

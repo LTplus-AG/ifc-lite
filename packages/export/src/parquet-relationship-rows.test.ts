@@ -36,7 +36,7 @@ describe('Parquet effective relationship rows (#5249)', () => {
       SourceId: 2, TargetId: 3, RelType: 'IfcRelAggregates', RelId: 5,
     }]);
 
-    view.setPositionalAttribute(5, 5, ['#4']);
+    view.setPositionalAttribute(5, 5, ['#4'], true);
     expect(await rows()).toEqual([{
       SourceId: 2, TargetId: 4, RelType: 'IfcRelAggregates', RelId: 5,
     }]);

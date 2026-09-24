@@ -271,6 +271,34 @@ describe('ParquetExporter overlay deletions (#2046)', () => {
   });
 });
 
+describe('ParquetExporter effective entity rows (#5249)', () => {
+  it('writes created entities after source rows with effective root fields and omits tombstones', async () => {
+    const store = buildDataStore();
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(2);
+    view.deleteEntity(2);
+    const wall = view.createEntity('IfcWall', ['new-wall-guid', null, 'Draft wall', 'Draft description', 'Partition']);
+    view.setAttribute(wall.expressId, 'Name', 'Authored wall');
+    view.setPositionalAttribute(wall.expressId, 3, 'Final description');
+    view.setEntityType(wall.expressId, 'IfcDoor');
+    const transient = view.createEntity('IfcWall', ['transient-guid', null, 'Transient']);
+    view.deleteEntity(transient.expressId);
+    const wallType = view.createEntity('IfcWallType', ['new-type-guid', null, 'Authored type']);
+
+    const rows = decodeParquet(await new ParquetExporter(store, undefined, view).exportTable('entities'));
+
+    expect(rows.map((row) => row.ExpressId)).toEqual([1, wall.expressId, wallType.expressId]);
+    expect(rows.find((row) => row.ExpressId === wall.expressId)).toMatchObject({
+      GlobalId: 'new-wall-guid', Name: 'Authored wall', Description: 'Final description',
+      Type: 'IfcDoor', ObjectType: 'Partition', HasGeometry: false, IsType: false,
+      ContainedInStorey: -1, DefinedByType: -1, GeometryIndex: -1,
+    });
+    expect(rows.find((row) => row.ExpressId === wallType.expressId)).toMatchObject({
+      Type: 'IfcWallType', IsType: true,
+    });
+  });
+});
+
 function mesh(partial: Partial<MeshData> & { expressId: number }): MeshData {
   return {
     positions: new Float32Array(),

@@ -561,7 +561,7 @@ Creates a `.bos` archive (ZIP of Parquet files) from a parsed store, optionally 
 
 ```typescript
 class ParquetExporter {
-  constructor(store: IfcDataStore, geometryResult?: GeometryResult);
+  constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView);
 
   exportBOS(options?: ParquetExportOptions): Promise<Uint8Array>;
   exportTable(tableName: string): Promise<Uint8Array>;

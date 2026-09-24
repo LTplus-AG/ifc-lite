@@ -42,9 +42,16 @@ fn assert_mesh_matches_analytic_endpoints(source: &[u8]) {
         "large mapped translation must stay in an f64 origin or RTC offset"
     );
     assert!(
-        source_mesh.positions.chunks_exact(3).all(|p| p[0].abs() < 10.0),
+        source_mesh.positions.iter().all(|position| position.abs() < 10.0),
         "local f32 positions must remain element-sized"
     );
+    let local_bounds = source_mesh.local_bounds.expect("mapped mesh has object-space bounds");
+    for axis in 0..3 {
+        assert!(
+            local_bounds[axis + 3] > local_bounds[axis],
+            "a nonzero disk must not collapse its local bounds on axis {axis}: {local_bounds:?}"
+        );
+    }
     let site_rotation = (result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
         .then_some(result.site_transform.as_deref())
         .flatten();
@@ -73,7 +80,7 @@ fn assert_mesh_matches_analytic_endpoints(source: &[u8]) {
 fn mapped_operator_keeps_fractional_translation_at_five_thousand_kilometres() {
     for scale in ["$", "2.", "-1."] {
         let operator = format!(
-            "#1000=IFCCARTESIANPOINT((5000000123.456,0.,0.));\n#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,{scale},$);"
+            "#1000=IFCCARTESIANPOINT((5000000123.456,5000000123.456,5000000123.456));\n#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,{scale},$);"
         );
         assert_mesh_matches_analytic_endpoints(&mapped_line(&operator));
     }

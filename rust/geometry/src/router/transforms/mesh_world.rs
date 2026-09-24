@@ -12,6 +12,19 @@ use nalgebra::Matrix4;
 // mapped translation into vertices can visibly perturb small IFC features.
 const LARGE_MAPPED_ORIGIN_M: f64 = 1_000.0;
 
+#[inline]
+fn source_point<const HAS_ORIGIN: bool>(chunk: &[f32], origin: [f64; 3]) -> Point3<f64> {
+    if HAS_ORIGIN {
+        Point3::new(
+            chunk[0] as f64 + origin[0],
+            chunk[1] as f64 + origin[1],
+            chunk[2] as f64 + origin[2],
+        )
+    } else {
+        Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64)
+    }
+}
+
 impl GeometryRouter {
     /// Transform mesh by a local matrix without applying model RTC.
     ///
@@ -51,15 +64,15 @@ impl GeometryRouter {
                 up(max[2]),
             ]);
         }
-        let old_origin = Point3::new(mesh.origin[0], mesh.origin[1], mesh.origin[2]);
-        let new_origin = transform.transform_point(&old_origin);
         // #5792: a MappingTarget at georeferenced scale cannot be written into
         // f32 positions before the final RTC step. Keep its f64 translation in
         // the mesh origin and transform only small local vectors. Preserve the
         // existing byte path for ordinary maps and their determinism snapshots.
         let needs_origin = mesh.origin != [0.0; 3]
-            || new_origin.coords.iter().any(|v| v.abs() >= LARGE_MAPPED_ORIGIN_M);
+            || (0..3).any(|axis| transform[(axis, 3)].abs() >= LARGE_MAPPED_ORIGIN_M);
         if needs_origin {
+            let old_origin = Point3::new(mesh.origin[0], mesh.origin[1], mesh.origin[2]);
+            let new_origin = transform.transform_point(&old_origin);
             mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
                 let v = transform.transform_vector(&Vector3::new(
                     chunk[0] as f64,
@@ -133,6 +146,20 @@ impl GeometryRouter {
         transform: &Matrix4<f64>,
         relativize: bool,
     ) {
+        if mesh.origin == [0.0; 3] {
+            self.transform_mesh_world_framed_impl::<false>(mesh, transform, relativize);
+        } else {
+            self.transform_mesh_world_framed_impl::<true>(mesh, transform, relativize);
+        }
+    }
+
+    #[inline]
+    fn transform_mesh_world_framed_impl<const HAS_ORIGIN: bool>(
+        &self,
+        mesh: &mut Mesh,
+        transform: &Matrix4<f64>,
+        relativize: bool,
+    ) {
         let source_origin = mesh.origin;
         // Local (pre-placement, object-space) AABB + the resolved placement
         // itself (issue #1474): `mesh.positions` is still untouched here — both
@@ -142,16 +169,34 @@ impl GeometryRouter {
         mesh.local_bounds = mesh.local_bounds.or_else(|| {
             if mesh.positions.is_empty() {
                 None
+            } else if HAS_ORIGIN {
+                // #5792: rounding each large coordinate before the min/max
+                // collapses a thin mapped disk to a zero-width f32 box. Keep
+                // the f64 extrema and round only the final box outward.
+                let mut min = [f64::INFINITY; 3];
+                let mut max = [f64::NEG_INFINITY; 3];
+                for chunk in mesh.positions.chunks_exact(3) {
+                    for axis in 0..3 {
+                        let value = chunk[axis] as f64 + source_origin[axis];
+                        min[axis] = min[axis].min(value);
+                        max[axis] = max[axis].max(value);
+                    }
+                }
+                let enclosing = super::super::processing::enclosing_f32;
+                Some([
+                    enclosing(min[0], true),
+                    enclosing(min[1], true),
+                    enclosing(min[2], true),
+                    enclosing(max[0], false),
+                    enclosing(max[1], false),
+                    enclosing(max[2], false),
+                ])
             } else {
                 let mut min = [f32::INFINITY; 3];
                 let mut max = [f32::NEG_INFINITY; 3];
                 for chunk in mesh.positions.chunks_exact(3) {
                     for k in 0..3 {
-                        let value = if source_origin[k] == 0.0 {
-                            chunk[k]
-                        } else {
-                            (chunk[k] as f64 + source_origin[k]) as f32
-                        };
+                        let value = chunk[k];
                         if value < min[k] {
                             min[k] = value;
                         }
@@ -181,11 +226,7 @@ impl GeometryRouter {
         // framing below needs, keeping the absolute path at its original cost.
         if !relativize {
             for chunk in mesh.positions.chunks_exact_mut(3) {
-                let point = Point3::new(
-                    chunk[0] as f64 + source_origin[0],
-                    chunk[1] as f64 + source_origin[1],
-                    chunk[2] as f64 + source_origin[2],
-                );
+                let point = source_point::<HAS_ORIGIN>(chunk, source_origin);
                 let t = transform.transform_point(&point);
                 chunk[0] = (t.x - rx) as f32;
                 chunk[1] = (t.y - ry) as f32;
@@ -211,11 +252,7 @@ impl GeometryRouter {
             .positions
             .chunks_exact(3)
             .map(|chunk| {
-                let point = Point3::new(
-                    chunk[0] as f64 + source_origin[0],
-                    chunk[1] as f64 + source_origin[1],
-                    chunk[2] as f64 + source_origin[2],
-                );
+                let point = source_point::<HAS_ORIGIN>(chunk, source_origin);
                 let t = transform.transform_point(&point);
                 let w = [t.x - rx, t.y - ry, t.z - rz];
                 for k in 0..3 {

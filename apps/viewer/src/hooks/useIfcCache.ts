@@ -278,6 +278,7 @@ export function useIfcCache() {
           // Key `byType` in upper case, as a fresh parse and a v4 load do: not
           // every scan path canonicalises type names (#4712).
           const tokenizer = new StepTokenizer(source);
+          // @raw-entity-enumeration-ok cache hydration sizes a source-index builder from the cached parsed table
           const estimatedCount = cacheStore.entities?.count ?? 100_000;
           const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
           const byType = new Map<string, number[]>();

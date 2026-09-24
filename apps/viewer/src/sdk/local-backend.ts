@@ -94,6 +94,7 @@ export class LocalBackend implements BimBackend {
           if (state.models.size > prev.models.size) {
             for (const [id, model] of state.models) {
               if (!prev.models.has(id)) {
+                // @raw-entity-enumeration-ok model:loaded reports the initial parsed source count before session edits
                 handler({
                   model: {
                     id: model.id,
@@ -109,6 +110,7 @@ export class LocalBackend implements BimBackend {
             }
           }
           if (state.ifcDataStore && !prev.ifcDataStore && state.models.size === 0) {
+            // @raw-entity-enumeration-ok legacy model:loaded reports the initial parsed source count before session edits
             handler({
               model: {
                 id: LEGACY_MODEL_ID,

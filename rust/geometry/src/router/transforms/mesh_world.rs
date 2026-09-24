@@ -8,6 +8,10 @@ use super::super::GeometryRouter;
 use crate::{Mesh, Point3, Vector3};
 use nalgebra::Matrix4;
 
+// At 1 km an f32 coordinate has ~0.06 mm spacing; beyond this, folding a
+// mapped translation into vertices can visibly perturb small IFC features.
+const LARGE_MAPPED_ORIGIN_M: f64 = 1_000.0;
+
 impl GeometryRouter {
     /// Transform mesh by a local matrix without applying model RTC.
     ///
@@ -16,13 +20,35 @@ impl GeometryRouter {
     /// intermediate local transforms.
     #[inline]
     pub(crate) fn transform_mesh_local(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-            let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-            let t = transform.transform_point(&point);
-            chunk[0] = t.x as f32;
-            chunk[1] = t.y as f32;
-            chunk[2] = t.z as f32;
-        });
+        let old_origin = Point3::new(mesh.origin[0], mesh.origin[1], mesh.origin[2]);
+        let new_origin = transform.transform_point(&old_origin);
+        // #5792: a MappingTarget at georeferenced scale cannot be written into
+        // f32 positions before the final RTC step. Keep its f64 translation in
+        // the mesh origin and transform only small local vectors. Preserve the
+        // existing byte path for ordinary maps and their determinism snapshots.
+        let needs_origin = mesh.origin != [0.0; 3]
+            || new_origin.coords.iter().any(|v| v.abs() >= LARGE_MAPPED_ORIGIN_M);
+        if needs_origin {
+            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
+                let v = transform.transform_vector(&Vector3::new(
+                    chunk[0] as f64,
+                    chunk[1] as f64,
+                    chunk[2] as f64,
+                ));
+                chunk[0] = v.x as f32;
+                chunk[1] = v.y as f32;
+                chunk[2] = v.z as f32;
+            });
+            mesh.origin = [new_origin.x, new_origin.y, new_origin.z];
+        } else {
+            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
+                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let t = transform.transform_point(&point);
+                chunk[0] = t.x as f32;
+                chunk[1] = t.y as f32;
+                chunk[2] = t.z as f32;
+            });
+        }
 
         self.transform_normals(mesh, transform);
     }
@@ -34,7 +60,27 @@ impl GeometryRouter {
     /// during raw world-coordinate triangulation are guarded by `rtc_applied`.
     #[inline]
     pub(crate) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        self.transform_mesh_world_framed(mesh, transform, self.local_frame_enabled());
+        // Native normally keeps absolute f32 vertices, but an intermediate
+        // mapped origin at this scale needs the same local frame as the viewer.
+        // The explicit unframed void-cut path still chooses its own frame.
+        let mapped_origin_is_large = mesh.origin != [0.0; 3] && {
+            let o = transform.transform_point(&Point3::new(
+                mesh.origin[0], mesh.origin[1], mesh.origin[2],
+            ));
+            let rtc = if self.has_rtc_offset() && !mesh.rtc_applied {
+                self.rtc_offset
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            [o.x - rtc.0, o.y - rtc.1, o.z - rtc.2]
+                .iter()
+                .any(|v| v.abs() >= LARGE_MAPPED_ORIGIN_M)
+        };
+        self.transform_mesh_world_framed(
+            mesh,
+            transform,
+            self.local_frame_enabled() || mapped_origin_is_large,
+        );
     }
 
     /// World placement with an explicit choice of whether to relativize positions
@@ -56,6 +102,7 @@ impl GeometryRouter {
         transform: &Matrix4<f64>,
         relativize: bool,
     ) {
+        let source_origin = mesh.origin;
         // Local (pre-placement, object-space) AABB + the resolved placement
         // itself (issue #1474): `mesh.positions` is still untouched here — both
         // branches below only start mutating it in their own loops — so this is
@@ -69,11 +116,16 @@ impl GeometryRouter {
                 let mut max = [f32::NEG_INFINITY; 3];
                 for chunk in mesh.positions.chunks_exact(3) {
                     for k in 0..3 {
-                        if chunk[k] < min[k] {
-                            min[k] = chunk[k];
+                        let value = if source_origin[k] == 0.0 {
+                            chunk[k]
+                        } else {
+                            (chunk[k] as f64 + source_origin[k]) as f32
+                        };
+                        if value < min[k] {
+                            min[k] = value;
                         }
-                        if chunk[k] > max[k] {
-                            max[k] = chunk[k];
+                        if value > max[k] {
+                            max[k] = value;
                         }
                     }
                 }
@@ -98,7 +150,11 @@ impl GeometryRouter {
         // framing below needs, keeping the absolute path at its original cost.
         if !relativize {
             for chunk in mesh.positions.chunks_exact_mut(3) {
-                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let point = Point3::new(
+                    chunk[0] as f64 + source_origin[0],
+                    chunk[1] as f64 + source_origin[1],
+                    chunk[2] as f64 + source_origin[2],
+                );
                 let t = transform.transform_point(&point);
                 chunk[0] = (t.x - rx) as f32;
                 chunk[1] = (t.y - ry) as f32;
@@ -124,7 +180,11 @@ impl GeometryRouter {
             .positions
             .chunks_exact(3)
             .map(|chunk| {
-                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let point = Point3::new(
+                    chunk[0] as f64 + source_origin[0],
+                    chunk[1] as f64 + source_origin[1],
+                    chunk[2] as f64 + source_origin[2],
+                );
                 let t = transform.transform_point(&point);
                 let w = [t.x - rx, t.y - ry, t.z - rz];
                 for k in 0..3 {

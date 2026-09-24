@@ -95,7 +95,6 @@ let dataStore: IfcDataStore | null = null;
 let spatialRoot: SpatialTreeNode | null = null;
 
 let selectedExpressId: number | null = null;
-let hoveredId: number | null = null;
 let selectionHighlight: THREE.Mesh | null = null;
 let modelRoot: THREE.Group | null = null;
 let streamRoot: THREE.Group | null = null;
@@ -177,9 +176,7 @@ canvas.addEventListener('pointermove', (e) => {
   const cy = e.clientY;
   requestAnimationFrame(() => {
     hoverRafPending = false;
-    const id = pickAt(cx, cy);
-    hoveredId = id;
-    canvas.classList.toggle('hovering', id != null);
+    canvas.classList.toggle('hovering', pickAt(cx, cy) != null);
   });
 });
 
@@ -188,7 +185,6 @@ canvas.addEventListener('pointerup', () => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  hoveredId = null;
   canvas.classList.remove('hovering', 'dragging');
 });
 
@@ -211,10 +207,32 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── File loading ──────────────────────────────────────────────────────
-fileInput.addEventListener('change', async () => {
+// Two entry points share one load path: the file picker and a drag-and-drop
+// anywhere on the page.
+fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
-  if (!file) return;
+  if (file) void loadFile(file);
+});
 
+window.addEventListener('dragover', (e) => {
+  // preventDefault marks the page as a drop target; without it the browser
+  // navigates to the dropped file instead of firing `drop`.
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+});
+
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.ifc')) {
+    status.textContent = `Not an IFC file: ${file.name}`;
+    return;
+  }
+  void loadFile(file);
+});
+
+async function loadFile(file: File): Promise<void> {
   status.textContent = `Loading ${file.name}…`;
   clearSelection();
   closePanel();
@@ -389,7 +407,7 @@ fileInput.addEventListener('change', async () => {
     console.error(err);
     status.textContent = `Error: ${(err as Error).message}`;
   }
-});
+}
 
 // ── Selection ─────────────────────────────────────────────────────────
 function selectEntity(expressId: number) {
@@ -560,7 +578,6 @@ function resetSpatialPanel() {
 
 /** Build the HTML for a spatial node and all its descendants. */
 function buildNodeHtml(node: SpatialTreeNode, depth: number, store: IfcDataStore): string {
-  const isSpatialContainer = depth < 4; // Project/Site/Building/Storey level
   const hasChildren = node.children.length > 0 || node.elementGroups.length > 0;
   const { icon, abbr } = spatialNodeMeta(node.type);
   const nameText = node.name || store.entities.getName(node.expressId) || `#${node.expressId}`;

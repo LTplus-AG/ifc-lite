@@ -145,10 +145,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # A push event filters against the previous commit, which a depth-1
-          # clone does not contain. PRs filter against the base ref and are
-          # unaffected, so only the push path pays the extra object.
-          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+          # Depth 2 on EVERY event: the late-changeset gate below compares the
+          # checked-out commit with HEAD~1 (the queue entry's base on
+          # merge_group, the base tip on a PR's merge ref, the previous commit
+          # on push), and refuses when HEAD~1 is absent. The push path's
+          # paths-filter needed it already; PRs filter via the API.
+          fetch-depth: 2
+      # A RELEASE COMMIT THAT STILL CARRIES A CHANGESET PUBLISHES NOTHING
+      # (#5647). changesets/action publishes only a tree with no pending
+      # changesets; a Version Packages PR squashed onto a main that gained a
+      # changeset after its last refresh bumps versions AND carries one, so its
+      # Release run takes the version-PR path. On merge_group this kicks such
+      # an entry out of the queue instead of letting it land; on a PR or a
+      # push it is a cheap no-op for everything but that shape. It runs HERE,
+      # in `changes`, because this job feeds the required
+      # `Build + WASM + Rust + Node` aggregate on every event and fails first.
+      # It is the first step so a failure is judged even on an `edited` event:
+      # the no-op probe below never runs, `noop` stays false, and the aggregate
+      # judges this job rather than replaying an older verdict.
+      - name: Refuse a release commit that still carries changesets
+        run: node scripts/check-release-late-changesets.mjs --context merge
       # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
       # step is skipped on every other event and costs nothing there; on an
       # `edited` it is one check-runs read. `noop=true` requires BOTH a

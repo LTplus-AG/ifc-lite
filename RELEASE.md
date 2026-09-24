@@ -53,6 +53,13 @@ Add support for IFC4X3 entities
    - GitHub Release is created with version tag
    - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
 
+### A Version Packages PR must be fresh when it lands
+
+changesets/action publishes only from a tree with **no** pending `.changeset/*.md`. The Version Packages PR is refreshed by the Release run for each push to `main`, which lags `main`, and the merge queue squashes the PR onto whatever landed ahead of it. If a PR with a changeset lands after the last refresh, the resulting release commit bumps versions and still carries that changeset, so it would open a new version PR and publish nothing (#5647). Two checks stop that from passing silently:
+
+- **Merge queue (fail closed).** `scripts/check-release-late-changesets.mjs` runs first in the `changes` job of `.github/workflows/test.yml`, which feeds the required `Build + WASM + Rust + Node` check. When the queued commit bumps versions of existing workspace packages *and* still carries pending changesets, it fails and the Version Packages PR is removed from the queue. Wait for the Release run for the latest `main` push to refresh the PR, then queue it again. It runs on pull requests and pushes too, where it only fails for that same shape.
+- **Release backstop (fail loudly).** If such a commit reaches `main` anyway (a bypass), its Release run still refreshes the Version Packages PR but ends **red** with a "Release commit still carries changesets" error, and the publish verifiers fail because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the stale commit bumped.
+
 ## Release Workflow Diagram
 
 ```
@@ -152,6 +159,9 @@ OIDC trusted publishing for both registries:
 - For a brand-new package, do the one-time manual first publish before trusted publishing can take over
 - For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
+
+### "Release commit still carries changesets"
+- The Version Packages PR was stale when it merged or was queued. See [A Version Packages PR must be fresh when it lands](#a-version-packages-pr-must-be-fresh-when-it-lands).
 
 ### Versions out of sync
 - Run `pnpm version` locally to sync

@@ -133,4 +133,39 @@ describe('default specular term (#5386)', () => {
       'expected F0 to be mixed from the dielectric base toward albedo by metallic',
     );
   });
+
+  it('guards the half-vector so a sun exactly opposite the eye reflection cannot normalize(0) into NaN', () => {
+    // N = V = (0,-1,0), sun = (0,1,0): NdotV = dot(N,V) = 1 > 0 passes the
+    // early back-face return above, but V + L = V + sunDirection = 0, and
+    // normalize(vec3(0)) is NaN in WGSL. NaN * 0 is NaN, not 0, so the old
+    // code (H computed unconditionally, NdotL only clamping the RESULT to
+    // zero) let that NaN poison `sun` and everything summed with it, even
+    // though this face is one the sun is behind and should contribute
+    // nothing to the direct lobe. Guard the guard: rawNdotL <= 0 is exactly
+    // the condition under which V + L can be zero, given NdotV > 0 already
+    // holds (V = -L implies NdotL = dot(N,L) = -dot(N,V) = -NdotV < 0), so
+    // gating on it is sufficient, not merely a hopeful correlation.
+    // Guard the guard: the OLD code computed H right after the CLAMPED
+    // NdotL, unconditionally — assert that adjacency is gone, so a revert
+    // to the unconditional form (with the guard added elsewhere, vacuously)
+    // cannot pass this test.
+    assert.doesNotMatch(
+      mainShaderSource,
+      /let NdotL = max\(dot\(N, L\), 0\.0\);\s*\n\s*let H = normalize\(V \+ L\);/,
+      'expected the half-vector to no longer be computed unconditionally right after NdotL',
+    );
+    const specStart = mainShaderSource.indexOf('fn surfaceSpecular(');
+    assert.ok(specStart >= 0, 'expected fn surfaceSpecular');
+    const body = mainShaderSource.slice(specStart);
+    const rawNdotLDecl = body.indexOf('let rawNdotL = dot(N, L);');
+    const guardIf = body.indexOf('if (rawNdotL > 0.0) {');
+    const halfVector = body.indexOf('normalize(V + L)');
+    assert.ok(rawNdotLDecl >= 0, 'expected an unclamped rawNdotL = dot(N, L)');
+    assert.ok(guardIf >= 0, 'expected an `if (rawNdotL > 0.0)` guard');
+    assert.ok(halfVector >= 0, 'expected the half-vector normalize(V + L)');
+    assert.ok(
+      rawNdotLDecl < guardIf && guardIf < halfVector,
+      'expected rawNdotL to be declared, then guarded, before the half-vector is computed',
+    );
+  });
 });

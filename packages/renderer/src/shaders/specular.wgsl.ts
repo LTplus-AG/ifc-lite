@@ -102,13 +102,25 @@ export const specularWgsl = `
           let F0 = mix(vec3<f32>(DIELECTRIC_F0), albedo, metallic);
 
           let L = env.sunDirection;
-          let NdotL = max(dot(N, L), 0.0);
-          let H = normalize(V + L);
-          let D = distributionGGX(max(dot(N, H), 0.0), roughness);
-          let G = geometrySmith(NdotV, NdotL, roughness);
-          let F = fresnelSchlick(max(dot(V, H), 0.0), F0);
-          // BRDF * NdotL * (pi * intensity); the NdotL cancels the BRDF's.
-          let sun = F * (D * G * PI / (4.0 * NdotV)) * sunLight;
+          let rawNdotL = dot(N, L);
+          let NdotL = max(rawNdotL, 0.0);
+          // A face the sun is behind (rawNdotL <= 0) contributes nothing to
+          // the direct lobe anyway (NdotL clamps it to 0 below), but V + L
+          // can be exactly zero there — the sun exactly opposite the eye
+          // reflection, e.g. N = V = (0,-1,0), sun = (0,1,0), both satisfy
+          // NdotV > 0 above. normalize(vec3(0)) is NaN in WGSL, and NaN * 0
+          // is NaN, not 0, so it would poison sun and everything summed with
+          // it instead of being multiplied away. Skip the half-vector
+          // entirely in that case rather than relying on the NdotL factor.
+          var sun = vec3<f32>(0.0);
+          if (rawNdotL > 0.0) {
+            let H = normalize(V + L);
+            let D = distributionGGX(max(dot(N, H), 0.0), roughness);
+            let G = geometrySmith(NdotV, NdotL, roughness);
+            let F = fresnelSchlick(max(dot(V, H), 0.0), F0);
+            // BRDF * NdotL * (pi * intensity); the NdotL cancels the BRDF's.
+            sun = F * (D * G * PI / (4.0 * NdotV)) * sunLight;
+          }
 
           // The hemisphere ambient, looked up along the reflection. A rough
           // lobe gathers from around the normal, so lean the lookup toward N.

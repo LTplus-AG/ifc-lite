@@ -105,7 +105,8 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     const container = render();
     const hints: Array<[string, string]> = [
       ['Frame selection', 'F'],
-      ['Hide', 'Del'],
+      // Every chord that hides, from the keyboard command table (#5836).
+      ['Hide', 'Del, Backspace, Space'],
       ['Set Basket', '='],
       ['Add to Basket', '+'],
       ['Remove from Basket', '−'],

@@ -14,6 +14,7 @@ import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.
 import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, routesToQuantityTable } from './property-extractor.js';
+import { mirroredFlatPropertyKeys } from './flat-property-mirror.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
 import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
@@ -369,7 +370,9 @@ function buildQuantities(
     const ifcClass = (node.attributes.get('bsi::ifc::class') as { code?: string })?.code;
     const qsetName = ifcClass ? `Qto_${ifcClass.replace('Ifc', '')}BaseQuantities` : 'BaseQuantities';
 
+    const mirrored = mirroredFlatPropertyKeys(node.attributes); // #5376: a flat mirror of a qualified value
     for (const [key, value] of node.attributes) {
+      if (mirrored.has(key)) continue;
       // Same routing rule the property extractor uses to skip — the v5a
       // namespace mirrors the collab inflation dialect, typed records
       // (#1031) unwrap to their scalar — so neither table drops or

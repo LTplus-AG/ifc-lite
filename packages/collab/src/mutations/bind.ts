@@ -23,6 +23,7 @@
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType, type PropertyValue as DataPropertyValue } from '@ifc-lite/data';
+import { PROPERTY_TYPE_NAMES } from '@ifc-lite/ifcx';
 import type { CollabSession } from '../session.js';
 import {
   deletePropertyValue,
@@ -51,19 +52,9 @@ export interface BindMutationsOptions {
   onlyWhenConnected?: boolean;
 }
 
-export const PROPERTY_TYPE_NAMES: Record<PropertyValueType, string> = {
-  [PropertyValueType.String]: 'IfcText',
-  [PropertyValueType.Real]: 'IfcReal',
-  [PropertyValueType.Integer]: 'IfcInteger',
-  [PropertyValueType.Boolean]: 'IfcBoolean',
-  [PropertyValueType.Logical]: 'IfcLogical',
-  [PropertyValueType.Label]: 'IfcLabel',
-  [PropertyValueType.Identifier]: 'IfcIdentifier',
-  [PropertyValueType.Text]: 'IfcText',
-  [PropertyValueType.Enum]: 'IfcLabel',
-  [PropertyValueType.Reference]: 'IfcLabel',
-  [PropertyValueType.List]: 'IfcText',
-};
+// Defined in @ifc-lite/ifcx so the IFCX exporter writes the same type names
+// (#5376); re-exported here, where it has always been public.
+export { PROPERTY_TYPE_NAMES };
 
 export interface BoundPropertyView {
   setProperty(

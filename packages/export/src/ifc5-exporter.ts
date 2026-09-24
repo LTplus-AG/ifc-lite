@@ -18,13 +18,14 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
-import { PropertyValueType, IFCX_VERSION } from '@ifc-lite/data';
+import { IFCX_VERSION } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
 import { Ifc5AppearanceWriter } from './ifc5-appearance.js';
 import { IFCX_APPEARANCE_SCHEMAS, type IfcxEncodedImage } from '@ifc-lite/ifcx';
 import { buildMaterialAttribute } from './ifc5-material.js';
-import { collectRequiredImports, generateUuid, IFC5_KNOWN_PROP_NAMES, recordIfEmptyPset, stepTypeToClassName, stripNodePathPrefix, type UnrepresentedPropertySet } from './ifc5-export-helpers.js';
+import { collectRequiredImports, generateUuid, stepTypeToClassName, stripNodePathPrefix, type UnrepresentedPropertySet } from './ifc5-export-helpers.js';
+import { writePsetProperties, type PropertyCollision, type PsetPropertySinks } from './ifc5-pset-properties.js';
 import { addClassificationAttribute } from './ifc5-classification.js';
 import { buildIfc5TreeScope, type Ifc5TreeScope } from './ifc5-tree-scope.js';
 import { ifc5EntityRows, type Ifc5EntityRow } from './ifc5-effective-rows.js';
@@ -86,6 +87,8 @@ export interface Ifc5ExportResult {
     /** Psets the exporter could not represent (see {@link recordIfEmptyPset}, #5201); check this is 0 before treating the export as complete. `unrepresentedPropertySets` names each one. */
     skippedCount: number;
     unrepresentedPropertySets: UnrepresentedPropertySet[];
+    /** Official-schema flat keys two psets on one entity disagreed on (#5376). With `onlyKnownProperties: false` every value also went out pset-qualified (`valueLost: false`). */
+    propertyCollisions: PropertyCollision[];
   };
 }
 
@@ -218,7 +221,7 @@ export class Ifc5Exporter {
     const emittedIds = new Set<number>();
     let propertyCount = 0;
     let meshCount = 0;
-    const unrepresentedPropertySets: UnrepresentedPropertySet[] = [];
+    const sinks: PsetPropertySinks = { unrepresentedPropertySets: [], propertyCollisions: [] };
 
     // Find the project entity so we can create a root node pointing to it
     let projectExpressId: number | null = null;
@@ -271,11 +274,7 @@ export class Ifc5Exporter {
 
       // Properties
       if (options.includeProperties !== false) {
-        const props = this.getPropertiesForEntity(expressId, options, unrepresentedPropertySets);
-        for (const [key, value] of Object.entries(props)) {
-          attributes[key] = value;
-          propertyCount++;
-        }
+        propertyCount += this.writePropertiesForEntity(attributes, expressId, options, sinks);
       }
 
       // Material (bsi::ifc::material) — see ifc5-material.ts.
@@ -387,8 +386,9 @@ export class Ifc5Exporter {
         propertyCount,
         meshCount,
         fileSize: new TextEncoder().encode(content).length,
-        skippedCount: unrepresentedPropertySets.length,
-        unrepresentedPropertySets,
+        skippedCount: sinks.unrepresentedPropertySets.length,
+        unrepresentedPropertySets: sinks.unrepresentedPropertySets,
+        propertyCollisions: sinks.propertyCollisions,
       },
     };
   }
@@ -531,56 +531,14 @@ export class Ifc5Exporter {
   // Properties
   // --------------------------------------------------------------------------
 
-  /** Get properties for an entity, converted to IFCX attribute format; skips an empty pset via {@link recordIfEmptyPset} (#5201). */
-  private getPropertiesForEntity(
-    entityId: number, options: Ifc5ExportOptions, unrepresentedPropertySets: UnrepresentedPropertySet[],
-  ): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-
-    // Prefer mutation view if available
-    if (this.mutationView && options.applyMutations !== false) {
-      const psets = this.mutationView.getForEntity(entityId);
-      for (const pset of psets) {
-        if (recordIfEmptyPset(pset, entityId, unrepresentedPropertySets)) continue;
-        for (const prop of pset.properties) {
-          if (options.onlyKnownProperties !== false && !IFC5_KNOWN_PROP_NAMES.has(prop.name)) continue;
-          const key = `bsi::ifc::prop::${prop.name}`;
-          result[key] = this.convertPropertyValue(prop.value, prop.type);
-        }
-      }
-    } else if (this.dataStore.properties) {
-      const psets = this.dataStore.properties.getForEntity(entityId);
-      for (const pset of psets) {
-        if (recordIfEmptyPset(pset, entityId, unrepresentedPropertySets)) continue;
-        for (const prop of pset.properties) {
-          if (options.onlyKnownProperties !== false && !IFC5_KNOWN_PROP_NAMES.has(prop.name)) continue;
-          const key = `bsi::ifc::prop::${prop.name}`;
-          result[key] = this.convertPropertyValue(prop.value, prop.type);
-        }
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Convert a property value to IFCX-compatible format.
-   * IFCX uses native JSON types rather than IFC wrapped types.
-   */
-  private convertPropertyValue(value: unknown, type: PropertyValueType): unknown {
-    if (value === null || value === undefined) return null;
-
-    switch (type) {
-      case PropertyValueType.Real:
-        return Number(value);
-      case PropertyValueType.Integer:
-        return Math.round(Number(value));
-      case PropertyValueType.Boolean:
-      case PropertyValueType.Logical:
-        return Boolean(value);
-      default:
-        return value;
-    }
+  /** Write an entity's psets as IFCX attributes (see `ifc5-pset-properties.ts`, #5201, #5376). */
+  private writePropertiesForEntity(
+    attributes: Record<string, unknown>, entityId: number, options: Ifc5ExportOptions, sinks: PsetPropertySinks,
+  ): number {
+    const psets = this.mutationView && options.applyMutations !== false
+      ? this.mutationView.getForEntity(entityId)
+      : this.dataStore.properties?.getForEntity(entityId) ?? [];
+    return writePsetProperties(attributes, entityId, psets, options.onlyKnownProperties !== false, sinks);
   }
 
   // --------------------------------------------------------------------------

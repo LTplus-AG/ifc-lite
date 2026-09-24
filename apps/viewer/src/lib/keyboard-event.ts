@@ -40,18 +40,37 @@ export function eventKey(e: KeyboardEvent): string | null {
 }
 
 /**
- * True when the event targets a text-entry surface (`<input>`, `<textarea>` or
- * a `contenteditable` host), i.e. the user is typing and single-key shortcuts
- * must not fire.
+ * Keys the Walk tool's movement loop owns (see `useKeyboardControls`). While
+ * `activeTool === 'walk'`, global single-key shortcuts must not also fire on
+ * them — A would otherwise "Show all" and D toggle the presentation dock.
+ */
+export const WALK_MOVEMENT_KEYS: ReadonlySet<string> = new Set([
+  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
+  'w', 's', 'a', 'd',
+]);
+
+/** ARIA roles whose widgets consume plain keys (type-ahead, arrows, values). */
+const INPUT_ROLE_SELECTOR =
+  '[role=combobox],[role=listbox],[role=slider],[role=menu],[role=menuitem]';
+
+/**
+ * True when the event targets a surface that consumes plain key presses — a
+ * text-entry element (`<input>`, `<textarea>`, a `contenteditable` host), a
+ * native `<select>` (type-ahead), or an element inside an ARIA combobox,
+ * listbox, slider or menu — so single-key shortcuts must not fire.
  *
  * Returns `false` for a missing or non-HTML target rather than throwing.
  */
 export function isTextEntryTarget(e: Event): boolean {
   const target = e.target as (Partial<HTMLElement> | null);
   if (!target) return false;
-  return (
+  if (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
     target.isContentEditable === true
-  );
+  ) {
+    return true;
+  }
+  return typeof target.closest === 'function' && target.closest(INPUT_ROLE_SELECTOR) !== null;
 }

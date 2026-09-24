@@ -12,7 +12,7 @@ import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { closeAllPanelWindows } from '@/services/panel-windows';
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import {
   executeBasketIsolate,
   executeBasketSet,
@@ -84,6 +84,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // events) — see lib/keyboard-event.ts. No shortcut below could match one.
     const key = eventKey(e);
     if (key === null) return;
+
+    // The Walk tool moves on W/A/S/D + arrows (useKeyboardControls); those
+    // keys must not also run their global shortcut (A = Show all, D = dock).
+    if (activeTool === 'walk' && !ctrl && !e.altKey && WALK_MOVEMENT_KEYS.has(key)) return;
 
     // Workspace moves interleave with active-model authoring history.
     if (key === 'z' && ctrl) {

@@ -92,4 +92,20 @@ describe('isTextEntryTarget', () => {
     // comes from XML/SVG content, which is not a text-entry surface.
     assert.equal(isTextEntryTarget(eventOn({ tagName: 'input' })), false);
   });
+
+  it('treats a native <select> and ARIA input widgets as input targets (#5596)', () => {
+    // Type-ahead in a focused <select> must not run single-key shortcuts.
+    assert.equal(isTextEntryTarget(eventOn({ tagName: 'SELECT' })), true);
+    // `closest` matches the role on the element itself or an ancestor, so an
+    // option focused inside a listbox counts too.
+    const inRole = (role: string | null) => ({
+      tagName: 'DIV',
+      closest: (selector: string) => (role && selector.includes(`[role=${role}]`) ? {} : null),
+    });
+    for (const role of ['combobox', 'listbox', 'slider', 'menu', 'menuitem']) {
+      assert.equal(isTextEntryTarget(eventOn(inRole(role))), true, role);
+    }
+    assert.equal(isTextEntryTarget(eventOn(inRole('button'))), false);
+    assert.equal(isTextEntryTarget(eventOn(inRole(null))), false);
+  });
 });

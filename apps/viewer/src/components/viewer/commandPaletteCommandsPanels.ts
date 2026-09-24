@@ -33,6 +33,7 @@ import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
@@ -162,13 +163,13 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
         finally { gp.dispose(); }
       } },
     { id: 'export:csv-entities', label: 'Export CSV: Entities', ...withKey('commandPalette.export.csvEntities.label'), keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
     { id: 'export:csv-properties', label: 'Export CSV: Properties', ...withKey('commandPalette.export.csvProperties.label'), keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
     { id: 'export:csv-quantities', label: 'Export CSV: Quantities', ...withKey('commandPalette.export.csvQuantities.label'), keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
     { id: 'export:csv-spatial', label: 'Export CSV: Spatial', ...withKey('commandPalette.export.csvSpatial.label'), keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-      action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+      action: async () => { const st = useViewerStore.getState(); const d = st.ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(editedModelBytes(d, st.activeModelId ? st.getMutationView(st.activeModelId) : null), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
     { id: 'export:anonymized', label: 'Export Anonymized Subset…', ...withKey('commandPalette.export.anonymized.label'), keywords: 'anonymize obfuscate isolate scrub redact bug report reproduction privacy scrub-safe', category: 'Export', icon: ShieldQuestion,
       action: () => { useViewerStore.getState().setAnonymizedExportRequested(true); } },
     { id: 'export:json', label: 'Export JSON', ...withKey('commandPalette.export.json.label'), keywords: 'data entities all download', category: 'Export', icon: FileJson,

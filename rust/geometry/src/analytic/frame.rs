@@ -38,6 +38,20 @@ pub struct AnalyticSegmentFrame {
 }
 
 impl AnalyticCurveSegment {
+    /// Exact unsigned length in the segment's current coordinate units.
+    /// Invalid or overflowing source geometry has no measurable length.
+    pub fn length(&self) -> Option<f64> {
+        let value = match self {
+            Self::Line { start, end } => {
+                let delta: [f64; 3] = std::array::from_fn(|axis| end[axis] - start[axis]);
+                delta[0].hypot(delta[1]).hypot(delta[2])
+            }
+            Self::Arc { radius, sweep_angle, .. } if *radius > 0.0 => radius * sweep_angle.abs(),
+            Self::Arc { .. } => return None,
+        };
+        value.is_finite().then_some(value)
+    }
+
     /// Evaluate the source curve in its current coordinate space. Returns
     /// `None` for non-finite or invalid curve frames.
     pub fn endpoint_frame(&self) -> Option<AnalyticSegmentFrame> {

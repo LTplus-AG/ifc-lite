@@ -11,6 +11,9 @@ use crate::error::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix4, Point3, Vector3};
 
+mod placement_2d;
+pub(crate) use placement_2d::parse_axis2_placement_2d;
+
 /// Parse IfcAxis2Placement3D into transformation matrix
 ///
 /// IfcAxis2Placement3D attributes:

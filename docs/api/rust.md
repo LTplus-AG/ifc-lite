@@ -429,6 +429,21 @@ IFC length units; `AnalyticStatus::Unsupported` carries a reason and no partial
 segments when the directrix cannot be described exactly. The processing API below
 places those segments in product world coordinates.
 
+`extract_analytic_extrusion(entity, decoder)` reads a source
+`IfcExtrudedAreaSolid` without tessellation. Its `AnalyticExtrusion` retains the
+authored `SweptArea` and `Position` STEP IDs, raw file-unit `Depth`, authored
+`IfcDirection.DirectionRatios`, a derived unit axis, and a separate matrix for
+the solid-local `Position`. `extract_analytic_profile` resolves exact closed
+line and arc loops for rectangles, circles, and supported arbitrary profiles,
+including holes, signed winding area, and exact perimeter in file units. The profile's own `Position` matrix
+remains separate. Unsupported profile geometry or malformed extrusion
+parameters produce `AnalyticStatus::Unsupported` with a reason; no sampled
+outline is substituted. `ProfileType` must be `AREA`, and
+`ValidExtrusionDirection` rejects a direction perpendicular to the solid's
+local Z axis. These are **source-local, IFC Z-up file-unit** values:
+product placement, representation mapping, unit conversion to world metres,
+and later CSG remain distinct steps.
+
 ### Features
 
 ```toml

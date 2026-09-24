@@ -220,7 +220,11 @@ pub use processors::{
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use alignment_axis::locate_axis_curve;
-pub use analytic::{extract_swept_disk, AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
+pub use analytic::{
+    extract_analytic_extrusion, extract_analytic_profile, extract_swept_disk,
+    AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop,
+    AnalyticStatus, AnalyticSweptDisk, ProfileLoopKind,
+};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics, ExtractedProfile};
 pub use profile_skip::SkippedProfile;

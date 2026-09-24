@@ -8,6 +8,10 @@
 mod curve;
 mod frame;
 mod helpers;
+mod profile;
+pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};
+mod extrusion;
+pub use extrusion::{extract_analytic_extrusion, AnalyticExtrusion};
 #[cfg(test)]
 mod tests;
 

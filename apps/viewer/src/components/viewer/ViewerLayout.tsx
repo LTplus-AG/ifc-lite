@@ -572,12 +572,7 @@ function MobileBottomSheet({
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const sheet = sheetRef.current;
     if (!sheet) return;
-    dragRef.current = {
-      startY: e.clientY,
-      startT: performance.now(),
-      startHeight: sheet.getBoundingClientRect().height,
-      active: true,
-    };
+    dragRef.current = { startY: e.clientY, startT: performance.now(), startHeight: sheet.getBoundingClientRect().height, active: true };
     sheet.style.transition = 'none';
     capturePointer(e.currentTarget, e.pointerId);
   }, []);

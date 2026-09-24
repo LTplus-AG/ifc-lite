@@ -43,15 +43,15 @@ fn mesh_face_collections(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
     rtc_file_units: Option<(f64, f64, f64)>,
-    missing_ref: &str,
+    collection_noun: &str,
 ) -> Result<Mesh> {
     let mut all_positions = Vec::new();
     let mut all_indices = Vec::new();
 
     for collection_ref in collections {
-        let collection_id = collection_ref
-            .as_entity_ref()
-            .ok_or_else(|| Error::geometry(missing_ref.to_string()))?;
+        let collection_id = collection_ref.as_entity_ref().ok_or_else(|| {
+            Error::geometry(format!("Expected entity reference for {collection_noun}"))
+        })?;
 
         // Face IDs straight from the collection's raw bytes (attribute 0)
         let face_ids = match decoder.get_entity_ref_list_fast(collection_id) {
@@ -194,13 +194,7 @@ fn mesh_surface_model(
         .ok_or_else(|| Error::geometry(missing_attribute.to_string()))?
         .as_list()
         .ok_or_else(|| Error::geometry(format!("Expected {collection} list")))?;
-    mesh_face_collections(
-        collections,
-        decoder,
-        quality,
-        rtc_file_units,
-        &format!("Expected entity reference for {collection}"),
-    )
+    mesh_face_collections(collections, decoder, quality, rtc_file_units, collection)
 }
 
 // ---------- FaceBasedSurfaceModelProcessor ----------

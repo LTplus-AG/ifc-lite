@@ -32,7 +32,8 @@ export function readPackageVersion(pkgPath: string): string {
   try {
     const pkg = JSON.parse(
       // Not a top-level import: this package is bundled into browser apps,
-      // where `node:fs` is an empty shim (#5586). Node >= 22.3 has it.
+      // where `node:fs` is an empty shim (#5586). Needs Node 20.16+ or 22.3+,
+      // which is what the CLI and MCP (its only callers) declare in `engines`.
       process.getBuiltinModule('node:fs').readFileSync(pkgPath, 'utf-8'),
     ) as { version?: string };
     if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;

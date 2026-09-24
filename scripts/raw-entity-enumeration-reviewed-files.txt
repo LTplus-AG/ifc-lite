@@ -4,8 +4,6 @@
 #raw access is removed so a future regression still fails.
 apps/viewer/src/store/slices/mutationSlice.ts
 apps/viewer/src/store/slices/storeyPlacement.ts
-apps/viewer/src/components/mcp/playground-dispatcher.ts
-apps/viewer/src/components/mcp/playground-scene-registry.ts
 apps/viewer/src/components/viewer/properties/RawStepCard.tsx
 packages/cache/src/adapt.ts
 packages/cache/src/sections/entities.ts
@@ -22,7 +20,6 @@ packages/cli/src/commands/validate.ts
 packages/cli/src/headless-backend.ts
 packages/clash/src/adapters/step.ts
 packages/create/src/in-store/resolve-anchor.ts
-packages/create/src/in-store/placement-frame.ts
 packages/create/src/in-store/style-entity-reader.ts
 packages/data/src/effective-entities.ts
 packages/export/src/appearance-dependencies.ts

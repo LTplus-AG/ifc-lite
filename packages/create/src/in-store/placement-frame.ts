@@ -296,7 +296,6 @@ export function readEntity(
   overlay: OverlayWallReader | undefined,
   expressId: number,
 ): { type?: string; attributes: IfcAttributeValue[] } | null {
-  // @raw-entity-enumeration-ok locate one source STEP record; overlay-only entities use the reader below
   const ref = store.entityIndex.byId.get(expressId);
   if (ref && ref.byteLength > 0 && ref.byteOffset >= 0) {
     return extractor.extractEntity(ref);

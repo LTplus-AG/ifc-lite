@@ -55,7 +55,8 @@ import {
   type BCFProject,
   type BCFTopic,
 } from '@ifc-lite/bcf';
-import { parseIDS, validateIDS, type IDSDocument } from '@ifc-lite/ids';
+import { parseIDS, validateIDS, type IDSDocument, type IFCDataAccessor } from '@ifc-lite/ids';
+import { createDataAccessor as createIdsDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import type { UseTranslationResult } from '@/i18n/useTranslation';
@@ -1813,71 +1814,15 @@ function resolveDiffModels(
   return { left, right };
 }
 
-/** Build the IDS validator's data accessor from the mutation-aware SDK model. */
-function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCDataAccessor {
-  const ref = (id: number): EntityRef => ({ modelId: m.id, expressId: id });
-  return {
-    getEntityType(id) {
-      return m.bim.entity(ref(id))?.type;
-    },
-    getEntityName(id) {
-      return m.bim.entity(ref(id))?.name || undefined;
-    },
-    getGlobalId(id) {
-      return m.bim.entity(ref(id))?.globalId || undefined;
-    },
-    getDescription(id) {
-      return m.bim.entity(ref(id))?.description || undefined;
-    },
-    getObjectType(id) {
-      return m.bim.entity(ref(id))?.objectType || undefined;
-    },
-    getEntitiesByType(typeName) {
-      return [...effectiveEntities(m, [typeName])].map(({ expressId }) => expressId);
-    },
-    getAllEntityIds() {
-      return [...effectiveEntities(m)].map(({ expressId }) => expressId);
-    },
-    getPropertyValue(id, psetName, propName) {
-      const v = m.bim.property(ref(id), psetName, propName);
-      if (v == null) return undefined;
-      return { value: v, dataType: typeof v === 'number' ? 'IFCREAL' : typeof v === 'boolean' ? 'IFCBOOLEAN' : 'IFCLABEL', propertySetName: psetName, propertyName: propName };
-    },
-    getPropertySets(id) {
-      return m.bim.properties(ref(id)).map((pset) => ({
-        name: pset.name,
-        properties: pset.properties.map((p) => ({
-          name: p.name,
-          value: p.value as string | number | boolean | null,
-          dataType: typeof p.value === 'number' ? 'IFCREAL' : typeof p.value === 'boolean' ? 'IFCBOOLEAN' : 'IFCLABEL',
-        })),
-      }));
-    },
-    getClassifications(id) {
-      // Forward `unresolved` (#3948/#3951) — else a classified-but-unresolved entity reads as a fabricated empty match.
-      return m.bim.classifications(ref(id)).map((c) => ({
-        system: c.system ?? '',
-        value: c.identification ?? c.name ?? '',
-        name: c.name,
-        unresolved: c.unresolved,
-      }));
-    },
-    getMaterials(id) {
-      // Every variant via the same #1366 lens collector the material filter/list panels use.
-      // Previously only `mat.layers`/top-level `mat.name` were checked, so a profile set,
-      // constituent set, or material list was invisible to IDS material requirements.
-      return lensMaterialNames(m.bim.materials(ref(id))).map((name) => ({ name }));
-    },
-    getParent(id) {
-      const parent = m.bim.containedIn(ref(id)) ?? m.bim.decomposedBy(ref(id));
-      return parent ? { expressId: parent.ref.expressId, entityType: parent.type } : undefined;
-    },
-    getAttribute(id, attributeName) {
-      const attrs = m.bim.attributes(ref(id));
-      const found = attrs.find((a) => a.name === attributeName);
-      return found ? String(found.value) : undefined;
-    },
-  };
+/**
+ * The IDS validator's data accessor: the shared `@ifc-lite/ids/bridge` one,
+ * over this model's store and pending mutation overlay, exactly as the
+ * viewer's IDS panel, the CLI and the stdio MCP build it. A hand-built copy
+ * here drifted: it invented property dataTypes from the JS value kind
+ * (#5304) and reimplemented material flattening (see the materials test).
+ */
+function makeIdsAccessor(m: LoadedPlaygroundModel): IFCDataAccessor {
+  return createIdsDataAccessor(m.store, m.id, m.backend.getMutationView());
 }
 
 /** Tiny RFC4122-ish v4 UUID. Browsers ship crypto.randomUUID but TypeScript

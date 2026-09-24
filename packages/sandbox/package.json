@@ -23,6 +23,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "esbuild-wasm": "^0.28.2",
     "quickjs-emscripten": "^0.32.0"

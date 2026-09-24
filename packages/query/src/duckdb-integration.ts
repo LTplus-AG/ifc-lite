@@ -136,8 +136,7 @@ export class DuckDBIntegration {
    * This approach works without Arrow dependencies and is more portable
    */
   private async registerTables(store: IfcDataStore): Promise<void> {
-    // conn is guaranteed non-null here — called only from init() after connect()
-    const conn = this.conn!;
+    // @raw-entity-enumeration-ok SQL registration materializes the supplied parsed store once, without a mutation view
     console.log('[DuckDB] Registering tables from store with', store.entities.count, 'entities');
 
     // Create and populate entities table
@@ -180,7 +179,9 @@ export class DuckDBIntegration {
     const batchSize = 1000;
 
     // Insert in batches for performance
+    // @raw-entity-enumeration-ok the SQL entities table copies the parsed EntityTable rows, not the live overlay
     for (let i = 0; i < entities.count; i += batchSize) {
+      // @raw-entity-enumeration-ok cap each parsed-table batch at its source row count
       const end = Math.min(i + batchSize, entities.count);
       const values: string[] = [];
 
@@ -207,6 +208,7 @@ export class DuckDBIntegration {
       }
     }
 
+    // @raw-entity-enumeration-ok report the number of parsed rows just registered in DuckDB
     console.log(`[DuckDB] Registered entities table with ${entities.count} rows`);
   }
 

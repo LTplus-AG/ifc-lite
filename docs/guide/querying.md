@@ -6,6 +6,10 @@ Guide to querying IFC data with IFClite.
 
 IFClite provides multiple query interfaces:
 
+`IfcQuery`'s fluent and SQL bulk queries read the parsed `IfcDataStore` passed
+to its constructor. They do not include entities created or deleted in a
+session's mutation view. Use the SDK query backend for live edited models.
+
 ```mermaid
 flowchart TB
     subgraph Sources["Data Sources"]

@@ -5,16 +5,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getPackageVersion } from '../utils/config-fixers.js';
-
-const LICENSE_HEADER = `/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
-`;
-
-function writeSourceFile(targetDir: string, relativePath: string, content: string) {
-  writeFileSync(join(targetDir, relativePath), `${LICENSE_HEADER}${content}`);
-}
+import { writeGitignore } from '../utils/gitignore.js';
 
 /**
  * Scaffold a standalone React + Vite WebGPU viewer.
@@ -43,9 +34,9 @@ export function createReactTemplate(targetDir: string, projectName: string) {
     devDependencies: {
       '@types/react': '^18.2.0',
       '@types/react-dom': '^18.2.0',
-      '@vitejs/plugin-react': '^4.2.0',
+      '@vitejs/plugin-react': '^5.0.0',
       typescript: '^5.3.0',
-      vite: '^5.0.0',
+      vite: '^7.0.0',
     },
   }, null, 2));
 
@@ -68,7 +59,7 @@ export function createReactTemplate(targetDir: string, projectName: string) {
     include: ['src'],
   }, null, 2));
 
-  writeSourceFile(targetDir, 'vite.config.ts', `import { defineConfig } from 'vite';
+  writeFileSync(join(targetDir, 'vite.config.ts'), `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const isolationHeaders = {
@@ -106,7 +97,7 @@ export default defineConfig({
 
   mkdirSync(join(targetDir, 'src'));
 
-  writeSourceFile(targetDir, 'src/main.tsx', `import React from 'react';
+  writeFileSync(join(targetDir, 'src/main.tsx'), `import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.js';
 import './styles.css';
@@ -118,7 +109,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 `);
 
-  writeSourceFile(targetDir, 'src/App.tsx', `import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+  writeFileSync(join(targetDir, 'src/App.tsx'), `import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { Renderer } from '@ifc-lite/renderer';
 
@@ -414,7 +405,7 @@ export default function App() {
 }
 `);
 
-  writeSourceFile(targetDir, 'src/styles.css', `:root {
+  writeFileSync(join(targetDir, 'src/styles.css'), `:root {
   color-scheme: dark;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #0b1220;
@@ -567,6 +558,8 @@ body {
   }
 }
 `);
+
+  writeGitignore(targetDir);
 
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
 

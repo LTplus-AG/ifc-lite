@@ -18,6 +18,7 @@ export function createServerNativeTemplate(targetDir: string, projectName: strin
   writeFileSync(join(targetDir, 'package.json'), JSON.stringify({
     name: projectName,
     version: '0.1.0',
+    private: true,
     type: 'module',
     description: 'IFC processing server (native binary) with TypeScript client',
     scripts: {

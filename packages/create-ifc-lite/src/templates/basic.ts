@@ -5,23 +5,30 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getPackageVersion } from '../utils/config-fixers.js';
+import { writeGitignore } from '../utils/gitignore.js';
 
 /**
  * Scaffold a minimal TypeScript project for parsing IFC files.
  */
 export function createBasicTemplate(targetDir: string, projectName: string) {
   const parserVersion = getPackageVersion('@ifc-lite/parser');
+  // `store.entityIndex.byType` is keyed by the raw STEP spelling, and the
+  // PascalCase lookup table for it lives in @ifc-lite/data.
+  const dataVersion = getPackageVersion('@ifc-lite/data');
 
   // package.json
   writeFileSync(join(targetDir, 'package.json'), JSON.stringify({
     name: projectName,
-    version: parserVersion.replace('^', ''),
+    version: '0.1.0',
+    private: true,
     type: 'module',
     scripts: {
-      parse: 'npx tsx src/index.ts',
+      parse: 'tsx src/index.ts',
       build: 'tsc',
+      typecheck: 'tsc --noEmit',
     },
     dependencies: {
+      '@ifc-lite/data': dataVersion,
       '@ifc-lite/parser': parserVersion,
     },
     devDependencies: {
@@ -49,7 +56,8 @@ export function createBasicTemplate(targetDir: string, projectName: string) {
   // src/index.ts
   mkdirSync(join(targetDir, 'src'));
   writeFileSync(join(targetDir, 'src', 'index.ts'), `import { IfcParser } from '@ifc-lite/parser';
-import { readFileSync } from 'fs';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { existsSync, readFileSync } from 'fs';
 
 // Example: Parse an IFC file
 const ifcPath = process.argv[2];
@@ -62,7 +70,13 @@ if (!ifcPath) {
   process.exit(1);
 }
 
-// readFileSync returns a Node Buffer (Uint8Array subclass); extract the underlying ArrayBuffer
+if (!existsSync(ifcPath)) {
+  console.error(\`File not found: \${ifcPath}\`);
+  process.exit(1);
+}
+
+// readFileSync returns a Node Buffer (Uint8Array subclass) that may be a view
+// into a larger pooled allocation, so slice out just this file's bytes.
 const nodeBuffer = readFileSync(ifcPath);
 const buffer = nodeBuffer.buffer.slice(
   nodeBuffer.byteOffset,
@@ -72,14 +86,27 @@ const buffer = nodeBuffer.buffer.slice(
 const parser = new IfcParser();
 
 console.log('Parsing IFC file...');
-parser.parseColumnar(buffer).then(store => {
+
+try {
+  const store = await parser.parseColumnar(buffer);
+
+  // parseColumnar tolerates garbage input rather than throwing, so an empty
+  // store is how "that wasn't an IFC file" actually arrives.
+  if (store.entityCount === 0) {
+    throw new Error(\`No IFC entities found in \${ifcPath} — is it a STEP/IFC file?\`);
+  }
+
   console.log('\\nFile parsed successfully!');
   console.log(\`  Entities: \${store.entityCount}\`);
   console.log(\`  Schema: \${store.schemaVersion}\`);
 
-  // Count by type
+  // Count by type. \`entityIndex.byType\` is keyed by the raw STEP spelling
+  // (IFCWALLSTANDARDCASE); IFC_ENTITY_NAMES maps that to the canonical IFC
+  // EXPRESS name (IfcWallStandardCase), which is what belongs in front of a
+  // user. Geometry resource entities are not in \`store.entities\`, so the
+  // per-entity \`getTypeName\` would answer 'Unknown' for most of this list.
   const typeCounts = [...store.entityIndex.byType.entries()]
-    .map(([type, ids]) => [type, ids.length] as const)
+    .map(([stepName, ids]) => [IFC_ENTITY_NAMES[stepName] ?? stepName, ids.length] as const)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
@@ -87,8 +114,13 @@ parser.parseColumnar(buffer).then(store => {
   for (const [type, count] of typeCounts) {
     console.log(\`  \${type}: \${count}\`);
   }
-});
+} catch (error) {
+  console.error(\`\\nFailed to parse \${ifcPath}: \${error instanceof Error ? error.message : String(error)}\`);
+  process.exitCode = 1;
+}
 `);
+
+  writeGitignore(targetDir);
 
   // README
   writeFileSync(join(targetDir, 'README.md'), `# ${projectName}
@@ -105,6 +137,6 @@ npm run parse ./your-model.ifc
 ## Learn More
 
 - [IFC-Lite Documentation](https://ifclite.dev/docs/)
-- [API Reference](https://ifclite.dev/docs/api/)
+- [TypeScript API Reference](https://ifclite.dev/docs/api/typescript/)
 `);
 }

@@ -19,7 +19,8 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { collectPhysicalEntityIds } from '@/lib/physical-objects';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
 
@@ -29,6 +30,8 @@ export interface ModelStats {
 }
 
 export interface ModelStatsGeometryContext {
+  /** The displayed model's live mutation view, when it has one. */
+  mutationView?: MutablePropertyView | null;
   /** Whether an empty geometry result is authoritative rather than provisional. */
   geometryReady: boolean;
   /** Resolve a renderer/global id only when it belongs to the displayed model. */
@@ -55,7 +58,7 @@ export function computeModelStats(
     const localId = geometry.toLocalId(globalId);
     if (localId !== undefined) meshedIds.add(localId);
   }
-  const physicalIds = collectPhysicalEntityIds(dataStore.entityIndex?.byType);
+  const physicalIds = collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
   const elementsWithGeometry = countShapedObjects(physicalIds, {
     relationships: dataStore.relationships as AggregationRelationships | undefined,
     meshedIds,

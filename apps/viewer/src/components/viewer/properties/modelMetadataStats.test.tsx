@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
@@ -39,7 +40,7 @@ for (const [id, type] of TYPES) BY_TYPE.set(type, [...(BY_TYPE.get(type) ?? []),
 function dataStore(): IfcDataStore {
   return {
     spatialHierarchy: { byStorey: new Map([[100, [...TYPES.keys()]]]) },
-    entityIndex: { byType: BY_TYPE },
+    entityIndex: { byType: BY_TYPE, byId: new Map([...TYPES].map(([id, type]) => [id, { type }])) },
     entities: {
       getName: () => undefined,
       getGlobalId: () => undefined,
@@ -96,6 +97,7 @@ beforeEach(() => {
   federationRegistry.clear();
   federationRegistry.registerModel('other-model', 100);
   federationRegistry.registerModel('stats-model', 100);
+  useViewerStore.setState({ models: new Map(), mutationViews: new Map(), mutationVersion: 0 });
 });
 
 after(() => {
@@ -154,6 +156,32 @@ describe('ModelMetadataPanel — Elements with Geometry', () => {
   it('keeps the shape filter provisional while geometry is streaming', () => {
     const container = render(model({ geometryResult: null, loadState: 'streaming-geometry' }));
     assert.equal(statistic(container, 'Elements with Geometry'), '7');
+  });
+
+  it('counts a meshed live creation and excludes a tombstoned source element (#5249)', () => {
+    const offset = federationRegistry.getOffset('stats-model') ?? 0;
+    const view = new MutablePropertyView(null, 'stats-model');
+    view.setExpressIdWatermark(8);
+    const created = view.createEntity('IfcWall', ['0000000000000000000009', null, 'New wall']);
+    useViewerStore.setState({ mutationViews: new Map([['stats-model', view]]), mutationVersion: 1 });
+    const geometryResult = {
+      meshes: [1, 2, 4, 5, 6, created.expressId].map((expressId) => ({ expressId: expressId + offset })),
+      instancedGeometryHashes: new Map([[7 + offset, 0n]]),
+    } as never;
+    const container = render(model({ geometryResult, idOffset: offset, loadState: 'complete' }));
+    assert.equal(statistic(container, 'Elements with Geometry'), '7');
+
+    view.deleteEntity(2);
+    act(() => useViewerStore.setState({ mutationVersion: 2 }));
+    assert.equal(statistic(container, 'Elements with Geometry'), '6');
+  });
+
+  it('resolves the single-model mutation view under its canonical legacy key (#5249)', () => {
+    const view = new MutablePropertyView(null, '__legacy__');
+    view.deleteEntity(1);
+    useViewerStore.setState({ mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1 });
+    const container = render(model({ id: 'default', geometryResult: null, loadState: 'streaming-geometry' }));
+    assert.equal(statistic(container, 'Elements with Geometry'), '6');
   });
 
   it('opens preserved-only LandXML surface records, even when they have no overlay or mesh (#5042)', () => {

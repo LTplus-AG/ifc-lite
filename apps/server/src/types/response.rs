@@ -67,6 +67,12 @@ pub enum StreamEvent {
         meshes: Vec<MeshData>,
         /// Batch sequence number.
         batch_number: usize,
+        /// Row-major `native_to_baked` for the frame these meshes are baked
+        /// in (#5407): what the stream's shape collator needs to verify a
+        /// site-rotated model's repeats (#4118). Server-internal; never on the
+        /// wire.
+        #[serde(skip)]
+        baked_basis: Option<[f64; 16]>,
     },
 
     /// Processing complete.

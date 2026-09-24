@@ -251,8 +251,10 @@ pub(crate) fn depth_clash_result(
 ) -> Option<NarrowResult> {
     // `||` in the same order as the TS kernel, each comparison `<=` so a
     // NaN candidate never counts as below its floor, on either side.
-    let below_floor = estimate <= estimate_floor(aabb_a, aabb_b)
-        || box_pen.is_some_and(|b| b.mtd <= depth_floor(b.axis, aabb_a, aabb_b))
+    let est_floor = estimate_floor(aabb_a, aabb_b);
+    let box_floor = box_pen.map(|b| depth_floor(b.axis, aabb_a, aabb_b));
+    let below_floor = estimate <= est_floor
+        || box_pen.zip(box_floor).is_some_and(|(b, f)| b.mtd <= f)
         || mesh_evidence.is_some_and(|e| e.depth <= depth_floor(e.axis, aabb_a, aabb_b));
     if below_floor {
         if !report_touch {
@@ -264,24 +266,25 @@ pub(crate) fn depth_clash_result(
             distance_kind: DistanceKind::Mesh, // distance is exact (0)
             point,
             bounds,
+            depth_floor: None,
         });
     }
     // Estimate-vs-mesh selection, reachable only above the floor: the box
     // MTD is certified (`Mesh`) unless the pair is a through-penetration,
     // where the AABB estimate is the honest number (see `box_penetration`).
-    let measured = box_pen.is_some_and(|b| !b.through);
+    // The reported depth carries ITS OWN floor out with it (#5639), so the
+    // reported touching band is decided by the same rule as this verdict.
+    let measured = box_pen.filter(|b| !b.through);
     Some(NarrowResult {
         status: ClashStatus::Hard,
-        distance: -(match box_pen {
-            Some(b) if !b.through => b.mtd,
-            _ => estimate,
-        }),
-        distance_kind: if measured {
+        distance: -measured.map_or(estimate, |b| b.mtd),
+        distance_kind: if measured.is_some() {
             DistanceKind::Mesh
         } else {
             DistanceKind::Estimate
         },
         point,
         bounds,
+        depth_floor: Some(measured.and(box_floor).unwrap_or(est_floor)),
     })
 }

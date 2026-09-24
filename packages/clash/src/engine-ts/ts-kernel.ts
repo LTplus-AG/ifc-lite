@@ -130,6 +130,7 @@ export class TsKernel implements ClashKernel {
         status: res.status,
         distance: res.distance,
         distanceKind: res.distanceKind,
+        ...(res.depthFloor !== undefined ? { depthFloor: res.depthFloor } : {}),
         point: res.point,
         bounds: res.bounds,
       });

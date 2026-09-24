@@ -22,23 +22,38 @@ describe('packMeshMaterial (#5386)', () => {
     return buf;
   }
 
+  // The functional tests below pin the LITERAL 0.9 / 0.05, not the imported
+  // DEFAULT_MATERIAL_ROUGHNESS / GLASS_ROUGHNESS constants: importing the
+  // expected value from the same module under test means a regression that
+  // changes the constant (e.g. back to the old 0.6) moves the test's
+  // expectation right along with the bug, so it can never go red (#5623
+  // review). This test instead pins the constants' own values against the
+  // literals `mesh-material.ts`'s doc comments and changeset document, so a
+  // change to those constants is caught here independent of the functional
+  // tests below.
+  it('pins the documented default values (0 / 0.9 / 0.05)', () => {
+    assert.equal(DEFAULT_MATERIAL_METALLIC, 0, 'DEFAULT_MATERIAL_METALLIC');
+    assert.equal(DEFAULT_MATERIAL_ROUGHNESS, 0.9, 'DEFAULT_MATERIAL_ROUGHNESS');
+    assert.equal(GLASS_ROUGHNESS, 0.05, 'GLASS_ROUGHNESS');
+  });
+
   it('defaults an opaque draw to a matte dielectric', () => {
     const buf = pack(1);
-    assert.equal(buf[at], DEFAULT_MATERIAL_METALLIC, 'metallic');
-    assert.equal(buf[at + 1], Math.fround(DEFAULT_MATERIAL_ROUGHNESS), 'roughness');
+    assert.equal(buf[at], 0, 'metallic');
+    assert.equal(buf[at + 1], Math.fround(0.9), 'roughness');
     assert.equal(buf[at + 2], 0, 'transmission flag: opaque is not glass');
   });
 
   it('defaults with no authoredAlpha argument at all (the opaque instanced template)', () => {
     const buf = new Float32Array(MESH_UNIFORM_FLOATS);
     packMeshMaterial(buf);
-    assert.equal(buf[at + 1], Math.fround(DEFAULT_MATERIAL_ROUGHNESS), 'a call with no alpha argument must stay opaque, not glass');
+    assert.equal(buf[at + 1], Math.fround(0.9), 'a call with no alpha argument must stay opaque, not glass');
     assert.equal(buf[at + 2], 0, 'transmission flag');
   });
 
   it('turns a translucent AUTHORED alpha into glass: smooth roughness, transmission flag set', () => {
     const buf = pack(0.5);
-    assert.equal(buf[at + 1], Math.fround(GLASS_ROUGHNESS), 'roughness');
+    assert.equal(buf[at + 1], Math.fround(0.05), 'roughness');
     assert.equal(buf[at + 2], 1, 'transmission flag: translucent is glass');
   });
 
@@ -66,7 +81,7 @@ describe('packMeshMaterial (#5386)', () => {
   it('lets a partial override (metallic only) fall back to the roughness default', () => {
     const buf = pack(1, { metallic: 0.5 });
     assert.equal(buf[at], Math.fround(0.5), 'metallic override');
-    assert.equal(buf[at + 1], Math.fround(DEFAULT_MATERIAL_ROUGHNESS), 'unset roughness falls back to the default');
+    assert.equal(buf[at + 1], Math.fround(0.9), 'unset roughness falls back to the default');
   });
 
   it('zeroes the padding lane', () => {

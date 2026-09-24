@@ -2746,7 +2746,16 @@ export class Renderer {
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
                         tpl[35] = txAlpha;
-                        packMeshMaterial(tpl); // opaque pipeline: never drawn as glass
+                        // Same authored-alpha + material contract as the flat/batched
+                        // paths (mesh-material.ts) — a call with neither argument
+                        // silently gave every textured metal or translucent mesh the
+                        // opaque dielectric default (#5623 review). The pipeline
+                        // itself is still opaque/depth-write only (no blend state,
+                        // see `txAlpha` above), so a translucent authored alpha still
+                        // never actually blends here — only the glass/roughness
+                        // CHOICE in the shader follows the same rule as everywhere
+                        // else, for the same reason `tm.material` does.
+                        packMeshMaterial(tpl, tm.color[3], tm.material);
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);

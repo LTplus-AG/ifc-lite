@@ -44,11 +44,14 @@ describe('useKeyboardShortcuts — context guards (#5596)', () => {
     assert.equal(useViewerStore.getState().hiddenEntities.size, 0);
   });
 
-  it('Walk + A keeps the hidden set, Walk + D leaves the presentation dock alone', () => {
+  it('Walk + A / Alt+A keeps the hidden set, Walk + D / Alt+D leaves the presentation dock alone', () => {
     useViewerStore.getState().setActiveTool('walk');
     render(<Harness />);
     press(window, 'a');
     press(window, 'd');
+    // A modifier must not reopen the path: the A/D handlers ignore Alt.
+    press(window, 'a', { altKey: true });
+    press(window, 'd', { altKey: true });
     assert.equal(useViewerStore.getState().hiddenEntities.size, 2, 'A is a strafe key in Walk, not Show all');
     assert.equal(useViewerStore.getState().basketPresentationVisible, false, 'D is a strafe key in Walk, not the dock toggle');
   });

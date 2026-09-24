@@ -82,8 +82,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // events) — see lib/keyboard-event.ts. No shortcut below could match one.
     const key = eventKey(e);
     if (key === null) return;
-    // Walk owns W/A/S/D + arrows for movement: A must not Show all, D not toggle the dock.
-    if (activeTool === 'walk' && !ctrl && !e.altKey && WALK_MOVEMENT_KEYS.has(key)) return;
+    // Walk owns W/A/S/D + arrows (any modifier): A must not Show all, D not toggle the dock.
+    if (activeTool === 'walk' && WALK_MOVEMENT_KEYS.has(key)) return;
 
     // Workspace moves interleave with active-model authoring history.
     if (key === 'z' && ctrl) {

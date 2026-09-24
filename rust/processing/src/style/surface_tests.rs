@@ -14,11 +14,12 @@ const FOOTER: &str = "ENDSEC;\nEND-ISO-10303-21;\n";
 
 /// `AC20-FZK-Haus.ifc` #22747/#22748/#22749 verbatim: 'Glas', `SpecularColour
 /// = IFCNORMALISEDRATIOMEASURE(1.)`, no `SpecularHighlight`, `ReflectanceMethod
-/// = .NOTDEFINED.`. A fully-specular scalar factor floors at the same
-/// `ROUGHNESS_FLOOR` the renderer already uses for its glass default (0.05),
-/// and carries no metal evidence (glass is a dielectric).
+/// = .NOTDEFINED.`. A fully-specular scalar factor maps to roughness 0.0 AS
+/// AUTHORED — no floor here, the renderer's shader owns the single
+/// `MIN_SPECULAR_ROUGHNESS` clamp (`shaders/specular.wgsl.ts`) — and carries
+/// no metal evidence (glass is a dielectric).
 #[test]
-fn glas_specular_factor_1_0_maps_to_floor_roughness_no_metal() {
+fn glas_specular_factor_1_0_maps_to_zero_roughness_no_metal() {
     let ifc = format!(
         "{HEADER}#1=IFCCOLOURRGB($,0.58052948806,0.753292133974,0.675211718929);\n\
          #2=IFCSURFACESTYLERENDERING(#1,0.88,IFCNORMALISEDRATIOMEASURE(0.1),$,$,$,IFCNORMALISEDRATIOMEASURE(1.),$,.NOTDEFINED.);\n\
@@ -28,8 +29,8 @@ fn glas_specular_factor_1_0_maps_to_floor_roughness_no_metal() {
     let material = extract_surface_style_specular(3, &mut decoder).expect("Glas carries specular evidence");
     assert_eq!(material.metallic, None, "glass is a dielectric — no metal evidence");
     assert!(
-        (material.roughness.unwrap() - ROUGHNESS_FLOOR).abs() < 1e-6,
-        "factor 1.0 -> roughness floor, got {:?}",
+        material.roughness.unwrap().abs() < 1e-6,
+        "factor 1.0 -> roughness 0.0 as authored, got {:?}",
         material.roughness
     );
 }
@@ -37,7 +38,7 @@ fn glas_specular_factor_1_0_maps_to_floor_roughness_no_metal() {
 /// `AC20-FZK-Haus.ifc` #17447/#17448/#17449 verbatim: 'Kiefer, glänzend'
 /// (glossy pine), `SpecularColour = IFCNORMALISEDRATIOMEASURE(0.75)`, no
 /// `SpecularHighlight`, `ReflectanceMethod = .NOTDEFINED.`. A moderately
-/// glossy dielectric: roughness lands between the glass floor and the
+/// glossy dielectric: roughness lands between the glass fixture above and the
 /// renderer's matte default (0.9), and still carries no metal evidence —
 /// varnished wood is not a conductor even at a high specular factor.
 #[test]
@@ -53,7 +54,7 @@ fn kiefer_glaenzend_specular_factor_0_75_maps_to_moderate_roughness_no_metal() {
     assert_eq!(material.metallic, None, "varnished wood is a dielectric — no metal evidence");
     let roughness = material.roughness.expect("factor authored -> roughness resolved");
     assert!((roughness - 0.25).abs() < 1e-6, "1 - 0.75 -> 0.25, got {roughness}");
-    assert!(roughness > ROUGHNESS_FLOOR, "less glossy than the fully-specular glass fixture");
+    assert!(roughness > 0.0, "less glossy than the fully-specular glass fixture");
 }
 
 /// `ReflectanceMethod = .METAL.` is direct authored evidence of a conductor,
@@ -122,7 +123,8 @@ fn specular_exponent_highlight_wins_over_factor_roughness() {
 }
 
 /// `SpecularHighlight` as an `IfcSpecularRoughness` factor (already 0..1) is
-/// used directly, floored at `ROUGHNESS_FLOOR`.
+/// used AS AUTHORED — no floor in Rust; the renderer's shader owns the single
+/// numerical-stability clamp.
 #[test]
 fn specular_roughness_highlight_used_directly() {
     let ifc = format!(
@@ -135,6 +137,66 @@ fn specular_roughness_highlight_used_directly() {
         extract_surface_style_specular(3, &mut decoder).expect("roughness highlight carries evidence");
     assert!((material.roughness.unwrap() - 0.3).abs() < 1e-6);
     assert_eq!(material.metallic, None);
+}
+
+/// `IfcSpecularRoughness(0.)` — the exact value flagged in review as "would a
+/// floor silently change this?" — is reported as EXACTLY 0.0, not bumped to
+/// any Rust-side minimum.
+#[test]
+fn specular_roughness_zero_is_reported_as_zero() {
+    let ifc = format!(
+        "{HEADER}#1=IFCCOLOURRGB($,0.8,0.8,0.8);\n\
+         #2=IFCSURFACESTYLERENDERING(#1,0.,$,$,$,$,$,IFCSPECULARROUGHNESS(0.),.NOTDEFINED.);\n\
+         #3=IFCSURFACESTYLE('Mirror-ish',.BOTH.,(#2));\n{FOOTER}"
+    );
+    let mut decoder = EntityDecoder::new(&ifc);
+    let material =
+        extract_surface_style_specular(3, &mut decoder).expect("roughness highlight carries evidence");
+    assert_eq!(material.roughness, Some(0.0));
+}
+
+/// A `SpecularHighlight` whose authored value overflows `f64` parsing to
+/// `+inf` (a real STEP numeric-overflow case, e.g. an enormous exponent
+/// literal) carries no usable evidence and must not reach
+/// `phong_exponent_to_roughness`/the direct-roughness clamp as `inf` — the
+/// whole attribute is treated as unauthored, falling back to the
+/// `SpecularColour` factor.
+#[test]
+fn non_finite_specular_exponent_is_treated_as_absent() {
+    let ifc = format!(
+        "{HEADER}#1=IFCCOLOURRGB($,0.8,0.8,0.8);\n\
+         #2=IFCSURFACESTYLERENDERING(#1,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.2),IFCSPECULAREXPONENT(1.0e40),.NOTDEFINED.);\n\
+         #3=IFCSURFACESTYLE('Overflowed exponent',.BOTH.,(#2));\n{FOOTER}"
+    );
+    let mut decoder = EntityDecoder::new(&ifc);
+    let material = extract_surface_style_specular(3, &mut decoder)
+        .expect("the SpecularColour factor still carries evidence");
+    // Falls back to the factor: 1 - 0.2 = 0.8, NOT some function of `inf`.
+    assert!(
+        (material.roughness.unwrap() - 0.8).abs() < 1e-6,
+        "non-finite exponent must fall back to the factor, got {:?}",
+        material.roughness
+    );
+}
+
+/// Same non-finite guard, `IfcSpecularRoughness` variant: an overflowed
+/// authored roughness must not survive `f32::clamp` (which returns `NaN`/
+/// out-of-range non-finite inputs unchanged rather than saturating them).
+#[test]
+fn non_finite_specular_roughness_is_treated_as_absent() {
+    let ifc = format!(
+        "{HEADER}#1=IFCCOLOURRGB($,0.8,0.8,0.8);\n\
+         #2=IFCSURFACESTYLERENDERING(#1,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.4),IFCSPECULARROUGHNESS(1.0e40),.NOTDEFINED.);\n\
+         #3=IFCSURFACESTYLE('Overflowed roughness',.BOTH.,(#2));\n{FOOTER}"
+    );
+    let mut decoder = EntityDecoder::new(&ifc);
+    let material = extract_surface_style_specular(3, &mut decoder)
+        .expect("the SpecularColour factor still carries evidence");
+    assert!(
+        (material.roughness.unwrap() - 0.6).abs() < 1e-6,
+        "non-finite roughness must fall back to the factor (1 - 0.4 = 0.6), got {:?}",
+        material.roughness
+    );
 }
 
 /// No `SpecularColour`, no `SpecularHighlight`, `ReflectanceMethod`

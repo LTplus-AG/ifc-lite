@@ -120,13 +120,15 @@ pub fn extract_surface_style_colors(
 // `SpecularHighlight` and `ReflectanceMethod = .NOTDEFINED.` — the common case
 // for BIM-authoring exporters, which populate the scalar factor and nothing
 // else.
+//
+// Roughness is passed through AS AUTHORED, clamped only to the valid `[0, 1]`
+// range — never floored here. A roughness near 0 is numerically unstable in
+// the renderer's Cook-Torrance term (GGX `alpha = roughness^2` approaches 0),
+// but the renderer already owns exactly one clamp for that
+// (`MIN_SPECULAR_ROUGHNESS = 0.045`, `shaders/specular.wgsl.ts`); flooring
+// here too would be a second, independently-tunable copy of the same guard
+// (and did briefly disagree with it, review of #5582).
 // ---------------------------------------------------------------------------
-
-/// A roughness below this is numerically unstable in the renderer's
-/// Cook-Torrance term (GGX `alpha = roughness^2` approaches 0); matches the
-/// renderer's own smoothest authored finish, `GLASS_ROUGHNESS = 0.05`
-/// (`packages/renderer/src/mesh-material.ts`).
-const ROUGHNESS_FLOOR: f32 = 0.05;
 
 /// Metallic/roughness evidence read from one `IfcSurfaceStyleRendering`.
 /// Either field is `None` when the file carries no evidence for it; the
@@ -176,7 +178,7 @@ fn specular_colour_is_tinted(rgb: [f32; 3]) -> bool {
 /// "Physically Based Shading on Mobile", 2014). A tighter highlight (higher
 /// exponent) maps to a lower roughness.
 fn phong_exponent_to_roughness(exponent: f32) -> f32 {
-    (2.0 / (exponent.max(0.0) + 2.0)).sqrt().clamp(ROUGHNESS_FLOOR, 1.0)
+    (2.0 / (exponent.max(0.0) + 2.0)).sqrt().clamp(0.0, 1.0)
 }
 
 /// `SpecularColour` (attr 6), a `SELECT(IfcColourRgb, IfcNormalisedRatioMeasure)`.
@@ -195,7 +197,12 @@ fn read_specular_colour(rendering: &DecodedEntity, decoder: &mut EntityDecoder) 
     }
     rendering
         .get_float(6)
-        .map(|f| SpecularColour::Factor((f as f32).clamp(0.0, 1.0)))
+        .map(|f| f as f32)
+        // Same non-finite guard as `read_specular_highlight`: `f32::clamp`
+        // returns `NaN` unchanged rather than saturating it, so a malformed
+        // factor would otherwise survive as `Factor(NaN)` (#5582 review).
+        .filter(|f| f.is_finite())
+        .map(|f| SpecularColour::Factor(f.clamp(0.0, 1.0)))
 }
 
 /// `SpecularHighlight` (attr 7), a `SELECT(IfcSpecularExponent, IfcSpecularRoughness)`.
@@ -206,17 +213,24 @@ fn read_specular_colour(rendering: &DecodedEntity, decoder: &mut EntityDecoder) 
 /// Returns `(is_roughness, value)`; an untagged bare real (non-conformant,
 /// never seen in practice) is treated as an exponent, since that is the
 /// historically dominant Blinn-Phong wording of "specular highlight size".
+///
+/// A non-finite authored value (`NaN`/`±inf`, from a malformed file) carries
+/// no usable evidence, so the whole attribute is treated as unauthored
+/// (`None`) rather than feeding a garbage number into the roughness/exponent
+/// conversion below — `exponent.max(0.0)` alone does not reliably reject it
+/// (review of #5582).
 fn read_specular_highlight(rendering: &DecodedEntity) -> Option<(bool, f32)> {
     let attr = rendering.get(7)?;
-    if let AttributeValue::List(items) = attr {
-        if let (Some(AttributeValue::String(name)), Some(value_attr)) =
-            (items.first(), items.get(1))
-        {
-            let value = value_attr.as_float()? as f32;
-            return Some((name.eq_ignore_ascii_case("IFCSPECULARROUGHNESS"), value));
-        }
-    }
-    attr.as_float().map(|v| (false, v as f32))
+    let (is_roughness, value) = if let AttributeValue::List(items) = attr {
+        let (Some(AttributeValue::String(name)), Some(value_attr)) = (items.first(), items.get(1))
+        else {
+            return None;
+        };
+        (name.eq_ignore_ascii_case("IFCSPECULARROUGHNESS"), value_attr.as_float()? as f32)
+    } else {
+        (false, attr.as_float()? as f32)
+    };
+    value.is_finite().then_some((is_roughness, value))
 }
 
 /// Resolve the metallic/roughness pair for one `IfcSurfaceStyleRendering`.
@@ -255,16 +269,18 @@ fn rendering_specular_material(
 
     let highlight_roughness = read_specular_highlight(rendering).map(|(is_roughness, value)| {
         if is_roughness {
-            value.clamp(ROUGHNESS_FLOOR, 1.0)
+            // IfcSpecularRoughness (WR1: 0..=1) as authored — no floor here,
+            // see the module doc above.
+            value.clamp(0.0, 1.0)
         } else {
             phong_exponent_to_roughness(value)
         }
     });
     let factor_roughness = match specular_colour {
-        Some(SpecularColour::Factor(f)) => Some((1.0 - f).clamp(ROUGHNESS_FLOOR, 1.0)),
+        Some(SpecularColour::Factor(f)) => Some((1.0 - f).clamp(0.0, 1.0)),
         Some(SpecularColour::Colour([r, g, b])) => {
             let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b).clamp(0.0, 1.0);
-            Some((1.0 - luma).clamp(ROUGHNESS_FLOOR, 1.0))
+            Some((1.0 - luma).clamp(0.0, 1.0))
         }
         None => None,
     };

@@ -85,3 +85,5 @@ packages/parser/src/schedule-types.ts
 packages/parser/src/schedule-calendar-types.ts
 apps/viewer/src/sdk/adapters/schedule-adapter.ts
 apps/viewer/src/components/viewer/schedule/GanttPanel.tsx
+packages/mcp/src/tools/diff-authored-keys.ts
+packages/mcp/src/tools/diff-fingerprints.ts

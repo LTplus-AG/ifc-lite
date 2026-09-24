@@ -85,8 +85,8 @@ export function contentDiff(
   const headFingerprints = buildModelFingerprints(right.store, overlays.right, adapter);
   fallbackPairDuplicateAuthoredKeys(
     [
-      { fingerprints: baseFingerprints, store: left.store },
-      { fingerprints: headFingerprints, store: right.store },
+      { fingerprints: baseFingerprints, store: left.store, overlay: overlays.left },
+      { fingerprints: headFingerprints, store: right.store, overlay: overlays.right },
     ],
     duplicateAuthoredKeys,
   );

@@ -98,6 +98,8 @@ export interface PendingOverlay {
    *  entity's type must go through this, or it disagrees with what export
    *  writes (#5009 review). */
   effectiveType(expressId: number): string | null;
+  /** Sparse queued class changes for effective whole-model enumeration. */
+  typeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
   /** Sparse retype intents for aggregate class counts; absent in older read shims. */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
   attributes(expressId: number): AttributeOverrides;
@@ -208,6 +210,10 @@ class ViewOverlay implements PendingOverlay {
   effectiveType(expressId: number): string | null {
     const retype = this.view.getEntityTypeMutation(expressId)?.newType;
     return retype ? normalizeIfcTypeName(retype) : null;
+  }
+
+  typeMutations(): ReadonlyMap<number, { readonly newType: string }> {
+    return this.view.getTypeMutations();
   }
 
   getTypeMutations(): ReadonlyMap<number, { readonly newType: string }> {

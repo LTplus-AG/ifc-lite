@@ -209,6 +209,30 @@ describe('contributes.statusBar', () => {
   });
 });
 
+describe('contributes.flows', () => {
+  const GRAPH = { id: 'graph1', name: 'Fire rating audit', path: 'flows/fire-rating.flow.json' };
+
+  it.each(['id', 'name', 'path'])('requires %s on every graph', (field) => {
+    const item = { ...GRAPH, [field]: undefined };
+    expect(pathsFor({ flows: [item] })).toContain(`contributes.flows[0].${field}`);
+  });
+
+  it('rejects a non-array flows value', () => {
+    expect(pathsFor({ flows: {} })).toContain('contributes.flows');
+  });
+
+  it('accepts a well-formed graph, description optional', () => {
+    const r = validateManifest(withContributes({ flows: [GRAPH] }));
+    if (!r.ok) console.error(r.errors);
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts a graph with a description', () => {
+    const r = validateManifest(withContributes({ flows: [{ ...GRAPH, description: 'Flags storeys missing a fire rating.' }] }));
+    expect(r.ok).toBe(true);
+  });
+});
+
 describe('contributes — shape guards', () => {
   it('rejects a non-object contributes', () => {
     const paths = pathsFor(['nope']);
@@ -232,5 +256,16 @@ describe('contributes — shape guards', () => {
     }));
     if (!r.ok) console.error(r.errors);
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('contributions — forward compatibility (#5167 4.2)', () => {
+  it('ignores a contribution key it does not know, which is what lets flows ship without a version bump', () => {
+    // `contributes.flows` was added without bumping manifestVersion because an
+    // older host running THIS validator skips keys it does not recognise and
+    // loads the rest of the extension. If this ever starts rejecting unknown
+    // keys, every new contribution type needs a version bump instead.
+    const r = validateManifest(withContributes({ futureContribution: [{ anything: true }] } as never));
+    expect(r.ok, JSON.stringify(r)).toBe(true);
   });
 });

@@ -177,6 +177,7 @@ export function McpPlayground(): ReactNode {
         <section className="flex min-h-0 flex-col">
           <ViewerPanel
             model={model}
+            revision={modelRevision}
             open={viewerOpen}
             onToggle={() => setViewerOpen((o) => !o)}
             controllerRef={viewerRef}
@@ -423,11 +424,13 @@ function DownloadsPanel(): ReactNode {
 
 function ViewerPanel({
   model,
+  revision,
   open,
   onToggle,
   controllerRef,
 }: {
   model: LoadedPlaygroundModel | null;
+  revision: number;
   open: boolean;
   onToggle: () => void;
   controllerRef: React.MutableRefObject<ViewerController | null>;
@@ -461,6 +464,7 @@ function ViewerPanel({
           <PlaygroundViewer
             ref={controllerRef}
             model={model}
+            revision={revision}
             className="absolute inset-0"
           />
         </div>

@@ -321,10 +321,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  // Sun & Sky panel state (sky, lighting presets, sun-path study)
+  // Environment panel state (sky, lighting presets, sun-path study, #5506)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
-  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
-  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   // Effective, not raw: the Cesium world context defaults this on (#4771).
   const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
@@ -956,21 +954,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </>
       )}
 
-      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
-          Available for every model, georeferenced or not. */}
+      {/* Environment panel — sky, lighting presets and the sun-path study
+          (#5506: a docked side panel, not a floating one). Available for
+          every model, georeferenced or not. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={envPanelOpen ? 'default' : 'ghost'}
+            variant={activeWorkspacePanels.has('environment') ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={envPanelOpen ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
-            aria-pressed={envPanelOpen}
+            aria-label={activeWorkspacePanels.has('environment') ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
+            aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleEnvPanel();
+              useViewerStore.getState().toggleWorkspacePanel('environment');
             }}
             className={cn(
-              (envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default')
+              (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')
                 && 'bg-amber-500 text-zinc-950 hover:bg-amber-400',
             )}
           >

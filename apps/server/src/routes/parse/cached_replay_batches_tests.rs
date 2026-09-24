@@ -10,7 +10,7 @@
 //! under the 400-line ratchet.
 
 use super::cached_replay::try_cached_replay;
-use crate::services::ParquetLayout;
+use crate::services::{ParquetLayout, StreamShapes};
 use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
 use crate::routes::parse::parquet::ParquetMetadataHeader;
@@ -120,7 +120,7 @@ async fn seed_cache_from_batches(
 }
 
 async fn replay_sse_payloads(state: &AppState, cache_key: &str) -> Vec<serde_json::Value> {
-    let response = match try_cached_replay(state, cache_key, ParquetLayout::Flat).await {
+    let response = match try_cached_replay(state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal).await {
         Ok(Some(response)) => response,
         other => panic!("expected a cache hit, got {:?}", other.map(|r| r.is_some())),
     };

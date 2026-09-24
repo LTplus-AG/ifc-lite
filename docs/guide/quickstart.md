@@ -203,6 +203,7 @@ function setupCameraControls(canvas: HTMLCanvasElement, renderer: Renderer) {
 | `camera.orbit(dx, dy)` | Rotate around target (left-drag) |
 | `camera.pan(dx, dy)` | Pan the view (shift+drag or middle-click) |
 | `camera.zoom(delta, false, x, y, w, h)` | Zoom towards mouse position (scroll wheel) |
+| `camera.zoom(delta, false, x, y, w, h, false, point)` | Zoom in toward a picked surface point (e.g. `renderer.raycastScene(x, y)?.intersection.point`): approaches it and stops short instead of passing through |
 | `camera.fitToBounds(min, max)` | Fit camera to bounding box |
 | `camera.setPresetView('top')` | Set preset view: 'top', 'front', 'left', etc. |
 | `camera.frameBounds(min, max, 500)` | Animated zoom to fit (with duration in ms) |
@@ -306,17 +307,23 @@ if (entityRef) {
 }
 
 // Get spatial hierarchy
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
 
 const hierarchy = store.spatialHierarchy;
 console.log(`Project: ${hierarchy.project.name}`);
 
+// Storeys are NOT direct children of the project: the tree is
+// Project -> Site -> Building -> Storey, so walk it rather than reading
+// `project.children` directly.
+function* storeysOf(node: SpatialNode): Generator<SpatialNode> {
+  if (node.type === IfcTypeEnum.IfcBuildingStorey) yield node;
+  for (const child of node.children ?? []) yield* storeysOf(child);
+}
+
 // List storeys (SpatialNode.type is a numeric IfcTypeEnum, keyed by expressId)
-for (const storey of hierarchy.project.children) {
-  if (storey.type === IfcTypeEnum.IfcBuildingStorey) {
-    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
-    console.log(`${storey.name}: ${elements.length} elements`);
-  }
+for (const storey of storeysOf(hierarchy.project)) {
+  const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
+  console.log(`${storey.name}: ${elements.length} elements`);
 }
 ```
 

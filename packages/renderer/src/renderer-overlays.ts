@@ -113,13 +113,13 @@ export interface OverlayDrawContext {
  * they DO expand. Anyone adding a channel should answer the first
  * question, not the second.
  *
- * Known gap, pre-dating this table: `useSymbolicAnnotations` lifts IfcGrid
- * geometry into the SAME buffer as the IfcAnnotation curves, so an
- * annotations-off / grid-on session reaches `annotation` carrying only grid
- * lines, which then expand the bounds that `grid: false` exists to protect.
- * The table is keyed by channel; the policy really wants to be keyed by
- * content. Routing that lift into the `grid` channel is the fix and is a
- * change of its own, tracked as #3359.
+ * IfcGrid and IfcAnnotation content used to share one buffer feeding
+ * `setLineOverlay('annotation', ...)`, so an annotations-off / grid-on
+ * session could reach `annotation` carrying only grid lines and inflate the
+ * bounds that `grid: false` exists to protect (#3359). Fixed:
+ * `apps/viewer/src/hooks/symbolic-line-channels.ts` keeps the two channels
+ * separate and uploads each to its like-named channel, so this table's
+ * per-channel keying now matches the content it is keyed by.
  */
 const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     annotation: true,

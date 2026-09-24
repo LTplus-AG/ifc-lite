@@ -34,6 +34,18 @@ pub enum ParquetStreamEvent {
         mesh_count: usize,
         /// Batch sequence number (1-indexed).
         batch_number: usize,
+        /// Cross-batch streams only (`stream_shapes=cross-batch`, #5407):
+        /// the whole-stream index of this batch's first vertex row. The mesh
+        /// rows' `vertex_start` is whole-stream too and may point below it,
+        /// at a shape an earlier batch carried. ABSENT on every batch-local
+        /// stream, which is how a client learns the server did not honour the
+        /// opt-in and each batch decodes on its own.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        vertex_base: Option<u32>,
+        /// Companion of `vertex_base`, in indices (the unit of `index_start`),
+        /// not index-table rows.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        index_base: Option<u32>,
     },
     /// Processing complete.
     Complete {

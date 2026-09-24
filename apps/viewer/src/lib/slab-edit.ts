@@ -170,19 +170,6 @@ export interface SlabEditChain {
   profileKind: 'rectangle' | 'polygon';
 }
 
-function readEntityType(
-  dataStore: IfcDataStore,
-  view: MutablePropertyView,
-  editor: StoreEditor,
-  expressId: number,
-): string | null {
-  void view;
-  const overlay = editor.getNewEntity(expressId);
-  if (overlay) return overlay.type;
-  const ref = dataStore.entityIndex.byId.get(expressId);
-  return ref?.type ?? null;
-}
-
 /**
  * Derive a rectangle profile's outline from its centred placement.
  * `IfcRectangleProfileDef` extends from `-XDim/2` to `+XDim/2`
@@ -303,7 +290,7 @@ export function resolveSlabEditChain(
   expressId: number,
   lengthUnitScale = 1,
 ): SlabEditChain | null {
-  const rawType = readEntityType(dataStore, view, editor, expressId);
+  const rawType = editor.getEntityType(expressId);
   if (!rawType) return null;
   const elementType = stepTypeToSlabLike(rawType);
   if (!elementType) return null;
@@ -358,8 +345,7 @@ export function resolveSlabEditChain(
   // surfaces a "not supported" toast.
   const profileAttrs = readAttributes(dataStore, view, editor, profileId);
   if (!profileAttrs) return null;
-  const overlay = editor.getNewEntity(profileId);
-  const profileType = overlay?.type ?? dataStore.entityIndex.byId.get(profileId)?.type ?? null;
+  const profileType = editor.getEntityType(profileId);
 
   // Profile-local origin (IfcAxis2Placement2D.Location) — both
   // profile kinds share this. May be null for the slot, in which

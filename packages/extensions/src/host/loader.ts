@@ -291,6 +291,9 @@ export function manifestToContributions(
   for (const s of contributes.statusBar ?? []) {
     out.push({ extensionId, slot: s.slot, payload: s });
   }
+  for (const f of contributes.flows ?? []) {
+    out.push({ extensionId, slot: 'flowLibrary', payload: f });
+  }
 
   return out;
 }

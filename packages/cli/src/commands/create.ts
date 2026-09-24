@@ -434,6 +434,12 @@ export function addElement(creator: IfcCreator, storey: number, elementType: str
         Name: (p.Name as string) ?? 'Rectangle Hollow Beam',
         ...p,
       } as unknown as Parameters<typeof creator.addIfcRectangleHollowBeam>[1]);
+    // `createCommand` has already created the project's storey, so `storey`
+    // is the one listed type that adds nothing: it yields a bare
+    // project+site+building+storey skeleton, and returns the storey so
+    // `--pset`/`--qset`/`--material` still attach to something real.
+    case 'storey':
+      return storey;
     default:
       fatal(`Unknown element type: ${elementType}\n\nSupported: ${ELEMENT_TYPES.join(', ')}`);
   }

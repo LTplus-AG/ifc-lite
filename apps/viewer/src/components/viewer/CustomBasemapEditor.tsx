@@ -5,7 +5,7 @@
 /**
  * Input surface for the custom XYZ basemap (issue #2685).
  *
- * Lives under the Base map selector in the Sun & Sky panel, shown only when the
+ * Lives under the Base map selector in the Environment panel, shown only when the
  * `custom` source is picked. Four fields, three of which are the protocol: a
  * tile URL template, the attribution the licence requires, an optional link for
  * it, and the server's deepest zoom.

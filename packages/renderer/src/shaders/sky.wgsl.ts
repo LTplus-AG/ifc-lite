@@ -77,14 +77,19 @@ export const skyShaderSource = `
           let zenithMix = pow(clamp(elevation, 0.0, 1.0), 0.45);
           var color = mix(sky.horizonColor, sky.zenithColor, zenithMix);
 
-          // Below the horizon: fade quickly into the ground colour.
+          // Below the horizon: fade gradually into the ground colour. The
+          // falloff spans elevation -0.5..0 (rather than a near-instant
+          // -0.1..0) so the ordinary downward-pitched BIM camera sees a
+          // gradient from the horizon tone into the ground tone instead of
+          // an abrupt flat-colour wall a few degrees below the horizon
+          // (#5583); only a near-vertical look-down reaches pure groundColor.
           // WGSL requires smoothstep's low < high, so express the
-          // downward ramp (0 at the horizon → 1 at elevation -0.1) as the
+          // downward ramp (0 at the horizon → 1 at elevation -0.5) as the
           // complement of an ascending smoothstep rather than passing
           // reversed edges, which Tint rejects as a shader-compile error
-          // (low 0.0 not less than high -0.1) — that invalidated the whole
+          // (low 0.0 not less than high -0.5) — that invalidated the whole
           // sky pipeline and blanked the frame on strict drivers.
-          let groundMix = 1.0 - smoothstep(-0.1, 0.0, elevation);
+          let groundMix = 1.0 - smoothstep(-0.5, 0.0, elevation);
           color = mix(color, sky.groundColor, groundMix);
 
           // Sun disc + glow. The disc is slightly oversized vs the real

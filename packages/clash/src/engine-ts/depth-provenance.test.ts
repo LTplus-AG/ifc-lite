@@ -25,7 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { crossingVertexPenetration, depthClashResult, type BoxPenetration, type VertexPenetration } from './depth.js';
-import { estimateFloor, signedGap } from '../math/aabb.js';
+import { depthFloor, estimateFloor, signedGap } from '../math/aabb.js';
 import { TriMesh } from './tri-mesh.js';
 import { createClashEngine } from '../engine.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
@@ -645,6 +645,24 @@ describe('hard-clash distance provenance', () => {
     expect(Math.abs(e.axis[0])).toBeLessThan(1e-6);
     expect(Math.abs(e.axis[1])).toBeLessThan(1e-6);
     expect(Math.abs(e.axis[2])).toBeCloseTo(1, 9);
+  });
+
+  it('reports on a hard result the floor of the depth it reports (#5639)', () => {
+    // Mirrors `a_hard_result_reports_the_floor_of_the_depth_it_reports_5639`.
+    const a = boundsEl([9_999, -1, 63], [10_001, 1, 64]);
+    const b = boundsEl([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64]);
+    const x: Vec3 = [1, 0, 0];
+    const xFloor = depthFloor(x, a.bounds, b.bounds);
+    const estFloor = estimateFloor(a.bounds, b.bounds);
+    expect(xFloor, 'fixture premise').toBeGreaterThan(100 * estFloor);
+    const hard = (box: BoxPenetration | null, estimate: number) => {
+      const r = depthClashResult(box, estimate, null, a, b, TOUCH_RULE, [0, 0, 0], a.bounds)!;
+      expect(r.status).toBe('hard');
+      return [r.distance, r.depthFloor];
+    };
+    expect(hard({ mtd: 0.1, axis: x, through: false }, 0.5)).toEqual([-0.1, xFloor]);
+    expect(hard({ mtd: 0.1, axis: x, through: true }, 0.5)).toEqual([-0.5, estFloor]);
+    expect(hard(null, 0.5)).toEqual([-0.5, estFloor]);
   });
 
   it('pins the floor boundary per candidate, each on its own direction (#5405)', () => {

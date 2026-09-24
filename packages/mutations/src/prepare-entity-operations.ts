@@ -26,6 +26,7 @@ export async function prepareEntityOperations(
   let publication: OverlaySnapshot | undefined;
   let input: readonly EntityOperation[] | undefined;
   let disposed = false, committed = false, rolledBack = false;
+  // @raw-entity-enumeration-ok preparation snapshots the source index identity and size to reject source changes before publishing a draft
   let sourceIndex: MutationStoreShape['entityIndex']['byId'] | undefined = store.entityIndex.byId;
   const sourceCount = sourceIndex.size;
   let deferredIndex = store.deferredEntityIndex;
@@ -42,6 +43,7 @@ export async function prepareEntityOperations(
     assertAvailable();
     if (committed) return;
     control.checkAbort();
+    // @raw-entity-enumeration-ok compare the source index with the preparation snapshot; overlay stability is checked separately below
     if (!sourceStore || sourceStore.entityIndex.byId !== sourceIndex || sourceIndex?.size !== sourceCount
       || sourceStore.deferredEntityIndex !== deferredIndex || deferredIndex?.size !== deferredCount) {
       throw new Error('The IFC source index changed during entity preparation.');

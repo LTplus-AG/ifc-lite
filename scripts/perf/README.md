@@ -27,6 +27,23 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Opt-in swept-disk source descriptions (#5559)
+
+The analytic reader runs only when called explicitly; normal mesh loading does
+not traverse a directrix through this path. On AC20-FZK-Haus, five interleaved
+base/feature pairs of `perf_probe --iters 5 --json --fingerprint` (base
+`337aab4f4`, final feature stack) gave median parse/geometry/pipeline-total
+times of 6/20/27 ms versus 7/22/29 ms. The base's pipeline-total samples
+spanned 23–34 ms and the feature's 24–31 ms; the machine had other builds
+running, so the small median difference is not evidence of a speed change.
+Every run on both sides emitted 285 meshes, 35,940 vertices and 20,322
+triangles with ordered mesh FNV-1a64 `c4d504b83ff698ea`.
+
+Verdict: no mesh-output regression on this ordinary load, and no reliable
+performance claim from the contested host. The opt-in extraction's own cost
+needs a caller-level measurement on representative swept-disk models if it
+becomes a frequent operation; the default pipeline cannot measure that cost.
+
 ## LandXML credited-stream acceptance (#5050)
 
 The native, generated-source acceptance harness is deliberately independent of
@@ -291,6 +308,32 @@ The viewer's own federated "Add" currently takes the non-streaming
 `appendToBatches` path and never reached this finalize, so the win is for
 `@ifc-lite/renderer` hosts that stream federated models, and for any finalize
 that runs with other models resident.
+
+## Cross-batch shared shapes on the Parquet stream (#5407)
+
+**Won, opt-in.** `?parquet_layout=shared-shapes&stream_shapes=cross-batch` on
+`/parse/parquet-stream` sends each distinct shape once per stream instead of once
+per batch. Across five fixtures (office, advanced_model, skolebygg, Holter
+Tower, and a 342 MB architectural model), the client payload dropped 2.2x to
+6.8x against the batch-local shared stream. It planned exactly the buffered
+route's vertex rows, and landed 8-43% above the buffered route's bytes, which is
+per-batch Parquet framing (17-132 batches). Peak server RSS stayed within
+run-to-run noise of the batch-local stream, and every unchanged mode was
+byte-identical to base.
+
+Two lessons, both found by measuring rather than by design:
+
+- **A content-hash registry alone is not enough.** Hash-only sharing across
+  batches recovered only a third of the gap on the office model (841k vs 295k
+  buffered vertices), because rotated repeats are not bit-identical. Stage 1
+  (the rotation-aware collator) had to reach across batches too. That means
+  keeping each instanced representation's first emitted mesh, not only
+  collator templates: a representation seen once per batch is never collated
+  inside any one batch.
+- **The stream needs the baked basis before its first batch.** Without it,
+  site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
+  buffered route run with no basis, 2-5x worse. The frame is chosen before
+  meshing, so `process_geometry_streaming_filtered_with_baked_basis` publishes it then.
 
 ## The native probe (`perf_probe`)
 
@@ -1933,6 +1976,11 @@ counts are identical on all three; ISSUE_129 and Holter fingerprints differ
 only in normals of holed extrusions, which the output orienter used to flip and
 recompute. The lesson: an extruder's winding is an input contract of the
 kernel, not a rendering detail the output orienter may repair afterwards.
+After review folded the three side-wall builders onto one shared orientation
+helper, a re-run against `ea4cc3718` (eight interleaved rounds) gave AC20 and
+ISSUE_129 byte-identical fingerprints to main; ISSUE_129 per-round best totals
+spread 1,178-1,951 ms on main and 1,143-1,873 ms on the branch on a loaded
+host, so the medians' order (1,391 vs 1,476 ms) is not a signal either way.
 
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 

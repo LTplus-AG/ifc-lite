@@ -538,7 +538,7 @@ its input vectors.
 ## Spatial Hierarchy
 
 ```typescript
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
 
 // spatialHierarchy is optional on IfcDataStore; guard before use
 const hierarchy = store.spatialHierarchy;
@@ -547,20 +547,25 @@ if (!hierarchy) throw new Error('No spatial hierarchy in this model');
 // Project structure
 console.log(`Project: ${hierarchy.project.name}`);
 
+// Storeys are NOT direct children of the project: the tree is
+// Project -> Site -> Building -> Storey, so walk it rather than reading
+// `project.children` directly.
+function* storeysOf(node: SpatialNode): Generator<SpatialNode> {
+  if (node.type === IfcTypeEnum.IfcBuildingStorey) yield node;
+  for (const child of node.children ?? []) yield* storeysOf(child);
+}
+
 // Navigate storeys (SpatialNode.type is a numeric IfcTypeEnum)
-for (const child of hierarchy.project.children) {
-  if (child.type === IfcTypeEnum.IfcBuildingStorey) {
-    const storey = child;
-    console.log(`Storey: ${storey.name}`);
+for (const storey of storeysOf(hierarchy.project)) {
+  console.log(`Storey: ${storey.name}`);
 
-    // Get elements on this storey (byStorey is keyed by the storey express id)
-    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
-    console.log(`  Elements: ${elements.length}`);
+  // Get elements on this storey (byStorey is keyed by the storey express id)
+  const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
+  console.log(`  Elements: ${elements.length}`);
 
-    // Get storey elevation
-    const elevation = hierarchy.storeyElevations.get(storey.expressId);
-    console.log(`  Elevation: ${elevation}m`);
-  }
+  // Get storey elevation
+  const elevation = hierarchy.storeyElevations.get(storey.expressId);
+  console.log(`  Elevation: ${elevation}m`);
 }
 
 // Find storey for an element

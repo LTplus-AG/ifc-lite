@@ -284,11 +284,4 @@ describe('environmentSlice', () => {
       assert.strictEqual(parsed.skyEnabledSetByUser, false);
     });
   });
-
-  it('envPanelOpen is session-only: toggling it does not touch persisted storage', () => {
-    const s = makeStore();
-    s.getState().toggleEnvPanel();
-    assert.strictEqual(s.getState().envPanelOpen, true);
-    assert.strictEqual(localStorage.getItem(STORAGE_KEY), null);
-  });
 });

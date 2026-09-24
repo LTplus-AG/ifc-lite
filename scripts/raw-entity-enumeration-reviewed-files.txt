@@ -69,6 +69,9 @@ apps/viewer/src/hooks/useIfcFederation.ts
 apps/viewer/src/hooks/ingest/viewerModelIngest.ts
 apps/viewer/src/hooks/useIfcCache.ts
 apps/viewer/src/lib/collab/share-scope.ts
+apps/viewer/src/lib/collab/owner-seed-paths.ts
+apps/viewer/src/lib/collab/room-step-source.ts
+apps/viewer/src/lib/collab/step-seed.ts
 apps/viewer/src/lib/compare/compareScope.ts
 apps/viewer/src/lib/drawing2d-markup/drawing-markup-restore.ts
 apps/viewer/src/lib/lens/adapter-entities.ts

@@ -53,9 +53,10 @@ export type {
 } from './bridge-schema.js';
 export { transpileTypeScript } from './transpile.js';
 // Only the GATED entry point is public. The mechanical primitive under it
-// (`executeUngatedRequest`, which has no allow-list) stays module-private:
-// a published function that skips the grant check is an invitation to call
-// it. Tests and hosts that need a different transport pass one to
+// (`executeUngatedRequest`, which has no allow-list) is package-private: it is
+// exported from `network-request.ts` only for that module's own local-server
+// tests, and neither this entry nor the package `exports` map exposes it. A
+// published function that skips the grant check is an invitation to call it. Tests and hosts that need a different transport pass one to
 // `coreNetworkRequest` — the grant check still runs first.
 export {
   coreNetworkRequest,

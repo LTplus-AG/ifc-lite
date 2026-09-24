@@ -228,3 +228,11 @@ describe('coreNetworkRequest — cancellation (#5446 review)', () => {
     )).rejects.toThrow('network.fetch cancelled');
   });
 });
+
+describe('the package boundary (#5446 review)', () => {
+  it('publishes only the gated request, never the ungated primitive', async () => {
+    const entry = await import('./index.js');
+    expect('coreNetworkRequest' in entry).toBe(true);
+    expect('executeUngatedRequest' in entry).toBe(false);
+  });
+});

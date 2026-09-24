@@ -2,6 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/**
+ * `namespace` sets the error's `name` (`<namespace>ApiError`,
+ * `<namespace>AuthenticationError`; default `Foundation`). A concrete client
+ * re-exports these classes under its own names (BCF's `BcfApiError`), and
+ * its errors must keep reporting that name: callers serialize and dispatch
+ * on `error.name`, not only on `instanceof` (#5438 review).
+ */
 /** HTTP-level failure from an OpenCDE server (non-2xx response). */
 export class FoundationApiError extends Error {
   /** HTTP status code; 0 when the request never produced a response. */
@@ -11,9 +18,9 @@ export class FoundationApiError extends Error {
   /** Server-provided error detail, when the body carried one. */
   readonly detail?: string;
 
-  constructor(message: string, options: { status: number; url: string; detail?: string }) {
+  constructor(message: string, options: { status: number; url: string; detail?: string; namespace?: string }) {
     super(message);
-    this.name = 'FoundationApiError';
+    this.name = `${options.namespace ?? 'Foundation'}ApiError`;
     this.status = options.status;
     this.url = options.url;
     this.detail = options.detail;
@@ -32,10 +39,10 @@ export class FoundationAuthenticationError extends FoundationApiError {
 
   constructor(
     message: string,
-    options: { status: number; url: string; errorCode?: string; detail?: string },
+    options: { status: number; url: string; errorCode?: string; detail?: string; namespace?: string },
   ) {
     super(message, options);
-    this.name = 'FoundationAuthenticationError';
+    this.name = `${options.namespace ?? 'Foundation'}AuthenticationError`;
     this.errorCode = options.errorCode;
   }
 }

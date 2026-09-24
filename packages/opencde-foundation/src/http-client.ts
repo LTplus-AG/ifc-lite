@@ -26,6 +26,8 @@ export interface FoundationHttpClientOptions {
    * itself so the message reads like the rest of that client's errors.
    */
   errorLabel?: string;
+  /** Prefix of thrown errors' `name` (see `FoundationApiError`); defaults to 'Foundation'. */
+  errorNamespace?: string;
 }
 
 export interface HttpRequestOptions {
@@ -36,6 +38,7 @@ export interface HttpRequestOptions {
   headers?: Record<string, string>;
   getAccessToken?: FoundationTokenProvider;
   errorLabel?: string;
+  errorNamespace?: string;
 }
 
 /**
@@ -78,7 +81,7 @@ export async function fetchAndValidate(
     const label = options.errorLabel ?? 'OpenCDE';
     throw new FoundationApiError(
       detail ?? `${label} request failed (HTTP ${response.status}) at ${url}`,
-      { status: response.status, url, detail },
+      { status: response.status, url, detail, namespace: options.errorNamespace },
     );
   }
   return response;
@@ -103,17 +106,20 @@ export abstract class FoundationHttpClient {
   protected readonly getAccessToken?: FoundationTokenProvider;
   protected readonly fetchFn: FetchLike;
   protected readonly errorLabel: string;
+  protected readonly errorNamespace: string | undefined;
 
   constructor(options: FoundationHttpClientOptions = {}) {
     this.getAccessToken = options.getAccessToken;
     this.fetchFn = resolveFetch(options.fetchFn);
     this.errorLabel = options.errorLabel ?? 'OpenCDE';
+    this.errorNamespace = options.errorNamespace;
   }
 
   /** Send a request to an already-fully-qualified URL and validate the response. */
   protected sendRequest(url: string, options: HttpRequestOptions = {}): Promise<Response> {
     return fetchAndValidate(this.fetchFn, url, {
       errorLabel: this.errorLabel,
+      errorNamespace: this.errorNamespace,
       ...options,
       getAccessToken: this.getAccessToken,
     });

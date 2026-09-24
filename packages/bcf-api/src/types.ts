@@ -14,8 +14,15 @@
  * names below rather than duplicated.
  */
 
-/** Entry of `GET {base}/versions`. Foundation API's `FoundationVersion`. */
-export type { FoundationVersion as BcfApiVersion } from '@ifc-lite/opencde-foundation';
+/**
+ * Entry of `GET {base}/versions`. Kept as BCF's own shape rather than an
+ * alias of `FoundationVersion`, whose required `api_id` a BCF `/versions`
+ * entry need not carry (#5438 review).
+ */
+export interface BcfApiVersion {
+  version_id: string;
+  detailed_version?: string | null;
+}
 
 /** Response of `GET {base}/{version}/auth`. Foundation API's `FoundationAuthInfo`. */
 export type { FoundationAuthInfo as BcfAuthInfo } from '@ifc-lite/opencde-foundation';

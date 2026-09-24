@@ -52,7 +52,7 @@ export interface TopicQueryOptions {
  */
 export class BcfApiClient extends FoundationApiClient {
   constructor(options: BcfApiClientOptions) {
-    super({ ...options, version: options.version ?? '2.1', errorLabel: 'BCF' });
+    super({ ...options, version: options.version ?? '2.1', errorLabel: 'BCF', errorNamespace: 'Bcf' });
   }
 
   // -- Projects --------------------------------------------------------------

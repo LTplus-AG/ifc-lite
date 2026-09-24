@@ -141,6 +141,9 @@ describe('BcfApiClient auth handling', () => {
     expect(apiError.status).toBe(401);
     expect(apiError.isAuthError).toBe(true);
     expect(apiError.message).toBe('Not authenticated');
+    // The historical name, not the Foundation class's default: callers
+    // serialize and dispatch on `name` (#5438 review).
+    expect(apiError.name).toBe('BcfApiError');
   });
 
   it('reports non-JSON error bodies by status line and request URL', async () => {

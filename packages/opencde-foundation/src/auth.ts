@@ -14,6 +14,8 @@ interface TokenRequestOptions {
   /** Client secret; only for servers whose token endpoint demands it. */
   clientSecret?: string;
   fetchFn?: FetchLike;
+  /** Prefix of thrown errors' `name` (see `FoundationApiError`); defaults to 'Foundation'. */
+  errorNamespace?: string;
 }
 
 export interface PasswordGrantOptions extends TokenRequestOptions {
@@ -48,6 +50,8 @@ export interface RegisterClientOptions {
   clientUrl?: string;
   redirectUrl?: string;
   fetchFn?: FetchLike;
+  /** Prefix of thrown errors' `name` (see `FoundationApiError`); defaults to 'Foundation'. */
+  errorNamespace?: string;
 }
 
 export interface RegisteredClient {
@@ -81,6 +85,7 @@ async function postTokenRequest(
       throw new FoundationAuthenticationError('Token endpoint returned a non-JSON response', {
         status: response.status,
         url: options.tokenUrl,
+        namespace: options.errorNamespace,
         detail: error instanceof Error ? error.message : String(error),
       });
     }
@@ -94,7 +99,7 @@ async function postTokenRequest(
     const detail = extractErrorDetail(parsed);
     throw new FoundationAuthenticationError(
       detail ?? `Token request failed (HTTP ${response.status})`,
-      { status: response.status, url: options.tokenUrl, errorCode, detail },
+      { status: response.status, url: options.tokenUrl, errorCode, detail, namespace: options.errorNamespace },
     );
   }
 
@@ -105,6 +110,7 @@ async function postTokenRequest(
     throw new FoundationAuthenticationError('Token response carried no access_token', {
       status: response.status,
       url: options.tokenUrl,
+        namespace: options.errorNamespace,
     });
   }
   return {
@@ -195,6 +201,7 @@ export async function registerClient(options: RegisterClientOptions): Promise<Re
     throw new FoundationAuthenticationError('Client registration returned a non-JSON response', {
       status: response.status,
       url: options.registrationUrl,
+      namespace: options.errorNamespace,
       detail: error instanceof Error ? error.message : String(error),
     });
   }
@@ -204,13 +211,14 @@ export async function registerClient(options: RegisterClientOptions): Promise<Re
     const detail = extractErrorDetail(parsed);
     throw new FoundationAuthenticationError(
       detail ?? `Client registration failed (HTTP ${response.status})`,
-      { status: response.status, url: options.registrationUrl, detail },
+      { status: response.status, url: options.registrationUrl, detail, namespace: options.errorNamespace },
     );
   }
   if (typeof record.client_id !== 'string' || record.client_id.length === 0) {
     throw new FoundationAuthenticationError('Client registration response carried no client_id', {
       status: response.status,
       url: options.registrationUrl,
+      namespace: options.errorNamespace,
     });
   }
   return {

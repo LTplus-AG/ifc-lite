@@ -130,24 +130,30 @@ export function collectStyleEntities(
 ): void {
   const queue: number[] = [];
   const refsOf = (expressId: number, ref: { byteOffset: number; byteLength: number }): number[] => {
+    // @raw-entity-enumeration-ok point read from the caller-supplied index; Step passes its effective index, merged export uses an overlay-free model
     const authored = entityIndex.byId.refsOf?.(expressId);
     if (authored) return authored.slice();
     return collectRefsInByteRange(source, ref.byteOffset, ref.byteLength);
   };
 
   // Use byType index for direct lookup — O(candidates) not O(allEntities)
+  // @raw-entity-enumeration-ok caller-supplied type index is effective for Step export and source-only for merged export after edit materialization
   const styledItemIds = entityIndex.byType.get('IFCSTYLEDITEM') ?? [];
+  // @raw-entity-enumeration-ok same caller-supplied index as styledItemIds
   const styledRepIds = entityIndex.byType.get('IFCSTYLEDREPRESENTATION') ?? [];
+  // @raw-entity-enumeration-ok same caller-supplied index as styledItemIds
   const layerAssignmentIds = entityIndex.byType.get('IFCPRESENTATIONLAYERASSIGNMENT') ?? [];
   // IFCPRESENTATIONLAYERWITHSTYLE is a subtype (adds LayerOn/LayerFrozen/
   // LayerBlocked/LayerStyles) indexed under its own STEP type name, not
   // IFCPRESENTATIONLAYERASSIGNMENT's — a separate byType lookup, same rescue.
+  // @raw-entity-enumeration-ok same caller-supplied index as styledItemIds
   const layerWithStyleIds = entityIndex.byType.get('IFCPRESENTATIONLAYERWITHSTYLE') ?? [];
 
   for (const ids of [styledItemIds, styledRepIds, layerAssignmentIds, layerWithStyleIds]) {
     for (const expressId of ids) {
       if (closure.has(expressId)) continue;
 
+      // @raw-entity-enumeration-ok point read of a candidate from the caller-supplied effective or overlay-free index
       const entityRef = entityIndex.byId.get(expressId);
       if (!entityRef) continue;
 
@@ -172,8 +178,11 @@ export function collectStyleEntities(
   // Texture maps are inverse attachments too, but sharing an image never
   // proves that their MappedTo geometry is visible (#4243).
   for (const type of TEXTURE_MAP_TYPES) {
+    // @raw-entity-enumeration-ok candidate membership comes from the caller-supplied effective or overlay-free index
     for (const id of entityIndex.byType.get(type) ?? []) {
+      // @raw-entity-enumeration-ok membership and liveness are checked against that same caller-supplied index
       if (closure.has(id) || excludeIds?.has(id) || !entityIndex.byId.has(id)) continue;
+      // @raw-entity-enumeration-ok textureMapTarget receives the same caller-supplied index for a single accepted candidate
       const target = textureMapTarget(source, entityIndex.byId, id);
       if (target !== undefined && closure.has(target)) { closure.add(id); queue.push(id); }
     }
@@ -185,6 +194,7 @@ export function collectStyleEntities(
   // in the closure is refused here rather than resurrected.
   while (queue.length > 0) {
     const entityId = queue.pop()!;
+    // @raw-entity-enumeration-ok point read of an id already accepted into the closure
     const ref = entityIndex.byId.get(entityId);
     if (!ref) continue;
 
@@ -195,6 +205,7 @@ export function collectStyleEntities(
       if (closure.has(referencedId)) continue;
       if (excludeIds?.has(referencedId)) continue;
 
+      // @raw-entity-enumeration-ok point read of one referenced id from the same caller-supplied index
       const targetRef = entityIndex.byId.get(referencedId);
       if (!targetRef) continue;
 

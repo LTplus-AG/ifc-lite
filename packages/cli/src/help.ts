@@ -42,7 +42,7 @@ export function buildHelp(version: string): string {
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
-    create    <type> [options] --out F             Create IFC elements (30+ types)
+    create    <type> [options] --out F             Create IFC elements (29 types)
     eval      <file.ifc> "<expression>"           Evaluate SDK expression
     run       <script.js> <file.ifc>              Execute a script against model
     schema                                        Dump SDK API schema (for LLM tools)

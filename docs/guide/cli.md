@@ -646,7 +646,7 @@ ifc-lite clash model.ifc --matrix --csv clashes.csv
 
 ### `create` — Create IFC Files
 
-Generate IFC building elements from CLI flags or JSON input. Supports **29 element types** with property sets, quantities, materials, and colors.
+Generate IFC building elements from CLI flags or JSON input. Supports **29 element types** (28 elements plus `storey`, which emits a bare project skeleton) with property sets, quantities, materials, and colors.
 
 > **Coordinates are storey-relative.** `--position`, `--start`, and `--end` are passed through unchanged to `@ifc-lite/create`, and every element is placed against the storey created by `--storey` / `--elevation`. The storey placement is what applies `--elevation`, exactly once — so an element standing on the floor of a storey created with `--elevation 3` takes `Z = 0`, not `Z = 3`.
 >
@@ -1588,7 +1588,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `ids` | Validate against IDS rules |
 | `bcf` | Work with BCF collaboration files |
 | `clash` | Detect geometric clashes between elements |
-| `create` | Create IFC elements (30+ types) |
+| `create` | Create IFC elements (29 types) |
 | `eval` | Evaluate SDK expression |
 | `run` | Execute a script against model |
 | `schema` | Dump SDK API schema (for LLM tools) |

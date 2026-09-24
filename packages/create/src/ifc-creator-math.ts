@@ -125,8 +125,11 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
  * placement's geometry is unchanged:
  *   - no `Axis`: `(0,0,1)`, the `IfcAxis2Placement3D.P` default;
  *   - no `RefDirection`: `IfcFirstProjAxis(Axis, $)`, the projection of world X
- *     onto the plane normal to `Axis` (world Y when `Axis` is along X, where
- *     that projection vanishes).
+ *     onto the plane normal to `Axis`. The schema switches to world Y only when
+ *     the normalised `Axis` is exactly `(1,0,0)`, so this tests for an Axis
+ *     with no Y or Z component rather than using a tolerance: a near-X Axis
+ *     must still project X, or the result flips 180 degrees. `-X` takes Y too,
+ *     since the projection of X vanishes there and the schema has no answer.
  */
 export function completePlacementAxes(
   axis: Point3D | undefined,
@@ -136,7 +139,7 @@ export function completePlacementAxes(
   if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
   if (!axis) return undefined;
   const z = vecNorm(axis);
-  const v: Point3D = Math.abs(z[0]) > 1 - 1e-9 ? [0, 1, 0] : [1, 0, 0];
+  const v: Point3D = z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0];
   const d = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
   return { Axis: axis, RefDirection: vecNorm([v[0] - d * z[0], v[1] - d * z[1], v[2] - d * z[2]]) };
 }

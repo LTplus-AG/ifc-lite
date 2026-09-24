@@ -59,6 +59,22 @@ describe('completePlacementAxes (#5469)', () => {
     expectClose(completePlacementAxes([1, 0, 0], undefined)?.RefDirection, [0, 1, 0]);
     expectClose(completePlacementAxes([-1, 0, 0], undefined)?.RefDirection, [0, 1, 0]);
   });
+
+  it('projects world X for an Axis NEAR X, as IfcFirstProjAxis does, rather than switching to Y', () => {
+    // The schema falls back to Y only for an Axis exactly (1,0,0). Switching
+    // on a tolerance gave about (0,+1,0) here, a 180-degree flip of the
+    // schema's about (0,-1,0).
+    const axis: Point3D = [0.9999999992, 0.00004, 0];
+    const ref = completePlacementAxes(axis, undefined)!.RefDirection;
+    const z = [axis[0] / Math.hypot(...axis), axis[1] / Math.hypot(...axis), 0];
+    // The schema's own value: X minus its component along the Axis, normalised.
+    const px = [1 - z[0] * z[0], -z[0] * z[1], 0];
+    const n = Math.hypot(...px);
+    const expected = [px[0] / n, px[1] / n, 0];
+    expect(Math.abs(ref[0] * z[0] + ref[1] * z[1] + ref[2] * z[2])).toBeLessThan(1e-9);
+    expectClose(ref, expected);
+    expect(ref[1]).toBeLessThan(0);
+  });
 });
 
 describe('IfcCreator writes IfcAxis2Placement3D Axis and RefDirection both or neither (#5469)', () => {

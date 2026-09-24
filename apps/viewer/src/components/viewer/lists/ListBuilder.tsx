@@ -16,6 +16,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { InheritSelect } from '../InheritSelect';
 import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -1342,6 +1343,7 @@ function ConditionRow({
             className="h-7 w-28 text-xs"
             onChange={(v) => onChange({ ...condition, propertyName: v })}
           />
+          <InheritSelect value={condition.inherit} offered={['aggregation']} onChange={(inherit) => onChange({ ...condition, inherit })} className={SELECT_CLASS} />
         </>
       )}
 

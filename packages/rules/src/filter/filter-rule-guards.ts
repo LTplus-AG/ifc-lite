@@ -73,8 +73,9 @@ export function isFilterRule(value: unknown): value is FilterRule {
 
 /** `SubjectReadOptions` fields, when present, must hold a value the engine knows. */
 function validReadOptions(value: object): boolean {
-  const r = value as { valueUnit?: unknown };
-  return r.valueUnit === undefined || r.valueUnit === 'si';
+  const r = value as { valueUnit?: unknown; inherit?: unknown };
+  return (r.valueUnit === undefined || r.valueUnit === 'si')
+    && (r.inherit === undefined || r.inherit === 'type' || r.inherit === 'aggregation');
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

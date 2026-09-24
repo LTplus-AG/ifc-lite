@@ -229,7 +229,7 @@ class ViewOverlay implements PendingOverlay {
   private get relationshipOverlay(): EffectiveRelationshipOverlay {
     if (!this.effectiveRelations) this.effectiveRelations = resolveEffectiveRelationshipOverlay(this.store, {
       createdEntities: () => this.view.getNewEntities(),
-      mutatedEntityIds: () => this.view.getMutations().map(mutation => mutation.entityId),
+      mutatedEntityIds: () => this.view.getEffectiveChanges().map(change => change.entityId),
       namedAttributes: id => this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
       positionalAttributes: id => this.view.getPositionalMutationsForEntity(id) ?? [],
       entityType: id => this.view.getEntityTypeMutation(id)?.newType,

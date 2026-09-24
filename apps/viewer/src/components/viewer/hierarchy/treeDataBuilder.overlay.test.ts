@@ -85,6 +85,79 @@ describe('model tree over the edited model (#5249)', () => {
     assert.ok(every.has(10));
   });
 
+  it('By Type: a created type appears, while a deleted source type and a created-then-deleted type do not (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setExpressIdWatermark(31);
+    view.deleteEntity(20);
+    const created = view.createEntity('IfcWallType', ['0Type00000000000000032', null, 'WT-new']);
+    const wall = view.createEntity('IfcWall', ['0Wall00000000000000033', null, 'Wall authored']);
+    view.createEntity('IfcRelDefinesByType', ['0Rel000000000000000034', null, null, null,
+      [10, wall.expressId], created.expressId]);
+    const removed = view.createEntity('IfcWallType', ['0Type00000000000000033', null, 'WT-removed']);
+    view.deleteEntity(removed.expressId);
+
+    const nodes = buildIfcTypeTree(
+      new Map(), ds, new Set(['typeclass-IfcWallType', `ifctype-legacy-${created.expressId}`]),
+      false, new Set([10, 11, 12, wall.expressId]), undefined, () => view,
+    );
+    const typeRows = nodes.filter((node) => node.type === 'ifc-type');
+    assert.deepEqual(typeRows.map((node) => [node.entityExpressId, node.name]), [[created.expressId, 'WT-new']]);
+    assert.deepEqual(typeRows[0]?.expressIds, [10, wall.expressId],
+      'the authored type binding includes source and created occurrences');
+    assert.ok(nodes.some((node) => node.type === 'element' && node.name === 'Wall authored'),
+      'the authored occurrence keeps its live Name');
+  });
+
+  it('By Type: deleting a source IfcRelDefinesByType removes its occurrence edge (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.deleteEntity(21);
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-IfcWallType']), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    const typeRow = nodes.find((node) => node.type === 'ifc-type');
+    assert.ok(typeRow, 'the type entity itself remains');
+    assert.deepEqual(typeRow.expressIds, [], 'a deleted relationship contributes no occurrences');
+  });
+
+  it('By Type: editing the source type binding replaces its parsed edges (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setPositionalAttribute(21, 4, [12], true);
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-IfcWallType']), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    const typeRow = nodes.find((node) => node.type === 'ifc-type');
+    assert.ok(typeRow);
+    assert.deepEqual(typeRow.expressIds, [12], 'old parsed members do not survive the edited RelatedObjects');
+  });
+
+  it('By Type: named STEP-reference edits move source members to an authored type (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setExpressIdWatermark(31);
+    const created = view.createEntity('IfcWallType', ['0Type00000000000000032', null, 'WT-renamed-target']);
+    view.setAttribute(21, 'RelatedObjects', '#12');
+    view.setAttribute(21, 'RelatingType', `#${created.expressId}`);
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-IfcWallType']), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    const typeRows = nodes.filter((node) => node.type === 'ifc-type');
+    assert.deepEqual(typeRows.map((node) => ({ id: node.entityExpressId, ids: node.expressIds }))
+      .sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
+      [{ id: 20, ids: [] }, { id: created.expressId, ids: [12] }],
+      'named reference edits replace both source endpoints');
+  });
+
+  it('By Type: explicitly clearing Name uses the id label instead of the parsed name (#5249)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setAttribute(20, 'Name', '');
+    view.setPositionalAttribute(10, 2, '');
+    const nodes = buildIfcTypeTree(new Map(), ds, new Set(nodes0(ds)), false,
+      new Set([10, 11, 12]), undefined, () => view);
+    assert.equal(nodes.find(node => node.type === 'ifc-type' && node.entityExpressId === 20)?.name, '#20');
+    assert.equal(nodes.find(node => node.type === 'element' && node.expressIds?.includes(10))?.name, '#10');
+  });
+
   it('Groups: the deleted member is dropped from its group', async () => {
     const { ds, view, geometric } = await edited();
     const collapsed = buildGroupTree(new Map(), ds, new Set(), false, geometric, 'all', () => view);

@@ -1185,7 +1185,7 @@ describe('buildMaterialTree — type-level material expansion (#1755)', () => {
  */
 const DECOMPOSITION_GEOMETRIC_IDS = new Set([11, 12, 14]);
 
-function createDecompositionDataStore(opts: { cycle?: boolean } = {}): IfcDataStore {
+function createDecompositionDataStore(opts: { cycle?: boolean; emptyTypeTarget?: boolean } = {}): IfcDataStore {
   const names: Record<number, string> = {
     10: 'Pier A', 11: 'Pierstem', 12: 'Foundation', 13: 'Marker',
     14: 'Plain Wall', 15: 'Pset_Common', 16: 'Ground',
@@ -1204,10 +1204,18 @@ function createDecompositionDataStore(opts: { cycle?: boolean } = {}): IfcDataSt
   // Malformed file: a part aggregates its own assembly back.
   if (opts.cycle) aggregates[11] = [10];
 
-  const definesByType: Record<number, number[]> = { 20: [10], 21: [14] };
+  const definesByType: Record<number, number[]> = { 20: [opts.emptyTypeTarget ? 13 : 10], 21: [14] };
+  const relBuilder = new RelationshipGraphBuilder();
+  for (const [source, targets] of Object.entries(aggregates)) {
+    for (const target of targets) relBuilder.addEdge(Number(source), target, RelationshipType.Aggregates, 100 + Number(source));
+  }
+  for (const [source, targets] of Object.entries(definesByType)) {
+    for (const target of targets) relBuilder.addEdge(Number(source), target, RelationshipType.DefinesByType, 200 + Number(source));
+  }
 
   return {
     spatialHierarchy: undefined,
+    entityIndex: { byId: new Map(), byType: new Map() },
     entities: {
       count: order.length,
       expressId: order,
@@ -1215,14 +1223,7 @@ function createDecompositionDataStore(opts: { cycle?: boolean } = {}): IfcDataSt
       getName: (id: number) => names[id] ?? '',
       getTypeName: (id: number) => types[id] ?? 'Unknown',
     },
-    relationships: {
-      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
-        if (direction !== 'forward') return [];
-        if (relType === RelationshipType.Aggregates) return aggregates[id] ?? [];
-        if (relType === RelationshipType.DefinesByType) return definesByType[id] ?? [];
-        return [];
-      },
-    },
+    relationships: relBuilder.build(),
   } as unknown as IfcDataStore;
 }
 
@@ -1348,14 +1349,8 @@ describe('buildIfcTypeTree — geometry-less assembly occurrences (By Type tab)'
   });
 
   it('still filters an occurrence with neither geometry nor renderable parts', () => {
-    const ds = createDecompositionDataStore();
-    const rel = ds.relationships as unknown as {
-      getRelated: (id: number, t: RelationshipType, d: 'forward' | 'inverse') => number[];
-    };
-    const inner = rel.getRelated;
     // Point the assembly type at the EMPTY assembly (#13) instead of #10.
-    rel.getRelated = (id, t, d) =>
-      t === RelationshipType.DefinesByType && d === 'forward' && id === 20 ? [13] : inner(id, t, d);
+    const ds = createDecompositionDataStore({ emptyTypeTarget: true });
 
     const nodes = buildIfcTypeTree(new Map(), ds, new Set(), false, DECOMPOSITION_GEOMETRIC_IDS);
     const classNode = nodes.find((n) => n.type === 'type-group' && n.ifcType === 'IfcElementAssemblyType');
@@ -1364,13 +1359,7 @@ describe('buildIfcTypeTree — geometry-less assembly occurrences (By Type tab)'
   });
 
   it('buckets that same occurrence under "Other" instead of dropping it (#4764)', () => {
-    const ds = createDecompositionDataStore();
-    const rel = ds.relationships as unknown as {
-      getRelated: (id: number, t: RelationshipType, d: 'forward' | 'inverse') => number[];
-    };
-    const inner = rel.getRelated;
-    rel.getRelated = (id, t, d) =>
-      t === RelationshipType.DefinesByType && d === 'forward' && id === 20 ? [13] : inner(id, t, d);
+    const ds = createDecompositionDataStore({ emptyTypeTarget: true });
 
     const nodes = buildIfcTypeTree(new Map(), ds, new Set(['typeclass-other']), false, DECOMPOSITION_GEOMETRIC_IDS);
     const otherGroup = nodes.find((n) => n.type === 'other-group');

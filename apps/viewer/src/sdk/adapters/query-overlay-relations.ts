@@ -23,7 +23,9 @@ export function effectiveMutationRelationships(
 ): EffectiveRelationshipOverlay {
   return resolveEffectiveRelationshipOverlay(store, {
     createdEntities: () => view.getNewEntities(),
-    mutatedEntityIds: () => view.getMutations().map(mutation => mutation.entityId),
+    // Current overlay entries include edits made with skipHistory (undo and
+    // atomic replay); append-only history can also retain undone edits.
+    mutatedEntityIds: () => view.getEffectiveChanges().map(change => change.entityId),
     namedAttributes: expressId => view.getAttributeMutationsForEntity(expressId)
       .map(({ name, value }) => [name, value] as const),
     positionalAttributes: expressId => view.getPositionalMutationsForEntity(expressId) ?? [],

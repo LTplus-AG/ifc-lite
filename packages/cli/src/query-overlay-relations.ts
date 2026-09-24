@@ -14,7 +14,7 @@ import { effectiveEntityType } from './query-overlay.js';
 function effective(store: IfcDataStore, view: MutablePropertyView) {
   return resolveEffectiveRelationshipOverlay(store, {
     createdEntities: () => view.getNewEntities(),
-    mutatedEntityIds: () => view.getMutations().map(mutation => mutation.entityId),
+    mutatedEntityIds: () => view.getEffectiveChanges().map(change => change.entityId),
     namedAttributes: id => view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
     positionalAttributes: id => view.getPositionalMutationsForEntity(id) ?? [],
     entityType: id => view.getEntityTypeMutation(id)?.newType,

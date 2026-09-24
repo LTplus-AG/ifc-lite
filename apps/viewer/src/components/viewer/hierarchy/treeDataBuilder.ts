@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
+import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
 import type { GroupSubFilter } from './groupEntityTypes.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
@@ -12,7 +13,6 @@ export type { GroupSubFilter } from './groupEntityTypes.js';
 
 import {
   IfcTypeEnum,
-  EntityFlags,
   RelationshipType,
   isSpaceLikeSpatialType,
   isStoreyLikeSpatialType,
@@ -835,31 +835,21 @@ export function buildIfcTypeTree(
     );
 
     const view = overlay?.(modelId);
-    // Find all type entities (entities with IS_TYPE flag)
-    // @raw-entity-enumeration-ok parsed type rows, each passed through effectiveTreeType (deleted skipped, retype applied)
-    for (let i = 0; i < dataStore.entities.count; i++) {
-      const flags = dataStore.entities.flags[i];
-      if (!(flags & EntityFlags.IS_TYPE)) continue;
-
-      const expressId = dataStore.entities.expressId[i];
-      const typeClassName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId));
-      if (typeClassName === null) continue;
-
-      // Skip relationship entities and non-product types
-      if (typeClassName.startsWith('IfcRel') || typeClassName === 'Unknown') continue;
-      const typeName = dataStore.entities.getName(expressId) || `#${expressId}`;
+    const assignments = effectiveTypeAssignments(dataStore, view);
+    for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 
       // Get instances via DefinesByType (forward: type → occurrences)
-      const instanceIds = dataStore.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'forward');
+      const instanceIds = effectiveTypeInstanceIds(dataStore, expressId, view, assignments);
       const instances: TypeEntry['instances'] = [];
 
       for (const instId of instanceIds) {
         const instGlobalId = resolveTreeGlobalId(modelId, instId, models);
         // An IfcElementAssemblyType's occurrences carry no geometry of their
         // own — without this the type row reported 0 elements (#1133).
-        const instIfcType = effectiveTreeType(view, instId, dataStore.entities.getTypeName(instId) || 'Unknown');
+        const instIfcType = effectiveTreeType(view, instId,
+          (view?.getNewEntity(instId)?.type ?? dataStore.entities.getTypeName(instId)) || 'Unknown');
         if (instIfcType === null) continue;
-        const instName = dataStore.entities.getName(instId) || `#${instId}`;
+        const instName = effectiveTreeEntityName(dataStore, view, instId);
         if (!assemblyGeometry.renders(instIfcType, instId, instGlobalId)) {
           if (assemblyGeometry.isOther(instIfcType, instId, instGlobalId)) {
             otherInstances.push({ expressId: instId, globalId: instGlobalId, name: instName, modelId, ifcType: instIfcType });

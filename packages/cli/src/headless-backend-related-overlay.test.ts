@@ -30,6 +30,7 @@ import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcParser } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
@@ -53,6 +54,19 @@ describe('HeadlessBackend query.related() overlay visibility', () => {
       ?.find((edge) => edge.entity.id === 12);
     expect(row).toBeDefined();
     expect(row?.entity.type).toBe('IfcDoorStandardCase');
+  });
+
+  it('uses a parsed relationship endpoint edit that skipped undo history (#5249)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(EXACT_TYPE_IFC).buffer as ArrayBuffer);
+    const backend = new HeadlessBackend(store, 'exact-types.ifc');
+    const parent = { modelId: 'default', expressId: 1 };
+    const view = (backend as unknown as { getOrCreateMutationView(): MutablePropertyView }).getOrCreateMutationView();
+    view.setPositionalAttribute(13, 5, ['#3'], true);
+
+    expect(backend.query.related(parent, 'IfcRelAggregates', 'forward'))
+      .toEqual([{ modelId: 'default', expressId: 3 }]);
+    expect(backend.query.relationships(parent).relations?.filter(edge => edge.relationshipId === 13)
+      .map(edge => edge.entity.id)).toEqual([3]);
   });
 
   it('sees a queued IfcRelAggregates both ways in the same session', async () => {

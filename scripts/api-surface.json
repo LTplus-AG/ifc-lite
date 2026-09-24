@@ -4662,6 +4662,7 @@
     "ProfileDef: type",
     "ProjectParams: interface",
     "PropertyDef: interface",
+    "PropertyMeasureType: type",
     "PropertySetDef: interface",
     "PropertyType: type",
     "ProxyParams: interface",

@@ -306,7 +306,7 @@ export function dxfUnderlayToDrawing(
  * Returns `null` (not NaN bounds) whenever any corner is non-finite (PR
  * #1965 review): a malformed `IfcMapConversion` that slips a NaN into
  * `mapToWorld` used to make `Math.min`/`Math.max` return NaN silently, and
- * the caller (`Section2DPanel.handleCenterDxfUnderlay`) would then write
+ * the caller (`useDrawingLayers`'s `handleCenterDxfUnderlay`) would then write
  * `offsetX: NaN, offsetY: NaN` straight into the stored placement — a
  * corruption that survives even toggling georeferencing back off, since the
  * NaN is now IN the placement, not just in the transform. A NaN bound is a

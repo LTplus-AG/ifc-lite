@@ -11,7 +11,11 @@ export default defineConfig({
     format: 'es',
   },
   optimizeDeps: {
-    exclude: ['@ifc-lite/wasm', '@ifc-lite/geometry', '@ifc-lite/parser', '@ifc-lite/data'],
+    // Only the wasm package stays out of pre-bundling (its .wasm is loaded via
+    // import.meta.url). Excluding parser/geometry/data as well would also skip
+    // their CommonJS deps (the parser's jszip), which then fail to import in
+    // dev with "does not provide an export named 'default'".
+    exclude: ['@ifc-lite/wasm'],
   },
   server: {
     headers: {

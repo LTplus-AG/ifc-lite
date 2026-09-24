@@ -15,6 +15,7 @@ mod parquet;
 mod parquet_optimized;
 mod parquet_optimized_replay;
 mod parquet_stream;
+mod replay_header;
 
 pub use fetch::{check_cache, get_cached_geometry, get_data_model, get_symbolic};
 pub use json::{parse_full, parse_metadata, parse_stream};

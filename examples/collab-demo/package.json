@@ -7,6 +7,8 @@
   "description": "Two-tab live demo of @ifc-lite/collab",
   "scripts": {
     "dev": "vite --port 5174",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "server": "node ../../packages/collab-server/dist/bin.js"
   },
   "dependencies": {

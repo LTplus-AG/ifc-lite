@@ -152,7 +152,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 |----------|--------|-------------|
 | `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404) |
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
-| `/api/v1/cache/{key}` | GET | Retrieve a cached JSON result (404, not 500, for a key whose entry is not JSON — e.g. a binary Parquet body) |
+| `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
 | `/api/v1/cache/{hash}` | DELETE | Evict all cached representations for a 64-character source-file SHA-256 hash |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it) |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
@@ -382,8 +382,10 @@ const result = await client.parseParquet(file);
 const dataModelBuffer = await client.fetchDataModel(result.cache_key);
 ```
 
-`getCached(key)` is the lower-level lookup for the JSON `parse()` cache and
-returns a `ParseResponse`; it is not the retrieval path for Parquet geometry.
+`getCached(key)` is the lower-level lookup for the JSON `parse()` cache: pass
+it the `cache_key` a `parse()` call returned and it returns that
+`ParseResponse`, or `null` if the server has not cached one. It is not the
+retrieval path for Parquet geometry.
 
 #### Fetching Data Model
 

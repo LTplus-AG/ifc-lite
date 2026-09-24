@@ -23,6 +23,7 @@
 //! (kept as its own project, never mis-scaled) and [`MergedStats::unit_rescale_required`]
 //! is set so the caller can gate that case to the JS path.
 
+mod aggregates;
 mod empty;
 mod guid;
 mod header;
@@ -30,6 +31,7 @@ mod line_edit;
 mod plan;
 mod spatial;
 mod units;
+mod warnings;
 
 use std::collections::{HashMap, HashSet};
 
@@ -229,6 +231,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut parents = aggregates::AggregationParents::default(); // one Decomposes parent (#5727)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
@@ -364,6 +367,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 after_guid
             };
 
+            if index.type_of.get(&id).is_some_and(|t| t == "IFCRELAGGREGATES") {
+                let Some(text) = parents.claim(final_text, !is_first && compatible) else { continue };
+                final_text = text;
+            }
+
             if let Some(local_guid) = plan.local_guids.get(&id) {
                 let mut emitted = read_leading_guid(&final_text)
                     .or_else(|| plan.guid_rewrite.get(&id).cloned())
@@ -400,38 +408,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         offset = next;
     }
 
-    if stats.federated_model_count > 0 {
-        stats.warnings.push(format!(
-            "{} model(s) had an incompatible length unit and were federated as separate IfcProject instances (relaxing IfcSingleProjectInstance).",
-            stats.federated_model_count
-        ));
-    }
-
-    if refused_refs_total > 0 {
-        // Issue #3421/#3752: a `#<digits>` reference above `u32::MAX` is
-        // refused, not wrapped onto a real entity, while resolving which
-        // ids a filtered/merged model reaches. The referenced record could
-        // never itself be a real entity (every id in this store is also
-        // `u32`-bound), so nothing reachable was excluded — this only says
-        // at least one input file contains an express id ifc-lite cannot
-        // represent.
-        stats.warnings.push(format!(
-            "{refused_refs_total} reference(s) above the u32 express-id bound were refused (see issue #3421) while resolving model reference closures."
-        ));
-    }
-
-    if !unrepresented_types_kept.is_empty() {
-        // #5116: kept pass-through, not proxied or dropped -- see the fallback
-        // above. Names every affected TYPE (not every occurrence) so this stays
-        // readable on a large merge with many instances of the same type.
-        stats.warnings.push(format!(
-            "{} entity type(s) have no representation in {schema} and are not IfcRoot subtypes, \
-             so the merge kept them unconverted instead of guessing (see issue #5116): {}.",
-            unrepresented_types_kept.len(),
-            unrepresented_types_kept.into_iter().collect::<Vec<_>>().join(", ")
-        ));
-    }
-
+    warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
     stats.warnings.extend(checks.warnings());
 

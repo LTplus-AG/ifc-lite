@@ -8,7 +8,7 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
-import { boxPenetration, containedSolidIsBuried, crossingVertexPenetration, depthClashResult, type VertexPenetration } from './depth.js';
+import { boxPenetration, clearlyInside, containedSolidIsBuried, crossingVertexPenetration, depthClashResult, type VertexPenetration } from './depth.js';
 
 export interface NarrowResult {
   status: ClashStatus;
@@ -219,8 +219,8 @@ export function testPair(
   // exact box-box depth is available (see `boxPenetration`) and is reported
   // as measured; otherwise the AABB gap is an estimate, not a measured depth.
   const enclosed = aabbContains(elB.bounds, elA.bounds)
-    ? containedSolidIsBuried(triA, triB)
-    : aabbContains(elA.bounds, elB.bounds) && containedSolidIsBuried(triB, triA);
+    ? containedSolidIsBuried(triA, triB, elA.bounds, elB.bounds)
+    : aabbContains(elA.bounds, elB.bounds) && containedSolidIsBuried(triB, triA, elA.bounds, elB.bounds);
   if (enclosed) {
     // `depthClashResult` may return `null` here (below the f32 floor and
     // `!rule.reportTouch`) — that is a suppressed touch, not "no clash",
@@ -255,10 +255,14 @@ export function testPair(
     if (gap < -tolerance) {
       const probeCentroid = mid(triA.vertexCentroid(), triB.vertexCentroid());
       const probeOverlap = center(overlap);
-      if (
-        (triA.containsPoint(probeCentroid) && triB.containsPoint(probeCentroid)) ||
-        (triA.containsPoint(probeOverlap) && triB.containsPoint(probeOverlap))
-      ) {
+      // Each probe counts only when it is CLEARLY inside both solids: for a
+      // flush pair the AABB-overlap centre sits ON the shared face, where ray
+      // parity is a coin flip, and a lucky flip used to report the pair `hard`
+      // at the AABB estimate (an element dimension, not a depth) — differently
+      // wherever the model sat (#5751). Same rule as `containedSolidIsBuried`.
+      const insideBoth = (p: Vec3): boolean =>
+        clearlyInside(triA, p, elA.bounds, elB.bounds) && clearlyInside(triB, p, elA.bounds, elB.bounds);
+      if (insideBoth(probeCentroid) || insideBoth(probeOverlap)) {
         // Report the tight contact region (the touching patch where the surfaces
         // actually coincide), clamped to the element overlap — not the whole-
         // element AABB intersection, which for angled members spans nearly the

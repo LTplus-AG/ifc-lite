@@ -182,7 +182,7 @@ export function toRenderFrame(p: Vec3, shift: Vec3): Vec3 {
  * — into the shifted-render-frame metres {@link ScanSectionPlane.position}
  * expects.
  *
- * MUST stay the exact formula `useDrawingGeneration` (and Section2DPanel's
+ * MUST stay the exact formula `useDrawingGeneration` (and the Drawing panel's
  * annotation slab) use to place the cut itself:
  *
  *   position = axisMin + (percent / 100) * (axisMax - axisMin)

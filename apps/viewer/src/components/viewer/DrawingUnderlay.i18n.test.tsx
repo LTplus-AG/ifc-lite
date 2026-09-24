@@ -138,8 +138,7 @@ afterEach(() => {
 
 describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
   it('renders the English catalogue by default, including the active preset, the custom-rule editor, and a DXF underlay with warnings', () => {
-    const settings = render(<DrawingSettingsPanel onClose={() => {}} />);
-    assert.match(settings.textContent ?? '', /Drawing Settings/);
+    const settings = render(<DrawingSettingsPanel />);
     assert.match(settings.textContent ?? '', /Enabled/);
     assert.match(settings.textContent ?? '', /Style Presets/);
     assert.match(settings.textContent ?? '', /Rules/);
@@ -163,9 +162,8 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
     assert.match(settings.textContent ?? '', /Done/);
 
     const dxf = render(
-      <DxfUnderlayPanel onClose={() => {}} onCenterOnModel={() => {}} planViewActive georeferenceAvailable />,
+      <DxfUnderlayPanel onCenterOnModel={() => {}} planViewActive georeferenceAvailable />,
     );
-    assert.match(dxf.textContent ?? '', /DXF Underlays/);
     assert.match(dxf.textContent ?? '', /Import DXF\.\.\./);
     assert.match(dxf.textContent ?? '', /0 layers/);
     assert.match(dxf.textContent ?? '', /Warning one/);
@@ -177,7 +175,7 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
   });
 
   it('translates every catalogue key rendered across both components', () => {
-    const settings = render(<DrawingSettingsPanel onClose={() => {}} />);
+    const settings = render(<DrawingSettingsPanel />);
     const editRow = Array.from(settings.querySelectorAll('div')).find(
       (el) => el.textContent?.includes('Test Rule Edited') && el.className.includes('cursor-pointer'),
     );
@@ -185,7 +183,7 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
     act(() => (editRow as HTMLElement).click());
 
     const dxf = render(
-      <DxfUnderlayPanel onClose={() => {}} onCenterOnModel={() => {}} planViewActive georeferenceAvailable />,
+      <DxfUnderlayPanel onCenterOnModel={() => {}} planViewActive georeferenceAvailable />,
     );
 
     const renders = [settings, dxf];
@@ -209,13 +207,13 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
 
   it('lets a registered locale translate a key and falls back to English for one it omits', () => {
     registerLocale('drawing-underlay-partial', {
-      'drawingUnderlay.settings.title': 'PARAMÈTRES DE DESSIN',
+      'drawingUnderlay.settings.presetsHeading': 'STYLES PRÉDÉFINIS',
     } as Catalogue);
     setLocale('drawing-underlay-partial');
-    const settings = render(<DrawingSettingsPanel onClose={() => {}} />);
-    assert.match(settings.textContent ?? '', /PARAMÈTRES DE DESSIN/);
-    // 'drawingUnderlay.settings.presetsHeading' was not overridden: still English.
-    assert.match(settings.textContent ?? '', /Style Presets/);
+    const settings = render(<DrawingSettingsPanel />);
+    assert.match(settings.textContent ?? '', /STYLES PRÉDÉFINIS/);
+    // 'drawingUnderlay.settings.customRulesHeading' was not overridden: still English.
+    assert.match(settings.textContent ?? '', /Custom Rules/);
     setLocale('en');
   });
 });

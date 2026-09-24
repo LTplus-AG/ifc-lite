@@ -1004,11 +1004,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
   async entity_delete(m, args) {
     const ref = resolveRef(m, args);
-    // The mutate namespace doesn't expose a delete on its public surface,
-    // but the headless backend's mutation view does.
-    const view = m.backend.getMutationView();
-    if (!view) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Mutation view unavailable.' });
-    const ok = view.deleteEntity(ref.expressId);
+    // The mutate namespace doesn't expose a delete on its public surface, so
+    // go through the backend's editor, like `entity_create` above and the
+    // stdio MCP `entity_delete`. `ensureEditor` creates the mutation overlay
+    // on first use; reading `getMutationView()` instead answered "Mutation
+    // view unavailable." when a delete was the session's first edit (#5681).
+    const ok = m.backend.ensureEditor().removeEntity(ref.expressId);
     return { text: ok ? `Deleted #${ref.expressId}.` : `#${ref.expressId} was not in the store.`, structured: { expressId: ref.expressId, deleted: ok } };
   },
   async mutation_diff(m) {

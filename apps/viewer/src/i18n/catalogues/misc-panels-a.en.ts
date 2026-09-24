@@ -126,8 +126,6 @@ export const miscPanelsAEn = {
   'exportChangesReviewDialog.exportButton': 'Export',
 
   // ScanSectionPanel
-  'scanSectionPanel.title': 'Scan Layer',
-  'scanSectionPanel.closeAriaLabel': 'Close scan layer panel',
   'scanSectionPanel.showScanPointsLabel': 'Show scan points',
   'scanSectionPanel.noPointCloudMessage':
     'No point cloud is loaded. Load a .laz/.las/.e57/.ply/.pcd scan and this layer will show the points within a thin band around the section plane.',

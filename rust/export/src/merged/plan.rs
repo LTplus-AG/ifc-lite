@@ -2,7 +2,7 @@
 //! Per-model indexing and plan helpers for the merged exporter. Ports the parts
 //! of `merged-exporter.ts` that operate on one model at a time: line indexing,
 //! the visibility forward-reference closure, `#`-reference rewriting, spatial
-//! unification, and redundant-`IfcRelAggregates` pruning.
+//! and spatial unification.
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,7 +10,7 @@ use ifc_lite_core::EntityScanner;
 
 use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
 use super::spatial::{
-    nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
+    ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
 use super::units::units_compatible;
 use super::MergedModel;
@@ -216,38 +216,13 @@ pub fn unify_spatial(
     }
 }
 
-/// Drop an `IfcRelAggregates` whose relating object AND every related object was
-/// unified into the first model (its aggregation already exists there). A
-/// partially-shared relationship is kept (its refs are remapped at emit time so
-/// it points into the first model's tree).
-pub fn skip_redundant_rel_aggregates(
-    index: &ModelIndex,
-    shared_remap: &HashMap<u32, u32>,
-    skip: &mut HashSet<u32>,
-) {
-    for &id in &index.order {
-        if index.type_of.get(&id).map(String::as_str) != Some("IFCRELAGGREGATES") {
-            continue;
-        }
-        let Some(line) = index.line_str(id) else { continue };
-        let Some(relating) = nth_attr(&line, 4).and_then(parse_single_ref) else { continue };
-        let related = nth_attr(&line, 5).map(parse_ref_list).unwrap_or_default();
-        if shared_remap.contains_key(&relating)
-            && !related.is_empty()
-            && related.iter().all(|r| shared_remap.contains_key(r))
-        {
-            skip.insert(id);
-        }
-    }
-}
-
 /// Parse a single `#N` reference token (`"#4"` → `4`).
 fn parse_single_ref(arg: &str) -> Option<u32> {
     arg.trim().strip_prefix('#')?.parse().ok()
 }
 
 /// Parse a `(#a,#b,…)` list of references into ids.
-fn parse_ref_list(arg: &str) -> Vec<u32> {
+pub(super) fn parse_ref_list(arg: &str) -> Vec<u32> {
     arg.trim()
         .trim_start_matches('(')
         .trim_end_matches(')')
@@ -321,7 +296,8 @@ pub(super) fn build_plan(
                 plan.skip.insert(this_id);
             }
         }
-        // Unify spatial containers, then drop now-redundant aggregations.
+        // Unify spatial containers. Aggregations they make redundant are
+        // stripped at emit time, on the final line (`aggregates`, #5727).
         unify_spatial(
             ctx.spatial_lookup,
             index,
@@ -332,7 +308,6 @@ pub(super) fn build_plan(
             ctx.merge_storeys,
             1.0,
         );
-        skip_redundant_rel_aggregates(index, &plan.shared_remap, &mut plan.skip);
     }
 
     // Reconcile GlobalIds for every model — including the first, whose two rooted

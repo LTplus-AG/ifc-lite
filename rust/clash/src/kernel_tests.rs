@@ -616,14 +616,14 @@ fn probe_fixture_matches_the_ts_kernel() {
     for (p, inside, distance) in probes {
         assert_eq!(mesh.contains_point(p), inside, "contains_point {p:?}");
         assert_eq!(
-            mesh.distance_to_surface(p),
+            mesh.closest_on_surface(p).0,
             distance,
-            "distance_to_surface {p:?}"
+            "closest_on_surface {p:?}"
         );
     }
 }
 
-/// The BVH-accelerated `distance_to_surface` must equal an exhaustive scan when
+/// The BVH-accelerated `closest_on_surface` must equal an exhaustive scan when
 /// the answer lies OUTSIDE the first probe cube. The DECOY is one big slanted
 /// triangle whose AABB swallows the probe cube while its own surface sits 0.548
 /// away; the real nearest surface is a fine grid at z = 0.435, outside the seed
@@ -635,7 +635,7 @@ fn probe_fixture_matches_the_ts_kernel() {
 /// hand back the decoy's 0.548), and dropping the widened query entirely.
 /// Mirrors `tri-mesh.test.ts` "finds a near triangle the seed cube missed".
 #[test]
-fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
+fn closest_on_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     const A: f64 = 0.95;
     const SPAN: f64 = 1.16;
     const Z: f64 = 0.435;
@@ -676,11 +676,11 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     // The probe that discriminates: the answer must be the grid (~0.435), not
     // the decoy (~0.548) that the seed cube found first.
     let centre = [0.0, 0.0, 0.0];
-    assert_eq!(mesh.distance_to_surface(centre), scan(centre));
+    assert_eq!(mesh.closest_on_surface(centre).0, scan(centre));
     assert!(
-        mesh.distance_to_surface(centre) < 0.5,
+        mesh.closest_on_surface(centre).0 < 0.5,
         "must reach the grid at z = 0.435, got {}",
-        mesh.distance_to_surface(centre)
+        mesh.closest_on_surface(centre).0
     );
 
     for p in [
@@ -689,13 +689,13 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
         [0.4, 0.4, 0.3],
         [9.0, 9.0, 9.0],
     ] {
-        assert_eq!(mesh.distance_to_surface(p), scan(p), "probe {p:?}");
+        assert_eq!(mesh.closest_on_surface(p).0, scan(p), "probe {p:?}");
     }
 }
 
 /// Brute-force `contains_point`: the SAME Möller–Trumbore crossing count, over
 /// EVERY triangle instead of the BVH's candidate set. This is the oracle the
-/// BVH acceleration never had — `distance_to_surface` has one (`scan` above),
+/// BVH acceleration never had — `closest_on_surface` has one (`scan` above),
 /// but `contains_point`'s "the candidate set is a superset of what a linear
 /// scan would count" was asserted only in a doc comment, so nothing in the
 /// suite would have noticed the traversal starting to prune a triangle the ray

@@ -164,8 +164,10 @@ pub(super) async fn try_cached_replay(
     );
 
     // Parse cached metadata
-    let metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
+    let mut metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
         .map_err(|e| ApiError::Internal(format!("Failed to parse cached metadata: {}", e)))?;
+    // Stored as the live parse wrote it, `from_cache: false` included (#5542).
+    metadata_header.stats.from_cache = true;
 
     // Load the cached symbolic stream so the Complete event reaches parity
     // even on the cache fast-path (issue #900).

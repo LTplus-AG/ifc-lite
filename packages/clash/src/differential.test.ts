@@ -494,6 +494,43 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(a.clashes[0]!.distance).toBeCloseTo(-0.02, 3);
   });
 
+  it('agrees that flush interlocking L prisms are a touch, not the AABB estimate (#5751)', async () => {
+    // Their AABB-overlap centre lies ON the shared face y = 1: the probe
+    // there used to decide Hard by a coin-flip ray parity. Both kernels now
+    // trust a probe only when it is clearly inside both solids.
+    const prism = (key: string, tag: string, foot: number[][], idxFoot: number[], dy: number): ClashElement => {
+      const v: number[] = [];
+      for (const z of [0, 1]) for (const [x, y] of foot) v.push(x!, y! + dy, z);
+      const n = foot.length;
+      const idx = [...idxFoot, ...idxFoot.map((i) => i + n)];
+      for (let k = 0; k < n; k += 1) {
+        const m = (k + 1) % n;
+        idx.push(k, m, m + n, k, m + n, k + n);
+      }
+      const positions = new Float32Array(v);
+      let min: Vec3 = [Infinity, Infinity, Infinity];
+      let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < positions.length; i += 1) {
+        const a = i % 3;
+        if (positions[i]! < min[a]!) min[a] = positions[i]!;
+        if (positions[i]! > max[a]!) max[a] = positions[i]!;
+      }
+      return { key, ref: refCounter++, model: 'm', tag, positions, indices: new Uint32Array(idx), bounds: { min, max } };
+    };
+    const lFoot = [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]];
+    const cFoot = [[2, 0], [3, 0], [3, 2], [1, 2], [1, 1], [2, 1]];
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcSlab', mode: 'hard', reportTouch: true }];
+    for (const dy of [0, -0.02]) {
+      const els = [
+        prism('L', 'IfcWall', lFoot, [0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4], 0),
+        prism('C', 'IfcSlab', cFoot, [5, 1, 0, 5, 2, 1, 5, 3, 2, 5, 4, 3], dy),
+      ];
+      const a = await ts.run(els, rules);
+      assertParity(a, await wasm.run(els, rules));
+      expect(a.clashes.map((c) => c.status), `dy ${dy}`).toEqual([dy === 0 ? 'touch' : 'hard']);
+    }
+  });
+
   it('agrees on the mesh label for coincident-footprint BOX layers', async () => {
     // Stacked BOX layers sharing a footprint: no crossing-triangle vertex lies
     // inside the other solid, so this lands in the coplanar-overlap branch.

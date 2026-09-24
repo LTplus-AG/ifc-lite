@@ -18,7 +18,6 @@ import type { TranslationValue } from '../types';
  */
 export const drawingUnderlayEn = {
   // DrawingSettingsPanel
-  'drawingUnderlay.settings.title': 'Drawing Settings',
   'drawingUnderlay.settings.overridesEnabled': 'Enabled',
   'drawingUnderlay.settings.overridesDisabled': 'Disabled',
   'drawingUnderlay.settings.presetsHeading': 'Style Presets',
@@ -42,7 +41,6 @@ export const drawingUnderlayEn = {
   'drawingUnderlay.settings.doneButton': 'Done',
 
   // DxfUnderlayPanel
-  'drawingUnderlay.dxf.panelTitle': 'DXF Underlays',
   'drawingUnderlay.dxf.importButton': 'Import DXF...',
   'drawingUnderlay.dxf.emptyStateHint': 'Import a DXF drawing (site plan, survey, coordination set) as a reference layer under the 2D section. You can also drop .dxf files anywhere on the viewport. Underlays render on plan views; use Placement or Center on model to position them.',
   'drawingUnderlay.dxf.notPlanViewHint': 'Underlays render on plan (top-down) sections. Switch the section to a plan view to see them.',

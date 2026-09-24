@@ -298,20 +298,17 @@ fn a_genuine_overlap_is_hard_at_its_own_depth_under_every_translation_5406() {
     }
 }
 
-/// Known remaining non-invariance downstream of the predicate: for a thin
-/// ROTATED box the OBB certification and depth drift with the offset — the
-/// 20 mm overlap reads 23 mm at 123 m and falls back to the AABB `Estimate`
-/// from 1 km out (#5474). Same numbers before and after #5406.
+/// A thin ROTATED box pair: the OBB frame and centre were computed from
+/// absolute world coordinates, so the error of a single triangle's normal was
+/// multiplied by the element's distance from the origin — the 20 mm overlap
+/// read 23 mm (yaw) / 30 mm (three-axis) at 123 m and fell back to the AABB
+/// `Estimate` (-0.25 m / -1.38 m) from 1 km out. Pinned as `should_panic`
+/// until #5474 made box recognition origin-independent.
 #[test]
-#[should_panic(expected = "changed the verdicts")]
-fn a_rotated_overlap_still_loses_its_certified_depth_far_out_5474() {
-    assert_overlap_is_hard_at_its_depth(YAW);
-}
-
-#[test]
-#[should_panic(expected = "changed the verdicts")]
-fn a_three_axis_rotated_overlap_still_loses_its_certified_depth_far_out_5474() {
-    assert_overlap_is_hard_at_its_depth(THREE_AXIS);
+fn a_rotated_overlap_keeps_its_certified_depth_under_every_translation_5474() {
+    for r in [YAW, THREE_AXIS] {
+        assert_overlap_is_hard_at_its_depth(r);
+    }
 }
 
 #[test]

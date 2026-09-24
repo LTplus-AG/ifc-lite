@@ -590,7 +590,8 @@ source/instance form without changing the flattened result above. A source
 contains authored `Radius`, `InnerRadius`, and `Directrix` in raw IFC file
 length units. Its key includes the IFC-byte SHA-256, `FILE_SCHEMA`, exact f64
 length-unit-scale bits, solid STEP id, and either the top-level representation
-id or ordered `IfcRepresentationMap` ids. Repeated mapped items that use the
+id or ordered `IfcRepresentationMap` ids. The bits are encoded as 16 hex
+digits so JSON consumers preserve exact identity. Repeated mapped items that use the
 same representation map share a source but remain separate instances with
 deterministic ordinals and mapped-item paths. `source_modified` still marks CSG
 operands.

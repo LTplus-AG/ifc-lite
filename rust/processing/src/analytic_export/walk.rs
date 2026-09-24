@@ -49,6 +49,9 @@ pub(super) fn extract(
     collect_definitions: bool,
 ) -> ExtractResult {
     let mut result = SweptDiskDescriptions::default();
+    if !collect_definitions && ids.is_some_and(HashSet::is_empty) {
+        return ExtractResult { descriptions: result, definitions: None };
+    }
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     let unit_scale = decoder.length_unit_scale();
@@ -360,9 +363,10 @@ pub(super) fn extract(
                 let new_segments: usize = pending_sources.iter()
                     .filter(|(key, _)| !known_sources.contains(*key))
                     .map(|(_, source)| source.directrix.len()).sum();
-                if pending_instances.len() > MAX_TOTAL_INSTANCES.saturating_sub(total_instances)
-                    || new_segments > MAX_CACHED_SEGMENTS.saturating_sub(total_source_segments) {
-                    view.diagnostics.push(format!("product #{id}: source definitions or instances exceed total output budget"));
+                if pending_instances.len() > MAX_TOTAL_INSTANCES.saturating_sub(total_instances) {
+                    view.diagnostics.push(format!("product #{id}: source instances exceed total output budget"));
+                } else if new_segments > MAX_CACHED_SEGMENTS.saturating_sub(total_source_segments) {
+                    view.diagnostics.push(format!("product #{id}: source segments exceed total output budget"));
                 } else {
                     for (key, source) in pending_sources {
                         if known_sources.insert(key) {

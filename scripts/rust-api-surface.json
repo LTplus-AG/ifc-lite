@@ -315,7 +315,7 @@
     "SweptDiskInstance": "struct { mapping_path: Vec<u32>; ordinal: usize; product_id: u32; solid_id: u32; source: SweptDiskSourceKey; source_modified: bool; status: AnalyticStatus; world_from_source: Option<[f64; 16]> }",
     "SweptDiskOccurrence": "struct { directrix: Vec<AnalyticCurveSegment>; directrix_id: u32; inner_radius: Option<f64>; mapping_path: Vec<u32>; radius: f64; solid_id: u32; source_modified: bool; status: AnalyticStatus }",
     "SweptDiskSourceContext": "enum { Direct { representation_id: u32 }; Mapped { representation_map_path: Vec<u32> } }",
-    "SweptDiskSourceKey": "struct { context: SweptDiskSourceContext; length_unit_scale_bits: u64; model_sha256: String; schema: Option<String>; solid_id: u32 }",
+    "SweptDiskSourceKey": "struct { context: SweptDiskSourceContext; length_unit_scale_bits: String; model_sha256: String; schema: Option<String>; solid_id: u32 }",
     "SymbolicCircle": "struct { center_x: f32; center_y: f32; end_angle: f32; express_id: u32; ifc_type: String; radius: f32; representation: String; start_angle: f32; world_y: f32 }",
     "SymbolicData": "struct { circles: Vec<SymbolicCircle>; fills: Vec<SymbolicFillArea>; grid_axes: Vec<SymbolicGridAxis>; polylines: Vec<SymbolicPolyline>; texts: Vec<SymbolicText>; truncated: Option<SymbolicTruncation> }",
     "SymbolicDataWithProvenance": "struct {  }",

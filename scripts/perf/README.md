@@ -27,6 +27,24 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Reusable swept-disk source definitions (#5785)
+
+The source/instance view is opt-in. The existing flattened reader now caches
+raw `IfcSweptDiskSolid` definitions under a bounded source/segment budget, so
+repeated mapped uses avoid re-decoding their directrix. On AC20-FZK-Haus, four
+interleaved base (`c6e23baee`)/branch pairs of the native worker-pool probe
+(`--iters 5 --json --fingerprint`) measured median parse/geometry/total of
+11/20/32 ms versus 11.5/20/33 ms. Base totals ranged 24–37 ms and branch
+totals 29–40 ms while another geometry build was active; the timing difference
+does not establish a performance change. All eight runs emitted 285 meshes,
+35,940 vertices, and 20,322 triangles with identical ordered mesh FNV-1a64
+`c4d504b83ff698ea`.
+
+Verdict: ordinary mesh output is byte-identical, and its timing is unresolved
+under host contention. The lesson is to measure both the default mesh path and
+the opt-in repeated-map analytic path in an idle window before claiming a
+runtime win from cached decoding.
+
 ## Derived swept-disk metrics (#5754)
 
 The new length/bend calculations run when an analytic description is requested

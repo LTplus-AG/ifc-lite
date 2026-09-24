@@ -155,8 +155,9 @@ authored `Radius`, `InnerRadius`, and `Directrix` in the IFC file's length
 units. `instances` is keyed by product STEP id and preserves deterministic
 `ordinal`, `mapping_path` (mapped-item STEP ids), `source_modified`, and
 `status`. The `source` key contains the SHA-256 of the IFC bytes, `FILE_SCHEMA`,
-unit scale, solid STEP id, and either a top-level representation id or ordered
-`IfcRepresentationMap` ids. Repeated `MappingTarget`s therefore share a source
+unit scale (as 16 hex digits of its f64 bits), solid STEP id, and either a
+top-level representation id or ordered `IfcRepresentationMap` ids. Repeated
+`MappingTarget`s therefore share a source
 without collapsing distinct uses.
 
 `world_from_source` is a column-major 4×4 f64 matrix mapping source file-unit

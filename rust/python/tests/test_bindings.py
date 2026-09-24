@@ -188,6 +188,7 @@ def test_issue_5785_reusable_source_definitions_keep_file_units_and_world_frame(
     assert len(view["sources"]) == 1
     source = view["sources"][0]
     assert source["Radius"] == 14.5
+    assert len(source["key"]["length_unit_scale_bits"]) == 16
     assert source["key"]["context"] == {
         "kind": "mapped", "representation_map_path": [45]
     }

@@ -29,7 +29,7 @@
 
 import type { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
-import { selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
+import { SELECTION_MASK_DEPTH_GROUP, selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
 
 const MASK_VISIBLE_FORMAT: GPUTextureFormat = 'rg8unorm';
 const MASK_ALL_FORMAT: GPUTextureFormat = 'r8unorm';
@@ -143,7 +143,7 @@ export class SelectionMaskPass {
         colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
       pass.setPipeline(pipeline);
-      pass.setBindGroup(1, depthGroup);
+      pass.setBindGroup(SELECTION_MASK_DEPTH_GROUP, depthGroup);
       for (const mesh of meshes) {
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);

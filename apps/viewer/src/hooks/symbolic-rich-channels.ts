@@ -50,23 +50,34 @@ import type { ThemeMode } from '@/store/slices/uiSlice';
  * Grid LINES keep their per-storey bucket (a floor's grid lines are genuine
  * per-floor content — `symbolic-line-channels.ts` is unaffected here), but a
  * bubble is a reference label, not floor-specific content, so only the
- * lowest-elevation storey's bubbles are lifted. Ties / all-null elevations
- * fall back to the first bucket in Map iteration order, which is stable for
- * a given parse.
+ * lowest-elevation storey's bubbles are lifted. Ties / all-non-finite
+ * elevations fall back to the first bucket in Map iteration order, which is
+ * stable for a given parse.
+ *
+ * `storeyElevation` is typed `number | null`, and today's parser never
+ * stores anything but a finite number or `null` in it. This still treats
+ * `null` AND a non-finite number (NaN, ±Infinity) the same — "no usable
+ * elevation" — rather than trusting `!== null`: a `NaN` accepted as the
+ * running best would poison every later comparison, since `x < NaN` and
+ * `NaN < x` are both always `false`, permanently pinning the first bucket
+ * seen regardless of what a later, genuinely-elevated bucket reports.
+ * Exported so this can be pinned directly against a hand-built map, without
+ * relying on the real parser to happen to never produce that value.
  */
-function pickPrimaryGridBubbleStorey(
+export function pickPrimaryGridBubbleStorey(
   gridByStorey: ReadonlyMap<number, AnnotationsForStorey>,
 ): number | undefined {
   let bestKey: number | undefined;
-  let bestElevation: number | null = null;
+  let bestElevation: number | null = null; // null = no FINITE elevation seen yet
   for (const [key, bucket] of gridByStorey) {
     if (bestKey === undefined) {
       bestKey = key;
-      bestElevation = bucket.storeyElevation;
+      const elevation = bucket.storeyElevation;
+      bestElevation = elevation !== null && Number.isFinite(elevation) ? elevation : null;
       continue;
     }
     const elevation = bucket.storeyElevation;
-    if (elevation !== null && (bestElevation === null || elevation < bestElevation)) {
+    if (elevation !== null && Number.isFinite(elevation) && (bestElevation === null || elevation < bestElevation)) {
       bestKey = key;
       bestElevation = elevation;
     }

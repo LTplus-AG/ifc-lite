@@ -25,13 +25,20 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSymbolicLineChannels, type SymbolicLineVertices } from './symbolic-line-channels.js';
-import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
+import { buildSymbolicRichChannels, pickPrimaryGridBubbleStorey } from './symbolic-rich-channels.js';
 import {
   buildParseResult,
   createEmptyFlatSymbolic,
+  type AnnotationsForStorey,
   type FlatSymbolic,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
+
+/** A minimal `AnnotationsForStorey` bucket, only `storeyElevation` matters
+ *  to `pickPrimaryGridBubbleStorey`. */
+function bucketAt(storeyElevation: number | null): AnnotationsForStorey {
+  return { storeyId: 0, storeyElevation, lines: [], texts: [], fills: [] };
+}
 
 /** Elevations of three storeys, all carrying "the same" grid axis. */
 const ELEVATIONS = [6000, 0, 3000] as const; // deliberately out of order
@@ -141,5 +148,50 @@ describe('grid bubbles draw once, not once per storey (#5583)', () => {
     // Each of the 3 storeys' axis line is one 2-point segment == 6 floats
     // (x, y, z per point). Deduping bubbles must not touch this.
     assert.equal(vertexFloatCount(grid), 3 * 2 * 3, 'all three storeys’ grid lines are still present');
+  });
+});
+
+describe('pickPrimaryGridBubbleStorey does not get poisoned by a non-finite elevation', () => {
+  // Regression: `x < NaN` and `NaN < x` are both always `false`, so a naive
+  // "replace if lower" comparison that accepted NaN as the running best would
+  // never be displaced by a later, genuinely-elevated bucket — permanently
+  // pinning whichever bucket the Map happens to iterate first.
+  it('a NaN-elevation bucket seen FIRST does not block a finite one seen later', () => {
+    const map = new Map<number, AnnotationsForStorey>([
+      [1, bucketAt(NaN)],
+      [2, bucketAt(500)],
+    ]);
+    assert.equal(pickPrimaryGridBubbleStorey(map), 2, 'the only finite elevation must win over a NaN pinned first');
+  });
+
+  it('a NaN-elevation bucket seen LAST does not overwrite a finite one seen earlier', () => {
+    const map = new Map<number, AnnotationsForStorey>([
+      [1, bucketAt(500)],
+      [2, bucketAt(NaN)],
+    ]);
+    assert.equal(pickPrimaryGridBubbleStorey(map), 1);
+  });
+
+  it('still picks the lowest of several finite elevations mixed with non-finite ones', () => {
+    const map = new Map<number, AnnotationsForStorey>([
+      [1, bucketAt(Infinity)],
+      [2, bucketAt(300)],
+      [3, bucketAt(NaN)],
+      [4, bucketAt(100)],
+      [5, bucketAt(null)],
+    ]);
+    assert.equal(pickPrimaryGridBubbleStorey(map), 4);
+  });
+
+  it('falls back to the first bucket in iteration order when nothing is finite', () => {
+    const map = new Map<number, AnnotationsForStorey>([
+      [7, bucketAt(NaN)],
+      [8, bucketAt(null)],
+    ]);
+    assert.equal(pickPrimaryGridBubbleStorey(map), 7);
+  });
+
+  it('returns undefined for an empty map', () => {
+    assert.equal(pickPrimaryGridBubbleStorey(new Map()), undefined);
   });
 });

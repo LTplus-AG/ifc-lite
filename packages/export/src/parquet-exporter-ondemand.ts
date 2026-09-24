@@ -27,15 +27,27 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType, type QuantityType } from '@ifc-lite/data';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
 import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
 
+function effectiveOwnerIds(sourceIds: Iterable<number>, view: MutablePropertyView): Set<number> {
+    const ids = new Set(sourceIds);
+    for (const change of view.getEffectiveChanges()) ids.add(change.entityId);
+    for (const created of view.getNewEntities()) ids.add(created.expressId);
+    return ids;
+}
+
 export async function writePropertiesOnDemand(
     store: IfcDataStore,
     effective: EffectiveEntityIndex | null,
+    view?: MutablePropertyView | null,
+    sourceIds: Iterable<number> = store.onDemandPropertyMap?.keys() ?? [],
+    getBase = (id: number) => store.getProperties(id),
+    onCount?: (count: number) => void,
 ): Promise<Uint8Array> {
     const entityIdCol: number[] = [];
     const psetNameCol: string[] = [];
@@ -50,9 +62,9 @@ export async function writePropertiesOnDemand(
     const valueIntCol: number[] = [];
     const valueBoolCol: (boolean | null)[] = [];
 
-    for (const id of store.onDemandPropertyMap!.keys()) {
+    for (const id of view ? effectiveOwnerIds(sourceIds, view) : sourceIds) {
         if (effective?.isDeleted(id)) continue;
-        const psets = store.getProperties(id);
+        const psets = view ? view.getForEntity(id, getBase) : getBase(id);
         for (const pset of psets) {
             for (const prop of pset.properties) {
                 entityIdCol.push(id);
@@ -69,6 +81,7 @@ export async function writePropertiesOnDemand(
         }
     }
 
+    onCount?.(entityIdCol.length);
     return columnsToParquet({
         EntityId: entityIdCol,
         PsetName: psetNameCol,
@@ -91,6 +104,9 @@ export async function writePropertiesOnDemand(
 export async function writeQuantitiesOnDemand(
     store: IfcDataStore,
     effective: EffectiveEntityIndex | null,
+    view?: MutablePropertyView | null,
+    sourceIds: Iterable<number> = store.onDemandQuantityMap?.keys() ?? [],
+    getBase = (id: number) => store.getQuantities(id),
 ): Promise<Uint8Array> {
     const entityIdCol: number[] = [];
     const qsetNameCol: string[] = [];
@@ -99,9 +115,9 @@ export async function writeQuantitiesOnDemand(
     const valueCol: number[] = [];
     const formulaCol: (string | null)[] = [];
 
-    for (const id of store.onDemandQuantityMap!.keys()) {
+    for (const id of view ? effectiveOwnerIds(sourceIds, view) : sourceIds) {
         if (effective?.isDeleted(id)) continue;
-        const qsets = store.getQuantities(id);
+        const qsets = view ? view.getQuantitiesForEntity(id, getBase) : getBase(id);
         for (const qset of qsets) {
             for (const q of qset.quantities) {
                 entityIdCol.push(id);

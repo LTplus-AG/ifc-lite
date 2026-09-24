@@ -37,8 +37,8 @@ export class ParquetExporter {
      * When supplied, tombstoned entities and rows that reference them are
      * dropped from every table (#2046), and overlay-created entities are
      * appended to `Entities.parquet`. Relationship rows resolve authored
-     * records and edited endpoints; property/quantity/geometry payload edits
-     * remain separate gaps.
+     * records and edited endpoints; property and quantity rows resolve live
+     * overlays. Geometry payload edits remain a separate gap.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -71,7 +71,8 @@ export class ParquetExporter {
 
         // Non-geometry files
         files.set('Entities.parquet', await this.writeEntities());
-        files.set('Properties.parquet', await this.writeProperties());
+        let propertyCount = 0;
+        files.set('Properties.parquet', await this.writeProperties(count => { propertyCount = count; }));
         files.set('Quantities.parquet', await this.writeQuantities());
         const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, this.getEffective());
         files.set('Relationships.parquet', await this.toParquet(relationshipRows));
@@ -90,7 +91,7 @@ export class ParquetExporter {
         }
 
         // Metadata
-        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size));
+        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size, propertyCount));
 
         return this.createZipArchive(files);
     }
@@ -168,9 +169,19 @@ export class ParquetExporter {
         return this.toParquet(filterColumns(columns, keep));
     }
 
-    private async writeProperties(): Promise<Uint8Array> {
+    private async writeProperties(onCount?: (count: number) => void): Promise<Uint8Array> {
         const { properties, strings } = this.store;
         const effective = this.getEffective();
+
+        if (this.mutationView) {
+            const onDemand = properties.entityId.length === 0;
+            return writePropertiesOnDemand(
+                this.store, effective, this.mutationView,
+                onDemand ? this.store.onDemandPropertyMap?.keys() ?? [] : properties.entityIndex.keys(),
+                onDemand ? id => this.store.getProperties(id) : id => properties.getForEntity(id),
+                onCount,
+            );
+        }
 
         // `IfcParser.parseColumnar` (the sole parse path every real caller of
         // this exporter goes through — `packages/parser`'s `parseLite`) never
@@ -186,13 +197,14 @@ export class ParquetExporter {
         // this file's own tests). Route through the on-demand path first;
         // fall back to the bulk table when it was actually populated.
         if (properties.entityId.length === 0 && this.store.onDemandPropertyMap && this.store.onDemandPropertyMap.size > 0) {
-            return writePropertiesOnDemand(this.store, effective);
+            return writePropertiesOnDemand(this.store, effective, null, undefined, undefined, onCount);
         }
 
         const entityId = Array.from(properties.entityId);
         // A property row belongs to the entity named in its own EntityId
         // column, not to its own row index — filter on that, not on ExpressId.
         const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+        onCount?.(keep ? keep.filter(Boolean).length : entityId.length);
 
         return this.toParquet(filterColumns({
             EntityId: entityId,
@@ -210,6 +222,15 @@ export class ParquetExporter {
     private async writeQuantities(): Promise<Uint8Array> {
         const { quantities, strings } = this.store;
         const effective = this.getEffective();
+
+        if (this.mutationView) {
+            const onDemand = quantities.entityId.length === 0;
+            return writeQuantitiesOnDemand(
+                this.store, effective, this.mutationView,
+                onDemand ? this.store.onDemandQuantityMap?.keys() ?? [] : quantities.entityIndex.keys(),
+                onDemand ? id => this.store.getQuantities(id) : id => quantities.getForEntity(id),
+            );
+        }
 
         // Same gap as `writeProperties`: `store.quantities` is only ever
         // populated when a caller bulk-builds it directly (this file's own
@@ -475,7 +496,7 @@ export class ParquetExporter {
         });
     }
 
-    private writeMetadata(relationshipCount: number): Uint8Array {
+    private writeMetadata(relationshipCount: number, propertyCount: number): Uint8Array {
         const metadata = {
             version: '2.0.0',
             generator: 'IFC-Lite',
@@ -492,7 +513,7 @@ export class ParquetExporter {
                 meshCount: this.geometryResult?.meshes.length ?? 0,
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
-                propertyCount: this.store.properties.count,
+                propertyCount,
                 relationshipCount, // distinct exported IfcRel records, not raw edges (#3760/#4205)
             },
         };

@@ -287,13 +287,16 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Get all property sets for an entity, with mutations applied
+   * Get all property sets with mutations applied. An explicit base provider
+   * lets an exporter supply its store without changing this live view.
    */
-  getForEntity(entityId: number): PropertySet[] {
+  getForEntity(entityId: number, baseProvider?: (baseId: number) => PropertySet[]): PropertySet[] {
     const result: PropertySet[] = [];
     const seenPsets = new Set<string>();
     // First, add properties from base (on-demand or table) with mutations applied
-    const basePsets = this.getBasePropertiesForEntity(entityId);
+    const basePsets = baseProvider
+      ? baseProvider(this.resolveBaseEntityId(entityId))
+      : this.getBasePropertiesForEntity(entityId);
 
     // Two base psets can share a name (type pset + occurrence pset); a
     // mutation key has no per-instance identity, so figure out up front
@@ -742,13 +745,16 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Get all quantity sets for an entity, with mutations applied
+   * Get all quantity sets with mutations applied. The optional provider
+   * reads an external base store without changing this live view.
    */
-  getQuantitiesForEntity(entityId: number): QuantitySet[] {
+  getQuantitiesForEntity(entityId: number, baseProvider?: (baseId: number) => QuantitySet[]): QuantitySet[] {
     const result: QuantitySet[] = [];
     const seenQsets = new Set<string>();
 
-    const baseQsets = this.getBaseQuantitiesForEntity(entityId);
+    const baseQsets = baseProvider
+      ? baseProvider(this.resolveBaseEntityId(entityId))
+      : this.getBaseQuantitiesForEntity(entityId);
     // Same name-only key, and the same claiming rule, as the property path
     // above (`same-name-set-claims.ts`): an edit or a brand-new quantity
     // lands on exactly one same-named qset instance.

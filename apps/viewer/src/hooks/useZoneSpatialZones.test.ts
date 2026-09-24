@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { EntityExtractor, IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { emitZoneSpatialZones, removeZoneSpatialZones } from './useZoneSpatialZones.js';
 import type { ZoneSet } from '@/lib/zones';
 
@@ -158,6 +159,22 @@ describe('emitZoneSpatialZones: what reaches the model', () => {
     // any other overlay consumer.
     const view = useViewerStore.getState().getMutationView('m1');
     view?.setOnDemandExtractor?.((entityId: number) => extractPropertiesOnDemand(store, entityId));
+  });
+
+  it('selects an overlay-created storey after the source storey is deleted (#5249)', () => {
+    const view = new MutablePropertyView(store.properties || null, 'm1');
+    const editor = new StoreEditor(store, view);
+    useViewerStore.getState().registerMutationView('m1', view);
+    useViewerStore.getState().storeEditors.set('m1', editor);
+    assert.equal(editor.removeEntity(STOREY_ID), true);
+    assert.equal(emitZoneSpatialZones(ZONE_SET).models[0].refusal, 'no-anchor');
+
+    editor.addEntity('IfcBuildingStorey', [
+      '0storey000000000000001', '#4', 'Level 1', null, null, '#20', null, null, '.ELEMENT.', 3000,
+    ]);
+    const outcome = emitZoneSpatialZones(ZONE_SET);
+    assert.equal(outcome.models[0].refusal, null);
+    assert.equal(outcome.models[0].zonesEmitted, 2);
   });
 
   it('emits one zone per zone in the set, referencing the elements it holds', () => {

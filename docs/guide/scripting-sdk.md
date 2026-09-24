@@ -15,7 +15,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.store` | Document-level edits (add/remove entities, positional attributes) |
 | `bim.lens` | Lens visualization presets |
 | `bim.create` | Create IFC elements from scratch |
-| `bim.export` | Export to CSV, glTF, STEP, HBJSON, and more |
+| `bim.export` | Export to CSV, JSON, IFC/STEP, HBJSON, DFJSON |
 | `bim.clash` | Run clash rules and the discipline matrix |
 | `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |

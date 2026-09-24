@@ -72,10 +72,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const finishRadius = useViewerStore((s) => s.finishRadius);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Ignore if typing in an input or textarea
-    if (isTextEntryTarget(e)) {
-      return;
-    }
+    // Ignore keys an input-like target consumes (inputs, <select>, ARIA widgets).
+    if (isTextEntryTarget(e)) return;
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
@@ -84,9 +82,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // events) — see lib/keyboard-event.ts. No shortcut below could match one.
     const key = eventKey(e);
     if (key === null) return;
-
-    // The Walk tool moves on W/A/S/D + arrows (useKeyboardControls); those
-    // keys must not also run their global shortcut (A = Show all, D = dock).
+    // Walk owns W/A/S/D + arrows for movement: A must not Show all, D not toggle the dock.
     if (activeTool === 'walk' && !ctrl && !e.altKey && WALK_MOVEMENT_KEYS.has(key)) return;
 
     // Workspace moves interleave with active-model authoring history.

@@ -153,7 +153,8 @@ pub async fn get_symbolic(
 ///
 /// Response:
 /// - 200: File is cached (geometry available)
-/// - 404: File not cached (needs upload)
+/// - 404: File not cached (needs upload), in the shared error envelope
+///   (#5750; the body was empty before)
 pub async fn check_cache(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
@@ -193,11 +194,9 @@ pub async fn check_cache(
                 geometry_cached = cached.is_some(),
                 "Cache check MISS"
             );
-            let response = Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
-            Ok(response)
+            Err(ApiError::NotFound(format!(
+                "Nothing cached for hash {hash} under this opening_filter / tessellation_quality / parquet_layout"
+            )))
         }
     }
 }

@@ -30,6 +30,7 @@
 
 export * from './client.js';
 export * from './types.js';
+export { IfcServerError } from './server-error.js';
 export { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 export {
   decodeDataModel,

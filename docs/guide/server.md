@@ -153,7 +153,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404) |
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
-| `/api/v1/cache/{hash}` | DELETE | Evict all cached representations for a 64-character source-file SHA-256 hash |
+| `/api/v1/cache/{key}` | DELETE | Evict every cached representation of the source file that `cache_key` names (`200` with `{ key, deleted }`; `deleted: 0` when nothing was cached) |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it) |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
 
@@ -165,6 +165,24 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/health` | GET | Health check (liveness; always open) |
 | `/api/v1/ready` | GET | Readiness probe (503 while the memory breaker is shedding load) |
 | `/api/v1/metrics` | GET | Prometheus text metrics (registered only when `IFC_METRICS_ENABLED=1`) |
+
+!!! note "One key for `GET` and `DELETE /api/v1/cache/{key}`"
+    Both methods take the same `{key}`: the request `cache_key` a parse
+    returned (`result.cache_key` from `POST /api/v1/parse`, or the `cache_key`
+    in a Parquet response's `X-IFC-Metadata` header). That is the file's
+    SHA-256, then `-{opening_filter}`, then `-q{level}` for a non-default
+    tessellation quality, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
+    Both resolve it through the same function, so a key one accepts the other
+    accepts, and anything else (a bare SHA-256, an internal storage key with a
+    `-json-v5` or `-parquet-v5` suffix) is a `400 BAD_REQUEST` from both.
+    `GET` returns the entry for that exact variant. `DELETE` removes every
+    variant of that source file (all opening filters, quality levels and
+    transports), since they are all derived from one file. Before #5750
+    `DELETE` took the bare SHA-256 instead; pass the `cache_key` now.
+
+    A cache `GET` decodes and re-encodes the whole stored model, so a hit holds
+    a parse admission slot, like a parse does: under load it can answer
+    `503 OVERLOADED` with a `Retry-After` header. A miss is answered without one.
 
 !!! note "Optional bearer-token auth"
     When `IFC_SERVER_API_TOKEN` (or `API_TOKEN`) is set, all parse and cache
@@ -385,7 +403,9 @@ const dataModelBuffer = await client.fetchDataModel(result.cache_key);
 `getCached(key)` is the lower-level lookup for the JSON `parse()` cache: pass
 it the `cache_key` a `parse()` call returned and it returns that
 `ParseResponse`, or `null` if the server has not cached one. It is not the
-retrieval path for Parquet geometry.
+retrieval path for Parquet geometry. The same `cache_key` is what
+`DELETE /api/v1/cache/{key}` takes to evict the file (see Cache Endpoints);
+a bare SHA-256 is refused by both with `400 BAD_REQUEST`.
 
 #### Fetching Data Model
 
@@ -743,7 +763,9 @@ probes additionally require it to be 64 lowercase hex characters and answer
 `400` otherwise, because the value is concatenated into the keys above and a
 caller-shaped hash would otherwise be a caller-shaped key. `/cache/check` and
 `/cache/geometry` do not check the shape; a malformed hash there simply names a
-key nobody wrote, and they answer `404`.
+key nobody wrote, and they answer `404`. `GET` and `DELETE /api/v1/cache/{key}`
+take the whole request `cache_key` rather than the hash, and refuse anything
+that is not one with `400`.
 
 Each suffix is bumped whenever the payload it names changes shape: a column
 added to or removed from its tables, or a change in what an existing column
@@ -1019,21 +1041,67 @@ for await (const event of client.parseStream(file)) {
 
 ## Error Handling
 
+### Error envelope
+
+Every error response, on every route and status, has the same JSON body:
+
+```json
+{ "error": "Not found: Cache key not found: 71c9…34c9-default", "code": "NOT_FOUND" }
+```
+
+`error` is a human-readable message; `code` is a stable identifier to branch
+on. That covers handler failures and the responses no handler writes: a
+malformed query string or non-multipart upload (`BAD_REQUEST`), a missing or
+wrong bearer token (`UNAUTHORIZED`, with `WWW-Authenticate: Bearer`), an
+unknown route (`NOT_FOUND`), a wrong method (`METHOD_NOT_ALLOWED`), the
+request timeout (`REQUEST_TIMEOUT`), and a caught panic (`INTERNAL_ERROR`).
+Before #5750 those used a `text/plain` body or no body at all.
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `BAD_REQUEST` | 400 | Malformed request: bad query value, bad path key, not multipart |
+| `MISSING_FILE` | 400 | Multipart upload with no `file` field |
+| `MULTIPART_ERROR` | 400 | The multipart body could not be read |
+| `UNAUTHORIZED` | 401 | Bearer token missing or wrong |
+| `NOT_FOUND` | 404 | Nothing cached for this key, or no such route |
+| `METHOD_NOT_ALLOWED` | 405 | Route exists, method does not (`Allow` lists the valid ones) |
+| `REQUEST_TIMEOUT` | 408 | The request ran past `REQUEST_TIMEOUT_SECS` |
+| `FILE_TOO_LARGE` | 413 | Upload above `MAX_FILE_SIZE_MB` |
+| `OVERLOADED` | 503 | Admission queue full or memory breaker shedding; retry after `Retry-After` seconds |
+| `PROCESSING_ERROR`, `PARQUET_ERROR`, `CACHE_ERROR`, `TASK_ERROR`, `INTERNAL_ERROR` | 500 | Server-side failure |
+
+Two bodies are deliberately not the envelope: `GET /api/v1/ready` answers its
+`503` with the same `{ status, version, service }` document as its `200`,
+because it is a probe, and a failure after a stream has started arrives as an
+SSE `error` event (below), because the `200` has already been sent.
+
 ### Server Errors
 
+The client throws an `IfcServerError` for any non-2xx response, carrying the
+HTTP `status` and the envelope's `code`:
+
 ```typescript
+import { IfcServerError } from '@ifc-lite/server-client';
+
 try {
   const result = await client.parseParquet(file);
 } catch (error) {
-  if (error.status === 413) {
-    console.error('File too large - increase MAX_FILE_SIZE_MB');
-  } else if (error.status === 408) {
-    console.error('Timeout - try streaming for large files');
-  } else if (error.status === 500) {
-    console.error('Server error:', error.message);
+  if (error instanceof IfcServerError) {
+    if (error.code === 'FILE_TOO_LARGE') {
+      console.error('File too large - increase MAX_FILE_SIZE_MB');
+    } else if (error.code === 'REQUEST_TIMEOUT') {
+      console.error('Timeout - try streaming for large files');
+    } else if (error.code === 'OVERLOADED') {
+      console.error('Server busy - retry shortly');
+    } else {
+      console.error(`Server error ${error.status}:`, error.message);
+    }
   }
 }
 ```
+
+A body that is not the envelope (a proxy in front of the server answered)
+still produces an `IfcServerError`, with `code` set to `HTTP_<status>`.
 
 ### Streaming Errors
 

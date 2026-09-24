@@ -63,7 +63,7 @@ async fn get_cache(state: &AppState, key: &str) -> axum::response::Response {
 #[tokio::test]
 async fn get_cached_answers_404_for_non_json_entry() {
     let state = test_state("non-json").await;
-    let key = "some-hash-default";
+    let key = "2222222222222222222222222222222222222222222222222222222222222222-default";
     // Since #5542 the route reads the JSON response slot for `key`, so a
     // binary Parquet key is simply absent there; seed the undecodable bytes
     // in that slot to keep the decode-failure branch itself under test.
@@ -153,4 +153,119 @@ async fn issue_5542_get_cached_serves_the_cache_key_the_json_parse_returned() {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
     panic!("GET /api/v1/cache/{cache_key} never hit (last status {last}); the parse route's entry is unreachable by the key it returned");
+}
+
+/// `POST /api/v1/parse` for `MINIMAL_IFC`, then poll `GET` until its cache
+/// write lands. Returns the parsed response's `cache_key`.
+async fn parse_and_wait_for_cache(state: &AppState) -> String {
+    let mut multipart = Vec::new();
+    multipart.extend_from_slice(
+        format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"get.ifc\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    multipart.extend_from_slice(MINIMAL_IFC.as_bytes());
+    multipart.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse")
+        .header("content-type", format!("multipart/form-data; boundary={BOUNDARY}"))
+        .body(Body::from(multipart))
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let parsed: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let cache_key = parsed["cache_key"].as_str().expect("parse returns a cache_key").to_owned();
+    for _ in 0..200 {
+        if get_cache(state, &cache_key).await.status() == StatusCode::OK {
+            return cache_key;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("the parse route's cache entry for {cache_key} never became readable");
+}
+
+async fn delete_cache(state: &AppState, key: &str) -> axum::response::Response {
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/cache/{key}"))
+        .body(Body::empty())
+        .unwrap();
+    build_router(state.clone()).oneshot(request).await.unwrap()
+}
+
+/// #5750: `GET` and `DELETE /api/v1/cache/{key}` take one key space. The
+/// `cache_key` a parse returned hits on `GET`, is accepted by `DELETE` (which
+/// used to answer `400` because it wanted the bare file digest), and after
+/// the `DELETE` the same `GET` misses: the two routes named the same entry.
+#[tokio::test]
+async fn issue_5750_get_and_delete_take_the_same_cache_key() {
+    let state = test_state("5750-one-key-space").await;
+    let cache_key = parse_and_wait_for_cache(&state).await;
+
+    let deleted = delete_cache(&state, &cache_key).await;
+    assert_eq!(deleted.status(), StatusCode::OK, "DELETE must accept the key GET just served");
+    let body: Value =
+        serde_json::from_slice(&to_bytes(deleted.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["key"], Value::from(cache_key.clone()));
+    assert!(body["deleted"].as_u64().unwrap() >= 1, "nothing was removed: {body}");
+
+    assert_eq!(
+        get_cache(&state, &cache_key).await.status(),
+        StatusCode::NOT_FOUND,
+        "the entry GET served is the one DELETE removed"
+    );
+}
+
+/// #5750: the two routes refuse the same keys, with the same body. A bare
+/// digest (what `DELETE` used to take) and a storage key (what `GET` used to
+/// take, before #5542) are each refused by both, so neither route can drift
+/// back into a key space of its own.
+#[tokio::test]
+async fn issue_5750_get_and_delete_refuse_the_same_keys() {
+    let state = test_state("5750-same-refusals").await;
+    let digest = "0".repeat(64);
+    for key in [digest.clone(), format!("{digest}-default-json-v5"), "not-a-key".to_owned()] {
+        let get = get_cache(&state, &key).await;
+        let delete = delete_cache(&state, &key).await;
+        assert_eq!(get.status(), StatusCode::BAD_REQUEST, "GET {key}");
+        assert_eq!(delete.status(), StatusCode::BAD_REQUEST, "DELETE {key}");
+        let get_body = to_bytes(get.into_body(), usize::MAX).await.unwrap();
+        let delete_body = to_bytes(delete.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(get_body, delete_body, "{key}: one resolver, one refusal");
+    }
+}
+
+/// #5750: a cache `GET` decodes and re-encodes the whole stored model, so it
+/// holds a parse admission slot like the parse route. With every slot taken
+/// and no queue, a hit is shed with `503` + `Retry-After` instead of starting
+/// another whole-model working set; a miss is answered without a slot; and
+/// the same hit goes through once the slot is released.
+#[tokio::test]
+async fn issue_5750_cache_get_takes_a_parse_admission_slot() {
+    let mut state = test_state("5750-admission").await;
+    let cache_key = parse_and_wait_for_cache(&state).await;
+
+    state.admission = Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
+        max_concurrent_parses: 1,
+        mem_budget_bytes: 0,
+        queue_depth: 0,
+        queue_timeout: std::time::Duration::from_millis(50),
+        shed_pct: 85,
+    }));
+    let held = state.admission.acquire(0).await.expect("the only slot is free");
+
+    let shed = get_cache(&state, &cache_key).await;
+    assert_eq!(shed.status(), StatusCode::SERVICE_UNAVAILABLE, "a hit with no free slot must be shed");
+    assert!(shed.headers().get(axum::http::header::RETRY_AFTER).is_some());
+    let body: Value = serde_json::from_slice(&to_bytes(shed.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["code"], "OVERLOADED");
+
+    let miss = get_cache(&state, &format!("{}-default", "0".repeat(64))).await;
+    assert_eq!(miss.status(), StatusCode::NOT_FOUND, "a miss must not need a slot");
+
+    drop(held);
+    assert_eq!(get_cache(&state, &cache_key).await.status(), StatusCode::OK);
 }

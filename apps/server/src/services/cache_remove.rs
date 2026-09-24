@@ -102,7 +102,8 @@ impl DiskCache {
     /// entries under the same hash prefix -- the plain request key, the
     /// `-json-v2`, `-parquet-vN`, `-parquet-metadata-v4` and `-symbolic-v1`
     /// variants, each combination of opening-filter and quality suffix -- and
-    /// `DELETE /api/v1/cache/{sha256}` is meant to drop all of them for that
+    /// `DELETE /api/v1/cache/{key}` (handed the file hash its `cache_key`
+    /// resolves to) is meant to drop all of them for that
     /// file in one call.
     ///
     /// The underlying store is content-addressable: two different source

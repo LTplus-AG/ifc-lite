@@ -140,7 +140,7 @@ async fn near_miss_wildcards_do_not_enable_permissive_cors() {
 }
 
 /// A CORS preflight (`OPTIONS` with `Access-Control-Request-Method`) for
-/// `DELETE`, the method `DELETE /api/v1/cache/{sha256}` (#3636) actually
+/// `DELETE`, the method `DELETE /api/v1/cache/{key}` (#3636) actually
 /// uses. A restrictive allow-list that omitted `Method::DELETE` from
 /// `build_cors_layer` would answer this preflight with no
 /// `Access-Control-Allow-Methods: ... DELETE ...`, and a browser from an

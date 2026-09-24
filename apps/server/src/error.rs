@@ -47,6 +47,9 @@ pub enum ApiError {
 
     #[error("Server overloaded, retry after {retry_after_secs}s")]
     Overloaded { retry_after_secs: u64 },
+
+    #[error("Unauthorized: missing or invalid bearer token")]
+    Unauthorized,
 }
 
 /// The `error` text of a `CACHE_ERROR` response. The underlying detail stays
@@ -54,7 +57,13 @@ pub enum ApiError {
 /// file it failed on, which is the absolute `CACHE_DIR` layout.
 const CACHE_CLIENT_MESSAGE: &str = "Cache error: the server's cache store failed";
 
-/// Error response body.
+/// The one error body every route answers with (#5750): `{"error", "code"}`,
+/// `error` a human-readable message and `code` a stable `SCREAMING_SNAKE`
+/// identifier a client can branch on. [`ApiError`] renders it for every
+/// handler failure, and `middleware::error_envelope` renders it for the
+/// responses no handler writes (extractor rejections, unknown routes, wrong
+/// methods, timeouts, panics), so a client decodes one shape for every
+/// non-2xx status. Documented in `docs/guide/server.md` ("Error envelope").
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
@@ -79,6 +88,7 @@ impl IntoResponse for ApiError {
             ApiError::Join(_) => (StatusCode::INTERNAL_SERVER_ERROR, "TASK_ERROR"),
             ApiError::Parquet(_) => (StatusCode::INTERNAL_SERVER_ERROR, "PARQUET_ERROR"),
             ApiError::Overloaded { .. } => (StatusCode::SERVICE_UNAVAILABLE, "OVERLOADED"),
+            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
         };
 
         let retry_after = match &self {
@@ -104,6 +114,12 @@ impl IntoResponse for ApiError {
             if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
                 response.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
             }
+        }
+        if let ApiError::Unauthorized = self {
+            response.headers_mut().insert(
+                axum::http::header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static("Bearer"),
+            );
         }
         response
     }

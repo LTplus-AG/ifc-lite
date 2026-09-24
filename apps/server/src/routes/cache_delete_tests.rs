@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! End-to-end tests for `DELETE /api/v1/cache/:hash` (issue #3636), driven
+//! End-to-end tests for `DELETE /api/v1/cache/:key` (issue #3636), driven
 //! through the real route table (`build_router` + `tower`'s `oneshot`, no
 //! socket) rather than calling `DiskCache` directly, so these pin the
 //! observable behaviour a client actually sees: a genuine cache hit before
@@ -137,20 +137,20 @@ async fn parse(state: &AppState, content: &[u8], filename: &str) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-async fn delete_cache(state: &AppState, hash: &str) -> axum::response::Response {
+async fn delete_cache(state: &AppState, key: &str) -> axum::response::Response {
     let request = Request::builder()
         .method("DELETE")
-        .uri(format!("/api/v1/cache/{hash}"))
+        .uri(format!("/api/v1/cache/{key}"))
         .body(Body::empty())
         .unwrap();
     build_router(state.clone()).oneshot(request).await.unwrap()
 }
 
-/// The `sha256` content hash `DELETE /api/v1/cache/:hash` is keyed by --
-/// exactly what `DiskCache::generate_key` (and every parse route) derives
-/// from the file bytes.
-fn content_hash(content: &[u8]) -> String {
-    DiskCache::generate_key(content)
+/// The request `cache_key` `DELETE /api/v1/cache/:key` takes since #5750:
+/// what `POST /api/v1/parse` returns for these bytes at the default opening
+/// filter and quality, i.e. the file's `sha256` plus `-default`.
+fn request_cache_key(content: &[u8]) -> String {
+    format!("{}-default", DiskCache::generate_key(content))
 }
 
 /// `POST /api/v1/parse` caches its result via a detached `tokio::spawn`
@@ -182,8 +182,9 @@ async fn delete_forces_the_next_parse_to_genuinely_reparse() {
 
     wait_for_cache_hit(&state, FIXTURE.as_bytes(), "a.ifc").await;
 
-    let hash = content_hash(FIXTURE.as_bytes());
-    let delete_response = delete_cache(&state, &hash).await;
+    let key = first["cache_key"].as_str().expect("parse returns a cache_key").to_owned();
+    assert_eq!(key, request_cache_key(FIXTURE.as_bytes()));
+    let delete_response = delete_cache(&state, &key).await;
     assert_eq!(delete_response.status(), StatusCode::OK);
     let delete_body: Value = serde_json::from_slice(
         &to_bytes(delete_response.into_body(), usize::MAX).await.unwrap(),
@@ -206,9 +207,9 @@ async fn delete_forces_the_next_parse_to_genuinely_reparse() {
 /// can call this unconditionally ("drop whatever is cached for this model,
 /// if anything") without checking existence first, and retry safely.
 #[tokio::test]
-async fn deleting_an_unknown_hash_is_a_200_no_op() {
+async fn deleting_an_unknown_key_is_a_200_no_op() {
     let state = test_state("unknown-hash").await;
-    let response = delete_cache(&state, "0000000000000000000000000000000000000000000000000000000000000000").await;
+    let response = delete_cache(&state, "0000000000000000000000000000000000000000000000000000000000000000-default").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(body["deleted"], Value::from(0));
@@ -227,8 +228,7 @@ async fn delete_does_not_disturb_an_unrelated_file_cached_entry() {
     wait_for_cache_hit(&state, FIXTURE.as_bytes(), "a.ifc").await;
     wait_for_cache_hit(&state, OTHER_FIXTURE.as_bytes(), "b.ifc").await;
 
-    let hash = content_hash(FIXTURE.as_bytes());
-    let delete_response = delete_cache(&state, &hash).await;
+    let delete_response = delete_cache(&state, &request_cache_key(FIXTURE.as_bytes())).await;
     assert_eq!(delete_response.status(), StatusCode::OK);
 
     // FIXTURE re-parses (its entries are gone).
@@ -246,28 +246,31 @@ async fn delete_does_not_disturb_an_unrelated_file_cached_entry() {
 
 /// The route walks the whole cache index for whatever it is handed, and a
 /// miss costs the same as a hit, so any string used to buy a full index walk
-/// (twice, the second under the write/GC lock). Only a file digest names
-/// anything this route can invalidate; everything else is refused before the
-/// index is touched. Cases sit on both sides of every rule in
-/// `is_file_digest`: length 63/64/65, upper vs lower case, one non-hex byte.
-/// Regression for #4582.
+/// (twice, the second under the write/GC lock). Only a request `cache_key`
+/// names anything this route can invalidate; everything else is refused
+/// before the index is touched. Cases sit on both sides of every rule in
+/// `is_file_digest` (length 63/64/65, upper vs lower case, one non-hex byte),
+/// each carrying a valid suffix so the digest rule alone decides them.
+/// Regression for #4582; the bare digest this route used to take is refused
+/// since #5750, as `GET` refuses it.
 #[tokio::test]
-async fn delete_refuses_anything_that_is_not_a_file_digest() {
+async fn delete_refuses_anything_that_is_not_a_request_cache_key() {
     let state = test_state("not-a-digest").await;
     let rejected: Vec<String> = vec![
         "missing-key".into(),
         "0123456789abcdef".into(),
-        "a".repeat(63),
-        "a".repeat(65),
-        "A".repeat(64),
-        format!("{}g", "0".repeat(63)),
+        format!("{}-default", "a".repeat(63)),
+        format!("{}-default", "a".repeat(65)),
+        format!("{}-default", "A".repeat(64)),
+        format!("{}g-default", "0".repeat(63)),
+        "0".repeat(64),
     ];
     for key in &rejected {
         let response = delete_cache(&state, key).await;
         assert_eq!(
             response.status(),
             StatusCode::BAD_REQUEST,
-            "{key:?} is not a sha256 file digest and must not reach the index walk"
+            "{key:?} is not a request cache_key and must not reach the index walk"
         );
         let body = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
         assert!(
@@ -276,7 +279,7 @@ async fn delete_refuses_anything_that_is_not_a_file_digest() {
         );
     }
     // Control: the real shape still goes through (and is a 200 no-op here).
-    let accepted = delete_cache(&state, &"0".repeat(64)).await;
+    let accepted = delete_cache(&state, &format!("{}-default", "0".repeat(64))).await;
     assert_eq!(accepted.status(), StatusCode::OK);
 }
 
@@ -288,7 +291,7 @@ async fn delete_refuses_anything_that_is_not_a_file_digest() {
 #[tokio::test]
 async fn a_concurrent_cache_invalidation_is_shed_with_503_not_queued() {
     let state = test_state("index-walk-gate").await;
-    let digest = "0".repeat(64);
+    let digest = format!("{}-default", "0".repeat(64));
 
     let in_flight = Arc::clone(&state.cache.index_walk)
         .try_acquire_owned()

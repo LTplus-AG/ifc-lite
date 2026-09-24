@@ -304,7 +304,7 @@ sequenceDiagram
     participant Cache
 
     Client->>Client: Compute SHA-256 hash
-    Client->>Server: GET /api/v1/cache/{hash}
+    Client->>Server: GET /api/v1/cache/check/{hash}
 
     alt Cache Hit
         Server->>Cache: Lookup

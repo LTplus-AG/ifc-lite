@@ -71,13 +71,15 @@ async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
 // check_cache
 // ---------------------------------------------------------------------------
 
-/// MISS: no parquet entry under the hash's cache key -> 404, empty body.
+/// MISS: no parquet entry under the hash's cache key -> 404, in the shared
+/// `{"error", "code"}` envelope (#5750; the body was empty before).
 #[tokio::test]
 async fn check_cache_returns_404_when_uncached() {
     let state = test_state("check-cache-miss").await;
     let response = get(&state, "/api/v1/cache/check/nosuchhash").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_bytes(response).await.is_empty());
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
 }
 
 /// HIT: a parquet entry exists under the exact key the writer would have used

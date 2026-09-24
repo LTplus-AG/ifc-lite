@@ -85,7 +85,9 @@ export const ALPHA_SLOT_KEY = /:x\d+(?::|$)/;
  *
  * Snapshotting matters: the renderer classifies a batch (opaque vs transparent
  * pipeline) and writes its uniform at two different points in the frame, and a
- * caller mutating its map in between would desync the two.
+ * caller mutating its map in between would desync the two. The sets are copied
+ * too, because a kept resolution outlives the frame whose sets it was given,
+ * and `XRayEpochTracker` only watches the sets passed since.
  */
 export class XRayAlpha {
   /** False when no override and no ghost set is active — every resolver is then
@@ -102,9 +104,9 @@ export class XRayAlpha {
   constructor(options: RenderOptions, selectedExpressIds: ReadonlySet<number>) {
     const src = options.transparencyOverrides;
     this.overrides = src != null && src.size > 0 ? new Map(src) : null;
-    this.ghostExcept = options.ghostExceptIds ?? null;
+    this.ghostExcept = options.ghostExceptIds != null ? new Set(options.ghostExceptIds) : null;
     this.ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
-    this.selected = selectedExpressIds;
+    this.selected = new Set(selectedExpressIds);
     this.active = this.overrides != null || this.ghostExcept != null;
   }
 

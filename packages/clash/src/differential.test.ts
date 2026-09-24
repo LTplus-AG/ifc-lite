@@ -471,6 +471,29 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(g.clashes[0]!.distance).toBeCloseTo(0.02, 6);
   });
 
+  it('agrees on a rotated thin-panel overlap 1 km out, at the certified depth (#5474)', async () => {
+    // Box recognition used to rebuild the centre from absolute coordinates,
+    // so this 20 mm overlap fell back to the AABB estimate 1 km out. Both
+    // kernels must now certify both boxes there and report the 20 mm.
+    const r = rotationZyx(0.3, 0, 0);
+    const shift = (el: ClashElement): ClashElement => {
+      const p = new Float32Array(el.positions.length);
+      for (let i = 0; i < p.length; i += 1) p[i] = el.positions[i]! + (i % 3 === 0 ? 1000 : 0);
+      const f = (v: Vec3): Vec3 => [Math.fround(v[0] + 1000), v[1], v[2]];
+      return { ...el, positions: p, bounds: { min: f(el.bounds.min), max: f(el.bounds.max) } };
+    };
+    const els = [
+      shift(rotatedBox('P', 'IfcPlate', r, [1, 2, 1.5], [0.025, 0.75, 1.5])),
+      shift(rotatedBox('M', 'IfcMember', r, [1.105, 2, 1.5], [0.1, 0.1, 1.5])),
+    ];
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcPlate', b: 'IfcMember', mode: 'hard' }];
+    const a = await ts.run(els, rules);
+    assertParity(a, await wasm.run(els, rules));
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0]!.distanceKind).toBe('mesh');
+    expect(a.clashes[0]!.distance).toBeCloseTo(-0.02, 3);
+  });
+
   it('agrees on the mesh label for coincident-footprint BOX layers', async () => {
     // Stacked BOX layers sharing a footprint: no crossing-triangle vertex lies
     // inside the other solid, so this lands in the coplanar-overlap branch.

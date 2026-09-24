@@ -90,15 +90,68 @@ pub fn extract_swept_disk_descriptions(
         }
         let element = match decoder.decode_at_uncached(start, end) {
             Ok(element) if element.ifc_type.is_subtype_of(IfcType::IfcProduct) => element,
-            _ => continue,
+            Ok(_) => continue,
+            Err(error) => {
+                result
+                    .diagnostics
+                    .push(format!("product #{id}: decode: {error}"));
+                continue;
+            }
         };
-        let Some(rep_id) = element.get_ref(6) else { continue };
-        let Some(representation) = decoder.decode_by_id(rep_id).ok() else { continue };
-        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
+        let Some(rep_attr) = element.get(6) else {
+            result
+                .diagnostics
+                .push(format!("product #{id}: missing Representation attribute"));
+            continue;
+        };
+        if rep_attr.is_null() {
             continue;
         }
-        let Some(reps_attr) = representation.get(2) else { continue };
-        let Ok(reps) = decoder.resolve_ref_list(reps_attr) else { continue };
+        let Some(rep_id) = rep_attr.as_entity_ref() else {
+            result.diagnostics.push(format!(
+                "product #{id}: Representation is not an entity reference"
+            ));
+            continue;
+        };
+        let representation = match decoder.decode_by_id(rep_id) {
+            Ok(representation) => representation,
+            Err(error) => {
+                result.diagnostics.push(format!(
+                    "product #{id}: Representation #{rep_id}: {error}"
+                ));
+                continue;
+            }
+        };
+        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
+            result.diagnostics.push(format!(
+                "product #{id}: Representation #{rep_id} is not IfcProductDefinitionShape"
+            ));
+            continue;
+        }
+        let Some(reps_attr) = representation.get(2) else {
+            result.diagnostics.push(format!(
+                "product #{id}: IfcProductDefinitionShape #{rep_id} has no Representations attribute"
+            ));
+            continue;
+        };
+        if reps_attr
+            .as_list()
+            .is_none_or(|items| items.iter().any(|item| item.as_entity_ref().is_none()))
+        {
+            result.diagnostics.push(format!(
+                "product #{id}: IfcProductDefinitionShape #{rep_id} has malformed Representations list"
+            ));
+            continue;
+        }
+        let reps = match decoder.resolve_ref_list(reps_attr) {
+            Ok(reps) => reps,
+            Err(error) => {
+                result.diagnostics.push(format!(
+                    "product #{id}: IfcProductDefinitionShape #{rep_id} Representations: {error}"
+                ));
+                continue;
+            }
+        };
         let transform = match router.resolve_scaled_placement_strict(&element, &mut decoder) {
             Ok(matrix) => Matrix4::from_column_slice(&matrix),
             Err(error) => {

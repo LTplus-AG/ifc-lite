@@ -11,6 +11,66 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 #[test]
+fn broken_product_representation_is_reported_but_absent_representation_is_valid() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let product = "#50=IFCREINFORCINGBAR('0000000000000000000002',$,'Bar',$,$,#30,#49,'BAR-1',$,29.,0.,$,.NOTDEFINED.,$);";
+
+    let broken = source.replace(product, &product.replace("#30,#49,", "#30,#999,"));
+    let result = extract_swept_disk_descriptions(broken.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("product #50") && d.contains("Representation #999")),
+        "{:?}",
+        result.diagnostics
+    );
+
+    let absent = source.replace(product, &product.replace("#30,#49,", "#30,$,"));
+    let result = extract_swept_disk_descriptions(absent.as_bytes(), None);
+    assert!(!result.elements.contains_key(&50));
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+}
+
+#[test]
+fn malformed_product_representation_shape_is_reported() {
+    let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
+    let product = "#50=IFCREINFORCINGBAR('0000000000000000000002',$,'Bar',$,$,#30,#49,'BAR-1',$,29.,0.,$,.NOTDEFINED.,$);";
+    let shape = "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));";
+    let cases = [
+        (
+            source.replace(product, &product.replace("#30,#49,", "#30,#43,")),
+            "not IfcProductDefinitionShape",
+        ),
+        (
+            source.replace(shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$);"),
+            "no Representations attribute",
+        ),
+        (
+            source.replace(shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,#48);"),
+            "malformed Representations list",
+        ),
+        (
+            source.replace(shape, "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#999));"),
+            "Representations:",
+        ),
+    ];
+    for (broken, reason) in cases {
+        let result = extract_swept_disk_descriptions(broken.as_bytes(), None);
+        assert!(!result.elements.contains_key(&50), "{reason}");
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.contains("product #50") && d.contains(reason)),
+            "{reason}: {:?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
 fn mapped_trimmed_line_has_world_metre_endpoints_and_radius() {
     let result = extract_swept_disk_descriptions(&fixture("swept_disk_trimmed_line"), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);

@@ -333,6 +333,10 @@ describe('query_entities after an edit', () => {
     expect(doors.entities[0].type).toBe('IfcDoor');
     const walls = await structured<QueryShape>('query_entities', { type: 'IfcWall' });
     expect(walls.entities.map((entity) => entity.expressId)).toEqual([73]);
+    const info = await structured<InfoShape>('model_info', {});
+    const counts = new Map(info.typeCountsTop20.map(row => [row.type, row.count]));
+    expect(counts.get('IfcWall')).toBe(1);
+    expect(counts.get('IfcDoor')).toBe(1);
   }, 30_000);
 
   it('reports a renamed entity under its new name', async () => {

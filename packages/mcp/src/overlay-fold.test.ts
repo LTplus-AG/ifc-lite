@@ -27,10 +27,11 @@ import { foldRelationshipRows } from './backend-query-relationships.js';
 function fakeStore(byType: Record<string, number[]>, entityCount?: number): IfcDataStore {
   const byTypeMap = new Map(Object.entries(byType));
   const byId = new Map<number, unknown>();
-  for (const ids of byTypeMap.values()) for (const id of ids) byId.set(id, { modelId: 'm', expressId: id });
+  for (const [type, ids] of byTypeMap) for (const id of ids) byId.set(id, { modelId: 'm', expressId: id, type });
   return {
     entityIndex: { byType: byTypeMap, byId },
     entityCount: entityCount ?? [...byTypeMap.values()].reduce((s, ids) => s + ids.length, 0),
+    schemaVersion: 'IFC4',
   } as unknown as IfcDataStore;
 }
 
@@ -95,6 +96,29 @@ describe('foldedTypeCounts', () => {
     expect(counts.get('IFCWALL')).toBe(2); // 3 - 1
     expect(counts.get('IFCSLAB')).toBe(2); // 1 + 1
     expect(counts.get('IFCBEAM')).toBe(1); // new
+  });
+
+  it('reports source retypes, tombstones and creations under their effective classes (#5249)', () => {
+    const store = fakeStore({ IFCWALL: [1, 2], IFCDOOR: [3] });
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(3);
+    view.setEntityType(1, 'IfcDoor', null, 'IfcWall');
+    view.deleteEntity(3);
+    view.createEntity('IfcWall', []);
+    const counts = foldedTypeCounts(store, overlayFromView(view, store));
+    expect([...counts]).toEqual([['IFCWALL', 2], ['IFCDOOR', 1]]);
+  });
+
+  it('counts a retyped creation once and drops a created-then-deleted entity (#5249)', () => {
+    const store = fakeStore({ IFCWALL: [1], IFCDOOR: [2] });
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(2);
+    const created = view.createEntity('IfcWall', []);
+    view.setEntityType(created.expressId, 'IfcDoor');
+    const transient = view.createEntity('IfcSlab', []);
+    view.deleteEntity(transient.expressId);
+    const counts = foldedTypeCounts(store, overlayFromView(view, store));
+    expect([...counts]).toEqual([['IFCWALL', 1], ['IFCDOOR', 2]]);
   });
 });
 

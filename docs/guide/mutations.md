@@ -101,6 +101,17 @@ The iterator yields source entities in parsed order, followed by source entities
 retyped into a requested class, then overlay-created entities. Tombstones are
 excluded in every case.
 
+For per-class totals, `countEffectiveEntityTypes` applies the same membership
+and class changes. It returns a map keyed by uppercase IFC class and keeps a
+zero entry when all source entities of a class were deleted or retyped.
+
+```typescript
+import { countEffectiveEntityTypes } from '@ifc-lite/data';
+
+const wallCount = countEffectiveEntityTypes(dataStore, view).get('IFCWALL') ?? 0;
+console.log(wallCount);
+```
+
 ### Change Sets
 
 Change sets group related mutations for export and sharing:

@@ -50,6 +50,8 @@ export interface EffectiveEntityOverlay {
   getNewEntities(): ReadonlyArray<{ readonly expressId: number; readonly type: string }>;
   /** Retype intents by express id. Absent means the overlay carries none. */
   getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
+  /** Optional indexed tombstones let aggregate counts avoid a full source walk. */
+  getTombstones?(): ReadonlySet<number>;
   /** O(1) created-entity lookup. Absent (a plain-data snapshot): membership is built from `getNewEntities`. */
   getNewEntity?(expressId: number): { readonly type: string } | null;
   /**
@@ -58,6 +60,57 @@ export interface EffectiveEntityOverlay {
    * per-element authoring linear (#5413). Absent: the full list is scanned.
    */
   getNewEntitiesOfType?(type: string): Iterable<{ readonly expressId: number; readonly type: string }>;
+}
+
+/**
+ * Count effective classes without walking a large source bucket for a small
+ * edit set. A caller-supplied source domain is counted through the canonical
+ * iterator instead (for example IFCX, whose STEP type index is empty).
+ * Source classes with no surviving records retain a zero row.
+ */
+export function countEffectiveEntityTypes(
+  source: EffectiveEntitySource,
+  overlay: EffectiveEntityOverlay | null | undefined,
+  sourceIds?: Iterable<number>,
+): Map<string, number> {
+  // @raw-entity-enumeration-ok the canonical aggregate accessor reads parsed bucket sizes, then applies all membership and class deltas below
+  const byType = source.entityIndex.byType;
+  const counts = new Map<string, number>();
+  const tombstones = overlay?.getTombstones?.();
+  const walk = !!sourceIds || !!(overlay && !tombstones);
+  for (const [type, ids] of byType) counts.set(type, walk ? 0 : ids.length);
+  if (walk) {
+    for (const entity of iterateEffectiveEntities(source, overlay, undefined, sourceIds)) {
+      counts.set(entity.type, (counts.get(entity.type) ?? 0) + 1);
+    }
+    return counts;
+  }
+  if (!overlay) return counts;
+
+  const retypes = overlay.getTypeMutations?.();
+  const created = overlay.getNewEntities();
+  const createdIds = new Set(created.map((entity) => entity.expressId));
+  const changedSourceIds = new Set<number>([...(tombstones ?? []), ...(retypes?.keys() ?? [])]);
+  for (const expressId of changedSourceIds) {
+    if (createdIds.has(expressId)) continue;
+    // @raw-entity-enumeration-ok the canonical aggregate accessor reads the original source class for a sparse deletion or retype delta
+    const sourceType = (source.entityIndex.byId.get(expressId)
+      ?? source.deferredEntityIndex?.get(expressId))?.type
+      ?? source.entities?.getTypeName(expressId);
+    if (!sourceType || sourceType === 'Unknown') continue;
+    const original = sourceType.toUpperCase();
+    if (!counts.has(original)) continue;
+    const next = overlay.isDeleted(expressId) ? null : retypes?.get(expressId)?.newType.toUpperCase();
+    if (next === original || (!next && !overlay.isDeleted(expressId))) continue;
+    counts.set(original, (counts.get(original) ?? 0) - 1);
+    if (next) counts.set(next, (counts.get(next) ?? 0) + 1);
+  }
+  for (const entity of created) {
+    if (overlay.isDeleted(entity.expressId)) continue;
+    const type = (retypes?.get(entity.expressId)?.newType ?? entity.type).toUpperCase();
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /** The parser's source index shape, without a parser dependency. */

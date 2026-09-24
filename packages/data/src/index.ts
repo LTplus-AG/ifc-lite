@@ -153,6 +153,7 @@ export { spatialLookups } from './spatial-lookups.js';
 // algorithm; `@ifc-lite/mutations`' `iterateEffectiveEntityIds` delegates here.
 export {
   iterateEffectiveEntities,
+  countEffectiveEntityTypes,
   type EffectiveEntity,
   type EffectiveEntityOverlay,
   type EffectiveEntitySource,

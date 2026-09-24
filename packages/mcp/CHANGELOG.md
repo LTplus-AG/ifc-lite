@@ -1,5 +1,21 @@
 # @ifc-lite/mcp
 
+## 0.20.1
+
+### Patch Changes
+
+- [#5574](https://github.com/LTplus-AG/ifc-lite/pull/5574) [`4d19160`](https://github.com/LTplus-AG/ifc-lite/commit/4d19160676b6c9b1cb3e2d5b183486aa5c0e5450) Thanks [@louistrue](https://github.com/louistrue)! - Make model_audit score effective session entities and edited identity and names.
+
+- [#5556](https://github.com/LTplus-AG/ifc-lite/pull/5556) [`8cf2887`](https://github.com/LTplus-AG/ifc-lite/commit/8cf288755fdf9c0c5ceefd48913b2686b84f27e7) Thanks [@louistrue](https://github.com/louistrue)! - MCP model_diff now counts created entities in authored-key collisions and follows queued retypes through the shared effective-entity iterator.
+- Updated dependencies [[`2bae848`](https://github.com/LTplus-AG/ifc-lite/commit/2bae8482ffc606951ebb3626ba1910ea15630395), [`223f4d7`](https://github.com/LTplus-AG/ifc-lite/commit/223f4d71f26d074ba949f77031dc24f559da34ca), [`0576221`](https://github.com/LTplus-AG/ifc-lite/commit/0576221cbd57276bce8da8d709045e2ae398a0df), [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3)]:
+  - @ifc-lite/export@4.7.1
+  - @ifc-lite/clash@2.3.3
+  - @ifc-lite/data@5.2.0
+  - @ifc-lite/create@2.9.1
+  - @ifc-lite/parser@8.2.0
+  - @ifc-lite/ids@3.0.1
+  - @ifc-lite/rules@0.3.1
+
 ## 0.20.0
 
 ### Minor Changes

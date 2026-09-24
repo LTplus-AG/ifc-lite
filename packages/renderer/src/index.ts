@@ -1720,8 +1720,8 @@ export class Renderer {
         const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
         const edgeEnabledU32 = edgeEnabled ? 1 : 0;
         const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
-        // Only the separation lines read the object-id attachment after the pass.
-        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).separationLines;
+        // Only the edge pass reads the object-id attachment after the pass.
+        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).edges;
 
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;

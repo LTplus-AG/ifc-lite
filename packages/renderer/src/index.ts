@@ -152,7 +152,7 @@ import type {
     Mesh,
     BatchedMesh,
 } from './types.js';
-import { VisualEnhancementResolver } from './visual-enhancement.js';
+import { VisualEnhancementResolver, livePostEffects } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
 import {
     MESH_FLAGS_BYTE_OFFSET,
@@ -171,14 +171,13 @@ import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from 
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
-import { PostProcessor } from './post-processor.js';
+import { PostPassChain } from './post-pass-chain.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
-import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
@@ -252,11 +251,12 @@ export class Renderer {
     });
     private readonly referenceImages = createReferenceImageManager(this);
     getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
-    private postProcessor: PostProcessor | null = null;
+    // Ambient occlusion, separation lines and eye-dome lighting (post-pass-chain.ts),
+    // created on the first rendered frame.
+    private postPasses: PostPassChain | null = null;
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
     private readonly interactionEffects = new InteractionEffectsGovernor();
-    private edlPass: EdlPass | null = null;
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
     private skyPass: SkyPass | null = null;
@@ -527,8 +527,8 @@ export class Renderer {
      * are released first. The comment below advertises a `destroy()` + `init()`
      * re-init flow, and the obvious device-loss auto-recovery is to call
      * `init()` on the live instance — which, without this, silently orphaned
-     * two render pipelines, the picker, the post-processor, the point-cloud and
-     * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
+     * two render pipelines, the picker, the post passes, the point-cloud and
+     * deviation pipelines and the overlay layer's glyph atlas, per
      * recovery (#2448). Making the method self-safe is cheaper than trusting
      * every future caller to remember.
      *
@@ -594,8 +594,8 @@ export class Renderer {
 
         // A `destroy()` (or a newer `init()`) landed while we were parked on the
         // device. Everything below allocates a full GPU stack — two pipelines,
-        // the picker, the post-processor, the point-cloud and deviation
-        // pipelines, the EDL pass, the overlay glyph atlas — and this aborted
+        // the picker, the point-cloud and deviation pipelines, the overlay
+        // glyph atlas — and this aborted
         // path runs no second teardown, so all of it would be orphaned outright
         // (#2465). `markReady()`'s generation check is not enough on its own: it
         // withholds the readiness PUBLICATION, not the allocation. Release the
@@ -630,18 +630,6 @@ export class Renderer {
             this.pipeline.getSampleCount(),
         );
         this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
-        // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
-        // depth TEXTURE_BINDING), rendering still works without post-processing.
-        try {
-            this.postProcessor = new PostProcessor(this.device, {
-                enableContactShading: true,
-                contactRadius: 1.0,
-                contactIntensity: 0.3,
-            }, this.pipeline.getSampleCount());
-        } catch (e) {
-            console.warn('[Renderer] PostProcessor init failed (post-processing disabled):', e);
-            this.postProcessor = null;
-        }
         this.pointCloudRenderer = new PointCloudRenderer(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -653,7 +641,6 @@ export class Renderer {
         // owns the per-triangle BVH GPU buffers; idle until the first
         // `computeDeviations` call.
         this.deviationComputer.init(this.device.getDevice());
-        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
@@ -1733,11 +1720,8 @@ export class Renderer {
         const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
         const edgeEnabledU32 = edgeEnabled ? 1 : 0;
         const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
-        const contactEnabled = effectsLive && visualEnhancement.enabled && visualEnhancement.contactShading.quality !== 'off';
-        const separationEnabled = effectsLive && visualEnhancement.enabled
-            && visualEnhancement.separationLines.enabled
-            && visualEnhancement.separationLines.quality !== 'off';
-        const needsObjectIdPass = contactEnabled || separationEnabled;
+        // Only the separation lines read the object-id attachment after the pass.
+        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).separationLines;
 
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;
@@ -3112,51 +3096,23 @@ export class Renderer {
 
             pass.end();
 
-            const canRunPostPass = (contactEnabled || separationEnabled)
-                && this.postProcessor !== null;
-            if (canRunPostPass && this.postProcessor) {
-                this.postProcessor.updateOptions({
-                    enableContactShading: contactEnabled,
-                    contactRadius: visualEnhancement.contactShading.radius,
-                    contactIntensity: visualEnhancement.contactShading.intensity,
-                });
-                this.postProcessor.apply(encoder, {
-                    targetView: textureView,
-                    // Depth-only view required because depth24plus-stencil8
-                    // cannot be sampled as texture_depth_* with aspect 'all'.
-                    depthView: this.pipeline.getDepthOnlyTextureView(),
-                    objectIdView: this.pipeline.getObjectIdTextureView(),
-                    contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
-                    radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)) * this.pixelRatio, // taps are texels
-                    intensity: contactEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.contactShading.intensity)) : 0.0,
-                    separationQuality: visualEnhancement.separationLines.quality === 'high' ? 'high' : 'low',
-                    separationRadius: Math.min(2.0, Math.max(1.0, visualEnhancement.separationLines.radius)) * this.pixelRatio,
-                    separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
-                    enableSeparationLines: separationEnabled,
-                });
-            }
-
-            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
-            // every layer uniformly. Cheap (~9 depth taps), only active when
-            // there are point clouds in the scene and the user has enabled it.
-            if (
-                this.edlPass
-                && this.edlOptions.enabled
-                && this.pointCloudRenderer?.hasAssets()
-            ) {
-                this.edlPass.apply(
-                    encoder,
-                    {
-                        targetView: textureView,
-                        depthView: this.pipeline.getDepthOnlyTextureView(),
-                    },
-                    {
-                        strength: this.edlOptions.strength,
-                        radiusPx: this.edlOptions.radiusPx * this.pixelRatio,
-                        highQuality: this.edlOptions.highQuality,
-                    },
-                );
-            }
+            // Created lazily like the sky/shadow passes; each pass inside is too.
+            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount());
+            this.postPasses.encode({
+                encoder,
+                targetView: textureView,
+                width: this.canvas.width,
+                height: this.canvas.height,
+                // Depth-only: depth24plus-stencil8 cannot be sampled as texture_depth_* with aspect 'all'.
+                depthView: this.pipeline.getDepthOnlyTextureView(),
+                objectIdView,
+                projection: this.camera.getProjMatrix(),
+                enhancement: visualEnhancement,
+                effectsLive,
+                pixelRatio: this.pixelRatio,
+                // EDL only when point clouds are loaded and the user enabled it.
+                edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
+            });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             device.queue.submit([encoder.finish()]);
@@ -3680,11 +3636,8 @@ export class Renderer {
         this.picker = null;
         this.pickingManager.setPicker(null);
 
-        // Post-processor uniform buffer
-        this.postProcessor?.destroy();
-        this.postProcessor = null;
-        this.edlPass?.destroy();
-        this.edlPass = null;
+        this.postPasses?.destroy();
+        this.postPasses = null;
         this.skyPass?.destroy();
         this.skyPass = null;
         this.shadowPass?.destroy();

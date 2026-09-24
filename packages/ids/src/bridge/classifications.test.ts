@@ -20,7 +20,13 @@
 import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { createDataAccessor } from './data-accessor.js';
-import { typedAuthoredValue } from './entity-visibility.js';
+import * as visibility from './entity-visibility.js';
+
+// Read through the namespace: the changed-test oracle reverts production
+// files, and a missing export must fail an assertion, not the module link.
+const typedAuthoredValue = (visibility as Record<string, unknown>).typedAuthoredValue as
+  | ((typed: { type?: unknown; value: unknown }) => unknown)
+  | undefined;
 
 async function accessorFor(ifc: string) {
   const store = await new IfcParser().parseColumnar(
@@ -256,6 +262,8 @@ ${FOOTER}`;
   });
 
   it('a typed authored value is converted by its EXPRESS base, as the writer does', () => {
+    expect(typeof typedAuthoredValue).toBe('function');
+    if (!typedAuthoredValue) return;
     expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.T.' })).toBe(true);
     expect(typedAuthoredValue({ type: 'IfcBoolean', value: 'true' })).toBe(true);
     expect(typedAuthoredValue({ type: 'IfcBoolean', value: '.U.' })).toBe(false);

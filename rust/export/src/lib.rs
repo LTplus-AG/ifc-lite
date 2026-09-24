@@ -41,6 +41,7 @@ mod quantity_analysis;
 mod quantity_analysis_derived;
 mod obj;
 mod relationships;
+mod rebar_schedule;
 mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
@@ -104,6 +105,8 @@ pub use ifc5::{export_ifc5, Ifc5Options};
 // Spatial and type relationships, which `EntityRow` cannot carry because IFC
 // models them as separate entities that are not products.
 pub use relationships::{relationships, Relationships};
+pub use rebar_schedule::{build_rebar_schedule, AuthoredRebarAttribute, AuthoredRebarValue,
+    RebarSchedule, RebarScheduleRow, RebarSource, RebarSweep};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};
 pub use kmz::{

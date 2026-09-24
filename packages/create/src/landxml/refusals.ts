@@ -118,10 +118,11 @@ export function collectRefusals(
  * the operator unable to tell a spiral type from a gap from a sign problem.
  */
 export function alignmentRefusalMessage(refused: readonly RefusedAlignment[]): string {
+  // Every one is named: an alignment left out as "and N more" is one the
+  // operator cannot find or fix (#5370 review).
   const count = refused.length;
-  const shown = refused.slice(0, 3).map((entry) => `'${entry.name}': ${entry.reason}`);
-  const more = count > shown.length ? `; and ${count - shown.length} more` : '';
-  return `${count} alignment record${count === 1 ? '' : 's'} will not be included (${shown.join('; ')}${more}). `
+  const named = refused.map((entry) => `'${entry.name}': ${entry.reason}`);
+  return `${count} alignment record${count === 1 ? '' : 's'} will not be included (${named.join('; ')}). `
     + `${FAMILY_REASONS.alignments}.`;
 }
 

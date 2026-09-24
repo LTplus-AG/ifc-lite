@@ -104,6 +104,19 @@ describe('collectRefusals', () => {
 
     expect(refusals).toContainEqual(expect.objectContaining({ family: 'cross-sections', count: 3 }));
   });
+
+  it('names EVERY refused alignment with its reason, however many there are (#5370 review)', () => {
+    // Capping the list at three hid the fourth behind "and 1 more".
+    const alignments = ['North', 'South', 'East', 'West'].map((name) => ({
+      sourceId: `landxml:alignment:${name}`, name, staStart: 0, segments: [],
+    }));
+    const row = collectRefusals(minimalSource({ alignments })).find((r) => r.family === 'alignments');
+    expect(row?.count).toBe(4);
+    for (const name of ['North', 'South', 'East', 'West']) {
+      expect(row?.message).toContain(`'${name}': it has no horizontal geometry`);
+    }
+    expect(row?.message).not.toMatch(/more\)/);
+  });
 });
 
 describe('isMappableSurface', () => {

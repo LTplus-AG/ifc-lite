@@ -555,7 +555,7 @@ describe('landXmlToIfc — horizontal alignments (§11)', () => {
     expectExported(result);
     const curve = result.content.split('\n').filter((row) => row.includes('=IFCCURVESEGMENT('));
     expect(curve).toHaveLength(3);
-    expect(curve[0]).not.toContain('.DISCONTINUOUS.');
+    for (const row of curve.slice(0, -1)) expect(row).not.toContain('.DISCONTINUOUS.');
     expect(curve[2]).toContain('IFCCURVESEGMENT(.DISCONTINUOUS.,');
   });
 

@@ -34,7 +34,7 @@ use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
     translate_cutter_mesh, world_host_bounds, OpeningBox,
 };
-use local_frame::vertical_depth_wall_frame;
+use local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use sweep::{drop_faces_outside_host, mesh_to_keep};
 mod sweep;
 
@@ -776,9 +776,11 @@ impl GeometryRouter {
 
     /// Cut a plan-rotated wall's openings in the wall's own axis-aligned,
     /// origin-centred frame (issue #1167). Returns `None` (caller uses the
-    /// world path) unless an opening supplies a non-axis-aligned, ~horizontal
-    /// depth axis (a vertical wall rotated in plan) and every opening carries a
-    /// cutter mesh.
+    /// world path) unless the wall is rotated in plan and every opening carries
+    /// a cutter mesh. The wall normal comes from an opening's non-axis-aligned,
+    /// ~horizontal depth axis; else from vertical strips' frames (#3977); else,
+    /// when no opening authors a depth at all, from the host's own thickness
+    /// axis (#5410).
     ///
     /// In the wall frame the host and its openings are axis-aligned and near the
     /// origin, so the exact subtract runs in the clean, f32-precise regime a
@@ -815,7 +817,8 @@ impl GeometryRouter {
             .and_then(wall_frame_from_depth);
         let axes = match horizontal_axes {
             Some(axes) => axes,
-            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)?,
+            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
+                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
         };
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a

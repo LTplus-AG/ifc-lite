@@ -1918,6 +1918,22 @@ real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
 
+## Hole-wall winding and host-derived wall frames (#5410)
+
+Correctness change, no performance claim. Extruded profile holes now emit side
+walls wound into the void, so a voided host reaches the exact kernel as a
+consistently wound solid, and a plan-rotated wall whose cutters author no depth
+is cut in its own frame. Native `perf_probe` base `04dd98f96` vs branch, three
+interleaved rounds of best-of-3 per fixture, median parse / geometry / total ms:
+AC20-FZK-Haus 8 / 28 / 36 -> 9 / 24 / 33 (byte-identical ordered fingerprint),
+ISSUE_129 30 / 1,164 / 1,194 -> 30 / 1,157 / 1,182, Holter 463 / 945 / 1,409
+-> 465 / 598 / 1,146 (Holter's totals spread 977-1,711 ms on base, so its
+geometry delta is noise, not a win). Mesh, vertex, triangle and CSG-failure
+counts are identical on all three; ISSUE_129 and Holter fingerprints differ
+only in normals of holed extrusions, which the output orienter used to flip and
+recompute. The lesson: an extruder's winding is an input contract of the
+kernel, not a rendering detail the output orienter may repair afterwards.
+
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 
 Native `perf_probe` comparison of base `0e8a42175` (merge-base with `origin/main`)

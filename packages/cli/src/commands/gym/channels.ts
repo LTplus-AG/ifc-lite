@@ -130,6 +130,7 @@ export async function computeIdsChannel(
 
 export function computeObservation(store: IfcDataStore): Record<string, unknown> {
   const entityCounts: Record<string, number> = {};
+  // @raw-entity-enumeration-ok gym reset observes originalStore freshly loaded from a file or generated episode, before its edit overlay is applied
   for (const [type, ids] of store.entityIndex.byType) {
     if (ids.length > 0) entityCounts[type] = ids.length;
   }
@@ -137,6 +138,7 @@ export function computeObservation(store: IfcDataStore): Record<string, unknown>
   for (const type of Object.keys(entityCounts).sort()) {
     sortedEntityCounts[type] = entityCounts[type];
   }
+  // @raw-entity-enumeration-ok gym reset reports the same freshly loaded source snapshot as entityCounts above
   const storeyCount = (store.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? []).length;
   return {
     entityCounts: sortedEntityCounts,

@@ -10,6 +10,7 @@ packages/cli/src/commands/anonymize.ts
 packages/cli/src/commands/diff-engine.ts
 packages/cli/src/commands/diff-scope.ts
 packages/cli/src/commands/diff.ts
+packages/cli/src/commands/gym/channels.ts
 packages/cli/src/commands/info.ts
 packages/cli/src/commands/validate.ts
 packages/clash/src/adapters/step.ts
@@ -32,6 +33,7 @@ packages/export/src/style-closure.ts
 packages/ids/src/bridge/data-accessor.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
+packages/mutations/src/express-id-watermark.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts
 packages/parser/src/cost-reader.ts
@@ -56,6 +58,7 @@ apps/viewer/src/components/viewer/bulk-property-editor-options.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/hooks/has-entity-type.ts
+apps/viewer/src/hooks/useIfcFederation.ts
 apps/viewer/src/hooks/ingest/viewerModelIngest.ts
 apps/viewer/src/hooks/useIfcCache.ts
 apps/viewer/src/lib/collab/share-scope.ts

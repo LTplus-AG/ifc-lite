@@ -14,6 +14,7 @@ import type { MutationStoreShape } from './types.js';
  */
 export function highestExistingExpressId(store: MutationStoreShape): number {
   let max = 0;
+  // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
   for (const id of store.entityIndex.byId.keys()) {
     if (id > max) max = id;
   }

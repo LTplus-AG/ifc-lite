@@ -472,6 +472,7 @@ export function useIfcFederation(
       // This is needed for resolveGlobalIdFromModels to work correctly
       let maxExpressId = 0;
       if (result.entities?.expressId) {
+        // @raw-entity-enumeration-ok load-time ID watermark scans the newly composed IFCX table before any session overlay is installed
         for (let i = 0; i < result.entities.count; i++) {
           const id = result.entities.expressId[i];
           if (id > maxExpressId) maxExpressId = id;

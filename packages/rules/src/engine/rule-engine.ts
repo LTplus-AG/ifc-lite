@@ -16,6 +16,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { exactTypeName } from '@ifc-lite/data';
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import {
   calculateSummary,
   type EntityResult,
@@ -71,14 +72,37 @@ export function resolveTargetModels(models: ReadonlyArray<EvaluatorModel>, targe
   });
 }
 
+/** Complete parsed ID domain, including deferred property atoms and IFCX stores. */
+function* sourceEntityIds(store: IfcDataStore): IterableIterator<number> {
+  let indexed = false;
+  // @raw-entity-enumeration-ok source ID domain is passed to the effective iterator, which filters tombstones and appends creations
+  for (const id of store.entityIndex.byId.keys()) {
+    indexed = true;
+    yield id;
+  }
+  for (const id of store.deferredEntityIndex?.keys() ?? []) {
+    indexed = true;
+    yield id;
+  }
+  if (!indexed) yield* store.entities.expressId;
+}
+
 function buildModelInfo(models: readonly EvaluatorModel[]): ValidationModelInfo[] {
   const out: ValidationModelInfo[] = [];
   for (const m of models) {
     if (!m.store) continue;
+    // @raw-entity-enumeration-ok parsed count is used only for an unedited model; the pending-edit branch replaces it with effective enumeration
+    let entityCount = m.store.entityCount || m.store.entities.count;
+    if (m.mutationView?.hasPendingChanges()) {
+      // The parsed count predates deletes and authored entities. The complete
+      // source domain includes deferred property atoms, absent from byType.
+      entityCount = 0;
+      for (const _entity of iterateEffectiveEntityIds(m.store, m.mutationView, undefined, sourceEntityIds(m.store))) entityCount++;
+    }
     out.push({
       modelId: m.id,
       schemaVersion: m.store.schemaVersion || 'IFC4',
-      entityCount: m.store.entityCount || m.store.entities.count,
+      entityCount,
     });
   }
   return out;
@@ -104,14 +128,19 @@ function exactClassRulesOf(block: RuleBlock): IfcTypeRule[] {
 function applyExactClassFilter(
   elements: readonly FilteredElement[],
   rules: readonly IfcTypeRule[],
-  storesById: ReadonlyMap<string, IfcDataStore>,
+  modelsById: ReadonlyMap<string, EvaluatorModel>,
   opts: ValidationOpts,
 ): FilteredElement[] {
   if (rules.length === 0) return [...elements];
   return elements.filter((el) => {
-    const store = storesById.get(el.modelId);
-    if (!store) return false;
-    const exact = exactTypeName(store.entities, el.expressId);
+    const model = modelsById.get(el.modelId);
+    if (!model?.store) return false;
+    // The filter result carries the effective class for authored and retyped
+    // rows. For unchanged source rows, its EntityTable name may be grouped
+    // (IfcDoorStandardCase -> IfcDoor), so ask for the exact source class.
+    const view = model.mutationView;
+    const edited = view?.getNewEntity(el.expressId) || view?.getEntityTypeMutation(el.expressId);
+    const exact = edited ? el.ifcType : exactTypeName(model.store.entities, el.expressId);
     return rules.some((r) => setOpMatches(r.op, exact, r.values, opts));
   });
 }
@@ -231,6 +260,7 @@ function finalizeSpecification(
 export async function runRuleSet(options: RunRuleSetOptions): Promise<ValidationReport> {
   const { ruleSet, models, definedModelTagIds, signal, onProgress } = options;
   const targetModels = resolveTargetModels(models, ruleSet.targets);
+  const modelsById = new Map(targetModels.map((model) => [model.id, model]));
   const storesById = new Map<string, IfcDataStore>();
   for (const m of targetModels) if (m.store) storesById.set(m.id, m.store);
   const modelInfo = buildModelInfo(targetModels);
@@ -273,7 +303,7 @@ export async function runRuleSet(options: RunRuleSetOptions): Promise<Validation
         definedModelTagIds,
         onProgress: (done, total) => onProgress?.({ ruleIndex, phase: 'applicability', done, total }),
       });
-      const applicable = applyExactClassFilter(applicableRaw, exactClassRulesOf(rule.applicability), storesById, opts);
+      const applicable = applyExactClassFilter(applicableRaw, exactClassRulesOf(rule.applicability), modelsById, opts);
       applicableCount = applicable.length;
       const cardinalityResult = checkCardinality(rule.cardinality, applicableCount);
 

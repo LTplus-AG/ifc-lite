@@ -1292,6 +1292,9 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /** Look up a single overlay-created entity. */
+  /** Created entities authored as `type`, in creation order, from an index (#5413). */
+  getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
+
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;
   }

@@ -93,10 +93,10 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * Floor on the crate count. Importing the list rather than re-typing it rules
  * out one drift, not all of them: a filter, a conditional entry, or a partial
  * edit still yields a short list, and a gate that checked two crates prints
- * the same success line as one that checked all seven. If a crate is genuinely
+ * the same success line as one that checked all eight. If a crate is genuinely
  * dropped from the release, lower this in the same commit.
  */
-export const CRATE_FLOOR = 7;
+export const CRATE_FLOOR = 8;
 
 /**
  * The version this release would publish, or null.

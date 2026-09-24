@@ -23,6 +23,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSnapshot, diffCrate, CRATE_FLOOR } from './check-rust-api-surface.mjs';
+import { CRATES } from './lib/crates-io.mjs';
 
 /** A scratch `rust/` root with one crate per `{ crateName: libRsText }` entry. */
 function withRustRoot(crateFiles, fn) {
@@ -40,21 +41,21 @@ function withRustRoot(crateFiles, fn) {
   }
 }
 
-const SEVEN_CRATE_NAMES = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'];
+const FLOOR_CRATE_NAMES = Array.from({ length: CRATE_FLOOR }, (_, i) => `c${i + 1}`);
 const TRIVIAL_LIB_RS = 'pub const MARKER: u32 = 1;';
 
-function sevenTrivialCrates() {
+function floorTrivialCrates() {
   const out = {};
-  for (const name of SEVEN_CRATE_NAMES) out[name] = { name, libRs: TRIVIAL_LIB_RS };
+  for (const name of FLOOR_CRATE_NAMES) out[name] = { name, libRs: TRIVIAL_LIB_RS };
   return out;
 }
 
 test('buildSnapshot succeeds over a floor-sized set of real crates', () => {
-  withRustRoot(sevenTrivialCrates(), (rustRoot) => {
-    const { snapshot, warnings } = buildSnapshot({ crates: SEVEN_CRATE_NAMES, rustRoot });
-    assert.equal(Object.keys(snapshot).length, 7);
+  withRustRoot(floorTrivialCrates(), (rustRoot) => {
+    const { snapshot, warnings } = buildSnapshot({ crates: FLOOR_CRATE_NAMES, rustRoot });
+    assert.equal(Object.keys(snapshot).length, CRATE_FLOOR);
     assert.deepEqual(warnings, []);
-    for (const name of SEVEN_CRATE_NAMES) assert.equal(snapshot[name].MARKER, 'const');
+    for (const name of FLOOR_CRATE_NAMES) assert.equal(snapshot[name].MARKER, 'const');
   });
 });
 
@@ -66,23 +67,28 @@ test(`VACUITY: fewer than CRATE_FLOOR (${CRATE_FLOOR}) crates refuses — a shru
   assert.throws(() => buildSnapshot({ crates: ['only-one'], rustRoot: '/nonexistent' }), /CRATE_FLOOR/);
 });
 
+test('CRATE_FLOOR catches the real crate list with one crate dropped', () => {
+  // The fixtures above scale with CRATE_FLOOR, so only the real list pins its value.
+  assert.throws(() => buildSnapshot({ crates: CRATES.slice(0, -1) }), /CRATE_FLOOR/);
+});
+
 test('VACUITY: a published crate with no matching rust/*/Cargo.toml directory refuses by name', () => {
-  withRustRoot(sevenTrivialCrates(), (rustRoot) => {
-    const crates = [...SEVEN_CRATE_NAMES.slice(0, 6), 'never-declared'];
+  withRustRoot(floorTrivialCrates(), (rustRoot) => {
+    const crates = [...FLOOR_CRATE_NAMES.slice(0, -1), 'never-declared'];
     assert.throws(() => buildSnapshot({ crates, rustRoot }), /MISSING_CRATE_DIR.*never-declared/s);
   });
 });
 
 test('VACUITY: a crate whose lib.rs yields zero tracked items refuses rather than snapshotting an empty surface', () => {
-  const files = sevenTrivialCrates();
+  const files = floorTrivialCrates();
   files.c1.libRs = 'mod internal; fn private_only() {}';
   withRustRoot(files, (rustRoot) => {
-    assert.throws(() => buildSnapshot({ crates: SEVEN_CRATE_NAMES, rustRoot }), /EMPTY_SURFACE/);
+    assert.throws(() => buildSnapshot({ crates: FLOOR_CRATE_NAMES, rustRoot }), /EMPTY_SURFACE/);
   });
 });
 
 test('buildSnapshot surfaces ambiguous-name warnings per crate rather than swallowing them', () => {
-  const files = sevenTrivialCrates();
+  const files = floorTrivialCrates();
   files.c1.libRs = `
     mod a;
     mod b;
@@ -93,7 +99,7 @@ test('buildSnapshot surfaces ambiguous-name warnings per crate rather than swall
     mkdirSync(join(rustRoot, 'c1', 'src'), { recursive: true });
     writeFileSync(join(rustRoot, 'c1', 'src', 'a.rs'), 'pub struct Dup { pub x: u32 }');
     writeFileSync(join(rustRoot, 'c1', 'src', 'b.rs'), 'pub struct Dup { pub y: u32 }');
-    const { warnings } = buildSnapshot({ crates: SEVEN_CRATE_NAMES, rustRoot });
+    const { warnings } = buildSnapshot({ crates: FLOOR_CRATE_NAMES, rustRoot });
     assert.ok(warnings.some((w) => w.startsWith('c1: AMBIGUOUS: Dup')));
   });
 });

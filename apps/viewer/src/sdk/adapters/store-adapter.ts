@@ -170,9 +170,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }
     const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
     const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, store.getState().getMutationView(normalizedModelId));
-    const before = new Set(editor.getNewEntities().map((entity) => entity.expressId));
+    // Only a shared room needs the before/after diff; outside one, an O(n)
+    // snapshot per element made bulk authoring quadratic (#5413).
+    const shared = isSharedRoomModel(modelId);
+    const before = shared ? new Set(editor.getNewEntities().map((entity) => entity.expressId)) : null;
     const expressId = build(editor, anchor);
-    if (isSharedRoomModel(modelId)) {
+    if (before) {
       const created = editor.getNewEntities()
         .map((entity) => entity.expressId)
         .filter((id) => !before.has(id));

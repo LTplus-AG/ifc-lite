@@ -874,15 +874,18 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   not establish an end-to-end win. A production opt-out must be export-scoped
   and preserve public options compatibility. See the
   [source, observations and qualification limits](evidence/export-delivery-5357/README.md).
-- **Bounded GLB geometry replay** (PARKED after #5357 spike): disk-backed replay
-  through the existing writer removes the second meshing pass and preserved
-  tested whole artifacts across CSG, large-coordinate and heavy models, with
-  quantization on and off. It introduces scratch-disk I/O and failure modes;
-  the Linux prototype deliberately has no production error contract. Keep it as
-  the strongest native-export follow-up, requiring an explicit scratch policy,
-  typed errors and uncontended full-export timing/memory qualification before
-  shipping. It does not accelerate normal browser model loading. Evidence and
-  the unapplied patch are in the same archive above.
+- **Bounded GLB geometry replay** (NOT SHIPPED after #5557 screen): recording
+  the planning pass's meshes on native scratch and replaying them through the
+  existing writer avoided a second meshing pass, with complete artifact identity
+  in the controlled native screen. The prototype has no first-party native GLB
+  consumer: CLI, MCP and viewer source-byte export use WASM, and the viewer's
+  loaded-mesh export uses a different path. A replay cache large enough for the
+  heavy fixture would undermine the bounded WASM memory contract. Do not add a
+  native-only public API without an actual consumer; a future attempt needs a
+  consumer and a portable scratch/error policy, or a separately qualified
+  memory-bounded WASM design. No browser or CLI gain is established. See the
+  [#5557 screen and archived patches](../../docs/architecture/evidence/bounded-glb-replay-5557/README.md)
+  and the earlier #5357 archive above.
 - **Brotli quality 11 on the served bundle** (PARKED after #5357 observation):
   the actual deployed WASM response already negotiates Brotli and compiles in
   Chrome. Recompressing those same decoded bytes locally leaves potential

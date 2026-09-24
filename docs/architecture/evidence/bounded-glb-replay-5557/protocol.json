@@ -1,0 +1,70 @@
+{
+  "baseSha": "6b30985abe0c9f1c8f5716f79fcaecf444768d5cf6c96a773aed70135c48332e",
+  "candidateSha": "14d8f40784a870f2574b9f9888a5d9c9c6f9cb21541a332557fb891b8dd11dc1",
+  "sourceBase": "d05f5423a7caf761f0a2e12d064d85e84355d031",
+  "fixtures": [
+    {
+      "name": "holter",
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+    },
+    {
+      "name": "csg129",
+      "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+    },
+    {
+      "name": "haus",
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+    }
+  ],
+  "environment": {
+    "affinity": "4-23",
+    "RAYON_NUM_THREADS": "12",
+    "filesystem": "WSL ext4 ordinary disk, OS cache uncontrolled"
+  },
+  "boundary": "probe output_ms includes source read, complete bounded export and output write; fingerprint outside timer; GNU time includes process lifecycle and fingerprint",
+  "scope": "replay-only Linux experimental I/O, preliminary screen, not production qualification",
+  "originalObserverSha256": "9d63da519468a21b7c42f10d442cb198cf5ac9f646dbae4e0bedac5f76b11fcc",
+  "originalObserverPath": "external /tmp/5557-screen.py (retained on measuring host; absolute fixture/output paths sanitized in screen.py)",
+  "measurementWindowUtc": {
+    "start": "2026-09-24T09:58:42.112271+00:00",
+    "end": "2026-09-24T09:59:22.410632+00:00"
+  },
+  "controlledCpuWindowUtc": {
+    "start": "2026-09-24T09:58:39.235646+00:00",
+    "restored": "2026-09-24T09:59:53.013891+00:00",
+    "competingProcessesPinnedToCpu0": 35
+  },
+  "cpuRestoration": {
+    "checkedLiveThreads": 652,
+    "affinityMismatches": []
+  },
+  "runtimeSource": "base commit plus example.patch; candidate adds replay-only.patch",
+  "archivedPatchSha256": {
+    "example": "8800d2224ca01b3f001230cf9a4c3536626ab2a3179f3dce575499840725c206",
+    "replayOnly": "9c1cbdd2d431e6bb14e913f7dd9a8e3f29d728dfe51e28210e9c736d24725f4d",
+    "originalFull5357": "7e7b2f9231af91eaacaaf61909d20c7f794a872fa04649a61e11ef059be0c774"
+  },
+  "build": {
+    "base_commit": "d05f5423a7caf761f0a2e12d064d85e84355d031",
+    "toolchain": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+    "command": "CARGO_BUILD_JOBS=8 cargo build --profile profiling -p ifc-lite-export --example bounded_spike (same CARGO_TARGET_DIR for both arms)",
+    "buildLogSha256": {
+      "baseline": "5e1a122f3405f1fa05ca6392c42691ad3c6df1d184ced7e73a62550d9a024bc3",
+      "candidate": "92ce25d090c0f3401bee9c1bc58390ba4b6ce56839d1f704cafd036742041c2d"
+    },
+    "sha256": {
+      "baseline_binary": "6b30985abe0c9f1c8f5716f79fcaecf444768d5cf6c96a773aed70135c48332e",
+      "candidate_binary": "14d8f40784a870f2574b9f9888a5d9c9c6f9cb21541a332557fb891b8dd11dc1",
+      "base_gltf_rs": "1b3de30c344bf5b1ef9b675138f668b47c0513e9ae7c2ed49aa02cdc4d69decd",
+      "candidate_gltf_rs": "cf752636bb390b1d6370fc9d2ca53592f58c422284e9e5f60e62e73a2a4f7c13",
+      "spool_spike_rs": "f39de4d73df831ebdb3b591f4380c56ced5123bb776543e8558f195c17bf2a94",
+      "example_rs": "7cf08a4ac69d4a48157c9ea876052cab622d44831c711587c0d01294d3f90725",
+      "archived_full_patch": "7e7b2f9231af91eaacaaf61909d20c7f794a872fa04649a61e11ef059be0c774",
+      "applied_example_patch": "8800d2224ca01b3f001230cf9a4c3536626ab2a3179f3dce575499840725c206",
+      "applied_replay_only_patch": "9c1cbdd2d431e6bb14e913f7dd9a8e3f29d728dfe51e28210e9c736d24725f4d"
+    }
+  }
+}

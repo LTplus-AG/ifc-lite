@@ -1,0 +1,159 @@
+diff --git a/rust/export/src/gltf.rs b/rust/export/src/gltf.rs
+index 935f1e361..535239e53 100644
+--- a/rust/export/src/gltf.rs
++++ b/rust/export/src/gltf.rs
+@@ -47,6 +47,7 @@ use serde_json::{json, Value};
+ // assembler internals via `super`; the code moved verbatim, so output is unchanged).
+ mod from_meshes;
+ mod matrix;
++mod spool_spike;
+ 
+ pub use from_meshes::{export_glb_from_meshes, try_export_glb_from_meshes};
+ use matrix::{
+@@ -2071,12 +2072,13 @@ fn try_export_glb_streaming_bounded_impl(
+     // the fail-closed large-model path, exactly where the parallel scan pays off;
+     // with `index=None` it otherwise paid two internal serial scans.
+     let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
+-    let plan = plan_bounded_glb(content, opts, index.clone());
++    let mut spool = spool_spike::Spool::from_env();
++    let plan = plan_bounded_glb(content, opts, index.clone(), spool.as_mut());
+     refuse_empty(&plan.stats)?;
+     if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as u64 {
+         return Err(ExportError::TooLarge { bytes: plan.total });
+     }
+-    Ok(write_bounded_glb(content, opts, index, plan))
++    Ok(write_bounded_glb(content, opts, index, plan, spool))
+ }
+ 
+ /// Project the single-GLB size for `content` from pass 1 only — the world AABB +
+@@ -2102,7 +2104,7 @@ fn project_glb_size_impl(
+     index: Option<Arc<EntityIndex>>,
+ ) -> GlbSizeProjection {
+     let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
+-    let plan = plan_bounded_glb(content, opts, index);
++    let plan = plan_bounded_glb(content, opts, index, None);
+     GlbSizeProjection {
+         total_bytes: plan.total,
+         bin_bytes: plan.bin_total,
+@@ -2140,6 +2142,7 @@ fn plan_bounded_glb(
+     content: &[u8],
+     opts: &GltfOptions,
+     index: Option<Arc<EntityIndex>>,
++    mut spool: Option<&mut spool_spike::Spool>,
+ ) -> BoundedGlbPlan {
+     // A shared `index` (when present) is injected into BOTH passes' StreamingOptions
+     // so neither re-scans `content` for its entity index (#1516).
+@@ -2173,6 +2176,7 @@ fn plan_bounded_glb(
+                 if !filter.visible(m) {
+                     continue;
+                 }
++                if let Some(spool) = &mut spool { spool.record(m); }
+                 crate::frame::to_yup_into(&mut yscratch, &m.positions, &m.normals, &m.indices, m.origin);
+                 let y = &yscratch;
+                 // Same geometry-sanity gate as `view_ok` on the in-memory path.
+@@ -2781,6 +2785,7 @@ fn write_bounded_glb(
+     opts: &GltfOptions,
+     index: Option<Arc<EntityIndex>>,
+     plan: BoundedGlbPlan,
++    spool: Option<spool_spike::Spool>,
+ ) -> (Vec<u8>, GltfStats) {
+     // Re-stream with the same (optionally shared) index so pass 2 never re-scans
+     // for its entity index either (#1516).
+@@ -2820,11 +2825,7 @@ fn write_bounded_glb(
+     let filter = VisibilityFilter::new(opts);
+     let mut yscratch = crate::frame::YUpScratch::new();
+     let mut cursor = 0usize;
+-    process_geometry_streaming_filtered_with_options(
+-        content,
+-        OpeningFilterMode::Default,
+-        stream_opts(),
+-        |batch, _, _| {
++    let mut emit = |batch: &[MeshData], _: usize, _: usize| {
+             for m in batch {
+                 if !filter.visible(m) {
+                     continue;
+@@ -2922,10 +2923,14 @@ fn write_bounded_glb(
+                 }
+                 cursor += 1;
+             }
+-        },
+-        |_| {},
+-        |_| {},
+-    );
++        };
++    if let Some(mut spool) = spool {
++        spool.replay(|mesh| emit(std::slice::from_ref(&mesh), 0, 0));
++    } else {
++        process_geometry_streaming_filtered_with_options(
++            content, OpeningFilterMode::Default, stream_opts(), emit, |_| {}, |_| {},
++        );
++    }
+     assert!(
+         cursor == metas.len(),
+         "GLB streaming pass 2 saw {cursor} meshes, pass 1 saw {}; the mesh stream is not deterministic",
+diff --git a/rust/export/src/gltf/spool_spike.rs b/rust/export/src/gltf/spool_spike.rs
+new file mode 100644
+index 000000000..2ba478d02
+--- /dev/null
++++ b/rust/export/src/gltf/spool_spike.rs
+@@ -0,0 +1,60 @@
++//! #5357 experiment only: private native scratch, not a production persistence format.
++//! I/O errors deliberately fail the experiment. This needs typed error propagation
++//! and platform policy before shipping. No full mesh collection is retained.
++use ifc_lite_processing::MeshData;
++use std::fs::{File, OpenOptions};
++use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
++
++pub(super) struct Spool {
++    writer: BufWriter<File>,
++    count: usize,
++}
++
++impl Spool {
++    pub(super) fn from_env() -> Option<Self> {
++        let path = std::env::var_os("IFC_SPIKE_SPOOL")?;
++        let file = OpenOptions::new().read(true).write(true).create_new(true)
++            .open(&path).expect("create exclusive spike spool");
++        // Linux experiment: unlink immediately, so abort/error cannot leak scratch.
++        std::fs::remove_file(path).expect("unlink private spike spool");
++        Some(Self { writer: BufWriter::with_capacity(1024 * 1024, file), count: 0 })
++    }
++    pub(super) fn record(&mut self, m: &MeshData) {
++        let w = &mut self.writer;
++        w.write_all(&m.express_id.to_le_bytes()).unwrap();
++        w.write_all(bytemuck::cast_slice(&m.color)).unwrap();
++        w.write_all(bytemuck::cast_slice(&m.origin)).unwrap();
++        for bytes in [m.ifc_type.as_bytes(), bytemuck::cast_slice(&m.positions),
++            bytemuck::cast_slice(&m.normals), bytemuck::cast_slice(&m.indices)] {
++            w.write_all(&(bytes.len() as u64).to_le_bytes()).unwrap();
++            w.write_all(bytes).unwrap();
++        }
++        self.count += 1;
++    }
++    pub(super) fn replay(&mut self, mut emit: impl FnMut(MeshData)) {
++        self.writer.flush().unwrap();
++        let bytes = self.writer.stream_position().unwrap();
++        self.writer.seek(SeekFrom::Start(0)).unwrap();
++        let mut r = BufReader::with_capacity(1024 * 1024, self.writer.get_mut());
++        fn read<const N: usize>(r: &mut impl Read) -> [u8; N] {
++            let mut b = [0; N]; r.read_exact(&mut b).unwrap(); b
++        }
++        fn vec<T: bytemuck::Pod + Default>(r: &mut impl Read) -> Vec<T> {
++            let n = u64::from_le_bytes(read(r)) as usize;
++            assert_eq!(n % std::mem::size_of::<T>(), 0);
++            let mut v = vec![T::default(); n / std::mem::size_of::<T>()];
++            r.read_exact(bytemuck::cast_slice_mut(&mut v)).unwrap(); v
++        }
++        for _ in 0..self.count {
++            let id = u32::from_le_bytes(read(&mut r));
++            let color = std::array::from_fn(|_| f32::from_le_bytes(read(&mut r)));
++            let origin = std::array::from_fn(|_| f64::from_le_bytes(read(&mut r)));
++            let kind = String::from_utf8(vec::<u8>(&mut r)).unwrap();
++            let mut m = MeshData::new(id, kind, vec(&mut r), vec(&mut r), vec(&mut r), color);
++            m.origin = origin;
++            emit(m);
++        }
++        assert_eq!(r.stream_position().unwrap(), bytes);
++        eprintln!("spool_bytes={bytes}");
++    }
++}

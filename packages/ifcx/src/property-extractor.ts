@@ -10,6 +10,8 @@
 import type { ComposedNode } from './types.js';
 import { ATTR, IFCLITE_ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import { mirroredFlatPropertyKeys } from './flat-property-mirror.js';
+
+export { mirroredFlatPropertyKeys };
 import {
   StringTable,
   PropertyTableBuilder,

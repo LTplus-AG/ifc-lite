@@ -13,8 +13,7 @@ import type { IfcxFile, ComposedNode } from './types.js';
 import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.js';
 import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
-import { extractProperties, routesToQuantityTable } from './property-extractor.js';
-import { mirroredFlatPropertyKeys } from './flat-property-mirror.js';
+import { extractProperties, mirroredFlatPropertyKeys, routesToQuantityTable } from './property-extractor.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
 import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
@@ -369,15 +368,13 @@ function buildQuantities(
     // Get the IFC class to use as context for qset naming
     const ifcClass = (node.attributes.get('bsi::ifc::class') as { code?: string })?.code;
     const qsetName = ifcClass ? `Qto_${ifcClass.replace('Ifc', '')}BaseQuantities` : 'BaseQuantities';
-
     const mirrored = mirroredFlatPropertyKeys(node.attributes); // #5376: a flat mirror of a qualified value
     for (const [key, value] of node.attributes) {
-      if (mirrored.has(key)) continue;
       // Same routing rule the property extractor uses to skip — the v5a
       // namespace mirrors the collab inflation dialect, typed records
       // (#1031) unwrap to their scalar — so neither table drops or
       // double-claims an attribute.
-      if (!routesToQuantityTable(key, value)) continue;
+      if (mirrored.has(key) || !routesToQuantityTable(key, value)) continue;
 
       const v5a = parseV5aKey(key);
       const propName = v5a?.name ?? key.split('::').pop() ?? '';

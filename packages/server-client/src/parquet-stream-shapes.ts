@@ -17,7 +17,9 @@
  * Each batch states where its tables start (`vertex_base`, `index_base`). The
  * store refuses a batch whose base is not what it holds, so a dropped or
  * reordered batch fails loud instead of drawing one shape's vertices for
- * another. A batch WITHOUT bases came from a server that did not honour the
+ * another. It also refuses a batch number out of sequence: a batch that
+ * brought no new shapes leaves the bases where they were, so only its number
+ * shows that it went missing or arrived out of order. A batch WITHOUT bases came from a server that did not honour the
  * opt-in and decodes on its own, as every batch did before.
  */
 
@@ -75,13 +77,27 @@ export class StreamShapeStore {
   private vertices = 0;
   /** Indices received, three per index-table row: the unit of `index_base`. */
   private indices = 0;
+  /** Batches appended; the next one must be number `batches + 1`. */
+  private batches = 0;
 
   /**
-   * Append one batch's vertex and index tables at the bases the batch states.
-   * Throws, appending nothing, when a base is not what the store holds or a
-   * table is malformed.
+   * Append batch `batchNumber`'s vertex and index tables at the bases it
+   * states. Throws, appending nothing, when the number is out of sequence, a
+   * base is not what the store holds, or a table is malformed.
    */
-  append(vertexArrow: ArrowTableLike, indexArrow: ArrowTableLike, vertexBase: number, indexBase: number): void {
+  append(
+    vertexArrow: ArrowTableLike,
+    indexArrow: ArrowTableLike,
+    vertexBase: number,
+    indexBase: number,
+    batchNumber: number
+  ): void {
+    if (batchNumber !== this.batches + 1) {
+      throw new Error(
+        `Malformed Parquet stream: batch ${batchNumber} arrived after batch ${this.batches} ` +
+          '(a batch is missing or out of order)'
+      );
+    }
     if (vertexBase !== this.vertices || indexBase !== this.indices) {
       throw new Error(
         `Malformed Parquet stream: batch starts at vertex ${vertexBase} / index ${indexBase}, ` +
@@ -94,6 +110,7 @@ export class StreamShapeStore {
     INDEX_COLUMNS.forEach((name, i) => this.index.get(name)?.append(indexCols[i]));
     this.vertices += vertexCols[0].length;
     this.indices += 3 * indexCols[0].length;
+    this.batches = batchNumber;
   }
 
   vertexTable(): ArrowTableLike {
@@ -127,9 +144,10 @@ export async function decodeCrossBatch(
   data: ArrayBuffer,
   store: StreamShapeStore,
   vertexBase: number,
-  indexBase: number
+  indexBase: number,
+  batchNumber: number
 ): Promise<MeshData[]> {
   const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
-  store.append(vertexArrow, indexArrow, vertexBase, indexBase);
+  store.append(vertexArrow, indexArrow, vertexBase, indexBase, batchNumber);
   return buildMeshesFromTables(meshArrow, store.vertexTable(), store.indexTable());
 }

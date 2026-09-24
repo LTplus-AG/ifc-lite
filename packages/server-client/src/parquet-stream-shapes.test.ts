@@ -50,10 +50,10 @@ function meshRows(rows: { id: number; vertexStart: number; indexStart: number; o
 describe('StreamShapeStore', () => {
   it('lets a later batch draw a shape an earlier batch carried', () => {
     const store = new StreamShapeStore();
-    store.append(triangle(0), oneTriangleIndex(), 0, 0);
-    store.append(triangle(10), oneTriangleIndex(), 3, 3);
+    store.append(triangle(0), oneTriangleIndex(), 0, 0, 1);
+    store.append(triangle(10), oneTriangleIndex(), 3, 3, 2);
     // Batch 3 sends nothing new: both rows point back, one per earlier shape.
-    store.append(emptyVertices(), emptyIndex(), 6, 6);
+    store.append(emptyVertices(), emptyIndex(), 6, 6, 3);
 
     const meshes = buildMeshesFromTables(
       meshRows([
@@ -72,26 +72,39 @@ describe('StreamShapeStore', () => {
 
   it('refuses a batch whose base is not what it holds, appending nothing', () => {
     const store = new StreamShapeStore();
-    store.append(triangle(0), oneTriangleIndex(), 0, 0);
+    store.append(triangle(0), oneTriangleIndex(), 0, 0, 1);
     // A dropped batch: this one thinks 6 vertices came before it.
-    expect(() => store.append(triangle(10), oneTriangleIndex(), 6, 6)).toThrow(/missing or out of order/);
-    expect(() => store.append(triangle(10), oneTriangleIndex(), 3, 0)).toThrow(/missing or out of order/);
+    expect(() => store.append(triangle(10), oneTriangleIndex(), 6, 6, 2)).toThrow(/missing or out of order/);
+    expect(() => store.append(triangle(10), oneTriangleIndex(), 3, 0, 2)).toThrow(/missing or out of order/);
     // Nothing was appended by the refusals, so the right base still fits.
-    store.append(triangle(10), oneTriangleIndex(), 3, 3);
+    store.append(triangle(10), oneTriangleIndex(), 3, 3, 2);
     expect(store.vertexTable().getChild('x')?.toArray()).toHaveLength(6);
+  });
+
+  // A batch that brings no new shapes leaves the bases unchanged, so the
+  // bases alone cannot tell that it went missing: its number can.
+  it('refuses a batch number out of sequence even when the bases still line up', () => {
+    const store = new StreamShapeStore();
+    store.append(triangle(0), oneTriangleIndex(), 0, 0, 1);
+    // Batch 2 (no new shapes) was dropped; batch 3 states the same bases.
+    expect(() => store.append(emptyVertices(), emptyIndex(), 3, 3, 3)).toThrow(/missing or out of order/);
+    store.append(emptyVertices(), emptyIndex(), 3, 3, 2);
+    store.append(emptyVertices(), emptyIndex(), 3, 3, 3);
+    // And a repeat of a batch already received is refused too.
+    expect(() => store.append(emptyVertices(), emptyIndex(), 3, 3, 3)).toThrow(/missing or out of order/);
   });
 
   it('refuses a ragged vertex table rather than misaligning every later row', () => {
     const store = new StreamShapeStore();
     const ragged = table({ x: [0, 1, 0], y: [0, 0], z: [0, 0, 0], nx: [0, 0, 0], ny: [0, 0, 0], nz: [1, 1, 1] });
-    expect(() => store.append(ragged, oneTriangleIndex(), 0, 0)).toThrow(/ragged/);
+    expect(() => store.append(ragged, oneTriangleIndex(), 0, 0, 1)).toThrow(/ragged/);
     expect(store.vertexTable().getChild('x')?.toArray()).toHaveLength(0);
   });
 
   it('grows past its initial capacity without losing earlier rows', () => {
     const store = new StreamShapeStore();
     for (let batch = 0; batch < 700; batch++) {
-      store.append(triangle(batch), oneTriangleIndex(), 3 * batch, 3 * batch);
+      store.append(triangle(batch), oneTriangleIndex(), 3 * batch, 3 * batch, batch + 1);
     }
     const x = store.vertexTable().getChild('x')?.toArray();
     expect(x).toHaveLength(2100);

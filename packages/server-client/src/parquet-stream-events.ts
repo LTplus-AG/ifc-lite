@@ -117,7 +117,7 @@ export async function consumeParquetStream(
               }
               const meshes =
                 vertex_base !== undefined && index_base !== undefined
-                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base)
+                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base, event.batch_number)
                   : await decodeParquetGeometry(bytes.buffer);
               const decodeTime = performance.now() - decodeStart;
 

@@ -79,6 +79,17 @@ describe('cross-batch Parquet stream on real server bytes', () => {
     expect(vertexBases[1]).toBeGreaterThan(0);
   });
 
+  it('refuses a stream missing a batch that carried no new shapes', async () => {
+    const frames = readFixture('stream-cross-batch.sse').split('\n\n');
+    const batchFrames = frames.flatMap((f, i) => (f.includes('"type":"batch"') ? [i] : []));
+    // Batch 2 only points back (its base equals batch 3's), so only its
+    // number shows it is gone: the meshes it carried would silently vanish.
+    const dropped = batchFrames[1];
+    expect(frames[dropped]).toMatch(/"vertex_base":(\d+)/);
+    const truncated = frames.filter((_, i) => i !== dropped).join('\n\n');
+    await expect(consume(truncated)).rejects.toThrow(/missing or out of order/);
+  });
+
   it('refuses a stream with a batch missing, instead of drawing the wrong shape', async () => {
     const frames = readFixture('stream-cross-batch.sse').split('\n\n');
     const firstBatch = frames.findIndex((f) => f.includes('"type":"batch"'));

@@ -151,7 +151,7 @@ existing output shape and skip this extraction.
 Run numerical checks on authored `IfcSweptDiskSolid` paths, without a mesh
 pass. The function extracts each selected occurrence once and runs the shared
 Rust checker on each source solid. Results are keyed by occurrence STEP id;
-multiple sweeps under one occurrence stay separate and retain `solid_id`,
+multiple sweeps under one occurrence stay separate and retain `occurrence_index`, `solid_id`,
 `directrix_id`, and `mapping_path`. `diagnostics` reports problems traversing
 the representation. `ids` filters product occurrences as it does in the
 geometry functions; an empty set returns empty `elements`.

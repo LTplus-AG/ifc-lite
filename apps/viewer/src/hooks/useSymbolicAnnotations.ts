@@ -110,17 +110,13 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
 interface HiddenOwnerSets {
   global: ReadonlySet<number>;
   lens: ReadonlySet<number>;
-  byModel: ReadonlyMap<string, Set<number>>;
 }
-
-const EMPTY_NUM_SET: ReadonlySet<number> = new Set<number>();
 
 function useHiddenOwnerSets(): HiddenOwnerSets {
   return useViewerStore(
     useShallow((s) => ({
       global: s.hiddenEntities,
       lens: s.lensHiddenIds,
-      byModel: s.hiddenEntitiesByModel,
     })),
   );
 }
@@ -131,11 +127,9 @@ function makeHiddenOwnerPredicate(
   entry: SymbolicActiveStore,
   sets: HiddenOwnerSets,
 ): ((ownerId: number) => boolean) | undefined {
-  const perModel = sets.byModel.get(entry.modelId) ?? EMPTY_NUM_SET;
-  if (sets.global.size === 0 && sets.lens.size === 0 && perModel.size === 0) return undefined;
+  if (sets.global.size === 0 && sets.lens.size === 0) return undefined;
   const offset = entry.idOffset;
   return (ownerId: number): boolean => {
-    if (perModel.has(ownerId)) return true;
     const globalId = ownerId + offset;
     return sets.global.has(globalId) || sets.lens.has(globalId);
   };

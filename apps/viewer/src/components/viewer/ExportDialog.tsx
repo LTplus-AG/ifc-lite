@@ -107,8 +107,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
   // Not read directly below — `resolveExportVisibility` reads the live store
   // snapshot at export time — but subscribed so the dialog re-renders (and the
   // memoized visibility getters below get fresh identities) when the Class
@@ -293,7 +291,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
   );
 
   const getLocalHiddenIds = useCallback(

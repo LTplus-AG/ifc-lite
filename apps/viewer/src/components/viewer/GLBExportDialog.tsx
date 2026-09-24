@@ -65,8 +65,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const models = useViewerStore((s) => s.models);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
   // Class-level visibility (IfcSpace / IfcOpeningElement / IfcSite) — these
   // are off by default and live OUTSIDE the per-entity hidden set, so a
   // visible-only export that only checks `hiddenEntities` would still ship
@@ -145,10 +143,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
    * `MeshData.expressId` carries the federated global ID (`local +
    * idOffset`, see `store/types.ts:365`), and the legacy / global store
    * sets (`hiddenEntities`, `isolatedEntities`) are also global —
-   * `basketVisibleSet.ts:405-412` is the canonical reference for which
-   * set lives in which space. Only the per-model `*ByModel` Maps store
-   * raw local IDs, so those need an offset added before they can match
-   * a mesh expressId. This is the opposite shape from the STEP exporter
+   * `basketVisibleSet.ts` is the canonical reference for which set lives
+   * in which space. This is the opposite shape from the STEP exporter
    * (which works in local entity space), so don't reuse ExportDialog's
    * helpers here.
    */
@@ -161,7 +157,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
   );
 
   const getGlobalHiddenIds = useCallback(

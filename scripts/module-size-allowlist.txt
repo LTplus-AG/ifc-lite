@@ -181,7 +181,6 @@
    574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    412 apps/viewer/src/store/slices/uiSlice.ts
-   497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts

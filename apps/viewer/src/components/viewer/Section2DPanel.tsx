@@ -19,7 +19,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine, COMMON_SCALES } from '@ifc-lite/drawing-2d';
@@ -242,54 +241,13 @@ export function Section2DPanel({
   // Get visibility state from store for filtering
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
-
-  // Build combined Set of global IDs from multi-model visibility state
-  // This converts per-model local expressIds to global IDs using idOffset
-  const combinedHiddenIds = useMemo(() => {
-    const globalHiddenIds = new Set<number>(hiddenEntities); // Start with legacy hidden IDs
-
-    // Add hidden entities from each model (convert local expressId to global ID)
-    for (const [modelId, localHiddenIds] of hiddenEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localHiddenIds) {
-          globalHiddenIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-
-    return globalHiddenIds;
-  }, [hiddenEntities, hiddenEntitiesByModel, models]);
-
-  // Build combined Set of global IDs for isolation
-  const combinedIsolatedIds = useMemo(() => {
-    // If legacy isolation is active, use that (already contains global IDs)
-    if (isolatedEntities !== null) {
-      return isolatedEntities;
-    }
-
-    // Build from multi-model isolation
-    const globalIsolatedIds = new Set<number>();
-    for (const [modelId, localIsolatedIds] of isolatedEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localIsolatedIds) {
-          globalIsolatedIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-
-    return globalIsolatedIds.size > 0 ? globalIsolatedIds : null;
-  }, [isolatedEntities, isolatedEntitiesByModel, models]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ═══════════════════════════════════════════════════════════════════════════
 
   const { generateDrawing, isRegenerating } = useDrawingGeneration({
     geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
-    combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
+    combinedHiddenIds: hiddenEntities, combinedIsolatedIds: isolatedEntities, computedIsolatedIds,
     models, panelVisible, activeTool, drawing: sourceDrawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });

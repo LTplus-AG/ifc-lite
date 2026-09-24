@@ -19,7 +19,6 @@ mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
-mod frame_snap;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -833,7 +832,7 @@ impl GeometryRouter {
             ((mn.y + mx.y) * 0.5) as f64,
             ((mn.z + mx.z) * 0.5) as f64,
         );
-        let mut host_local = mesh_to_frame(mesh, &axes, center);
+        let host_local = mesh_to_frame(mesh, &axes, center);
 
         let z = Vector3::new(0.0, 0.0, 1.0);
         let mut local_openings: Vec<OpeningType> = Vec::with_capacity(ctx.merged_openings.len());
@@ -901,16 +900,6 @@ impl GeometryRouter {
                 local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
             }
         }
-        // The f32 world positions sit off the frame's planes by up to the world
-        // quantum; put coincident planes back on one value before cutting (#5635).
-        let world_magnitude = [mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]
-            .iter()
-            .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
-        frame_snap::snap_to_frame_planes(
-            &mut host_local,
-            &mut local_openings,
-            frame_snap::frame_snap_tolerance(world_magnitude),
-        );
         let local_ctx = VoidContext {
             merged_openings: Self::merge_rectangular_openings(&local_openings),
             openings: local_openings,

@@ -734,7 +734,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {exportScope === 'single' && (
             <div className="flex items-center justify-between">
               <div>
-                <Label>{t('exportDialog.changesOnlyLabel')}</Label>
+                <Label>{isIfc5 ? t('exportDialog.changesOnlyLabel.ifc5') : t('exportDialog.changesOnlyLabel.default')}</Label>
                 <p className="text-xs text-muted-foreground">
                   {isIfc5 ? t('exportDialog.changesOnlyHint.ifc5') : t('exportDialog.changesOnlyHint.default')}
                 </p>

@@ -60,7 +60,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only switch is available for a LandXML source');
     click(toggle);
@@ -77,7 +77,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only switch is available');
     click(toggle);
@@ -347,7 +347,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only is offered for a LandXML source');
     click(toggle);

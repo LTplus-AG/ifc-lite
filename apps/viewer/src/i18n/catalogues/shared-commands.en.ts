@@ -54,8 +54,8 @@ export const sharedCommandsEn = {
   'exportCommands.csv.item.spatial': 'Spatial Hierarchy',
 
   'exportCommands.json.label': 'JSON',
-  'exportCommands.json.menuLabel': 'Export JSON (All Data)',
-  'exportCommands.json.tooltip': 'Export JSON (all data)',
+  'exportCommands.json.menuLabel': 'Export JSON (active model)',
+  'exportCommands.json.tooltip': 'Export the active model as JSON',
 
   'exportCommands.screenshot.label': 'Screenshot',
   'exportCommands.screenshot.menuLabel': 'Screenshot',

@@ -144,12 +144,14 @@ fn decode_opt_string_list(arg: &str) -> Option<Vec<String>> {
     if !(t.starts_with('(') && t.ends_with(')')) {
         return Some(decode_opt_string(t).into_iter().collect());
     }
-    Some(
-        split_top_level(&t[1..t.len() - 1])
-            .iter()
-            .filter_map(|a| decode_opt_string(a))
-            .collect(),
-    )
+    let entries = split_top_level(&t[1..t.len() - 1]);
+    let values: Vec<String> = entries.iter().filter_map(|a| decode_opt_string(a)).collect();
+    // A list whose every entry is unset (`($)`) states nothing either; only a
+    // literal `()` is an empty list.
+    if !entries.is_empty() && values.is_empty() {
+        return None;
+    }
+    Some(values)
 }
 
 /// Read all declared schema identifiers from the complete header.

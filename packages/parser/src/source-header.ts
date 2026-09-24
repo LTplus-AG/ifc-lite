@@ -123,9 +123,11 @@ function decodeOptStringList(arg: string): string[] | undefined {
     const single = decodeOptString(t);
     return single === undefined ? [] : [single];
   }
-  return splitTopLevel(t.slice(1, -1))
-    .map(decodeOptString)
-    .filter((v): v is string => v !== undefined);
+  const entries = splitTopLevel(t.slice(1, -1));
+  const values = entries.map(decodeOptString).filter((v): v is string => v !== undefined);
+  // A list whose every entry is unset (`($)`) states nothing either; only a
+  // literal `()` is an empty list.
+  return entries.length > 0 && values.length === 0 ? undefined : values;
 }
 
 

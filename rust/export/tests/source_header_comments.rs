@@ -134,3 +134,22 @@ fn an_unset_author_and_organization_are_absent_not_empty() {
     assert_eq!(h.author, None);
     assert_eq!(h.organization, Some(Vec::new()));
 }
+
+#[test]
+fn a_list_of_only_unset_entries_and_a_missing_file_name_are_absent() {
+    // #5470: `($)` states no author any more than `$` does, and with no
+    // FILE_NAME record at all there is nothing stated either.
+    let src = header(
+        "FILE_DESCRIPTION(('d'),'2;1');\n\
+         FILE_NAME('a.ifc','ts',($),($,*),'pp','Bonsai','Nobody');\n\
+         FILE_SCHEMA(('IFC4'));",
+    );
+    let h = parse_source_header(&src).expect("header should parse");
+    assert_eq!(h.author, None);
+    assert_eq!(h.organization, None);
+
+    let h = parse_source_header(&header("FILE_SCHEMA(('IFC4'));")).expect("header should parse");
+    assert_eq!(h.schema_identifiers, vec!["IFC4".to_string()]);
+    assert_eq!(h.author, None);
+    assert_eq!(h.organization, None);
+}

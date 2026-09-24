@@ -89,6 +89,21 @@ describe('parseSourceHeader', () => {
       expect(h?.organization).toBeUndefined();
     });
 
+    it('leaves a list of only unset entries (`($)`) absent too', () => {
+      const h = parseSourceHeader(
+        header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',($),($,*),'P','S','auth'")),
+      );
+      expect(h?.author).toBeUndefined();
+      expect(h?.organization).toBeUndefined();
+    });
+
+    it('leaves author/organization absent when there is no FILE_NAME record', () => {
+      const h = parseSourceHeader(header("FILE_SCHEMA(('IFC4'));"));
+      expect(h?.schemaIdentifiers).toEqual(['IFC4']);
+      expect(h?.author).toBeUndefined();
+      expect(h?.organization).toBeUndefined();
+    });
+
     it('keeps a literal `()` author list as an empty list, distinct from `$`', () => {
       const h = parseSourceHeader(
         header(FILE_NAME_ALL("'n.ifc','2026-01-01T00:00:00',(),$,'P','S','auth'")),

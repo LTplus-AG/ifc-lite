@@ -149,7 +149,7 @@ export interface UnrepresentedPropertySet {
  * caller should skip the pset (nothing left to write).
  */
 export function recordIfEmptyPset(
-  pset: { name: string; properties: unknown[] },
+  pset: { name: string; properties: readonly unknown[] },
   entityId: number,
   sink: UnrepresentedPropertySet[],
 ): boolean {

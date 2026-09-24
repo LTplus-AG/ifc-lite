@@ -6203,6 +6203,7 @@
     "MergeResolution: interface",
     "MeshData: interface",
     "ObjectRestrictions: interface",
+    "PROPERTY_TYPE_NAMES: const",
     "PROVENANCE_KEY: const",
     "PROVENANCE_VERSION: const",
     "ParsedPath: interface",

@@ -123,6 +123,18 @@ export function unrepresentedPsetsNote(count: number): string {
   return ` — ${count} empty property set${count === 1 ? '' : 's'} left out (IFCX cannot represent an empty set)`;
 }
 
+/**
+ * Toast suffix for official IFCX property keys (`bsi::ifc::prop::<Name>`) that
+ * two psets on one entity disagreed on while only the flat key was written,
+ * so one value is not in the file (#5376). Full-fidelity exports also write
+ * the pset-qualified key and lose nothing, so only lost values are counted.
+ */
+export function lostPropertyCollisionsNote(collisions: readonly { valueLost: boolean }[]): string {
+  const lost = collisions.filter((c) => c.valueLost).length;
+  if (lost === 0) return '';
+  return ` — ${lost} propert${lost === 1 ? 'y' : 'ies'} shared a name across property sets, and only one value was kept`;
+}
+
 /** Production dependency set for `buildChangedArtifacts`. */
 export const defaultBuildArtifactsDeps: BuildArtifactsDeps = {
   resolveStepDataStore: ensureModelExportReady,

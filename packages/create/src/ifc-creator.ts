@@ -55,6 +55,7 @@ import { emitRelFillsElement, emitSpatialRelationships } from './ifc-creator-rel
 import { emitDefaultStyle, emitStyledItems } from './ifc-creator-styles.js';
 import { buildStepHeader } from './ifc-creator-header.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
+import { fileSchemaIdentifier } from '@ifc-lite/data';
 
 // ============================================================================
 // IfcCreator
@@ -2028,7 +2029,7 @@ export class IfcCreator {
 
   private buildHeader(): string {
     return buildStepHeader(this.nowMs(), this.projectParams.Author ?? '', this.projectParams.Organization ?? '',
-      this.projectParams.FileSchemaIdentifier ?? this.schema);
+      fileSchemaIdentifier(this.schema));
   }
 
   // ============================================================================

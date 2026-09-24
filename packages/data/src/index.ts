@@ -70,6 +70,7 @@ export {
   escapeStepString,
 } from './step-serializers.js';
 export { isCompleteStepNumericLiteral } from './step-numeric-literal.js';
+export { fileSchemaIdentifier } from './file-schema-identifier.js';
 export type {
   StepValue,
   EntityRef,

@@ -198,7 +198,18 @@ fn emit<W: std::io::Write>(
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    crate::step_header::write_header(out, opts, source_header.as_ref(), &schema)?;
+    // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's
+    // exact identifier unless this export converts, else declare the target
+    // family's file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351).
+    let declared = source_header
+        .as_ref()
+        .and_then(|h| h.schema_identifiers.first())
+        .filter(|s| !s.is_empty());
+    let header_schema = match declared {
+        Some(token) if !converting => token.as_str(),
+        _ => crate::file_schema::file_schema_identifier(&schema),
+    };
+    crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
 
     let mut written = 0usize;
     for id in &order {

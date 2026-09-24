@@ -105,7 +105,7 @@ Never infer the order from coordinate magnitude without a declared CRS to bound 
 
 IFC4X3, written with IFC4X3_ADD2's entity layouts. `IfcCreator` is configured with the
 `IFC4X3` schema tag, which selects those layouts. Since v1.1 the converted file *declares*
-`FILE_SCHEMA(('IFC4X3_ADD2'))` through `ProjectParams.FileSchemaIdentifier` (§11). The
+`FILE_SCHEMA(('IFC4X3_ADD2'))`, as all IFC4X3 output from `IfcCreator` now does (§11). The
 bare `IFC4X3` token is resolved by IfcOpenShell, and by the buildingSMART validator built
 on it, to a later development schema whose layouts differ, so the same bytes declared as
 `IFC4X3` fail validation (#5351). All entity and attribute definitions below were taken

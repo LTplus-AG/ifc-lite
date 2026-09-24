@@ -33,7 +33,9 @@
 # PR's required check.
 #
 # WHAT IT DOES. Re-exports two real third-party fixtures (ara3d/duplex.ifc,
-# ara3d/IfcOpenHouse_IFC4.ifc) through `StepExporter` and runs
+# ara3d/IfcOpenHouse_IFC4.ifc) through `StepExporter`, plus an IFC4X3 set
+# (IFC4 fixtures converted to IFC4X3, IFC4X3_ADD2 fixtures round-tripped, and
+# `IfcCreator` IFC4X3 output; #5351), and runs
 # `tools/ifcopenshell_reference/validate_export.py` — `ifcopenshell.validate`
 # with `express_rules=True` — against both the re-exports and the ORIGINAL
 # fixtures (a control: a non-conformant input must not read as a writer
@@ -63,7 +65,8 @@ on:
       - "packages/pointcloud/**"
       - "packages/regex-guard/**"
       # The LandXML→IFC4X3 converter writes STEP of its own (#4937); the step
-      # below grades it with the same validator plus the alignment checker.
+      # below grades it with the same validator plus the alignment checker, and
+      # grades IfcCreator's own IFC4X3 output (#5351).
       - "packages/create/**"
       # The rest of create's build closure (`turbo --filter='@ifc-lite/create^...'`,
       # measured with --dry-run) — the step below builds these, so a change to
@@ -120,10 +123,19 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Fetch the two fixtures this check needs
-        run: node scripts/fixtures/fetch-fixtures.mjs tests/models/ara3d/duplex.ifc tests/models/ara3d/IfcOpenHouse_IFC4.ifc
+      # The IFC4 pair, then the IFC4X3 set (#5351): two IFC4 fixtures the
+      # test converts to IFC4X3 and two IFC4X3_ADD2 fixtures it round-trips.
+      - name: Fetch the fixtures this check needs
+        run: >-
+          node scripts/fixtures/fetch-fixtures.mjs
+          tests/models/ara3d/duplex.ifc
+          tests/models/ara3d/IfcOpenHouse_IFC4.ifc
+          tests/models/buildingsmart/Building-Architecture.ifc
+          tests/models/buildingsmart/tessellated-item.ifc
+          tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc
+          tests/models/buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc
 
-      - name: Re-export both fixtures and validate against IfcOpenShell
+      - name: Re-export the fixtures and validate against IfcOpenShell
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts
 
       # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
@@ -139,6 +151,9 @@ jobs:
 
       - name: Grade LandXML→IFC4X3 output (schema + alignment geometry) with IfcOpenShell
         run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
+
+      - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
+        run: pnpm --filter @ifc-lite/create exec vitest run src/ifcopenshell-ifc4x3-conformance.test.ts
 
   report-scheduled-failure:
     needs: validate

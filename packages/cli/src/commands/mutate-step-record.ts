@@ -141,11 +141,37 @@ interface ReadableRecord {
  * were fine and skipping the rest -- is a run that reports success over a
  * file that carries only part of the requested edit.
  */
+/** One attribute mutation that was asked for and not written. */
+export interface SkippedAttributeMutation {
+  expressId: number;
+  /** The attribute as the caller spelled it. */
+  property: string;
+  reason: 'unknown-attribute' | 'not-applicable-to-type';
+  /** Human sentence, identical to what goes to stderr. */
+  message: string;
+}
+
+export interface AttributeMutationResult {
+  content: string;
+  /** Mutations actually written into the STEP text. */
+  applied: number;
+  skipped: SkippedAttributeMutation[];
+}
+
+/**
+ * Rewrite attribute values in STEP text.
+ *
+ * Returns what it did rather than only the text: an attribute the schema does
+ * not give the entity is skipped with a warning, and a caller that cannot see
+ * that warning -- `mutate --json`, which reads this function's return value and
+ * never stderr -- reported `mutated: 1, warnings: []` for a file it had not
+ * changed (#5529).
+ */
 export function applyAttributeMutations(
   content: string,
   mutations: { entity: any; propName: string; value: string }[],
   objectTypeEntities: ReadonlySet<string>,
-): string {
+): AttributeMutationResult {
   const mutationsByEntity = new Map<number, { propName: string; value: string }[]>();
   for (const m of mutations) {
     const id = m.entity.ref.expressId;
@@ -153,7 +179,10 @@ export function applyAttributeMutations(
     list.push({ propName: m.propName, value: m.value });
     mutationsByEntity.set(id, list);
   }
-  if (mutationsByEntity.size === 0) return content;
+  if (mutationsByEntity.size === 0) return { content, applied: 0, skipped: [] };
+
+  const skipped: SkippedAttributeMutation[] = [];
+  let applied = 0;
 
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -251,13 +280,18 @@ export function applyAttributeMutations(
       const attrIdx = ATTRIBUTE_INDEX[mut.propName.toLowerCase()];
       if (attrIdx !== undefined && attrIdx < args.length) {
         if (mut.propName.toLowerCase() === 'objecttype' && !objectTypeEntities.has(rec.type)) {
-          process.stderr.write(`Warning: attribute "ObjectType" not applicable to ${rec.type} #${rec.expressId}, skipping\n`);
+          const message = `attribute "ObjectType" not applicable to ${rec.type} #${rec.expressId}, skipping`;
+          process.stderr.write(`Warning: ${message}\n`);
+          skipped.push({ expressId: rec.expressId, property: mut.propName, reason: 'not-applicable-to-type', message });
           continue;
         }
         const escaped = mut.value.replace(/\\/g, '\\\\').replace(/'/g, "''");
         args[attrIdx] = `'${escaped}'`;
+        applied++;
       } else {
-        process.stderr.write(`Warning: attribute "${mut.propName}" not recognized for entity #${rec.expressId}\n`);
+        const message = `attribute "${mut.propName}" not recognized for entity #${rec.expressId}`;
+        process.stderr.write(`Warning: ${message}\n`);
+        skipped.push({ expressId: rec.expressId, property: mut.propName, reason: 'unknown-attribute', message });
       }
     }
 
@@ -294,5 +328,5 @@ export function applyAttributeMutations(
     outBytes = merged;
   }
 
-  return decoder.decode(outBytes);
+  return { content: decoder.decode(outBytes), applied, skipped };
 }

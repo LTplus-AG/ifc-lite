@@ -133,7 +133,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
 All parse endpoints that return geometry also surface the 2D symbol stream
-(`IfcAnnotation` + `IfcGrid`), matching `@ifc-lite/parse`. The JSON and SSE
+(`IfcAnnotation` + `IfcGrid`), matching `@ifc-lite/parser`. The JSON and SSE
 responses carry it inline as `symbolic_data` (in the `complete` event for the
 streaming variants); the binary Parquet transports expose it by cache key via
 `/api/v1/parse/symbolic/{key}` (see below).
@@ -142,7 +142,7 @@ Every geometry endpoint's `ModelMetadata` carries `length_unit_scale` (factor to
 convert model length values to metres, e.g. `0.001` for millimetres) and, when
 the model has an `IfcMapConversion` / `IfcProjectedCRS`, a `georeferencing`
 object (CRS name, datum, false eastings/northings, orthogonal height, grid-north
-rotation, and a local→map 4×4 matrix) — matching `@ifc-lite/parse`. For the
+rotation, and a local→map 4×4 matrix) — matching `@ifc-lite/parser`. For the
 JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 `X-IFC-Metadata` header.
 
@@ -452,7 +452,7 @@ const available = await client.isParquetSupported();
 ## Data Model
 
 The server computes a complete data model including entities, property sets,
-quantity sets, relationships, spatial hierarchy, and — matching `@ifc-lite/parse`
+quantity sets, relationships, spatial hierarchy, and — matching `@ifc-lite/parser`
 — per-element **classifications** (`IfcClassificationReference`), **materials**
 (`IfcMaterialLayerSet` layers with metre thicknesses), and **documents**
 (`IfcDocumentReference`). The latter three are exposed as flat, element-keyed

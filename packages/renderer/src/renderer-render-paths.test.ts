@@ -1423,6 +1423,26 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         assert.ok(lastSolid < firstFaded, 'a solid sub-batch drew after a ghost and would erase it');
     });
 
+    it('resolves X-Ray once per X-Ray edit, not once per frame', () => {
+        // The resolution walks every id of every batch, which an orbit would
+        // otherwise repeat each frame for an X-Ray that has not changed.
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+
+        h.render({ ghostExceptIds: new Set([2]) });
+        const first = h.renderer['_xrayAlpha'];
+        assert.ok(first !== null);
+
+        h.render({ ghostExceptIds: new Set([2]) });
+        assert.strictEqual(h.renderer['_xrayAlpha'], first, 'identical content resolved X-Ray again');
+
+        h.render({ ghostExceptIds: new Set([1]) });
+        assert.notStrictEqual(h.renderer['_xrayAlpha'], first, 'a changed X-Ray kept the old resolution');
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, DEFAULT_GHOST_ALPHA);
+        assertAlpha(h, subBatchFor(h, [1]).uniformBuffer, 1);
+    });
+
     it('re-splits when SELECTION changes, since selection exempts an entity from fading', () => {
         // Selection is an input to the split (a selected entity is exempt), so it
         // has to reach the sub-batch cache epoch. It did not: the epoch fast path

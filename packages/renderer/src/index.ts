@@ -469,6 +469,11 @@ export class Renderer {
     private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
+    // X-Ray resolution reused while `_partialBatchEpoch` holds: its per-batch
+    // cache carries the walk of every batch's ids and the mixed-batch split,
+    // which otherwise repeat on every frame of an orbit.
+    private _xrayAlpha: XRayAlpha | null = null;
+    private _xrayAlphaEpoch: number = -1;
     private _lastColorOverrideGen: number = -1;
     private _xrayVersion: number = 0;
     private _lastHadPartialSources: boolean = false;
@@ -1837,7 +1842,11 @@ export class Renderer {
         // the user asked to fade the building and got a solid facade standing
         // in front of a ghosted interior.
         this.scene.setInstancedGhosting(options.ghostExceptIds ?? null, selectedExpressIds, ghostAlpha);
-        const xray = new XRayAlpha(options, selectedExpressIds);
+        if (this._xrayAlpha === null || this._xrayAlphaEpoch !== this._partialBatchEpoch) {
+            this._xrayAlpha = new XRayAlpha(options, selectedExpressIds);
+            this._xrayAlphaEpoch = this._partialBatchEpoch;
+        }
+        const xray = this._xrayAlpha;
         const alphaForMesh = (expressId: number, fallback: number): number => xray.forEntity(expressId, fallback);
         const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 

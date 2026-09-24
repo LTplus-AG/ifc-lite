@@ -112,6 +112,29 @@ pub(crate) fn crossing_vertex_penetration(
     deepest
 }
 
+/// Distance from `p` to `mesh`'s surface, and whether `p` is CLEAR of that
+/// surface: farther from it than the pair's depth floor along the direction
+/// from the nearest surface point to `p` (#5751).
+///
+/// A ray-parity (`contains_point`) verdict is trustworthy only for a clear
+/// point. For a point on the surface — which is exactly where a probe lands
+/// for a flush pair — parity is a coin flip decided by f32 rounding, and any
+/// rigid translation re-rolls it. The threshold is the classification floor
+/// itself (`depth_floor`, #5591): a point within it of a surface is within
+/// f32 noise of being on it, so it is evidence of contact, not of volume.
+/// One rule for every probe that asks "is this point clearly inside".
+pub(crate) fn surface_clearance(mesh: &TriMesh, p: Vec3, aabb_a: &Aabb, aabb_b: &Aabb) -> (f64, bool) {
+    let (d, q) = mesh.closest_on_surface(p);
+    let clear = d > 0.0 && d > depth_floor([(p[0] - q[0]) / d, (p[1] - q[1]) / d, (p[2] - q[2]) / d], aabb_a, aabb_b);
+    (d, clear)
+}
+
+/// `p` is inside `mesh`'s solid AND clear of its surface (see
+/// [`surface_clearance`]). Parity first: it is the cheaper query.
+pub(crate) fn clearly_inside(mesh: &TriMesh, p: Vec3, aabb_a: &Aabb, aabb_b: &Aabb) -> bool {
+    mesh.contains_point(p) && surface_clearance(mesh, p, aabb_a, aabb_b).1
+}
+
 /// Whether `inner` — AABB-contained in `outer`, with no triangle pair
 /// crossing beyond f32 noise — is buried in `outer`'s solid (#5473).
 ///
@@ -124,9 +147,9 @@ pub(crate) fn crossing_vertex_penetration(
 /// vertices), so a rigid translation re-rolled the verdict.
 ///
 /// Candidates are `inner`'s vertex centroid (when that lies inside `inner`)
-/// and every vertex; a candidate is CLEAR when it is more than
-/// [`PROBE_CLEAR_ULPS`] f32 ULPs of its largest coordinate off `outer`'s
-/// surface, where its parity is trustworthy.
+/// and every vertex; a candidate is CLEAR of `outer`'s surface by
+/// [`surface_clearance`] (the pair's depth floor along its own direction,
+/// the same rule as the AABB-penetration probe, #5751).
 /// 1. Any clear candidate inside `outer` means its shell is buried: `true`.
 ///    Every candidate is checked, because `inner` may be several
 ///    disconnected shells and only one of them need be buried (review of
@@ -138,16 +161,18 @@ pub(crate) fn crossing_vertex_penetration(
 ///    exactly filling a notch (its centroid is outside) from a duplicate of
 ///    part of `outer` (its centroid is inside).
 ///
-/// Visit order and strict comparisons keep the pick bit-identical to the TS
-/// `containedSolidIsBuried`.
-pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> bool {
+/// `aabb_a` / `aabb_b` are the pair's element AABBs (in either order: the
+/// floor is symmetric). Visit order and strict comparisons keep the pick
+/// bit-identical to the TS `containedSolidIsBuried`.
+pub(crate) fn contained_solid_is_buried(
+    inner: &TriMesh,
+    outer: &TriMesh,
+    aabb_a: &Aabb,
+    aabb_b: &Aabb,
+) -> bool {
     if inner.count == 0 {
         return false;
     }
-    let clear = |p: Vec3, d: f64| {
-        let m = p[0].abs().max(p[1].abs()).max(p[2].abs()).max(1.0);
-        d > PROBE_CLEAR_ULPS * F32_ULP_SCALE * m
-    };
     let centroid = inner.vertex_centroid();
     let candidates: Vec<Vec3> = inner
         .contains_point(centroid)
@@ -155,20 +180,16 @@ pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> boo
         .into_iter()
         .chain((0..inner.vertex_count()).map(|i| inner.vertex(i as u32)))
         .collect();
-    // 1. A clearly buried shell. Parity first: it is the cheaper query, and
-    //    only candidates it places inside need their distance.
-    if candidates
-        .iter()
-        .any(|&p| outer.contains_point(p) && clear(p, outer.distance_to_surface(p)))
-    {
+    // 1. A clearly buried shell.
+    if candidates.iter().any(|&p| clearly_inside(outer, p, aabb_a, aabb_b)) {
         return true;
     }
     // 2./3. No shell is clearly buried.
     let mut probe: Option<Vec3> = None;
     let mut farthest = f64::NEG_INFINITY;
     for &p in &candidates {
-        let d = outer.distance_to_surface(p);
-        if clear(p, d) {
+        let (d, clear) = surface_clearance(outer, p, aabb_a, aabb_b);
+        if clear {
             return false;
         }
         if d > farthest {
@@ -178,13 +199,6 @@ pub(crate) fn contained_solid_is_buried(inner: &TriMesh, outer: &TriMesh) -> boo
     }
     probe.is_some_and(|p| outer.contains_point(p))
 }
-
-/// How far off `outer`'s surface a candidate must be for
-/// `contained_solid_is_buried` to trust its ray parity, in f32 ULPs of its
-/// largest coordinate. Generous on purpose: rounding moves a point on the
-/// surface by a few ULPs, and a vertex any closer is treated as touching,
-/// which only defers the verdict to a farther candidate.
-const PROBE_CLEAR_ULPS: f64 = 64.0;
 
 /// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
 /// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for

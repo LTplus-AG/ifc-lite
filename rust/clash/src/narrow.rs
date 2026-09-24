@@ -8,7 +8,8 @@
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
 use crate::depth::{
-    box_penetration, contained_solid_is_buried, crossing_vertex_penetration, depth_clash_result,
+    box_penetration, clearly_inside, contained_solid_is_buried, crossing_vertex_penetration,
+    depth_clash_result,
 };
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
@@ -274,9 +275,9 @@ pub fn test_pair(
     // inner pick is deterministic on equal AABBs. Exact box-box depth when
     // both are boxes; else the AABB gap is an estimate.
     let enclosed = if aabb_contains(aabb_b, aabb_a) {
-        contained_solid_is_buried(tri_a, tri_b)
+        contained_solid_is_buried(tri_a, tri_b, aabb_a, aabb_b)
     } else if aabb_contains(aabb_a, aabb_b) {
-        contained_solid_is_buried(tri_b, tri_a)
+        contained_solid_is_buried(tri_b, tri_a, aabb_a, aabb_b)
     } else {
         false
     };
@@ -314,9 +315,16 @@ pub fn test_pair(
         if gap < -tolerance {
             let probe_centroid = mid(tri_a.vertex_centroid(), tri_b.vertex_centroid());
             let probe_overlap = overlap.center();
-            if (tri_a.contains_point(probe_centroid) && tri_b.contains_point(probe_centroid))
-                || (tri_a.contains_point(probe_overlap) && tri_b.contains_point(probe_overlap))
-            {
+            // Each probe counts only when it is CLEARLY inside both solids:
+            // for a flush pair the AABB-overlap centre sits ON the shared
+            // face, where ray parity is a coin flip, and a lucky flip used to
+            // report the pair Hard at the AABB estimate (an element
+            // dimension, not a depth) — differently wherever the model sat
+            // (#5751). Same rule as `contained_solid_is_buried`.
+            let inside_both = |p: Vec3| {
+                clearly_inside(tri_a, p, aabb_a, aabb_b) && clearly_inside(tri_b, p, aabb_a, aabb_b)
+            };
+            if inside_both(probe_centroid) || inside_both(probe_overlap) {
                 // Tight contact region (clamped to the element overlap, not the
                 // whole-element AABB intersection, #1362/#1402). Exact box-box
                 // depth when both are boxes. May legitimately return `None`

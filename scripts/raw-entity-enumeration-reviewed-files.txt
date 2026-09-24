@@ -13,6 +13,7 @@ packages/cli/src/commands/diff.ts
 packages/cli/src/commands/gym/channels.ts
 packages/cli/src/commands/info.ts
 packages/cli/src/commands/validate.ts
+packages/cli/src/headless-backend.ts
 packages/clash/src/adapters/step.ts
 packages/create/src/in-store/resolve-anchor.ts
 packages/create/src/in-store/style-entity-reader.ts
@@ -37,7 +38,9 @@ packages/ids/src/bridge/classifications.ts
 packages/ids/src/bridge/data-accessor.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
+packages/mcp/src/backend-query.ts
 packages/mcp/src/effective-entity-membership.ts
+packages/mcp/src/viewer-manager.ts
 packages/mutations/src/express-id-watermark.ts
 packages/mutations/src/prepare-entity-operations.ts
 packages/mutations/src/source-entity-index.ts

@@ -21,11 +21,12 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 ## Quick start
 
-The module is `ifclite_geom` and exposes three functions, all taking the raw IFC
+The module is `ifclite_geom` and exposes four functions, all taking the raw IFC
 file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
 same geometry and differ only in output format; pass
 `include_directrices=True` to include analytic swept-disk paths. `entity_data`
 reads attributes and property sets instead, without tessellating.
+`check_swept_disks` checks authored swept-disk paths without tessellating.
 
 ```python
 import ifclite_geom
@@ -144,6 +145,44 @@ field before using the source path for fabrication. The flag does not describe
 cuts from external `IfcRelVoidsElement` openings. Extraction issues appear in
 `directrix_diagnostics`. With the flag omitted, both functions keep their
 existing output shape and skip this extraction.
+
+### `check_swept_disks(ifc_bytes: bytes, ids: set[int] | None = None, *, zero_length_tolerance_m: float = 1e-9, gap_tolerance_m: float = 1e-6, tangent_tolerance_rad: float = 1e-6) -> dict`
+
+Run numerical checks on authored `IfcSweptDiskSolid` paths, without a mesh
+pass. The function extracts each selected occurrence once and runs the shared
+Rust checker on each source solid. Results are keyed by occurrence STEP id;
+multiple sweeps under one occurrence stay separate and retain `solid_id`,
+`directrix_id`, and `mapping_path`. `diagnostics` reports problems traversing
+the representation. `ids` filters product occurrences as it does in the
+geometry functions; an empty set returns empty `elements`.
+
+```python
+checks = ifclite_geom.check_swept_disks(ifc_bytes)
+for step_id, entries in checks["elements"].items():
+    for entry in entries:
+        report = entry["report"]
+        if report["skipped_reason"] is not None:
+            print(step_id, "uncheckable:", report["skipped_reason"])
+            continue
+        for finding in report["findings"]:
+            print(step_id, entry["solid_id"], finding["code"],
+                  finding["segment_index"], finding["measured"])
+```
+
+Each finding carries a stable `code`, `segment_index`, optional
+`next_segment_index` for a join, measured value, threshold and units (`m` or
+`rad`). Codes are `zero_length_segment`, `consecutive_gap`,
+`tangent_discontinuity`, and `arc_radius_not_greater_than_disk_radius`.
+The defaults flag segments at or below 1 nanometre, gaps above 1 micrometre,
+and tangent changes above 1 microradian. Supply finite, nonnegative tolerances
+to suit the model; invalid values raise `ValueError` even when `ids` is empty.
+An unsupported analytic path has a `skipped_reason` and no partial findings.
+`source_modified=True` means the checker measured an authored CSG operand,
+which may differ from the finished body. These geometric findings do not
+certify fabrication compliance or calculate bend allowances. IFC allows
+non-tangent consecutive segments to form a miter, so
+`tangent_discontinuity` is an inspection cue rather than an automatic schema
+violation ([IfcSweptDiskSolid](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcSweptDiskSolid.htm)).
 
 ### Tessellation quality
 

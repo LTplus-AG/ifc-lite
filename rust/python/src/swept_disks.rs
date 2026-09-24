@@ -4,7 +4,7 @@
 
 //! Python and JSON views of the shared Rust swept-disk description.
 
-use ifc_lite_processing::SweptDiskDescriptions;
+use ifc_lite_processing::{check_swept_disk, SweptDiskCheckOptions, SweptDiskDescriptions};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -38,4 +38,42 @@ pub(super) fn add_to_json(
     document["swept_disks"] = serde_json::to_value(&descriptions.elements)?;
     document["directrix_diagnostics"] = serde_json::to_value(&descriptions.diagnostics)?;
     serde_json::to_string(&document)
+}
+
+/// Check each authored sweep and keep occurrence IDs as Python integer keys.
+/// The checker owns the report shape; this boundary only attaches the IFC
+/// identity needed to distinguish multiple source solids in one product.
+pub(super) fn checks_to_python(
+    py: Python<'_>,
+    descriptions: &SweptDiskDescriptions,
+    options: &SweptDiskCheckOptions,
+) -> PyResult<Py<PyAny>> {
+    let mut encoded_elements = std::collections::BTreeMap::new();
+    for (id, disks) in &descriptions.elements {
+        let entries = disks
+            .iter()
+            .map(|disk| {
+                let report = check_swept_disk(disk, options)
+                    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+                Ok(serde_json::json!({
+                    "solid_id": disk.solid_id,
+                    "directrix_id": disk.directrix_id,
+                    "mapping_path": disk.mapping_path,
+                    "report": report,
+                }))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        encoded_elements.insert(*id, entries);
+    }
+    let payload = serde_json::to_string(&encoded_elements)
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;
+    let elements = PyDict::new(py);
+    for id in descriptions.elements.keys() {
+        elements.set_item(*id, decoded.get_item(id.to_string())?)?;
+    }
+    let out = PyDict::new(py);
+    out.set_item("elements", elements)?;
+    out.set_item("diagnostics", &descriptions.diagnostics)?;
+    Ok(out.into_any().unbind())
 }

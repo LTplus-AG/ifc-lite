@@ -25,6 +25,7 @@ REPO = Path(__file__).resolve().parents[3]
 # A single reinforcing-style bar: IfcSweptDiskSolid over a composite arc, i.e.
 # the curve-heavy shape the quality knob exists for.
 REBAR = REPO / "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
+TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
 WALLS = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
@@ -161,6 +162,57 @@ def test_swept_disk_directrix_respects_id_filter():
     assert empty["elements"] == {}
     unknown = ifclite_geom.geometry_data_buffers(ifc, ids={999_999}, include_directrices=True)
     assert unknown["swept_disks"] == {}
+
+
+def test_issue_5758_swept_disk_checks_use_rust_source_geometry():
+    checks = ifclite_geom.check_swept_disks(read(REBAR))
+    assert checks["diagnostics"] == []
+    assert set(checks["elements"]) == {125}
+    (entry,) = checks["elements"][125]
+    assert (entry["solid_id"], entry["directrix_id"], entry["mapping_path"]) == (
+        72, 71, []
+    )
+    assert entry["report"] == {
+        "source_modified": False,
+        "skipped_reason": None,
+        "findings": [],
+    }
+    assert ifclite_geom.check_swept_disks(read(REBAR), ids=set())["elements"] == {}
+
+
+def test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources():
+    source = read(TRIMMED_BAR).decode()
+    unsupported = source.replace(
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#10,$,$,2.,1.);",
+    )
+    assert unsupported != source
+    (entry,) = ifclite_geom.check_swept_disks(unsupported.encode())["elements"][50]
+    assert entry["report"]["source_modified"] is False
+    assert entry["report"]["skipped_reason"]
+    assert entry["report"]["findings"] == []
+
+    modified = source.replace(
+        "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));",
+        "#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\n"
+        "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
+    )
+    assert modified != source
+    entries = ifclite_geom.check_swept_disks(modified.encode())["elements"][50]
+    assert len(entries) == 2
+    assert all(entry["solid_id"] == 43 for entry in entries)
+    assert all(entry["report"]["source_modified"] is True for entry in entries)
+    assert all(entry["report"]["skipped_reason"] is None for entry in entries)
+
+
+def test_issue_5758_invalid_check_options_raise_even_when_no_ids_selected():
+    for options in (
+        {"zero_length_tolerance_m": float("nan")},
+        {"gap_tolerance_m": -1.0},
+        {"tangent_tolerance_rad": float("inf")},
+    ):
+        with pytest.raises(ValueError, match="must be finite and nonnegative"):
+            ifclite_geom.check_swept_disks(b"", ids=set(), **options)
 
 
 def test_issue_4803_id_filter_none_empty_subset_and_unknown():

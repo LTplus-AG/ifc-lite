@@ -16,6 +16,9 @@ mod transform;
 use transform::transform_disk;
 mod metrics;
 pub use metrics::{DirectrixMetrics, DirectrixSegmentMetrics};
+mod checks;
+pub use checks::{check_swept_disk, SweptDiskCheckError, SweptDiskCheckFinding,
+    SweptDiskCheckOptions, SweptDiskCheckReport, SweptDiskFindingCode};
 mod occurrence;
 mod operands;
 use operands::{is_boolean_operand, is_csg_select};

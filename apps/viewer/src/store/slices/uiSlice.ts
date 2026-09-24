@@ -26,12 +26,9 @@ import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
-
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
-
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
-
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).
  * Armed when a property is added from the bSDD card, consumed by the

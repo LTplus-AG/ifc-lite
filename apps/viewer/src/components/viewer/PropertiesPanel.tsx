@@ -1752,7 +1752,6 @@ export function PropertiesPanel() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
             <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {foundQuantities.length === 0 ? (
@@ -1765,7 +1764,6 @@ export function PropertiesPanel() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="bsdd" className="m-0 p-3 overflow-hidden">
             {selectedEntity && (
               <BsddCard

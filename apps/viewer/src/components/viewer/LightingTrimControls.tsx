@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * WebGPU shading trim controls for the Sun & Sky panel: Exposure, Light
+ * WebGPU shading trim controls for the Environment panel: Exposure, Light
  * hardness and Terminator softness. All three are user trims composed onto the
  * active lighting preset (the preset supplies the base; switching preset
  * changes the base, the trims persist), so they share one control shape — a
@@ -32,7 +32,7 @@ function TrimSlider({ label, resetTitle, value, min, max, onChange }: {
           type="button"
           onClick={() => onChange(1)}
           title={resetTitle}
-          className={cn('tabular-nums transition-colors', value !== 1 && 'text-foreground hover:text-teal-600')}
+          className={cn('tabular-nums transition-colors', value !== 1 && 'text-foreground hover:text-primary')}
         >
           {value.toFixed(2)}×
         </button>
@@ -44,7 +44,7 @@ function TrimSlider({ label, resetTitle, value, min, max, onChange }: {
         step={0.05}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-teal-600"
+        className="w-full accent-primary"
       />
     </label>
   );

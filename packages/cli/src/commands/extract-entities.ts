@@ -31,7 +31,7 @@
 import { constants as bufferConstants } from 'node:buffer';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
+import { fatal, getFlag, getAllFlags, hasFlag, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { logger } from '../logger.js';
 import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
 import { spatialAncestors } from './spatial-ancestors.js';
@@ -342,6 +342,9 @@ async function triage(bytes: Uint8Array): Promise<TriageRow[]> {
 // ── Command ─────────────────────────────────────────────────────────────────
 
 export async function extractEntitiesCommand(args: string[]): Promise<void> {
+  // stdout carries this command's payload, so redirect console diagnostics
+  // BEFORE the first parse/geometry init (see the function's own docstring).
+  routeConsoleDiagnosticsToStderr();
   const filePath = args.find((a) => !a.startsWith('-') && !isFlagValue(args, a));
   if (!filePath) {
     fatal(

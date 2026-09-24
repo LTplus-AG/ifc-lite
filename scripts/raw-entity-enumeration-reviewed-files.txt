@@ -2,6 +2,7 @@
 #in these files needs an adjacent @raw-entity-enumeration-ok reason; the gate
 #does not grant an old-site baseline here. Keep a file listed after its last
 #raw access is removed so a future regression still fails.
+apps/viewer/src/store/slices/mutationSlice.ts
 packages/cache/src/adapt.ts
 packages/cache/src/sections/entities.ts
 packages/cache/src/sections/entity-index.ts
@@ -13,6 +14,7 @@ packages/cli/src/commands/diff.ts
 packages/cli/src/commands/gym/channels.ts
 packages/cli/src/commands/info.ts
 packages/cli/src/commands/validate.ts
+packages/cli/src/headless-backend.ts
 packages/clash/src/adapters/step.ts
 packages/create/src/in-store/resolve-anchor.ts
 packages/create/src/in-store/style-entity-reader.ts
@@ -27,6 +29,7 @@ packages/export/src/entity-iteration.ts
 packages/export/src/georef-closure.ts
 packages/export/src/ifc5-tree-scope.ts
 packages/export/src/merged-context.ts
+packages/export/src/merged-exporter.ts
 packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
 packages/export/src/step-map-unit.ts
@@ -37,11 +40,17 @@ packages/ids/src/bridge/classifications.ts
 packages/ids/src/bridge/data-accessor.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
+packages/mcp/src/backend-query.ts
 packages/mcp/src/effective-entity-membership.ts
+packages/mcp/src/viewer-manager.ts
 packages/mutations/src/express-id-watermark.ts
+packages/mutations/src/prepare-entity-operations.ts
 packages/mutations/src/source-entity-index.ts
 packages/parser/src/data-store-transport.ts
 packages/parser/src/cost-reader.ts
+packages/parser/src/classification-resolver.ts
+packages/parser/src/structural-load-extractor.ts
+packages/parser/src/structural-step-values.ts
 packages/parser/src/columnar-parser-root-attributes.ts
 packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts
@@ -63,16 +72,23 @@ apps/viewer/src/components/viewer/bulk-property-editor-options.ts
 apps/viewer/src/components/viewer/hierarchy/effectiveGroupEntities.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
+apps/viewer/src/components/viewer/properties/effectiveSelectedClass.ts
 apps/viewer/src/hooks/has-entity-type.ts
 apps/viewer/src/hooks/useIfcFederation.ts
 apps/viewer/src/hooks/ingest/viewerModelIngest.ts
 apps/viewer/src/hooks/useIfcCache.ts
 apps/viewer/src/lib/collab/share-scope.ts
+apps/viewer/src/lib/collab/owner-seed-paths.ts
+apps/viewer/src/lib/collab/room-step-source.ts
+apps/viewer/src/lib/collab/step-seed.ts
 apps/viewer/src/lib/compare/compareScope.ts
+apps/viewer/src/lib/drawing2d-markup/drawing-markup-restore.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
+apps/viewer/src/lib/linear-element-edit.ts
 apps/viewer/src/lib/lists/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts
+apps/viewer/src/lib/slab-edit.ts
 apps/viewer/src/sdk/adapters/export-adapter.ts
 apps/viewer/src/sdk/adapters/model-adapter.ts
 apps/viewer/src/sdk/local-backend.ts

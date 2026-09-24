@@ -58,6 +58,7 @@ import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
+import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
@@ -446,29 +447,17 @@ export function PropertiesPanel() {
     return null;
   }, [overlayEntity]);
 
-  // Check if the selected entity is a type entity (IfcWallType, etc.)
-  // Uses the entity type name to detect — type entity names end with "Type"
-  const isTypeEntity = useMemo(() => {
-    if (!selectedEntity) return false;
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore?.entities) return false;
-    const typeName = dataStore.entities.getTypeName(selectedEntity.expressId);
-    return typeName.endsWith('Type');
-  }, [selectedEntity, model, ifcDataStore]);
-
-  // Detect a material definition selected from the "Materials" hierarchy tab.
-  // Materials aren't products, so the EntityTable's getTypeName doesn't cover
-  // them — read the raw class from the entity index instead.
-  const selectedMaterialId = useMemo(() => {
+  // Selection can name an overlay-created or retyped class that the parsed
+  // EntityTable and source index have never seen. Both type-owned properties
+  // and the Materials route must use the same live answer.
+  const selectedClass = useMemo(() => {
     if (!selectedEntity) return null;
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    const rawType = (dataStore as IfcDataStore | null)?.entityIndex?.byId?.get(selectedEntity.expressId)?.type;
-    // Every IfcMaterialSelect member, not just the set-valued ones: the tab
-    // renders a row for any definition the usage index leaves unexpanded (a
-    // bare IfcMaterialConstituent, an IfcMaterialLayerWithOffsets), and a
-    // narrower gate here turns those rows into dead clicks.
-    return isMaterialDefinitionType(rawType) ? selectedEntity.expressId : null;
-  }, [selectedEntity, model, ifcDataStore]);
+    const modelId = selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId;
+    return effectiveSelectedClass(activeDataStore as IfcDataStore | null, mutationViews.get(modelId), selectedEntity.expressId);
+  }, [selectedEntity, activeDataStore, mutationViews, mutationVersion]);
+  const isTypeEntity = selectedClass?.endsWith('Type') ?? false;
+  const selectedMaterialId = selectedEntity && isMaterialDefinitionType(selectedClass)
+    ? selectedEntity.expressId : null;
 
   // Unified property/quantity access - EntityNode handles on-demand extraction automatically
   // These hooks must be called before any early return to maintain hook order

@@ -12,8 +12,10 @@
  *     `scene.sun` / fog in CesiumOverlay, so "Sky" means the same thing in
  *     whichever mode is active.
  *
- * Preset/sky/exposure choices persist in localStorage; panel visibility is
- * session-only.
+ * Preset/sky/exposure choices persist in localStorage. Panel visibility is
+ * NOT owned here (#5506): the Environment panel is a flag-free side panel
+ * like Location zones / Load report / Cost, driven purely by
+ * `sidebarActivePanel` (`store/index.ts`'s `SIDEBAR_PANEL_FLAGS` precedent).
  *
  * `envSkyEnabled` itself always rests at `false` here so WebGPU's preset
  * behaviour (which this flag is shared with) is untouched — the Cesium
@@ -56,8 +58,6 @@ export interface EnvironmentSlice {
    * above 1 softens it. The renderer clamps the product to [0, 1].
    */
   envSoftness: number;
-  /** Whether the Sun & Sky panel is open. */
-  envPanelOpen: boolean;
 
   /**
    * Sun cast shadows (#2670). Off by default — an extra depth pre-pass, so it
@@ -95,8 +95,6 @@ export interface EnvironmentSlice {
   setEnvExposure: (exposure: number) => void;
   setEnvHardness: (hardness: number) => void;
   setEnvSoftness: (softness: number) => void;
-  setEnvPanelOpen: (open: boolean) => void;
-  toggleEnvPanel: () => void;
   setEnvShadowsEnabled: (enabled: boolean) => void;
   setEnvSunAngle: (deg: number) => void;
   setEnvShadowResolution: (resolution: number) => void;
@@ -235,7 +233,6 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
 
   return {
     ...initial,
-    envPanelOpen: false,
 
     // Cast-shadow softness is a property of the sky, so a preset switch seeds
     // envSunAngle from the preset (louistrue's #2670 review). The slider still
@@ -246,8 +243,6 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     setEnvExposure: (exposure) => update({ envExposure: clampExposure(exposure) }),
     setEnvHardness: (hardness) => update({ envHardness: clampHardness(hardness) }),
     setEnvSoftness: (softness) => update({ envSoftness: clampSoftness(softness) }),
-    setEnvPanelOpen: (open) => set({ envPanelOpen: open }),
-    toggleEnvPanel: () => set((s) => ({ envPanelOpen: !s.envPanelOpen })),
     setEnvShadowsEnabled: (enabled) => update({ envShadowsEnabled: enabled }),
     setEnvSunAngle: (deg) => update({ envSunAngle: clampSunAngle(deg) }),
     setEnvShadowResolution: (resolution) => update({ envShadowResolution: clampShadowResolution(resolution) }),

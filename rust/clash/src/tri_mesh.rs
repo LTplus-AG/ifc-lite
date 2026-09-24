@@ -196,32 +196,24 @@ impl TriMesh {
         [s[0] / nf, s[1] / nf, s[2] / nf]
     }
 
-    /// Minimum point-to-triangle distance over `tris`, as a squared distance.
-    fn min_dist_sq_over(&self, p: Vec3, tris: &[u32]) -> f64 {
-        let mut best = f64::INFINITY;
-        for &t in tris {
-            let [a, b, c] = self.tri(t as usize);
+    /// Minimum point-to-triangle squared distance over `tris`, with the
+    /// closest point (the first one reaching the minimum, in visit order).
+    fn closest_over(&self, p: Vec3, tris: impl IntoIterator<Item = usize>) -> (f64, Vec3) {
+        let mut best = (f64::INFINITY, p);
+        for t in tris {
+            let [a, b, c] = self.tri(t);
             let q = closest_pt_point_triangle(p, a, b, c);
             let d2 = dist_sq(p, q);
-            if d2 < best {
-                best = d2;
+            if d2 < best.0 {
+                best = (d2, q);
             }
         }
         best
     }
 
-    /// Exhaustive fallback for `distance_to_surface`: every triangle, index order.
-    fn distance_to_surface_scan(&self, p: Vec3) -> f64 {
-        let mut best = f64::INFINITY;
-        for t in 0..self.count {
-            let [a, b, c] = self.tri(t);
-            let q = closest_pt_point_triangle(p, a, b, c);
-            let d2 = dist_sq(p, q);
-            if d2 < best {
-                best = d2;
-            }
-        }
-        best.sqrt()
+    /// [`Self::closest_on_surface`]'s distance alone.
+    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
+        self.closest_on_surface(p).0
     }
 
     /// Exact distance from `p` to this mesh's surface: the minimum point-to-
@@ -266,10 +258,22 @@ impl TriMesh {
     /// empty. It is kept only as defence-in-depth against a future
     /// `query_tris` regression, not as a code path with coverage; do not read
     /// it as a tested safety net.
-    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
+    ///
+    /// Returns the distance together with the closest surface point, whose
+    /// direction from `p` is what the depth's precision floor is projected
+    /// onto (#5405).
+    pub fn closest_on_surface(&self, p: Vec3) -> (f64, Vec3) {
         if self.count == 0 {
-            return f64::INFINITY;
+            return (f64::INFINITY, p);
         }
+        let scan = || {
+            let (d2, q) = self.closest_over(p, 0..self.count);
+            (d2.sqrt(), q)
+        };
+        let over = |tris: &[u32]| {
+            let (d2, q) = self.closest_over(p, tris.iter().map(|&t| t as usize));
+            (d2.sqrt(), q)
+        };
         let mut h = self.probe_seed;
         // 64 doublings from a positive seed overflow to infinity, whose cube
         // intersects every finite box — so the loop only runs out on NaN
@@ -278,19 +282,19 @@ impl TriMesh {
         for _ in 0..64 {
             let hits = self.query_tris(&cube_around(p, h));
             if !hits.is_empty() {
-                let d = self.min_dist_sq_over(p, &hits).sqrt();
-                if d <= h {
-                    return d;
+                let near = over(&hits);
+                if near.0 <= h {
+                    return near;
                 }
-                let wider = self.query_tris(&cube_around(p, d));
+                let wider = self.query_tris(&cube_around(p, near.0));
                 if !wider.is_empty() {
-                    return self.min_dist_sq_over(p, &wider).sqrt();
+                    return over(&wider);
                 }
-                return self.distance_to_surface_scan(p);
+                return scan();
             }
             h *= 2.0;
         }
-        self.distance_to_surface_scan(p)
+        scan()
     }
 
     /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and

@@ -32,6 +32,13 @@ export const flowPanelEn = {
   'flowPanel.examples.size': '{nodes} nodes · {edges} edges',
   'flowPanel.noModel': 'Load a model to run a graph.',
 
+  'flowPanel.contributed.optgroup': 'From extensions',
+  'flowPanel.contributed.optionLabel': '{name} — {extension}',
+  'flowPanel.contributed.badge': 'From extension "{extension}" — read-only',
+  'flowPanel.contributed.duplicate': 'Duplicate to my graphs',
+  'flowPanel.contributed.duplicateAriaLabel': 'Duplicate this graph into your own saved graphs',
+  'flowPanel.contributed.diagnostics': '{count} extension graph(s) failed validation — see console',
+
   'flowPanel.run.ok': 'Run finished',
   'flowPanel.run.failed': 'Run failed',
   'flowPanel.run.summary': '{ok} ok · {memo} cached · {noop} no-op · {error} failed · {skipped} skipped',

@@ -50,11 +50,11 @@ import { checkCommand } from './commands/check.js';
 import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readCliVersion } from './version.js';
+import { readPackageVersion } from '@ifc-lite/data';
 import { buildHelp } from './help.js';
 
 // package.json sits one level above both `src/` and `dist/`.
-const VERSION = readCliVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
+const VERSION = readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'));
 
 /** Command being executed, captured for the top-level error handler. */
 let activeCommand = '';

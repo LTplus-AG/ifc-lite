@@ -3,29 +3,32 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Tool-specific overlays for measure and section tools.
+ * Mounts the active tool's HUD presence from the `TOOL_HUD` table (#5503,
+ * charter #5478): its bar into the HUD's top-center region, its hint into
+ * the bottom-center region (both through `HudItem`, the only placement
+ * knob a tool gets), and its scene layer under the one `SceneOverlayRoot`
+ * this component owns — so `WorldLabel` / `CursorInput` in a tool's scene
+ * layer find the shared projector without each tool mounting a root.
  *
- * Wrapped in `SceneOverlayRoot` (#5486 kernel, first consumer #5502): the
- * scene layers and projector are React context, so every world-anchored
- * primitive a tool renders (`WorldLabel` in `MeasurementVisuals`) must sit
- * under it. Mounted here rather than in `ViewportContainer` (at its module
- * budget); the root's own layer div is a sibling of the tool overlays in the
- * same viewport container, so `RendererProjectorSource` still resolves the
- * canvas through `closest('[data-viewport]')`.
+ * `SceneOverlayRoot` (#5486 kernel, first consumer #5502) lives here rather
+ * than in `ViewportContainer` (at its module budget): this is the one
+ * always-mounted descendant of the `[data-viewport]` element that every
+ * tool renders under, and the root's own layer div is a sibling of the tool
+ * overlays in the same viewport container, so `RendererProjectorSource`
+ * still resolves the canvas through `closest('[data-viewport]')`. Overlays
+ * that are siblings of this component (`AnnotationLayer`, `BCFOverlay`,
+ * `CollabPresenceLayer`) migrate onto the kernel in #5510-#5512 and lift
+ * the root up when they do.
  */
 
 import { useEffect, type ReactNode } from 'react';
-import { SceneOverlayRoot } from '../viewport-ui/scene';
 import { RepositionPanel } from './reposition/RepositionPanel';
 import { useViewerStore } from '@/store';
-import { MeasureOverlay } from './tools/MeasurePanel';
-import { SectionOverlay } from './tools/SectionPanel';
-import { AddElementOverlay } from './tools/AddElementOverlay';
-import { GizmoOverlay } from './tools/GizmoOverlay';
-import { WallEndpointOverlay } from './tools/WallEndpointOverlay';
-import { SplitOverlay } from './tools/SplitOverlay';
-import { SplitNumericInput } from './tools/SplitNumericInput';
-import { SpaceSketchOverlay } from './tools/SpaceSketchOverlay';
+import { useTranslation } from '@/i18n';
+import type { TranslationKey } from '@/i18n';
+import { HudHint, HudItem } from '../viewport-ui/hud';
+import { SceneOverlayRoot } from '../viewport-ui/scene';
+import { TOOL_HUD, isToolId } from '@/lib/viewport-ui/tool-hud-registry';
 
 export function ToolOverlays() {
   return <SceneOverlayRoot><ToolOverlaysBody /></SceneOverlayRoot>;
@@ -39,53 +42,25 @@ function ToolOverlaysBody(): ReactNode {
   }, [repositionOpen, activeTool]);
   if (repositionOpen && activeTool === 'select') return <RepositionPanel />;
 
-  if (activeTool === 'spaceSketch') {
-    return <SpaceSketchOverlay />;
-  }
+  const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
+  return (
+    <>
+      {entry?.Bar && (
+        <HudItem region="top-center" order={0}>
+          <entry.Bar />
+        </HudItem>
+      )}
+      {entry?.Scene && <entry.Scene />}
+      {entry?.hint && <ToolHint hint={entry.hint} />}
+    </>
+  );
+}
 
-  if (activeTool === 'measure') {
-    return <MeasureOverlay />;
-  }
-
-  if (activeTool === 'section') {
-    return <SectionOverlay />;
-  }
-
-  if (activeTool === 'addElement') {
-    return <AddElementOverlay />;
-  }
-
-  if (activeTool === 'split') {
-    // SplitOverlay renders the SVG preview (perpendicular guide /
-    // slab outline / ghost cut line). SplitNumericInput renders
-    // the floating numeric panel next to the cursor for precise
-    // single-click element splits (wall / beam / column / member).
-    // The two are siblings rather than nested so the SVG layer
-    // stays pointer-events-none while the numeric input is
-    // interactive.
-    return (
-      <>
-        <SplitOverlay />
-        <SplitNumericInput />
-      </>
-    );
-  }
-
-  // Select tool: surface the move gizmo + wall-endpoint handles when
-  // edit mode is on. Both overlays self-gate (return null when their
-  // conditions aren't met) so always-rendering them here is safe.
-  // Wall handles render on top of the gizmo so a wall selection
-  // gets both axis arrows for translate AND endpoint drag handles
-  // for resize — they don't overlap visually (gizmo at bbox center,
-  // handles at start/end).
-  if (activeTool === 'select') {
-    return (
-      <>
-        <GizmoOverlay />
-        <WallEndpointOverlay />
-      </>
-    );
-  }
-
-  return null;
+function ToolHint({ hint }: { hint: string }): ReactNode {
+  const { t } = useTranslation();
+  return (
+    <HudItem region="bottom-center" order={0}>
+      <HudHint>{t(hint as TranslationKey)}</HudHint>
+    </HudItem>
+  );
 }

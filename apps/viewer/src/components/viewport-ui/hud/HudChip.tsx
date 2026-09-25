@@ -38,12 +38,13 @@ export interface HudChipProps {
 export function HudChip({ children, icon, resume, dismiss, role, 'aria-live': ariaLive, className }: HudChipProps) {
   return (
     <HudSurface
-      className={cn('flex items-center gap-1.5 px-2 py-1 text-xs', className)}
+      className={cn('flex max-w-[13rem] items-center gap-1.5 px-2 py-1 text-xs', className)}
       role={role}
       aria-live={ariaLive ?? (role === 'status' ? 'polite' : role === 'alert' ? 'assertive' : undefined)}
     >
       {icon}
-      <span className="tabular-nums">{children}</span>
+      {/* Bounded so a chip can never outgrow the HUD's side lane (`ViewportHud`). */}
+      <span className="min-w-0 truncate tabular-nums">{children}</span>
       {resume && (
         <button
           type="button"

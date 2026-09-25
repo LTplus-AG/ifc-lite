@@ -14,6 +14,7 @@ import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -56,8 +57,8 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
-import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
-import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
+import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -445,12 +446,7 @@ export function ViewportContainer() {
     const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
-      // Tell the user *why* — common case is a Recap project / SketchUp
-      // file dropped because they assumed our viewer would understand it.
-      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
-      if (explained) {
-        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
-      }
+      reportFileOpenRejected(allDropped);
       return;
     }
 
@@ -485,13 +481,8 @@ export function ViewportContainer() {
     // live handle, so these models are not refreshable.
     const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
-    if (supportedFiles.length === 0) {
-      e.target.value = '';
-      return;
-    }
-
-    void prepareAndRoute(supportedFiles);
-
+    if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+    else reportFileOpenRejected(modelFiles);
     // Reset input so same file can be selected again
     e.target.value = '';
   }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
@@ -511,7 +502,10 @@ export function ViewportContainer() {
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
     const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-    if (supported.length === 0) return;
+    if (supported.length === 0) {
+      reportFileOpenRejected(opened.map((o) => o.file));
+      return;
+    }
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
@@ -992,27 +986,7 @@ export function ViewportContainer() {
               dropped: it repeated toolbar affordances without offering an
               action, and its height pushed the welcome card off-screen. */}
 
-          {/* Footer chips - left: discovery link to the marketing site for first-time
-              visitors, right: shortcuts cue for power users. Both desktop-only.
-              IN FLOW, not absolute: the welcome column scrolls on short
-              viewports, and absolutely-anchored chips ride the scroll and
-              land on top of the content (#1736 follow-up). */}
-          <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
-            <a
-              href="https://ifclite.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
-            >
-              <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
-              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
-            </a>
-            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
-              <Command className="h-3 w-3" />
-              <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>
-              <span className="px-1.5 ml-1 font-bold text-primary bg-primary/20">?</span>
-            </div>
-          </div>
+          <WelcomeFooterChips />
 
           </div>
         </div>

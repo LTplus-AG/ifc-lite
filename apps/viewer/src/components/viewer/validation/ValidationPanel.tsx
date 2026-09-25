@@ -60,13 +60,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   // Shared with the IDS tour (#5608), which puts the panel on its IDS side.
   const activeSource = useValidationSourceChoice((s) => s.choice);
   // Default, before any explicit pick: whichever side already has content,
-  // IDS first. `info.file` is local React state, lost on remount (e.g.
-  // switching to another sidebar panel and back) — a landed rules REPORT
-  // survives in the store regardless, so it counts as evidence of the
-  // 'rules' path too, even though re-entering "Edit rules" after such a
-  // remount has nothing to populate the editor with (a known gap; see PR
-  // report). Once the user (or this default) picks a source, the toggle
-  // below drives it explicitly and this fallback no longer applies.
+  // IDS first. Both IDS and Information validation drafts survive remounts.
+  // Once the user picks a source, the toggle drives it explicitly.
   const effectiveSource: Source | null =
     activeSource ?? (idsDocument ? 'ids' : (info.file || validationSource === 'rules') ? 'rules' : null);
 
@@ -98,10 +93,15 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     setActiveSource('rules');
   };
 
+  const handleClose = onClose ? () => {
+    useViewerStore.getState().clearValidationRuleSetDraft();
+    onClose();
+  } : undefined;
+
   if (effectiveSource === null) {
     return (
       <div className="h-full flex flex-col bg-background">
-        <PanelHeader title={t('validationPanel.title')} onClose={onClose} />
+        <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
         <ValidationPanelEmpty
           onSelectIds={() => setActiveSource('ids')}
           onOpenRuleSetFile={handleOpenRuleSetFile}
@@ -120,7 +120,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      <PanelHeader title={t('validationPanel.title')} onClose={onClose} />
+      <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
       <SourceToggle active={effectiveSource} onChange={setActiveSource} />
       {effectiveSource === 'ids' ? (
         <div className="flex-1 min-h-0 flex flex-col">

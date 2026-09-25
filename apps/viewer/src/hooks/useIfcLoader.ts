@@ -81,7 +81,7 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog } from '../lib/analytics.js';
+import { posthog, trackUiEvent } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -439,6 +439,13 @@ export function useIfcLoader() {
       return true;
     };
 
+    // Every load failure the user sees goes through here, so `error_shown`
+    // (#5618) covers each path once; `code` is a fixed id, never the message.
+    const showLoadError = (message: string, code: string) => {
+      setError(message);
+      trackUiEvent('error_shown', { code, surface: 'load_error' });
+    };
+
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
       // federated add must never wipe model #1; it joins the existing map.
@@ -708,7 +715,7 @@ export function useIfcLoader() {
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message) => {
             updateModel(modelId, { loadState: 'error', loadError: message });
-            setError(`LandXML parsing failed: ${message}`);
+            showLoadError(`LandXML parsing failed: ${message}`, 'landxml_parse_failed');
             // Returns null for any LandXML failure a unit cannot fix (#5175).
             setLandXmlUnitsRefusal(landXmlUnitsRefusalPrompt(message, file.name,
               (assumedLinearUnit) => { void loadFileRef.current?.(file, target, { ...options, assumedLinearUnit }); }));
@@ -759,7 +766,7 @@ export function useIfcLoader() {
       if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
         if (!renderer) {
-          setError('Renderer not initialised — try again after the viewer mounts.');
+          showLoadError('Renderer not initialised — try again after the viewer mounts.', 'renderer_not_ready');
           updateModel(modelId, { loadState: 'error', loadError: 'renderer-missing' });
           setLoading(false);
           return;
@@ -786,9 +793,9 @@ export function useIfcLoader() {
           console.warn('[useIfc] renderer was not usable while waiting for readiness:', err);
           if (loadSessionRef.current !== currentSession) return;
           const deviceLost = err instanceof Error && err.name === 'RendererDeviceLostError';
-          setError(deviceLost
+          showLoadError(deviceLost
             ? 'The graphics device was lost during the load — reload the page and drop the point cloud again.'
-            : 'Viewer was reinitialised during the load — drop the point cloud again.');
+            : 'Viewer was reinitialised during the load — drop the point cloud again.', deviceLost ? 'renderer_device_lost' : 'renderer_destroyed');
           updateModel(modelId, {
             loadState: 'error',
             loadError: deviceLost ? 'renderer-device-lost' : 'renderer-destroyed',
@@ -914,7 +921,7 @@ export function useIfcLoader() {
               err,
             );
             updateModel(modelId, { loadState: 'error', loadError: message });
-            setError(`${format.toUpperCase()} parsing failed: ${message}`);
+            showLoadError(`${format.toUpperCase()} parsing failed: ${message}`, `${format}_parse_failed`);
           }
           clearOwnedCanceller();
           setLoading(false);
@@ -999,7 +1006,7 @@ export function useIfcLoader() {
           if (err instanceof Error && err.message === 'overlay-only-ifcx') {
             console.warn(`[useIfc] IFCX file "${file.name}" has no geometry - this appears to be an overlay file that adds properties to a base model.`);
             console.warn('[useIfc] To use this file, load it together with a base IFCX file (select both files at once).');
-            setError(`"${file.name}" is an overlay file with no geometry. Please load it together with a base IFCX file (select all files at once).`);
+            showLoadError(`"${file.name}" is an overlay file with no geometry. Please load it together with a base IFCX file (select all files at once).`, 'ifcx_overlay_only');
             updateModel(modelId, { loadState: 'error', loadError: 'overlay-only-ifcx' });
             setLoading(false);
             return;
@@ -1007,7 +1014,7 @@ export function useIfcLoader() {
           console.error('[useIfc] IFCX parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
-          setError(`IFCX parsing failed: ${message}`);
+          showLoadError(`IFCX parsing failed: ${message}`, 'ifcx_parse_failed');
           setLoading(false);
           return;
         }
@@ -1044,7 +1051,7 @@ export function useIfcLoader() {
           console.error('[useIfc] GLB parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
-          setError(`GLB parsing failed: ${message}`);
+          showLoadError(`GLB parsing failed: ${message}`, 'glb_parse_failed');
           setLoading(false);
           return;
         }
@@ -2051,7 +2058,7 @@ export function useIfcLoader() {
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
         // A stale deployment gets the reload notice, not a generic error (#5609).
-        if (!surfaceStaleDeployment(err)) setError(formatLoadError(err, file.name, 'geometry_processing'));
+        if (!surfaceStaleDeployment(err)) showLoadError(formatLoadError(err, file.name, 'geometry_processing'), kind);
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
@@ -2186,7 +2193,7 @@ export function useIfcLoader() {
         loadState: 'error',
         loadError: friendly,
       });
-      if (!surfaceStaleDeployment(err)) setError(friendly);
+      if (!surfaceStaleDeployment(err)) showLoadError(friendly, kind);
       // Flat, and enough to identify the failure WITHOUT a stack: a fetch
       // rejection ("Load failed" / "Failed to fetch") carries no frames of
       // ours, so `load_stage` + `error_type` + `online` are all the triage

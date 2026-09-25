@@ -21,6 +21,8 @@ import { PanelTop, X } from 'lucide-react';
 import { startTour } from '@/lib/tours/controller';
 import { getTour } from '@/lib/tours/registry';
 import { dismissNotice, isNoticeDismissed, isTourCompleted } from '@/lib/tours/storage';
+import { trackUiEvent } from '@/lib/analytics';
+import type { OnboardingAction } from '@/lib/analytics-ui-events';
 import { useTourStore } from '@/lib/tours/tour-store';
 import { useViewerStore } from '@/store';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
@@ -88,7 +90,8 @@ export function RibbonSwitchNotice() {
 
   if (dismissed || tourDone || tourStatus !== 'idle') return null;
 
-  const close = () => {
+  const close = (action: OnboardingAction) => {
+    trackUiEvent('onboarding_surface', { surface: 'ribbon_notice', action });
     dismissNotice(NOTICE_ID);
     setDismissed(true);
   };
@@ -104,7 +107,7 @@ export function RibbonSwitchNotice() {
           <button
             className="shrink-0 font-medium text-primary underline-offset-2 hover:underline"
             onClick={() => {
-              close();
+              close('start_tour');
               startTour('ribbon', 'invite');
             }}
           >
@@ -116,7 +119,7 @@ export function RibbonSwitchNotice() {
       <button
         className="shrink-0 hover:text-foreground hover:underline"
         onClick={() => {
-          close();
+          close('keep_classic');
           setToolbarStyle('classic');
         }}
       >
@@ -126,7 +129,7 @@ export function RibbonSwitchNotice() {
       <button
         aria-label={t('ribbon.notice.dismissAriaLabel')}
         className="shrink-0 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
-        onClick={close}
+        onClick={() => close('dismiss')}
       >
         <X className="h-3 w-3" />
       </button>

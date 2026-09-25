@@ -25,6 +25,7 @@ import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSli
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
+import { createValidationDraftSlice, type ValidationDraftSlice } from './slices/validationDraftSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
@@ -39,7 +40,8 @@ import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
 import { createDrawingInspectorSlice, type DrawingInspectorSlice } from './slices/drawingInspectorSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
-import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { bottomPanelFlags, isBottomPanel, isBottomPanelDocked, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { trackPanelOpened, withToolTelemetry, type PanelOpenSource } from './uiTelemetry.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -91,15 +93,12 @@ export { resolveEntityRef, resolveGlobalId } from './resolveEntityRef.js';
 export { fromGlobalIdFromModels, toGlobalIdFromModels, toGlobalIdForRef } from './globalId.js';
 export type { ForwardModelMapLike } from './globalId.js';
 
-// Re-export Drawing2D types
 export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, SelectedAnnotation2D } from './slices/drawing2DSlice.js';
 
-// Re-export Sheet / Collab / BCF types
 export type { SheetState } from './slices/sheetSlice.js';
 export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
-// Re-export IDS types
 export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
 // Re-export List / Chart / Flow / Document / Pinboard types
@@ -156,6 +155,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SheetSlice &
   BCFSlice &
   IDSSlice &
+  ValidationDraftSlice &
   ListSlice &
   ChartSlice &
   FlowSlice &
@@ -195,7 +195,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>) => void;
+    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>, surface?: PanelOpenSource) => void;
     /**
      * Show a workspace panel docked in the sidebar, un-floating / re-docking it
      * first if it was popped out (#1200/#1201/#1208). Accepts `properties` (the
@@ -204,26 +204,26 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * activity bar, the Alt+N shortcuts, the command palette and the
      * floating / window hosts' re-dock action.
      */
-    showWorkspacePanel: (panel: WorkspacePanelId) => void;
+    showWorkspacePanel: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
     /**
      * Toggle a sidebar panel: if it is the active docked panel, close it back
      * to Information; otherwise open it. The single entry point the activity
      * bar, toolbar and command palette use so a second click always closes.
      */
-    toggleWorkspacePanel: (panel: WorkspacePanelId) => void;
+    toggleWorkspacePanel: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
     /**
      * Toggle a bottom-strip panel (Script / Schedule / Lists). These are
      * launched from the same sidebar rail but open in the BOTTOM panel —
      * mutually exclusive among themselves, independent of the single-tenant
      * right pane (so a side panel + a bottom panel can be open at once).
      */
-    toggleBottomPanel: (panel: BottomPanelId) => void;
+    toggleBottomPanel: (panel: BottomPanelId, surface?: PanelOpenSource) => void;
     /**
      * Open a panel in its home region: side panels dock in the right pane,
      * Script / Schedule / Lists open in the bottom strip. The rail and Alt+N
      * route through here so each panel lands where it belongs.
      */
-    openPanelInHome: (panel: WorkspacePanelId) => void;
+    openPanelInHome: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
   };
 
 /**
@@ -241,7 +241,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
   ...createVisibilitySlice(...args),
-  ...createUISlice(...args),
+  ...withToolTelemetry(createUISlice)(...args),
   ...createHoverSlice(...args),
   ...createCameraSlice(...args),
   ...createSectionSlice(...args),
@@ -253,6 +253,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSheetSlice(...args),
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
+  ...createValidationDraftSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
   ...createFlowSlice(...args),
@@ -357,8 +358,9 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
   },
 
-  openWorkspacePanel: (panel) => {
+  openWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    trackPanelOpened(panel, surface, isBottomPanel(panel) || get().sidebarMode !== 'expanded' ? undefined : get().sidebarActivePanel);
     // Docking into the sidebar: if the panel was floating or popped out, re-dock
     // it so the toolbar / command-palette / activity-bar entry points stay in
     // sync with the float + window channels (#1200/#1201/#1208) instead of
@@ -397,8 +399,9 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 
-  showWorkspacePanel: (panel) => {
+  showWorkspacePanel: (panel, surface) => {
     const [set, get] = args;
+    const alreadyDocked = isBottomPanel(panel) && isBottomPanelDocked(get(), panel);
     // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
@@ -408,6 +411,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // region instead of flipping side-panel flags it doesn't own (#1208).
     if (isBottomPanel(panel)) {
       set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
+      if (!alreadyDocked) trackPanelOpened(panel, surface);
       return;
     }
     if (panel === 'properties') {
@@ -428,11 +432,11 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       get().setSidebarActivePanel('properties');
       if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
     } else {
-      get().openWorkspacePanel(panel);
+      get().openWorkspacePanel(panel, surface);
     }
   },
 
-  toggleWorkspacePanel: (panel) => {
+  toggleWorkspacePanel: (panel, surface) => {
     const [, get] = args;
     // "Active" means it owns the docked slot right now. A floating / popped-out
     // panel reads as open too, so toggling it re-docks rather than no-ops.
@@ -441,34 +445,27 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       && !s.floatingPanels.some((p) => p.id === panel)
       && !s.poppedOutIds.includes(panel);
     if (isActive) get().showWorkspacePanel('properties');
-    else get().showWorkspacePanel(panel);
+    else get().showWorkspacePanel(panel, surface);
   },
 
-  toggleBottomPanel: (panel) => {
+  toggleBottomPanel: (panel, surface) => {
     const [set, get] = args;
-    const s = get();
-    const flagActive = isBottomPanelOpen(s, panel);
-    const detached = s.floatingPanels.some((p) => p.id === panel) || s.poppedOutIds.includes(panel);
+    const docked = isBottomPanelDocked(get(), panel);
     // Re-dock any float / OS window for it first.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
-    if (flagActive && !detached) {
+    if (docked) {
       // Toggle off (only one bottom panel shows at a time).
       set(bottomPanelFlags(null));
     } else {
       set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
+      trackPanelOpened(panel, surface);
     }
   },
 
-  openPanelInHome: (panel) => {
-    const [set, get] = args;
-    if (isBottomPanel(panel)) {
-      get().closeFloatingPanel(panel);
-      get().setPanelPoppedOut(panel, false);
-      set({ ...bottomPanelFlags(panel), rightPanelCollapsed: false });
-    } else {
-      get().showWorkspacePanel(panel);
-    }
+  openPanelInHome: (panel, surface) => {
+    const [, get] = args;
+    get().showWorkspacePanel(panel, surface);
   },
 }))));
 

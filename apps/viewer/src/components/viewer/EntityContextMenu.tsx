@@ -25,6 +25,7 @@ import {
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
   executeBasketSet,
   executeBasketAdd,
@@ -159,14 +160,12 @@ export function EntityContextMenu() {
   }, [closeContextMenu]);
 
   const handleHide = useCallback(() => {
-    if (contextMenu.entityId) {
-      hideEntity(contextMenu.entityId);
-    }
+    if (contextMenu.entityId) hideFromContextMenuFromStore(contextMenu.entityId);
     closeContextMenu();
-  }, [contextMenu.entityId, hideEntity, closeContextMenu]);
+  }, [contextMenu.entityId, closeContextMenu]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
     closeContextMenu();
   }, [closeContextMenu]);
 

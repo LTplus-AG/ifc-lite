@@ -21,7 +21,7 @@
  */
 
 import { Play, Pause, Sun, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { cn } from '@/lib/utils';
@@ -113,9 +113,9 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
         <Sun className="h-4 w-4 text-amber-600" />
         <span className="flex-1 text-sm font-medium">{t('viewportLighting.sunSkyPanel.header.title')}</span>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('viewportLighting.sunSkyPanel.header.closeTitle')}>
+          <IconButton label={t('viewportLighting.sunSkyPanel.header.closeTitle')} className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 

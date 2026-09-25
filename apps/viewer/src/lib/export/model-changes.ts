@@ -4,7 +4,7 @@
 
 /**
  * Single source of truth for "which loaded models have pending changes, and
- * how many". Both the toolbar Export Changes badge and its multi-model export
+ * how many". Both the toolbar Export modified IFC… badge and its multi-model export
  * loop read from here, so the count the user sees and the set of files they get
  * can never disagree (issue #1534: the badge + export used to look at only the
  * first federated model).

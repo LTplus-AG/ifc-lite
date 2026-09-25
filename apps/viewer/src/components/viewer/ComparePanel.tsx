@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, X, Trash2, ChevronLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
@@ -214,14 +214,14 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
         <span className="text-sm font-semibold tracking-tight min-w-0">{t('comparePanel.panel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           {result && !bcfComposing && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.clearResultsTitle')} onClick={clearCompare}>
+            <IconButton label={t('comparePanel.panel.clearResultsTitle')} className="h-7 w-7" onClick={clearCompare}>
               <Trash2 className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.closeTitle')} onClick={onClose}>
+            <IconButton label={t('comparePanel.panel.closeTitle')} className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

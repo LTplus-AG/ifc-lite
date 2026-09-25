@@ -157,9 +157,9 @@ it('LoadReportPanel: renders the no-models English state and translates it (#491
   const container = render(<LoadReportPanel onClose={() => {}} />);
   assert.ok(container.textContent?.includes('Load report'));
   assert.ok(container.textContent?.includes('No models loaded.'));
-  const exportBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Export JSON');
+  const exportBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Export JSON');
   assert.ok(exportBtn);
-  const closeBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Close');
+  const closeBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Close');
   assert.ok(closeBtn);
 
   registerLocale('loadreportpanel-de', { 'loadReportPanel.noModelsLoaded': 'Keine Modelle geladen.' });
@@ -366,7 +366,7 @@ it('ExportChangesButton: renders the button label and single-change tooltip in E
     });
   });
   const container = render(<ExportChangesButton />);
-  assert.ok(container.textContent?.includes('Export Changes'));
+  assert.ok(container.textContent?.includes('Export modified IFC…'));
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export IFC with 1 change applied');
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export IFC with 2 changes applied');
   assert.equal(

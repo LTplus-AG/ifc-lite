@@ -104,6 +104,7 @@ export const mainToolbarEn = {
   'mainToolbar.orthographic': 'Orthographic',
   'mainToolbar.helpers': 'Helpers',
   'mainToolbar.hoverTooltips': 'Hover tooltips',
+  'mainToolbar.openSettings': 'Settings…',
   'mainToolbar.toolbarLabel': 'Toolbar',
   'mainToolbar.ribbonToolbarMenuItem': 'Ribbon toolbar',
 

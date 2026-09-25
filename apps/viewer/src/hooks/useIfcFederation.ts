@@ -28,6 +28,13 @@ import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
+import { trackUiEvent } from '@/lib/analytics';
+
+/** Show a federated-load error, reported by its fixed id (#5618). */
+const showLoadError = (setError: (error: string) => void, message: string, code: string): void => {
+  setError(message);
+  trackUiEvent('error_shown', { code, surface: 'load_error' });
+};
 
 /**
  * Extended data store type for IFCX (IFC5) files.
@@ -431,7 +438,7 @@ export function useIfcFederation(
         try {
           if (!window.localStorage.getItem(INTRO_KEY)) {
             window.localStorage.setItem(INTRO_KEY, '1');
-            useViewerStore.getState().openWorkspacePanel('layers');
+            useViewerStore.getState().openWorkspacePanel('layers', 'programmatic');
             toast.info(
               `Composed ${layers.length} layers - inspect, diff, publish, and merge them in the Layers panel.`,
             );
@@ -519,14 +526,14 @@ export function useIfcFederation(
     } catch (err: unknown) {
       console.error('[useIfc] Federated IFCX loading failed:', err);
       const message = err instanceof Error ? err.message : String(err);
-      setError(`Federated IFCX loading failed: ${message}`);
+      showLoadError(setError, `Federated IFCX loading failed: ${message}`, 'ifcx_federated_load_failed');
       setLoading(false);
     }
   }, [setLoading, setError, setProgress, setGeometryResult, setIfcDataStore, storeAddModel, clearAllModels]);
 
   const loadFederatedIfcx = useCallback(async (files: File[]): Promise<void> => {
     if (files.length === 0) {
-      setError('No files provided for federated loading');
+      showLoadError(setError, 'No files provided for federated loading', 'ifcx_federated_no_files');
       return;
     }
 
@@ -541,7 +548,7 @@ export function useIfcFederation(
       const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
-        setError(`File "${file.name}" is not an IFCX file. Federated loading only supports IFCX files.`);
+        showLoadError(setError, `File "${file.name}" is not an IFCX file. Federated loading only supports IFCX files.`, 'ifcx_federated_not_ifcx');
         return;
       }
       buffers.push({ buffer, name: file.name });
@@ -584,7 +591,7 @@ export function useIfcFederation(
 
       existingBuffers = [{ buffer: sourceBuffer, name: modelName }];
     } else {
-      setError('Cannot add overlays: no IFCX model loaded');
+      showLoadError(setError, 'Cannot add overlays: no IFCX model loaded', 'ifcx_overlay_no_base');
       return;
     }
 
@@ -599,7 +606,7 @@ export function useIfcFederation(
       const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
-        setError(`File "${file.name}" is not an IFCX file.`);
+        showLoadError(setError, `File "${file.name}" is not an IFCX file.`, 'ifcx_overlay_not_ifcx');
         return;
       }
       newBuffers.push({ buffer, name: file.name });

@@ -4,8 +4,12 @@
 
 import { useViewerStore } from './index.js';
 import { hiddenChannelAfterReset } from '@/lib/visibility/lens-reset';
+import { trackUiEvent } from '@/lib/analytics';
+import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 
-export function resetVisibilityForHomeFromStore(): void {
+/** `trigger` names the entry point for the `view_reset` event (#5618). */
+export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void {
+  trackUiEvent('view_reset', { trigger });
   const state = useViewerStore.getState();
   state.showAllInAllModels();
   state.clearStoreySelection();
@@ -35,7 +39,7 @@ export function resetVisibilityForHomeFromStore(): void {
 }
 
 export function goHomeFromStore(): void {
-  resetVisibilityForHomeFromStore();
+  resetVisibilityForHomeFromStore('home');
   const state = useViewerStore.getState();
   state.cameraCallbacks.home?.();
 }

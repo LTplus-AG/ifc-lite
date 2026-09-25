@@ -62,10 +62,11 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud, FileWarning, Coins } from 'lucide-react';
+import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud, FileWarning, Coins, Settings } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -74,7 +75,7 @@ import { SearchInline } from './SearchInline';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
-import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { openSettings } from '@/lib/settings/open-settings';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
@@ -285,7 +286,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     handleToggleAnalysisExtension,
     rightAnalysisExtensions,
     bottomAnalysisExtensions,
-  } = useWorkspacePanelControls();
+  } = useWorkspacePanelControls('classic');
 
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
@@ -300,7 +301,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
@@ -340,22 +340,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     ? selectedEntityIds.size
     : (selectedEntityId !== null ? 1 : 0);
 
-  const clearSelection = useViewerStore((state) => state.clearSelection);
-
-  const handleHide = useCallback(() => {
-    // Hide ALL selected entities (multi-select or single)
-    const state = useViewerStore.getState();
-    const ids: number[] = state.selectedEntityIds.size > 0
-      ? Array.from(state.selectedEntityIds)
-      : selectedEntityId !== null ? [selectedEntityId] : [];
-    if (ids.length > 0) {
-      hideEntities(ids);
-      clearSelection();
-    }
-  }, [selectedEntityId, hideEntities, clearSelection]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
 
   const handleIsolate = useCallback(() => {
@@ -482,7 +469,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Export Changes Button - shows when there are pending mutations */}
+      {/* Export modified IFC… Button - shows when there are pending mutations */}
       <ExportChangesButton />
 
       {/* Share — link-based multiuser collaboration (behind the collab flag) */}
@@ -515,7 +502,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 <Button
                   variant={collabPanelVisible ? 'secondary' : 'ghost'}
                   size="icon-sm"
-                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
                   className="relative"
                   aria-label={t('mainToolbar.room')}
                   aria-pressed={collabPanelVisible}
@@ -604,7 +591,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'classic')}
           >
             <Layers className="h-4 w-4 mr-2" />
             {t('mainToolbar.layerStack')}
@@ -613,7 +600,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               time (#2508): the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('zones')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'classic')}
           >
             <Box className="h-4 w-4 mr-2" />
             {t('mainToolbar.locationZones')}
@@ -623,7 +610,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               classic's only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('loadReport')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'classic')}
           >
             <FileWarning className="h-4 w-4 mr-2" />
             {t('mainToolbar.loadReport')}
@@ -632,7 +619,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               first time — the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('cost')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'classic')}
           >
             <Coins className="h-4 w-4 mr-2" />
             {t('mainToolbar.cost')}
@@ -640,7 +627,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {collabEnabled && (
             <DropdownMenuCheckboxItem
               checked={activeWorkspacePanels.has('collab')}
-              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
             >
               <Users className="h-4 w-4 mr-2" />
               {t('mainToolbar.collaborationRoom')}
@@ -838,7 +825,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
           </span>
           <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="I" />
-          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={handleHide} shortcut="Del / Space" />
+          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={hideSelectionFromStore} shortcut="Del / Space" />
           <ActionButton
             icon={Crosshair}
             label={t('mainToolbar.frameSelection')}
@@ -965,7 +952,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              useViewerStore.getState().toggleWorkspacePanel('environment');
+              useViewerStore.getState().toggleWorkspacePanel('environment', 'classic');
             }}
             className={cn(
               (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')
@@ -978,9 +965,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>{t('mainToolbar.sunSkyTooltip')}</TooltipContent>
       </Tooltip>
 
-      {/* SpaceMouse — connect a 3Dconnexion 3D mouse over WebHID and tune its
-          sensitivity (#1677). Settings live in Preferences → Navigation now
-          (#5509); this opens the Info dialog straight to that tab. */}
+      {/* SpaceMouse (#1677): its controls live in Settings → Display →
+          Navigation (#5509, #5857); this opens Settings there. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -989,7 +975,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-label={t('mainToolbar.spaceMouseOpen')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }));
+              openSettings('display');
             }}
             className={cn(spaceMouseConnected && 'bg-primary text-primary-foreground hover:bg-primary/90')}
           >
@@ -1051,6 +1037,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.hoverTooltips')}
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openSettings()}><Settings className="h-4 w-4 mr-2" />{t('mainToolbar.openSettings')}</DropdownMenuItem>
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.toolbarLabel')}
           </DropdownMenuLabel>

@@ -16,6 +16,9 @@
 
 import { useCallback, useMemo } from 'react';
 import { useIfc } from '@/hooks/useIfc';
+import { useChangedModels } from '@/hooks/useUnexportedChanges';
+import { totalChangeCount } from '@/lib/export/model-changes';
+import { useExtensionExporters } from '@/components/extensions/useExtensionExporters';
 import { useViewerStore } from '@/store';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
@@ -48,6 +51,9 @@ export function useExportCommands() {
   const hasModelsLoaded =
     models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
+  // The same live change set the amber Export modified IFC button counts.
+  const hasChanges = totalChangeCount(useChangedModels()) > 0;
+  const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters();
 
   /**
    * The data exports (CSV / JSON) read the single `ifcDataStore` slot, which
@@ -123,9 +129,11 @@ export function useExportCommands() {
   const commands = useMemo<ResolvedExportCommand[]>(
     () => EXPORT_COMMANDS.map((command) => ({
       command,
-      disabled: command.requires === 'dataStore' ? !ifcDataStore : !canExport,
+      disabled: command.requires === 'dataStore' ? !ifcDataStore
+        : command.requires === 'changes' ? !hasChanges
+        : !canExport,
     })),
-    [ifcDataStore, canExport],
+    [ifcDataStore, canExport, hasChanges],
   );
 
   return {
@@ -136,5 +144,10 @@ export function useExportCommands() {
     handleExportJSON,
     handleScreenshot,
     runExportAction,
+    /** The registry's runtime half: installed extension exporters (#5838). */
+    extensionExporters,
+    /** One extension export at a time: every extension row is disabled while one runs. */
+    extensionExportRunning,
+    runExtensionExporter,
   };
 }

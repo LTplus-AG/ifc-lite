@@ -364,6 +364,48 @@ describe.skipIf(!canRunIfc4x3)('StepExporter IFC4X3 output is schema-conformant 
   );
 
   it(
+    'validates a dropEmptyContainers merge that unifies an IfcBridge by GlobalId alone (#5937)',
+    async () => {
+      // bridge-deck aggregates its IfcBridge under 'My Site'. A survey model
+      // repeats that bridge by GlobalId (renamed) under a site of its own, and
+      // adds an empty IfcBridgePart. The bridge unifies by GlobalId only, so
+      // the survey site's one aggregation is withheld and the site holds
+      // nothing; the bridge part holds nothing either. Both must be dropped,
+      // and the output must stay valid (no container left without a parent).
+      const deck = readFileSync(resolve(MODELS_DIR, 'ifc5/Georeferencing_georeferenced-bridge-deck.ifc'), 'utf8');
+      const bridge = /^#13=IFCBRIDGE\('([^']{22})'/m.exec(deck)![1];
+      const survey = [
+        'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');",
+        "FILE_NAME('survey.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", "FILE_SCHEMA(('IFC4X3_ADD2'));", 'ENDSEC;', 'DATA;',
+        "#1=IFCPROJECT('3Survey5937Project0000',$,'Survey',$,$,$,$,(#4),#3);", '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+        '#3=IFCUNITASSIGNMENT((#2));', "#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);",
+        '#5=IFCCARTESIANPOINT((0.,0.,0.));', '#6=IFCAXIS2PLACEMENT3D(#5,$,$);',
+        "#7=IFCSITE('3Survey5937Site0000000',$,'Survey Site',$,$,$,$,$,$,$,$,$,$,$);",
+        `#8=IFCBRIDGE('${bridge}',$,'Golden Gate Bridge (survey)',$,$,$,$,$,$,$);`,
+        "#9=IFCBRIDGEPART('3Survey5937Part0000000',$,'Deck span',$,$,$,$,$,$,.LONGITUDINAL.,$);",
+        "#10=IFCRELAGGREGATES('3Survey5937Aggregate00',$,$,$,#1,(#7));",
+        "#11=IFCRELAGGREGATES('3Survey5937Aggregate01',$,$,$,#7,(#8));",
+        "#12=IFCRELAGGREGATES('3Survey5937Aggregate02',$,$,$,#8,(#9));",
+        'ENDSEC;', 'END-ISO-10303-21;',
+      ].join('\n');
+      const parser = new IfcParser();
+      const models: MergeModelInput[] = [];
+      for (const [id, text] of [['deck', deck], ['survey', survey]] as const) {
+        models.push({ id, name: id, dataStore: await parser.parseColumnar(toArrayBuffer(Buffer.from(text))) });
+      }
+      const merged = new MergedExporter(models).export({ schema: 'IFC4X3', dropEmptyContainers: true, mergeSites: 'by-name' });
+      const out = join(mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-5937-')), 'merged-IFC4X3.ifc');
+      writeFileSync(out, Buffer.from(merged.content));
+      runValidateOrThrow([out]);
+      const text = new TextDecoder().decode(merged.content);
+      expect(text).not.toContain('3Survey5937Site0000000');
+      expect(text).not.toContain('3Survey5937Part0000000');
+      expect(merged.stats.droppedContainerCount).toBe(2);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
     'validates the round-trip re-export of IFC4X3_ADD2 fixtures',
     async () => {
       const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-4x3-rt-'));

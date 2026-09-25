@@ -6,10 +6,12 @@ import type { TranslationValue } from '../types';
 
 /**
  * The model-reposition tool's own chrome (#4918 slice) across the
- * `reposition/` directory: `RepositionPanel.tsx` (the floating panel's
- * header, moving/reference model pickers, framing shortcuts, point-picking
- * prompts, constraint/input-mode controls, the move-dimensions readout, and
- * the apply/undo/redo/reset actions), `RotationControls.tsx` (the heading
+ * `reposition/` directory and the docked `placement` panel's Local tab
+ * (`placement/LocalTab.tsx`, #5505, which replaced the floating
+ * `RepositionPanel.tsx`'s form — the moving/reference model pickers, framing
+ * shortcuts, point-picking prompts, constraint/input-mode controls, the
+ * move-dimensions readout, and the apply/undo/redo/reset actions),
+ * `RotationControls.tsx` (the heading
  * and pivot fields, their guidance text, and the per-model rotation
  * summary), `PlacementGizmo.tsx` (the drag-handle SVG's aria-labels and its
  * live delta readout), `PlacementFiles.tsx` (the save/restore-placements

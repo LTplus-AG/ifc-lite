@@ -67,7 +67,6 @@
    540 apps/viewer/src/components/viewer/BCFPanel.tsx
   1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
-  1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
   1720 apps/viewer/src/components/viewer/ChatPanel.tsx
   1302 apps/viewer/src/components/viewer/ClashPanel.tsx
   1053 apps/viewer/src/components/viewer/DataConnector.tsx

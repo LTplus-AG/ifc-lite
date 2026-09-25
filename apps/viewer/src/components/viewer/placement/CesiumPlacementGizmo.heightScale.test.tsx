@@ -25,7 +25,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
-import { CesiumPlacementEditor } from './CesiumPlacementEditor.js';
+import { CesiumPlacementGizmo } from './CesiumPlacementGizmo.js';
 
 const projectedCRS: ProjectedCRS = { id: 2, name: 'EPSG:2056', mapUnitScale: 1 };
 // Metre project and map, Scale 1 x FactorZ 2: the effective vertical scale is 2.
@@ -71,7 +71,7 @@ async function mount(): Promise<{ root: Root; container: HTMLDivElement }> {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <CesiumPlacementEditor
+      <CesiumPlacementGizmo
         modelId="m0"
         mapConversion={scaledConversion}
         baseMapConversion={scaledConversion}
@@ -109,7 +109,7 @@ after(() => {
 });
 afterEach(() => { setGlobalRendererRef({ current: null }); });
 
-describe('CesiumPlacementEditor height handle with Scale x FactorZ (#4675)', () => {
+describe('CesiumPlacementGizmo height handle with Scale x FactorZ (#4675)', () => {
   it('writes a viewer-Y drag into OrthogonalHeight through the vertical scale', async () => {
     setGlobalRendererRef({ current: stubRenderer([]) });
     useViewerStore.setState({

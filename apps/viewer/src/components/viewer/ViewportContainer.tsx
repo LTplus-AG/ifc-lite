@@ -32,7 +32,7 @@ import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
-import { CesiumPlacementEditor } from './CesiumPlacementEditor';
+import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
@@ -1100,7 +1100,7 @@ export function ViewportContainer() {
         />
       )}
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
-        <CesiumPlacementEditor
+        <CesiumPlacementGizmo
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}
           baseMapConversion={georef.baseMapConversion}

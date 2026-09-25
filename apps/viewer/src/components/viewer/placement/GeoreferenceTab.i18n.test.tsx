@@ -3,28 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `CesiumPlacementEditor`'s own chrome reads the i18n catalogue (#4918
- * slice: cesiumgeo, `cesium-geo.en.ts`): the floating panel's header,
- * delta readouts, nudge/height/rotate controls, and apply/reset actions,
- * plus the SVG drag-gizmo's tooltip titles and aria-labels. `Eastings`,
- * `Northings`, and `OrthogonalHeight` are exact `IfcMapConversion` EXPRESS
- * attribute names used as bare field labels and are asserted separately —
- * they must stay literal through the locale switch, the same house rule
- * `GeoreferencingPanel.tsx`'s `GeorefRow` labels already follow.
+ * `GeoreferenceTab`'s own chrome reads the i18n catalogue (#4918 slice:
+ * cesiumgeo, `cesium-geo.en.ts`): the delta readouts, nudge/height/rotate
+ * controls, and apply/reset actions — moved verbatim out of the former
+ * `CesiumPlacementEditor`'s floating card into the docked `placement` panel's
+ * Georeference tab (#5505). The drag-gizmo's own tooltip titles and
+ * aria-labels are covered separately, in `CesiumPlacementGizmo.i18n.test.tsx`.
+ * `Eastings`, `Northings`, and `OrthogonalHeight` are exact `IfcMapConversion`
+ * EXPRESS attribute names used as bare field labels and are asserted
+ * separately — they must stay literal through the locale switch, the same
+ * house rule `GeoreferencingPanel.tsx`'s `GeorefRow` labels already follow.
  */
 import '@/test/setup-dom.js';
-import { describe, it, before, after, afterEach, beforeEach } from 'node:test';
+import { describe, it, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
 import type { TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
-import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
-import { CesiumPlacementEditor } from './CesiumPlacementEditor.js';
+import { GeoreferenceTab } from './GeoreferenceTab.js';
 
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(([key]) => key.startsWith('cesiumGeo.placement.')),
@@ -42,7 +43,7 @@ function markValue(value: TranslationValue): TranslationValue {
 
 const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)]));
 const BASELINE_LOCALE = 'en';
-const PSEUDO_LOCALE = 'cesium-placement-pseudo';
+const PSEUDO_LOCALE = 'georeference-tab-pseudo';
 
 function readableStrings(root: ParentNode): Set<string> {
   const out = new Set<string>();
@@ -102,14 +103,6 @@ const mapConversion: MapConversion = {
   xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1, factorZ: 1,
 };
 
-// The gizmo re-projects every animation frame via a self-scheduling
-// `requestAnimationFrame` loop that keeps running for as long as `editMode`
-// is true — same reasoning `CesiumPlacementEditor.heightScale.test.tsx`
-// documents for stubbing it module-wide rather than per test.
-const originalRaf = globalThis.requestAnimationFrame;
-before(() => { globalThis.requestAnimationFrame = () => 0; });
-after(() => { globalThis.requestAnimationFrame = originalRaf; });
-
 const originalState = useViewerStore.getState();
 
 beforeEach(() => {
@@ -125,29 +118,18 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setLocale(BASELINE_LOCALE);
-  setGlobalRendererRef({ current: null });
   useViewerStore.setState(originalState, true);
 });
 
-describe('CesiumPlacementEditor localization (#4918)', () => {
-  it('translates the panel header, badges, and delta readouts', () => {
+describe('GeoreferenceTab localization (#4918, #5505)', () => {
+  it('translates the delta readouts', () => {
     const container = render(
-      <CesiumPlacementEditor
-        modelId="m0"
-        mapConversion={mapConversion}
-        baseMapConversion={mapConversion}
-        projectedCRS={projectedCRS}
-        lengthUnitScale={1}
-      />,
+      <GeoreferenceTab modelId="m0" mapConversion={mapConversion} baseMapConversion={mapConversion} projectedCRS={projectedCRS} lengthUnitScale={1} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'cesiumGeo.placement.headerAriaLabel' },
-        { key: 'cesiumGeo.placement.headerTitle' },
-        { key: 'cesiumGeo.placement.collapsePanel' },
-        { key: 'cesiumGeo.placement.closeAriaLabel' },
         { key: 'cesiumGeo.placement.deltaELabel' },
         { key: 'cesiumGeo.placement.deltaNLabel' },
         { key: 'cesiumGeo.placement.deltaZLabel' },
@@ -166,15 +148,9 @@ describe('CesiumPlacementEditor localization (#4918)', () => {
     }
   });
 
-  it('translates the nudge, height, and rotate control clusters', () => {
+  it('translates the nudge, height, and rotate control clusters, and the apply/reset actions', () => {
     const container = render(
-      <CesiumPlacementEditor
-        modelId="m0"
-        mapConversion={mapConversion}
-        baseMapConversion={mapConversion}
-        projectedCRS={projectedCRS}
-        lengthUnitScale={1}
-      />,
+      <GeoreferenceTab modelId="m0" mapConversion={mapConversion} baseMapConversion={mapConversion} projectedCRS={projectedCRS} lengthUnitScale={1} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
@@ -201,68 +177,6 @@ describe('CesiumPlacementEditor localization (#4918)', () => {
         { key: 'cesiumGeo.placement.rotatePosLabel' },
         { key: 'cesiumGeo.placement.applyButton' },
         { key: 'cesiumGeo.placement.resetButton' },
-      ],
-      englishDom,
-      afterDom,
-    );
-  });
-
-  it('translates the collapse toggle aria-label after collapsing the panel', () => {
-    const container = render(
-      <CesiumPlacementEditor
-        modelId="m0"
-        mapConversion={mapConversion}
-        baseMapConversion={mapConversion}
-        projectedCRS={projectedCRS}
-        lengthUnitScale={1}
-      />,
-    );
-    const collapseButton = container.querySelector(
-      `[aria-label="${resolve('cesiumGeo.placement.collapsePanel' as never)}"]`,
-    );
-    assert.ok(collapseButton, 'the collapse toggle renders expanded by default');
-    click(collapseButton!);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate([{ key: 'cesiumGeo.placement.expandPanel' }], englishDom, afterDom);
-  });
-
-  it('translates the drag-gizmo tooltip titles and handle aria-labels', () => {
-    const canvas = {
-      width: 100, height: 100, clientWidth: 100, clientHeight: 100,
-      getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
-    };
-    const camera = {
-      projectToScreen: (p: { x: number; y: number; z: number }) => ({ x: 50 + p.x, y: 50 - p.y }),
-      unprojectToRay: () => ({ origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: -1, z: 0 } }),
-    };
-    setGlobalRendererRef({
-      current: { getCamera: () => camera, getCanvas: () => canvas } as never,
-    });
-    const container = render(
-      <CesiumPlacementEditor
-        modelId="m0"
-        mapConversion={mapConversion}
-        baseMapConversion={mapConversion}
-        projectedCRS={projectedCRS}
-        coordinateInfo={{
-          originShift: { x: 0, y: 0, z: 0 },
-          originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 3, z: 10 } },
-          shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 3, z: 10 } },
-          hasLargeCoordinates: false,
-        }}
-        lengthUnitScale={1}
-      />,
-    );
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate(
-      [
-        { key: 'cesiumGeo.placement.dragPlaneAriaLabel' },
-        { key: 'cesiumGeo.placement.dragHeightAriaLabel' },
-        { key: 'cesiumGeo.placement.dragPlaneTitle' },
-        { key: 'cesiumGeo.placement.dragHeightTitle' },
-        { key: 'cesiumGeo.placement.dragXYLabel' },
       ],
       englishDom,
       afterDom,

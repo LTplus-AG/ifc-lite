@@ -47,8 +47,8 @@ function renderCard(): HTMLElement {
 describe('in-viewport loading card (#5849)', () => {
   it('shows the active phase and percentage while a model loads', () => {
     const container = renderCard();
-    const status = container.querySelector('[role="status"]');
-    assert.ok(status, 'the card is a status region');
+    const status = container.querySelector('output');
+    assert.ok(status, 'the card announces progress through an <output> live region');
     const text = status.textContent ?? '';
     assert.ok(text.includes('Processing geometry'), `geometry progress wins over the generic phase: ${text}`);
     assert.ok(text.includes('42%'), `shows the percentage: ${text}`);
@@ -67,6 +67,6 @@ describe('in-viewport loading card (#5849)', () => {
   it('is not rendered when nothing is loading', () => {
     act(() => useViewerStore.setState({ loading: false }));
     const container = renderCard();
-    assert.equal(container.querySelector('[role="status"]'), null);
+    assert.equal(container.querySelector('[data-viewport-loading-card]'), null);
   });
 });

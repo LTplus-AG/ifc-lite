@@ -34,11 +34,7 @@ export function ViewportLoadingCard() {
   const percent = Math.round(progress?.percent ?? 0);
   return (
     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-4">
-      <div
-        role="status"
-        aria-live="polite"
-        className="pointer-events-auto w-full max-w-sm rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm"
-      >
+      <div data-viewport-loading-card className="pointer-events-auto w-full max-w-sm rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium" title={fileName ?? undefined}>
@@ -47,14 +43,15 @@ export function ViewportLoadingCard() {
               : t('viewportLighting.container.loadingCard.titleFallback')}
           </p>
         </div>
-        <p className="mt-2 truncate text-xs text-muted-foreground">
+        {/* The live region: phase and percentage are announced as they change. */}
+        <output aria-live="polite" className="mt-2 block truncate text-xs text-muted-foreground">
           {progress?.phase ?? t('viewportLighting.container.loadingCard.titleFallback')}
-        </p>
+          {!progress?.indeterminate && ` · ${percent}%`}
+        </output>
         <div className="mt-2 flex items-center gap-2">
           {progress?.indeterminate
             ? <div className="h-2 flex-1 overflow-hidden rounded-full bg-primary/20"><div className="h-full w-1/3 animate-pulse rounded-full bg-primary" /></div>
             : <Progress value={percent} className="h-2 flex-1" />}
-          {!progress?.indeterminate && <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{percent}%</span>}
         </div>
         {cancel && (
           <button

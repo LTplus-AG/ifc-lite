@@ -5,19 +5,27 @@
 /**
  * The Drawing panel (#5494): the `drawing` workspace panel's view, docked in
  * the bottom strip, floating, or popped out. A slim action row (the cut it
- * shows, Regenerate, Export — the strip / floating / pop-out host owns title
- * and Close, #5498), one toolbar row, the canvas with the settings drawers
- * beside it, and a status line. Its runtime (generation, persistence, the
- * Section-tool auto-open) is `DrawingRuntimeHost` and runs whether or not
- * this is mounted (#5492).
+ * shows, Regenerate, Match 3D, Export — the strip / floating / pop-out host
+ * owns title and Close, #5498), one toolbar row, the canvas with the
+ * settings drawers beside it, and a status line. Its runtime (generation,
+ * persistence) is `DrawingRuntimeHost` and runs whether or not this is
+ * mounted (#5492).
+ *
+ * The Section tool does not auto-open this panel (#5497): the action row
+ * shows a "Section parked · Resume" banner instead whenever the cut it is
+ * showing has been parked (`sectionPlane.parked`, set by
+ * `store/section-active.ts` when the Section tool is not the active tool),
+ * so a docked/floating drawing that outlives the tool never looks live
+ * without saying so.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, PencilRuler, RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, PencilRuler, RefreshCw, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { AXIS_INFO } from '../tools/sectionConstants';
+import { AXIS_INFO, presetViewForAxis } from '../tools/sectionConstants';
 import { TitleBlockEditor } from '../TitleBlockEditor';
 import { useDrawingViewModel } from './useDrawingViewModel';
 import { useDrawingLayers } from './useDrawingLayers';
@@ -65,16 +73,37 @@ function HeaderAction({ label, onClick, disabled, children }: { label: string; o
 
 export function DrawingPanel(): React.ReactElement {
   const { t } = useTranslation();
+  const activeTool = useViewerStore((s) => s.activeTool);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
+  const setProjectionMode = useViewerStore((s) => s.setProjectionMode);
+  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const vm = useDrawingViewModel();
   const layers = useDrawingLayers(vm);
   const panelRef = useRef<HTMLDivElement>(null);
   const { tier, width: panelWidth } = usePanelMetrics(panelRef);
   const { sectionPlane, status, displayOptions } = vm;
+  const isCustomPlane = sectionPlane.custom !== undefined;
 
   // The same wording the Section tool's header uses for the cut.
-  const cutLabel = sectionPlane.custom !== undefined
-    ? t('sectionTool.header.custom', { distance: sectionPlane.custom.distance.toFixed(2) })
+  const cutLabel = isCustomPlane
+    ? t('sectionTool.header.custom', { distance: sectionPlane.custom!.distance.toFixed(2) })
     : t('sectionTool.header.axis', { axis: t(AXIS_INFO[sectionPlane.axis].labelKey), position: sectionPlane.position.toFixed(1) });
+
+  // The Section tool no longer auto-opens this panel (#5497): a docked or
+  // floating drawing can outlive the tool and keep showing the last cut with
+  // the tool closed. `sectionPlane.parked` (set by `store/section-active.ts`
+  // the instant the Section tool stops being the active tool) is the single
+  // source of truth for that state — surfaced here instead of silently
+  // showing a cut the user can no longer edit.
+  const isParked = sectionPlane.parked === true && activeTool !== 'section';
+  const handleResumeSection = useCallback(() => setActiveTool('section'), [setActiveTool]);
+
+  // Floor plan / the Section tool used to force the 3D view to top-down
+  // ortho on every activation; that is now this explicit action (#5497).
+  const handleMatchView = useCallback(() => {
+    setProjectionMode('orthographic');
+    cameraCallbacks.setPresetView?.(presetViewForAxis(sectionPlane.axis, sectionPlane.flipped));
+  }, [setProjectionMode, cameraCallbacks, sectionPlane.axis, sectionPlane.flipped]);
 
   return (
     <div ref={panelRef} className="flex h-full w-full flex-col overflow-hidden bg-background">
@@ -88,6 +117,29 @@ export function DrawingPanel(): React.ReactElement {
           <HeaderAction label={t('section2d.regenerate')} onClick={() => vm.runtime.generateDrawing(false)} disabled={status === 'generating'}>
             {status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </HeaderAction>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {tier === 'narrow' ? (
+                <Button
+                  variant="ghost" size="icon-sm"
+                  aria-label={t('section2d.matchView.button')}
+                  onClick={handleMatchView} disabled={isCustomPlane}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs"
+                  aria-label={t('section2d.matchView.button')}
+                  onClick={handleMatchView} disabled={isCustomPlane}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  {t('section2d.matchView.button')}
+                </Button>
+              )}
+            </TooltipTrigger>
+            <TooltipContent>{t(isCustomPlane ? 'section2d.matchView.unavailableTitle' : 'section2d.matchView.title')}</TooltipContent>
+          </Tooltip>
           <DrawingExportMenu
             hasDrawing={!!vm.drawing} compact={tier === 'narrow'}
             onExportSvg={layers.handleExportSVG} onExportDxf={layers.handleExportDXF}
@@ -97,6 +149,22 @@ export function DrawingPanel(): React.ReactElement {
           />
         </div>
       </div>
+
+      {isParked && (
+        <div
+          data-drawing-parked-banner
+          className="flex shrink-0 items-center gap-1.5 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <span>{t('section2d.parked.label')}</span>
+          <span aria-hidden="true">·</span>
+          <Button
+            variant="ghost" size="sm" className="h-6 gap-1 px-2 text-xs text-amber-900 hover:text-amber-950 dark:text-amber-200 dark:hover:text-amber-100"
+            onClick={handleResumeSection} title={t('section2d.parked.resumeTitle')}
+          >
+            {t('section2d.parked.resume')}
+          </Button>
+        </div>
+      )}
 
       <DrawingToolbar
         tier={tier}

@@ -44,6 +44,7 @@ import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { convertStepLine } from './schema-converter.js';
 import { retypeArgTokens } from './retype.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
+import { detachRelatedObjects } from './step-pset-copy-on-write.js';
 import { serializeEntityArgs, serializeAttributeSlot } from './attribute-real-slots.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 
@@ -183,7 +184,9 @@ export function writeOverlayCreatedEntities(
           ),
       );
     }
-    let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
+    // Same copy-on-write narrowing as a source relation (#5794).
+    let line: string | null = detachRelatedObjects(pass, entity.expressId, `#${entity.expressId}=${upperType}(${argsText});`);
+    if (line === null) continue;
     // Same gap as the source-iteration pass, for an overlay-authored
     // relationship instead of a parsed one (#2398).
     //

@@ -9,12 +9,11 @@
  * `IFCLENGTHMEASURE` as `IFCREAL`.
  *
  * Every case here parses a file, drives `StepExporter` over it and reads the
- * emitted lines back. That is the whole point of them: the load-bearing case is
- * the first one below, and it asserts the emitted line of a property the session
- * never touched. That assertion cannot pass vacuously — the property is only in
- * the file at all BECAUSE the set was regenerated, so a generator that ignores
- * `dataType` writes a line that is present, correct in its value, and wrong in
- * exactly the way #2482 describes.
+ * emitted lines back. The first case below asserts the emitted line of a
+ * property the session never touched. Since #5794 the regenerated set references
+ * such a property's SOURCE atom rather than re-serializing it, so that line is
+ * the source line; `dataType` is what still carries the declared type of an
+ * EDITED property, which the later cases pin.
  *
  * The gate itself — which source tokens `declaredNominalValueType` writes back,
  * and which it refuses — is a pure predicate over the schema registry with no
@@ -189,31 +188,34 @@ describe('a regeneration leaves its neighbours’ declared types alone', () => {
   it('a token that is not an IfcValue member is NOT written back', async () => {
     const store = await parse(BASE_IFC);
     const view = sourceBackedView(store);
-    view.setProperty(WALL_ID, 'Pset_Mixed', 'Mark', 'W-01', PropertyValueType.Label);
+    view.setProperty(WALL_ID, 'Pset_Mixed', 'Vendor', 'Y', PropertyValueType.Label);
 
     // `IFCACMEWIDGETCODE` parses, survives extraction and reaches the generator
-    // in `dataType` like any other token. `NominalValue` is declared as
-    // `IfcValue`, so writing it back would put a non-member in a SELECT slot —
-    // faithful to the input and invalid. The lossy-but-valid fallback wins.
+    // in `dataType` like any other token, and an edit keeps the source
+    // `dataType` when it names none. `NominalValue` is declared as `IfcValue`,
+    // so writing it back would put a non-member in a SELECT slot. The
+    // lossy-but-valid fallback wins.
     const text = exportText(store, view);
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Vendor',$,IFCLABEL('X'),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Vendor',$,IFCLABEL('Y'),$)");
     expect(text).not.toContain('IFCACMEWIDGETCODE');
   });
 
-  it('a BOUNDED property’s measure dataType is not wrapped around its display string', async () => {
+  it('a BOUNDED neighbour is kept as the bounded value it is, not collapsed', async () => {
     const store = await parse(BOUNDED_IFC);
     const view = sourceBackedView(store);
     view.setProperty(WALL_ID, 'Pset_Bounded', 'Mark', 'W-01', PropertyValueType.Label);
 
     // An `IfcPropertyBoundedValue` is extracted as a measure `dataType` over a
-    // DISPLAY string (`'12.5 [1 – 20]'`) and a `Real` shape — the one place
-    // where the two disagree about a source property nobody edited. Collapsing
-    // such a property to a single value is lossy and older than this change
-    // (#2482 calls the multi-valued kinds a separate question); what must not
-    // happen is `IFCLENGTHMEASURE('12.5 [1 – 20]')`, a measure holding prose.
+    // DISPLAY string (`'12.5 [1 – 20]'`), which no single value can carry.
+    // #2482 left the multi-valued kinds as a separate question and they were
+    // collapsed to an empty single value; since #5794 the regenerated set
+    // references the source atom, so the bounds survive verbatim.
     const text = exportText(store, view);
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Span',$,$,$)");
-    expect(text).not.toContain('IFCLENGTHMEASURE');
+    expect(text).toContain(
+      "#51=IFCPROPERTYBOUNDEDVALUE('Span',$,IFCLENGTHMEASURE(20.),IFCLENGTHMEASURE(1.),$,IFCLENGTHMEASURE(12.5));",
+    );
+    expect(text).toMatch(/IFCPROPERTYSET\('[^']*',[^,]*,'Pset_Bounded',\$,\(#51,#\d+\)\);/);
+    expect(text).not.toContain("IFCPROPERTYSINGLEVALUE('Span'");
   });
 });
 

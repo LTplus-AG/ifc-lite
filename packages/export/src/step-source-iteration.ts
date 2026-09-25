@@ -64,6 +64,7 @@ import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
 import { retainSharedAtoms } from './step-shared-atom-retention.js';
+import { detachRelatedObjects } from './step-pset-copy-on-write.js';
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 
@@ -225,6 +226,11 @@ export function writeSourceEntityLines(
         pass.overlayActive,
       );
       let nextEntityText = mutated.text;
+      // A shared IfcRelDefinesByProperties loses the elements that got their
+      // own copy of its set this export; the rest keep the original (#5794).
+      const narrowed = detachRelatedObjects(pass, expressId, nextEntityText);
+      if (narrowed === null) continue;
+      nextEntityText = narrowed;
 
       // A hidden PRODUCT's own line is already out of the export via
       // `allowedEntityIds`, and a TOMBSTONED entity's via `effective` — this

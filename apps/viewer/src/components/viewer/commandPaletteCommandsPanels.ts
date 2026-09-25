@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
@@ -96,8 +97,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
     { id: 'sidebar:customize', label: 'Customize Sidebar…', ...withKey('commandPalette.sidebar.customize.label'), keywords: 'sidebar customize reorder hide show panels edit arrange', category: 'Panels', icon: SlidersHorizontal,
       action: () => { const s = useViewerStore.getState(); s.setSidebarMode('expanded'); s.setSidebarCustomizing(true); } },
-    { id: 'sidebar:reset', label: 'Reset Sidebar Layout', ...withKey('commandPalette.sidebar.reset.label'), keywords: 'sidebar reset default order width restore', category: 'Panels', icon: RotateCcw,
-      action: () => { useViewerStore.getState().resetSidebarLayout(); } },
+    { id: 'sidebar:reset', label: 'Reset Layout', ...withKey('commandPalette.sidebar.reset.label'), keywords: 'layout sidebar floating panels reset default order width restore', category: 'Panels', icon: RotateCcw,
+      action: () => { resetLayout(); } },
   );
 
   // ── Schedule / 4D (Tools) ─────────────────────────────

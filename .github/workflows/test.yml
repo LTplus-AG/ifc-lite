@@ -145,10 +145,60 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # A push event filters against the previous commit, which a depth-1
-          # clone does not contain. PRs filter against the base ref and are
-          # unaffected, so only the push path pays the extra object.
-          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+          # Depth 2 on EVERY event: on a PR the late-changeset gate below
+          # compares the merge ref with HEAD~1 (the base tip). merge_group and
+          # push fetch their own base. The push path's paths-filter needed
+          # depth 2 already; PRs filter via the API.
+          fetch-depth: 2
+      # A RELEASE COMMIT THAT STILL CARRIES A CHANGESET PUBLISHES NOTHING
+      # (#5647). changesets/action publishes only a tree with no pending
+      # changesets, and Release runs once per push, on its tip. So a push that
+      # carries a Version Packages commit AND a pending changeset publishes
+      # nothing: a stale version PR squashed onto a main that gained a
+      # changeset since its last refresh, or a changeset entry landing in the
+      # same queue push as the version PR (up to five entries land at once).
+      #
+      # The base is therefore the start of what can land in ONE push: on
+      # merge_group the CURRENT main tip, fetched here (entries ahead of this
+      # one are not on main yet and may land with it); on push, the commit
+      # main moved from; on a PR, the merge ref's parent. A failing entry is
+      # kicked from the queue, and a failing PR cannot be queued (the
+      # aggregate is required).
+      #
+      # On PUSH the commit has already landed, so the check ANNOTATES and
+      # does not fail the step: every lane `needs: changes`, so failing here
+      # would skip build, tests and parity for exactly the push that got past
+      # the queue, hiding any real breakage it carries. The `::error::`
+      # annotation still shows, and Release's own late-changeset step fails
+      # that push's Release run.
+      #
+      # It runs HERE, in `changes`, because this job feeds the required
+      # `Build + WASM + Rust + Node` aggregate on every event and fails first.
+      # It is the first step so a failure is judged even on an `edited` event:
+      # the no-op probe below never runs, `noop` stays false, and the
+      # aggregate judges this job rather than replaying an older verdict. A
+      # fetch that fails fails the step, which is the closed direction.
+      - name: Refuse a release commit that still carries changesets
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "${EVENT}" in
+            merge_group)
+              git fetch --no-tags --depth=1 origin refs/heads/main
+              BASE=$(git rev-parse FETCH_HEAD); CONTEXT=merge ;;
+            push)
+              git fetch --no-tags --depth=1 origin "${BEFORE}"
+              BASE="${BEFORE}"; CONTEXT=push ;;
+            *)
+              BASE=HEAD~1; CONTEXT=merge ;;
+          esac
+          if [ "${EVENT}" = push ]; then
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}" \
+              || echo "Late-changeset gate reported on push (annotation above); not failing 'changes' so the lanes still run."
+          else
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}"
+          fi
       # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
       # step is skipped on every other event and costs nothing there; on an
       # `edited` it is one check-runs read. `noop=true` requires BOTH a

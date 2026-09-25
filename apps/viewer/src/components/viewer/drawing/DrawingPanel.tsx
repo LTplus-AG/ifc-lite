@@ -95,7 +95,9 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
           <DrawingExportMenu
             hasDrawing={!!vm.drawing} compact={tier === 'narrow'}
             onExportSvg={layers.handleExportSVG} onExportDxf={layers.handleExportDXF}
-            onExportPdf={layers.handleExportPdfPrompt} onPrint={layers.handlePrint}
+            onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
+            displayedScale={displayOptions.scale || 100}
+            sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
           />
           <HeaderAction label={t('section2d.close')} onClick={handleClose}><X className="h-3.5 w-3.5" /></HeaderAction>
         </div>
@@ -110,6 +112,7 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
           ifcAnnotations: displayOptions.showIfcAnnotations,
           projection: displayOptions.showConstructionProjection,
           overlay3D: displayOptions.show3DOverlay,
+          printPreview: displayOptions.showPrintPreview,
         }}
         ifcAnnotationsAvailable={sectionPlane.axis === 'down'}
         projectionAvailable={sectionPlane.custom === undefined}
@@ -117,6 +120,7 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
         onToggleIfcAnnotations={vm.toggleIfcAnnotations}
         onToggleProjection={vm.toggleConstructionProjection}
         onToggleOverlay3D={vm.toggle3DOverlay}
+        onTogglePrintPreview={vm.togglePrintPreview}
         openDrawer={vm.openDrawer}
         drawerActivity={{
           overrides: vm.activePresetId !== null,

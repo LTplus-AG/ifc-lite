@@ -9,6 +9,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import { parquetSpatialRows } from './parquet-spatial-rows.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
 import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
@@ -74,7 +75,8 @@ export class ParquetExporter {
         let propertyCount = 0;
         files.set('Properties.parquet', await this.writeProperties(count => { propertyCount = count; }));
         files.set('Quantities.parquet', await this.writeQuantities());
-        const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, this.getEffective());
+        const effective = this.getEffective();
+        const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, effective);
         files.set('Relationships.parquet', await this.toParquet(relationshipRows));
         files.set('Strings.parquet', await this.writeStrings());
 
@@ -86,8 +88,8 @@ export class ParquetExporter {
         }
 
         // Spatial hierarchy
-        if (this.store.spatialHierarchy) {
-            files.set('SpatialHierarchy.parquet', await this.writeSpatialHierarchy());
+        if (this.store.spatialHierarchy || effective) {
+            files.set('SpatialHierarchy.parquet', await this.writeSpatialHierarchy(relationshipRows, effective));
         }
 
         // Metadata
@@ -409,7 +411,21 @@ export class ParquetExporter {
         });
     }
 
-    private async writeSpatialHierarchy(): Promise<Uint8Array> {
+    private async writeSpatialHierarchy(
+        relationships: ReturnType<typeof parquetRelationshipRows>,
+        effective: EffectiveEntityIndex | null,
+    ): Promise<Uint8Array> {
+        if (effective) {
+            const rows = parquetSpatialRows(relationships, effective);
+            return this.toParquet({
+                ElementId: rows.map(r => r.ElementId),
+                StoreyId: rows.map(r => r.StoreyId),
+                BuildingId: rows.map(r => r.BuildingId),
+                SiteId: rows.map(r => r.SiteId),
+                SpaceId: rows.map(r => r.SpaceId),
+            });
+        }
+
         if (!this.store.spatialHierarchy) {
             throw new Error('Spatial hierarchy not available');
         }
@@ -423,7 +439,6 @@ export class ParquetExporter {
         }> = [];
 
         const { spatialHierarchy } = this.store;
-        const effective = this.getEffective();
 
         // Build lookup maps for fast parent access
         const storeyToBuilding = new Map<number, number>();
@@ -456,18 +471,6 @@ export class ParquetExporter {
             const siteId = buildingId >= 0 ? (buildingToSite.get(buildingId) ?? -1) : -1;
 
             for (const elementId of elementIds) {
-                // A tombstoned element is not a row in Entities.parquet either
-                // (see writeEntities) — leaving it here would point
-                // SpatialHierarchy.parquet at an id no other table has.
-                //
-                // Deletion-only, and only for the element itself: a deleted
-                // STOREY/BUILDING/SITE still surfaces as StoreyId/BuildingId/
-                // SiteId on a surviving element's row (spatialHierarchy is a
-                // source-parse snapshot with no overlay-aware re-parenting —
-                // the same class of problem Ifc5Exporter's re-parenting pass
-                // solves, #2047 — not addressed here).
-                if (effective?.isDeleted(elementId)) continue;
-
                 // Check if element is in a space by iterating bySpace
                 let spaceId = -1;
                 for (const [sid, spaceElementIds] of spatialHierarchy.bySpace) {

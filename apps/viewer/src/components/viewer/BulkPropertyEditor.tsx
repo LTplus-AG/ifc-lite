@@ -90,7 +90,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
+  const recordMutationBatch = useViewerStore((s) => s.recordMutationBatch);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // Collab role gate, two layers deep. (1) canCollabEdit is injected into
@@ -545,6 +545,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const errors: string[] = [];
       const failures: BulkRuntimeFailure[] = [];
 
+      let processed = 0;
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         if (executeCancelRef.current) break;
 
@@ -563,24 +564,27 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
           }
         }
 
+        processed = end;
         setExecuteProgress({ done: end, total });
         // Yield to browser so progress bar and spinner update
         await new Promise(r => setTimeout(r, 0));
       }
 
+      const cancelled = executeCancelRef.current;
+      if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
       const result: BulkQueryResult = {
         mutations,
         affectedEntityCount: mutations.length,
-        success: errors.length === 0 && !executeCancelRef.current,
+        success: errors.length === 0 && !cancelled,
         errors: errors.length > 0 ? errors : undefined,
       };
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
 
-      if (result.mutations.length > 0) {
-        bumpMutationVersion();
-      }
+      // The engine wrote straight to the view: record the run (a cancelled
+      // run's applied part included) as ONE undo step (#5861).
+      if (selectedModelId) recordMutationBatch(selectedModelId, mutations);
     } catch (error) {
       console.error('Execute failed:', error);
       setExecuteResult({
@@ -595,7 +599,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, bumpMutationVersion, t]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, recordMutationBatch, selectedModelId, t]);
 
   // Reset form
   const handleReset = useCallback(() => {

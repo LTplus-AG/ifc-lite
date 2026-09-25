@@ -35,6 +35,7 @@ import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDial
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
+import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
@@ -54,6 +55,7 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -195,7 +197,6 @@ export function ViewerLayout() {
   // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
   const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
-  const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -255,6 +256,8 @@ export function ViewerLayout() {
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -267,24 +270,8 @@ export function ViewerLayout() {
   const { models, geometryResult } = useIfc();
   const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
-  // Detect mobile viewport — use both width check AND touch capability
-  useEffect(() => {
-    const checkMobile = () => {
-      const narrowScreen = window.innerWidth < 768;
-      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const mobile = narrowScreen || (hasTouchScreen && window.innerWidth < 1024);
-      setIsMobile(mobile);
-      // Auto-collapse panels on mobile
-      if (mobile) {
-        setLeftPanelCollapsed(true);
-        setRightPanelCollapsed(true);
-      }
-    };
-
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile, setLeftPanelCollapsed, setRightPanelCollapsed]);
+  // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
+  useMobileLayoutMode();
 
   // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
   useEffect(() => {
@@ -343,7 +330,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={22}
+                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
                     minSize={10}
                     collapsible
                     collapsedSize={0}

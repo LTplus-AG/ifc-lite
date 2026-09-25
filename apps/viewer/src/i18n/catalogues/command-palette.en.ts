@@ -108,7 +108,7 @@ export const commandPaletteEn = {
   'commandPalette.sidebar.toggle.label': 'Toggle Sidebar',
   'commandPalette.sidebar.collapse.label': 'Collapse Sidebar to Icons',
   'commandPalette.sidebar.customize.label': 'Customize Sidebar…',
-  'commandPalette.sidebar.reset.label': 'Reset Sidebar Layout',
+  'commandPalette.sidebar.reset.label': 'Reset Layout',
 
   // ── Schedule / 4D ──
   'commandPalette.schedule.generate.label': 'Generate Schedule from Storeys…',

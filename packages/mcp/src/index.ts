@@ -45,7 +45,7 @@ export type { ViewerState, SelectionEvent, SelectionListener } from './viewer-ma
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readPackageVersion } from '@ifc-lite/data';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import { MCPServer, type MCPServerOptions } from './server.js';
 import { buildDefaultToolRegistry } from './tools/index.js';
 import { buildDefaultResourceRegistry } from './resources/index.js';

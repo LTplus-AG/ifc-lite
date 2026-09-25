@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 const CAP_LOCALE: Catalogue = {
   'sectionTool.cap.label': 'Surface locale',
@@ -41,7 +42,7 @@ const CAP_LOCALE: Catalogue = {
 
 /** Mount the Section tool through its production host and open the bar's Cap popover (#5499). */
 function mountedCap(capLabel = 'Cap'): HTMLElement {
-  render(<><ViewportHud /><ToolOverlays /></>);
+  render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
   const bar = document.querySelector<HTMLElement>('[data-tool-bar="section"]');
   assert.ok(bar, 'the Section bar is mounted');
   const trigger = [...bar.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === capLabel);

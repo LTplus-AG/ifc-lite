@@ -6,19 +6,23 @@
  * Mounts the active tool's HUD presence from the `TOOL_HUD` table (#5503,
  * charter #5478): its bar into the HUD's top-center region, its hint into
  * the bottom-center region (both through `HudItem`, the only placement
- * knob a tool gets), and its scene layer under the one `SceneOverlayRoot`
- * this component owns — so `WorldLabel` / `CursorInput` in a tool's scene
- * layer find the shared projector without each tool mounting a root.
+ * knob a tool gets), and its scene layer (`entry.Scene`) as a plain child —
+ * `WorldLabel` / `CursorInput` etc. in a tool's scene layer reach the
+ * shared projector through `ViewportContainer`'s `SceneOverlayRoot`, the
+ * ancestor `<ToolOverlays>` now renders under.
  *
- * `SceneOverlayRoot` (#5486 kernel, first consumer #5502) lives here rather
- * than in `ViewportContainer` (at its module budget): this is the one
- * always-mounted descendant of the `[data-viewport]` element that every
- * tool renders under, and the root's own layer div is a sibling of the tool
- * overlays in the same viewport container, so `RendererProjectorSource`
- * still resolves the canvas through `closest('[data-viewport]')`. Overlays
- * that are siblings of this component (`AnnotationLayer`, `BCFOverlay`,
- * `CollabPresenceLayer`) migrate onto the kernel in #5510-#5512 and lift
- * the root up when they do.
+ * Until #5512, this component mounted its OWN `SceneOverlayRoot` (#5486
+ * kernel, first consumer #5502) — a second projector/layer instance
+ * alongside `ViewportContainer`'s, because at the time every sibling
+ * overlay (`AnnotationLayer`, `BCFOverlay`, `CollabPresenceLayer`,
+ * `BasepointOverlay`, `ZoneOverlay`) still ran its own rAF loop and had no
+ * reason to share one. Now that all of them are on the kernel, one root
+ * per viewport is enough: `ViewportContainer` mounts `<ToolOverlays>`
+ * inside its own `<SceneOverlayRoot>` instead of this component owning a
+ * second one — two `SceneOverlayRoot`s would mean two independent rAF
+ * loops and two competing `<defs>` mounting the SAME filter/marker ids
+ * (`OverlayDefs`' own docblock: "a second `<defs>` mounting the same id in
+ * the same document is undefined behaviour — the browser picks one").
  */
 
 import { useEffect, type ReactNode } from 'react';
@@ -27,14 +31,9 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { HudHint, HudItem } from '../viewport-ui/hud';
-import { SceneOverlayRoot } from '../viewport-ui/scene';
 import { TOOL_HUD, isToolId } from '@/lib/viewport-ui/tool-hud-registry';
 
-export function ToolOverlays() {
-  return <SceneOverlayRoot><ToolOverlaysBody /></SceneOverlayRoot>;
-}
-
-function ToolOverlaysBody(): ReactNode {
+export function ToolOverlays(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   useEffect(() => {

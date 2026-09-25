@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 let originalRequestAnimationFrame: typeof requestAnimationFrame;
 let originalCancelAnimationFrame: typeof cancelAnimationFrame;
@@ -60,7 +61,7 @@ describe('mounted Section visualization localization (#4785)', () => {
     const renderer = new Renderer(canvas);
     setGlobalRendererRef({ current: renderer });
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 1, 0], [0, 0, 0]));
-    const ui = render(<><ViewportHud /><ToolOverlays /></>);
+    const ui = render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     act(() => frame?.(16));
     const title = [...ui.querySelectorAll('title')].find((candidate) => candidate.textContent === 'Glisser la coupe sur sa normale');
     assert.ok(title, 'translated title is reachable through ToolOverlays and the production visualization');
@@ -91,7 +92,7 @@ describe('mounted Section visualization localization (#4785)', () => {
       clientHeight: { configurable: true, value: 600 },
     });
     setGlobalRendererRef({ current: new Renderer(canvas) });
-    const ui = render(<><ViewportHud /><ToolOverlays /></>);
+    const ui = render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     assert.equal(ui.querySelectorAll('svg text').length, 0, 'the corner badge is gone (#5500)');
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [0, 0, 0]));
     act(() => frame?.(16));

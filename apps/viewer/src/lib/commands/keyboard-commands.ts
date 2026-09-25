@@ -43,8 +43,14 @@ export type KeyContext =
   | 'flight'
   /** While the search field steps through matches with n / N. */
   | 'search.cycle'
+  /** While the search field has focus. */
+  | 'search.field'
   | 'panel.reposition'
   | 'panel.chat'
+  /** While the Schedule (Gantt) panel has focus. */
+  | 'panel.schedule'
+  /** While the script editor has focus. */
+  | 'panel.script'
   /** While a schedule bar is being dragged. */
   | 'schedule.drag';
 
@@ -109,6 +115,13 @@ export const KEY_COMMANDS = [
   { id: 'reposition.apply', labelKey: 'commands.reposition.apply', category: 'tools', when: 'panel.reposition', keys: [k('enter')] },
   { id: 'reposition.constrain', labelKey: 'commands.reposition.constrain', category: 'tools', when: 'panel.reposition', keys: [k('x'), k('y'), k('z')] },
   { id: 'reposition.nudge', labelKey: 'commands.reposition.nudge', category: 'tools', when: 'panel.reposition', keys: [k('arrowup'), k('arrowdown')] },
+  { id: 'schedule.undo', labelKey: 'commands.schedule.undo', category: 'editing', when: 'panel.schedule', keys: [k('z', { mod: true })] },
+  { id: 'schedule.redo', labelKey: 'commands.schedule.redo', category: 'editing', when: 'panel.schedule', keys: [k('z', { mod: true, shift: true }), k('y', { mod: true })] },
+  { id: 'script.run', labelKey: 'commands.script.run', category: 'editing', when: 'panel.script', keys: [k('enter', { mod: true })] },
+  { id: 'script.save', labelKey: 'commands.script.save', category: 'editing', when: 'panel.script', keys: [k('s', { mod: true })] },
+  { id: 'script.undo', labelKey: 'commands.script.undo', category: 'editing', when: 'panel.script', keys: [k('z', { mod: true })] },
+  // CodeMirror's historyKeymap: Mod-y, with Mod-Shift-z on macOS instead.
+  { id: 'script.redo', labelKey: 'commands.script.redo', category: 'editing', when: 'panel.script', keys: [k('z', { mod: true, shift: true, only: 'apple' }), k('y', { mod: true, only: 'other' })] },
   { id: 'schedule.cancelDrag', labelKey: 'commands.schedule.cancelDrag', category: 'tools', when: 'schedule.drag', keys: [k('escape')] },
 
   // ── Selection ─────────────────────────────────────────────────────────
@@ -141,6 +154,7 @@ export const KEY_COMMANDS = [
   // ── Search ────────────────────────────────────────────────────────────
   { id: 'search.focus', labelKey: 'commands.search.focus', category: 'search', when: 'global', keys: [k('f', { mod: true }), k('/')] },
   { id: 'search.openAdvanced', labelKey: 'commands.search.openAdvanced', category: 'search', when: 'global', keys: [k('f', { mod: true, shift: true })] },
+  { id: 'search.openAdvancedFromField', labelKey: 'commands.search.openAdvancedFromField', category: 'search', when: 'search.field', keys: [k('enter', { mod: true })] },
   { id: 'search.nextMatch', labelKey: 'commands.search.nextMatch', category: 'search', when: 'search.cycle', keys: [k('n')] },
   { id: 'search.previousMatch', labelKey: 'commands.search.previousMatch', category: 'search', when: 'search.cycle', keys: [k('n', { shift: true })] },
   { id: 'search.exitCycle', labelKey: 'commands.search.exitCycle', category: 'search', when: 'search.cycle', keys: [k('escape')] },

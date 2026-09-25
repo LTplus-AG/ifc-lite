@@ -47,6 +47,7 @@ import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -1154,7 +1155,7 @@ export function SpaceSketchOverlay() {
       }
       drawRedoRef.current = [];
       setDrawPts((pts) => [...pts, p]);
-      setStatus(`Drawing — ${drawPts.length + 1} pt(s) · Enter / double-click / first dot to close · Shift = straight · Ctrl+Z removes last.`);
+      setStatus(`Drawing — ${drawPts.length + 1} pt(s) · Enter / double-click / first dot to close · Shift = straight · ${shortcutLabel('spaceSketch.undo')} removes last.`);
       return;
     }
 
@@ -1372,8 +1373,8 @@ export function SpaceSketchOverlay() {
             ? t('spaceSketch.tools.footprintArmedTitle', { count: rooms.length })
             : t('spaceSketch.tools.footprintTitle')}><Frame className="h-4 w-4" /></button>
         <span className="mx-0.5 h-5 w-px bg-border" />
-        <button className={iconBtn} onClick={undo} disabled={!canUndo} title={t('spaceSketch.tools.undoTitle')}><Undo2 className="h-4 w-4" /></button>
-        <button className={iconBtn} onClick={redo} disabled={!canRedo} title={t('spaceSketch.tools.redoTitle')}><Redo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={undo} disabled={!canUndo} title={t('spaceSketch.tools.undoTitle', { keys: shortcutLabel('spaceSketch.undo') })}><Undo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={redo} disabled={!canRedo} title={t('spaceSketch.tools.redoTitle', { keys: shortcutLabel('spaceSketch.redo') })}><Redo2 className="h-4 w-4" /></button>
         <span className="mx-0.5 h-5 w-px bg-border" />
         <button className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => setSnapToBuilding((v) => !v)} aria-pressed={snapToBuilding}

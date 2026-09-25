@@ -35,17 +35,17 @@ export const scriptPanelEn = {
 
   // Toolbar
   'scriptPanel.toolbar.runButton': 'Run',
-  'scriptPanel.toolbar.runTooltip': 'Run script (Ctrl+Enter)',
+  'scriptPanel.toolbar.runTooltip': 'Run script ({keys})',
   'scriptPanel.toolbar.saveAriaLabel': 'Save script',
-  'scriptPanel.toolbar.saveTooltip': 'Save (Ctrl+S)',
+  'scriptPanel.toolbar.saveTooltip': 'Save ({keys})',
   'scriptPanel.toolbar.saveAsToolAriaLabel': 'Save this script as a persistent tool',
   'scriptPanel.toolbar.saveAsToolButton': 'Save as tool',
   'scriptPanel.toolbar.saveAsToolTooltip':
     'Turn this script into a permanent one-click button in your toolbar',
   'scriptPanel.toolbar.undoAriaLabel': 'Undo',
-  'scriptPanel.toolbar.undoTooltip': 'Undo (Ctrl+Z)',
+  'scriptPanel.toolbar.undoTooltip': 'Undo ({keys})',
   'scriptPanel.toolbar.redoAriaLabel': 'Redo',
-  'scriptPanel.toolbar.redoTooltip': 'Redo (Ctrl+Shift+Z)',
+  'scriptPanel.toolbar.redoTooltip': 'Redo ({keys})',
   'scriptPanel.toolbar.newScript': 'New script',
   'scriptPanel.toolbar.blankScriptMenuItem': 'Blank Script',
   'scriptPanel.toolbar.resetSandbox': 'Reset sandbox',
@@ -63,7 +63,7 @@ export const scriptPanelEn = {
   'scriptPanel.output.sandboxHintSuffix': 'APIs for viewer / data / export side-effects.',
   'scriptPanel.output.fixWithLlmButton': 'Fix with LLM',
   'scriptPanel.output.returnLabel': 'Return:',
-  'scriptPanel.output.emptyState': 'Press Run or Ctrl+Enter to execute',
+  'scriptPanel.output.emptyState': 'Press Run or {keys} to execute',
 
   // Delete confirmation dialog
   'scriptPanel.deleteDialog.title': 'Delete Script',

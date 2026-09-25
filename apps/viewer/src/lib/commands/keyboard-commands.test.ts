@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { chordIdentity, formatChord } from './chord.js';
 import { KEY_COMMANDS, type KeyCommandDefinition } from './keyboard-commands.js';
-import { formatCommandKeys, shortcutLabel } from './shortcut-label.js';
+import { formatCommandKeys, primaryShortcutLabel, shortcutLabel } from './shortcut-label.js';
 
 /** Every (context, chord) claimed by more than one command. */
 function collisions(commands: readonly KeyCommandDefinition[]): string[] {
@@ -69,6 +69,16 @@ describe('platform key glyphs (#5836)', () => {
     assert.equal(shortcutLabel('ui.openPanel', true), '⌥1…0');
     assert.equal(shortcutLabel('ui.openPanel', false), 'Alt+1…0');
     assert.equal(shortcutLabel('ui.toggleSidebar', false), 'Alt+\\');
+  });
+
+  it('shows a platform-only chord on its own platform only (CodeMirror redo)', () => {
+    assert.equal(shortcutLabel('script.redo', true), '⇧⌘Z');
+    assert.equal(shortcutLabel('script.redo', false), 'Ctrl+Y');
+  });
+
+  it('names only the primary chord where a hint has room for one key', () => {
+    assert.equal(primaryShortcutLabel('edit.duplicate', false), 'Ctrl+D');
+    assert.equal(primaryShortcutLabel('edit.duplicate', true), '⌘D');
   });
 
   it('lists every chord of a multi-key command', () => {

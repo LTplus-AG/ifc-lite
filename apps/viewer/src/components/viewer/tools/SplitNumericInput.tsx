@@ -35,6 +35,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { notifyWallSplit } from '../wallSplitNotice.js';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 const ACCENT = '#a855f7'; // purple-500
 const PANEL_OFFSET_PX = 32;
@@ -102,7 +103,7 @@ export function SplitNumericInput() {
     if (linearTry.ok) {
       clearSplitHover();
       setSelectedEntityId(linearTry.right.globalId);
-      toast.success('Element split — Ctrl+Z to undo');
+      toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
       return;
     }
     const reason = linearTry.ok === false ? linearTry.reason : wallTry.reason;

@@ -39,9 +39,9 @@ export const scheduleEn = {
   'schedule.toolbar.addTask': 'Add task',
   'schedule.toolbar.addTaskTooltip': 'Add task (after selection or at end)',
   'schedule.toolbar.undoScheduleEdit': 'Undo schedule edit',
-  'schedule.toolbar.undoTooltip': 'Undo (Ctrl+Z)',
+  'schedule.toolbar.undoTooltip': 'Undo ({keys})',
   'schedule.toolbar.redoScheduleEdit': 'Redo schedule edit',
-  'schedule.toolbar.redoTooltip': 'Redo (Ctrl+Shift+Z)',
+  'schedule.toolbar.redoTooltip': 'Redo ({keys})',
   'schedule.toolbar.discardedToast': {
     one: 'Discarded {formattedCount} pending task.',
     other: 'Discarded {formattedCount} pending tasks.',

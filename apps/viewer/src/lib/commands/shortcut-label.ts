@@ -8,7 +8,7 @@
  * hint is spelled once and follows the platform.
  */
 
-import { formatChord, isApplePlatform } from './chord';
+import { chordOnPlatform, formatChord, isApplePlatform } from './chord';
 import { KEY_COMMANDS, type KeyCommandDefinition, type KeyCommandId } from './keyboard-commands';
 
 export type { KeyCommandId };
@@ -26,7 +26,7 @@ export function keyCommand(id: KeyCommandId): KeyCommandDefinition {
 
 /** All of a command's chords, e.g. `Del, Backspace, Space`, or `Alt+1…0` for a range. */
 export function formatCommandKeys(command: KeyCommandDefinition, apple: boolean = isApplePlatform()): string {
-  const { keys } = command;
+  const keys = command.keys.filter((chord) => chordOnPlatform(chord, apple));
   if (command.display === 'range' && keys.length > 1) {
     const first = formatChord(keys[0], apple);
     const last = formatChord({ key: keys[keys.length - 1].key }, apple);
@@ -38,4 +38,16 @@ export function formatCommandKeys(command: KeyCommandDefinition, apple: boolean 
 /** The key hint for a command's tooltip or menu row. */
 export function shortcutLabel(id: KeyCommandId, apple: boolean = isApplePlatform()): string {
   return formatCommandKeys(keyCommand(id), apple);
+}
+
+/**
+ * Only the primary chord, for a hint with room for one key (the context
+ * menu's Duplicate row names ⌘D, not its Shift/Alt direction variants).
+ */
+export function primaryShortcutLabel(id: KeyCommandId, apple: boolean = isApplePlatform()): string {
+  const chord = keyCommand(id).keys.find((c) => chordOnPlatform(c, apple));
+  // Unreachable while every command has a chord for both platform families,
+  // which `keyboard-commands.test.ts` asserts.
+  if (!chord) throw new Error(`Keyboard command ${id} has no chord on this platform`);
+  return formatChord(chord, apple);
 }

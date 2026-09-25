@@ -41,6 +41,7 @@ import { CLIENT_FILES, DEFAULT_REQUEST_SOURCE } from './byok-audit-sources';
 import { getByokModelsForSource } from '@/lib/llm/models';
 import { getApiKeys, subscribeApiKeys, type ApiKeyConfig } from '@/services/api-keys';
 import { type BYOKProvider } from '@/lib/llm/clipboard-detect';
+import { formatChord } from '@/lib/commands/chord';
 
 const REPO_BLOB = 'https://github.com/LTplus-AG/ifc-lite/blob/main';
 
@@ -261,7 +262,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
                 {t('chatByok.keyModal.walkthroughStep3')}
               </li>
               <li>
-                {t('chatByok.keyModal.walkthroughStep4')} <code className="bg-muted px-1 rounded">⌘V</code>).
+                {t('chatByok.keyModal.walkthroughStep4')} <code className="bg-muted px-1 rounded">{formatChord({ key: 'v', mod: true })}</code>).
               </li>
             </ol>
             <p className="text-[11px] text-muted-foreground">{meta.pricingHint}</p>

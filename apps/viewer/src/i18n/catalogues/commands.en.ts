@@ -54,6 +54,12 @@ export const commandsEn = {
   'commands.reposition.constrain': 'Constrain the move to the X, Y or Z axis (Reposition panel)',
   'commands.reposition.nudge': 'Nudge along the chosen axis (Reposition panel)',
   'commands.schedule.cancelDrag': 'Cancel the bar drag (Schedule)',
+  'commands.schedule.undo': 'Undo the last schedule edit (Schedule panel)',
+  'commands.schedule.redo': 'Redo the schedule edit (Schedule panel)',
+  'commands.script.run': 'Run the script (script editor)',
+  'commands.script.save': 'Save the script (script editor)',
+  'commands.script.undo': 'Undo in the script editor',
+  'commands.script.redo': 'Redo in the script editor',
 
   // Selection
   'commands.selection.escape': 'Cancel the current step, leave the tool, then clear the selection (keeps visibility)',
@@ -85,6 +91,7 @@ export const commandsEn = {
   // Search
   'commands.search.focus': 'Focus the search field',
   'commands.search.openAdvanced': 'Open advanced search',
+  'commands.search.openAdvancedFromField': 'Open the query in advanced search (search field)',
   'commands.search.nextMatch': 'Next match (while stepping through matches)',
   'commands.search.previousMatch': 'Previous match (while stepping through matches)',
   'commands.search.exitCycle': 'Stop stepping through matches',

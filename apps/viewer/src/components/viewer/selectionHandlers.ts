@@ -24,6 +24,7 @@ import { resolve as translate } from '@/i18n/registry';
 import { fromRenderTranslation, toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
 import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element-storeys.js';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -162,7 +163,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         ? pointInPolygon(rightFp.footprint, [cursorIfc[0], cursorIfc[1]])
         : false;
       state.setSelectedEntityId(inRight ? result.right.globalId : result.left.globalId);
-      toast.success('Slab split — Ctrl+Z to undo');
+      toast.success(`Slab split — ${shortcutLabel('edit.undo')} to undo`);
       return;
     }
 
@@ -192,7 +193,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       if (linearTry.ok) {
         state.clearSplitHover();
         state.setSelectedEntityId(linearTry.right.globalId);
-        toast.success('Element split — Ctrl+Z to undo');
+        toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
         return;
       }
     }

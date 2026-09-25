@@ -39,7 +39,7 @@ import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContext
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
-import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
+import { primaryShortcutLabel, shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -518,7 +518,7 @@ function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) 
         title={t('entityContextMenu.duplicateDefaultTitle')}
       >
         <CopyPlus className="h-4 w-4 text-muted-foreground" /><span>{t('entityContextMenu.duplicateLabel')}</span>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground">⌘D</span>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground">{primaryShortcutLabel('edit.duplicate')}</span>
       </button>
       <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
         <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />

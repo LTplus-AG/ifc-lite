@@ -39,6 +39,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 interface GanttToolbarProps {
   onClose?: () => void;
@@ -356,7 +357,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.undoTooltip')}</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.undoTooltip', { keys: shortcutLabel('schedule.undo') })}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -370,7 +371,7 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.redoTooltip')}</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.redoTooltip', { keys: shortcutLabel('schedule.redo') })}</TooltipContent>
           </Tooltip>
         </div>
       )}

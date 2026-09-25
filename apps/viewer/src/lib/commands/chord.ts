@@ -25,6 +25,16 @@ export interface KeyChord {
   readonly alt?: true;
   /** Two presses in quick succession (Esc Esc). */
   readonly double?: true;
+  /**
+   * The chord exists on one platform family only: CodeMirror redoes with
+   * ⇧⌘Z on Apple but Ctrl+Y elsewhere. Omitted = both.
+   */
+  readonly only?: 'apple' | 'other';
+}
+
+/** Whether a chord applies on the given platform family. */
+export function chordOnPlatform(chord: KeyChord, apple: boolean): boolean {
+  return chord.only === undefined || (chord.only === 'apple') === apple;
 }
 
 /**

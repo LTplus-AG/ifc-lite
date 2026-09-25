@@ -275,6 +275,26 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     expect(recs.get(t1Sets[0])?.type).toBe('IFCPROPERTYSET');
   });
 
+  it('two same-named sets on one element never borrow each other\'s members', async () => {
+    // Review finding on #6012: reuse is keyed by set name, so a second,
+    // distinct `Custom_B` must not resolve its `B1` to the first set's atom.
+    const twoSets = SHARED_PSET_IFC.replace('ENDSEC;\nEND-ISO', [
+      "#70=IFCPROPERTYSINGLEVALUE('B1',$,IFCLABEL('second'),$);",
+      "#71=IFCPROPERTYSET('1yqM3I0Wn6ah7BCQg6Cf_V',$,'Custom_B',$,(#70));",
+      "#72=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M3',$,$,$,(#20),#71);",
+      'ENDSEC;\nEND-ISO',
+    ].join('\n'));
+    const { text, store } = await exportEdited((view) => {
+      view.setProperty(WALL_A, 'Custom_B', 'B5', 'b5', PropertyValueType.Label);
+    }, twoSets);
+    const b1 = extractPropertiesOnDemand(store, WALL_A)
+      .filter((p) => p.name === 'Custom_B')
+      .flatMap((p) => p.properties.filter((q) => q.name === 'B1').map((q) => q.value))
+      .sort();
+    expect(b1).toEqual(['b1', 'second']);
+    expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+  });
+
   it('a deleted member is dropped from the copy and kept in the shared original', async () => {
     const { text } = await exportEdited((view) => {
       view.deleteProperty(WALL_A, 'Custom_B', 'Layers');

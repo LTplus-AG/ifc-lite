@@ -125,9 +125,20 @@ export function collectPropertyAndQuantitySetMutations(
     // The regenerated copy references the source member of every property
     // the session left alone, so it keeps its IFC class (#5794).
     const regeneratedPsetNames = new Set(relevantPsets.map((pset: PropertySet) => pset.name));
+    // Keyed by set NAME, which is what the regenerated sets carry; a name two
+    // distinct source sets share on this element cannot say whose member a
+    // property is, so it reuses nothing and is regenerated as before.
     const sourceMembers = new Map<string, Map<string, number>>();
+    const sourceSetByName = new Map<string, number>();
     const reuseSourceMembers = (psetName: string, psetId: number): void => {
-      if (!regeneratedPsetNames.has(psetName) || sourceMembers.has(psetName)) return;
+      if (!regeneratedPsetNames.has(psetName)) return;
+      const seen = sourceSetByName.get(psetName);
+      if (seen === psetId) return;
+      if (seen !== undefined) {
+        sourceMembers.set(psetName, new Map());
+        return;
+      }
+      sourceSetByName.set(psetName, psetId);
       sourceMembers.set(psetName, unmodifiedSourceMembers(ctx, mutationView, entityId, psetName, psetId));
     };
 

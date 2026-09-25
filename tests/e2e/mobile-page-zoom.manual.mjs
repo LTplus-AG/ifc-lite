@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // #5843 headed Chrome walkthrough. Start the viewer with
-// `pnpm --filter viewer dev`, then run under a desktop or Xvfb:
+// `pnpm --filter @ifc-lite/viewer dev`, then run under a desktop or Xvfb:
 //   PAGE_ZOOM_BASE=http://localhost:5173 node tests/e2e/mobile-page-zoom.manual.mjs
 // The canvas TouchEvents exercise the viewer's pinch handler. Synthetic events
 // cannot verify Chrome's native pinch behavior outside the canvas.

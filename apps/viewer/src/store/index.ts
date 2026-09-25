@@ -6,8 +6,6 @@
 
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
-
-// Import slices
 import { createLoadingSlice, type LoadingSlice } from './slices/loadingSlice.js';
 import { createSelectionSlice, type SelectionSlice } from './slices/selectionSlice.js';
 import { createVisibilitySlice, type VisibilitySlice } from './slices/visibilitySlice.js';

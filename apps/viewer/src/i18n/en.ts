@@ -39,6 +39,7 @@ import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
 import { flowPanelEn } from './catalogues/flow-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
+import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
@@ -115,6 +116,7 @@ export const en = {
   ...documentMenuEn,
   ...drawingUnderlayEn,
   ...keyboardShortcutsEn,
+  ...settingsEn,
   ...hierarchyEn,
   ...propertiesEn,
   ...attributeEditorEn,

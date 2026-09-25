@@ -138,7 +138,7 @@
    453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   435 apps/viewer/src/lib/compare/worldPlacement.ts
+   431 apps/viewer/src/lib/compare/worldPlacement.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
    405 apps/viewer/src/lib/geo/map-webgl-support.ts

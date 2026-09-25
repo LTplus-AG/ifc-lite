@@ -296,7 +296,8 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
   // axis, as `build_axis2_matrix` computes it. The Rust test
   // `parse_axis2_placement_3d_axis_only_frames_on_world_axes`
   // (rust/geometry/src/transform.rs) pins the SAME table against the renderer
-  // itself. Along -X world Y was taken here, 180 degrees from the viewer.
+  // itself; the fill is the shared `firstProjAxis` (@ifc-lite/data). Along -X
+  // world Y was taken here, 180 degrees about the Axis from the viewer.
   const rendererFrames: ReadonlyArray<[string, [number, number, number], [number, number, number]]> = [
     // [Axis, local X, local Y]
     ['1.,0.,0.', [0, 1, 0], [0, 0, 1]],
@@ -322,6 +323,23 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
       );
     });
   }
+
+  it('follows the renderer next to X: projects X outside its 1e-6 tolerance, switches inside it', async () => {
+    // Axis 4e-5 off +X: still projected, so local X is about (0,-1,0).
+    const outside = await storeFromStep(siteWithAxis('1.,0.00004,0.', ''));
+    const outsideProjected = await storeFromStep(siteWithAxis('1.,0.00004,0.', '1.,0.,0.'));
+    const fo = worldPlacementFingerprint(outside, siteId(outside));
+    assert.ok(fo);
+    assert.strictEqual(fo, worldPlacementFingerprint(outsideProjected, siteId(outsideProjected)));
+
+    // Axis 1e-7 off +X: inside the renderer's tolerance it takes (0,0,1) x
+    // Axis, about (0,+1,0), which is what an explicit (0,1,0) gives too.
+    const inside = await storeFromStep(siteWithAxis('1.,0.0000001,0.', ''));
+    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,1.,0.'));
+    const fin = worldPlacementFingerprint(inside, siteId(inside));
+    assert.ok(fin);
+    assert.strictEqual(fin, worldPlacementFingerprint(insideRendered, siteId(insideRendered)));
+  });
 });
 
 describe('worldPlacementFingerprint - georeferenced-magnitude translations (review find)', () => {

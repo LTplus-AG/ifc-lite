@@ -63,7 +63,7 @@
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import { stableHash } from '@ifc-lite/diff';
-import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
+import { firstProjAxis, type IfcAttributeValue, type IfcEntity } from '@ifc-lite/data';
 import { asExpressIdRef } from '../placement-core.js';
 
 /**
@@ -192,12 +192,6 @@ function triple(
 }
 
 /** Unit vector, or `undefined` for a degenerate one. */
-type Vec3 = [number, number, number];
-
-function cross(a: readonly [number, number, number], b: readonly [number, number, number]): Vec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
 function normalize(v: readonly [number, number, number]): [number, number, number] | undefined {
   const length = Math.hypot(v[0], v[1], v[2]);
   if (!Number.isFinite(length) || length === 0) return undefined;
@@ -246,23 +240,25 @@ function axisPlacementMatrix(
   const refDirection = triple(store, asRef(type === 'IFCAXIS2PLACEMENT3D' ? attrs[2] : attrs[1]));
 
   const z = (axis && normalize(axis)) ?? [0, 0, 1];
-  // An absent RefDirection is filled EXACTLY as the renderer does
-  // (`build_axis2_matrix`, rust/geometry/src/transform.rs), so compare speaks
-  // about the frame the viewer draws: project global X — for an Axis merely
-  // near X, e.g. (0.95, 0.31, 0), too, as EXPRESS `IfcFirstProjAxis` says —
-  // and where that projection vanishes (Axis along ±X) take (0,0,1) x Axis:
-  // (0,1,0) for +X, (0,-1,0) for -X (#5922; world Y there turned it 180°).
-  const explicitRef = refDirection && normalize(refDirection);
-  const seed = explicitRef ?? [1, 0, 0];
+  // An absent RefDirection takes the renderer's fill, `firstProjAxis`: world
+  // X projected onto the plane normal to Axis, as EXPRESS `IfcFirstProjAxis`
+  // does. Next to the X axis, where that projection vanishes, it matches
+  // `build_axis2_matrix` rather than a local choice, so an Axis of exactly -X
+  // gets (0,-1,0), not world Y (#5922). A fill that differed from the
+  // renderer's would turn this frame 180 degrees about the Axis relative to
+  // the one the viewer draws.
+  const seed = (refDirection && normalize(refDirection)) ?? firstProjAxis(z);
   const dot = seed[0] * z[0] + seed[1] * z[1] + seed[2] * z[2];
-  const residual: Vec3 = [seed[0] - z[0] * dot, seed[1] - z[1] * dot, seed[2] - z[2] * dot];
-  const parallel = Math.hypot(...residual) <= 1e-6; // the renderer's threshold
-  // An EXPLICIT RefDirection parallel to Axis is malformed: abstain rather
-  // than invent an X axis the other revision might not share.
-  if (parallel && explicitRef) return undefined;
-  const x = parallel ? normalize(cross(Math.abs(z[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], z)) : normalize(residual);
+  const x = normalize([seed[0] - z[0] * dot, seed[1] - z[1] * dot, seed[2] - z[2] * dot]);
+  // A RefDirection parallel to Axis leaves nothing to orthogonalise. The file
+  // is malformed; abstaining beats inventing an X axis of our own choosing,
+  // because the two revisions might invent different ones.
   if (!x) return undefined;
-  const y = cross(z, x);
+  const y: [number, number, number] = [
+    z[1] * x[2] - z[2] * x[1],
+    z[2] * x[0] - z[0] * x[2],
+    z[0] * x[1] - z[1] * x[0],
+  ];
   return [
     x[0], y[0], z[0], location[0],
     x[1], y[1], z[1], location[1],

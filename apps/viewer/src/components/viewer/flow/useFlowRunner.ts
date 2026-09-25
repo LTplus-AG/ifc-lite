@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
 import { invalidateForExternalChange, runFlowInViewer } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
+import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
 
 /** Ids of every pending mutation, on every model. */
 function pendingMutationIds(): Set<string> {
@@ -57,16 +58,22 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     }
     running.current = true;
     setFlowRunning(true);
-    // Record which pending mutations the run creates (pending after it, not
-    // before), so Publish takes exactly those and never a later manual edit.
+    // Record which mutations the run itself created through `bim`, still
+    // pending when it ends, so Publish takes exactly those: never an edit
+    // made by hand after the run, nor one made WHILE it was in flight, which
+    // goes to the store without passing the SDK backend (#5634).
     const start = Date.now();
-    const pendingBefore = pendingMutationIds();
-    const record = (): FlowRunWindow => ({
-      start,
-      end: Date.now(),
-      doc: flowDoc,
-      mutationIds: new Set([...pendingMutationIds()].filter((id) => !pendingBefore.has(id))),
-    });
+    const capture = openBackendWriteCapture();
+    const record = (): FlowRunWindow => {
+      capture.close();
+      const pending = pendingMutationIds();
+      return {
+        start,
+        end: Date.now(),
+        doc: flowDoc,
+        mutationIds: new Set([...capture.ids].filter((id) => pending.has(id))),
+      };
+    };
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.
     const stillOpen = (): boolean => useViewerStore.getState().flowDoc?.id === flowDoc.id;
@@ -80,6 +87,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {
+      capture.close();
       running.current = false;
     }
   }, [flowDoc, activeModelId, models, bim, setFlowRunning, setFlowLastRun]);

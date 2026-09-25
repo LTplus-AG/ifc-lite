@@ -31,6 +31,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { overlayColor } from '@/lib/viewport-ui/overlay-theme';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { globalIdToExpressId as globalIdToExpressIdLookup } from '@/hooks/bcfIdLookup';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from '@/hooks/bcf/viewpoint-world-frame';
@@ -43,10 +44,10 @@ import { Pin, AnchoredCard, useSceneLayer, useWorldAnchor, type Vec3, type Scree
 // ============================================================================
 
 const STATUS_FILL_VAR: Record<string, string> = {
-  open: 'var(--overlay-status-danger, #f52a65)',
-  'in progress': 'var(--overlay-status-warn, #8c6c3e)',
-  resolved: 'var(--overlay-status-ok, #587539)',
-  closed: 'var(--overlay-ink-muted, #5a6aa4)',
+  open: overlayColor('status-danger'),
+  'in progress': overlayColor('status-warn'),
+  resolved: overlayColor('status-ok'),
+  closed: overlayColor('overlay-ink-muted'),
 };
 
 function statusFill(status: string, active: boolean): string {

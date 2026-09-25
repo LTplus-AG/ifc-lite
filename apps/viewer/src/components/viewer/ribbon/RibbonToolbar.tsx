@@ -174,7 +174,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
             the classic toolbar). */}
         <ExtensionToolbarSlot slot="toolbar.right" />
 
-        {/* Export Changes — pending-mutation affordance must stay visible
+        {/* Export modified IFC… — pending-mutation affordance must stay visible
             regardless of the active tab or collapse state. */}
         <ExportChangesButton />
 

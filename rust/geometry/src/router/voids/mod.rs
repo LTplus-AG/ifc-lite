@@ -19,6 +19,7 @@ mod coaxial_union;
 pub(crate) mod geom;
 mod malformed_opening_repair;
 mod local_frame;
+mod frame_snap;
 pub(crate) mod prism_cut;
 mod probe;
 mod representation;
@@ -913,8 +914,43 @@ impl GeometryRouter {
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
-        let result_local = self
+        let mut result_local = self
             .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+        // #5635: the operands arrive as f32 WORLD positions, so in the frame one
+        // authored face can land on dozens of depth values micrometres apart and
+        // the cut keeps T-junction seams along them. Only when this cut came back
+        // open, retry on operands whose coincident planes are snapped back onto
+        // one value, and keep that retry only if it is closed and consistently
+        // wound. A cut that is already closed is never touched.
+        if !frame_snap::closed_and_consistently_wound(&result_local) {
+            // Rebuilt rather than kept from above: the clean path pays nothing.
+            let mut host_snapped = mesh_to_frame(mesh, &axes, center);
+            let mut openings_snapped = local_ctx.openings.clone();
+            let world_magnitude = [mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]
+                .iter()
+                .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
+            frame_snap::snap_to_frame_planes(
+                &mut host_snapped,
+                &mut openings_snapped,
+                frame_snap::frame_snap_tolerance(world_magnitude),
+            );
+            let snapped_ctx = VoidContext {
+                merged_openings: Self::merge_rectangular_openings(&openings_snapped),
+                openings: openings_snapped,
+                param: None,
+                bool2d: None,
+            };
+            let retry = self.apply_void_context_inner(
+                host_snapped,
+                &snapped_ctx,
+                element_id,
+                host_world_bounds,
+                false,
+            );
+            if frame_snap::closed_and_consistently_wound(&retry) {
+                result_local = retry;
+            }
+        }
         let frame = Matrix3::from_columns(&axes);
         // Rotation-only positions retain the far centre in `Mesh::origin`.
         Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))

@@ -13,11 +13,12 @@
  *
  * This is deliberately a conservative AST ratchet, not proof that a guarded
  * call site applies the overlay. It sees dot-property reads of
- * `entityIndex.byType`, `entityIndex.byId`, `entities.count`, and
- * `entities.getByType` across every
+ * `entityIndex.byType`, `entityIndex.byId`, `entities.count`,
+ * `entities.getByType`, and direct `spatialHierarchy` index reads across every
  * production package and the viewer. Parser/build-time raw reads remain in
  * the census, but a new one needs an explicit reason. It does not follow
- * aliases other than a direct `entityIndex` / `entities` binding,
+ * aliases other than a direct `entityIndex` / `entities` /
+ * `spatialHierarchy` binding,
  * bracket-property access, or calls into another package. The real
  * behavior remains pinned by tests.
  */
@@ -69,6 +70,8 @@ function main() {
   }
   let totalBase = 0;
   let totalCurrent = 0;
+  let spatialSites = 0;
+  let spatialUnclassified = 0;
   let scannedFiles = 0;
   const newSites = [];
   const exceptions = [];
@@ -93,6 +96,11 @@ function main() {
       }
       totalBase += before.length;
       totalCurrent += current.length;
+      for (const hit of current) {
+        if (!hit.kind.startsWith('spatialHierarchy.')) continue;
+        spatialSites++;
+        if (!hit.reason) spatialUnclassified++;
+      }
       newSites.push(...excessRawAccess(before, current, reviewedFiles.has(path)));
       exceptions.push(...current.filter((hit) => hit.reason).map((hit) => `${path}:${hit.line}: ${hit.reason}`));
     }
@@ -101,6 +109,7 @@ function main() {
     if (!seenReviewed.has(path)) throw new Error(`Reviewed raw-access file is missing or outside production scan: ${path}`);
   }
   for (const exception of exceptions) console.log(`raw-access exception: ${exception}`);
+  console.log(`spatial-containment census: ${spatialSites} sites, ${spatialUnclassified} awaiting classification`);
   if (newSites.length > 0) {
     for (const hit of newSites) console.error(`NEW raw entity access: ${hit.key} at line ${hit.line}`);
     console.error('Route live-session queries through an effective-entity accessor, or document an intentional raw read with @raw-entity-enumeration-ok.');

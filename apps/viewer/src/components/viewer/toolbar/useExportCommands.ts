@@ -20,7 +20,7 @@ import { useViewerStore } from '@/store';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { downloadFile, downloadDataUrl } from '@/lib/export/download';
+import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
@@ -31,6 +31,14 @@ export interface ResolvedExportCommand {
   command: RegisteredExportCommand;
   disabled: boolean;
 }
+
+/** `spatial` is the one table whose type id does not say what the file holds. */
+const CSV_SUFFIX: Record<CsvExportType, string> = {
+  entities: '_entities',
+  properties: '_properties',
+  quantities: '_quantities',
+  spatial: '_spatial-hierarchy',
+};
 
 export function useExportCommands() {
   const { ifcDataStore, models, geometryResult } = useIfc();
@@ -69,8 +77,7 @@ export function useExportCommands() {
       const { activeModelId, getMutationView } = useViewerStore.getState();
       const bytes = editedModelBytes(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
       const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
-      const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
-      downloadFile(csv, filename, 'text/csv');
+      downloadFile(csv, modelExportFilename(activeModelName(useViewerStore.getState()), 'csv', CSV_SUFFIX[type]), 'text/csv');
       toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);
     } catch (err) {
       console.error('CSV export failed:', err);
@@ -86,7 +93,7 @@ export function useExportCommands() {
       const entities = buildCommandPaletteJsonEntities(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
 
       const json = JSON.stringify({ entities }, null, 2);
-      downloadFile(json, 'model-data.json', 'application/json');
+      downloadFile(json, modelExportFilename(activeModelName(useViewerStore.getState()), 'json', '_data'), 'application/json');
       toast.success(`Exported ${entities.length} entities as JSON${activeModelOnlyNote}`);
     } catch (err) {
       console.error('JSON export failed:', err);
@@ -99,7 +106,7 @@ export function useExportCommands() {
     const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
     try {
       if (!canvas) throw new Error('no 3D viewport canvas on screen');
-      downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
+      downloadDataUrl(canvas.toDataURL('image/png'), modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
       toast.success('Screenshot saved');
     } catch (err) {
       console.error('Screenshot failed:', err);

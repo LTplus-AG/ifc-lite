@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { downloadBlob } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
@@ -65,6 +65,7 @@ export interface LocationMapProps {
    * range instead.
    */
   instancedModelRange?: InstancedModelRange | null;
+  modelName?: string; // the displayed model's; the KMZ download is filed under it (#5833)
   /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1 (metres). */
   lengthUnitScale?: number;
   /** Whether the map is in edit mode (allows repositioning) */
@@ -100,7 +101,7 @@ type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult,
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
-  instancedModelRange = null,
+  instancedModelRange = null, modelName = '',
 }: LocationMapProps) {
   const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -573,12 +574,11 @@ export function LocationMap({
       // Embed as COLLADA: Google Earth's <Model> only loads COLLADA, and clampToGround keeps it on the
       // terrain so the MSL orthogonal height no longer floats it (#1427).
       //
-      // Placement is NOT computed here. This used to call `buildKmz` directly
-      // with the authored axis and a raw `orthogonalHeight`, which skipped all
-      // three corrections the Export KMZ dialog got: the map-absolute guard
-      // (#2526), the map-unit altitude scaling, and the RTC Z fold-back. Same
-      // model, two buttons, two different files. `buildKmzForResolvedGeoref` is
-      // now the single source for both (#2526 follow-up).
+      // Placement is NOT computed here. This used to call `buildKmz` directly with the authored axis
+      // and a raw `orthogonalHeight`, which skipped all three corrections the Export KMZ dialog got:
+      // the map-absolute guard (#2526), the map-unit altitude scaling, and the RTC Z fold-back. Same
+      // model, two buttons, two different files. `buildKmzForResolvedGeoref` is now the single source
+      // for both (#2526 follow-up).
       const kmz = await buildKmzForResolvedGeoref({
         conversion: mapConversion,
         crs: projectedCRS,
@@ -602,11 +602,11 @@ export function LocationMap({
         toast.error(t('properties.locationMap.kmzExportFailedWithReason', { reason: kmz }));
         return;
       }
-      downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
+      downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), modelExportFilename(modelName, 'kmz'));
     } catch (err) {
       toast.error(t('properties.locationMap.kmzExportFailedUnknown', { message: err instanceof Error ? err.message : t('properties.locationMap.unknownError') }));
     }
-  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange, t]);
+  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange, modelName, t]);
 
   const isDarkRef = useRef(false);
 

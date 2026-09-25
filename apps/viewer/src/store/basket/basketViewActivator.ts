@@ -36,9 +36,6 @@ export function activateBasketViewFromStore(viewId: string): void {
       drawing2DPanelVisible: false,
     });
     if (sectionSnapshot.plane.enabled) {
-      if (state.activeTool !== 'section') {
-        state.setSuppressNextSection2DPanelAutoOpen(true);
-      }
       state.setActiveTool('section', 'programmatic');
     } else if (state.activeTool === 'section') {
       state.setActiveTool('select', 'programmatic');

@@ -10,7 +10,7 @@
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Plus, X } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -36,7 +36,6 @@ import { DocumentPreview } from './DocumentPreview';
 import { useDocumentData } from './useDocumentData';
 
 export interface DocumentPanelProps {
-  onClose?: () => void;
   /** Test seam: the PDF seams to print with instead of the browser's. */
   pdfSeams?: () => Promise<DocumentPdfSeams>;
 }
@@ -53,7 +52,7 @@ export function ensureActiveDocument(): void {
   }
 }
 
-export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
+export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
@@ -199,11 +198,6 @@ export function DocumentPanel({ onClose, pdfSeams }: DocumentPanelProps) {
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>
           <FileText className="mr-1 h-3.5 w-3.5" />{busy ? t('document.panel.exportBusy') : tablesResolving ? t('document.panel.exportPreparingTables') : t('document.panel.exportIdle')}
         </Button>
-        {onClose && (
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label={t('document.panel.closeAriaLabel')}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        )}
       </div>
 
       {document && (

@@ -5,8 +5,8 @@
 /**
  * Visibility state slice
  *
- * Supports both single-model (legacy) and multi-model visibility.
- * Multi-model visibility uses model-scoped Maps.
+ * Entity ids are global ids (`FederationRegistry.toGlobalId`), so one set
+ * covers every loaded model; a single model uses `globalId === expressId`.
  */
 
 import type { StateCreator } from 'zustand';
@@ -41,7 +41,7 @@ import {
  */
 
 export interface VisibilitySlice {
-  // State (legacy - single model)
+  // State
   hiddenEntities: Set<number>;
   isolatedEntities: Set<number> | null;
   /** X-Ray context: when non-null, every entity NOT in this set renders ghosted
@@ -69,12 +69,8 @@ export interface VisibilitySlice {
    *  (class 0), so the switch stays hidden for them. */
   hasTypeGeometry: boolean;
 
-  // State (multi-model)
-  /** Hidden / isolated entities per model. */
-  hiddenEntitiesByModel: Map<string, Set<number>>;
-  isolatedEntitiesByModel: Map<string, Set<number>>;
 
-  // Actions (legacy - maintained for backward compatibility)
+  // Actions
   hideEntity: (id: number) => void;
   hideEntities: (ids: number[]) => void;
   showEntity: (id: number) => void;
@@ -147,23 +143,6 @@ export interface VisibilitySlice {
   /** Clear X-Ray context ghosting. */
   clearGhost: () => void;
 
-  // Actions (multi-model)
-  /** Hide entity in specific model */
-  hideEntityInModel: (modelId: string, expressId: number) => void;
-  /** Hide multiple entities in specific model */
-  hideEntitiesInModel: (modelId: string, expressIds: number[]) => void;
-  /** Show entity in specific model */
-  showEntityInModel: (modelId: string, expressId: number) => void;
-  /** Show multiple entities in specific model */
-  showEntitiesInModel: (modelId: string, expressIds: number[]) => void;
-  /** Toggle entity visibility in specific model */
-  toggleEntityVisibilityInModel: (modelId: string, expressId: number) => void;
-  /** Check if entity is visible in specific model */
-  isEntityVisibleInModel: (modelId: string, expressId: number) => boolean;
-  /** Get hidden entity IDs for a specific model */
-  getHiddenEntitiesForModel: (modelId: string) => Set<number>;
-  /** Clear visibility state for a model (when model is removed) */
-  clearModelVisibility: (modelId: string) => void;
   /** Show all entities across all models */
   showAllInAllModels: () => void;
   /** Set the embedding host's class hide list. Embed only. */
@@ -171,7 +150,7 @@ export interface VisibilitySlice {
 }
 
 export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], VisibilitySlice> = (set, get) => ({
-  // Initial state (legacy)
+  // Initial state
   hiddenEntities: new Set(),
   isolatedEntities: null,
   ghostExceptEntities: null, visibilityRevision: 0,
@@ -184,11 +163,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   // Derived from geometry at load time — no model is open yet, so default false.
   hasTypeGeometry: false,
 
-  // Initial state (multi-model)
-  hiddenEntitiesByModel: new Map(),
-  isolatedEntitiesByModel: new Map(),
-
-  // Actions (legacy)
+  // Actions
   hideEntity: (id) => set((state) => {
     const newHidden = new Set(state.hiddenEntities);
     newHidden.add(id);
@@ -392,98 +367,6 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     state.hasTypeGeometry === value ? state : { hasTypeGeometry: value }
   )),
 
-  // Actions (multi-model)
-  hideEntityInModel: (modelId, expressId) => set((state) => {
-    const newMap = new Map(state.hiddenEntitiesByModel);
-    const modelHidden = new Set(newMap.get(modelId) || []);
-    modelHidden.add(expressId);
-    newMap.set(modelId, modelHidden);
-    return { hiddenEntitiesByModel: newMap };
-  }),
-
-  hideEntitiesInModel: (modelId, expressIds) => set((state) => {
-    const newMap = new Map(state.hiddenEntitiesByModel);
-    const modelHidden = new Set(newMap.get(modelId) || []);
-    expressIds.forEach(id => modelHidden.add(id));
-    newMap.set(modelId, modelHidden);
-    return { hiddenEntitiesByModel: newMap };
-  }),
-
-  showEntityInModel: (modelId, expressId) => set((state) => {
-    const newMap = new Map(state.hiddenEntitiesByModel);
-    const modelHidden = newMap.get(modelId);
-    if (modelHidden) {
-      const newSet = new Set(modelHidden);
-      newSet.delete(expressId);
-      if (newSet.size === 0) {
-        newMap.delete(modelId);
-      } else {
-        newMap.set(modelId, newSet);
-      }
-    }
-    return { hiddenEntitiesByModel: newMap };
-  }),
-
-  showEntitiesInModel: (modelId, expressIds) => set((state) => {
-    const newMap = new Map(state.hiddenEntitiesByModel);
-    const modelHidden = newMap.get(modelId);
-    if (modelHidden) {
-      const newSet = new Set(modelHidden);
-      expressIds.forEach(id => newSet.delete(id));
-      if (newSet.size === 0) {
-        newMap.delete(modelId);
-      } else {
-        newMap.set(modelId, newSet);
-      }
-    }
-    return { hiddenEntitiesByModel: newMap };
-  }),
-
-  toggleEntityVisibilityInModel: (modelId, expressId) => set((state) => {
-    const newMap = new Map(state.hiddenEntitiesByModel);
-    const modelHidden = new Set(newMap.get(modelId) || []);
-
-    if (modelHidden.has(expressId)) {
-      modelHidden.delete(expressId);
-      if (modelHidden.size === 0) {
-        newMap.delete(modelId);
-      } else {
-        newMap.set(modelId, modelHidden);
-      }
-    } else {
-      modelHidden.add(expressId);
-      newMap.set(modelId, modelHidden);
-    }
-
-    return { hiddenEntitiesByModel: newMap };
-  }),
-
-  isEntityVisibleInModel: (modelId, expressId) => {
-    const state = get();
-    const modelHidden = state.hiddenEntitiesByModel.get(modelId);
-    if (modelHidden?.has(expressId)) return false;
-
-    const modelIsolated = state.isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated && !modelIsolated.has(expressId)) return false;
-
-    return true;
-  },
-
-  getHiddenEntitiesForModel: (modelId) => {
-    return get().hiddenEntitiesByModel.get(modelId) || new Set();
-  },
-
-  clearModelVisibility: (modelId) => set((state) => {
-    const newHiddenMap = new Map(state.hiddenEntitiesByModel);
-    const newIsolatedMap = new Map(state.isolatedEntitiesByModel);
-    newHiddenMap.delete(modelId);
-    newIsolatedMap.delete(modelId);
-    return {
-      hiddenEntitiesByModel: newHiddenMap,
-      isolatedEntitiesByModel: newIsolatedMap,
-    };
-  }),
-
   showAllInAllModels: () => set({
     hiddenEntities: new Set(),
     isolatedEntities: null,
@@ -491,7 +374,5 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     // "Show all" must also drop any X-ray context (clash focus, Space Sketch
     // preview) — the single-model showAll already does.
     ghostExceptEntities: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
   }),
 });

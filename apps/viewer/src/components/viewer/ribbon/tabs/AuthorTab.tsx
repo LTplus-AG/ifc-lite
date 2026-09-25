@@ -26,9 +26,10 @@ import {
   RibbonSmallStack,
 } from '../primitives';
 
-/** Purple latched accent shared by the authoring toggles (matches the
- *  classic toolbar's Edit pill so the mode reads identically). */
-const EDIT_ACTIVE_CLASS = 'bg-purple-600/20 text-foreground ring-1 ring-inset ring-purple-600/50';
+/** Latched state shared by the authoring toggles: the interaction accent
+ *  (overlay token, #5483), not a mode-specific hue, so edit mode reads the
+ *  same in the ribbon, the classic toolbar and over the model (#5489). */
+const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50';
 
 export function AuthorTab() {
   const { t } = useTranslation();

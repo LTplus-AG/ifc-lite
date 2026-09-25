@@ -22,9 +22,11 @@ import {
   Palette, Puzzle, Sun, Info,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
+  Ruler,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
@@ -67,6 +69,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('loadReport'); } },
     { id: 'panel:pointclouds', label: 'Point Clouds', ...withKey('commandPalette.panel.pointClouds.label'), keywords: 'point cloud scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
       action: () => { p.activateRightPanel('pointclouds'); } },
+    { id: 'panel:measurements', label: 'Measurements', ...withKey('commandPalette.panel.measurements.label'), keywords: 'measure distance polyline angle radius coordinates point quantities area volume list', category: 'Panels', icon: Ruler,
+      action: () => { p.activateRightPanel('measurements'); } },
     { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()
@@ -96,8 +100,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
     { id: 'sidebar:customize', label: 'Customize Sidebar…', ...withKey('commandPalette.sidebar.customize.label'), keywords: 'sidebar customize reorder hide show panels edit arrange', category: 'Panels', icon: SlidersHorizontal,
       action: () => { const s = useViewerStore.getState(); s.setSidebarMode('expanded'); s.setSidebarCustomizing(true); } },
-    { id: 'sidebar:reset', label: 'Reset Sidebar Layout', ...withKey('commandPalette.sidebar.reset.label'), keywords: 'sidebar reset default order width restore', category: 'Panels', icon: RotateCcw,
-      action: () => { useViewerStore.getState().resetSidebarLayout(); } },
+    { id: 'sidebar:reset', label: 'Reset Layout', ...withKey('commandPalette.sidebar.reset.label'), keywords: 'layout sidebar floating panels reset default order width restore', category: 'Panels', icon: RotateCcw,
+      action: () => { resetLayout(); } },
   );
 
   // ── Schedule / 4D (Tools) ─────────────────────────────

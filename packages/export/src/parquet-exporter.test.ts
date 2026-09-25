@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ParquetExporter } from './parquet-exporter.js';
-import type { EntityRef, IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type EntityRef, type IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
 import {
@@ -414,6 +414,48 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
       expect(view.getUint16(lfh + 4, true), 'local header version needed').toBe(0x0014);
       p += 46 + view.getUint16(p + 28, true) + view.getUint16(p + 30, true) + view.getUint16(p + 32, true);
     }
+  });
+
+  it('exports edited and authored containment from the effective relationships (#5249)', async () => {
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,$);
+#10=IFCBUILDINGSTOREY('0Storey0000000000000010',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
+#11=IFCBUILDINGSTOREY('0Storey0000000000000011',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#21=IFCRELAGGREGATES('0RelAggregate0000000021',$,$,$,#1,(#10,#11));
+#30=IFCWALL('0Wall00000000000000030',$,'Wall A',$,$,$,$,$,$);
+#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('0RelContained0000000040',$,$,$,(#30),#10);
+ENDSEC;
+END-ISO-10303-21;`;
+    const bytes = new TextEncoder().encode(ifc);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(40);
+    const exporter = new ParquetExporter(store, undefined, view);
+    const JSZip = (await import('jszip')).default;
+    const spatialRows = async () => {
+      const archive = await JSZip.loadAsync(await exporter.exportBOS({ includeGeometry: false }));
+      return decodeParquet(await archive.file('SpatialHierarchy.parquet')!.async('uint8array'));
+    };
+
+    expect((await spatialRows()).map(({ ElementId, StoreyId }) => [ElementId, StoreyId])).toEqual([[30, 10]]);
+    view.setPositionalAttribute(40, 5, '#11');
+    expect((await spatialRows()).map(({ ElementId, StoreyId }) => [ElementId, StoreyId])).toEqual([[30, 11]]);
+
+    view.deleteEntity(40);
+    const wall = view.createEntity('IfcWall', ['0Wall00000000000000041', null, 'Wall B', null, null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure',
+      ['0RelContained0000000042', null, null, null, ['#30', `#${wall.expressId}`], '#11']);
+    expect((await spatialRows()).map(({ ElementId, StoreyId }) => [ElementId, StoreyId]))
+      .toEqual([[30, 11], [wall.expressId, 11]]);
+
+    view.deleteEntity(11);
+    expect(await spatialRows()).toEqual([]);
   });
 
   it('exports an express id above 2^31 without wrapping it negative', async () => {

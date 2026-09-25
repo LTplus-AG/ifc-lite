@@ -57,8 +57,9 @@ pub struct Mesh {
     /// Triangle indices (i0, i1, i2)
     pub indices: Vec<u32>,
     /// Whether RTC offset has already been subtracted from positions.
-    /// Set by `FacetedBrepProcessor::process_with_rtc` to prevent
-    /// `transform_mesh` from double-subtracting RTC.
+    /// Set by a processor's `GeometryProcessor::process_in_rtc_frame` hook
+    /// (which rebases in f64 before narrowing) so the final world transform
+    /// does not subtract RTC a second time.
     pub rtc_applied: bool,
     /// Per-mesh local origin (f64), in the RTC/world frame. When non-zero,
     /// `positions` are stored RELATIVE to this origin (so they stay small and

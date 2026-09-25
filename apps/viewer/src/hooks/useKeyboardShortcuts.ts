@@ -51,7 +51,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
-  const toggleBasketPresentationVisible = useViewerStore((s) => s.toggleBasketPresentationVisible);
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
 
   // Measure tool specific actions
@@ -73,6 +72,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore keys an input-like target consumes (inputs, <select>, ARIA widgets).
     if (isTextEntryTarget(e)) return;
+    // A key another layer already handled is not a shortcut: a Radix popover
+    // (the Section bar's Cap, #5499) dismisses itself on Escape and marks the
+    // event handled from a document-capture listener, which runs before this
+    // window listener — without this, the same Escape also closed the tool.
+    if (e.defaultPrevented) return;
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
@@ -210,10 +214,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       executeBasketRemove();
     }
 
-    // D Toggle basket presentation dock
+    // D Toggle the Presentation bottom panel (#5508: bottom-panel table, so
+    // it stays mutually exclusive with Script/Schedule/Lists/etc.)
     if (key === 'd' && !ctrl && !shift) {
       e.preventDefault();
-      toggleBasketPresentationVisible();
+      useViewerStore.getState().toggleBottomPanel('presentation', 'shortcut');
     }
 
     // B Save current basket as presentation view with thumbnail
@@ -410,7 +415,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     setActiveTool,
     hideEntities,
     toggleTheme,
-    toggleBasketPresentationVisible,
     activeMeasurement,
     cancelMeasurement,
     toggleSnap,

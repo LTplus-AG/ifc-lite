@@ -608,3 +608,104 @@ describe('BulkQueryEngine selects the effective model (#5249)', () => {
     expect(engine.select({ globalIds: ['guid-new'] })).toEqual([]);
   });
 });
+
+/**
+ * #5867: SET_ATTRIBUTE returned null for every entity, so a run reported
+ * `success: true` with nothing written. It now writes the EXPRESS attribute
+ * through the view, and an attribute the class does not declare fails.
+ */
+describe('BulkQueryEngine SET_ATTRIBUTE (#5867)', () => {
+  function makeEngine(classes: Record<number, string>, schema?: 'IFC2X3' | 'IFC4') {
+    const ids = Object.keys(classes).map(Number);
+    const entities = { ...makeEntities(ids.length), getTypeName: (id: number) => classes[id] ?? 'Unknown' };
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    return { engine: new BulkQueryEngine(entities, view, null, null, null, undefined, schema), view };
+  }
+  const setAttr = (attribute: string, ids: number[]) =>
+    ({ select: { expressIds: ids }, action: { type: 'SET_ATTRIBUTE' as const, attribute, value: 'X' } });
+  const attr = (view: MutablePropertyView, id: number, name: string) =>
+    view.getAttributeMutationsForEntity(id).find((a) => a.name === name)?.value;
+
+  it('writes Name on every selected wall and reports each entity', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcWall' });
+    const result = engine.execute({ select: { expressIds: [1, 2] }, action: { type: 'SET_ATTRIBUTE', attribute: 'Name', value: 'X' } });
+
+    expect(result.success).toBe(true);
+    expect(result.affectedEntityCount).toBe(2);
+    expect(attr(view, 1, 'Name')).toBe('X');
+    expect(attr(view, 2, 'Name')).toBe('X');
+    expect(result.mutations.map((m) => [m.type, m.attributeName, m.newValue])).toEqual([
+      ['UPDATE_ATTRIBUTE', 'Name', 'X'],
+      ['UPDATE_ATTRIBUTE', 'Name', 'X'],
+    ]);
+  });
+
+  it('records the overlay value it replaces, so undo can restore an earlier edit', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall' });
+    view.setAttribute(1, 'ObjectType', 'EARLIER');
+    const [mutation] = engine.execute({ select: { expressIds: [1] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'LATER' } }).mutations;
+    expect(mutation.oldValue).toBe('EARLIER');
+    expect(attr(view, 1, 'ObjectType')).toBe('LATER');
+  });
+
+  it('fails, not skips, an entity whose class lacks the attribute', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcWallType' });
+    const result = engine.execute({ select: { expressIds: [1, 2] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'X' } });
+
+    expect(result.success).toBe(false);
+    expect(result.affectedEntityCount).toBe(1);
+    expect(result.errors).toEqual(['Entity 2: IfcWallType has no ObjectType attribute']);
+    expect(attr(view, 2, 'ObjectType')).toBeUndefined();
+  });
+
+  it('refuses a name that is not a writable EXPRESS attribute once for the run (no lower-case aliases)', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcWall' });
+    const result = engine.execute(setAttr('name', [1, 2]));
+    expect(result.success).toBe(false);
+    expect(result.errors).toEqual(['"name" is not an attribute a bulk edit can set (Name, Description, ObjectType, Tag)']);
+    expect(view.getAttributeMutationsForEntity(1)).toEqual([]);
+    expect(() => engine.applyAction(1, setAttr('GlobalId', [1]).action)).toThrow(/not an attribute a bulk edit can set/);
+  });
+
+  it('writes Tag on an element and refuses it on a storey, which declares none', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcBuildingStorey' });
+    const result = engine.execute(setAttr('Tag', [1, 2]));
+    expect(attr(view, 1, 'Tag')).toBe('X');
+    expect(result.errors).toEqual(['Entity 2: IfcBuildingStorey has no Tag attribute']);
+  });
+
+  it("judges by the model's schema when it is known", () => {
+    // IfcMaterial.Description exists from IFC4 on; IFC2X3 declares only Name.
+    expect(makeEngine({ 1: 'IfcMaterial' }, 'IFC4').engine.execute(setAttr('Description', [1])).success).toBe(true);
+    expect(makeEngine({ 1: 'IfcMaterial' }, 'IFC2X3').engine.execute(setAttr('Description', [1])).errors)
+      .toEqual(['Entity 1: IfcMaterial has no Description attribute in IFC2X3']);
+    // Unknown schema: refused unless every schema declares it.
+    expect(makeEngine({ 1: 'IfcMaterial' }).engine.execute(setAttr('Description', [1])).success).toBe(false);
+  });
+
+  it("falls back to every schema when the model's own does not know the class, and refuses an unknown class", () => {
+    // IfcGeotechnicalStratum is IFC4X3-only: an IFC4 model's table lacks it, like the exporter's fallback.
+    expect(makeEngine({ 1: 'IfcGeotechnicalStratum' }, 'IFC4').engine.execute(setAttr('Name', [1])).success).toBe(true);
+    expect(makeEngine({ 1: 'IfcSolidStratum' }, 'IFC4').engine.execute(setAttr('Name', [1])).errors)
+      .toEqual(['Entity 1: IfcSolidStratum is not a class in the bundled IFC schemas, so Name cannot be checked']);
+  });
+
+  it('judges a created entity by its retype, not its authored class', () => {
+    const { engine, view } = makeEngine({});
+    const wall = view.createEntity('IfcWall', []).expressId;
+    const wallType = view.createEntity('IfcWallType', []).expressId;
+    view.setEntityType(wall, 'IfcWallType');
+    view.setEntityType(wallType, 'IfcWall');
+    const result = engine.execute(setAttr('ObjectType', [wall, wallType]));
+    expect(result.errors).toEqual([`Entity ${wall}: IfcWallType has no ObjectType attribute`]);
+    expect(attr(view, wallType, 'ObjectType')).toBe('X');
+  });
+
+  it('judges a retyped entity by its new class', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall' });
+    view.setEntityType(1, 'IfcWallType');
+    const result = engine.execute({ select: { expressIds: [1] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'X' } });
+    expect(result.errors).toEqual(['Entity 1: IfcWallType has no ObjectType attribute']);
+  });
+});

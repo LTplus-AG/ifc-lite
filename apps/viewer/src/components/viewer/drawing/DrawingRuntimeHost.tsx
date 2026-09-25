@@ -4,16 +4,23 @@
 
 /**
  * The 2D drawing runtime, with no view of its own (#5492): markup and sheet
- * persistence, the Section-tool auto-open, and drawing generation, which keeps
- * running while no drawing view is shown because the 3D cut overlay reads the
- * generated drawing. Mounted once next to the federated geometry in
- * `ViewportContainer`; views read what they need through `useDrawingRuntime`.
+ * persistence, and drawing generation, which keeps running while no drawing
+ * view is shown because the 3D cut overlay reads the generated drawing.
+ * Mounted once next to the federated geometry in `ViewportContainer`; views
+ * read what they need through `useDrawingRuntime`.
+ *
+ * The Section tool does NOT auto-open this panel (#5497): opening the tool
+ * only shows the 3D cut. A user (or caller) opens the Drawing explicitly —
+ * the section UI's "2D" button, DXF import, a BCF/basket view apply — via
+ * `openPanelInHome('drawing')`. Leaving the tool parks the cut
+ * (`store/section-active.ts`); a docked/floating Drawing panel keeps showing
+ * the last generated drawing and surfaces that parked state itself
+ * (`DrawingPanel`'s "Section parked" banner) rather than this host reopening.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
@@ -38,9 +45,6 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
   // dock flag but leaves a floating / popped-out drawing showing.
   const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible
     || s.floatingPanels.some((p) => p.id === 'drawing') || s.poppedOutIds.includes('drawing'));
-  const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
-  const suppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.suppressNextSection2DPanelAutoOpen);
-  const setSuppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.setSuppressNextSection2DPanelAutoOpen);
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
@@ -62,58 +66,12 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
     return source && drawingActive ? { ...placedViewGeometry(source), coordinateInfo: placedCoordinateInfo ?? source.coordinateInfo } : source;
   }, [mergedGeometry, legacyGeometryResult, placement, placedCoordinateInfo, drawingActive]);
 
-  // Opening the Section tool opens the drawing, unless a caller that shows a
-  // cut programmatically asked to skip it once (`store/section-active.ts`).
-  const prevActiveToolRef = useRef(activeTool);
-  useEffect(() => {
-    if (activeTool === 'section' && prevActiveToolRef.current !== 'section' && geometryResult?.meshes) {
-      if (suppressNextSection2DPanelAutoOpen) {
-        setSuppressNextSection2DPanelAutoOpen(false);
-        prevActiveToolRef.current = activeTool;
-        return;
-      }
-      openPanelInHome('drawing', 'programmatic');
-    }
-    prevActiveToolRef.current = activeTool;
-  }, [activeTool, geometryResult, openPanelInHome, suppressNextSection2DPanelAutoOpen, setSuppressNextSection2DPanelAutoOpen]);
-
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
-
-  // Per-model local expressIds → global IDs (idOffset), plus the legacy set.
-  const combinedHiddenIds = useMemo(() => {
-    const globalHiddenIds = new Set<number>(hiddenEntities);
-    for (const [modelId, localHiddenIds] of hiddenEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localHiddenIds) {
-          globalHiddenIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-    return globalHiddenIds;
-  }, [hiddenEntities, hiddenEntitiesByModel, models]);
-
-  const combinedIsolatedIds = useMemo(() => {
-    // Legacy isolation already holds global IDs.
-    if (isolatedEntities !== null) return isolatedEntities;
-    const globalIsolatedIds = new Set<number>();
-    for (const [modelId, localIsolatedIds] of isolatedEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localIsolatedIds) {
-          globalIsolatedIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-    return globalIsolatedIds.size > 0 ? globalIsolatedIds : null;
-  }, [isolatedEntities, isolatedEntitiesByModel, models]);
-
   const { generateDrawing, isRegenerating } = useDrawingGeneration({
     geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
-    combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
+    // Both sets hold global ids, so they cover every federated model.
+    combinedHiddenIds: hiddenEntities, combinedIsolatedIds: isolatedEntities, computedIsolatedIds,
     models, panelVisible, activeTool, drawing: sourceDrawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });

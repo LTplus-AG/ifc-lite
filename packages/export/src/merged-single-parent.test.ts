@@ -191,6 +191,163 @@ describe('MergedExporter keeps one IfcRelAggregates parent per object (#5471)', 
 });
 
 /**
+ * `dropEmptyContainers` has to see the rels the one-parent pass skips (#5725).
+ * The drop plan is made before the per-model claim pass runs. It counted B's
+ * `Site_B -> Building` edge, but that edge is never written because A's
+ * Building already has a parent. Site_B then held nothing and was still
+ * written.
+ */
+describe('MergedExporter dropEmptyContainers after the one-parent pass (#5725)', () => {
+  const siteA = [
+    `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+    `#2=IFCSITE('${guid('sa')}',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+    `#3=IFCBUILDING('${guid('ba')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+    `#4=IFCRELAGGREGATES('${guid('ra1')}',$,$,$,#1,(#2));`,
+    `#5=IFCRELAGGREGATES('${guid('ra2')}',$,$,$,#2,(#3));`,
+    `#6=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+    `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#6),#3);`,
+  ];
+  /** B: its own Site (by-name, so it does not unify), over a Building that unifies with A's. */
+  const siteB = (extra: string[] = []) => [
+    `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+    `#2=IFCSITE('${guid('sb')}',$,'Site B',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+    `#3=IFCBUILDING('${guid('bb')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+    `#4=IFCRELAGGREGATES('${guid('rb1')}',$,$,$,#1,(#2));`,
+    `#5=IFCRELAGGREGATES('${guid('rb2')}',$,$,$,#2,(#3${extra.length > 0 ? ',#6' : ''}));`,
+    ...extra,
+  ];
+  const options: Partial<MergeExportOptions> = { mergeSites: 'by-name', dropEmptyContainers: true };
+
+  it('drops a later Site left empty because its only child already has a parent', async () => {
+    const content = await merge([await model('a', siteA), await model('b', siteB())], options);
+    expect(content).toContain(guid('sa'));
+    expect(content).not.toContain(guid('sb'));
+    // Nothing still names it: its Project aggregation went with it.
+    expect(content).not.toContain(guid('rb1'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    expectSingleParents(content);
+  });
+
+  it('keeps that Site when the same rel still carries a child of its own', async () => {
+    // B's Site also aggregates a Building A does not have, so the rel is
+    // narrowed (the unified Building is stripped) rather than skipped, and
+    // Site B is not empty.
+    const own = [
+      `#6=IFCBUILDING('${guid('bo')}',$,'Annex',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+      `#7=IFCBUILDINGELEMENTPROXY('${guid('po')}',$,'Q',$,$,$,$,$,$);`,
+      `#8=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rco')}',$,$,$,(#7),#6);`,
+    ];
+    const content = await merge([await model('a', siteA), await model('b', siteB(own))], {
+      ...options, mergeBuildings: 'by-name',
+    });
+    expect(content).toContain(guid('sb'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    const siteBId = Number(content.split('\n').find(l => l.includes(`('${guid('sb')}'`))!.match(/^#(\d+)=/)![1]);
+    expect(parentsOf(content, 'IFCBUILDING', guid('bo'))).toEqual([siteBId]);
+    expectSingleParents(content);
+  });
+
+  /** Every written Building and Storey still has an aggregation parent (WR41). */
+  const expectNoOrphanedContainers = (content: string) => {
+    const members = new Set(aggregates(content).flatMap(r => r.related));
+    const orphans = [...content.matchAll(/^#(\d+)=IFC(BUILDING|BUILDINGSTOREY)\(/gm)].map(m => Number(m[1])).filter(id => !members.has(id));
+    expect(orphans).toEqual([]);
+  };
+  const siteOnly = [
+    `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+    `#2=IFCSITE('${guid('sa')}',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+    `#3=IFCRELAGGREGATES('${guid('ra1')}',$,$,$,#1,(#2));`,
+    `#4=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+    `#5=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#4),#2);`,
+  ];
+  /** Building `b` over a Storey with GlobalId `storey` that holds a proxy; ids from `base`. */
+  const buildingWithStorey = (b: string, storey: string, base: number) => [
+    `#${base}=IFCBUILDING('${guid(b)}',$,'${b}',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+    `#${base + 1}=IFCBUILDINGSTOREY('${guid(storey)}',$,'S ${b}',$,$,$,$,$,.ELEMENT.,$);`,
+    `#${base + 2}=IFCRELAGGREGATES('${guid(`r${b}`)}',$,$,$,#${base},(#${base + 1}));`,
+    `#${base + 3}=IFCBUILDINGELEMENTPROXY('${guid(`x${b}`)}',$,'P',$,$,$,$,$,$);`,
+    `#${base + 4}=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid(`c${b}`)}',$,$,$,(#${base + 3}),#${base + 1});`,
+  ];
+  const byName = { dropEmptyContainers: true, mergeBuildings: 'by-name', mergeStoreys: 'by-name' } as const;
+
+  it('never drops the parent of a full storey that shares a GlobalId within its own model', async () => {
+    // B's two storeys repeat one GlobalId (an authoring-tool defect). The emit
+    // pass unifies GlobalIds only against EARLIER models, so both storeys are
+    // written; the planner must not treat the second as already parented and
+    // drop its Building.
+    const b = [
+      `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+      ...buildingWithStorey('b1', 'dup', 10), ...buildingWithStorey('b2', 'dup', 20),
+      `#2=IFCRELAGGREGATES('${guid('rb0')}',$,$,$,#1,(#10,#20));`,
+    ];
+    const content = await merge([await model('a', siteOnly), await model('b', b)], byName);
+    expect(content).toContain(guid('b2'));
+    expectNoOrphanedContainers(content);
+    expectSingleParents(content);
+  });
+
+  it('never drops the parent of a full storey the emit pass does not unify (assume-shared, 3 models)', async () => {
+    // B and C share a storey GlobalId, but under assume-shared C only unifies
+    // against an emitter in the primary unit, and B declares another one.
+    const later = (tag: string) => async () => {
+      const lines = [
+        `#1=IFCPROJECT('${guid(`p${tag}`)}',$,'${tag}',$,$,$,$,$,$);`,
+        ...buildingWithStorey(`b${tag}`, 'st', 10),
+        `#2=IFCRELAGGREGATES('${guid(`r0${tag}`)}',$,$,$,#1,(#10));`,
+      ];
+      return { ...(await model(tag, lines)), lengthUnitScale: 0.001 };
+    };
+    const content = await merge(
+      [{ ...(await model('a', siteOnly)), lengthUnitScale: 1 }, await later('b')(), await later('c')()],
+      { ...byName, unitReconciliation: 'assume-shared' },
+    );
+    expect(content).toContain(guid('bc'));
+    expectNoOrphanedContainers(content);
+    expectSingleParents(content);
+  });
+
+  it('IFC2X3: a nest under a dropped container does not make the planner withhold a written aggregation', async () => {
+    // In IFC2X3 IfcRelNests and IfcRelAggregates share `Decomposes`. A's
+    // House is NESTED under Site A, which holds nothing through a structure
+    // rel, so Site A is dropped and its nest goes with it. B's `Site B ->
+    // House` aggregation is then House's only parent. A planner that also
+    // claimed parents through the nest withheld B's edge, dropped Site B as
+    // empty, and left House with no parent at all (WR41).
+    const nestedA = [
+      `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+      `#2=IFCSITE('${guid('sa')}',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+      `#3=IFCBUILDING('${guid('ba')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+      `#4=IFCRELAGGREGATES('${guid('ra1')}',$,$,$,#1,(#2));`,
+      `#5=IFCRELNESTS('${guid('rn')}',$,$,$,#2,(#3));`,
+      `#6=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+      `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#6),#3);`,
+    ];
+    const content = await merge([await model('a', nestedA, 'IFC2X3'), await model('b', siteB(), 'IFC2X3')], {
+      ...options, mergeBuildings: 'by-name', schema: 'IFC2X3',
+    });
+    expect(content).not.toContain(guid('sa'));
+    expect(content).toContain(guid('sb'));
+    expect(content).toContain(guid('rb2'));
+    expectNoOrphanedContainers(content);
+    expectSingleParents(content, ['IFCRELAGGREGATES', 'IFCRELNESTS']);
+  });
+
+  it('drops it too when the narrowed rel keeps only an empty sibling', async () => {
+    // Same rel, but the Annex holds nothing. With the unified Building
+    // stripped, Site B's only written child is the empty Annex, so both go.
+    const emptyAnnex = [`#6=IFCBUILDING('${guid('bo')}',$,'Annex',$,$,$,$,$,.ELEMENT.,$,$,$);`];
+    const content = await merge([await model('a', siteA), await model('b', siteB(emptyAnnex))], {
+      ...options, mergeBuildings: 'by-name',
+    });
+    expect(content).not.toContain(guid('bo'));
+    expect(content).not.toContain(guid('sb'));
+    expect(content).not.toContain(guid('rb2'));
+    expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
+    expectSingleParents(content);
+  });
+});
+
+/**
  * IfcRelNests shares the one-parent rule (#5726). In IFC2X3 it is an
  * IfcRelDecomposes like IfcRelAggregates, so the two fill one
  * `Decomposes : SET [0:1]` together; IFC4 moves it to its own

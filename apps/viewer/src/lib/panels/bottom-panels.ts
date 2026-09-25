@@ -20,7 +20,7 @@
  */
 
 /** Bottom-strip panel ids, in display precedence. Append only. */
-export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts', 'document', 'flow', 'drawing'] as const;
+export const BOTTOM_PANEL_IDS = ['gantt', 'script', 'lists', 'charts', 'document', 'flow', 'drawing', 'presentation'] as const;
 
 export type BottomPanelId = (typeof BOTTOM_PANEL_IDS)[number];
 
@@ -33,6 +33,9 @@ export const BOTTOM_PANEL_FLAG = {
   document: 'documentPanelVisible',
   flow: 'flowPanelVisible',
   drawing: 'drawing2DPanelVisible',
+  // Reuses the flag `BasketPresentationDock` used before it became a bottom
+  // panel (#5508) — same boolean, new home region.
+  presentation: 'basketPresentationVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 export type BottomPanelFlag = (typeof BOTTOM_PANEL_FLAG)[BottomPanelId];
@@ -46,6 +49,7 @@ export const BOTTOM_PANEL_SETTER = {
   document: 'setDocumentPanelVisible',
   flow: 'setFlowPanelVisible',
   drawing: 'setDrawing2DPanelVisible',
+  presentation: 'setBasketPresentationVisible',
 } as const satisfies Record<BottomPanelId, string>;
 
 /** The slice of store state the bottom strip reads. */

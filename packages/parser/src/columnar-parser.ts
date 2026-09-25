@@ -124,7 +124,7 @@ export interface IfcDataStore extends IfcStoreBase {
      * overwritten — the model-wide usage index depends on seeing every one.
      */
     onDemandMaterialMap?: Map<number, number[]>;
-
+    resolvedMaterials?: Map<number, Map<number, import('./material-resolver.js').MaterialInfo>>;
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
      * Built from IfcRelAssociatesDocument relationships during parsing.

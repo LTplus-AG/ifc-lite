@@ -137,8 +137,8 @@ export const miscPanelsAEn = {
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
 
-  // SpaceMousePanel — the Navigation section's own heading (#5509) comes
-  // from `keyboardShortcuts.preferences.spaceMouseSectionTitle`, so no
+  // SpaceMousePanel — the Navigation section's own heading comes from
+  // `settings.display.spaceMouseTitle` (Settings → Display, #5857), so no
   // header/drag-title strings live here any more.
   'spaceMousePanel.noWebHidMessage':
     'This browser has no WebHID support. Use a Chromium-based browser (Chrome or Edge) to navigate with a 3D mouse.',

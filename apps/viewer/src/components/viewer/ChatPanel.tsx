@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
@@ -1298,19 +1299,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
       {/* Header */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleClearClick}
-              disabled={messages.length === 0}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.panel.clearTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.panel.clearTooltip')}
+          size="icon-xs"
+          onClick={handleClearClick}
+          disabled={messages.length === 0}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </IconButton>
 
         <ModelSelector />
         <ByokStreamingPill modelId={activeModel} className="ml-1" />
@@ -1329,45 +1325,28 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         )}
         <div className="flex-1" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
-              className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
-              aria-label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
-            >
-              <KeyRound className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
-          </TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
+          size="icon-xs"
+          onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
+          className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setAutoExecute(!autoExecute)}
-              className={autoExecute ? 'text-amber-500' : ''}
-            >
-              <Zap className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t('chat.panel.autoRunStatus', {
-              state: autoExecute ? t('chat.panel.stateOn') : t('chat.panel.stateOff'),
-            })}
-          </TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.panel.autoRunStatus', { state: autoExecute ? t('chat.panel.stateOn') : t('chat.panel.stateOff') })}
+          size="icon-xs"
+          onClick={() => setAutoExecute(!autoExecute)}
+          className={autoExecute ? 'text-amber-500' : ''}
+        >
+          <Zap className="h-3.5 w-3.5" />
+        </IconButton>
 
         {onClose && (
-          <Button variant="ghost" size="icon-xs" onClick={onClose}>
+          <IconButton label={t('chat.panel.closeLabel')} size="icon-xs" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 
@@ -1521,14 +1500,15 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {/* Scroll to bottom button */}
       {showScrollBtn && (
         <div className="absolute bottom-[120px] right-4 z-20">
-          <Button
+          <IconButton
+            label={t('chat.panel.scrollToBottomLabel')}
             variant="outline"
             size="icon-xs"
             onClick={scrollToBottom}
             className="rounded-full shadow-md bg-background"
           >
             <ArrowDown className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       )}
 
@@ -1609,24 +1589,15 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             onChange={handleFileUpload}
             className="hidden"
           />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!canAttachInput}
-                className="shrink-0 mb-0.5"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {canAttachInput
-                ? t('chat.panel.attachTooltipEnabled')
-                : t('chat.panel.attachTooltipDisabled')}
-            </TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={canAttachInput ? t('chat.panel.attachTooltipEnabled') : t('chat.panel.attachTooltipDisabled')}
+            size="icon-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!canAttachInput}
+            className="shrink-0 mb-0.5"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </IconButton>
 
           <textarea
             ref={inputRef}
@@ -1649,34 +1620,25 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           />
 
           {isActive ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={handleStop}
-                  className="shrink-0 mb-0.5"
-                >
-                  <Square className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('chat.panel.stopGeneratingTooltip')}</TooltipContent>
-            </Tooltip>
+            <IconButton
+              label={t('chat.panel.stopGeneratingTooltip')}
+              size="icon-xs"
+              onClick={handleStop}
+              className="shrink-0 mb-0.5"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </IconButton>
           ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="default"
-                  size="icon-xs"
-                  onClick={handleSend}
-                  disabled={!inputText.trim() || needsByokKey}
-                  className="shrink-0 mb-0.5"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('chat.panel.sendTooltip')}</TooltipContent>
-            </Tooltip>
+            <IconButton
+              label={t('chat.panel.sendTooltip')}
+              variant="default"
+              size="icon-xs"
+              onClick={handleSend}
+              disabled={!inputText.trim() || needsByokKey}
+              className="shrink-0 mb-0.5"
+            >
+              <Send className="h-3.5 w-3.5" />
+            </IconButton>
           )}
         </div>
         <div className="flex items-center justify-between mt-1 px-0.5">

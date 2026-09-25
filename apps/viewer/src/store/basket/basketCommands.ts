@@ -77,7 +77,7 @@ export async function executeBasketSaveView(source: BasketViewSource = 'manual')
   // Script), and by the table's precedence rule (`activeBottomPanel`,
   // `lib/panels/bottom-panels.ts`) presentation sorts last, so the save
   // silently failed to surface the new view behind whichever panel was open.
-  state.openPanelInHome('presentation');
+  state.openPanelInHome('presentation', 'programmatic');
   return id;
 }
 

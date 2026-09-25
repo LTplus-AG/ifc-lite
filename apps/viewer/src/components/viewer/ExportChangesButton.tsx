@@ -11,7 +11,7 @@
  * export).
  */
 
-import { useState, useCallback, useLayoutEffect } from 'react';
+import { useState, useCallback, useLayoutEffect, cloneElement, isValidElement, type MouseEvent, type ReactNode } from 'react';
 import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,13 @@ import {
 interface ExportChangesButtonProps {
   /** Optional custom class name */
   className?: string;
+  /**
+   * The export registry's dialog contract (`ExportDialogComponent`, #5838):
+   * a menu row, ribbon button or palette auto-trigger that opens the review.
+   * Without it this renders the standing amber toolbar button, shown only
+   * while there are unexported edits.
+   */
+  trigger?: ReactNode;
 }
 
 /** YYYY-MM-DD for filenames. */
@@ -175,7 +182,7 @@ export function useReviewGroups(
   return [groups, setGroups];
 }
 
-export function ExportChangesButton({ className }: ExportChangesButtonProps) {
+export function ExportChangesButton({ className, trigger }: ExportChangesButtonProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -305,6 +312,29 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     void handleExport(freshGroups);
   }, [groups, handleExport]);
 
+  const review = (
+    <ExportChangesReviewDialog
+      open={reviewOpen}
+      onOpenChange={setReviewOpen}
+      groups={groups}
+      totalCount={totalCount}
+      isExporting={isExporting}
+      onConfirm={handleConfirm}
+    />
+  );
+
+  // A registry surface's own trigger; it composes with (not replaces) the
+  // trigger's click handler, and the surface gates it on pending changes.
+  if (isValidElement<{ onClick?: (event: MouseEvent) => void }>(trigger)) {
+    const own = trigger.props.onClick;
+    return (
+      <>
+        {cloneElement(trigger, { onClick: (event: MouseEvent) => { own?.(event); setReviewOpen(true); } })}
+        {review}
+      </>
+    );
+  }
+
   // Nothing to export — but keep rendering while an export is in flight so a
   // mid-export clear (count -> 0) doesn't unmount the button and drop state.
   if (totalCount === 0 && !isExporting) {
@@ -349,14 +379,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         </TooltipTrigger>
         <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
-      <ExportChangesReviewDialog
-        open={reviewOpen}
-        onOpenChange={setReviewOpen}
-        groups={groups}
-        totalCount={totalCount}
-        isExporting={isExporting}
-        onConfirm={handleConfirm}
-      />
+      {review}
     </>
   );
 }

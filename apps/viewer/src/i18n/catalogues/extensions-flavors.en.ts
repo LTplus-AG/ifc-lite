@@ -273,11 +273,6 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionDockHost.dockAriaLabel': 'Extension dock ({slot})',
   'extensionsFlavors.extensionDockHost.loadingWidget': 'Loading widget…',
 
-  // ── ExtensionExportSlot ──
-  'extensionsFlavors.extensionExportSlot.fromExtensionsLabel': 'From extensions',
-  'extensionsFlavors.extensionExportSlot.exportedToast': 'Exported with {name}',
-  'extensionsFlavors.extensionExportSlot.failedToast': '"{name}" failed: {error}',
-
   // ── ExtensionToolbarSlot ──
   'extensionsFlavors.extensionToolbarSlot.runAriaLabel': 'Run {title}',
 } as const satisfies Record<string, TranslationValue>;

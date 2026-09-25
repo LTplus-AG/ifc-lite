@@ -23,6 +23,7 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -31,6 +32,7 @@ import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
+import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
@@ -59,8 +61,7 @@ import {
   type ClashSortBy,
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {
   onClose?: () => void;
@@ -694,26 +695,24 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <Crosshair className="h-4 w-4 text-clash-overlap shrink-0" />
         <span className="text-sm font-semibold tracking-tight min-w-0">{t('clashPanel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('clashPanel.helpTooltip')}
             className={cn('h-7 w-7', showHelp && 'text-primary')}
-            title={t('clashPanel.helpTooltip')}
             onClick={() => setShowHelp((v) => !v)}
           >
             <Info className="h-4 w-4" />
-          </Button>
+          </IconButton>
           <ClashSettingsDialog />
           <ClashRevisionCompareDialog />
           {result && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashPanel.clearResultsTooltip')} onClick={clearAll}>
+            <IconButton label={t('clashPanel.clearResultsTooltip')} className="h-7 w-7" onClick={clearAll}>
               <Trash2 className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashPanel.closeTooltip')} onClick={onClose}>
+            <IconButton label={t('clashPanel.closeTooltip')} className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -770,8 +769,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 size="sm"
                 className="h-6 px-2 text-xs"
                 disabled={running}
-                onClick={() => void runAll()}
-                title={t('clashPanel.rerunTooltip')}
+                onClick={() => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
+                title={rerunTooltip(t, runRequestOf(result))}
               >
                 {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
                 {running ? '' : t('clashPanel.rerun')}

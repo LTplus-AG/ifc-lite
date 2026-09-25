@@ -4,7 +4,7 @@
 
 import { AlertCircle, Loader2, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 
@@ -31,15 +31,13 @@ export function BCFPanelStatus() {
   return (
     <Alert variant="destructive" className="rounded-none border-x-0 border-t-0 pr-10">
       {/* Before the icon: the Alert pads every sibling after its svg. */}
-      <Button
-        variant="ghost"
-        size="icon"
+      <IconButton
+        label={t('bcf.panel.dismissError')}
         className="absolute right-2 top-1.5 h-6 w-6"
-        aria-label={t('bcf.panel.dismissError')}
         onClick={() => setBcfError(null)}
       >
         <X className="h-3.5 w-3.5" />
-      </Button>
+      </IconButton>
       <AlertCircle className="h-4 w-4" aria-hidden="true" />
       <AlertDescription className="wrap-anywhere">{bcfError}</AlertDescription>
     </Alert>

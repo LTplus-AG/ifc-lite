@@ -94,7 +94,9 @@ describe('Property editor localization (#4918)', () => {
     registerLocale('property-editor-triggers-pseudo', pseudoLocale());
     act(() => setLocale('property-editor-triggers-pseudo'));
 
-    const titles = [...ui.querySelectorAll('button[title]')].map((button) => button.getAttribute('title'));
+    // Icon-only triggers are named by IconButton's aria-label; the labelled
+    // Reassign trigger keeps its title.
+    const titles = [...ui.querySelectorAll('button')].flatMap((button) => [button.getAttribute('aria-label'), button.getAttribute('title')]);
     for (const key of [
       'propertyEditor.property.trigger',
       'propertyEditor.quantity.trigger',

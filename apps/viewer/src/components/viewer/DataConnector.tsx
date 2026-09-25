@@ -25,6 +25,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -917,14 +918,13 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                             </SelectContent>
                           </Select>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
+                          <IconButton
+                            label={t('dataConnector.removeMappingLabel')}
                             className="h-8 w-8"
                             onClick={() => removeMapping(mapping.id)}
                           >
                             <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>

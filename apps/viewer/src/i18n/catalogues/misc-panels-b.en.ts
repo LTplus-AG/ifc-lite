@@ -273,7 +273,7 @@ export const miscPanelsBEn = {
   'saveMarkupToModelButton.menuItemLabel': 'Save Markup to Model',
 
   // ---- ExportChangesButton.tsx -----------------------------------------------
-  'exportChangesButton.buttonLabel': 'Export Changes',
+  'exportChangesButton.buttonLabel': 'Export modified IFC…',
   'exportChangesButton.tooltipMulti': 'Export changes in {models} models ({count} changes)',
   'exportChangesButton.tooltipSingle': {
     one: 'Export IFC with {count} change applied',

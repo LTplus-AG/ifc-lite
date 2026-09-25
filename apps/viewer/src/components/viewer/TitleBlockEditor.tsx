@@ -15,6 +15,7 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { Plus, Trash2, Upload, Calendar, Hash, FileText, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -259,14 +260,14 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                         className="h-8"
                       />
                     </div>
-                    <Button
-                      variant="ghost"
+                    <IconButton
+                      label={t('sheetsPdf.titleBlock.removeFieldLabel', { label: field.label })}
                       size="icon-sm"
                       className="text-destructive hover:text-destructive"
                       onClick={() => removeTitleBlockField(field.id)}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </IconButton>
                   </div>
                 ))}
               </div>
@@ -409,14 +410,13 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                       <span className="truncate">{rev.description}</span>
                       {rev.author && <span className="text-muted-foreground">{t('sheetsPdf.titleBlock.byAuthor', { author: rev.author })}</span>}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
+                    <IconButton
+                      label={t('sheetsPdf.titleBlock.removeRevisionLabel', { revision: rev.revision })}
                       className="h-6 w-6 text-destructive hover:text-destructive"
                       onClick={() => removeRevision(index)}
                     >
                       <Trash2 className="h-3 w-3" />
-                    </Button>
+                    </IconButton>
                   </div>
                 ))}
               </div>

@@ -131,7 +131,7 @@ for (const modelCount of [1, 3]) {
       const slab = useViewerStore.getState().toGlobalId('m0', 2);
       await act(async () => { useViewerStore.getState().hideEntities([slab]); });
 
-      await act(async () => { resetVisibilityForHomeFromStore(); });
+      await act(async () => { resetVisibilityForHomeFromStore('home'); });
       const after = useViewerStore.getState();
       assert.deepEqual(sorted(after.hiddenEntities), sorted(walls),
         'Home must keep exactly the lens hides and drop the manual slab hide');

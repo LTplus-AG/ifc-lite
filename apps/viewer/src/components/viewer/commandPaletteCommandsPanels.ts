@@ -19,12 +19,13 @@
 
 import {
   Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
-  Palette, Puzzle, Sun, Info,
+  Palette, Puzzle, Sun, Info, Settings,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
   Ruler,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { openSettings } from '@/lib/settings/open-settings';
 import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
@@ -46,7 +47,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   c.push(
     ...bottomPanelCommands(p.activateBottomPanel),
     { id: 'panel:properties', label: 'Information', ...withKey('commandPalette.panel.properties.label'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
-      action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
+      action: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); } },
     { id: 'panel:tree', label: 'Hierarchy', ...withKey('commandPalette.panel.tree.label'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
       action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
     { id: 'panel:bcf', label: 'BCF Topics', ...withKey('commandPalette.panel.bcf.label'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
@@ -133,7 +134,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   );
 
   // ── Export ── (built from the toolbar registry, #5601)
-  c.push(...buildExportCommands(p.runExport));
+  c.push(...buildExportCommands(p.runExport, p.extensionExporters));
 
   // ── Automation (scripts — last, power-user feature) ──
   for (const t of SCRIPT_TEMPLATES) {
@@ -150,6 +151,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().toggleTheme(); } },
     { id: 'pref:tooltips', label: 'Hover Tooltips', ...withKey('commandPalette.pref.tooltips.label'), keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
       action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
+    { id: 'pref:settings', label: 'Settings…', ...withKey('commandPalette.pref.settings.label'), keywords: 'settings preferences options configure theme toolbar spacemouse', category: 'Preferences', icon: Settings,
+      action: () => { openSettings(); } },
   );
 
   // ── Learn (tours) ──

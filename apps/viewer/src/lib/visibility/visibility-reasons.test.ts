@@ -85,7 +85,7 @@ for (const modelCount of [1, 3]) {
         assert.deepEqual(ids(useViewerStore.getState()), [reason.id],
           `activating ${reason.id} alone must report exactly that reason`);
 
-        resetVisibilityForHomeFromStore();
+        resetVisibilityForHomeFromStore('home');
         const after = ids(useViewerStore.getState());
         if (reason.policy === 'cleared') {
           assert.deepEqual(after, [], `Home must clear ${reason.id}`);
@@ -118,7 +118,7 @@ describe('Home with a hidden federated model (#5869)', () => {
   it('shows the model again', () => {
     seedModels(3);
     useViewerStore.getState().setModelsVisibility(['m1'], false);
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('home');
     assert.deepEqual([...useViewerStore.getState().models.values()].map((m) => m.visible), [true, true, true]);
   });
 });

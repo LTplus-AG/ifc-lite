@@ -29,12 +29,13 @@ import { openRepositionModels } from '@/lib/model-placement/commands';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
   executeBasketSet, executeBasketAdd, executeBasketRemove, executeBasketToggleVisibility,
   executeBasketSaveView, executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
-import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
@@ -106,12 +107,11 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
     }] : []),
     { id: 'view:lighting', label: 'Environment', ...withKey('commandPalette.view.lighting.label'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
       category: 'View', icon: Sun,
-      action: () => { useViewerStore.getState().toggleWorkspacePanel('environment'); } },
+      action: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); } },
     { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
       category: 'View', icon: Orbit,
-      // Moved to Preferences → Navigation (#5509): the device panel no longer
-      // floats over the viewport, so this deep-links the Info dialog there.
-      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } })); } },
+      // Lives in Settings → Display → Navigation (#5509, #5857).
+      action: () => { openSettings('display'); } },
   );
 
   // ── Tools ──
@@ -146,13 +146,9 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   // ── Visibility ──
   c.push(
     { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'Del / Space',
-      action: () => {
-        const s = useViewerStore.getState();
-        const ids = s.selectedEntityIds.size > 0 ? Array.from(s.selectedEntityIds) : s.selectedEntityId !== null ? [s.selectedEntityId] : [];
-        if (ids.length > 0) { s.hideEntities(ids); s.clearSelection(); }
-      } },
+      action: () => { hideSelectionFromStore(); } },
     { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'A',
-      action: () => { resetVisibilityForHomeFromStore(); } },
+      action: () => { resetVisibilityForHomeFromStore('show_all'); } },
     { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: '=',
       action: () => executeBasketSet() },
     { id: 'vis:add-iso', label: 'Add to Basket', ...withKey('commandPalette.vis.addBasket.label'), keywords: 'basket plus selection hierarchy view', category: 'Visibility', icon: Plus, shortcut: '+',
@@ -169,7 +165,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       // Routed through the bottom-panel table (#5508: presentation is the
       // `presentation` bottom panel now), so it stays mutually exclusive
       // with Script/Schedule/Lists/etc. instead of the raw flag toggle.
-      action: () => { useViewerStore.getState().toggleBottomPanel('presentation'); } },
+      action: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); } },
     { id: 'vis:clear-iso', label: 'Clear Basket', ...withKey('commandPalette.vis.clearBasket.label'), keywords: 'basket clear reset', category: 'Visibility', icon: RotateCcw,
       action: () => executeBasketClear() },
     { id: 'vis:spaces', label: 'Spaces', ...withKey('commandPalette.vis.spaces.label'), keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,

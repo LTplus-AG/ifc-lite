@@ -84,7 +84,7 @@ for (const modelCount of [1, 3]) {
         useViewerStore.setState(c.activate(lastOffset));
         assert.ok(c.active(useViewerStore.getState()), `precondition: ${c.name} is active`);
 
-        resetVisibilityForHomeFromStore();
+        resetVisibilityForHomeFromStore('home');
         assert.equal(c.active(useViewerStore.getState()), c.kept === true,
           c.kept ? `Home must keep ${c.name}` : `Home must clear ${c.name}`);
       });

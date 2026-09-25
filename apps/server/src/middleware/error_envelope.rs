@@ -5,7 +5,7 @@
 //! One error body for the failures no handler writes (#5750).
 //!
 //! Every handler failure is an [`ApiError`](crate::error::ApiError), which
-//! renders the shared [`ErrorResponse`] envelope. The responses produced
+//! renders the shared `ErrorResponse` envelope. The responses produced
 //! AROUND the handlers did not: an extractor rejection (a bad query string, a
 //! request that is not multipart) was `text/plain`, and an unknown route, a
 //! wrong method, the request timeout and the panic catcher answered with an
@@ -19,12 +19,12 @@
 //! a probe document whose status field is its contract.
 
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    body::to_bytes,
+    http::{header, HeaderMap, StatusCode},
     response::Response,
 };
 
-use crate::error::ErrorResponse;
+use crate::error::error_response;
 
 /// The most of a framework-written body carried into `error`. Rejection texts
 /// are a line or two; anything longer is not a message worth relaying.
@@ -51,17 +51,15 @@ pub async fn envelope_errors(response: Response) -> Response {
     } else {
         message
     };
-    let envelope = ErrorResponse { error, code: code_for_status(status) };
-    // Two strings cannot fail to serialize; if they somehow did, the original
-    // status would still reach the client.
-    let body = serde_json::to_vec(&envelope).unwrap_or_default();
-
+    // Rebuilt through the one envelope builder, then given back every header
+    // the original carried (`Allow`, `Retry-After`, CORS) except the ones
+    // that described the old body.
+    let mut envelope = error_response(status, &code_for_status(status), error);
     parts.headers.remove(header::CONTENT_LENGTH);
     parts.headers.remove(header::CONTENT_ENCODING);
-    parts
-        .headers
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    Response::from_parts(parts, Body::from(body))
+    parts.headers.remove(header::CONTENT_TYPE);
+    envelope.headers_mut().extend(parts.headers);
+    envelope
 }
 
 fn is_json(headers: &HeaderMap) -> bool {

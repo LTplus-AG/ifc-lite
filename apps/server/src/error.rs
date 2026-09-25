@@ -47,9 +47,6 @@ pub enum ApiError {
 
     #[error("Server overloaded, retry after {retry_after_secs}s")]
     Overloaded { retry_after_secs: u64 },
-
-    #[error("Unauthorized: missing or invalid bearer token")]
-    Unauthorized,
 }
 
 /// The `error` text of a `CACHE_ERROR` response. The underlying detail stays
@@ -70,6 +67,17 @@ pub struct ErrorResponse {
     pub code: String,
 }
 
+/// Render the shared envelope. The one builder of an error body: `ApiError`
+/// goes through it, and so do the responses written outside a handler (the
+/// bearer layer's `401`, `middleware::error_envelope`).
+pub fn error_response(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+    let body = ErrorResponse {
+        error: error.into(),
+        code: code.to_owned(),
+    };
+    (status, Json(body)).into_response()
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let ApiError::FileTooLarge { max_mb } = &self {
@@ -88,7 +96,6 @@ impl IntoResponse for ApiError {
             ApiError::Join(_) => (StatusCode::INTERNAL_SERVER_ERROR, "TASK_ERROR"),
             ApiError::Parquet(_) => (StatusCode::INTERNAL_SERVER_ERROR, "PARQUET_ERROR"),
             ApiError::Overloaded { .. } => (StatusCode::SERVICE_UNAVAILABLE, "OVERLOADED"),
-            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
         };
 
         let retry_after = match &self {
@@ -104,22 +111,11 @@ impl IntoResponse for ApiError {
             }
             _ => self.to_string(),
         };
-        let body = ErrorResponse {
-            error,
-            code: code.to_string(),
-        };
-
-        let mut response = (status, Json(body)).into_response();
+        let mut response = error_response(status, code, error);
         if let Some(secs) = retry_after {
             if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
                 response.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
             }
-        }
-        if let ApiError::Unauthorized = self {
-            response.headers_mut().insert(
-                axum::http::header::WWW_AUTHENTICATE,
-                axum::http::HeaderValue::from_static("Bearer"),
-            );
         }
         response
     }

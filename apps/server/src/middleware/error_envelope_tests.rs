@@ -14,7 +14,7 @@ use super::*;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
 use crate::{build_router, AppState};
-use axum::body::to_bytes;
+use axum::body::{to_bytes, Body};
 use axum::http::Request;
 use axum::response::IntoResponse;
 use serde_json::Value;

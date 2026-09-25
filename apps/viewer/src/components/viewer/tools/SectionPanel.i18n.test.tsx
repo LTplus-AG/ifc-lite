@@ -133,7 +133,7 @@ describe('mounted Section tool localization (#4785)', () => {
     registerLocale('section-test', TEST_LOCALE);
     window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'front', position: 50, flipped: false }));
     setLocale('section-test');
-    const ui = renderTool();
+    renderTool();
     assert.match(bar().textContent ?? '', /Coupe/);
     assert.equal(bar().querySelector('[role="radiogroup"]')?.getAttribute('aria-label'), 'Axe de coupe');
     assert.equal(field().getAttribute('aria-valuetext'), '50.00 pour cent', 'no bounds: the percentage carries the translated unit');
@@ -172,7 +172,7 @@ describe('mounted Section tool localization (#4785)', () => {
     });
     window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'front', position: 42.25, flipped: false }));
     setLocale('partial-section');
-    const ui = renderTool();
+    renderTool();
     assert.match(bar().textContent ?? '', /Localized section/);
     assert.equal(hint(), 'Drag the distance to move the cut · Esc to finish');
     assert.equal(button('Face').title, 'Pick a face to cut through');

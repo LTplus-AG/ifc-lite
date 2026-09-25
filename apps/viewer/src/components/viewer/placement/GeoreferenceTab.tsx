@@ -52,7 +52,7 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
             <Metric label={t('cesiumGeo.placement.deltaELabel')} value={formatSigned(c.deltaE, c.mapUnitSuffix)} accent="text-emerald-700 dark:text-emerald-300" />
             <Metric label={t('cesiumGeo.placement.deltaNLabel')} value={formatSigned(c.deltaN, c.mapUnitSuffix)} accent="text-emerald-700 dark:text-emerald-300" />
             <Metric label={t('cesiumGeo.placement.deltaZLabel')} value={formatSigned(c.deltaH, c.mapUnitSuffix)} accent="text-amber-700 dark:text-amber-300" />
-            <Metric label={t('cesiumGeo.placement.deltaRLabel')} value={formatSigned(c.deltaAngle, 'deg')} accent="text-fuchsia-700 dark:text-fuchsia-300" />
+            <Metric label={t('cesiumGeo.placement.deltaRLabel')} value={formatSigned(c.deltaAngle, 'deg')} accent="text-sky-700 dark:text-sky-300" />
           </div>
 
           {c.mapAbsoluteActive && (

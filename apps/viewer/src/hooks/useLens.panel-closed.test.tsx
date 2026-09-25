@@ -9,8 +9,8 @@
  * that unmounts when its panel closes. The lens stayed active (colours, a
  * claim on the hidden channel) while nothing re-evaluated it, so a model
  * federated in afterwards was never hidden by it, and Home wiped its hides
- * while re-sending its colours. These tests mount ONLY `LensRuntimeHost` —
- * what the layout mounts for the viewer's lifetime — never the panel, over
+ * while re-sending its colours. These tests mount ONLY `useLens` — what
+ * `LensRuntimeHost` mounts for the viewer's lifetime — never the panel, over
  * real parsed models at 1 and N federated models.
  */
 
@@ -23,7 +23,13 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Lens } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
-import { LensRuntimeHost } from './LensRuntimeHost.js';
+import { useLens } from './useLens.js';
+
+/** What `LensRuntimeHost` mounts: `useLens()` and nothing else. */
+function LensRuntimeProbe(): null {
+  useLens();
+  return null;
+}
 
 /** One wall (#1) and one slab (#2). */
 const BODY = [
@@ -61,7 +67,7 @@ async function mountHost(): Promise<void> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root!.render(<LensRuntimeHost />);
+    root!.render(<LensRuntimeProbe />);
   });
 }
 
@@ -102,7 +108,7 @@ afterEach(async () => {
 });
 
 for (const modelCount of [1, 3]) {
-  describe(`LensRuntimeHost with the Lens panel closed, ${modelCount} model(s) (#5877)`, () => {
+  describe(`useLens with the Lens panel closed, ${modelCount} model(s) (#5877)`, () => {
     it('hides a model federated in AFTER the lens was activated', async () => {
       await mountHost();
       const walls: number[] = [];

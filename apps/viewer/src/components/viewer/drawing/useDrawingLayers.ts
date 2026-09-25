@@ -7,8 +7,7 @@
  * point-cloud scan band, and the exports that render all of them together.
  */
 
-import { useCallback, useMemo } from 'react';
-import { COMMON_SCALES } from '@ifc-lite/drawing-2d';
+import { useMemo, useCallback } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useIfc } from '@/hooks/useIfc';
@@ -127,34 +126,10 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     isPinned: vm.isPinned, cachedSheetTransformRef: vm.cachedSheetTransformRef,
   });
 
-  // Scale prompt for the scaled PDF export (issue #2042). A real scale dialog
-  // is #5496; this still offers every scale (defaults to "as displayed",
-  // accepts any common preset or a custom denominator) and never guesses.
-  const handleExportPdfPrompt = useCallback(() => {
-    const presetHint = COMMON_SCALES.map((s) => s.name).join(', ');
-    const asDisplayed = displayOptions.scale || 100;
-    const input = window.prompt(
-      t('section2d.pdf.prompt', { scale: asDisplayed, presets: presetHint }),
-      String(asDisplayed),
-    );
-    if (input === null) return; // cancelled
-    const trimmed = input.trim();
-    if (trimmed === '') {
-      handleExportPDF();
-      return;
-    }
-    const n = Number(trimmed.replace(/^1:/, ''));
-    if (!Number.isFinite(n) || n <= 0) {
-      window.alert(t('section2d.pdf.invalid', { input }));
-      return;
-    }
-    handleExportPDF(n);
-  }, [displayOptions.scale, handleExportPDF, t]);
-
   return {
     ifcAnnotationData, dxfUnderlayData, dxfGeoreferenceAvailable, handleCenterDxfUnderlay,
     scanSectionLayer,
-    handleExportSVG, handleExportDXF, handleExportPdfPrompt, handlePrint,
+    handleExportSVG, handleExportDXF, handleExportPDF, handlePrint,
   };
 }
 

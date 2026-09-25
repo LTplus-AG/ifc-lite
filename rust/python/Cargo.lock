@@ -290,7 +290,7 @@ checksum = "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
 
 [[package]]
 name = "ifc-lite-core"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-export"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "bytemuck",
  "ifc-lite-core",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "bnum",
  "earcutr",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",

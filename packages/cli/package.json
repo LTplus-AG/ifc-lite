@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "CLI toolkit for IFC files \u2014 query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {

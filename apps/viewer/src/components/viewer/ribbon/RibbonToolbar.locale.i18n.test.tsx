@@ -98,6 +98,8 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
 
   it('localizes the one-time ribbon switch notice', () => {
     window.localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
+    // Only a visitor from before the ribbon gets the notice (#5840).
+    window.localStorage.setItem('ifc-lite:ribbon-notice-audience', 'returning');
     registerLocale('ribbon-notice', {
       'ribbon.notice.keepClassic': 'Klassische Leiste behalten',
       'ribbon.notice.dismissAriaLabel': 'Hinweis schließen',

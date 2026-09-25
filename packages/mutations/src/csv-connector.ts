@@ -57,6 +57,11 @@ export interface ImportStats {
   matchedRows: number;
   unmatchedRows: number;
   mutationsCreated: number;
+  /**
+   * The mutations the import applied to the view, in order. A host with an
+   * undo history records these (the connector writes the view directly).
+   */
+  mutations: Mutation[];
   errors: string[];
   warnings: string[];
 }
@@ -230,6 +235,7 @@ export class CsvConnector {
       matchedRows: 0,
       unmatchedRows: 0,
       mutationsCreated: 0,
+      mutations: [],
       errors: [],
       warnings: [],
     };
@@ -255,6 +261,7 @@ export class CsvConnector {
 
       // Generate and apply mutations
       const mutations = this.generateMutations(matches, mapping, stats.warnings);
+      stats.mutations = mutations;
       stats.mutationsCreated = mutations.length;
     } catch (error) {
       stats.errors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -280,6 +287,7 @@ export class CsvConnector {
       matchedRows: 0,
       unmatchedRows: 0,
       mutationsCreated: 0,
+      mutations: [],
       errors: [],
       warnings: [],
     };
@@ -333,6 +341,7 @@ export class CsvConnector {
       for (let i = 0; i < allMatches.length; i += batchSize) {
         const batch = allMatches.slice(i, i + batchSize);
         const mutations = this.generateMutations(batch, mapping, stats.warnings);
+        for (const mutation of mutations) stats.mutations.push(mutation);
         mutationCount += mutations.length;
 
         const applyProgress = Math.min(i + batchSize, allMatches.length) / allMatches.length;

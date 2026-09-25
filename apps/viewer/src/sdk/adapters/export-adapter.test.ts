@@ -22,8 +22,6 @@ test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated
     models: new Map(),
     hiddenEntities: new Set([11, 12]),
     isolatedEntities: new Set([21, 22]),
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
     classFilter: null,
   });
 
@@ -609,9 +607,8 @@ test('export.csv escapeCsv quotes a value containing a newline', () => {
 // them through `resolveExportVisibility`, the single resolver that combines
 // hidden/isolated state with `classFilter` (Class tab), `selectedStoreys`,
 // and `typeVisibility`. This adapter's own `resolveVisibilityFilterSets`
-// was left untouched — it only ever read `hiddenEntitiesByModel` /
-// `isolatedEntitiesByModel` (plus the legacy globals) and never `classFilter`
-// at all, so `sdk.export.ifc(refs, { visibleOnly: true })` still reproduced
+// was left untouched — it only ever read the hidden/isolated sets and
+// never `classFilter` at all, so `sdk.export.ifc(refs, { visibleOnly: true })` still reproduced
 // the original #4328 bug for the scripting/extension surface: filter the
 // Class tab to `IfcWallStandardCase` and the whole model still comes out.
 
@@ -858,8 +855,6 @@ describe('resolveVisibilityFilterSets: full-model classification requires member
       models: new Map(),
       hiddenEntities: new Set([2]),
       isolatedEntities: null,
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
       classFilter: null,
     });
     const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);

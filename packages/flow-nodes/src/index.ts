@@ -4,6 +4,8 @@
 
 import { NodeRegistry, type HostFeatures } from '@ifc-lite/flow';
 import { applyTableNode } from './apply-table-node.js';
+import { bcfNodes } from './bcf-nodes.js';
+import { apsNodes } from './aps-nodes.js';
 import { connectorNodes } from './connector-nodes.js';
 import { coreNodes } from './core-nodes.js';
 import { csvNodes } from './csv-nodes.js';
@@ -54,6 +56,8 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     scriptNode,
     scriptListNode,
     httpRequestNode,
+    ...bcfNodes,
+    ...apsNodes,
   ]);
 }
 

@@ -267,9 +267,9 @@ export interface SectionSlice {
    * raycast hit), oriented out of the visible surface. The plane is
    * `dot(worldPos, normal) = dot(point, normal) - inset` (#5480, `sectionFacePick.ts`).
    *
-   * Also writes the nearest cardinal `axis` + `flipped` and a percentage-
-   * along-that-axis `position` so legacy consumers (drawings, BCF,
-   * tooltips) still see a reasonable axis-aligned approximation.
+   * Resets `flipped` (relative to `normal`, as the renderer applies it) so every
+   * face orientation keeps the cut side (#5644), and writes the nearest cardinal
+   * `axis` + `position`; `cardinalSectionFlipped` maps the flip for readers of those.
    */
   setSectionPlaneFromFace: (
     normal: [number, number, number],
@@ -516,7 +516,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       sectionPlane: {
         ...state.sectionPlane,
         axis:    cardinal.axis,
-        flipped: cardinal.flipped,
+        flipped: false,
         position,
         enabled: true,
         custom,

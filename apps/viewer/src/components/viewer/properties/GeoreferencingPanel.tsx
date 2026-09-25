@@ -143,7 +143,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
   return (
     <div
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${
-        isMutated ? 'bg-purple-50/50 dark:bg-purple-950/30' : ''
+        isMutated ? 'bg-overlay-accent-soft' : ''
       } ${editable && !isComputed ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
       onClick={!editing ? startEdit : undefined}
     >
@@ -161,7 +161,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
       <div className="flex-1 flex flex-col items-end gap-0.5 min-w-0">
         <div className="flex items-start gap-1 w-full justify-end">
           {isMutated && !editing && (
-            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700 shrink-0 mt-0.5">
+            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-overlay-accent-soft text-foreground border-overlay-accent/40 shrink-0 mt-0.5">
               {t('properties.georef.editedBadge')}
             </Badge>
           )}
@@ -219,7 +219,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
               <span
                 className={`text-[11px] font-mono tabular-nums break-all text-right ${
                   isMutated
-                    ? 'text-purple-700 dark:text-purple-300 font-semibold'
+                    ? 'text-foreground font-semibold'
                     : 'text-teal-700 dark:text-teal-400'
                 }`}
                 title={displayValue}

@@ -13,7 +13,7 @@
  *     `splitHoverDistance` / `splitHoverLength`.
  *
  *   Slab / roof / plate / space  (two-click):
- *     Outline the polygon footprint with a faint purple stroke.
+ *     Outline the polygon footprint with a faint accent stroke.
  *     Before the first click: hint chip says "click to start cut".
  *     After the first click: ghost line from anchor → cursor,
  *     drawn straight through the polygon (the actual extent is
@@ -34,7 +34,9 @@ type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
-const GUIDE_COLOR = '#a855f7'; // purple-500 — matches edit-mode pill
+// Guides are the interaction accent, their knockouts the halo — overlay
+// tokens (#5483) applied as classes, so a theme switch recolours them (#5489).
+
 const GUIDE_HALF_LENGTH_PX = 30;
 
 /** Storey-local 2D → renderer Y-up world point at the storey floor. */
@@ -77,7 +79,7 @@ export function SplitOverlay() {
       <div
         className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-30
           flex items-center gap-2 px-3 py-1.5 rounded-full
-          bg-purple-600/95 text-white text-xs shadow-lg"
+          bg-overlay-accent text-overlay-halo text-xs shadow-lg"
         role="status"
       >
         <KnifeIcon className="h-3.5 w-3.5" />
@@ -126,9 +128,8 @@ export function SplitOverlay() {
       <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>
         <path
           d={path}
-          fill={GUIDE_COLOR}
+          className="fill-overlay-accent stroke-overlay-accent"
           fillOpacity={0.08}
-          stroke={GUIDE_COLOR}
           strokeWidth={1.5}
           strokeDasharray="4 4"
         />
@@ -137,8 +138,7 @@ export function SplitOverlay() {
             cx={anchorScreen.x}
             cy={anchorScreen.y}
             r={5}
-            fill="#fff"
-            stroke={GUIDE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2.5}
           />
         )}
@@ -148,7 +148,7 @@ export function SplitOverlay() {
             y1={anchorScreen.y}
             x2={cursorScreen.x}
             y2={cursorScreen.y}
-            stroke={GUIDE_COLOR}
+            className="stroke-overlay-accent"
             strokeWidth={3}
             strokeLinecap="round"
           />
@@ -158,8 +158,7 @@ export function SplitOverlay() {
             cx={cursorScreen.x}
             cy={cursorScreen.y}
             r={4}
-            fill="#fff"
-            stroke={GUIDE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2}
           />
         )}
@@ -210,7 +209,7 @@ export function SplitOverlay() {
         y1={gy1}
         x2={gx2}
         y2={gy2}
-        stroke={GUIDE_COLOR}
+        className="stroke-overlay-accent"
         strokeWidth={3}
         strokeLinecap="round"
         opacity={0.95}
@@ -219,8 +218,7 @@ export function SplitOverlay() {
         cx={cutScreen.x}
         cy={cutScreen.y}
         r={5}
-        fill="#fff"
-        stroke={GUIDE_COLOR}
+        className="fill-overlay-halo stroke-overlay-accent"
         strokeWidth={2.5}
       />
       <rect
@@ -229,7 +227,7 @@ export function SplitOverlay() {
         width={Math.max(70, labelText.length * 7 + 12)}
         height={18}
         rx={3}
-        fill={GUIDE_COLOR}
+        className="fill-overlay-accent"
         opacity={0.95}
       />
       <text
@@ -237,7 +235,7 @@ export function SplitOverlay() {
         y={cutScreen.y - 9}
         fontSize={11}
         fontFamily="ui-monospace, SFMono-Regular, monospace"
-        fill="#fff"
+        className="fill-overlay-halo"
       >
         {labelText}
       </text>

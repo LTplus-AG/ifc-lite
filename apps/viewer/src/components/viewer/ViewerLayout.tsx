@@ -35,6 +35,7 @@ import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDial
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
+import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
@@ -54,6 +55,7 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -63,10 +65,8 @@ const SAFE_MODE_QUERY_FLAG = '?safe=0';
 export function ViewerLayout() {
   const { t } = useTranslation();
   useSearchIndex();
-  // Initialize keyboard shortcuts
   useKeyboardShortcuts();
-  // ⌘D / Ctrl+D to duplicate the current selection.
-  useDuplicateShortcut();
+  useDuplicateShortcut(); // ⌘D / Ctrl+D duplicates the current selection
   useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
@@ -75,8 +75,7 @@ export function ViewerLayout() {
   useOverlayCompositor();
   // Bridge viewer state transitions into the extension action log so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
-  // Show the RFC §06 §7 privacy disclosure on first launch.
-  usePrivacyDisclosure();
+  usePrivacyDisclosure(); // the RFC §06 §7 privacy disclosure, on first launch
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
@@ -195,7 +194,6 @@ export function ViewerLayout() {
   // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
   const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
-  const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -255,6 +253,8 @@ export function ViewerLayout() {
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -267,31 +267,14 @@ export function ViewerLayout() {
   const { models, geometryResult } = useIfc();
   const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
-  // Detect mobile viewport — use both width check AND touch capability
-  useEffect(() => {
-    const checkMobile = () => {
-      const narrowScreen = window.innerWidth < 768;
-      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const mobile = narrowScreen || (hasTouchScreen && window.innerWidth < 1024);
-      setIsMobile(mobile);
-      // Auto-collapse panels on mobile
-      if (mobile) {
-        setLeftPanelCollapsed(true);
-        setRightPanelCollapsed(true);
-      }
-    };
-
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile, setLeftPanelCollapsed, setRightPanelCollapsed]);
+  // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
+  useMobileLayoutMode();
 
   // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     document.documentElement.classList.toggle('colorful', theme === 'colorful');
   }, [theme]);
-
 
   const safeMode = isSafeMode();
 
@@ -343,7 +326,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={22}
+                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
                     minSize={10}
                     collapsible
                     collapsedSize={0}

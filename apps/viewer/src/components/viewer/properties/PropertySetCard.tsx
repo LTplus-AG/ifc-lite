@@ -64,7 +64,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   const borderClass = isNewPset
     ? 'border-2 border-amber-400/50 dark:border-amber-500/30'
     : hasMutations
-    ? 'border-2 border-purple-300/50 dark:border-purple-500/30'
+    ? 'border-2 border-overlay-accent/40'
     : isTypeProperty
     ? 'border-2 border-indigo-200/60 dark:border-indigo-800/40'
     : 'border-2 border-zinc-200 dark:border-zinc-800';
@@ -72,7 +72,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   const bgClass = isNewPset
     ? 'bg-amber-50/30 dark:bg-amber-950/20'
     : hasMutations
-    ? 'bg-purple-50/20 dark:bg-purple-950/10'
+    ? 'bg-overlay-accent/5'
     : isTypeProperty
     ? 'bg-indigo-50/20 dark:bg-indigo-950/10'
     : 'bg-white dark:bg-zinc-950';
@@ -91,7 +91,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
         {hasMutations && !isNewPset && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <PenLine className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+              <PenLine className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
             </TooltipTrigger>
             <TooltipContent>{t('properties.propertySetCard.hasMutationsTooltip')}</TooltipContent>
           </Tooltip>
@@ -131,7 +131,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                   isFocused
                     ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 motion-safe:animate-pulse-subtle'
                     : isMutated
-                    ? 'bg-purple-50/50 dark:bg-purple-950/30 hover:bg-purple-100/50 dark:hover:bg-purple-900/30'
+                    ? 'bg-overlay-accent-soft hover:bg-overlay-accent/20'
                     : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50'
                 }`}
               >
@@ -141,7 +141,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     {isMutated && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
+                          <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-overlay-accent-soft text-foreground border-overlay-accent/40">
                             {t('properties.propertySetCard.editedBadge')}
                           </Badge>
                         </TooltipTrigger>
@@ -151,7 +151,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     {parsed.ifcType ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={`font-medium cursor-help break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                          <span className={`font-medium cursor-help break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
                             {prop.name}
                           </span>
                         </TooltipTrigger>
@@ -163,7 +163,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <span className={`font-medium break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                      <span className={`font-medium break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
                         {prop.name}
                       </span>
                     )}
@@ -180,7 +180,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       editScope={typeEditScope}
                     />
                   ) : (
-                    <span className={`font-mono select-all break-words ${isMutated ? 'text-purple-900 dark:text-purple-100 font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
+                    <span className={`font-mono select-all break-words ${isMutated ? 'text-foreground font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
                       {disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue}
                       {unit && parsed.displayValue !== '\u2014' && (
                         <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>

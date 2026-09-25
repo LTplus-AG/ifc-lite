@@ -15,6 +15,7 @@ import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
 import { useTranslation } from '@/i18n';
+import { useViewerStore } from '@/store';
 
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -53,6 +54,13 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   const [bottomHeight, setBottomHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const isDraggingRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  // "Reset layout" (#5854) restores the default height. The epoch starts at
+  // 0 and only moves on a reset, so this never fires on mount.
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch);
+  useEffect(() => {
+    if (layoutResetEpoch > 0) setBottomHeight(BOTTOM_PANEL_DEFAULT_HEIGHT);
+  }, [layoutResetEpoch]);
 
   // Cleanup drag listeners on unmount
   useEffect(() => {

@@ -7,9 +7,8 @@
  *
  * Before this existed, `ExportDialog.tsx` (STEP / IFCX) and
  * `GLBExportDialog.tsx` (GLB) each hand-assembled their own idea of "hidden"
- * / "isolated" from a subset of the store — `hiddenEntities` /
- * `hiddenEntitiesByModel` and `isolatedEntities` / `isolatedEntitiesByModel`
- * only. Neither read `classFilter` (the hierarchy panel's Class tab),
+ * / "isolated" from a subset of the store — `hiddenEntities` and
+ * `isolatedEntities` only. Neither read `classFilter` (the hierarchy panel's Class tab),
  * `selectedStoreys` (storey isolation), or `typeVisibility` for STEP/IFCX at
  * all. Result (#4328): filter the Class tab to `IfcWallStandardCase`, export
  * "Visible Only", and the whole model comes out — the class filter is
@@ -22,9 +21,8 @@
  * (#2042/#2558 — the same "export disagrees with the viewport" defect
  * class). This resolver reuses `computeIsolationFilterSet` rather than
  * restating the storey/class/isolate intersection a third time, and adds the
- * two channels neither of those covers for an entity-id-based exporter:
- * `typeVisibility` (class-level toggles — Spaces/Openings/Site/…) and the
- * per-model `hiddenEntitiesByModel`/`isolatedEntitiesByModel` channels.
+ * channel neither of those covers for an entity-id-based exporter:
+ * `typeVisibility` (class-level toggles — Spaces/Openings/Site/…).
  *
  * ## Composition ruling
  * Hidden and isolated compose as denylist-minus / allowlist-and: an entity
@@ -38,11 +36,6 @@
  * ("combinable") does not say which operator; the viewport's existing
  * behavior is the tie-breaker, since an export that disagreed with the
  * on-screen result would just be a different flavor of #4328.
- *
- * `hiddenEntitiesByModel` / `isolatedEntitiesByModel` are a SEPARATE,
- * per-model-scoped channel (used by e.g. "Isolate in 3D" scoped to a single
- * federated model) and combine as an additional AND on top of the global
- * result, exactly as `getVisibleGlobalIds` already treats them.
  *
  * ## Structural entities
  * This resolver does not — and must not — decide whether `IfcProject`,
@@ -157,37 +150,14 @@ export function resolveExportVisibility(
   const hiddenGlobal = new Set<number>();
   for (const g of state.hiddenEntities) hiddenGlobal.add(g);
   for (const g of state.lensHiddenIds) hiddenGlobal.add(g);
-  if (!legacy) {
-    const modelHidden = state.hiddenEntitiesByModel.get(modelId);
-    if (modelHidden) {
-      for (const localId of modelHidden) hiddenGlobal.add(toGlobal(localId));
-    }
-  }
   const hiddenTypes = buildHiddenIfcTypes(state.typeVisibility);
   const view = state.mutationViews.get(legacy ? (state.activeModelId ?? modelId) : modelId) ?? null;
   for (const localId of collectHiddenIdsByType(dataStore, view, hiddenTypes)) {
     hiddenGlobal.add(toGlobal(localId));
   }
 
-  // ---- isolation allowlist: storey ∩ classFilter ∩ manual global isolate,
-  //      further ∩ the per-model isolatedEntitiesByModel channel ----
-  let isolatedGlobal = computeIsolationFilterSet(state);
-  if (!legacy) {
-    const modelIsolated = state.isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated && modelIsolated.size > 0) {
-      const modelIsolatedGlobal = new Set<number>();
-      for (const localId of modelIsolated) modelIsolatedGlobal.add(toGlobal(localId));
-      if (isolatedGlobal === null) {
-        isolatedGlobal = modelIsolatedGlobal;
-      } else {
-        const intersected = new Set<number>();
-        for (const g of isolatedGlobal) {
-          if (modelIsolatedGlobal.has(g)) intersected.add(g);
-        }
-        isolatedGlobal = intersected;
-      }
-    }
-  }
+  // ---- isolation allowlist: storey ∩ classFilter ∩ manual global isolate ----
+  const isolatedGlobal = computeIsolationFilterSet(state);
 
   // ---- scope to this model's id range, and derive the local variants ----
   const hiddenGlobalIds = new Set<number>();

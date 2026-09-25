@@ -114,7 +114,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             onChange={(e) => { setValue(e.target.value); setError(null); }}
             onKeyDown={handleKeyDown}
             onBlur={save}
-            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-purple-300 dark:border-purple-700 outline-none focus:ring-1 focus:ring-purple-400 aria-[invalid=true]:border-red-500"
+            className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-red-500"
           />
           <Button
             variant="ghost"
@@ -145,10 +145,10 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-opacity"
+            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
             onClick={begin}
           >
-            <PenLine className="h-3 w-3 text-purple-500" />
+            <PenLine className="h-3 w-3 text-overlay-accent" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>

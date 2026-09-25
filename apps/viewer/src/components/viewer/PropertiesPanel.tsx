@@ -1457,7 +1457,7 @@ export function PropertiesPanel() {
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Tag className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
-            {editMode && <PenLine className="h-3 w-3 text-purple-500 ml-1" />}
+            {editMode && <PenLine className="h-3 w-3 text-overlay-accent ml-1" />}
             <span className="text-xs text-muted-foreground ml-auto">{renderedAttributes.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>

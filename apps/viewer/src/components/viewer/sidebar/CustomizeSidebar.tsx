@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { GripVertical, Eye, EyeOff, RotateCcw, Lock, ChevronUp, ChevronDown, Plus } from 'lucide-react';
+import { GripVertical, EyeOff, RotateCcw, Lock, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';

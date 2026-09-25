@@ -60,7 +60,7 @@ import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
-import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, GitMerge } from 'lucide-react';
+import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -1039,34 +1039,6 @@ export function ViewportContainer() {
           {/* The old Select / Filter / Analyze feature-card grid was
               dropped: it repeated toolbar affordances without offering an
               action, and its height pushed the welcome card off-screen. */}
-
-          {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
-              to multi-drop .ifcx files, so the welcome screen sells the demo. */}
-          <button
-            type="button"
-            onClick={() => {
-              void import('@/lib/layers/demo-stack')
-                .then((m) => m.loadDemoLayerStack())
-                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
-            }}
-            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-3 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
-          >
-            <div className="p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] text-primary">
-              <GitMerge className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">
-                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{t('viewportLighting.container.emptyState.layersPromo.badge')}</span>
-                {t('viewportLighting.container.emptyState.layersPromo.title')}
-              </h3>
-              <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">
-                {t('viewportLighting.container.emptyState.layersPromo.description')}
-              </p>
-            </div>
-            <span className="text-xs font-mono font-bold text-primary group-hover:translate-x-0.5 transition-transform">
-              {t('viewportLighting.container.emptyState.layersPromo.cta')}
-            </span>
-          </button>
 
           {/* Footer chips - left: discovery link to the marketing site for first-time
               visitors, right: shortcuts cue for power users. Both desktop-only.

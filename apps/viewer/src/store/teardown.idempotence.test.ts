@@ -45,8 +45,6 @@ describe('the model-removed teardown scope is idempotent', () => {
       hiddenEntities: new Set([43, 1006]),
       selectedStoreys: new Set([44]),
       isolatedEntities: new Set([45, 1007]),
-      hiddenEntitiesByModel: new Map([['A', new Set([43])], ['B', new Set([1006])]]),
-      isolatedEntitiesByModel: new Map([['A', new Set([45])], ['B', new Set([1007])]]),
     });
     useViewerStore.getState().setBasket([
       { modelId: 'A', expressId: 42 },
@@ -86,12 +84,9 @@ describe('the model-removed teardown scope is idempotent', () => {
     // interacts with the per-slice gates would leave the file green.
     useViewerStore.setState({
       // Reset every channel this case reads. The test above leaves
-      // selectedStoreys / hiddenEntitiesByModel / isolatedEntitiesByModel /
-      // pinboardEntities populated, and inheriting them made the patches this
+      // selectedStoreys / pinboardEntities populated, and inheriting them made the patches this
       // asserts on depend on file order.
       selectedStoreys: new Set<number>(),
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
       pinboardEntities: new Set<string>(),
       hierarchyBasketSelection: new Set<string>(),
       selectedEntities: [],

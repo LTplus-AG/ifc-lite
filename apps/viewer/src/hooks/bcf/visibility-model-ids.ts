@@ -8,7 +8,6 @@ import { resolveEntityRefGlobalIdFromState } from '@/store/resolveEntityRef';
 type CaptureState = Pick<ViewerState,
   | 'models' | 'ifcDataStore' | 'mutationViews'
   | 'hiddenEntities' | 'isolatedEntities'
-  | 'hiddenEntitiesByModel' | 'isolatedEntitiesByModel'
   | 'resolveGlobalIdInModel'>;
 
 /** Source models represented by the exact visibility snapshot serialized to BCF. */
@@ -17,13 +16,6 @@ export function visibilityModelIdsForCapture(
   resolveGlobalId: (globalId: number) => string | readonly string[] | null,
 ): string[] {
   const modelIds = new Set<string>();
-  const scoped = state.isolatedEntities !== null
-    ? state.isolatedEntitiesByModel
-    : state.hiddenEntitiesByModel;
-  for (const [modelId, ids] of scoped) {
-    if (ids.size > 0) modelIds.add(modelId);
-  }
-
   const ids = state.isolatedEntities ?? state.hiddenEntities;
   for (const globalId of ids) {
     const resolved = resolveGlobalId(globalId);

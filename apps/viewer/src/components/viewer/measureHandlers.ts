@@ -10,10 +10,11 @@
 import type { SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3, MeasureMode } from '@/store/types.js';
-import type { MouseHandlerContext, Camera } from './mouseHandlerTypes.js';
+import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -248,11 +249,8 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
           axis2: { x: 0, y: 1, z: 0 },  // World Y (vertical)
           axis3: { x: 0, y: 0, z: 1 },  // World Z
         },
-        colors: {
-          axis1: '#F44336',  // Red - X axis
-          axis2: '#8BC34A',  // Lime - Y axis (vertical)
-          axis3: '#2196F3',  // Blue - Z axis
-        },
+        // Shared triad (#5490) by IFC meaning: renderer Y is IFC Z (up), renderer Z is IFC Y.
+        colors: { axis1: IFC_AXIS_COLORS.x, axis2: IFC_AXIS_COLORS.z, axis3: IFC_AXIS_COLORS.y },
         activeAxis: null,
       });
     }

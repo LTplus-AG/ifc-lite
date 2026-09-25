@@ -216,7 +216,11 @@ for (const o of result.graphOutputs) console.log(o.label, o.data);
 
 Re-running with the same `cache` recomputes only nodes whose inputs,
 params, or model revision changed. Every write node bumps the cache's write
-generation, so reads never serve a memo taken before a write.
+generation, so reads never serve a memo taken before a write. Nodes that
+reach the network are never served from the memo: `HttpRequest` always
+sends its request again, and a Script node is recomputed on every run in
+which its code called `bim.network.fetch` (a Script that makes no request
+stays memoised).
 
 ## Script nodes
 
@@ -306,6 +310,53 @@ at the point it was substituted into a param.
 }
 ```
 
+### BCF API nodes
+
+Three nodes talk to a BCF API (OpenCDE) server through `@ifc-lite/bcf-api`,
+with every request going through the same gated transport as
+`http.request`: `https:` only, and the `baseUrl` hostname must match a
+declared `network.fetch:<host>` capability.
+
+- `bcf.listTopics` lists a project's topics (optional OData `filter`,
+  `orderby`, `top`) as a table keyed by `guid`, with columns `title`,
+  `status`, `type`, `priority`, `assigned_to`, `creation_date`,
+  `modified_date`, `labels` (`;`-separated) and `description`, plus the raw
+  topic list and a `count`.
+- `bcf.createTopic` creates one topic from its params, or one per row when a
+  table is wired into `rows` (same column names as `bcf.listTopics`; an empty
+  cell falls back to the param). Every row is validated before the first
+  request, and it outputs the created `guids`.
+- `bcf.addComment` posts a comment to `topicGuid`. Wiring `bcf.createTopic`'s
+  `guids` into its `topicGuid` input comments on each new topic.
+
+Each takes `baseUrl` (up to but excluding the version segment), `version`
+(default `2.1`), `projectId`, and `token`, sent as
+`Authorization: Bearer <token>`. Put the token in a secret rather than the
+graph. The nodes are never memoised, so every run asks the server again.
+
+```json
+{
+  "capabilities": ["network.fetch:bcf.example.com", "secret.read:BCF_TOKEN"],
+  "nodes": [
+    {
+      "id": "open",
+      "type": "bcf.listTopics",
+      "params": {
+        "baseUrl": "https://bcf.example.com/bcf",
+        "projectId": "my-project",
+        "token": "{{secret:BCF_TOKEN}}",
+        "filter": "topic_status eq 'Open'"
+      }
+    },
+    {
+      "id": "sheet",
+      "type": "table.writeCsv"
+    }
+  ],
+  "edges": [{ "from": ["open", "table"], "to": ["sheet", "table"] }]
+}
+```
+
 ### Running a graph in CI, with secrets from GitHub Actions
 
 A workflow can install the CLI, run a graph with a secret passed through
@@ -387,6 +438,92 @@ Nothing the workflow uploads, comments, or logs can carry the raw value:
 `run-summary.json`, so every consumer downstream — the artifact, the PR
 comment, the job log — only ever sees `<secret:API_TOKEN>` if the value
 happened to surface at all.
+
+### Autodesk Platform Services (APS)
+
+Two nodes read Autodesk model data into a graph, so Revit or ACC properties
+can be joined to an IFC model:
+
+- `aps.token` gets an APS access token: a 2-legged client-credentials token
+  from `clientId` / `clientSecret` (`scope` defaults to
+  `data:read viewables:read`), or a ready 3-legged token passed as
+  `accessToken`. Its `token` output is an opaque handle. The token itself is
+  never an output value, a log line or part of `--json` output, because a
+  token minted from a secret is not a secret the redaction step knows about.
+- `aps.modelProperties` reads a translated model's Model Derivative
+  metadata, picks the master (else first) 3D view, and reads its properties.
+  The output is a table with one row per object: `objectid`, `externalId`
+  (for Revit, the element's UniqueId), `name`, `category`, `IfcGUID`, and
+  every property as a `Group.Property` column. The `key` param picks the
+  key column (default `externalId`). While APS is still extracting
+  properties it answers `202`. The node retries up to `maxAttempts` times,
+  waiting `retryDelayMs` between tries, then fails with a clear message.
+  Credentials come from a connected `token`, or from the same credential
+  params on the node itself. `region` sets the data centre (`US`, `EMEA`, …).
+
+Both nodes reach only `developer.api.autodesk.com`, through the same
+host-grant check as `http.request`. They are volatile, so every run fetches
+fresh data. Run them from the CLI or MCP: the viewer has no secrets, and
+APS's endpoints are not meant to be called from a browser page.
+
+This graph joins a Revit model's properties to the walls of the loaded IFC
+model through the `IfcGUID` that Revit's IFC exporter writes:
+
+```json
+{
+  "flowVersion": 1,
+  "id": "aps-join",
+  "name": "Revit properties onto IFC walls",
+  "capabilities": [
+    "model.read",
+    "network.fetch:developer.api.autodesk.com",
+    "secret.read:APS_CLIENT_ID",
+    "secret.read:APS_CLIENT_SECRET"
+  ],
+  "inputs": [],
+  "outputs": [{ "nodeId": "join", "port": "matched", "label": "matched" }],
+  "nodes": [
+    {
+      "id": "tok",
+      "type": "aps.token",
+      "params": { "clientId": "{{secret:APS_CLIENT_ID}}", "clientSecret": "{{secret:APS_CLIENT_SECRET}}" }
+    },
+    {
+      "id": "props",
+      "type": "aps.modelProperties",
+      "params": { "urn": "urn:adsk.wipprod:fs.file:vf.XXXXXXXX?version=3", "region": "US", "key": "IfcGUID" }
+    },
+    { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
+    { "id": "join", "type": "table.joinByKey", "params": { "strategy": "globalId", "column": "IfcGUID" } }
+  ],
+  "edges": [
+    { "from": ["tok", "token"], "to": ["props", "token"] },
+    { "from": ["props", "table"], "to": ["join", "table"] },
+    { "from": ["walls", "entities"], "to": ["join", "entities"] }
+  ]
+}
+```
+
+```bash
+APS_CLIENT_ID=… APS_CLIENT_SECRET=… ifc-lite flow run aps-join.json model.ifc --json
+```
+
+**Getting a URN.** `urn` takes either form:
+
+- The version id of a Docs, ACC or BIM 360 file, such as
+  `urn:adsk.wipprod:fs.file:vf.…?version=N`. The Data Management API returns
+  it (`GET /data/v1/projects/{project}/items/{item}/versions`, the `id` of
+  each version). The node base64url-encodes it for you. An item id
+  (`…:dm.lineage:…`) names no version, so the node refuses it.
+- An already-encoded derivative URN, which the APS Viewer and translation
+  jobs print (the `urn:` prefix the viewer adds is accepted).
+
+The file must already be translated. Opening it once in ACC or Docs does
+that; for your own OSS bucket, start a Model Derivative job first. A
+2-legged token can read an ACC project only when the APS app has been added
+to the ACC account as a custom integration. Otherwise, pass a user's
+3-legged token as `accessToken: "{{secret:APS_TOKEN}}"` and declare
+`secret.read:APS_TOKEN`.
 
 ## Editing a graph
 

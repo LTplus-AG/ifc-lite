@@ -24,13 +24,15 @@
  * The unmodified wheel is untouched, so existing muscle memory is unchanged.
  */
 
-import { isPivotRaycastTooExpensive, type PivotCensusScene } from './orbitPivotCensus.js';
+import { cameraPoseKey, type SurfacePoint, type ZoomPoseCamera, type ZoomSurfacePicker } from './zoomSurface.js';
 
 /** Fraction of the normal wheel step applied while the fine modifier is held. */
 export const FINE_ZOOM_STEP_FACTOR = 0.2;
 
-/** The part of `Camera` this module drives. Keeps the unit testable. */
-export interface WheelZoomCamera {
+/** The part of `Camera` this module drives. Keeps the unit testable. The pose
+ *  getters are read back after each notch so a cached surface point is only
+ *  reused while nothing but the surface zoom has moved the camera (#5393). */
+export interface WheelZoomCamera extends ZoomPoseCamera {
   zoom(
     delta: number,
     addVelocity?: boolean,
@@ -41,15 +43,7 @@ export interface WheelZoomCamera {
     fastZoom?: boolean,
     surfacePoint?: SurfacePoint,
   ): void;
-  /** Read back after each notch so a cached surface point is only reused
-   *  while nothing but the surface zoom has moved the camera (#5393). Both
-   *  ends of the view ray: a look-around keeps the position but turns it. */
-  getPosition(): SurfacePoint;
-  getTarget(): SurfacePoint;
 }
-
-/** World-space point on the visible surface under the cursor. */
-export interface SurfacePoint { x: number; y: number; z: number }
 
 /** The part of a wheel event this module reads. */
 export interface WheelZoomEvent {
@@ -164,35 +158,7 @@ export interface WheelZoomOptions {
    * approaches that surface and stops short of it instead of passing through
    * thin objects; null (empty space) keeps the plain zoom.
    */
-  pickSurface?: (mouseX: number, mouseY: number) => SurfacePoint | null;
-}
-
-/** What {@link createWheelSurfacePicker} needs from the renderer. */
-export interface WheelSurfaceRenderer {
-  getScene(): PivotCensusScene;
-  raycastScene(x: number, y: number, options: WheelSurfacePickOptions): { intersection: { point: SurfacePoint } } | null;
-}
-export interface WheelSurfacePickOptions { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null }
-
-/**
- * The viewer's `pickSurface` (#5393), under the same gate the orbit pivot
- * raycast uses (useMouseControls, orbitPivotCensus.ts): the first CPU raycast
- * builds a BVH over every entity, which stalls large models for seconds, and
- * while streaming the mesh set changes under it. So no pick (plain zoom) while
- * streaming, above the census limit, or on a model with a robust orbit anchor
- * (#1394), whose sparse far tail makes the raycast both slow and unneeded.
- */
-export function createWheelSurfacePicker(
-  renderer: WheelSurfaceRenderer,
-  camera: { getOrbitAnchorBounds(): unknown },
-  getPickOptions: () => WheelSurfacePickOptions,
-): (x: number, y: number) => SurfacePoint | null {
-  return (x, y) => {
-    const options = getPickOptions();
-    if (options.isStreaming || camera.getOrbitAnchorBounds() !== null) return null;
-    if (isPivotRaycastTooExpensive(renderer.getScene())) return null;
-    return renderer.raycastScene(x, y, options)?.intersection.point ?? null;
-  };
+  pickSurface?: ZoomSurfacePicker;
 }
 
 /**
@@ -201,26 +167,22 @@ export function createWheelSurfacePicker(
  * and no pause over {@link SURFACE_GESTURE_IDLE_MS}. The surface zoom moves
  * the camera along the cursor ray, so the picked point stays under the cursor
  * and stays valid for the rest of the gesture. It is valid ONLY while the
- * surface zoom is the sole thing moving the camera: the pose (position AND
- * target) after each notch is recorded, and any other move in between (a
- * fast-zoom dolly, an orbit, a pan, a look-around, a key) takes the point off
- * the cursor ray, so the next notch re-picks.
+ * surface zoom is the sole thing moving the camera: the pose
+ * ({@link cameraPoseKey}) after each notch is recorded, and any other move in
+ * between (a fast-zoom dolly, an orbit, a pan, a look-around, a key) takes the
+ * point off the cursor ray, so the next notch re-picks.
  */
 const SURFACE_GESTURE_IDLE_MS = 400;
 const SURFACE_GESTURE_SLOP_PX = 4;
 interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null; pose: string }
 const surfaceGestures = new WeakMap<object, SurfaceGesture>();
-const poseKey = (c: WheelZoomCamera) => {
-  const p = c.getPosition(), t = c.getTarget();
-  return `${p.x},${p.y},${p.z}|${t.x},${t.y},${t.z}`;
-};
 
 function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
   const pick = opts.pickSurface;
   if (!pick) return null;
   const now = Date.now();
   const g = surfaceGestures.get(opts.canvas);
-  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === poseKey(opts.camera)
+  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === cameraPoseKey(opts.camera)
     && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
     g.at = now;
     return g;
@@ -264,5 +226,5 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     opts.fastZoom,
     surface,
   );
-  if (gesture) gesture.pose = poseKey(opts.camera);
+  if (gesture) gesture.pose = cameraPoseKey(opts.camera);
 }

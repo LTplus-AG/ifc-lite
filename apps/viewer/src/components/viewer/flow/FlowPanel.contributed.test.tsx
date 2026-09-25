@@ -17,12 +17,15 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { newFlowDocument } from '@/lib/flow/persistence';
+import { addNode, toggleInput, toggleOutput } from '@/lib/flow/editor-ops';
+import { loadPlayerValues } from '@/lib/flow/player-values';
 import { BimProvider } from '@/sdk/BimProvider';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import type { ExtensionHostService } from '@/services/extensions/host.js';
 import { contributedFlowId, type ContributedFlow, type ResolveFlowContributionsResult } from '@/services/extensions/host-flows.js';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { FlowPanel } from './FlowPanel.js';
 
 class MemoryStorage {
@@ -181,5 +184,54 @@ describe('FlowPanel — extension-contributed graphs (#5431 review)', () => {
     assert.equal(useViewerStore.getState().flowDoc?.id, host.graphs[0].doc.id);
     assert.ok(!buttonLabels(container).includes('Save'));
     assert.ok(!buttonLabels(container).includes('Delete'));
+  });
+
+  it('offers Player and Publish on a contributed graph, still without Save, Delete, Export or the palette (#5634)', async () => {
+    // Running a graph with inputs and publishing that run's writes neither
+    // edits nor persists the graph, so read-only does not rule them out.
+    let doc = { ...newFlowDocument('Ext graph'), id: contributedFlowId('acme', 'check') };
+    doc = addNode(doc, 'core.number', [0, 0]).doc; // id: number-1
+    doc = toggleInput(doc, 'number-1', 'value', 'Value');
+    doc = toggleOutput(doc, 'number-1', 'value', 'Result');
+    const graph: ContributedFlow = { doc, extensionId: 'acme', extensionName: 'Acme', graphId: 'check' };
+    useViewerStore.setState(fixtureModels(fixtureModel('model-1')));
+    const host = new FakeHost();
+    host.graphs = [graph];
+    const container = await mount(host);
+    selectGraph(container, doc.id);
+
+    assert.ok(container.querySelector('[data-flow-view-toggle]'), 'the Editor/Player toggle is offered');
+    assert.ok(buttonLabels(container).includes('Publish'), 'Publish is offered');
+    assert.equal(container.querySelector('[data-flow-palette]'), null, 'no palette: the canvas stays read-only');
+    for (const label of ['Save', 'Delete', 'Export']) {
+      assert.ok(!buttonLabels(container).includes(label), `${label} is still not offered`);
+    }
+
+    const playerButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Player');
+    assert.ok(playerButton);
+    act(() => { playerButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+    const player = container.querySelector('[data-flow-player]');
+    assert.ok(player, 'the Player view is mounted for the contributed graph');
+    const numberInput = player.querySelector('input[type="number"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(numberInput), 'value')!.set!;
+    await act(async () => {
+      setter.call(numberInput, '42');
+      numberInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    });
+    const runButton = [...player.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Run');
+    assert.ok(runButton);
+    await act(async () => {
+      runButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const state = useViewerStore.getState();
+    assert.equal(state.flowLastRun?.ok, true, 'the Player ran the contributed graph');
+    assert.equal(state.flowLastRunWindow?.doc.id, doc.id, 'Publish credits the namespaced ext:<extension>:<graph> id');
+    assert.equal(state.flowDoc, doc, 'the graph itself is untouched');
+    assert.equal(state.flowDirty, false);
+    assert.equal(state.activeFlowId, null, 'still not a saved graph');
+    assert.equal(state.savedFlows.length, 0, 'running from the Player saves nothing');
+    assert.deepEqual(loadPlayerValues(doc.id), { 'number-1.value': '42' }, 'last-used values are kept per contributed id');
   });
 });

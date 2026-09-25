@@ -13,7 +13,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
@@ -79,41 +78,10 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
 
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
-
-  // Per-model local expressIds → global IDs (idOffset), plus the legacy set.
-  const combinedHiddenIds = useMemo(() => {
-    const globalHiddenIds = new Set<number>(hiddenEntities);
-    for (const [modelId, localHiddenIds] of hiddenEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localHiddenIds) {
-          globalHiddenIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-    return globalHiddenIds;
-  }, [hiddenEntities, hiddenEntitiesByModel, models]);
-
-  const combinedIsolatedIds = useMemo(() => {
-    // Legacy isolation already holds global IDs.
-    if (isolatedEntities !== null) return isolatedEntities;
-    const globalIsolatedIds = new Set<number>();
-    for (const [modelId, localIsolatedIds] of isolatedEntitiesByModel) {
-      const model = models.get(modelId);
-      if (model && model.idOffset !== undefined) {
-        for (const localId of localIsolatedIds) {
-          globalIsolatedIds.add(toGlobalIdFromModels(models, model.id, localId));
-        }
-      }
-    }
-    return globalIsolatedIds.size > 0 ? globalIsolatedIds : null;
-  }, [isolatedEntities, isolatedEntitiesByModel, models]);
-
   const { generateDrawing, isRegenerating } = useDrawingGeneration({
     geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
-    combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
+    // Both sets hold global ids, so they cover every federated model.
+    combinedHiddenIds: hiddenEntities, combinedIsolatedIds: isolatedEntities, computedIsolatedIds,
     models, panelVisible, activeTool, drawing: sourceDrawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });

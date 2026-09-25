@@ -21,6 +21,7 @@ import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
 import { OverlayThemeSync } from './components/viewport-ui/OverlayThemeSync';
+import { LensRuntimeHost } from './components/viewer/LensRuntimeHost';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -123,6 +124,7 @@ export function App({ sourceProviders }: AppProps = {}) {
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
           <OverlayThemeSync />
+          <LensRuntimeHost />
           <ViewerLayout />
           <Toaster />
           <StaleDeploymentNotice />

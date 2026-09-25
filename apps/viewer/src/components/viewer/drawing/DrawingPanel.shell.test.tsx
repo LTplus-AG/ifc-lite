@@ -73,6 +73,9 @@ it('the display chips write drawing2DDisplayOptions', () => {
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showConstructionProjection, !before.showConstructionProjection);
   click(byLabel(ui, 'Symbolic'));
   assert.equal(useViewerStore.getState().drawing2DDisplayOptions.useSymbolicRepresentations, !before.useSymbolicRepresentations);
+  click(byLabel(ui, 'Print preview'));
+  assert.equal(useViewerStore.getState().drawing2DDisplayOptions.showPrintPreview, !before.showPrintPreview);
+  assert.equal(byLabel(ui, 'Print preview').getAttribute('aria-pressed'), String(!before.showPrintPreview));
 });
 
 it('IFC annotations are offered on plan cuts only, and projection never on a custom plane', () => {

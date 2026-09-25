@@ -19,16 +19,18 @@ import { capturePointer, releasePointer } from '@/lib/pointer-capture';
  * gizmo stays glued to the live plane even if the camera moves
  * (orbit / pan are still allowed underneath this overlay because we
  * only call `setPointerCapture` on the handle's <circle>).
+ *
+ * Drawn in the interaction accent (`overlay-accent`, #5488): the gizmo is
+ * the thing being manipulated, whatever the plane's orientation.
  */
 export function SectionPlaneDragGizmo(props: {
-  color: string;
   customPlane: NonNullable<ReturnType<typeof useViewerStore.getState>['sectionPlane']['custom']>;
   setDistance: (d: number) => void;
   onDragStart: () => void;
   onDragEnd:   () => void;
 }) {
   const { t } = useTranslation();
-  const { color, customPlane, setDistance, onDragStart, onDragEnd } = props;
+  const { customPlane, setDistance, onDragStart, onDragEnd } = props;
   const [proj, setProj] = useState<{ p0: { x: number; y: number }; p1: { x: number; y: number } } | null>(null);
   const dragStateRef = useRef<{
     active: boolean;
@@ -137,8 +139,8 @@ export function SectionPlaneDragGizmo(props: {
       <line
         x1={proj.p0.x} y1={proj.p0.y}
         x2={tipX}      y2={tipY}
-        stroke={color} strokeWidth="3" strokeLinecap="round"
-        opacity="0.85"
+        className="stroke-overlay-accent"
+        strokeWidth="3" strokeLinecap="round"
       />
       {/* Tip arrowhead — small triangle perpendicular to the line. */}
       <polygon
@@ -150,15 +152,14 @@ export function SectionPlaneDragGizmo(props: {
           const bx = baseX - nx * 5, by = baseY - ny * 5;
           return `${tipX},${tipY} ${ax},${ay} ${bx},${by}`;
         })()}
-        fill={color} opacity="0.9"
+        className="fill-overlay-accent"
       />
       {/* Foot dot — the actual click+drag target. Larger hit area than
           visual radius for finger-friendly UX. */}
       <circle
         cx={proj.p0.x} cy={proj.p0.y} r={10}
-        fill={color}
-        fillOpacity="0.85"
-        stroke="white" strokeWidth="2"
+        className="fill-overlay-accent stroke-overlay-halo"
+        strokeWidth="2"
         cursor="grab"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

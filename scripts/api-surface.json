@@ -4897,7 +4897,6 @@
     "StepSchemaRegistry: interface",
     "StepValue: type",
     "StringTable: class",
-    "UNKNOWN_VERSION: const",
     "binarySearchU32: function",
     "buildCSR: function",
     "collectAggregatedDescendants: function",
@@ -4957,7 +4956,6 @@
     "propertyTableToColumns: function",
     "quantityTableFromColumns: function",
     "quantityTableToColumns: function",
-    "readPackageVersion: function",
     "ref: function",
     "relationshipEdgesFromColumns: function",
     "relationshipGraphFromColumns: function",
@@ -4971,6 +4969,10 @@
     "spatialLookups: function",
     "textDecoderAcceptsSab: function",
     "toStepLineWithRegistry: function"
+  ],
+  "@ifc-lite/data/node": [
+    "UNKNOWN_VERSION: const",
+    "readPackageVersion: function"
   ],
   "@ifc-lite/diff": [
     "ACCEPTED_AMBIGUOUS_REASON: const",

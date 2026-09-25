@@ -15,6 +15,7 @@
 import type { TerrainWriter } from '../ifc-creator-terrain.js';
 import { isMappableSurface } from './refusals.js';
 import type { MappedAlignment } from './alignment-mapping.js';
+import type { MappedProfile } from './profile-mapping.js';
 import type { LandXmlIfcCgPoint, LandXmlIfcSurface, LandXmlIfcUnits } from './source-types.js';
 
 /** Deterministic GlobalId from a LandXML source id, passed in to avoid an import cycle. */
@@ -161,10 +162,17 @@ export function writeSurveyPoints(
  */
 export function writeAlignments(
   terrain: TerrainWriter, alignments: readonly MappedAlignment[], landXmlGlobalId: GlobalIdOf,
+  profiles: readonly MappedProfile[] = [],
 ): Array<[number, number]> {
   const samples: Array<[number, number]> = [];
   for (const alignment of alignments) {
+    // At most one: `mapProfiles` refuses every design profile of an alignment
+    // that has more than one (§12.2).
+    const profile = profiles.find((candidate) => candidate.alignmentSourceId === alignment.sourceId);
     terrain.addAlignment({
+      ...(profile ? {
+        Vertical: { Name: profile.name, GlobalId: landXmlGlobalId(profile.sourceId), Segments: profile.segments },
+      } : {}),
       Name: alignment.name,
       GlobalId: landXmlGlobalId(alignment.sourceId),
       StartStation: alignment.startStation,

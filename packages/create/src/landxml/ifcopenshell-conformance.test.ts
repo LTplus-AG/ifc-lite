@@ -26,6 +26,11 @@
  *   boundary on the point the fixture AUTHORED. The fixture comes from
  *   `make_alignment_fixture.py`, which integrates the geometry independently of
  *   our TypeScript.
+ * - `check_vertical.py` — the same for the vertical layout (§12): IfcOpenShell
+ *   regenerates every gradient-curve segment from our
+ *   `IfcAlignmentVerticalSegment` and must get ours back, agrees with every
+ *   transition code, and evaluates our `IfcGradientCurve` to the heights the
+ *   fixture generator computed from each LandXML profile definition.
  *
  * Requires `ifcopenshell` (pinned in `tools/ifcopenshell_reference/
  * requirements.lock`, plus `pytest`); set `IFCOPENSHELL_PYTHON` or have it on
@@ -46,6 +51,7 @@ const TOOL_DIR = resolve(__dirname, '../../../../tools/ifcopenshell_reference');
 const VALIDATE_SCRIPT = resolve(TOOL_DIR, 'validate_export.py');
 const ALIGNMENT_SCRIPT = resolve(TOOL_DIR, 'check_alignment.py');
 const ALIGNMENT_FIXTURE = resolve(TOOL_DIR, 'alignment_fixture.json');
+const VERTICAL_SCRIPT = resolve(TOOL_DIR, 'check_vertical.py');
 const PYTHON = process.env.IFCOPENSHELL_PYTHON || 'python3';
 
 const canRun = spawnSync(PYTHON, ['-c', 'import ifcopenshell, ifcopenshell.validate'], { stdio: 'ignore' }).status === 0;
@@ -88,8 +94,13 @@ const TERRAIN_SOURCE: LandXmlIfcSource = {
 };
 
 function alignmentSource(): LandXmlIfcSource {
-  const fixture = JSON.parse(readFileSync(ALIGNMENT_FIXTURE, 'utf8')) as { alignments: LandXmlIfcAlignment[] };
-  return { schema: 'LandXML-1.2', version: '1.2', units: UNITS, surfaces: [], alignments: fixture.alignments };
+  const fixture = JSON.parse(readFileSync(ALIGNMENT_FIXTURE, 'utf8')) as {
+    alignments: LandXmlIfcAlignment[]; profiles: unknown[];
+  };
+  return {
+    schema: 'LandXML-1.2', version: '1.2', units: UNITS, surfaces: [],
+    alignments: fixture.alignments, profiles: fixture.profiles,
+  };
 }
 
 function writeConverted(source: LandXmlIfcSource, name: string, mutate: (step: string) => string = (s) => s): string {
@@ -123,7 +134,7 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(code).toBe(0);
   }, TIMEOUT_MS);
 
-  it('is schema-conformant: horizontal alignments', () => {
+  it('is schema-conformant: horizontal alignments with vertical profiles', () => {
     const [code, stdout] = run(VALIDATE_SCRIPT, [writeConverted(alignmentSource(), 'alignment')]);
     expect(stdout, stdout).toContain('0 issues');
     expect(code).toBe(0);
@@ -151,6 +162,39 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(code, stdout).toBe(1);
     expect(stdout).toMatch(/SegmentStart .* != IfcOpenShell/);
     expect(stdout).toMatch(/from the authored/);
+  }, TIMEOUT_MS);
+
+  it('writes vertical geometry IfcOpenShell derives identically, and every authored height is on it (§12.7)', () => {
+    const [code, stdout] = run(VERTICAL_SCRIPT, [writeConverted(alignmentSource(), 'vertical'), ALIGNMENT_FIXTURE]);
+    expect(stdout, stdout).toContain('2 vertical layout(s) checked, 0 problems');
+    expect(code).toBe(0);
+  }, TIMEOUT_MS);
+
+  it('has teeth: a flipped parabola coefficient is caught by the mapping and height checks', () => {
+    // Negate every IfcPolynomialCurve's quadratic term: a crest written as a
+    // sag. IfcOpenShell regenerates the coefficient from our (unchanged)
+    // design parameters, and the evaluated heights leave the authored profile.
+    const corrupt = (step: string): string => step.replace(
+      /(IFCPOLYNOMIALCURVE\(#\d+,\(0\.,1\.\),\([^,]+,[^,]+,)(-?)([^)]+\))/g,
+      (_all, head: string, minus: string, tail: string) => `${head}${minus ? '' : '-'}${tail}`,
+    );
+    // One export, before and after: two exports under different names always
+    // differ (the name seeds GlobalIds), so comparing those could never fail.
+    const clean = readFileSync(writeConverted(alignmentSource(), 'vertical-corrupt'), 'utf8');
+    expect(corrupt(clean), 'the fault was actually injected').not.toBe(clean);
+    const path = writeConverted(alignmentSource(), 'vertical-corrupt', corrupt);
+    const [code, stdout] = run(VERTICAL_SCRIPT, [path, ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/IfcPolynomialCurve parameters .* != IfcOpenShell/);
+    expect(stdout).toMatch(/the LandXML profile gives/);
+  }, TIMEOUT_MS);
+
+  it('does not pass vacuously: an authored profile missing from the file fails the vertical check', () => {
+    const source = alignmentSource();
+    const partial = { ...source, profiles: (source.profiles ?? []).slice(1) };
+    const [code, stdout] = run(VERTICAL_SCRIPT, [writeConverted(partial, 'vertical-partial'), ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/authored profile of alignment '.+' is not in the file/);
   }, TIMEOUT_MS);
 
   it('does not pass vacuously: an authored alignment missing from the file fails the check', () => {

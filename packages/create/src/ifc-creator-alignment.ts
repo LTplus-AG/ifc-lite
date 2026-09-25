@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `IfcAlignment` emitter — horizontal layout only (mapping spec §11).
+ * `IfcAlignment` emitter — horizontal layout (mapping spec §11), plus the
+ * vertical layout from `ifc-creator-alignment-vertical.ts` when given (§12).
  *
  * Writes BOTH halves IFC 4.3 defines for an alignment: the semantic layout
  * (`IfcAlignmentHorizontal` nesting `IfcAlignmentSegment`s) and the geometry
@@ -19,6 +20,7 @@
 
 import { esc, num } from './ifc-creator-math.js';
 import { ALIGNMENT_POSITION_TOLERANCE_M, type HorizontalSegment } from './landxml/alignment-mapping.js';
+import { emitGradientCurve, emitVerticalLayout, type AlignmentVerticalParams } from './ifc-creator-alignment-vertical.js';
 
 /** The creator hooks this emitter needs. */
 export interface AlignmentContext {
@@ -37,6 +39,12 @@ export interface AlignmentParams {
   /** Station at distance 0, metres — written to the start referent's `Pset_Stationing`. */
   StartStation: number;
   Segments: readonly HorizontalSegment[];
+  /**
+   * The vertical layout (mapping spec §12). When present the alignment also
+   * gets an `IfcAlignmentVertical` and an `IfcGradientCurve` 'Axis'
+   * representation, and the composite curve moves to 'FootPrint'.
+   */
+  Vertical?: AlignmentVerticalParams;
   /** Deterministic GlobalId seed for this alignment's owned entities. */
   guidFor?: (role: string) => string;
 }
@@ -48,6 +56,9 @@ export interface AlignmentResult {
   /** `IfcAlignmentSegment` ids in order, including the terminating one. */
   segmentIds: number[];
   referentId: number;
+  /** Present when `Vertical` was given. */
+  verticalId?: number;
+  gradientCurveId?: number;
 }
 
 /**
@@ -196,8 +207,16 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
     ctx, segment, index === layout.length - 1 ? '.DISCONTINUOUS.' : transitionCode(segment, layout[index + 1]),
   ));
   const compositeCurveId = ctx.emit('IFCCOMPOSITECURVE', `(${curveSegments.map((id) => `#${id}`).join(',')}),.F.`);
-  const representation = ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve2D',(#${compositeCurveId})`);
-  const shape = ctx.emit('IFCPRODUCTDEFINITIONSHAPE', `$,$,(#${representation})`);
+  // With a vertical layout: the composite curve as 'FootPrint' first, the
+  // gradient curve as 'Axis' — IfcOpenShell's horizontal + vertical case (§12.1).
+  const gradientCurveId = params.Vertical ? emitGradientCurve(ctx, params.Vertical, compositeCurveId) : undefined;
+  const representations = gradientCurveId === undefined
+    ? [ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve2D',(#${compositeCurveId})`)]
+    : [
+      ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'FootPrint','Curve2D',(#${compositeCurveId})`),
+      ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve3D',(#${gradientCurveId})`),
+    ];
+  const shape = ctx.emit('IFCPRODUCTDEFINITIONSHAPE', `$,$,(${representations.map((id) => `#${id}`).join(',')})`);
 
   const alignmentId = ctx.emit(
     'IFCALIGNMENT',
@@ -207,7 +226,9 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
   // Semantics: horizontal layout nested under the alignment, segments nested
   // in order under the layout.
   const horizontalId = ctx.emit('IFCALIGNMENTHORIZONTAL', `'${guid('horizontal')}',${ctx.ownerRef},$,$,$,$,$`);
-  ctx.emit('IFCRELNESTS', `'${guid('nests:layouts')}',${ctx.ownerRef},$,$,#${alignmentId},(#${horizontalId})`);
+  const vertical = params.Vertical ? emitVerticalLayout(ctx, params.Vertical, guid) : undefined;
+  const layouts = vertical ? `#${horizontalId},#${vertical.verticalId}` : `#${horizontalId}`;
+  ctx.emit('IFCRELNESTS', `'${guid('nests:layouts')}',${ctx.ownerRef},$,$,#${alignmentId},(${layouts})`);
   const segmentIds = layout.map((segment, index) => ctx.emit(
     'IFCALIGNMENTSEGMENT',
     `'${guid(`segment:${index}`)}',${ctx.ownerRef},$,$,$,$,$,#${designParameters(ctx, segment)}`,
@@ -233,5 +254,8 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
   ctx.emit('IFCRELNESTS', `'${guid('nests:referents')}',${ctx.ownerRef},$,$,#${alignmentId},(#${referentId})`);
   ctx.emit('IFCRELPOSITIONS', `'${guid('positions')}',${ctx.ownerRef},$,$,#${referentId},(#${alignmentId})`);
 
-  return { alignmentId, horizontalId, compositeCurveId, segmentIds, referentId };
+  return {
+    alignmentId, horizontalId, compositeCurveId, segmentIds, referentId,
+    ...(vertical ? { verticalId: vertical.verticalId, gradientCurveId } : {}),
+  };
 }

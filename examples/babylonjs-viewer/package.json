@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@babylonjs/core": "^9.27.0",
-    "@ifc-lite/data": "^6.0.0",
-    "@ifc-lite/geometry": "^7.5.2",
-    "@ifc-lite/parser": "^9.0.0"
+    "@ifc-lite/data": "workspace:*",
+    "@ifc-lite/geometry": "workspace:*",
+    "@ifc-lite/parser": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

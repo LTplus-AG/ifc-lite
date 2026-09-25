@@ -107,6 +107,19 @@ describe('Hide selection is one command on every surface (#5852)', () => {
     assertBothHiddenAndSelectionCleared('mobile toolbar');
   });
 
+  it('mobile toolbar Hide is enabled for a multi-selection with no primary', () => {
+    useViewerStore.setState({ selectedEntityId: null });
+    render(<MobileToolbar />);
+    const trigger = document.body.querySelector('button[aria-haspopup="menu"]');
+    assert.ok(trigger, 'the overflow menu trigger rendered');
+    openRadixMenu(trigger);
+    const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === 'Hide Selection');
+    assert.ok(item, 'the Hide Selection item is in the menu');
+    assert.equal(item.getAttribute('aria-disabled'), null, 'Hide is enabled');
+    click(item);
+    assertBothHiddenAndSelectionCleared('mobile toolbar, multi-selection only');
+  });
+
   it('context menu opened on a selected entity hides the whole selection', () => {
     act(() => { useViewerStore.getState().openContextMenu(B, 10, 10); });
     render(<EntityContextMenu />);

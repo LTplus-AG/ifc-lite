@@ -81,7 +81,8 @@ export function MobileToolbar() {
   const theme = useViewerStore((state) => state.theme);
   const toggleTheme = useViewerStore((state) => state.toggleTheme);
 
-  const hasSelection = selectedEntityId !== null;
+  // Multi-selection counts too (#5852): Hide acts on it even with no primary.
+  const hasSelection = useViewerStore((state) => state.selectedEntityIds.size > 0) || selectedEntityId !== null;
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

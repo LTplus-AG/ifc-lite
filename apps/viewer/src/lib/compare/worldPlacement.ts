@@ -63,7 +63,7 @@
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import { stableHash } from '@ifc-lite/diff';
-import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
+import { firstProjAxis, type IfcAttributeValue, type IfcEntity } from '@ifc-lite/data';
 import { asExpressIdRef } from '../placement-core.js';
 
 /**
@@ -240,19 +240,14 @@ function axisPlacementMatrix(
   const refDirection = triple(store, asRef(type === 'IFCAXIS2PLACEMENT3D' ? attrs[2] : attrs[1]));
 
   const z = (axis && normalize(axis)) ?? [0, 0, 1];
-  // EXPRESS `IfcFirstProjAxis` with a NIL argument: project global X — for
-  // EVERY Axis that is not parallel to it (zero cross product, i.e. no
-  // component off the X axis at all) — and only then fall back to global Y.
-  // Not a nearness heuristic: for an Axis of (0.95, 0.31, 0) the standard
-  // still projects [1,0,0], and a threshold that switches early diverges from
-  // every writer that spells the default explicitly. One edge is decided
-  // rather than derived: for the ANTI-parallel axis [-1,0,0] the standard's
-  // own projection degenerates (it literal-compares against [1,0,0] only), so
-  // the derivation is indeterminate there — this code takes the global-Y seed
-  // for both ±X, which both revisions compute identically, so no diff can
-  // arise from the choice.
-  const seed = (refDirection && normalize(refDirection))
-    ?? (z[1] === 0 && z[2] === 0 ? ([0, 1, 0] as const) : ([1, 0, 0] as const));
+  // An absent RefDirection takes the renderer's fill, `firstProjAxis`: world
+  // X projected onto the plane normal to Axis, as EXPRESS `IfcFirstProjAxis`
+  // does. Next to the X axis, where that projection vanishes, it matches
+  // `build_axis2_matrix` rather than a local choice, so an Axis of exactly -X
+  // gets (0,-1,0), not world Y (#5922). A fill that differed from the
+  // renderer's would turn this frame 180 degrees about the Axis relative to
+  // the one the viewer draws.
+  const seed = (refDirection && normalize(refDirection)) ?? firstProjAxis(z);
   const dot = seed[0] * z[0] + seed[1] * z[1] + seed[2] * z[2];
   const x = normalize([seed[0] - z[0] * dot, seed[1] - z[1] * dot, seed[2] - z[2] * dot]);
   // A RefDirection parallel to Axis leaves nothing to orthogonalise. The file

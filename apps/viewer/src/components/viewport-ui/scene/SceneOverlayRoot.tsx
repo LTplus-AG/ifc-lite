@@ -12,8 +12,8 @@
  *
  * Mounted once in `ViewportContainer`, wrapping `AnnotationLayer`,
  * `CollabPresenceLayer` (`PeerPresenceLayer`) and `BCFOverlay` (#5511) — the
- * remaining hand-rolled rAF overlays it replaces (`SectionPlaneDragGizmo`,
- * `SectionPickPreviewOverlay`, `BasepointOverlay`) migrate in #5510/#5512.
+ * remaining hand-rolled rAF overlays it replaces (the section gizmo and pick
+ * preview moved in #5501; `BasepointOverlay` migrates in #5512).
  */
 
 import { useRef, type ReactNode } from 'react';

@@ -20,3 +20,4 @@ export {
   HudPopoverClose,
   HudPopoverContent,
 } from './HudPopover';
+export { useHudBarTier } from './useHudBarTier';

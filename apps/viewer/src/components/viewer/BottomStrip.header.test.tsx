@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { activeBottomPanel, bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
-import { loadBottomStripHeight, loadBottomStripTabs } from '@/lib/panels/bottom-strip-persistence';
+import { loadBottomStripHeight, loadBottomStripTabs, persistBottomStripHeight } from '@/lib/panels/bottom-strip-persistence';
 import { blankDocument } from '@/lib/document/presets';
 import { BottomStrip } from './BottomStrip';
 
@@ -168,4 +168,22 @@ it('the opened tabs and the resized height persist across a remount', async () =
   assert.equal(tabLabels(ui2).some((t) => t.includes('Lists')), true, 'the remembered Lists tab reappears after a remount');
   const strip2 = ui2.querySelector('[data-detach-root]') as HTMLElement;
   assert.equal(strip2.style.height, `${persistedHeight}px`, 'the remounted strip starts at the persisted height');
+});
+
+it('a strip mounted after an earlier "Reset layout" keeps its persisted height (#5957)', async () => {
+  // The epoch stays non-zero after the first reset. Comparing it against 0
+  // re-applied that old reset on every later mount, discarding the height the
+  // user resized to since.
+  persistBottomStripHeight(420);
+  seed({ ...bottomPanelFlags('lists'), layoutResetEpoch: 1 });
+  const ui = render(<Harness />);
+  await act(async () => {});
+  const strip = ui.querySelector('[data-detach-root]') as HTMLElement;
+  assert.equal(strip.style.height, '420px', 'the strip opens at the persisted height');
+  assert.equal(loadBottomStripHeight(), 420, 'mounting does not overwrite the persisted height');
+
+  // A reset made while it is mounted still restores the default.
+  act(() => useViewerStore.getState().bumpLayoutResetEpoch());
+  await act(async () => {});
+  assert.notEqual(strip.style.height, '420px', 'a live reset restores the default height');
 });

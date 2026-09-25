@@ -145,10 +145,6 @@ impl ProcessorRegistry {
         }
     }
 
-    pub(super) fn has_override(&self, ifc_type: IfcType) -> bool {
-        self.overrides.contains_key(&ifc_type)
-    }
-
     pub(super) fn values(&self) -> impl Iterator<Item = &Rc<dyn GeometryProcessor>> {
         // Draining must not initialize unused processors. Multi-type built-ins
         // share one cell and are drained once; custom aliases share an Rc as

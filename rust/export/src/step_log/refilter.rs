@@ -267,10 +267,18 @@ pub(crate) fn filter_source_line(
     narrow(text, excluded, upper, registry)
 }
 
-/// The created-entity pass's filter: relationships only.
-pub(crate) fn filter_created_line(text: &str, id: u32, upper: &str, excluded: &dyn Fn(u32) -> bool) -> Filtered {
-    if !upper.starts_with("IFCREL") {
-        return Filtered::Keep;
-    }
-    relationship(text, excluded, None).unwrap_or_else(|| Filtered::Withhold(withheld(id, upper, true)))
+/// The created-entity pass's filter: the same three branches as the source
+/// pass, so a created styled item, layer assignment, texture map or
+/// non-relationship aggregate naming an omitted entity is narrowed or
+/// withheld rather than written with a dangling `#N` (#5941 review; the
+/// TypeScript created-entity pass was brought in line in the same change).
+pub(crate) fn filter_created_line(
+    text: &str,
+    id: u32,
+    upper: &str,
+    schema: &str,
+    excluded: &dyn Fn(u32) -> bool,
+    any_excluded: bool,
+) -> Filtered {
+    filter_source_line(text, id, upper, schema, excluded, any_excluded)
 }

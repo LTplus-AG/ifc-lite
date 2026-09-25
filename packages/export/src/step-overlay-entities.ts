@@ -42,6 +42,10 @@ import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { convertStepLine } from './schema-converter.js';
+import { STYLE_RESCUE_TYPES } from './style-closure.js';
+import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
+import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
+import { styleEntityWithheldWarning } from './step-export-types.js';
 import { retypeArgTokens } from './retype.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import { detachRelatedObjects } from './step-pset-copy-on-write.js';
@@ -203,6 +207,18 @@ export function writeOverlayCreatedEntities(
         pass.warnings.push(ctx.relationshipWithheldWarning(entity.expressId, upperType));
         continue;
       }
+    } else if (mayNameOmittedRefs && STYLE_RESCUE_TYPES.has(upperType)) {
+      // The same two branches the source pass runs (`step-source-iteration.ts`):
+      // a created styled item, layer assignment or texture map naming an
+      // omitted (e.g. deleted) entity is narrowed or withheld exactly as a
+      // source one is, instead of shipping a dangling `#N` (#5941 review).
+      line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput, pass.sourceSchema);
+      if (line === null) {
+        pass.warnings.push(styleEntityWithheldWarning(entity.expressId, upperType));
+        continue;
+      }
+    } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(upperType)) {
+      line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
     if (pass.converting) {
       const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);

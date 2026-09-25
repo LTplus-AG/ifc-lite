@@ -101,7 +101,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
         let line = format!("#{id}={upper}({args_text});");
         let filtered = {
             let excluded = |r: u32| pass.is_omitted(r);
-            filter_created_line(&line, id, &upper, &excluded)
+            filter_created_line(&line, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
         };
         let line = match filtered {
             Filtered::Keep => line,

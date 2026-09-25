@@ -40,7 +40,7 @@ function mountWithProjection(p1: { x: number; y: number }) {
   const starts: number[] = [];
   const ui = render(
     <svg>
-      <SectionPlaneDragGizmo color="red" customPlane={custom} setDistance={() => {}}
+      <SectionPlaneDragGizmo customPlane={custom} setDistance={() => {}}
         onDragStart={() => starts.push(1)} onDragEnd={() => {}} />
     </svg>,
   );

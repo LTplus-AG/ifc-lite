@@ -245,7 +245,7 @@ export interface SectionSlice {
    * Hover preview for the face-pick gesture (issue #243 follow-up).
    * Populated by the dwell handler when the cursor pauses ~200ms over a
    * surface; consumed by `SectionVisualization.tsx` to paint a
-   * translucent violet quad + a tiny normal arrow on the hovered face.
+   * translucent accent quad + a tiny normal arrow on the hovered face.
    * Cleared on cursor leaving the canvas, moving to a different face,
    * disarming pick mode, or successful commit.
    */
@@ -267,9 +267,9 @@ export interface SectionSlice {
    * raycast hit), oriented out of the visible surface. The plane is
    * `dot(worldPos, normal) = dot(point, normal) - inset` (#5480, `sectionFacePick.ts`).
    *
-   * Also writes the nearest cardinal `axis` + `flipped` and a percentage-
-   * along-that-axis `position` so legacy consumers (drawings, BCF,
-   * tooltips) still see a reasonable axis-aligned approximation.
+   * Resets `flipped` (relative to `normal`, as the renderer applies it) so every
+   * face orientation keeps the cut side (#5644), and writes the nearest cardinal
+   * `axis` + `position`; `cardinalSectionFlipped` maps the flip for readers of those.
    */
   setSectionPlaneFromFace: (
     normal: [number, number, number],
@@ -468,7 +468,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     if (!isDrawablePick(normal, point)) {
       // Degenerate normal — disarm pick mode but don't poison the
       // renderer with NaNs. Also clear any in-flight hover preview so
-      // the violet quad doesn't linger after a bogus pick attempt.
+      // the accent quad doesn't linger after a bogus pick attempt.
       // `point` is screened too: it only reached `distance` and
       // `pickedAt`, so a non-finite hit point produced a NaN plane
       // offset that the normal check never saw (#2495).
@@ -516,13 +516,13 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
       sectionPlane: {
         ...state.sectionPlane,
         axis:    cardinal.axis,
-        flipped: cardinal.flipped,
+        flipped: false,
         position,
         enabled: true,
         custom,
       },
       sectionPickMode: false,
-      // Commit consumes the preview — the violet quad transitions
+      // Commit consumes the preview — the accent quad transitions
       // visually into the actual cap on the next render. Clearing here
       // (rather than waiting for the hover handler) avoids a frame of
       // double-render where both preview and cap paint the same face.
@@ -552,7 +552,7 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   )),
 
   setSectionPickPreview: (preview) => set((state) => {
-    // Setting a preview while pick mode is OFF would put the violet
+    // Setting a preview while pick mode is OFF would put the accent
     // quad on screen with no way to commit it — guard against that so
     // a stale hover event firing after disarm doesn't reintroduce the
     // overlay.

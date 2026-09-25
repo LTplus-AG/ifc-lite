@@ -7,7 +7,7 @@ import assert from 'node:assert';
 
 import {
   buildClashPairColors, clashColorToBcfArgb,
-  CLASH_COLOR_A, CLASH_COLOR_B, CLASH_COLOR_OVERLAP,
+  CLASH_COLOR_A, CLASH_COLOR_B,
   setClashColorsFromTheme,
 } from './clash-colors.js';
 import { OVERLAY_PALETTES, tokenToRgba } from '@/lib/viewport-ui/overlay-theme';
@@ -42,9 +42,9 @@ describe('buildClashPairColors (#1277/#1339)', () => {
 
 describe('clashColorToBcfArgb (#4806)', () => {
   it('encodes as opaque ARGB hex — the exact 8-char, no-# form BCF <Color> expects', () => {
-    assert.equal(clashColorToBcfArgb(CLASH_COLOR_A), 'FFFF800D');
-    assert.equal(clashColorToBcfArgb(CLASH_COLOR_B), 'FF00D1FF');
-    assert.equal(clashColorToBcfArgb(CLASH_COLOR_OVERLAP), 'FFFF1AD9');
+    // The light-theme clash-a / clash-b tokens (#5490), the module-load values.
+    assert.equal(clashColorToBcfArgb(CLASH_COLOR_A), 'FF8C6C3E');
+    assert.equal(clashColorToBcfArgb(CLASH_COLOR_B), 'FF007197');
   });
 
   it('always writes full opacity (leading FF), regardless of the source alpha', () => {
@@ -64,24 +64,22 @@ describe('setClashColorsFromTheme (#5484)', () => {
   // the values they expect, not whatever theme the last test here landed on.
   afterEach(() => setClashColorsFromTheme('light'));
 
-  it('sources the three tints from the clash-a / clash-b / clash-overlap tokens of the given theme', () => {
+  it('sources the pair tints from the clash-a / clash-b tokens of the given theme', () => {
     for (const theme of ['light', 'dark', 'colorful'] as const) {
       setClashColorsFromTheme(theme);
       const palette = OVERLAY_PALETTES[theme];
       assert.deepEqual(CLASH_COLOR_A, tokenToRgba(palette['clash-a']), `${theme}: clash A`);
       assert.deepEqual(CLASH_COLOR_B, tokenToRgba(palette['clash-b']), `${theme}: clash B`);
-      assert.deepEqual(CLASH_COLOR_OVERLAP, tokenToRgba(palette['clash-overlap']), `${theme}: clash overlap`);
     }
   });
 
   it('mutates the exported arrays IN PLACE — the bindings keep their identity across a theme change', () => {
-    const [a, b, overlap] = [CLASH_COLOR_A, CLASH_COLOR_B, CLASH_COLOR_OVERLAP];
+    const [a, b] = [CLASH_COLOR_A, CLASH_COLOR_B];
     setClashColorsFromTheme('dark');
     // Reference equality, not deepEqual: every `=== CLASH_COLOR_A` comparison
     // elsewhere (group-focus.ts, guid-occurrence-colors.ts) depends on this.
     assert.equal(CLASH_COLOR_A, a, 'CLASH_COLOR_A must stay the same array object');
     assert.equal(CLASH_COLOR_B, b, 'CLASH_COLOR_B must stay the same array object');
-    assert.equal(CLASH_COLOR_OVERLAP, overlap, 'CLASH_COLOR_OVERLAP must stay the same array object');
     // ...but its CONTENT did change to the dark palette.
     assert.deepEqual(CLASH_COLOR_A, tokenToRgba(OVERLAY_PALETTES.dark['clash-a']));
   });

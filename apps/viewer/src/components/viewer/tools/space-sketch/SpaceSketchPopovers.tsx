@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** The Space Sketch disclosure popovers — kept out of the default panel flow:
- *  Options (set-once settings) and Help (the full gesture legend). */
+/** The Space Sketch disclosure popovers' BODIES — Options (set-once
+ *  settings) and Help (the full gesture legend). `SpaceSketchBar` mounts
+ *  each inside a `HudPopoverContent` (#5503), which owns the card surface
+ *  and placement; nothing here positions itself. */
 
 import type { BoundaryMode } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
+import { cn } from '@/lib/utils';
+import { HudSegmented } from '../../../viewport-ui/hud';
 
 export interface OptionsPopoverProps {
   boundaryMode: BoundaryMode;
@@ -42,55 +46,59 @@ const BOUNDARY_MODE_SHORT_LABEL_KEY: Record<BoundaryMode, TranslationKey> = {
   outer: 'spaceSketch.options.boundary.outerLabel',
 };
 
+const BOUNDARY_MODES: BoundaryMode[] = ['center', 'inner', 'outer'];
+
 export function OptionsPopover(props: OptionsPopoverProps) {
   const { t } = useTranslation();
   const {
     boundaryMode, onBoundaryMode, hasWallData, snapDelta, usedTol, snapDisabled,
     onSnap, snapTol, showBuilding, onToggleBuilding, showDiagnostics, onToggleDiagnostics,
   } = props;
+  // Inner/Outer need wall thickness from the derive; without it the choice
+  // is refused in the change handler (and says why on hover), rather than
+  // rendered as a disabled segment the user can't learn the reason for.
+  const boundaryOptions = BOUNDARY_MODES.map((m) => ({
+    value: m,
+    label: <span title={!hasWallData && m !== 'center' ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{t(BOUNDARY_MODE_SHORT_LABEL_KEY[m])}</span>,
+  }));
   return (
-    <div className="absolute right-3 top-12 z-20 w-64 space-y-3 rounded-lg border bg-popover p-3 text-[11px] text-muted-foreground shadow-xl">
+    <div className="space-y-3 text-[11px] text-muted-foreground">
       <div className="space-y-1.5">
         <div className="font-medium text-foreground">{t('spaceSketch.options.boundaryHeading')}</div>
-        <div className="inline-flex rounded-md border p-0.5">
-          {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => {
-            const noWallData = !hasWallData && m !== 'center';
-            return (
-              <button key={m}
-                className={`rounded px-2 py-0.5 transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
-                onClick={() => onBoundaryMode(m)} disabled={noWallData}
-                title={noWallData ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{t(BOUNDARY_MODE_SHORT_LABEL_KEY[m])}</button>
-            );
-          })}
-        </div>
+        <HudSegmented<BoundaryMode>
+          aria-label={t('spaceSketch.options.boundaryHeading')}
+          value={boundaryMode}
+          onChange={(m) => { if (hasWallData || m === 'center') onBoundaryMode(m); }}
+          options={boundaryOptions}
+        />
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="font-medium text-foreground" title={t('spaceSketch.options.weldToleranceTitle')}>{t('spaceSketch.options.weldToleranceLabel')}</span>
           {snapDelta && (
-            <span className={`tabular-nums ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
+            <span className={cn('tabular-nums', snapDelta.to === 0 ? 'text-status-danger' : snapDelta.to < snapDelta.from ? 'text-status-warn' : 'text-status-ok')}
               title={t('spaceSketch.options.roomsBeforeAfterTitle')}>{snapDelta.from} → {snapDelta.to}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
+          <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-overlay-accent"
             disabled={snapDisabled} onChange={(e) => onSnap(Number(e.target.value))} />
           <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label={t('spaceSketch.options.weldToleranceAriaLabel')}
-            className="w-12 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
+            className="w-12 rounded-sm border border-border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
             disabled={snapDisabled}
             onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) onSnap(Math.min(1, Math.max(0.05, v))); }} />
-          <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => onSnap(null)}
+          <button type="button" className="rounded-sm px-1 hover:text-foreground disabled:opacity-40" onClick={() => onSnap(null)}
             disabled={snapDisabled}
             title={snapTol == null ? t('spaceSketch.options.snapDefaultTitle') : t('spaceSketch.options.snapResetTitle')}>{snapTol == null ? t('spaceSketch.options.snapAuto') : t('spaceSketch.options.snapReset')}</button>
         </div>
       </div>
       <label className="flex cursor-pointer items-center justify-between">
         <span className="text-foreground">{t('spaceSketch.options.showBuilding')}</span>
-        <input type="checkbox" className="accent-primary" checked={showBuilding} onChange={onToggleBuilding} />
+        <input type="checkbox" className="accent-overlay-accent" checked={showBuilding} onChange={onToggleBuilding} />
       </label>
       <label className="flex cursor-pointer items-center justify-between">
         <span className="text-foreground">{t('spaceSketch.options.leakDiagnostics')}</span>
-        <input type="checkbox" className="accent-primary" checked={showDiagnostics} disabled={!hasWallData} onChange={onToggleDiagnostics} />
+        <input type="checkbox" className="accent-overlay-accent" checked={showDiagnostics} disabled={!hasWallData} onChange={onToggleDiagnostics} />
       </label>
     </div>
   );
@@ -110,7 +118,7 @@ const HELP_ROWS: [TranslationKey, TranslationKey][] = [
 export function HelpPopover() {
   const { t } = useTranslation();
   return (
-    <div className="absolute right-3 top-12 z-20 w-72 space-y-1.5 rounded-lg border bg-popover p-3 text-[11px] shadow-xl">
+    <div className="space-y-1.5 text-[11px]">
       <div className="mb-1 font-medium text-foreground">{t('spaceSketch.help.heading')}</div>
       {HELP_ROWS.map(([k, v]) => (
         <div key={k} className="flex gap-2">

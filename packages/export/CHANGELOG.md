@@ -1,5 +1,28 @@
 # @ifc-lite/export
 
+## 4.7.3
+
+### Patch Changes
+
+- [#5675](https://github.com/LTplus-AG/ifc-lite/pull/5675) [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d) Thanks [@louistrue](https://github.com/louistrue)! - STEP re-export no longer turns a source `FILE_NAME` author or organization of `$` (or `($)`) into `()`, which is not a valid `LIST [1:?]` and failed IfcOpenShell validation. The exporter now writes its `('')` default for those ([#5470](https://github.com/LTplus-AG/ifc-lite/issues/5470)).
+  
+  BREAKING: `IfcSourceHeader.author` and `.organization` (re-exported by `@ifc-lite/parser`, and returned by `parseSourceHeader`) are now optional. They are absent when the source wrote `$`, a list of only unset entries, or no `FILE_NAME` record. They are `[]` only for a literal `()`, which still round-trips as `()`. Code that reads them must handle `undefined`, e.g. `header.author ?? []`.
+
+- [#5906](https://github.com/LTplus-AG/ifc-lite/pull/5906) [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f) Thanks [@louistrue](https://github.com/louistrue)! - Write ZIP archives with "version needed to extract" 2.0 on DEFLATE entries, as the ZIP APPNOTE requires. JSZip hardcodes 1.0 on every entry, so `writeBCF` (.bcfzip) and `ParquetExporter.exportBOS` (.bos) now pack with fflate, which writes 2.0 itself. Found while investigating [#3612](https://github.com/LTplus-AG/ifc-lite/issues/3612); this is not shown to be the cause of the Solibri import failure reported there.
+
+- [#5789](https://github.com/LTplus-AG/ifc-lite/pull/5789) [`42b3f21`](https://github.com/LTplus-AG/ifc-lite/commit/42b3f214290d6c7d5fb27f697ec8451b323aabd4) Thanks [@louistrue](https://github.com/louistrue)! - `MergedExporter` with `dropEmptyContainers` now also drops a container that is emptied by the one-parent pass. When a later model's Building unified with one the primary model already parents, that model's `Site -> Building` aggregation is not written, which leaves its Site with nothing in it. The drop planner still counted the Building as that Site's child, so the empty Site was written anyway. The planner now runs the same claim pass first and no longer counts the aggregation edges that pass withholds. Containers that unify only by GlobalId are not yet covered ([#5725](https://github.com/LTplus-AG/ifc-lite/issues/5725)).
+
+- [#5723](https://github.com/LTplus-AG/ifc-lite/pull/5723) [`a0e1bfe`](https://github.com/LTplus-AG/ifc-lite/commit/a0e1bfe567e3a892287faa8ee3e1b3610b59511d) Thanks [@louistrue](https://github.com/louistrue)! - `MergedExporter` no longer gives an object a second `IfcRelAggregates` parent. When a later model's Building (or any object) unified with one the primary model already aggregated under a different parent, for example a Building under a Site in one model and directly under the Project in the other, the later model's relationship was kept and the merged Building failed `IfcSpatialStructureElement.WR41`. A member that already has a parent in the output is now dropped from the later relationship, and the relationship is skipped if nothing is left. This also covers objects unified by GlobalId, and a third model re-parenting an object the second model already parented ([#5471](https://github.com/LTplus-AG/ifc-lite/issues/5471)).
+
+- [#5773](https://github.com/LTplus-AG/ifc-lite/pull/5773) [`11478f7`](https://github.com/LTplus-AG/ifc-lite/commit/11478f7b7e3b530a6111874bb233fada1a36d785) Thanks [@louistrue](https://github.com/louistrue)! - `MergedExporter` no longer gives an object a second `IfcRelNests` parent. In IFC2X3 output, `IfcRelNests` and `IfcRelAggregates` fill the same `Decomposes : SET [0:1]` inverse, so a later model nesting an object that the primary model already aggregated (or nested) gave it two decomposition parents once the two copies unified. In IFC4 and later, a second `IfcRelNests` parent broke `Nests : SET [0:1]` in the same way. The one-parent pass from [#5471](https://github.com/LTplus-AG/ifc-lite/issues/5471) now covers `IfcRelNests` as well, and the output schema decides which relationships share an inverse ([#5726](https://github.com/LTplus-AG/ifc-lite/issues/5726)).
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/codegen@1.18.1
+  - @ifc-lite/geometry@7.5.2
+  - @ifc-lite/ifcx@4.2.1
+
 ## 4.7.2
 
 ### Patch Changes

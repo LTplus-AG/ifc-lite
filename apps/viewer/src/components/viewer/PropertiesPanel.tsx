@@ -1456,7 +1456,7 @@ export function PropertiesPanel() {
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Tag className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
-            {editMode && <PenLine className="h-3 w-3 text-purple-500 ml-1" />}
+            {editMode && <PenLine className="h-3 w-3 text-overlay-accent ml-1" />}
             <span className="text-xs text-muted-foreground ml-auto">{renderedAttributes.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -1882,7 +1882,7 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={save}
-          className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-purple-300 dark:border-purple-700 outline-none focus:ring-1 focus:ring-purple-400"
+          className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent"
         />
         <Button
           variant="ghost"
@@ -1910,10 +1910,10 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-opacity"
+            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
             onClick={() => setEditing(true)}
           >
-            <PenLine className="h-3 w-3 text-purple-500" />
+            <PenLine className="h-3 w-3 text-overlay-accent" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>

@@ -50,6 +50,9 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.13.0
+        version: 4.13.0(playwright-core@1.63.0)
       '@changesets/changelog-github':
         specifier: ^1.0.1
         version: 1.0.1
@@ -611,14 +614,14 @@ importers:
         specifier: ^9.27.0
         version: 9.27.0
       '@ifc-lite/data':
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: workspace:*
+        version: link:../../packages/data
       '@ifc-lite/geometry':
-        specifier: ^7.5.0
-        version: 7.5.0
+        specifier: workspace:*
+        version: link:../../packages/geometry
       '@ifc-lite/parser':
-        specifier: ^8.0.0
-        version: 8.0.0
+        specifier: workspace:*
+        version: link:../../packages/parser
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -680,14 +683,14 @@ importers:
   examples/threejs-viewer:
     dependencies:
       '@ifc-lite/data':
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: workspace:*
+        version: link:../../packages/data
       '@ifc-lite/geometry':
-        specifier: ^7.5.0
-        version: 7.5.0
+        specifier: workspace:*
+        version: link:../../packages/geometry
       '@ifc-lite/parser':
-        specifier: ^8.0.0
-        version: 8.0.0
+        specifier: workspace:*
+        version: link:../../packages/parser
       three:
         specifier: ^0.186.0
         version: 0.186.0
@@ -707,10 +710,16 @@ importers:
       '@ifc-lite/encoding':
         specifier: workspace:^
         version: link:../encoding
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       jszip:
         specifier: ^3.10.2
         version: 3.10.2
     devDependencies:
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1165,13 +1174,16 @@ importers:
       apache-arrow:
         specifier: ^21.2.0
         version: 21.2.0
-      jszip:
-        specifier: ^3.10.2
-        version: 3.10.2
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       parquet-wasm:
         specifier: ^0.8.0
         version: 0.8.0
     devDependencies:
+      jszip:
+        specifier: ^3.10.2
+        version: 3.10.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1225,6 +1237,9 @@ importers:
 
   packages/flow-nodes:
     dependencies:
+      '@ifc-lite/bcf-api':
+        specifier: workspace:^
+        version: link:../bcf-api
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
@@ -1402,6 +1417,9 @@ importers:
       '@ifc-lite/diff':
         specifier: workspace:^
         version: link:../diff
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
@@ -1950,6 +1968,11 @@ packages:
   '@automerge/automerge@3.5.0':
     resolution: {integrity: sha512-ejbqJWfXWM2QbTcUK/5ugYiQiyOP7LYVAp/RuSvthCc07oek0FClMxEuouuhjrLjVPDSI34RP1ftGc45PF7WRA==}
 
+  '@axe-core/playwright@4.13.0':
+    resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
+
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
     engines: {node: '>=6.9.0'}
@@ -2346,36 +2369,6 @@ packages:
 
   '@iconify/utils@3.1.7':
     resolution: {integrity: sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==}
-
-  '@ifc-lite/data@5.3.0':
-    resolution: {integrity: sha512-Vfy718RAz7lmqdKV7sOHwaFdPyzsdQ02xgTf1nioqoBhXfb+8tGj/Uj4m+h9shxLyhlwlWBJJIEIIPCgZCVJfA==}
-
-  '@ifc-lite/encoding@2.2.0':
-    resolution: {integrity: sha512-YfnM5G4zS93y8Dh0rKUfayBPczOwIBEjvmSXL2Nx5AOmLTh9/+mfyPlWIOxkP6I95uxtk6QXsUSMHFMgVY4IEg==}
-
-  '@ifc-lite/geometry@7.5.0':
-    resolution: {integrity: sha512-3j5IxCypsiylmMAlbJJGrOOCSi24EbSFBwlmYvN4AkbCDx5iVTvl3Kt3c41YrxG4KplevxhcCOpiH8m4zvRm0Q==}
-
-  '@ifc-lite/ifcx@4.1.3':
-    resolution: {integrity: sha512-ycvNbkI3y8f2xviNoNtDalkyXc5udu1+cG9UgnDYC6bbePklrNM3K3OHSGoz1MARrYh9tLj3mKS69QI36Bv7Aw==}
-
-  '@ifc-lite/mutations@2.6.0':
-    resolution: {integrity: sha512-qOpghyDimYsBzURixtbgmtLl4/UNbKZpoeuUGHyIUOjsRoNRW5SjENCrztActJv5GaEQGI8hec8MGCfxtehmBw==}
-
-  '@ifc-lite/parser@8.0.0':
-    resolution: {integrity: sha512-4skyDV1S0wdfeIe9lc0GMXvbtYcDNZQ/11Qb24OHEzhC6IwK0z2bllWfU67rng95B+yNvNsBn06Z/ohthyCvFQ==}
-
-  '@ifc-lite/pointcloud@0.10.0':
-    resolution: {integrity: sha512-jQIrYd2JmEtLtL62bhwMhPjcMj0T1kOjRHFsi2dIu66fRx521mIeB2v+4G+FbamO/HU0dGrJCt0fMhTH3MFn7w==}
-
-  '@ifc-lite/regex-guard@0.2.0':
-    resolution: {integrity: sha512-s9QLHRLNWWW6l+bdlpgGSZCttyY549qZohMJg6rCKNqmUYv7nruyz6oTNhx1WwsYihNHMZM4nT1+Fxcpz7s3rw==}
-
-  '@ifc-lite/wasm-lifecycle@0.2.0':
-    resolution: {integrity: sha512-PEmr5+DfXMnjZLzeupQtiW2b7RcxjmpgLvE73lqnzeq+DUQg9dOrfkyatOQOoLW+1r3gMD3CaOFJBIB7N6L5Kg==}
-
-  '@ifc-lite/wasm@9.3.0':
-    resolution: {integrity: sha512-ICY3Jb7BU62FPIxFOF+nh8gIi+I10kWPWQgUrPG4Ab+2bXcIzjfizNczInwf8c/KN7XoKLOYD14F8DUwPp/IzA==}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -4177,6 +4170,10 @@ packages:
     hasBin: true
     peerDependencies:
       postcss: ^8.5.10
+
+  axe-core@4.13.0:
+    resolution: {integrity: sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==}
+    engines: {node: '>=4'}
 
   bail@2.0.2:
     resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
@@ -6401,6 +6398,11 @@ snapshots:
 
   '@automerge/automerge@3.5.0': {}
 
+  '@axe-core/playwright@4.13.0(playwright-core@1.63.0)':
+    dependencies:
+      axe-core: 4.13.0
+      playwright-core: 1.63.0
+
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -6874,54 +6876,6 @@ snapshots:
       '@antfu/install-pkg': 2.0.1
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
-
-  '@ifc-lite/data@5.3.0':
-    dependencies:
-      '@ifc-lite/encoding': 2.2.0
-
-  '@ifc-lite/encoding@2.2.0': {}
-
-  '@ifc-lite/geometry@7.5.0':
-    dependencies:
-      '@ifc-lite/data': 5.3.0
-      '@ifc-lite/wasm': 9.3.0
-      '@ifc-lite/wasm-lifecycle': 0.2.0
-    optionalDependencies:
-      '@tauri-apps/api': 2.11.1
-
-  '@ifc-lite/ifcx@4.1.3':
-    dependencies:
-      '@ifc-lite/data': 5.3.0
-      '@ifc-lite/mutations': 2.6.0
-      '@ifc-lite/pointcloud': 0.10.0
-      '@noble/hashes': 2.4.0
-
-  '@ifc-lite/mutations@2.6.0':
-    dependencies:
-      '@ifc-lite/data': 5.3.0
-      '@ifc-lite/regex-guard': 0.2.0
-      '@noble/hashes': 2.4.0
-
-  '@ifc-lite/parser@8.0.0':
-    dependencies:
-      '@ifc-lite/data': 5.3.0
-      '@ifc-lite/encoding': 2.2.0
-      '@ifc-lite/ifcx': 4.1.3
-      '@ifc-lite/wasm': 9.3.0
-      '@ifc-lite/wasm-lifecycle': 0.2.0
-      decimal.js: 10.6.0
-      fflate: 0.8.3
-      jszip: 3.10.2
-
-  '@ifc-lite/pointcloud@0.10.0':
-    dependencies:
-      laz-perf: 0.0.7
-
-  '@ifc-lite/regex-guard@0.2.0': {}
-
-  '@ifc-lite/wasm-lifecycle@0.2.0': {}
-
-  '@ifc-lite/wasm@9.3.0': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
@@ -8426,6 +8380,8 @@ snapshots:
       picocolors: 1.1.1
       postcss: 8.5.28
       postcss-value-parser: 4.2.0
+
+  axe-core@4.13.0: {}
 
   bail@2.0.2: {}
 

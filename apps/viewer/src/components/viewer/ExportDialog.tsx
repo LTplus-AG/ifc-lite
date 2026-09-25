@@ -57,6 +57,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -68,7 +69,7 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadFile, sanitizeFilename, stripExtension } from '@/lib/export/download';
+import { downloadFile, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { finishLandXmlIfcExport } from '@/lib/export/landXmlIfcDownload.js';
@@ -107,8 +108,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
   // Not read directly below — `resolveExportVisibility` reads the live store
   // snapshot at export time — but subscribed so the dialog re-renders (and the
   // memoized visibility getters below get fresh identities) when the Class
@@ -178,10 +177,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     }
   }, [modelList, selectedModelId]);
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (next) setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
-    setOpen(next);
-  }, [modelList, activeModelId]);
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => {
+      setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
+      setExportResult(null);
+    },
+  });
 
   const selectedModel = useMemo(
     () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
@@ -293,7 +296,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
   );
 
   const getLocalHiddenIds = useCallback(
@@ -397,7 +400,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        downloadFile(result.content, 'merged_export.ifc', 'text/plain');
+        // Named for the first model: `keep-first` makes its IfcProject the merged file's.
+        downloadFile(result.content, modelExportFilename(mergeInputs[0]?.name ?? '', 'ifc', '_merged'), 'text/plain');
 
         const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
           + (result.stats.normalizedModelCount > 0
@@ -411,7 +415,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
       if (!selectedModel) return;
       const mutationView = getMutationView(selectedModelId);
-      const baseName = sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' });
 
       // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
       // Built from the mutation view alone, which is why it runs BEFORE the
@@ -419,7 +422,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       // never needed one (#5310 review).
       if (changesOnly && !isIfc5) {
         const jsonMsg = exportChangesJson(
-          selectedModelId, selectedModel.name, baseName, mutationView?.getMutations() || []);
+          selectedModelId, selectedModel.name, mutationView?.getMutations() || []);
         setExportResult({ success: true, message: jsonMsg });
         toast.success(jsonMsg);
         exportedFormat = 'json';
@@ -499,7 +502,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
 
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
-        downloadFile(result.content, `${baseName}${suffix}.ifcx`, 'application/json');
+        downloadFile(result.content, modelExportFilename(selectedModel.name, 'ifcx', suffix), 'application/json');
 
         const losses = unrepresentedPsetsNote(result.stats.skippedCount) + lostPropertyCollisionsNote(result.stats.propertyCollisions);
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties${losses}`;
@@ -556,7 +559,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         const suffix = visibleOnly ? '_visible' : '_export';
         const artifact = await packagePortableIfcAsync(selectedModelId, spliced.content, serialized.resources);
-        downloadFile(artifact.content, `${baseName}${suffix}.${artifact.ext}`, artifact.mime);
+        downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, suffix), artifact.mime);
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });
@@ -808,7 +811,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('exportDialog.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>

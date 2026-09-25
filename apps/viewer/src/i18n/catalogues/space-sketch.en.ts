@@ -5,38 +5,32 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Space Sketch (DCEL) tool (#4918 slice): the main panel
- * (`SpaceSketchOverlay` — header, storey picker, tool row, footer/confirm),
- * its collapsed affordance (`SpaceSketchReopenPill`), its two disclosure
- * popovers (`space-sketch/SpaceSketchPopovers` — Options and the gesture
- * Help legend), and the canvas's one tooltip
+ * The Space Sketch (DCEL) tool (#4918 slice; on the HUD since #5503): its
+ * bar, plan card, hint and parked chip (`space-sketch/SpaceSketchHud`),
+ * its two disclosure popovers (`space-sketch/SpaceSketchPopovers` —
+ * Options and the gesture Help legend), and the canvas's one tooltip
  * (`space-sketch/SpaceSketchCanvas`'s "unbounded boundary" `<title>`).
  * The tool's live `setStatus(...)` narration strings (drag/undo/derive
  * progress messages) are plain function-call arguments, not JSX, and are
  * out of this slice's gate-driven scope.
  */
 export const spaceSketchEn = {
-  // Reopen pill (collapsed panel)
-  'spaceSketch.reopenPill.title': 'Reopen the Space Sketch panel',
-  'spaceSketch.reopenPill.label': 'Space Sketch',
-  'spaceSketch.reopenPill.toConfirm': '{count} to confirm',
+  // Parked chip (minimized tool)
+  'spaceSketch.parkedChip.resumeTitle': 'Reopen the Space Sketch tool',
+  'spaceSketch.parkedChip.label': 'Space Sketch',
+  'spaceSketch.parkedChip.toConfirm': '{count} to confirm',
 
-  // Main panel header
+  // Bar
   'spaceSketch.panel.heading': 'Space Sketch',
-  'spaceSketch.panel.pendingBadgeTitle': 'Spaces to create when you confirm, across all storeys',
-  'spaceSketch.panel.pendingBadge': '{count} to confirm',
-  // Only rendered when pendingStoreys > 1, so "floors" is always plural in
-  // English — one complete message per case (#4918 review, PR #5001)
-  // rather than concatenating a separately-translated suffix, so a locale
-  // can reorder/re-punctuate the whole phrase.
-  'spaceSketch.panel.pendingBadgeMultiStorey': '{count} to confirm · {floors} floors',
+  'spaceSketch.bar.storeyAria': 'Storey to sketch on',
+  'spaceSketch.bar.drawModeAria': 'Draw mode',
   'spaceSketch.panel.helpTitle': 'How it works',
   'spaceSketch.panel.minimizeTitle': 'Minimize (drafts and 3D preview stay live)',
   'spaceSketch.panel.closeTitle': 'Close without creating (Esc)',
   'spaceSketch.panel.noModelOption': 'no model',
   'spaceSketch.panel.deriveAllTitle': 'Derive rooms on every storey. Drafts only until you confirm; storeys you already edited are kept.',
   'spaceSketch.panel.roomCount': { other: '{count} rooms', one: '{count} room' },
-  'spaceSketch.panel.resizeTitle': 'Drag to resize the panel',
+  'spaceSketch.panel.resizeTitle': 'Drag to resize the plan',
 
   // Tool row
   'spaceSketch.tools.editTitle': 'Edit / freeform: drag corners, split, merge, draw a polygon room',

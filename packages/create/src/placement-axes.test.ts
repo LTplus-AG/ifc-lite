@@ -57,7 +57,15 @@ describe('completePlacementAxes (#5469)', () => {
     expectClose(completePlacementAxes([0, 1, 0], undefined)?.RefDirection, [1, 0, 0]);
     // Axis along X: the schema switches to world Y.
     expectClose(completePlacementAxes([1, 0, 0], undefined)?.RefDirection, [0, 1, 0]);
-    expectClose(completePlacementAxes([-1, 0, 0], undefined)?.RefDirection, [0, 1, 0]);
+  });
+
+  it('writes (0,-1,0) for an Axis of exactly -X, as ifc-lite reads a `$` there', () => {
+    // The schema has no answer for -X (world X projects to zero). ifc-lite's
+    // reader (`build_axis2_matrix`) fills the absent RefDirection with
+    // (0,0,1) x Axis = (0,-1,0); world Y instead would render the placement
+    // turned 180 degrees about its Axis compared with the `$` it replaces.
+    expectClose(completePlacementAxes([-1, 0, 0], undefined)?.RefDirection, [0, -1, 0]);
+    expectClose(completePlacementAxes([-2.5, 0, 0], undefined)?.RefDirection, [0, -1, 0]);
   });
 
   it('projects world X for an Axis NEAR X, as IfcFirstProjAxis does, rather than switching to Y', () => {

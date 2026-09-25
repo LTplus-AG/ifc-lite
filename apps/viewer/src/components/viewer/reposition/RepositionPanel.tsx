@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { isTextEntryTarget } from '@/lib/keyboard-event';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
@@ -83,7 +84,7 @@ export function RepositionPanel() {
         event.preventDefault(); event.stopImmediatePropagation(); useViewerStore.getState().closeReposition(); return;
       }
       const target = event.target;
-      if (target instanceof HTMLElement && (target.closest('input, textarea, select, button, summary, a[href], [role=button]') || target.isContentEditable)) return;
+      if (isTextEntryTarget(event) || (target instanceof HTMLElement && target.closest('button, summary, a[href], [role=button]'))) return;
       const state = useViewerStore.getState();
       if (event.key === 'Enter') { event.preventDefault(); event.stopImmediatePropagation(); apply(); }
       else if (!event.ctrlKey && !event.metaKey && ['x', 'y', 'z'].includes(event.key.toLowerCase())) {
@@ -141,7 +142,7 @@ export function RepositionPanel() {
 
   return <>
     <PlacementGizmo disabled={role !== null} onError={setError} />
-    {projected && <div aria-hidden className="absolute pointer-events-none z-40 border-2 border-teal-500 rounded-full w-3 h-3"
+    {projected && <div aria-hidden className="absolute pointer-events-none z-40 border-2 border-overlay-accent rounded-full w-3 h-3"
       style={{ left: projected.x - 6, top: projected.y - 6 }} />}
     <section aria-label={t('repositionPanel.title')} className="absolute top-32 right-4 z-40 w-80 max-h-[calc(100%-9rem)] overflow-auto border bg-white dark:bg-zinc-950 shadow-lg p-3 space-y-3 text-xs"
       onPointerDown={(event) => event.stopPropagation()}>

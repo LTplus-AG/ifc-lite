@@ -356,7 +356,7 @@ export function SectionOverlay() {
           className="whitespace-nowrap bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150"
           style={{
             boxShadow: sectionPlane.enabled
-              ? '4px 4px 0px 0px #03A9F4' // Light blue shadow when active
+              ? '4px 4px 0px 0px var(--overlay-accent)' // Interaction accent when active (#5488)
               : '3px 3px 0px 0px rgba(0,0,0,0.3)'
           }}
         >

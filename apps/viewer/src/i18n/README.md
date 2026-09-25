@@ -89,7 +89,7 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
-The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
+The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx` (now the HUD bar `MeasureToolbar.tsx`, `MeasureHudReadouts.tsx` and the `MeasurementsPanel.tsx` side panel, #5502),
 `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`, `MeasurementVisuals.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
@@ -439,8 +439,8 @@ geometry-merge setting's reload banner), not the same feature under a new
 name.
 
 The Annotate tool catalogue (#4918 slice: annotations, `annotations.en.ts`)
-covers the canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer
-that projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
+covers the canvas-overlay pin (the shared `Pin` scene primitive, registered on
+the projector by `AnnotationLayer.tsx` — #5511), the read/edit
 popover for an existing pin (`AnnotationPopover.tsx`), and the inline
 commit-or-cancel input shown while dropping a fresh pin
 (`AnnotationDropInput.tsx`), including the relative-time phrasing

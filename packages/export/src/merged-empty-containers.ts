@@ -26,18 +26,9 @@
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
-import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
-import { BARE_REF_RE } from './reference-collector.js';
+import { argRefs, classifyRefs, leadingGuid, refList, singleRef, topLevelAttrs } from './merged-empty-containers-refs.js';
 import type { CompleteEntityIndex } from './entity-iteration.js';
 
-/**
- * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
- * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
- * a wrapped line's arguments are unreadable here (`topLevelAttrs` returns
- * `null`), which the caller treats as "can't safely rewrite" and blocks the
- * empty-container drop for that entity.
- */
 /**
  * Spatial container types dropped when they end up empty. `IfcProject` is
  * deliberately absent: it is the file's root, never a candidate.
@@ -75,6 +66,36 @@ export interface EmptyContainerModelView {
   offset: number;
   /** True when the model unifies into the first model's project / unit space. */
   compatible: boolean;
+  /**
+   * Run this model's one-parent claim pass (#5471) and return the aggregation
+   * edges it withholds. Called once per model in merge order, on a claim set
+   * of the plan's own. Omitted: every edge counts.
+   *
+   * The drops must be known before emission, yet the emit-time claim pass
+   * withholds aggregation edges, and a container that loses its only edge is
+   * empty (#5725). This pass runs with no drops applied, and that is already
+   * the fixed point: a claim that would differ once drops are known needs a
+   * dropped parent, but a parent whose kept edge reaches a kept child is kept
+   * itself. That holds only if this pass never withholds an edge the emit pass
+   * writes, or a still-full child loses its only parent. So it may see LESS
+   * than the emit pass, never more. It claims only through
+   * {@link isStructureRelation} types, and resolves ids through `sharedRemap`
+   * (spatial unification, which the emit pass repeats exactly), not through
+   * this module's GlobalId canonicalisation, which the emit pass does not
+   * always repeat (a GlobalId duplicated within one model, or an
+   * `assume-shared` emitter in another unit). What it misses is an edge the
+   * emit pass withholds and this one counts, which only keeps a container
+   * (#3643's behaviour before #5725).
+   */
+  claimParents?: () => WithheldParents;
+}
+
+/** Aggregation edges the one-parent pass keeps out of the output (#5725). */
+export interface WithheldParents {
+  /** Rels skipped outright: every member already had a parent. */
+  skipEntityIds: ReadonlySet<number>;
+  /** Rel → members stripped from its RelatedObjects list. */
+  relParentStrip: ReadonlyMap<number, ReadonlySet<number>>;
 }
 
 /** Which containers the emit loop must not write. */
@@ -84,6 +105,11 @@ export interface EmptyContainerPlan {
   /** Containers dropped, counted in the MERGED model (a container unified
    *  across three inputs counts once). */
   droppedCount: number;
+}
+
+/** True when `typeUpper` is a relationship the analysis counts as spatial structure. */
+export function isStructureRelation(typeUpper: string): boolean {
+  return typeUpper in STRUCTURE_RELATIONS;
 }
 
 /** True when `typeUpper` is a droppable spatial container type. */
@@ -126,7 +152,7 @@ export function planEmptyContainerDrops(models: EmptyContainerModelView[]): Empt
     const canon = canonicalContainers(view, guidNode);
     containersByModel.push(canon);
     for (const node of canon.values()) nodes.add(node);
-    recordEdges(view, canon, hasContent, parents);
+    recordEdges(view, canon, hasContent, parents, view.claimParents?.());
     recordBlocks(view, canon, blocked);
   }
 
@@ -197,17 +223,20 @@ function canonicalContainers(
 /**
  * Record what this model contributes to each container: contained elements and
  * aggregated objects become content; aggregated spatial children become upward
- * edges, so a non-empty storey keeps its building and its site.
+ * edges, so a non-empty storey keeps its building and its site. An aggregation
+ * edge the one-parent pass withholds is never written, so it counts for nothing.
  */
 function recordEdges(
   view: EmptyContainerModelView,
   canon: Map<number, number>,
   hasContent: Set<number>,
   parents: Map<number, number[]>,
+  withheld: WithheldParents | undefined,
 ): void {
   if (canon.size === 0) return;
   for (const [localId, ref] of view.entities) {
     if (view.included !== null && !view.included.has(localId)) continue;
+    if (withheld?.skipEntityIds.has(localId)) continue;
     const slots = STRUCTURE_RELATIONS[ref.type.toUpperCase()];
     if (slots === undefined) continue;
     const attrs = topLevelAttrs(lineOf(view, localId));
@@ -219,8 +248,10 @@ function recordEdges(
     if (relating === null) continue;
     const parent = canon.get(relating);
     if (parent === undefined) continue;
+    const stripped = withheld?.relParentStrip.get(localId);
     for (const child of refList(attrs[relatedIndex] ?? '')) {
       if (view.included !== null && !view.included.has(child)) continue;
+      if (stripped?.has(child)) continue;
       const childNode = canon.get(child);
       if (childNode === undefined) {
         hasContent.add(parent);
@@ -291,107 +322,4 @@ function lineOf(view: EmptyContainerModelView, localId: number): string {
   const ref = view.entities.get(localId);
   if (ref === undefined) return '';
   return view.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
-}
-
-/** Top-level arguments of a `#id=TYPE(…);` line, or `null` when unparseable. */
-function topLevelAttrs(line: string): string[] | null {
-  const record = readStepSlots(line);
-  return record === null ? null : record.slots.map(arg => arg.trim());
-}
-
-/** `"#7"` → `7` via shared, trivia-tolerant {@link BARE_REF_RE} (#4227 — a narrower regex misclassified a comment-wrapped `RelatingObject`). */
-function singleRef(arg: string): number | null {
-  const match = BARE_REF_RE.exec(arg);
-  return match ? Number(match[1]) : null;
-}
-
-/** Parse a `(#a,#b,…)` list argument into ids. */
-function refList(arg: string): number[] {
-  const trimmed = arg.trim();
-  if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) return [];
-  const inner = trimmed.slice(1, -1).trim();
-  if (inner === '') return [];
-  const ids: number[] = [];
-  for (const item of splitTopLevelListItems(inner)) {
-    const id = singleRef(item);
-    if (id !== null) ids.push(id);
-  }
-  return ids;
-}
-
-/**
- * Every reference in a line's argument list, paired with whether it sits
- * somewhere neither `filterHiddenRefsFromRelationshipLine` can strip (a direct
- * list element) nor withhold the line for (a whole single-valued attribute) —
- * i.e. nested inside a list of lists or a typed value. `null` when the line's
- * argument list cannot be parsed at all: a line no rewrite can narrow, which the
- * analysis must treat as a blocker rather than as "names nothing".
- */
-function classifyRefs(line: string): Array<[number, boolean]> | null {
-  const attrs = topLevelAttrs(line);
-  if (attrs === null) return null;
-  const out: Array<[number, boolean]> = [];
-  for (const attr of attrs) {
-    const direct = singleRef(attr);
-    if (direct !== null) {
-      out.push([direct, false]);
-      continue;
-    }
-    if (attr.startsWith('(') && attr.endsWith(')')) {
-      const inner = attr.slice(1, -1).trim();
-      if (inner === '') continue;
-      for (const item of splitTopLevelListItems(inner)) {
-        const id = singleRef(item);
-        if (id !== null) out.push([id, false]);
-        else for (const nested of argRefs(item)) out.push([nested, true]);
-      }
-      continue;
-    }
-    for (const nested of argRefs(attr)) out.push([nested, true]);
-  }
-  return out;
-}
-
-/**
- * Every `#N` reference in a chunk of STEP text, skipping quoted strings (where a
- * `#` is literal) and any leading `#id=` (the line's own id). Reads bytes rather
- * than decoded text so the reverse-reference scan never decodes a whole model.
- */
-function argRefs(text: Uint8Array | string): number[] {
-  const bytes = typeof text === 'string' ? new TextEncoder().encode(text) : text;
-  const eq = bytes.indexOf(0x3d /* = */);
-  const from = eq === -1 ? 0 : eq + 1;
-  const out: number[] = [];
-  let inString = false;
-  for (let i = from; i < bytes.length; i++) {
-    const byte = bytes[i];
-    if (byte === 0x27 /* ' */) {
-      inString = !inString;
-      continue;
-    }
-    if (inString || byte !== 0x23 /* # */) continue;
-    let j = i + 1;
-    let value = 0;
-    while (j < bytes.length && bytes[j] >= 0x30 && bytes[j] <= 0x39) {
-      value = value * 10 + (bytes[j] - 0x30);
-      j++;
-    }
-    if (j > i + 1) {
-      out.push(value);
-      i = j - 1;
-    }
-  }
-  return out;
-}
-
-/** The GlobalId (first quoted attribute) of a rooted entity's line. */
-function leadingGuid(line: string): string | null {
-  const open = line.indexOf('(');
-  if (open === -1) return null;
-  const first = line.indexOf("'", open + 1);
-  if (first === -1) return null;
-  const second = line.indexOf("'", first + 1);
-  if (second === -1) return null;
-  const raw = line.slice(first + 1, second);
-  return /^[0-9A-Za-z_$]{22}$/.test(raw) ? raw : null;
 }

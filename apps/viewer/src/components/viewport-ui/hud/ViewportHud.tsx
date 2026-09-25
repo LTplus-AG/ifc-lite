@@ -15,18 +15,33 @@ import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions
  * `top-6 right-6` (`ViewportOverlays.tsx` ~284-302, unmoved by this PR): 24px
  * inset + 60px cube = 84px, so anything placed in this region starts below
  * the cube instead of colliding with it.
+ *
+ * `bottom-center` likewise reserves the always-on Presentation pill and the
+ * storey pill, both still anchored at `bottom-4 left-1/2` outside the HUD
+ * (`BasketPresentationDock`, `ViewportOverlays.tsx`): 16px offset + ~32px
+ * pill + 8px gap = 3.5rem, so the Measure hint (#5502) stacks above the pill
+ * instead of through it. Drops back to 1rem once #5478 items 22 and 26 move
+ * those two into the status bar and the Presentation bottom panel.
+ *
+ * `top-center` is capped at the viewport width minus a 14rem lane on each
+ * side (#5503): the left lane holds the status chips (a `HudChip` is capped
+ * at 13rem and truncates, so a long model name in the Editing chip cannot
+ * outgrow the lane), the right lane the ViewCube. A tool bar wider than what
+ * is left wraps (`HudToolbar` is `flex-wrap`) and a card shrinks, instead of
+ * sliding under either — the Space Sketch bar and plan card did exactly that
+ * at 1600px / 1280px with both side panels open.
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
     'top-0 left-0 items-start pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]',
   'top-center':
-    'top-0 left-1/2 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))]',
+    'top-0 left-1/2 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))] max-w-[calc(100%-28rem)]',
   'top-right':
     'top-0 right-0 items-end pt-[84px] pr-[max(1.5rem,env(safe-area-inset-right))]',
   'bottom-left':
     'bottom-0 left-0 items-start pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
   'bottom-center':
-    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(1rem,env(safe-area-inset-bottom))]',
+    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(3.5rem,env(safe-area-inset-bottom))]',
   'bottom-right':
     'bottom-0 right-0 items-end pb-[max(1rem,env(safe-area-inset-bottom))] pr-[max(1rem,env(safe-area-inset-right))]',
 };
@@ -50,8 +65,8 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
  * docked bottom panel that shrinks the viewport shrinks this with it instead
  * of being covered by it — no separate sizing logic needed here.
  *
- * No overlay has been migrated onto this yet (#5478 item 3 ships the kernel
- * with zero consumers; migrations are later items).
+ * Consumers portal in through `HudItem`; the first is the edit-mode chip
+ * (`EditModeHudChip`, #5489). The remaining overlays migrate in later items.
  */
 export function ViewportHud() {
   return (

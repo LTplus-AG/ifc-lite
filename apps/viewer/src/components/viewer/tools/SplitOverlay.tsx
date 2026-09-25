@@ -13,28 +13,34 @@
  *     `splitHoverDistance` / `splitHoverLength`.
  *
  *   Slab / roof / plate / space  (two-click):
- *     Outline the polygon footprint with a faint purple stroke.
- *     Before the first click: hint chip says "click to start cut".
+ *     Outline the polygon footprint with a faint accent stroke.
  *     After the first click: ghost line from anchor → cursor,
  *     drawn straight through the polygon (the actual extent is
  *     clamped by polygon-clip at commit).
  *
- * Same camera-tracking RAF trick the GizmoOverlay uses, so the
- * preview tracks the element through orbit / zoom without
- * re-rendering on every camera frame.
+ * The idle hint ("move the cursor to set the cut point…") is not drawn
+ * here: it is the `TOOL_HUD.split.hint` line the HUD places bottom-center
+ * (#5503). The distance / length readout is a scene-kernel `WorldLabel`
+ * anchored on the cut point.
+ *
+ * The guide geometry itself (a perpendicular through the cut point, which
+ * needs the projected axis direction, not just a point) keeps the
+ * camera-tick RAF trick the GizmoOverlay uses, so the preview tracks the
+ * element through orbit / zoom without re-rendering on every camera frame.
  */
 
 import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
-import { Slice as KnifeIcon } from 'lucide-react';
 import { formatSplitHoverLabel } from './formatDistance';
-import { useTranslation } from '@/i18n';
+import { WorldLabel } from '../../viewport-ui/scene';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
-const GUIDE_COLOR = '#a855f7'; // purple-500 — matches edit-mode pill
+// Guides are the interaction accent, their knockouts the halo — overlay
+// tokens (#5483) applied as classes, so a theme switch recolours them (#5489).
+
 const GUIDE_HALF_LENGTH_PX = 30;
 
 /** Storey-local 2D → renderer Y-up world point at the storey floor. */
@@ -43,7 +49,6 @@ function ifc2dToRendererWorld(p: [number, number], storeyElevation: number): Vec
 }
 
 export function SplitOverlay() {
-  const { t } = useTranslation();
   const activeTool = useViewerStore((s) => s.activeTool);
   const splitMode = useViewerStore((s) => s.splitMode);
   const splitHoverPoint = useViewerStore((s) => s.splitHoverPoint);
@@ -71,20 +76,6 @@ export function SplitOverlay() {
     splitHoverPoint !== null;
   void useCameraTickSubscription(getViewpoint, active);
 
-  // Hint chip when idle (tool armed, nothing under cursor).
-  if (activeTool === 'split' && !active) {
-    return (
-      <div
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-30
-          flex items-center gap-2 px-3 py-1.5 rounded-full
-          bg-purple-600/95 text-white text-xs shadow-lg"
-        role="status"
-      >
-        <KnifeIcon className="h-3.5 w-3.5" />
-        <span>{t('splitTool.hintChip')}</span>
-      </div>
-    );
-  }
   if (!active || !projectToScreen) return null;
 
   const project = projectToScreen as Project;
@@ -123,12 +114,11 @@ export function SplitOverlay() {
       : null;
 
     return (
-      <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>
+      <svg className="absolute inset-0 pointer-events-none z-(--z-scene)" style={{ overflow: 'visible' }}>
         <path
           d={path}
-          fill={GUIDE_COLOR}
+          className="fill-overlay-accent stroke-overlay-accent"
           fillOpacity={0.08}
-          stroke={GUIDE_COLOR}
           strokeWidth={1.5}
           strokeDasharray="4 4"
         />
@@ -137,8 +127,7 @@ export function SplitOverlay() {
             cx={anchorScreen.x}
             cy={anchorScreen.y}
             r={5}
-            fill="#fff"
-            stroke={GUIDE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2.5}
           />
         )}
@@ -148,7 +137,7 @@ export function SplitOverlay() {
             y1={anchorScreen.y}
             x2={cursorScreen.x}
             y2={cursorScreen.y}
-            stroke={GUIDE_COLOR}
+            className="stroke-overlay-accent"
             strokeWidth={3}
             strokeLinecap="round"
           />
@@ -158,8 +147,7 @@ export function SplitOverlay() {
             cx={cursorScreen.x}
             cy={cursorScreen.y}
             r={4}
-            fill="#fff"
-            stroke={GUIDE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2}
           />
         )}
@@ -204,43 +192,30 @@ export function SplitOverlay() {
   const labelText = formatSplitHoverLabel(splitHoverDistance, splitHoverLength, unitDisplayOverrides);
 
   return (
-    <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>
-      <line
-        x1={gx1}
-        y1={gy1}
-        x2={gx2}
-        y2={gy2}
-        stroke={GUIDE_COLOR}
-        strokeWidth={3}
-        strokeLinecap="round"
-        opacity={0.95}
-      />
-      <circle
-        cx={cutScreen.x}
-        cy={cutScreen.y}
-        r={5}
-        fill="#fff"
-        stroke={GUIDE_COLOR}
-        strokeWidth={2.5}
-      />
-      <rect
-        x={cutScreen.x + 12}
-        y={cutScreen.y - 22}
-        width={Math.max(70, labelText.length * 7 + 12)}
-        height={18}
-        rx={3}
-        fill={GUIDE_COLOR}
-        opacity={0.95}
-      />
-      <text
-        x={cutScreen.x + 18}
-        y={cutScreen.y - 9}
-        fontSize={11}
-        fontFamily="ui-monospace, SFMono-Regular, monospace"
-        fill="#fff"
-      >
+    <>
+      <svg className="absolute inset-0 pointer-events-none z-(--z-scene)" style={{ overflow: 'visible' }}>
+        <line
+          x1={gx1}
+          y1={gy1}
+          x2={gx2}
+          y2={gy2}
+          className="stroke-overlay-accent"
+          strokeWidth={3}
+          strokeLinecap="round"
+          opacity={0.95}
+        />
+        <circle
+          cx={cutScreen.x}
+          cy={cutScreen.y}
+          r={5}
+          className="fill-overlay-halo stroke-overlay-accent"
+          strokeWidth={2.5}
+        />
+      </svg>
+      {/* Live readout: accent-bordered because it is the thing being set. */}
+      <WorldLabel worldPoint={cutWorld} active offset={{ dx: 14, dy: -30 }}>
         {labelText}
-      </text>
-    </svg>
+      </WorldLabel>
+    </>
   );
 }

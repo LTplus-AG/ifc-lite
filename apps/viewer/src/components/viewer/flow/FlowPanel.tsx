@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { Play, X } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
@@ -43,7 +43,7 @@ function PaletteWithDrop({ onAdd }: { onAdd: (type: string, pos: [number, number
   return <FlowPalette registry={flowRegistry()} onAdd={(type) => onAdd(type, dropPosition())} />;
 }
 
-export function FlowPanel({ onClose }: { onClose: () => void }) {
+export function FlowPanel() {
   const { t } = useTranslation();
   const savedFlows = useViewerStore((s) => s.savedFlows);
   const activeFlowId = useViewerStore((s) => s.activeFlowId);
@@ -198,9 +198,6 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
           <>
             <span className="text-muted-foreground">{t('flowPanel.contributed.badge', { extension: openedContributed.extensionName })}</span>
             <button type="button" className={button} onClick={onDuplicateContributed} aria-label={t('flowPanel.contributed.duplicateAriaLabel')}>{t('flowPanel.contributed.duplicate')}</button>
-            <button type="button" className={`${button} inline-flex items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
-              <Play className="h-3 w-3" aria-hidden="true" />{flowRunning ? t('flowPanel.running') : t('flowPanel.run')}
-            </button>
           </>
         )}
         {flowDoc && !isContributedOpen && (
@@ -209,6 +206,14 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
             <button type="button" className={button} disabled={!flowDirty} onClick={saveFlow}>{t('flowPanel.save')}</button>
             <button type="button" className={button} onClick={onDelete}>{t('flowPanel.delete')}</button>
             <span className="text-muted-foreground">{flowDirty ? t('flowPanel.unsaved') : t('flowPanel.saved')}</span>
+          </>
+        )}
+        {/* Player and Publish run the graph and publish that run's writes; neither
+            edits nor persists the graph itself, so a read-only contributed graph
+            gets them too (#5634). Its publish provenance reads
+            `flow:ext:<extension>:<graph>`, naming the extension that shipped it. */}
+        {flowDoc && (!isContributedOpen || openedContributed) && (
+          <>
             <div className="inline-flex rounded border border-border" role="group" aria-label={t('flowPanel.view.ariaLabel')} data-flow-view-toggle>
               <button type="button" className={`px-2 py-0.5 ${view === 'editor' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'editor'} onClick={() => setView('editor')}>{t('flowPanel.view.editor')}</button>
               <button type="button" className={`px-2 py-0.5 ${view === 'player' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'player'} onClick={() => setView('player')}>{t('flowPanel.view.player')}</button>
@@ -225,7 +230,6 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
           <span className="text-amber-300">{t('flowPanel.contributed.diagnostics', { count: contributed.diagnostics.length })}</span>
         )}
         {notice && <span className="text-amber-300">{notice}</span>}
-        <button type="button" className="ml-auto rounded p-0.5 hover:bg-muted" onClick={onClose} aria-label={t('flowPanel.close')}><X className="h-3.5 w-3.5" /></button>
       </div>
 
       {flowDoc ? (

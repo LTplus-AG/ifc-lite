@@ -235,6 +235,18 @@ For rendering BCF topics as markers in a 3D view, the package provides viewer-ag
 import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
 ```
 
+The renderer takes its colours from CSS custom properties on the host page, so it follows a light or dark theme without configuration:
+
+| Property | Used for | Fallback |
+| --- | --- | --- |
+| `--color-popover`, `--color-popover-foreground`, `--color-muted-foreground`, `--color-border` | Tooltip surface, text, meta line, border | `#ffffff`, `#1f2335`, `#5a6aa4`, `#c4c8da` |
+| `--overlay-status-danger` / `-warn` / `-ok` | Pins for Open / In Progress / Resolved | `#f52a65` / `#8c6c3e` / `#587539` |
+| `--overlay-ink-muted`, `--overlay-ink` | Closed pins; pins with any other status | `#5a6aa4`, `#1f2335` |
+| `--overlay-halo` | Pin outline and index | `#ffffff` |
+| `--overlay-accent` | Ring around the active marker | `#2e7de9` |
+
+Define the tooltip properties as a set: the fallbacks form one light palette, so a page that sets none of them still gets dark text on a white card.
+
 ## BCF Servers (BCF API)
 
 Beyond `.bcfzip` files, the `@ifc-lite/bcf-api` package connects to [buildingSMART BCF API](https://github.com/buildingSMART/BCF-API) (OpenCDE) servers and pulls their topics into the same `BCFProject` model:

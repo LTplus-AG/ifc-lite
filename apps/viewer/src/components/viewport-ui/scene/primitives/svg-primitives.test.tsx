@@ -126,6 +126,44 @@ describe('Pin', () => {
     const path = container.querySelector('[data-scene-primitive="pin"] path')!;
     assert.match(path.getAttribute('class') ?? '', /fill-overlay-ink\b/);
   });
+
+  it('is passive (pointer-events-none, no role) until a click handler is given', () => {
+    const { container, flush } = renderScene(<Pin worldPoint={{ x: 0, y: 0, z: 0 }} />);
+    flush();
+    const g = container.querySelector('[data-scene-primitive="pin"]')!;
+    assert.equal(g.getAttribute('role'), null);
+    assert.doesNotMatch(g.getAttribute('class') ?? '', /pointer-events-auto/);
+    // Mutation check: always adding pointer-events-auto would make this fail
+    // while the interactive test below still passes.
+  });
+
+  it('becomes interactive and fires onClick when a handler is given', () => {
+    let clicks = 0;
+    const { container, flush } = renderScene(
+      <Pin worldPoint={{ x: 0, y: 0, z: 0 }} title="note" onClick={() => (clicks += 1)} />,
+    );
+    flush();
+    const g = container.querySelector('[data-scene-primitive="pin"]') as SVGGElement;
+    assert.equal(g.getAttribute('role'), 'button');
+    assert.equal(g.getAttribute('aria-label'), 'note');
+    assert.match(g.getAttribute('class') ?? '', /pointer-events-auto/);
+    act(() => {
+      g.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(clicks, 1);
+    // Mutation check: dropping the onClick={onClick} wiring leaves role/class
+    // assertions passing but this click count at 0.
+  });
+
+  it('overrides the fill class with an explicit colour', () => {
+    const { container, flush } = renderScene(<Pin worldPoint={{ x: 0, y: 0, z: 0 }} fill="#5b8def" />);
+    flush();
+    const path = container.querySelector('[data-scene-primitive="pin"] path') as SVGPathElement;
+    assert.equal(path.style.fill, '#5b8def');
+    assert.doesNotMatch(path.getAttribute('class') ?? '', /fill-overlay-ink|fill-overlay-accent|fill-status-/);
+    // Mutation check: ignoring `fill` and always applying `fillClass` would
+    // leave the token class present, failing the second assertion.
+  });
 });
 
 describe('AxisArrow', () => {

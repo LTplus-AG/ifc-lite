@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/bcf",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "description": "BIM Collaboration Format (BCF) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,9 +20,11 @@
   },
   "dependencies": {
     "@ifc-lite/encoding": "workspace:^",
+    "fflate": "^0.8.3",
     "jszip": "^3.10.2"
   },
   "devDependencies": {
+    "happy-dom": "^20.14.5",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1",
     "xmllint-wasm": "5.3.0"

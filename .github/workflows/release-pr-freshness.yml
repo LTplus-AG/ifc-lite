@@ -49,7 +49,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # `write`, not `read`: the draft <-> ready GraphQL mutations
+  # (convertPullRequestToDraft / markPullRequestReadyForReview) are refused
+  # to a GITHUB_TOKEN without contents write (cli/cli discussion 6924). The
+  # job itself never pushes; checkout keeps no credentials.
+  contents: write
   # Draft <-> ready, and the `version-pr-stale` label on the PR.
   pull-requests: write
   # Creating that label the first time is an Issues endpoint.

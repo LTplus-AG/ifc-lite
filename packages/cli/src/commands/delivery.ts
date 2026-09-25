@@ -31,7 +31,7 @@
  */
 
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
-import { readPackageVersion } from '@ifc-lite/data';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { loadDeliveryRecipe } from './delivery-recipe.js';

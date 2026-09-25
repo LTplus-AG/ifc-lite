@@ -216,7 +216,11 @@ for (const o of result.graphOutputs) console.log(o.label, o.data);
 
 Re-running with the same `cache` recomputes only nodes whose inputs,
 params, or model revision changed. Every write node bumps the cache's write
-generation, so reads never serve a memo taken before a write.
+generation, so reads never serve a memo taken before a write. Nodes that
+reach the network are never served from the memo: `HttpRequest` always
+sends its request again, and a Script node is recomputed on every run in
+which its code called `bim.network.fetch` (a Script that makes no request
+stays memoised).
 
 ## Script nodes
 
@@ -303,6 +307,53 @@ at the point it was substituted into a param.
       }
     }
   ]
+}
+```
+
+### BCF API nodes
+
+Three nodes talk to a BCF API (OpenCDE) server through `@ifc-lite/bcf-api`,
+with every request going through the same gated transport as
+`http.request`: `https:` only, and the `baseUrl` hostname must match a
+declared `network.fetch:<host>` capability.
+
+- `bcf.listTopics` lists a project's topics (optional OData `filter`,
+  `orderby`, `top`) as a table keyed by `guid`, with columns `title`,
+  `status`, `type`, `priority`, `assigned_to`, `creation_date`,
+  `modified_date`, `labels` (`;`-separated) and `description`, plus the raw
+  topic list and a `count`.
+- `bcf.createTopic` creates one topic from its params, or one per row when a
+  table is wired into `rows` (same column names as `bcf.listTopics`; an empty
+  cell falls back to the param). Every row is validated before the first
+  request, and it outputs the created `guids`.
+- `bcf.addComment` posts a comment to `topicGuid`. Wiring `bcf.createTopic`'s
+  `guids` into its `topicGuid` input comments on each new topic.
+
+Each takes `baseUrl` (up to but excluding the version segment), `version`
+(default `2.1`), `projectId`, and `token`, sent as
+`Authorization: Bearer <token>`. Put the token in a secret rather than the
+graph. The nodes are never memoised, so every run asks the server again.
+
+```json
+{
+  "capabilities": ["network.fetch:bcf.example.com", "secret.read:BCF_TOKEN"],
+  "nodes": [
+    {
+      "id": "open",
+      "type": "bcf.listTopics",
+      "params": {
+        "baseUrl": "https://bcf.example.com/bcf",
+        "projectId": "my-project",
+        "token": "{{secret:BCF_TOKEN}}",
+        "filter": "topic_status eq 'Open'"
+      }
+    },
+    {
+      "id": "sheet",
+      "type": "table.writeCsv"
+    }
+  ],
+  "edges": [{ "from": ["open", "table"], "to": ["sheet", "table"] }]
 }
 ```
 

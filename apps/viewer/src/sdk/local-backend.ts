@@ -43,6 +43,7 @@ import { createFilesAdapter } from './adapters/files-adapter.js';
 import { createScheduleAdapter } from './adapters/schedule-adapter.js';
 import { createStructuralAdapter } from './adapters/structural-adapter.js';
 import { createCostAdapter } from './adapters/cost-adapter.js';
+import { withBackendWriteTracking } from './adapters/backend-write-capture.js';
 
 export class LocalBackend implements BimBackend {
   readonly model: ModelBackendMethods;
@@ -64,20 +65,23 @@ export class LocalBackend implements BimBackend {
 
   constructor(store: StoreApi) {
     this.storeApi = store;
-    this.model = createModelAdapter(store);
-    this.query = createQueryAdapter(store);
-    this.selection = createSelectionAdapter(store);
-    this.visibility = createVisibilityAdapter(store);
-    this.viewer = createViewerAdapter(store);
+    // Every namespace attributes the mutations its calls push to the open
+    // batch / flow-run captures (#5634); the mutate adapter tracks its own.
+    const tracked = <T extends object>(adapter: T): T => withBackendWriteTracking(store, adapter);
+    this.model = tracked(createModelAdapter(store));
+    this.query = tracked(createQueryAdapter(store));
+    this.selection = tracked(createSelectionAdapter(store));
+    this.visibility = tracked(createVisibilityAdapter(store));
+    this.viewer = tracked(createViewerAdapter(store));
     this.mutate = createMutateAdapter(store);
-    this.store = createStoreAdapter(store);
-    this.spatial = createSpatialAdapter(store);
-    this.lens = createLensAdapter(store);
-    this.export = createExportAdapter(store);
-    this.files = createFilesAdapter(store);
-    this.schedule = createScheduleAdapter(store);
-    this.structural = createStructuralAdapter(store);
-    this.cost = createCostAdapter(store);
+    this.store = tracked(createStoreAdapter(store));
+    this.spatial = tracked(createSpatialAdapter(store));
+    this.lens = tracked(createLensAdapter(store));
+    this.export = tracked(createExportAdapter(store));
+    this.files = tracked(createFilesAdapter(store));
+    this.schedule = tracked(createScheduleAdapter(store));
+    this.structural = tracked(createStructuralAdapter(store));
+    this.cost = tracked(createCostAdapter(store));
   }
 
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void {

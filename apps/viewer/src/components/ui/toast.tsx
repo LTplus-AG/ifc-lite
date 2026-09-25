@@ -78,7 +78,7 @@ function dismiss(id: number) {
 
 /** Imperative toast API. Errors stay until the user dismisses them. */
 export const toast = {
-  success: (message: string, action?: Toast['action']) => addToast('success', message, action ? 8000 : 3000, action),
+  success: (message: string, action?: Toast['action']) => addToast('success', message, action ? null : 3000, action),
   error: (message: string) => addToast('error', message, null),
   info: (message: string) => addToast('info', message, 3000),
 };

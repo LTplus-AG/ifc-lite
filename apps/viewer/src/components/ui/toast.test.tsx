@@ -94,9 +94,11 @@ describe('Toaster (#5603)', () => {
     assert.equal(button?.getAttribute('aria-label'), 'Dismiss notification');
   });
 
-  it('runs a success action and dismisses its toast (#5827)', () => {
+  it('keeps a success action until used, then dismisses its toast (#5827)', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     let opened = 0;
     act(() => toast.success('Topic created', { label: 'Open BCF', onClick: () => { opened++; } }));
+    act(() => t.mock.timers.tick(60_000));
     const action = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Open BCF');
     assert.ok(action, 'the action is visible and named');
     act(() => action.click());

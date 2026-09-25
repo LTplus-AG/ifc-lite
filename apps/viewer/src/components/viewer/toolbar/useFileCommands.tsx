@@ -27,7 +27,7 @@ import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRo
 import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
-import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
@@ -164,7 +164,7 @@ export function useFileCommands(): FileCommands {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
 
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isGltfBundleFile(file));
+    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
 
     if (supportedFiles.length === 0) {
       e.target.value = '';
@@ -211,7 +211,7 @@ export function useFileCommands(): FileCommands {
     const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
-    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isGltfBundleFile(file));
+    const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
     prepareAndAdd(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
@@ -229,7 +229,7 @@ export function useFileCommands(): FileCommands {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter(o => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
-    const supported = opened.filter(o => isSupportedModelFile(o.file) || isGltfBundleFile(o.file));
+    const supported = opened.filter(o => isSupportedModelFile(o.file) || isModelSidecarFile(o.file));
     prepareAndAdd(supported.map(o => o.file), supported.map(o => o.handle));
   }, [prepareAndAdd]);
 
@@ -249,7 +249,7 @@ export function useFileCommands(): FileCommands {
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
     // The picker keeps an "all files" option, so drop anything unsupported
     // before it reaches the load pipeline (matches the <input> + Add Model paths).
-    const opened = picked.filter(o => isSupportedModelFile(o.file) || isGltfBundleFile(o.file));
+    const opened = picked.filter(o => isSupportedModelFile(o.file) || isModelSidecarFile(o.file));
     if (opened.length === 0) return;
 
     prepareAndOpen(opened.map(o => o.file), opened.map(o => o.handle));

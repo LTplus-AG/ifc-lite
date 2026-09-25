@@ -43,7 +43,7 @@ import {
   isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { DecompositionClaims, claimDecompositionParents, applyRelParentStrip, type DecompositionClaimInput } from './merged-decomposition-parents.js';
+import { ParentClaims, claimSingleParents, applyRelParentStrip, bindOwnerLine, type ParentClaimInput } from './merged-single-parents.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -105,8 +105,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Final ids that already have a decomposition parent, per output-schema inverse: primary's, grown per later model (#5471, #5726). */
-  parentClaims: DecompositionClaims;
+  /** Final ids that already fill a single-valued inverse, per output-schema inverse: primary's, grown per later model (#5471, #5923). */
+  parentClaims: ParentClaims;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -172,13 +172,9 @@ interface ModelMergePlan {
   /** Empty spatial containers this model must not write (#3643); every line
    *  naming one is narrowed, or withheld with it. */
   droppedContainerIds?: ReadonlySet<number>;
-  /**
-   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES or
-   * IFCRELNESTS → the local ids of its RelatedObjects members to drop from the
-   * written list because they already have that parent in the output (#5471,
-   * #5726, see `claimDecompositionParents`).
-   */
+  /** Kept rel → related members already claimed in the output; rel → owner record it writes (`claimSingleParents`, #5471, #5923). */
   relParentStrip: Map<number, Set<number>>;
+  ownerRels: ParentClaimInput['ownerRels'];
 }
 
 /**
@@ -540,11 +536,12 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
         );
-        if (line !== null) allEntityLines.push(line);
+        if (line !== null) bindOwnerLine(plan.ownerRels, expressId, allEntityLines.push(line) - 1);
       }
 
       isFirstModel = false;
     }
+    setup.parentClaims.foldInto(allEntityLines); // #5774: members later models folded into an earlier definer
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
@@ -685,7 +682,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums,
         );
-        if (line !== null) allEntityLines.push(line);
+        if (line !== null) bindOwnerLine(plan.ownerRels, expressId, allEntityLines.push(line) - 1);
 
         entityCount++;
         entitiesProcessed++;
@@ -707,6 +704,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
+    setup.parentClaims.foldInto(allEntityLines); // #5774: members later models folded into an earlier definer
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
 
     // Assembly phase
@@ -801,7 +799,7 @@ export class MergedExporter {
     setup: MergeSetup,
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
-    const claims = new DecompositionClaims(options.schema || 'IFC4', isStructureRelation);
+    const claims = new ParentClaims(options.schema || 'IFC4', isStructureRelation);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -813,7 +811,7 @@ export class MergedExporter {
       }
       const visibility = this.computeIncludedEntityIds(model, options, entities, source);
       const claimParents = () => {
-        const withheld = { sharedRemap, skipEntityIds: new Set<number>(), relParentStrip: new Map<number, Set<number>>() };
+        const withheld = { sharedRemap, skipEntityIds: new Set<number>(), relParentStrip: new Map<number, Set<number>>(), ownerRels: new Map() };
         this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
         return withheld;
       };
@@ -826,10 +824,10 @@ export class MergedExporter {
     };
   }
 
-  /** One decomposition parent per object and inverse (#5471, #5726): record the members this model writes, stripping ones already parented. */
-  private claimParents(model: MergeModelInput, plan: Pick<DecompositionClaimInput, 'sharedRemap' | 'skipEntityIds' | 'relParentStrip'> & Pick<ModelMergePlan, 'droppedContainerIds'>, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup, claims = setup.parentClaims): void {
+  /** One rel per object and single-valued inverse (#5471, #5923): record what this model writes, stripping or folding what is already claimed. */
+  private claimParents(model: MergeModelInput, plan: Pick<ParentClaimInput, 'sharedRemap' | 'skipEntityIds' | 'relParentStrip' | 'ownerRels'> & Pick<ModelMergePlan, 'droppedContainerIds'>, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup, claims = setup.parentClaims): void {
     const hidden = visibility?.hiddenProductIds;
-    claimDecompositionParents({
+    claimSingleParents({
       ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
       isIncluded: id => visibility === null || visibility.included.has(id),
       isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
@@ -895,7 +893,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      parentClaims: new DecompositionClaims(options.schema || 'IFC4'),
+      parentClaims: new ParentClaims(options.schema || 'IFC4'),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1162,7 +1160,7 @@ export class MergedExporter {
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relParentStrip };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relParentStrip, ownerRels: new Map() };
   }
 
   /**
@@ -1232,10 +1230,9 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES or
-    // IFCRELNESTS that already have that parent in the output (#5471, #5726) — see
-    // claimDecompositionParents / applyRelParentStrip. Runs in LOCAL id
-    // space, before the remap below. `null` propagates like the passes above.
+    // Drop related members of a partially redundant rel that already fill its
+    // single-valued inverse in the output (#5471, #5923) — see claimSingleParents /
+    // applyRelParentStrip. Runs in LOCAL id space, before the remap below.
     const stripped = applyRelParentStrip(entityText, localId, plan.relParentStrip);
     if (stripped === null) return null;
     entityText = stripped;

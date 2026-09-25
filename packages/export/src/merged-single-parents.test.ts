@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { applyRelParentStrip } from './merged-decomposition-parents.js';
+import { applyRelParentStrip } from './merged-single-parents.js';
 
 describe('applyRelParentStrip', () => {
   const line = "#10=IFCRELAGGREGATES('guid',#2,$,$,#5,(#6,#7));";

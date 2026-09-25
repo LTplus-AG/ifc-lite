@@ -308,21 +308,21 @@ test('the gate passes on the repo and states its counts', () => {
   assert.equal(r.status, 0, output);
   assert.match(
     output,
-    /check-source-text-assertions: OK \(\d+ allowlisted, \d+ marked, 0 new\)/,
+    /check-source-text-assertions: OK \(31 allowlisted, \d+ marked, 0 new\)/,
     'a pass must state the numbers, not merely exit 0',
   );
 });
 
-// The set the flat detector found, pinned so the narrowing cannot be shown to
-// have dropped a real instance. Every entry is allowlisted with a reason; this
-// asserts the DETECTOR still sees them, which the allowlist alone cannot.
+// The remaining set the flat detector found, pinned so the narrowing cannot
+// drop a real instance. #6064 removed aggregation.test.ts after its stale
+// source assertion was deleted. Every entry is allowlisted with a reason;
+// this asserts the DETECTOR still sees them, which the allowlist alone cannot.
 test('the narrowing kept every file the flat detector flagged', () => {
   const expected = [
     'apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts',
     'apps/viewer/src/components/viewer/toolbar-parity.test.ts',
     'apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx',
     'apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts',
-    'apps/viewer/src/utils/aggregation.test.ts',
     'packages/create-ifc-lite/test/config-fixers.test.ts',
     'packages/geometry/src/prepass-class-spans.test.ts',
   ];
@@ -331,6 +331,47 @@ test('the narrowing kept every file the flat detector flagged', () => {
       analyze(readFileSync(join(ROOT, rel), 'utf8')).flagged,
       `${rel} was detected by the flat check and must still be detected`,
     );
+  }
+});
+
+test('#6064: the allowlist ratchet accepts 31 detected files and rejects a 32nd', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'source-text-ratchet-'));
+  try {
+    for (const name of ['packages', 'apps', 'scripts']) mkdirSync(join(dir, name));
+    writeFileSync(join(dir, 'scripts', 'subject.mjs'), 'export const value = true;\n');
+    writeFileSync(
+      join(dir, 'scripts', 'check-source-text-assertions.mjs'),
+      relocatedGateSource(GATE, SCRIPTS),
+    );
+
+    const paths = [];
+    for (let index = 0; index < 31; index++) {
+      const rel = `scripts/ratchet-${index}.test.mjs`;
+      paths.push(rel);
+      writeFileSync(join(dir, rel), `
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const source = readFileSync(new URL('./subject.mjs', import.meta.url), 'utf8');
+assert.match(source, /export const value/);
+`);
+    }
+
+    const allowlistPath = join(dir, 'scripts', 'source-text-assertion-allowlist.txt');
+    const runGate = () => spawnSync(process.execPath, [join(dir, 'scripts', 'check-source-text-assertions.mjs'), '--root', dir], {
+      encoding: 'utf8', timeout: 120_000,
+    });
+    writeFileSync(allowlistPath, `${paths.join('\n')}\n`);
+    const accepted = runGate();
+    assert.equal(accepted.status, 0, `${accepted.stdout}${accepted.stderr}`);
+
+    const extra = 'scripts/ratchet-31.test.mjs';
+    writeFileSync(join(dir, extra), readFileSync(join(dir, paths[0]), 'utf8'));
+    writeFileSync(allowlistPath, `${[...paths, extra].join('\n')}\n`);
+    const rejected = runGate();
+    assert.notEqual(rejected.status, 0);
+    assert.match(`${rejected.stdout}${rejected.stderr}`, /allowlist has 32 entries but the recorded ceiling is 31/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -832,11 +832,20 @@ const log = { ...JSON.parse(view.exportMutations()), newEntities: view.getNewEnt
 const savedWithCreations = gp.exportStep(bytes, '', undefined, JSON.stringify(log));
 ```
 
-A log carrying a mutation `type` the writer does not recognise, an attribute
+Georeferencing edits travel in `georefMutations` (the `StepExportOptions`
+shape): an existing `IfcProjectedCRS` / `IfcMapConversion` is edited in place,
+a missing one is created. Like `StepExporter`, the writer refuses them for an
+IFC2X3 output; an IFC2X3 model's georeferencing is its `ePSet_MapConversion` /
+`ePSet_ProjectedCRS` property sets, which are ordinary property edits.
+
+A log the TypeScript replay would throw on (an invalid class name in a retype)
+is refused with an error rather than exported, and so is a log it would save
+WITHOUT an edit: a mutation `type` the writer does not recognise, an attribute
 edit whose value is `null` (clear an attribute with `''`), or a `CREATE_ENTITY`
-whose payload is missing from `newEntities` is refused with an error rather than
-exported without that edit; `importMutations` would skip all three. A log does
-not combine with an isolation set.
+whose payload is missing from `newEntities`. A log does not combine with an
+isolation set. Native hosts merging several models pass one log per model to
+`ifc_lite_export::export_merged_models_with_logs`, which bakes each edited model
+the way `MergedExporter.exportAsync` does.
 
 ## Export Pipeline
 

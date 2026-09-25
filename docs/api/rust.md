@@ -657,7 +657,8 @@ pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
 // A `MutablePropertyView.exportMutations()` log, applied with byte parity to
 // the TypeScript `StepExporter` (#5941). `MutationLog::from_json` reads the log.
-pub use step_log::{export_step_with_log, export_step_with_log_to_writer, MutationLog,
+pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
+                   export_merged_models_with_logs, MutationLog,
                    LogMutation, LogNewEntity, MutationKind, GeorefMutations,
                    LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
@@ -687,6 +688,12 @@ is an `InvalidInput` error (the TypeScript replay skips the latter two; a native
 save refuses rather than drop an edit), as is combining a log with `StepOptions::included` or
 with the per-edit vectors. `LogExportStats` reports the new and modified entity
 counts the header states and the warnings the TypeScript exporter would give.
+`export_merged_models_with_logs(models, logs, opts)` is `export_merged_models`
+with a log per model: each edited model is first written through
+`export_step_with_log` in its own schema, as `MergedExporter.exportAsync` bakes
+edited models through `StepExporter`, and its georeferencing edits are not
+applied (reported in `MergedStats::warnings`), as the TypeScript bake passes
+none.
 
 `export_step_with_stats` returns `StepStats`. `total` and `written` describe
 the selected entity set. The remaining counters are validity or refusal

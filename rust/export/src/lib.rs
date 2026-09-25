@@ -126,7 +126,7 @@ pub use step::{
 };
 pub use step_json::export_step_json;
 pub use step_log::{
-    export_step_with_log, export_step_with_log_to_writer, GeorefMutations, LogExportStats, LogMutation,
+    export_merged_models_with_logs, export_step_with_log, export_step_with_log_to_writer, GeorefMutations, LogExportStats, LogMutation,
     LogNewEntity, MutationKind, MutationLog, StepCounters,
 };
 pub use usd::{export_usd, UsdOptions};

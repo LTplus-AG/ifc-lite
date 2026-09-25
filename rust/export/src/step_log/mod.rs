@@ -35,9 +35,11 @@ mod effective;
 mod entities;
 mod extract;
 mod generate;
+mod georef;
 mod jsval;
 mod ledger;
 mod lines;
+mod merged;
 mod nominal;
 mod overlay;
 mod pass;
@@ -55,6 +57,7 @@ pub mod wire;
 mod write;
 
 pub use wire::{GeorefMutations, LogMutation, LogNewEntity, MutationKind, MutationLog};
+pub use merged::export_merged_models_with_logs;
 pub use write::{export_step_with_log, export_step_with_log_to_writer, LogExportStats, StepCounters};
 
 #[cfg(test)]

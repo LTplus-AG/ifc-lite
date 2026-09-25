@@ -32,6 +32,7 @@ import {
 } from '@ifc-lite/parser';
 import { MutablePropertyView, type NewEntity } from '@ifc-lite/mutations';
 import { StepExporter, type StepExportOptions } from './step-exporter.js';
+import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 interface Case {
   name: string;
@@ -39,6 +40,14 @@ interface Case {
   source: string;
   schema?: StepExportOptions['schema'];
   log: { mutations: unknown[]; newEntities?: NewEntity[]; georefMutations?: StepExportOptions['georefMutations'] };
+  expected: string[];
+}
+
+interface MergedCase {
+  name: string;
+  why: string;
+  schema?: StepExportOptions['schema'];
+  models: Array<{ source: string; log: Case['log'] }>;
   expected: string[];
 }
 
@@ -55,9 +64,13 @@ interface RefusedCase {
   log: Case['log'];
 }
 
-const fixture: { timeStamp: string; sources: Record<string, string[]>; cases: Case[]; refusedCases: RefusedCase[] } = JSON.parse(
-  readFileSync(fixturePath, 'utf8'),
-);
+const fixture: {
+  timeStamp: string;
+  sources: Record<string, string[]>;
+  cases: Case[];
+  mergedCases: MergedCase[];
+  refusedCases: RefusedCase[];
+} = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
 async function parse(text: string): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer);
@@ -103,6 +116,38 @@ describe('mutation-log STEP export parity with the Rust writer (#5941)', () => {
       const lines = new TextDecoder().decode(result.content).split('\n');
       if (lines[lines.length - 1] === '') lines.pop();
       expect(normalise(lines, maxId)).toEqual(c.expected);
+    });
+  }
+
+  // A merged export bakes each edited model through `StepExporter` first
+  // (`bakeMutatedModels`); the Rust half does the same with its writer. The
+  // two merged headers differ outside this issue's scope (the TypeScript one
+  // stamps the wall clock), so the DATA section is what is pinned.
+  const knownGuids = new Set(
+    Object.values(fixture.sources).flatMap((lines) =>
+      lines.flatMap((l) => [...l.matchAll(/'([0-9A-Za-z_$]{22})'/g)].map((m) => m[1])),
+    ),
+  );
+  for (const c of fixture.mergedCases) {
+    it(`merged: ${c.name}`, async () => {
+      const inputs: MergeModelInput[] = [];
+      for (const [i, m] of c.models.entries()) {
+        const store = await parse(`${fixture.sources[m.source].join('\n')}\n`);
+        const view = new MutablePropertyView(null, 'model');
+        configure(view, store);
+        for (const entity of m.log.newEntities ?? []) view.restoreNewEntity(entity);
+        view.importMutations(JSON.stringify(m.log));
+        inputs.push({ id: `m${i}`, name: `m${i}`, dataStore: store, mutationView: view });
+      }
+      const result = await new MergedExporter(inputs).exportAsync({ schema: c.schema ?? 'IFC4' });
+      const text = new TextDecoder().decode(result.content);
+      const lines = text.slice(text.indexOf('DATA;\n')).split('\n');
+      if (lines[lines.length - 1] === '') lines.pop();
+      const normalised = lines.map((l) => {
+        const m = /^#\d+=IFC\w+\('([0-9A-Za-z_$]{22})'/.exec(l);
+        return m && !knownGuids.has(m[1]) ? l.replace(m[1], '<GUID>') : l;
+      });
+      expect(normalised).toEqual(c.expected);
     });
   }
 

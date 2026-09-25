@@ -156,6 +156,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
+    let target_is_ifc2x3 = target.trim().to_ascii_uppercase().starts_with("IFC2X3");
+    if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
+        return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
+    }
     let wanted = touched(log);
     let mut base = BaseSets::new(&src, &wanted);
     let overlay = replay(&log.mutations, &log.new_entities, &mut base)
@@ -163,6 +167,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut pass = Pass::new(&src, family, overlay);
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
+    if let Some(georef) = &log.georef_mutations {
+        super::georef::apply(&mut pass, georef);
+    }
     retain_shared_atoms(&mut pass);
 
     // The source lines the log rewrites, decided before the header because
@@ -249,7 +256,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
         written += 1;
     }
-    for line in pass.generated.iter().chain(pass.rewritten_lines.iter().map(|(_, l)| l)) {
+    let appended = pass.rewritten_lines.iter().map(|(_, l)| l).chain(pass.georef_lines.iter());
+    for line in pass.generated.iter().chain(appended) {
         out.write_all(line.as_bytes())?;
         out.write_all(b"\n")?;
         written += 1;

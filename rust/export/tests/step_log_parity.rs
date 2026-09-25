@@ -10,7 +10,10 @@
 
 use std::collections::BTreeMap;
 
-use ifc_lite_export::{export_step_with_log, export_step_with_log_to_writer, MutationLog, StepOptions};
+use ifc_lite_export::{
+    export_merged_models_with_logs, export_step_with_log, export_step_with_log_to_writer, MergedModel, MergedOptions,
+    MutationLog, StepOptions,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -34,11 +37,30 @@ struct RefusedCase {
 }
 
 #[derive(Deserialize)]
+struct MergedInput {
+    source: String,
+    log: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+struct MergedCase {
+    name: String,
+    #[allow(dead_code)] // documentation for the reader of the fixture
+    why: String,
+    #[serde(default)]
+    schema: Option<String>,
+    models: Vec<MergedInput>,
+    expected: Vec<String>,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Fixture {
     time_stamp: String,
     sources: BTreeMap<String, Vec<String>>,
     cases: Vec<Case>,
+    #[serde(default)]
+    merged_cases: Vec<MergedCase>,
     #[serde(default)]
     refused_cases: Vec<RefusedCase>,
 }
@@ -132,6 +154,55 @@ fn a_repeated_export_is_byte_identical_including_generated_ids() {
     let a = export_step_with_log(content.as_bytes(), &opts, &log).unwrap().0;
     let b = export_step_with_log(content.as_bytes(), &opts, &log).unwrap().0;
     assert_eq!(a, b);
+}
+
+/// Every quoted 22-character GlobalId-shaped token in the sources.
+fn source_guids(fx: &Fixture) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    for line in fx.sources.values().flatten() {
+        for part in line.split('\'').skip(1).step_by(2) {
+            if part.len() == 22 && part.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$') {
+                out.insert(part.to_string());
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn merged_export_bakes_each_log_as_the_typescript_merge_does() {
+    let fx = fixture();
+    assert!(!fx.merged_cases.is_empty(), "the fixture must carry merged cases");
+    let known = source_guids(&fx);
+    for case in &fx.merged_cases {
+        let contents: Vec<String> =
+            case.models.iter().map(|m| format!("{}\n", fx.sources[&m.source].join("\n"))).collect();
+        let logs: Vec<MutationLog> =
+            case.models.iter().map(|m| MutationLog::from_json(&m.log.to_string()).unwrap()).collect();
+        let models: Vec<MergedModel> = contents
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let mut m = MergedModel::new(c.as_bytes());
+                m.id = format!("m{i}");
+                m
+            })
+            .collect();
+        let log_refs: Vec<Option<&MutationLog>> = logs.iter().map(Some).collect();
+        let opts = MergedOptions { schema: Some(case.schema.clone().unwrap_or_else(|| "IFC4".into())), ..MergedOptions::default() };
+        let (out, _) = export_merged_models_with_logs(&models, &log_refs, &opts).expect("merge succeeds");
+        let data = &out[out.find("DATA;\n").expect("a DATA section")..];
+        let got: Vec<String> = data
+            .lines()
+            .map(|line| match line.split_once("('") {
+                Some((head, tail)) if head.starts_with('#') && is_guid_then_quote(tail) && !known.contains(&tail[..22]) => {
+                    line.replacen(&tail[..22], "<GUID>", 1)
+                }
+                _ => line.to_string(),
+            })
+            .collect();
+        assert_eq!(got, case.expected, "{}", case.name);
+    }
 }
 
 #[test]

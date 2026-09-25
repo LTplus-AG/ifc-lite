@@ -10,9 +10,11 @@
  * drift was invisible until a user ran it.
  *
  * Two rules keep that from recurring:
- *  - a registry range on an @ifc-lite package must admit the workspace's
- *    current major, so a version bump that outgrows an example fails here
- *    instead of in a user's `npm install`;
+ *  - every @ifc-lite dependency is `workspace:*`, so an example always builds
+ *    against the sources it demonstrates. A registry range drifts on its own,
+ *    and the version PR rewrites it to the next, not-yet-published major
+ *    without touching the lockfile, which broke `pnpm install
+ *    --frozen-lockfile` on main;
  *  - every example has `build` and `typecheck`, so `pnpm build` / `pnpm
  *    typecheck` compile it alongside the packages it uses.
  */
@@ -24,44 +26,20 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 
-function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
-}
-
-/** `@ifc-lite/<name>` -> current workspace version. */
-const workspaceVersions = new Map(
-  readdirSync(join(root, 'packages'))
-    .map((dir) => join(root, 'packages', dir, 'package.json'))
-    .filter(existsSync)
-    .map(readJson)
-    .filter((pkg) => typeof pkg.name === 'string' && typeof pkg.version === 'string')
-    .map((pkg) => [pkg.name, pkg.version]),
-);
-
 const examples = readdirSync(join(root, 'examples'))
   .filter((dir) => existsSync(join(root, 'examples', dir, 'package.json')))
-  .map((dir) => ({ dir, pkg: readJson(join(root, 'examples', dir, 'package.json')) }));
+  .map((dir) => ({ dir, pkg: JSON.parse(readFileSync(join(root, 'examples', dir, 'package.json'), 'utf8')) }));
 
-const major = (version) => Number(/^(\d+)\./.exec(version)?.[1]);
-
-test('found the examples and the workspace packages', () => {
+test('found the examples', () => {
   assert.ok(examples.length >= 4, `expected at least 4 examples, found ${examples.length}`);
-  assert.ok(workspaceVersions.has('@ifc-lite/parser'));
 });
 
 for (const { dir, pkg } of examples) {
-  test(`${dir}: @ifc-lite ranges admit the current workspace major`, () => {
+  test(`${dir}: depends on @ifc-lite packages through the workspace`, () => {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     for (const [name, range] of Object.entries(deps)) {
-      if (!name.startsWith('@ifc-lite/') || range.startsWith('workspace:')) continue;
-      const current = workspaceVersions.get(name);
-      if (!current) continue; // not a workspace package
-      const pinned = /^[\^~]?(\d+)\./.exec(range)?.[1];
-      assert.equal(
-        Number(pinned),
-        major(current),
-        `${dir} depends on ${name}@${range}, but the workspace ships ${current}`,
-      );
+      if (!name.startsWith('@ifc-lite/')) continue;
+      assert.equal(range, 'workspace:*', `${dir} depends on ${name}@${range}; use workspace:*`);
     }
   });
 

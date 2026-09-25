@@ -43,6 +43,9 @@ const WALL_GROSS_VOLUME = 5;
 const WALL_LOCALISED_VOLUME = 7;
 /** The wall's standard side area; its footprint GrossArea (1) must not win or be added. */
 const WALL_GROSS_SIDE_AREA = 15;
+/** The space's standard NetVolume, and a localised duplicate stored ahead of it. */
+const SPACE_NET_VOLUME = 30;
+const SPACE_LOCALISED_VOLUME = 99;
 
 function buildModel(): ArrayBuffer {
   const creator = new IfcCreator({ Name: 'Template behaviour' });
@@ -66,8 +69,17 @@ function buildModel(): ArrayBuffer {
     Name: 'ArchiCADQuantities',
     Quantities: [{ Name: 'Brutto-Volumen der Wand', Value: WALL_LOCALISED_VOLUME, Kind: 'IfcQuantityVolume' }],
   });
-  creator.addIfcSpace(storey, {
+  const space = creator.addIfcSpace(storey, {
     Position: [0, 0, 0], Width: 4, Depth: 4, Height: 2.5, Name: '1', LongName: 'Kitchen',
+  });
+  // Localised duplicate FIRST, so "first name containing volume" reads it.
+  creator.addIfcElementQuantity(space, {
+    Name: 'ArchiCADQuantities',
+    Quantities: [{ Name: 'Netto-Volumen', Value: SPACE_LOCALISED_VOLUME, Kind: 'IfcQuantityVolume' }],
+  });
+  creator.addIfcElementQuantity(space, {
+    Name: 'Qto_SpaceBaseQuantities',
+    Quantities: [{ Name: 'NetVolume', Value: SPACE_NET_VOLUME, Kind: 'IfcQuantityVolume' }],
   });
 
   // `IfcWallStandardCase` shares IfcWall's attribute layout in IFC4, and it is
@@ -139,6 +151,13 @@ describe('space-validation', () => {
     const lines = await runTemplate('Space & room validation');
     assert.ok(!lines.some((l) => l.includes('Missing LongName')), 'LongName was reported missing');
     assert.ok(lines.some((l) => l.includes('Kitchen')), 'the room name never reached the schedule');
+  });
+
+  it('reports the standard NetVolume, not the first volume-ish quantity', async () => {
+    const lines = await runTemplate('Space & room validation');
+    const row = lines.find((l) => l.includes('Kitchen') && l.includes('|'));
+    assert.ok(row, 'no schedule row for the space');
+    assert.equal(Number(row.split('|')[2].trim()), SPACE_NET_VOLUME);
   });
 });
 

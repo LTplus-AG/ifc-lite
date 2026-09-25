@@ -86,8 +86,6 @@ export function buildCollabTestState(hooks: CollabTestHooks = {}) {
     isolatedEntities: null,
     ghostExceptEntities: null,
     classFilter: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
     pinboardEntities: new Set(),
     hierarchyBasketSelection: new Set(),
   } as CollabTestState;

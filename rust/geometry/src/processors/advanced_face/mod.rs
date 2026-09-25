@@ -33,19 +33,7 @@ pub(super) use surfaces::process_bspline_face;
 pub(crate) use bspline_budget::take_curve_capped;
 
 use revolution::process_surface_of_revolution_face;
-use surfaces::{process_cylindrical_face, process_planar_face};
-
-pub(super) fn process_planar_face_with_rtc(
-    face: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    quality: TessellationQuality,
-    rtc_file_units: (f64, f64, f64),
-) -> Result<(Vec<f32>, Vec<u32>)> {
-    apply_same_sense(
-        face,
-        surfaces::process_planar_face_rebased(face, decoder, quality, Some(rtc_file_units)),
-    )
-}
+use surfaces::{process_cylindrical_face, process_planar_face_rebased};
 
 fn apply_same_sense(
     face: &DecodedEntity,
@@ -71,11 +59,15 @@ fn apply_same_sense(
 /// Process a single `IfcAdvancedFace` or `IfcFaceSurface`, dispatching to the
 /// appropriate surface handler based on `FaceSurface` type.
 ///
-/// Returns (positions, indices) for the tessellated face.
+/// Returns (positions, indices) for the tessellated face. With
+/// `rtc_file_units`, every surface handler removes the offset in f64 BEFORE
+/// narrowing to f32, so a national-grid face keeps detail below one f32 ULP
+/// (#5698). `None` is the historical unshifted output.
 pub(super) fn process_advanced_face(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
+    rtc_file_units: Option<(f64, f64, f64)>,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // IfcAdvancedFace and IfcFaceSurface have:
     // 0: Bounds (list of FaceBound)
@@ -93,17 +85,18 @@ pub(super) fn process_advanced_face(
     let surface_type = surface.ifc_type.as_str().to_uppercase();
 
     // Read SameSense (attribute 2) - when false, triangle winding must be flipped
+    let rtc = rtc_file_units.unwrap_or((0.0, 0.0, 0.0));
     let result = if surface_type == "IFCPLANE" {
-        process_planar_face(face, decoder, quality)
+        process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
-        process_bspline_face(&surface, decoder, None, quality)
+        process_bspline_face(&surface, decoder, None, quality, rtc)
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
         let weights = parse_rational_weights(&surface);
-        process_bspline_face(&surface, decoder, weights.as_deref(), quality)
+        process_bspline_face(&surface, decoder, weights.as_deref(), quality, rtc)
     } else if surface_type == "IFCCYLINDRICALSURFACE" {
-        process_cylindrical_face(face, &surface, decoder, quality)
+        process_cylindrical_face(face, &surface, decoder, quality, rtc)
     } else if surface_type == "IFCSURFACEOFREVOLUTION" {
-        process_surface_of_revolution_face(face, &surface, decoder, quality)
+        process_surface_of_revolution_face(face, &surface, decoder, quality, rtc)
     } else if surface_type == "IFCSURFACEOFLINEAREXTRUSION"
         || surface_type == "IFCCONICALSURFACE"
         || surface_type == "IFCSPHERICALSURFACE"
@@ -113,7 +106,7 @@ pub(super) fn process_advanced_face(
         // on the surface. Extracting and triangulating them gives a reasonable
         // polygonal approximation. This covers IfcSurfaceOfLinearExtrusion
         // (common in CATIA exports) and other analytic surface types.
-        process_planar_face(face, decoder, quality)
+        process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else {
         // Unsupported surface type - return empty geometry
         crate::diag::diag_debug!(

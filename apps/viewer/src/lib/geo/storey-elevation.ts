@@ -11,6 +11,7 @@ import {
   type GeorefMutationDataLike,
 } from './effective-georef';
 import { hasUsableMapGeoref, viewerPointToProjected } from './pick-to-geo';
+import { firstProjAxis } from '@ifc-lite/data';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -73,10 +74,12 @@ function applyRelativePlacement(
     ? { x: 0, y: 0, z: 1 }
     : direction(store, entityRef(axisPlacement.attributes?.[1]), { x: 0, y: 0, z: 1 });
   const refDirectionIndex = type === 'IFCAXIS2PLACEMENT2D' ? 1 : 2;
+  // A `$` RefDirection takes the renderer's fill, not world X as-is (#5922).
+  const [fx, fy, fz] = firstProjAxis([zAxis.x, zAxis.y, zAxis.z]);
   const provisionalX = direction(
     store,
     entityRef(axisPlacement.attributes?.[refDirectionIndex]),
-    { x: 1, y: 0, z: 0 },
+    { x: fx, y: fy, z: fz },
   );
   const yAxis = normalize(cross(zAxis, provisionalX), { x: 0, y: 1, z: 0 });
   const xAxis = normalize(cross(yAxis, zAxis), { x: 1, y: 0, z: 0 });

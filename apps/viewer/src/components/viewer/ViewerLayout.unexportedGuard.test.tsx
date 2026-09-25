@@ -16,16 +16,10 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import type { BimContext } from '@ifc-lite/sdk';
-import { createBimContext } from '@ifc-lite/sdk';
-import { BimReactContext } from '@/sdk/BimProvider.js';
-import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
-import { ExtensionHostService } from '@/services/extensions/host.js';
-import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup } from '@/test/render.js';
+import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import { ViewerLayout } from './ViewerLayout.js';
 
 const MODEL_ID = 'model-a';
 
@@ -45,33 +39,6 @@ function makeModel(): FederatedModel {
     idOffset: 0,
     maxExpressId: 0,
   };
-}
-
-/** Same stub-host seam as `ViewerLayout.i18n.test.tsx`. */
-class StubExtensionHost extends ExtensionHostService {
-  constructor() {
-    super({
-      sdk: createBimContext({
-        transport: {
-          send: () => Promise.reject(new Error('SDK transport is not exercised by this test')),
-          subscribe: () => () => {},
-          close: () => {},
-        },
-      }),
-    });
-  }
-}
-
-function renderLayout(): void {
-  render(
-    <BimReactContext.Provider value={{} as BimContext}>
-      <ExtensionHostContext.Provider value={new StubExtensionHost()}>
-        <SourceHostProvider>
-          <ViewerLayout />
-        </SourceHostProvider>
-      </ExtensionHostContext.Provider>
-    </BimReactContext.Provider>,
-  );
 }
 
 /** Dispatch a real `beforeunload`; true when a listener asked the browser to confirm. */
@@ -103,7 +70,7 @@ describe('ViewerLayout — unexported-edits unload guard (#5604)', () => {
   });
 
   it('asks before unloading only while there are unexported changes', () => {
-    renderLayout();
+    renderViewerLayout();
     assert.equal(unloadIsBlocked(), false, 'no changes: the page unloads freely');
 
     const view = new MutablePropertyView(null, MODEL_ID);

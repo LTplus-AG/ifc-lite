@@ -441,13 +441,22 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
 
   let fetchMock: ReturnType<typeof vi.fn>;
   let apiBody: unknown;
+  /** Body of each release's SHA256SUMS, by version; absent = 404. */
+  let sums: Record<string, string>;
+  const DIGEST = 'a'.repeat(64);
 
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     apiBody = [];
+    sums = {};
     fetchMock = vi.fn(async (url: string) => {
       if (url.startsWith(API)) return json(apiBody);
+      const sumsFor = /\/v([^/]+)\/SHA256SUMS$/.exec(url)?.[1];
+      if (sumsFor !== undefined) {
+        const body = sums[sumsFor];
+        return body === undefined ? status(404, 'Not Found') : { ok: true, status: 200, text: async () => body };
+      }
       // Every version-derived URL for the package version 404s.
       if (url.includes(`/v${PKG_VERSION}/`) || url.includes(`/server-v${PKG_VERSION}/`) || url.includes(`/${PKG_VERSION}/`)) {
         return status(404, 'Not Found');
@@ -475,6 +484,7 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
       release('1.16.2', ['$', '$.sha256']),
       release('1.16.3', ['$', 'SHA256SUMS']),
     ];
+    sums['1.16.3'] = `${DIGEST}  ${archiveName()}\n`;
 
     await downloadBinary();
 
@@ -487,6 +497,20 @@ describe('downloadBinary - fallback when the version has no release (#5525)', ()
     const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
     expect(warning).toContain(PKG_VERSION);
     expect(warning).toContain('v1.16.3');
+  });
+
+  it('skips a release whose SHA256SUMS does not list this archive', async () => {
+    // Newest candidate's shared SHA256SUMS covers another platform only: it
+    // would download, then fail closed. The older release with a sidecar works.
+    apiBody = [release('1.16.3', ['$', 'SHA256SUMS']), release('1.16.2', ['$', '$.sha256'])];
+    sums['1.16.3'] = `${DIGEST}  ifc-lite-server-some-other-target.tar.gz\n`;
+
+    await downloadBinary();
+
+    const expectedUrl = `${RELEASES}/v1.16.2/${archiveName()}`;
+    expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(expectedUrl);
+    expect(fetchMock.mock.calls.map(([u]) => u)).not.toContain(`${RELEASES}/v1.16.3/${archiveName()}`);
   });
 
   it('extracts nothing when the fallback archive fails checksum verification', async () => {

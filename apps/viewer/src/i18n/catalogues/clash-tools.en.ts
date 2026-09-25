@@ -36,6 +36,8 @@ export const clashToolsEn = {
   'clashTools.export.bcfTopicTooltipSelected': 'Create a BCF topic from the selected clash',
   'clashTools.export.bcfTopicTooltipAll': 'Create a BCF topic for this clash report',
   'clashTools.export.bcfTopicButton': 'BCF topic',
+  'clashTools.bcfTopic.created': 'Topic created',
+  'clashTools.bcfTopic.open': 'Open BCF',
   'clashTools.export.csvTooltip':
     "Download every clash in this run as a CSV table — one row per clash with both GlobalIds, review status and storey — for Excel / Power BI",
 

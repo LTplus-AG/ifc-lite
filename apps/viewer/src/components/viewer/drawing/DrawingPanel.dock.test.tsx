@@ -52,12 +52,25 @@ async function until(check: () => boolean, what: string): Promise<void> {
 
 afterEach(() => cleanup());
 
-it('opening the Section tool docks the drawing in place of the bottom panel that was open (#5493)', () => {
+it('opening the Section tool does NOT dock the drawing over the panel that was open (#5497)', () => {
   seed(bottomPanelFlags('lists'));
   render(<DrawingRuntimeHost mergedGeometry={geometry} />);
   act(() => useViewerStore.getState().setActiveTool('section'));
   const state = useViewerStore.getState();
-  assert.equal(activeBottomPanel(state), 'drawing', 'the strip shows the drawing, not Lists');
+  assert.equal(activeBottomPanel(state), 'lists', 'the Section tool alone must not pop the drawing over Lists');
+  assert.equal(state.listPanelVisible, true);
+  assert.equal(state.drawing2DPanelVisible, false);
+});
+
+it('the section UI\'s explicit "open drawing" action still docks it over the panel that was open (#5497)', () => {
+  seed(bottomPanelFlags('lists'));
+  render(<DrawingRuntimeHost mergedGeometry={geometry} />);
+  act(() => {
+    useViewerStore.getState().setActiveTool('section');
+    useViewerStore.getState().openPanelInHome('drawing');
+  });
+  const state = useViewerStore.getState();
+  assert.equal(activeBottomPanel(state), 'drawing', 'the explicit action docks the drawing');
   assert.equal(state.listPanelVisible, false);
 });
 

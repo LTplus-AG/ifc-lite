@@ -149,7 +149,7 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
     // tool, and `getSection()` reports only the cut the user can see.
     setSection(section: SectionPlane | null) {
       if (section?.enabled) {
-        const flipped = section.flipped ?? store.getState().sectionPlane.flipped;
+        const flipped = section.flipped ?? cardinalSectionFlipped(store.getState().sectionPlane);
         showSectionCut(store.getState, { axis: AXIS_TO_STORE[section.axis] ?? 'down', position: section.position, flipped });
         return undefined;
       }

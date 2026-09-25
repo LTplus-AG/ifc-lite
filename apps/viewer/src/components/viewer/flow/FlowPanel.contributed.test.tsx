@@ -71,7 +71,7 @@ async function mount(host: FakeHost) {
   const view = render(
     <BimProvider>
       <ExtensionHostContext.Provider value={host as unknown as ExtensionHostService}>
-        <FlowPanel onClose={() => {}} />
+        <FlowPanel />
       </ExtensionHostContext.Provider>
     </BimProvider>,
   );

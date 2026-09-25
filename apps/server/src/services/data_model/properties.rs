@@ -5,7 +5,8 @@
 //! Property set extraction.
 
 use super::property_value::{
-    fmt_number, infer_data_type, member_list, shared_member_type, resolve_complex_property_value, resolve_single_value,
+    fmt_number, infer_data_type, member_list, property_reference_label, shared_member_type, resolve_complex_property_value,
+    resolve_single_value,
 };
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -215,15 +216,16 @@ pub(super) fn extract_property(
             }
         }
 
-        // [Name, Description, PropertyReference]
-        "IFCPROPERTYREFERENCEVALUE" => match entity.get(2).and_then(|v| v.as_entity_ref()) {
-            Some(id) => (format!("#{}", id), "string".into(), None, None),
+        // [Name, Description, UsageName, PropertyReference]: the reference is
+        // slot 3 in IFC2X3, IFC4 and IFC4X3 alike (#5475).
+        "IFCPROPERTYREFERENCEVALUE" => match entity.get(3).and_then(|v| v.as_entity_ref()) {
+            Some(id) => (property_reference_label(decoder, id), "string".into(), None, None),
             None => (String::new(), "null".into(), None, None),
         },
 
         // [Name, Description, UsageName, HasProperties] — issue #3963. Mirrors
         // `resolveComplexPropertyValue` in
-        // packages/parser/src/property-value-parser.ts, which IS the spec:
+        // packages/parser/src/property-complex-value.ts, which IS the spec:
         // flatten each resolvable nested property into a "Name: value" part,
         // join with ", ", and fall back to the bare UsageName (or nothing)
         // when no nested member resolves. Recurses into further nested

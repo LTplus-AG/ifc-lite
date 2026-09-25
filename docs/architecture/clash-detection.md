@@ -307,7 +307,7 @@ BCF status persists via the deterministic topic GUID. This is the Navisworks "cl
 
 ### 9.1 Web viewer (`apps/viewer`)
 - New `clashSlice.ts` + `ClashPanel.tsx`, modelled on `IDSPanel`/`BCFPanel`.
-- Highlight via existing actions: `addEntitiesToSelection`, `hideEntitiesInModel`/`showEntitiesInModel` (isolate), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
+- Highlight via existing actions: `addEntitiesToSelection`, the shared `isolatedEntities` / `ghostExceptEntities` channels under a `clashVisibilityOwned` record (isolate / X-ray), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
 
 ### 9.2 MCP (`packages/mcp`)
 - `clash_check` (`tools/clash.ts`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.

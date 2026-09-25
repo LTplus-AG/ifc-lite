@@ -40,7 +40,7 @@ import { visibilityModelIdsForCapture } from './bcf/visibility-model-ids';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
-import { activeSectionPlane, clearSectionCut, showSectionCut } from '@/store/section-active';
+import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, showSectionCut } from '@/store/section-active';
 
 // ============================================================================
 // Types
@@ -420,7 +420,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // Only the cut on screen: `enabled` outlives the Section tool (#4806).
       const shown = activeSectionPlane(useViewerStore.getState());
       const viewerSectionPlane = capturedSection?.sectionPlane
-        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: shown.flipped } : undefined);
+        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: cardinalSectionFlipped(shown) } : undefined);
       const viewpointBounds = capturedSection?.bounds ?? bounds;
 
       // Visibility GUIDs — the isolate allowlist or the hide-list, whichever the

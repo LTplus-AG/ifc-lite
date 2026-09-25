@@ -3,8 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! One `IfcRelAggregates` parent per object across a merge (#5727, the Rust
-//! twin of #5471 / `claimAggregationParents` in
-//! `packages/export/src/merged-rel-aggregates.ts`).
+//! twin of #5471 / `claimDecompositionParents` in
+//! `packages/export/src/merged-decomposition-parents.ts`; the TS side also
+//! covers `IfcRelNests` since #5726, tracked for Rust in #5802).
 //!
 //! `IfcObjectDefinition.Decomposes` is `SET [0:1]`, and
 //! `IfcSpatialStructureElement.WR41` requires exactly one for a building or

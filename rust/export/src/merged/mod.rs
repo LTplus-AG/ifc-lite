@@ -231,7 +231,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
-    let mut parents = single_parents::ParentClaims::new(crate::schema_convert::targets_ifc2x3(&schema)); // one parent per inverse (#5727, #5802)
+    let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;

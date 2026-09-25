@@ -54,12 +54,30 @@ fn a_nest_shares_decomposes_with_an_aggregation_only_in_ifc2x3() {
     }
 }
 
-/// A relationship with no single-valued decomposition inverse passes through.
+/// A relationship with no single-valued inverse passes through. (Containment
+/// is claimed since #5923; see `tests/merged_single_inverses.rs`.)
 #[test]
 fn leaves_other_relationships_alone() {
     let mut parents = ParentClaims::new(false);
-    let line = "#1=IFCRELCONTAINEDINSPATIALSTRUCTURE('a',$,$,$,(#3),#2);".to_string();
+    let line = "#1=IFCRELASSOCIATESMATERIAL('a',$,$,$,(#3),#2);".to_string();
     for dedupe in [false, true] {
-        assert_eq!(parents.claim("IFCRELCONTAINEDINSPATIALSTRUCTURE", line.clone(), dedupe), Some(line.clone()));
+        assert_eq!(parents.claim("IFCRELASSOCIATESMATERIAL", line.clone(), dedupe), Some(line.clone()));
+    }
+}
+
+/// #5923: an element is contained in one structure. The containment's list is
+/// its FIRST argument (RelatedElements, 4), the reverse of a decomposition.
+#[test]
+fn a_contained_element_keeps_one_containment() {
+    for ifc2x3 in [true, false] {
+        let mut parents = ParentClaims::new(ifc2x3);
+        let first = "#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('a',$,$,$,(#3),#2);".to_string();
+        parents.claim("IFCRELCONTAINEDINSPATIALSTRUCTURE", first, false);
+        let later = "#14=IFCRELCONTAINEDINSPATIALSTRUCTURE('b',$,$,$,(#3,#13),#12);".to_string();
+        assert_eq!(
+            parents.claim("IFCRELCONTAINEDINSPATIALSTRUCTURE", later, true).as_deref(),
+            Some("#14=IFCRELCONTAINEDINSPATIALSTRUCTURE('b',$,$,$,(#13),#12);"),
+            "ifc2x3={ifc2x3}"
+        );
     }
 }

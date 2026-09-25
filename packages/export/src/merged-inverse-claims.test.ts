@@ -5,7 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { IfcParser } from '@ifc-lite/parser';
 import { applyRelMemberStrip, inverseRules } from './merged-inverse-claims.js';
+import { MergedExporter } from './merged-exporter.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 describe('applyRelMemberStrip', () => {
@@ -39,6 +41,8 @@ interface ExpressEntity {
   abstract: boolean;
   /** Explicit attributes declared here (not inherited, not redeclared). */
   attributes: string[];
+  /** The subset of `attributes` that are aggregates (SET/LIST/BAG). */
+  aggregates: Set<string>;
   inverses: Array<{ name: string; upper: number | null; relType: string; attribute: string }>;
 }
 
@@ -53,13 +57,18 @@ function readExpress(file: string): Map<string, ExpressEntity> {
       supertype: /SUBTYPE OF \((\w+)\)/.exec(header)?.[1] ?? null,
       abstract: /ABSTRACT SUPERTYPE/.test(header),
       attributes: [],
+      aggregates: new Set(),
       inverses: [],
     };
     let section: 'explicit' | 'inverse' | 'other' = 'explicit';
     for (const line of body.slice(headerEnd + 1).split('\n').map(l => l.trim())) {
       if (/^(INVERSE)$/.test(line)) section = 'inverse';
       else if (/^(DERIVE|WHERE|UNIQUE)$/.test(line)) section = 'other';
-      else if (section === 'explicit' && /^\w+\s*:/.test(line)) entity.attributes.push(line.split(/\s*:/)[0]);
+      else if (section === 'explicit' && /^\w+\s*:/.test(line)) {
+        const [attribute, type] = line.split(/\s*:\s*/);
+        entity.attributes.push(attribute);
+        if (/^(OPTIONAL\s+)?(SET|LIST|BAG)\b/.test(type)) entity.aggregates.add(attribute);
+      }
       else if (section === 'inverse') {
         const m = /^(\w+)\s*:\s*(?:(?:SET|BAG)\s*\[\d+:(\?|\d+)\]\s*OF\s+)?(\w+)\s+FOR\s+(\w+);/.exec(line);
         if (m) entity.inverses.push({ name: m[1], upper: m[2] === undefined ? 1 : m[2] === '?' ? null : Number(m[2]), relType: m[3], attribute: m[4] });
@@ -75,6 +84,15 @@ const EXPRESS: Record<'IFC2X3' | 'IFC4' | 'IFC4X3', string> = {
   IFC4: 'IFC4_ADD2_TC1.exp',
   IFC4X3: 'IFC4X3.exp',
 };
+
+/** Every explicit attribute of `type`, inherited first, and whether it is an aggregate. */
+function allAttributesOf(schema: Map<string, ExpressEntity>, type: string): Array<{ name: string; list: boolean }> {
+  const entity = schema.get(type)!;
+  return [
+    ...(entity.supertype ? allAttributesOf(schema, entity.supertype.toUpperCase()) : []),
+    ...entity.attributes.map(name => ({ name, list: entity.aggregates.has(name) })),
+  ];
+}
 
 /** `${relType}.${attributeIndex}` for every single-valued inverse a relationship fills, with the inverse's name. */
 function singleValuedRelInverses(schema: Map<string, ExpressEntity>): Map<string, string> {
@@ -100,22 +118,18 @@ function singleValuedRelInverses(schema: Map<string, ExpressEntity>): Map<string
 }
 
 /**
- * Single-valued relationship inverses the claim pass does not keep to one yet
- * (#5923 widens the table). Each key is `${relType}.${attributeIndex}`.
+ * The single-valued relationship inverses the claim pass leaves alone, and
+ * why. Each key is `${relType}.${attributeIndex}`.
  */
-const NOT_CLAIMED_ANY = [
-  'IFCRELCONTAINEDINSPATIALSTRUCTURE.4', 'IFCRELCOVERSSPACES.5', 'IFCRELCOVERSBLDGELEMENTS.5',
-  'IFCRELFLOWCONTROLELEMENTS.4', 'IFCRELFLOWCONTROLELEMENTS.5', 'IFCRELFILLSELEMENT.5', 'IFCRELPROJECTSELEMENT.5',
-  'IFCRELVOIDSELEMENT.5', 'IFCRELCONNECTSPORTTOELEMENT.4', 'IFCRELCONNECTSPORTS.4', 'IFCRELCONNECTSPORTS.5',
-  'IFCRELCONNECTSSTRUCTURALACTIVITY.5', 'IFCRELSERVICESBUILDINGS.4', 'IFCRELDEFINESBYTYPE.5',
-];
 const NOT_CLAIMED: Record<'IFC2X3' | 'IFC4' | 'IFC4X3', string[]> = {
-  IFC2X3: [...NOT_CLAIMED_ANY, 'IFCRELASSIGNSTOGROUP.6', 'IFCRELASSIGNSTASKS.7'],
-  IFC4: [...NOT_CLAIMED_ANY, 'IFCRELDEFINESBYTYPE.4', 'IFCRELDEFINESBYOBJECT.4', 'IFCRELDECLARES.5', 'IFCRELSPACEBOUNDARY2NDLEVEL.10'],
-  IFC4X3: [...NOT_CLAIMED_ANY, 'IFCRELDEFINESBYTYPE.4', 'IFCRELDEFINESBYOBJECT.4', 'IFCRELDECLARES.5', 'IFCRELSPACEBOUNDARY2NDLEVEL.10', 'IFCRELADHERESTOELEMENT.5'],
+  IFC2X3: [],
+  // `Corresponds` names a relationship from a relationship, and a merge never
+  // unifies relationships, so no two models' boundaries can meet on one.
+  IFC4: ['IFCRELSPACEBOUNDARY2NDLEVEL.10'],
+  IFC4X3: ['IFCRELSPACEBOUNDARY2NDLEVEL.10'],
 };
 
-describe('the inverse rule table agrees with the EXPRESS schemas (#5774)', () => {
+describe('the inverse rule table agrees with the EXPRESS schemas (#5774, #5923)', () => {
   for (const schemaName of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
     const schema = readExpress(EXPRESS[schemaName]);
     const expected = singleValuedRelInverses(schema);
@@ -123,18 +137,31 @@ describe('the inverse rule table agrees with the EXPRESS schemas (#5774)', () =>
     it(`${schemaName}: every rule names a single-valued inverse on its claimed attribute`, () => {
       expect(expected.size).toBeGreaterThan(0);
       for (const [relType, rules] of inverseRules(schemaName as IfcSchemaVersion)) {
-        for (const rule of rules) expect(expected.get(`${relType}.${rule.claimed}`), `${relType}.${rule.claimed}`).toBe(rule.inverse);
+        for (const rule of rules.filter(r => r.where === undefined)) {
+          expect(expected.get(`${relType}.${rule.claimed}`), `${relType}.${rule.claimed}`).toBe(rule.inverse);
+        }
       }
     });
 
     it(`${schemaName}: every single-valued relationship inverse is claimed or listed as not claimed`, () => {
-      const claimed = new Set([...inverseRules(schemaName as IfcSchemaVersion)].flatMap(([relType, rules]) => rules.map(rule => `${relType}.${rule.claimed}`)));
+      const claimed = new Set([...inverseRules(schemaName as IfcSchemaVersion)].flatMap(([relType, rules]) =>
+        rules.filter(rule => rule.where === undefined).map(rule => `${relType}.${rule.claimed}`)));
       const missing = [...expected.keys()].filter(key => !claimed.has(key) && !NOT_CLAIMED[schemaName].includes(key));
       expect(missing).toEqual([]);
       // And no stale entry: each one still names a single-valued inverse the table does not cover.
       expect(NOT_CLAIMED[schemaName].filter(key => !expected.has(key) || claimed.has(key))).toEqual([]);
     });
   }
+
+  it('a WHERE-rule row names a rule that bounds its relationship to one per object (IFC2X3 IfcObject.WR1)', () => {
+    const rows = [...inverseRules('IFC2X3')].flatMap(([relType, rules]) => rules.filter(r => r.where).map(r => [relType, r] as const));
+    expect(rows.map(([relType, r]) => `${relType}.${r.claimed} ${r.where}`)).toEqual(['IFCRELDEFINESBYTYPE.4 IfcObject.WR1']);
+    const text = readFileSync(fileURLToPath(new URL('../../codegen/schemas/IFC2X3_TC1.exp', import.meta.url)), 'utf8');
+    const object = /^ENTITY IfcObject$[\s\S]*?^END_ENTITY;/m.exec(text)![0];
+    expect(object).toContain("WR1 : SIZEOF(QUERY(temp <* IsDefinedBy | 'IFC2X3.IFCRELDEFINESBYTYPE' IN TYPEOF(temp))) <= 1;");
+    // IsDefinedBy is the inverse RelatedObjects (attribute 4) fills.
+    expect(readExpress(EXPRESS.IFC2X3).get('IFCOBJECT')!.inverses.find(i => i.name === 'IsDefinedBy')).toMatchObject({ relType: 'IfcRelDefines', attribute: 'RelatedObjects' });
+  });
 
   it('IFC2X3 bounds a property set to one IfcRelDefinesByProperties; IFC4 and IFC4X3 do not', () => {
     expect(singleValuedRelInverses(readExpress(EXPRESS.IFC2X3)).get('IFCRELDEFINESBYPROPERTIES.5')).toBe('PropertyDefinitionOf');
@@ -144,4 +171,54 @@ describe('the inverse rule table agrees with the EXPRESS schemas (#5774)', () =>
       expect(inverseRules(schemaName).has('IFCRELDEFINESBYPROPERTIES')).toBe(false);
     }
   });
+});
+
+/**
+ * Every row, through a real merge (#5923): model A and model B each state the
+ * row's relationship about one entity they share by GlobalId, with a partner
+ * of their own. The merged file must name that entity on the claimed side of
+ * one such relationship only. Built from the EXPRESS attribute list, so a row
+ * with a wrong index or a missing row fails here, not just in the pin above.
+ */
+describe('every inverse rule keeps one relationship per GlobalId-unified entity (#5923)', () => {
+  const guid = (label: string): string => (label + '0'.repeat(22)).slice(0, 22);
+  const FILE_SCHEMA: Record<'IFC2X3' | 'IFC4' | 'IFC4X3', string> = { IFC2X3: 'IFC2X3', IFC4: 'IFC4', IFC4X3: 'IFC4X3_ADD2' };
+
+  for (const schemaName of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    const schema = readExpress(EXPRESS[schemaName]);
+    for (const [relType, rules] of inverseRules(schemaName)) {
+      for (const rule of rules) {
+        it(`${schemaName} ${relType}: ${rule.inverse}`, async () => {
+          const attributes = allAttributesOf(schema, relType);
+          const line = (tag: string) => {
+            const slots = attributes.map(({ list }, i) => {
+              const ref = i === rule.claimed ? '#10' : i === rule.partner ? '#11' : null;
+              if (i === 0) return `'${guid(`r${tag}`)}'`;
+              if (ref === null) return '$';
+              return list ? `(${ref})` : ref;
+            });
+            return `#20=${relType}(${slots.join(',')});`;
+          };
+          const lines = (tag: string) => [
+            `#1=IFCPROJECT('${guid(`p${tag}`)}',$,'${tag}',$,$,$,$,$,$);`,
+            `#10=IFCBUILDINGELEMENTPROXY('${guid('shared')}',$,'shared',$,$,$,$,$,$);`,
+            `#11=IFCBUILDINGELEMENTPROXY('${guid(`own${tag}`)}',$,'own',$,$,$,$,$,$);`,
+            line(tag),
+          ];
+          const parse = async (tag: string) => {
+            const text = ['ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('m.ifc','',(''),(''),'','','');",
+              `FILE_SCHEMA(('${FILE_SCHEMA[schemaName]}'));`, 'ENDSEC;', 'DATA;', ...lines(tag), 'ENDSEC;', 'END-ISO-10303-21;'].join('\n');
+            return { id: tag, name: tag, dataStore: await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer) };
+          };
+          const out = new TextDecoder().decode(new MergedExporter([await parse('a'), await parse('b')]).export({ schema: schemaName }).content);
+          const shared = Number(new RegExp(`^#(\\d+)=IFCBUILDINGELEMENTPROXY\\('${guid('shared')}'`, 'm').exec(out)![1]);
+          const naming = [...out.matchAll(new RegExp(`^#\\d+=${relType}\\((.*)\\);$`, 'gm'))].filter(([, args]) => {
+            const slot = args.match(/\([^)]*\)|'[^']*'|[^,]+/g)![rule.claimed];
+            return [...slot.matchAll(/#(\d+)/g)].some(m => Number(m[1]) === shared);
+          });
+          expect(naming, out).toHaveLength(1);
+        });
+      }
+    }
+  }
 });

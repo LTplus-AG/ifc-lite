@@ -29,7 +29,6 @@ import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
-import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
@@ -1145,7 +1144,6 @@ export function ViewportContainer() {
       <ToolOverlays />
       <ZoneOverlay />
       <ZoneAssignmentSyncMount />
-      <BasketPresentationDock />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />
     </div>

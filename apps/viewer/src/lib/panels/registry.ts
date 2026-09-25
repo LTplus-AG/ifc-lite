@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -50,7 +50,8 @@ export type WorkspacePanelId =
   | 'drawing'
   | 'pointclouds'
   | 'measurements'
-  | 'placement';
+  | 'placement'
+  | 'presentation';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -159,6 +160,17 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // no dedicated visibility boolean. APPENDED so the frozen Alt+1..0 mapping
   // stays intact (no Alt shortcut). The gizmos stay scene overlays.
   { id: 'placement', title: 'Placement', short: 'Placement', Icon: Move3d, group: 'author', region: 'side' },
+  // A filmstrip of saved basket views (#5508). Replaces `BasketPresentationDock`,
+  // which drew an always-on "Presentation 0" pill at the viewport's
+  // bottom-center even with an empty basket, and opened as its own
+  // draggable / resizable floating card. Bottom strip like Charts/Document/
+  // Flow/Drawing above — table-driven; the bottom-strip flag it reuses is
+  // `basketPresentationVisible` (`lib/panels/bottom-panels.ts`), unchanged
+  // from the floating dock so saved views and their transitions are
+  // unaffected. APPENDED so the frozen Alt+1..0 mapping stays intact (no Alt
+  // shortcut). Entry points: the status bar and the ribbon / classic
+  // toolbar's Present button.
+  { id: 'presentation', title: 'Presentation', short: 'Present', Icon: Presentation, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

@@ -62,7 +62,6 @@
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    758 apps/viewer/src/components/viewer/AddElementPanel.tsx
-   508 apps/viewer/src/components/viewer/BasketPresentationDock.tsx
    428 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    540 apps/viewer/src/components/viewer/BCFPanel.tsx
   1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx

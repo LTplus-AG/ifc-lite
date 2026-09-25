@@ -369,6 +369,20 @@ impl FacetedBrepProcessor {
     }
 }
 
+impl FacetedBrepProcessor {
+    /// Mesh the Brep rebased by `rtc` (file units) before f32 narrowing; the
+    /// same work as [`GeometryProcessor::process_in_rtc_frame`].
+    pub fn process_with_rtc(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        rtc: (f64, f64, f64),
+    ) -> Result<Mesh> {
+        self.process_rebased(entity, decoder, Some(rtc))
+    }
+}
+
 impl GeometryProcessor for FacetedBrepProcessor {
     fn process(
         &self,
@@ -384,11 +398,11 @@ impl GeometryProcessor for FacetedBrepProcessor {
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
+        schema: &IfcSchema,
         _quality: TessellationQuality,
         rtc_file_units: (f64, f64, f64),
     ) -> Option<Result<Mesh>> {
-        Some(self.process_rebased(entity, decoder, Some(rtc_file_units)))
+        Some(self.process_with_rtc(entity, decoder, schema, rtc_file_units))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

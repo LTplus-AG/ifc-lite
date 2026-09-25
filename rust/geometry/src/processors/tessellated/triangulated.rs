@@ -99,10 +99,20 @@ impl TriangulatedFaceSetProcessor {
     /// flat-shaded mesh as [`process`] plus a per-vertex UV array aligned 1:1
     /// with the emitted vertices. `map.tex_coord_index` is parallel to the
     /// original `CoordIndex`; the same whole-shell winding flip is applied to it
-    /// so corners stay aligned after orientation. `rtc_file_units` rebases
-    /// positions before f32 narrowing, as [`GeometryProcessor::process_in_rtc_frame`]
-    /// does, and marks the mesh `rtc_applied`.
+    /// so corners stay aligned after orientation.
     pub fn process_with_texture(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        map: &crate::processors::texture::ResolvedTextureMap,
+    ) -> Result<(Mesh, Vec<f32>)> {
+        self.process_with_texture_rebased(entity, decoder, map, None)
+    }
+
+    /// [`Self::process_with_texture`]; `rtc_file_units` rebases positions
+    /// before f32 narrowing, as [`GeometryProcessor::process_in_rtc_frame`]
+    /// does, and marks the mesh `rtc_applied` (#5698).
+    pub(crate) fn process_with_texture_rebased(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,

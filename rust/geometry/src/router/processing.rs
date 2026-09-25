@@ -843,9 +843,12 @@ impl GeometryRouter {
                 .zip(Some(offset))
         });
         let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-        let Ok((mut mesh, uvs)) =
-            proc.process_with_texture(item, decoder, map, rtc.map(|(file_units, _)| file_units))
-        else {
+        let Ok((mut mesh, uvs)) = proc.process_with_texture_rebased(
+            item,
+            decoder,
+            map,
+            rtc.map(|(file_units, _)| file_units),
+        ) else {
             return false;
         };
         if mesh.is_empty() {

@@ -11,14 +11,18 @@
  * navigated away to the file.
  *
  * Contract:
- * - Only FILE drags are touched. Text, links and the app's own HTML5
- *   reorder drags carry no `Files` type and pass through untouched.
+ * - Only FILE drags from outside the page are touched. Text, links, the
+ *   app's own reorder drags and an in-page image drag (which Chromium reports
+ *   with a `Files` type) pass through untouched.
  * - A file drop is always `preventDefault`ed, so the browser never navigates
  *   to it, even when drops are not accepted (no WebGPU).
- * - A child drop zone keeps its drop: one that stops propagation never
- *   reaches the window, and one that only `preventDefault`s is seen as
- *   handled (`defaultPrevented`). While the pointer is over such a zone the
- *   full-window overlay steps aside so the zone's own highlight shows.
+ * - A child drop zone keeps its drop, whether it stops propagation or only
+ *   `preventDefault`s. The overlay's enter/leave depth is counted in the
+ *   CAPTURE phase, so a zone that stops some events (the Data Connector stops
+ *   dragover/dragleave/drop but not dragenter) cannot unbalance it or leave
+ *   the overlay stuck. A dragover seen in capture but not claimed in bubble
+ *   is the window's; one a zone claimed (stopped or `defaultPrevented`) hides
+ *   the full-window overlay so the zone's own highlight shows.
  */
 
 import { useEffect, useState } from 'react';
@@ -42,22 +46,32 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
 
   useEffect(() => {
     let state = initialDragOverlayState;
-    // The last dragover was claimed by a child drop zone.
+    // The current dragover was claimed by a child drop zone.
     let claimed = false;
+    // A drag that started inside the page (dragstart only fires for those).
+    let inPage = false;
     const sync = () => setOverlay(state.dragging && !claimed);
     const step = (event: DragOverlayEvent) => {
       state = reduceDragOverlay(state, event, accept);
-      if (event === 'drop') claimed = false;
+      if (!state.dragging) claimed = false;
       sync();
     };
+    const ours = (e: DragEvent) => !inPage && isFileDrag(e.dataTransfer);
 
-    const onEnter = (e: DragEvent) => {
-      if (!isFileDrag(e.dataTransfer)) return;
-      e.preventDefault();
-      step('enter');
+    const onDragStart = () => { inPage = true; };
+    const onDragEnd = () => { inPage = false; };
+    // Capture phase: runs before any child zone can stop propagation.
+    const onEnterCapture = (e: DragEvent) => { if (ours(e)) step('enter'); };
+    const onLeaveCapture = (e: DragEvent) => { if (ours(e)) step('leave'); };
+    const onDropCapture = (e: DragEvent) => { if (ours(e)) step('drop'); };
+    const onOverCapture = (e: DragEvent) => {
+      if (!ours(e)) return;
+      claimed = true; // until the bubble phase proves no zone took it
+      sync();
     };
+    // Bubble phase: only reached when no zone stopped propagation.
     const onOver = (e: DragEvent) => {
-      if (!isFileDrag(e.dataTransfer)) return;
+      if (!ours(e)) return;
       claimed = e.defaultPrevented;
       if (!claimed) {
         e.preventDefault(); // makes the window a drop target, so no navigation
@@ -65,27 +79,25 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       }
       sync();
     };
-    const onLeave = (e: DragEvent) => {
-      if (!isFileDrag(e.dataTransfer)) return;
-      step('leave');
-    };
-    const onDropEvent = (e: DragEvent) => {
-      if (!isFileDrag(e.dataTransfer)) return;
-      step('drop');
-      if (e.defaultPrevented) return; // a child drop zone handled it
+    const onDrop = (e: DragEvent) => {
+      if (!ours(e) || e.defaultPrevented) return; // a child drop zone handled it
       e.preventDefault();
       if (accept && e.dataTransfer) onDropRef.current(e.dataTransfer);
     };
 
-    window.addEventListener('dragenter', onEnter);
-    window.addEventListener('dragover', onOver);
-    window.addEventListener('dragleave', onLeave);
-    window.addEventListener('drop', onDropEvent);
+    const listeners: Array<[string, (e: DragEvent) => void, boolean]> = [
+      ['dragstart', onDragStart, true],
+      ['dragend', onDragEnd, true],
+      ['dragenter', onEnterCapture, true],
+      ['dragleave', onLeaveCapture, true],
+      ['drop', onDropCapture, true],
+      ['dragover', onOverCapture, true],
+      ['dragover', onOver, false],
+      ['drop', onDrop, false],
+    ];
+    for (const [type, fn, capture] of listeners) window.addEventListener(type, fn as EventListener, capture);
     return () => {
-      window.removeEventListener('dragenter', onEnter);
-      window.removeEventListener('dragover', onOver);
-      window.removeEventListener('dragleave', onLeave);
-      window.removeEventListener('drop', onDropEvent);
+      for (const [type, fn, capture] of listeners) window.removeEventListener(type, fn as EventListener, capture);
       setOverlay(false);
     };
   }, [accept, onDropRef]);

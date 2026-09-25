@@ -19,8 +19,10 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { advance, cleanup, render } from '@/test/render.js';
 import { latestToast } from '@/test/toasts.js';
+import { getRecentFiles } from '@/lib/recent-files';
 import { useViewerStore } from '@/store';
 import { ViewportContainer } from './ViewportContainer.js';
+import { CustomizeSidebar } from './sidebar/CustomizeSidebar';
 
 // happy-dom's DataTransfer reports an empty type for an added file and
 // DragEvent ignores `dataTransfer` in its init, so hand the event the parts a
@@ -97,6 +99,52 @@ describe('window-level file drop (#5845)', () => {
     assert.match(latestToast(), /house\.blend/, 'the drop went through the drop routing');
   });
 
+  it('a zone that stops propagation keeps its drop, and the overlay does not stick', async () => {
+    stubWebGpu();
+    render(<ViewportContainer />);
+    await advance(0);
+    // The Data Connector's CSV zone: stops dragover / dragleave / drop, but
+    // lets dragenter bubble.
+    const zone = document.createElement('div');
+    chrome.appendChild(zone);
+    for (const type of ['dragover', 'dragleave', 'drop']) {
+      zone.addEventListener(type, (e) => { e.preventDefault(); e.stopPropagation(); });
+    }
+    const before = latestToast();
+    const file = new File(['x'], 'zone-owned.blend');
+    drag(chrome, 'dragenter', fileTransfer(file));
+    drag(zone, 'dragenter', fileTransfer(file));
+    drag(zone, 'dragover', fileTransfer(file));
+    assert.ok(!document.body.textContent?.includes(DROP_TITLE), 'the overlay steps aside over the zone');
+    drag(zone, 'drop', fileTransfer(file));
+    assert.ok(!document.body.textContent?.includes(DROP_TITLE), 'the overlay is gone after the zone took the drop');
+    assert.equal(latestToast(), before, 'the window did not also route the drop');
+
+    // The next drag starts from a clean state.
+    drag(chrome, 'dragenter', fileTransfer(file));
+    drag(chrome, 'dragover', fileTransfer(file));
+    assert.ok(document.body.textContent?.includes(DROP_TITLE), 'a later drag over chrome shows the overlay');
+    drag(chrome, 'dragleave', fileTransfer(file));
+    assert.ok(!document.body.textContent?.includes(DROP_TITLE), 'and leaving the window hides it');
+  });
+
+  it('ignores a drag that started inside the page (an image Chromium reports as Files)', async () => {
+    stubWebGpu();
+    render(<ViewportContainer />);
+    await advance(0);
+    const img = document.createElement('img');
+    chrome.appendChild(img);
+    act(() => { img.dispatchEvent(new window.Event('dragstart', { bubbles: true })); });
+    const before = latestToast();
+    const file = new File(['x'], 'logo.blend');
+    drag(chrome, 'dragenter', fileTransfer(file));
+    assert.ok(!document.body.textContent?.includes(DROP_TITLE), 'no drop overlay for an in-page drag');
+    const drop = drag(chrome, 'drop', fileTransfer(file));
+    assert.equal(drop.defaultPrevented, false, 'the window leaves it alone');
+    assert.equal(latestToast(), before, 'nothing is routed');
+    act(() => { img.dispatchEvent(new window.Event('dragend', { bubbles: true })); });
+  });
+
   it('ignores a non-file drag (text or a link)', async () => {
     stubWebGpu();
     render(<ViewportContainer />);
@@ -136,5 +184,43 @@ describe('window-level file drop (#5845)', () => {
     const drop = drag(chrome, 'drop', fileTransfer(file));
     assert.equal(drop.defaultPrevented, true, 'the browser does not open the file');
     assert.equal(latestToast(), before, 'nothing is loaded');
+  });
+
+  it('a reorder list does not swallow a file dragged over it (Customize sidebar rows)', async () => {
+    stubWebGpu();
+    render(
+      <>
+        <ViewportContainer />
+        <CustomizeSidebar onClose={() => {}} />
+      </>,
+    );
+    await advance(0);
+    const row = document.querySelector('[draggable="true"]');
+    assert.ok(row, 'a reorderable row renders');
+    const file = new File(['x'], 'over-a-row.blend');
+    drag(row, 'dragenter', fileTransfer(file));
+    drag(row, 'dragover', fileTransfer(file));
+    assert.ok(document.body.textContent?.includes(DROP_TITLE), 'the row does not claim a file drag');
+    drag(row, 'drop', fileTransfer(file));
+    assert.match(latestToast(), /over-a-row\.blend/, 'the file reached the window drop');
+  });
+
+  // Last: the real loader starts (and fails without wasm) and leaves the
+  // store mid-load, which would change what the tests after it mount.
+  it('a supported model dropped outside the viewport reaches the model load path', async () => {
+    stubWebGpu();
+    render(<ViewportContainer />);
+    await advance(0);
+    const file = new File(['ISO-10303-21;'], 'dropped-on-sidebar.ifc');
+    drag(chrome, 'dragenter', fileTransfer(file));
+    drag(chrome, 'dragover', fileTransfer(file));
+    drag(chrome, 'drop', fileTransfer(file));
+    await advance(0);
+    // prepareModelFiles records the file right before handing it to the
+    // loader route (useIfcLoader.loadFile).
+    assert.ok(
+      getRecentFiles().some((entry) => entry.name === 'dropped-on-sidebar.ifc'),
+      'the dropped model was handed to the load path',
+    );
   });
 });

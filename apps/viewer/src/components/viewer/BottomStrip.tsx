@@ -149,6 +149,7 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   return (
     <div
       data-detach-root
+      data-bottom-strip
       style={isMaximized ? undefined : { height: bottomHeight, flexShrink: 0 }}
       className={isMaximized ? 'absolute inset-0 z-20 bg-background' : 'relative'}
     >

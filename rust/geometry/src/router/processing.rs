@@ -381,18 +381,20 @@ impl GeometryRouter {
                 if fill_only {
                     continue; // symbolic annotation item, never meshed (#5389)
                 }
-                // A textured face set keeps its UV channel on the item path
-                // below, which rebases in the model frame (#1781, #5698).
-                let textured = texture_index.is_some_and(|index| index.contains_key(&item.id));
-                if !textured {
-                    if let Some(mesh) =
-                        self.process_raw_item_for_element(&item, element, decoder)?
-                    {
-                        if !mesh.is_empty() {
-                            sub_meshes.add(item.id, mesh);
-                        }
+                // A textured face set keeps its UV channel (#1781) and, like
+                // any raw item, rebases in its own frame (#5698).
+                if let Some(map) = texture_index.and_then(|index| index.get(&item.id)) {
+                    let offset = self.element_frame_rtc(element, decoder)?;
+                    if self.add_textured_face_set(&item, decoder, map, offset, &mut sub_meshes) {
                         continue;
                     }
+                } else if let Some(mesh) =
+                    self.process_raw_item_for_element(&item, element, decoder)?
+                {
+                    if !mesh.is_empty() {
+                        sub_meshes.add(item.id, mesh);
+                    }
+                    continue;
                 }
                 self.collect_submeshes_from_item(
                     &item,
@@ -697,23 +699,12 @@ impl GeometryRouter {
             // the occurrence path renders its image like the type-geometry path
             // (#961) always did. Bypasses the content-dedup cache — the cached
             // mesh has no UV channel, and UVs are per-face-set anyway. Falls
-            // through to the plain path if the textured build fails. Raw
-            // national-grid coordinates rebase in the model frame (#5698).
-            if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
-                if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
-                    let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-                    let rtc = self.raw_item_rtc_file_units(item, decoder, self.rtc_offset);
-                    if let Ok((mut mesh, uvs)) = proc.process_with_texture(item, decoder, map, rtc)
-                    {
-                        if !mesh.is_empty() {
-                            self.scale_mesh(&mut mesh); // UVs are unaffected by scale
-                            if rtc.is_some() {
-                                publish_object_frame_bounds(&mut mesh, self.rtc_offset);
-                            }
-                            sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
-                            return Ok(());
-                        }
-                    }
+            // through to the plain path if the textured build fails. A nested
+            // (mapped) face set rebases in the model frame (#5698).
+            if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
+                if self.add_textured_face_set(item, decoder, map, Some(self.rtc_offset), sub_meshes)
+                {
+                    return Ok(());
                 }
             }
             // Regular geometry item - process and record with its ID
@@ -801,27 +792,71 @@ impl GeometryRouter {
         let Some(processor) = self.processors.get(&item.ifc_type, self.schema) else {
             return Ok(None);
         };
-
-        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut placement);
-        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
-        let Some(inverse) = linear.try_inverse() else {
+        let Some(offset) = self.element_frame_rtc(element, decoder)? else {
             return Ok(None);
         };
-        let rtc = inverse
-            * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
         // A declined object-frame rebase must stay on this element-aware
         // path: the generic direct-item path only knows world-space RTC.
-        let mesh = self.process_item_in_rtc_frame(
-            processor.as_ref(),
-            item,
-            decoder,
-            (rtc.x, rtc.y, rtc.z),
-        );
+        let mesh = self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset);
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
         }
         mesh.map(Some)
+    }
+
+    /// The model RTC offset expressed in `element`'s object frame (metres):
+    /// pulled through the placement's inverse linear transform, so placing
+    /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
+    /// placement, where no object-frame offset exists.
+    fn element_frame_rtc(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<(f64, f64, f64)>> {
+        let mut placement = self.get_placement_transform_from_element(element, decoder)?;
+        self.scale_transform(&mut placement);
+        let linear = placement.fixed_view::<3, 3>(0, 0).into_owned();
+        Ok(linear.try_inverse().map(|inverse| {
+            let rtc = inverse
+                * nalgebra::Vector3::new(self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2);
+            (rtc.x, rtc.y, rtc.z)
+        }))
+    }
+
+    /// Add a textured `IfcTriangulatedFaceSet` as its own UV-carrying
+    /// sub-mesh (#1781), rebased by `offset_meters` (item frame) when that
+    /// preserves precision (#5698). `false` when the textured build fails or
+    /// is empty, so the caller falls through to the plain path.
+    fn add_textured_face_set(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        map: &crate::processors::texture::ResolvedTextureMap,
+        offset_meters: Option<(f64, f64, f64)>,
+        sub_meshes: &mut SubMeshCollection,
+    ) -> bool {
+        if item.ifc_type != IfcType::IfcTriangulatedFaceSet {
+            return false;
+        }
+        let rtc = offset_meters.and_then(|offset| {
+            self.raw_item_rtc_file_units(item, decoder, offset)
+                .zip(Some(offset))
+        });
+        let proc = crate::processors::TriangulatedFaceSetProcessor::new();
+        let Ok((mut mesh, uvs)) =
+            proc.process_with_texture(item, decoder, map, rtc.map(|(file_units, _)| file_units))
+        else {
+            return false;
+        };
+        if mesh.is_empty() {
+            return false;
+        }
+        self.scale_mesh(&mut mesh); // UVs are unaffected by scale
+        if let Some((_, offset)) = rtc {
+            publish_object_frame_bounds(&mut mesh, offset);
+        }
+        sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
+        true
     }
 
     /// Mesh one item, rebasing it by `offset_meters` (model RTC expressed in

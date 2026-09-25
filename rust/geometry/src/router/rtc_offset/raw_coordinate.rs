@@ -15,9 +15,10 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         let point = match item.ifc_type {
-            IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
-                self.brep_first_vertex(item, decoder)
-            }
+            IfcType::IfcFacetedBrep
+            | IfcType::IfcFacetedBrepWithVoids
+            | IfcType::IfcAdvancedBrep
+            | IfcType::IfcAdvancedBrepWithVoids => self.brep_first_vertex(item, decoder),
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
                 self.face_first_vertex(item, decoder)
             }

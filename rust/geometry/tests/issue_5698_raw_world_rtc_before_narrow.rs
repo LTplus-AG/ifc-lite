@@ -46,10 +46,12 @@ enum Shape {
     ShellBased,
     /// A shell-based surface model whose face is a bilinear B-spline patch.
     ShellBasedBSpline,
+    /// An `IfcAdvancedBrep` over the same B-spline advanced face.
+    AdvancedBrep,
     Structural,
 }
 
-const SHAPES: [Shape; 8] = [
+const SHAPES: [Shape; 9] = [
     Shape::Triangulated,
     Shape::Tin,
     Shape::Polygonal,
@@ -57,13 +59,14 @@ const SHAPES: [Shape; 8] = [
     Shape::FaceBased,
     Shape::ShellBased,
     Shape::ShellBasedBSpline,
+    Shape::AdvancedBrep,
     Shape::Structural,
 ];
 
 /// The authored corners a shape emits (the patch and the face use the base).
 fn corners(shape: Shape) -> &'static [[f64; 3]] {
     match shape {
-        Shape::ShellBasedBSpline | Shape::Structural => &FEATURE[..4],
+        Shape::ShellBasedBSpline | Shape::AdvancedBrep | Shape::Structural => &FEATURE[..4],
         _ => &FEATURE,
     }
 }
@@ -196,6 +199,15 @@ fn fixture(shape: Shape, frame: Frame, textured: bool) -> String {
                  #900=IFCSHELLBASEDSURFACEMODEL((#803));",
             );
             "SurfaceModel"
+        }
+        Shape::AdvancedBrep => {
+            s.push_str(
+                "#801=IFCBSPLINESURFACEWITHKNOTS(1,1,((#10,#13),(#11,#12)),.UNSPECIFIED.,\
+                 .F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);\
+                 #802=IFCADVANCEDFACE((#300),#801,.T.);#803=IFCCLOSEDSHELL((#802));\
+                 #900=IFCADVANCEDBREP(#803);",
+            );
+            "AdvancedBrep"
         }
         Shape::Structural => {
             s.push_str("#801=IFCAXIS2PLACEMENT3D(#10,$,$);#802=IFCPLANE(#801);#900=IFCFACESURFACE((#300),#802,.T.);");
@@ -348,15 +360,21 @@ fn issue_5698_raw_world_items_rebase_before_f32_narrowing() {
     }
 }
 
-/// A textured raw-world face set keeps both its UV channel and its detail.
+/// A textured raw-world face set keeps its UV channel and its detail, and
+/// rebases in its own frame under a rotated placement.
 #[test]
 fn issue_5698_textured_raw_world_face_set_keeps_uvs_and_detail() {
-    let frame = Frame {
-        world_offset: SITE,
-        rotated: false,
-        scale: 1.0,
-    };
-    let source = fixture(Shape::Triangulated, frame, true);
+    for rotated in [false, true] {
+        let frame = Frame {
+            world_offset: SITE,
+            rotated,
+            scale: 1.0,
+        };
+        assert_textured_detail(fixture(Shape::Triangulated, frame, true), rotated);
+    }
+}
+
+fn assert_textured_detail(source: String, rotated: bool) {
     let mut decoder = EntityDecoder::new(&source);
     let textures = build_texture_index(source.as_bytes(), &mut decoder);
     assert_eq!(textures.len(), 1, "fixture must declare one texture map");
@@ -370,7 +388,11 @@ fn issue_5698_textured_raw_world_face_set_keeps_uvs_and_detail() {
     let sub = &meshes.sub_meshes[0];
     let uvs = sub.uvs.as_ref().expect("textured sub-mesh keeps its UVs");
     assert_eq!(uvs.len() / 2, sub.mesh.positions.len() / 3);
-    assert_corners(&sub.mesh, &FEATURE, "textured face set");
+    assert_corners(
+        &sub.mesh,
+        &FEATURE,
+        &format!("textured face set rotated={rotated}"),
+    );
 }
 
 /// A raw-world item and a local item of one element keep their own frames:

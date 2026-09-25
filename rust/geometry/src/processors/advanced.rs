@@ -41,13 +41,14 @@ impl AdvancedBrepProcessor {
     }
 }
 
-impl GeometryProcessor for AdvancedBrepProcessor {
-    fn process(
-        &self,
+impl AdvancedBrepProcessor {
+    /// Mesh the Brep; `rtc_file_units` is removed from every face in f64
+    /// before f32 narrowing (#5698).
+    fn process_rebased(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
         quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
         // IfcAdvancedBrep attributes:
         // 0: Outer (IfcClosedShell)
@@ -86,7 +87,8 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                 // degrades to a per-face loss instead of aborting the whole
                 // solid (#5053) — and is still recorded in `empty_faces`
                 // below so the loss isn't silent.
-                let (positions, indices) = match process_advanced_face(&face, decoder, quality, None) {
+                let face_mesh = process_advanced_face(&face, decoder, quality, rtc_file_units);
+                let (positions, indices) = match face_mesh {
                     Ok(result) => result,
                     Err(ref e) => {
                         trace_capped_advanced_brep_face(face_id, e);
@@ -148,10 +150,33 @@ impl GeometryProcessor for AdvancedBrepProcessor {
             positions: all_positions,
             normals: Vec::new(),
             indices: all_indices,
-            rtc_applied: false, 
+            rtc_applied: rtc_file_units.is_some(),
             welded_in_object_frame: false,
             plane_tags: None,
             origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
+    }
+}
+
+impl GeometryProcessor for AdvancedBrepProcessor {
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        Self::process_rebased(entity, decoder, quality, None)
+    }
+
+    fn process_in_rtc_frame(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        Some(Self::process_rebased(entity, decoder, quality, Some(rtc_file_units)))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

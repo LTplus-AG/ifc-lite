@@ -76,7 +76,7 @@ export interface SelectionMaskFrame {
   /** Drawn into `maskAll` (selected-all) and `maskVisible.r` (selected-visible). */
   selected: readonly SelectableMesh[];
   /** Drawn into `maskVisible.g` only (hover never shows through occluders). */
-  hovered: HoveredMesh | null;
+  hovered: readonly HoveredMesh[];
 }
 
 export interface SelectionMaskViews {
@@ -105,8 +105,8 @@ export class SelectionMaskPass {
   private targets: MaskTargets | null = null;
   private cachedDepthView: GPUTextureView | null = null;
   private cachedDepthBindGroup: GPUBindGroup | null = null;
-  private hoverUniformBuffer: GPUBuffer | null = null;
-  private hoverBindGroup: GPUBindGroup | null = null;
+  /** One owned uniform buffer + bind group per hovered piece, grown on demand. */
+  private hoverUniforms: { buffer: GPUBuffer; bindGroup: GPUBindGroup }[] = [];
   private destroyed = false;
 
   constructor(device: WebGPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
@@ -145,7 +145,7 @@ export class SelectionMaskPass {
 
   /** Nothing to draw this frame: caller skips the pass and the outline composite entirely. */
   static isEmpty(frame: Pick<SelectionMaskFrame, 'selected' | 'hovered'>): boolean {
-    return frame.selected.length === 0 && frame.hovered === null;
+    return frame.selected.length === 0 && frame.hovered.length === 0;
   }
 
   encode(frame: SelectionMaskFrame): SelectionMaskViews {
@@ -174,32 +174,36 @@ export class SelectionMaskPass {
     };
 
     draw(targets.visibleView, this.selectedVisiblePipeline, frame.selected);
-    if (frame.hovered) {
-      const { vertexBuffer, indexBuffer, indexCount } = frame.hovered;
-      draw(targets.visibleView, this.hoverVisiblePipeline, [{ vertexBuffer, indexBuffer, indexCount, bindGroup: this.hoverGroup(frame.hovered) }]);
+    if (frame.hovered.length > 0) {
+      draw(targets.visibleView, this.hoverVisiblePipeline, frame.hovered.map((h, i) => ({
+        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i),
+      })));
     }
     draw(targets.allView, this.selectedAllPipeline, frame.selected);
 
     return targets.views;
   }
 
-  private hoverGroup(hovered: HoveredMesh): GPUBindGroup {
+  private hoverGroup(hovered: HoveredMesh, slot: number): GPUBindGroup {
     if (hovered.bindGroup) return hovered.bindGroup;
     const { uniforms } = hovered;
-    if (!this.hoverUniformBuffer || this.hoverUniformBuffer.size < uniforms.byteLength) {
-      this.hoverUniformBuffer?.destroy();
-      this.hoverUniformBuffer = this.device.createBuffer({
+    let entry = this.hoverUniforms[slot];
+    if (!entry || entry.buffer.size < uniforms.byteLength) {
+      entry?.buffer.destroy();
+      const buffer = this.device.createBuffer({
         label: 'selection-mask-hover-uniforms',
         size: uniforms.byteLength,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
-      this.hoverBindGroup = this.device.createBindGroup({
+      const bindGroup = this.device.createBindGroup({
         layout: this.meshBindGroupLayout,
-        entries: [{ binding: 0, resource: { buffer: this.hoverUniformBuffer } }],
+        entries: [{ binding: 0, resource: { buffer } }],
       });
+      entry = { buffer, bindGroup };
+      this.hoverUniforms[slot] = entry;
     }
-    this.device.queue.writeBuffer(this.hoverUniformBuffer, 0, uniforms);
-    return this.hoverBindGroup!;
+    this.device.queue.writeBuffer(entry.buffer, 0, uniforms);
+    return entry.bindGroup;
   }
 
   private ensureTargets(width: number, height: number): MaskTargets {
@@ -243,8 +247,7 @@ export class SelectionMaskPass {
     this.releaseTargets();
     this.cachedDepthBindGroup = null;
     this.cachedDepthView = null;
-    this.hoverUniformBuffer?.destroy();
-    this.hoverUniformBuffer = null;
-    this.hoverBindGroup = null;
+    for (const entry of this.hoverUniforms) entry.buffer.destroy();
+    this.hoverUniforms = [];
   }
 }

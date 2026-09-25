@@ -6,7 +6,7 @@
  * The command palette's Export category, generated from the toolbar export
  * registry (`toolbar/export-commands.ts`) so the palette offers exactly the
  * formats the classic toolbar and the ribbon do, in the same order (#5601).
- * Every row only hands a request to `usePaletteExportRunner`, which runs the
+ * Every row only hands a request to `useExportRunner`, which runs the
  * toolbars' own handlers and dialogs — see that file's docblock.
  *
  * CSV is a sub-menu in the toolbars; the palette has no sub-menus, so it gets
@@ -18,7 +18,7 @@ import type { TranslationKey } from '@/i18n';
 import { resolveEnglish } from '@/i18n/registry';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { CLASSIC_EXPORT_ICONS } from './toolbar/ClassicExportMenuItems';
-import type { PaletteExportRequest } from './usePaletteExportRunner';
+import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import { withKey } from './commandPaletteCommandsTypes';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
@@ -52,7 +52,7 @@ const CSV_LABEL_KEYS: Record<CsvExportType, TranslationKey> = {
  * row renders `label` as-is (no catalogue key), like other `ext:` rows.
  */
 export function buildExportCommands(
-  runExport: (request: PaletteExportRequest) => void,
+  runExport: (request: ExportRequest) => void,
   extensionExporters: readonly ExtensionExporter[] = [],
 ): Command[] {
   const extensionRows = extensionExporters.map((exporter): Command => ({
@@ -67,7 +67,7 @@ export function buildExportCommands(
   return [...registryRows(runExport), ...extensionRows];
 }
 
-function registryRows(runExport: (request: PaletteExportRequest) => void): Command[] {
+function registryRows(runExport: (request: ExportRequest) => void): Command[] {
   return EXPORT_COMMANDS.flatMap((command): Command[] => {
     const icon = CLASSIC_EXPORT_ICONS[command.id];
     if (command.kind === 'table-menu') {

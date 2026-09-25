@@ -96,16 +96,20 @@ describe('every model export is filed under the model name (#5833)', () => {
     }
   });
 
-  it('mobile GLB is named like the dialog, not model.glb', async () => {
+  it('mobile registry GLB keeps the model filename and mobile analytics surface (#5842)', async () => {
     const completed: Record<string, unknown>[] = [];
     mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
       if (event === 'export_completed') completed.push(properties);
     });
     mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', () => new Uint8Array([1]));
+    mock.method(GeometryProcessor.prototype, 'exportGlb', () => new Uint8Array([1]));
     render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
-    press(document.querySelector('[aria-haspopup="menu"]')!, 'ArrowDown'); await advance(10);
-    const action = [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Export GLB');
-    assert.ok(action); click(action); await advance(25);
+    const more = document.querySelector<HTMLElement>('[aria-label="More actions"]');
+    assert.ok(more);
+    press(more, 'ArrowDown'); await advance(10);
+    const action = document.querySelector<HTMLElement>('[data-export-row="export:glb"]');
+    assert.ok(action); click(action); await advance(20);
+    click(button('Export')); await advance(20);
     assert.deepEqual(downloadedNames(), ['Haus -2.glb']);
     assert.equal(completed.length, 1, '#5844: one completion for the mobile GLB download');
     assert.equal(completed[0].surface, 'mobile');

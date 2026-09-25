@@ -26,7 +26,7 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { trackExportCompleted } from '@/lib/analytics';
-import type { UiSurface } from '@/lib/analytics-ui-events';
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
 export type { CsvExportType };
@@ -45,7 +45,7 @@ const CSV_SUFFIX: Record<CsvExportType, string> = {
   spatial: '_spatial-hierarchy',
 };
 
-export function useExportCommands(surface: UiSurface) {
+export function useExportCommands(surface: ExportSurface) {
   const { ifcDataStore, models, geometryResult } = useIfc();
 
   // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill

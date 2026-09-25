@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { IDSDocument } from '@ifc-lite/ids';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInput } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
@@ -140,6 +140,61 @@ afterEach(() => {
 });
 
 describe('ValidationPanel wiring (#5138)', () => {
+  for (const modelCount of [1, 2]) {
+    it(`keeps an unsaved rule-set draft and edit mode across remount with ${modelCount} model(s) (#5825)`, async () => {
+      const parsed = await parseWalls();
+      useViewerStore.setState({
+        models: new Map(Array.from({ length: modelCount }, (_, index) => {
+          const id = `m${index + 1}`;
+          return [id, federatedModel(id, parsed)] as const;
+        })),
+      });
+
+      const first = render(<ValidationPanel />);
+      const fileInput = first.querySelector('input[type="file"]');
+      assert.ok(fileInput);
+      await selectFile(fileInput as HTMLInputElement, ruleSetFile());
+      await waitFor(() => first.querySelector('input[aria-label="Rule set name"]') !== null);
+      const nameInput = first.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
+      assert.ok(nameInput);
+      typeInput(nameInput, 'Unsaved draft');
+      assert.strictEqual(nameInput.value, 'Unsaved draft');
+
+      cleanup(); // Switching to another sidebar panel unmounts the host.
+      const reopened = render(<ValidationPanel onClose={() => {}} />);
+      const restoredName = reopened.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
+      assert.ok(restoredName, 'the editor must reopen rather than the empty-state entry');
+      assert.strictEqual(restoredName.value, 'Unsaved draft');
+      assert.deepStrictEqual(
+        [...reopened.querySelectorAll<HTMLInputElement>('input[aria-label="Rule name"]')].map((input) => input.value),
+        ['Fire rating set', 'Unique name'],
+      );
+
+      const close = reopened.querySelector('button[aria-label="Data validation"]');
+      assert.ok(close);
+      click(close);
+      cleanup();
+      const afterClose = render(<ValidationPanel />);
+      assert.strictEqual(afterClose.querySelector('input[aria-label="Rule set name"]'), null);
+      assert.match(afterClose.textContent ?? '', /New rule set/);
+    });
+  }
+
+  it('full model unload discards the unsaved rule-set draft (#5825)', async () => {
+    const parsed = await parseWalls();
+    useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', parsed)]]) });
+    const first = render(<ValidationPanel />);
+    const fileInput = first.querySelector('input[type="file"]');
+    assert.ok(fileInput);
+    await selectFile(fileInput as HTMLInputElement, ruleSetFile());
+    cleanup();
+
+    useViewerStore.getState().clearAllModels();
+    const reopened = render(<ValidationPanel />);
+    assert.strictEqual(reopened.querySelector('input[aria-label="Rule set name"]'), null);
+    assert.match(reopened.textContent ?? '', /New rule set/);
+  });
+
   it('the IDS validation entry card mounts the existing IDSPanel empty state', () => {
     const ui = render(<ValidationPanel />);
     const entry = ui.querySelector('[data-testid="validation-entry-ids"]');
@@ -193,6 +248,14 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     // "Edit rules" is offered from the results state, keeping the report.
     assert.match(text, /Edit rules/);
+    const editRules = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Edit rules');
+    assert.ok(editRules);
+    click(editRules);
+    cleanup();
+    const reopened = render(<ValidationPanel />);
+    const restoredName = reopened.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
+    assert.ok(restoredName, 'edit mode must survive the panel unmount even while a report exists (#5825)');
+    assert.strictEqual(restoredName.value, 'Wiring fixture');
   });
 
   it('the header toggle switches sources without losing either side\'s state', () => {

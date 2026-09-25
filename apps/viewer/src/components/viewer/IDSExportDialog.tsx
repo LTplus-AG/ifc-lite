@@ -35,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import type { IDSReportInput } from '@ifc-lite/bcf';
+import { IDSExportTopicCount } from './IDSExportTopicCount';
 import {
   Dialog,
   DialogContent,
@@ -73,6 +75,8 @@ interface IDSExportDialogProps {
   hasReport: boolean;
   /** Total failing entity count for display */
   failedCount: number;
+  /** The report's specification results, to show how many topics each grouping makes (#5824). */
+  specificationResults?: IDSReportInput['specificationResults'];
   /** Called when export is confirmed */
   onExport: (settings: IDSBCFExportSettings) => Promise<void>;
   /** Export progress (controlled externally) */
@@ -91,6 +95,7 @@ export function IDSExportDialog({
   trigger,
   hasReport,
   failedCount,
+  specificationResults,
   onExport,
   progress,
   open: controlledOpen,
@@ -101,7 +106,9 @@ export function IDSExportDialog({
   const open = controlledOpen ?? internalOpen;
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [settings, setSettings] = useState<IDSBCFExportSettings>({
-    topicGrouping: 'per-entity',
+    // One topic per failing SPECIFICATION by default: per-entity scales with
+    // the model and hits the topic cap on any large failure (#5824).
+    topicGrouping: 'per-specification',
     includePassingEntities: false,
     includeCamera: true,
     includeSnapshots: false,
@@ -176,6 +183,7 @@ export function IDSExportDialog({
               {settings.topicGrouping === 'per-specification' && t('idsPanel.export.groupingHint.perSpecification')}
               {settings.topicGrouping === 'per-requirement' && t('idsPanel.export.groupingHint.perRequirement')}
             </p>
+            {specificationResults && <IDSExportTopicCount specificationResults={specificationResults} settings={settings} />}
           </div>
 
           {/* Include Passing */}

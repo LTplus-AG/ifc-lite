@@ -16,6 +16,7 @@ import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
+import { IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets } from '@/lib/ids/bcf-topic-estimate';
 import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { bcfWorldOffset, projectViewpointsToWorld } from '@/hooks/bcf/viewpoint-world-frame';
@@ -132,23 +133,7 @@ export async function runIdsBcfExport({
     } else {
       const camera = renderer.getCamera();
 
-      // Collect all unique entities that need snapshots (Set-based O(1) dedup)
-      const seenKeys = new Set<string>();
-      const entitiesToSnapshot: Array<{ modelId: string; expressId: number; boundsKey: string }> = [];
-      for (const specResult of report.specificationResults) {
-        for (const entity of specResult.entityResults) {
-          if (entity.passed && !includePassingEntities) continue;
-          const boundsKey = `${entity.modelId}:${entity.expressId}`;
-          if (!seenKeys.has(boundsKey)) {
-            seenKeys.add(boundsKey);
-            entitiesToSnapshot.push({
-              modelId: entity.modelId,
-              expressId: entity.expressId,
-              boundsKey,
-            });
-          }
-        }
-      }
+      const entitiesToSnapshot = idsBcfSnapshotTargets(report, includePassingEntities);
 
       const total = entitiesToSnapshot.length;
 
@@ -257,6 +242,7 @@ export async function runIdsBcfExport({
     projectName: `IDS Report - ${document?.info.title ?? 'Untitled'}`,
     topicGrouping,
     includePassingEntities,
+    maxTopics: IDS_BCF_MAX_TOPICS,
     entityBounds,
     entitySnapshots,
   };

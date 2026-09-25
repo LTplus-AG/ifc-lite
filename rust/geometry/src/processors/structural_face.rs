@@ -8,23 +8,13 @@ use crate::router::GeometryProcessor;
 use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::advanced_face::{process_advanced_face, process_planar_face_with_rtc};
+use super::advanced_face::process_advanced_face;
 
 pub struct IfcFaceSurfaceProcessor;
 
 impl IfcFaceSurfaceProcessor {
     pub fn new() -> Self {
         Self
-    }
-
-    pub fn process_with_rtc(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        quality: TessellationQuality,
-        rtc_file_units: (f64, f64, f64),
-    ) -> Result<Mesh> {
-        self.process_planar(entity, decoder, quality, Some(rtc_file_units))
     }
 
     fn process_planar(
@@ -43,10 +33,8 @@ impl IfcFaceSurfaceProcessor {
         if surface.ifc_type != IfcType::IfcPlane {
             return Ok(Mesh::new());
         }
-        let (positions, indices) = match rtc_file_units {
-            Some(rtc) => process_planar_face_with_rtc(entity, decoder, quality, rtc)?,
-            None => process_advanced_face(entity, decoder, quality)?,
-        };
+        let (positions, indices) =
+            process_advanced_face(entity, decoder, quality, rtc_file_units)?;
         Ok(Mesh {
             positions,
             normals: Vec::new(),

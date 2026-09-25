@@ -4,7 +4,8 @@
 
 /**
  * Proof that radius mode (#2737 item 2) is reachable through the SHIPPED
- * panel, not just through the store: mounts the real `MeasureOverlay`,
+ * surfaces, not just through the store: mounts the real `MeasurementsPanel`
+ * (the List tab, #5502) and the real `MeasureOverlay` on a `ViewportHud`,
  * drives `handleRadiusClick` (the same function a canvas click calls) and
  * `finishRadius` (the same function Enter calls), and reads the DOM text a
  * user would actually see.
@@ -23,6 +24,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { MeasureOverlay } from './MeasurePanel.js';
+import { MeasurementsPanel } from '../MeasurementsPanel.js';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { handleRadiusClick } from '../selectionHandlers.js';
 import type { MouseHandlerContext } from '../mouseHandlerTypes.js';
 import type { Point3 } from './measure-modes/radius.js';
@@ -49,12 +52,12 @@ function unmountAll(): void {
 
 after(unmountAll);
 
-/** Click the panel's section button whose label is `label`. */
+/** Click the Measurements panel's tab whose label is `label`. */
 function openSection(container: HTMLElement, label: string): void {
-  const button = [...container.querySelectorAll('button')].find(
+  const button = [...container.querySelectorAll('[role="tab"]')].find(
     (b) => b.textContent?.trim() === label,
   );
-  assert.ok(button, `no section button labelled "${label}" on the measure panel`);
+  assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
@@ -153,7 +156,7 @@ beforeEach(() => {
 
 describe('radius mode, driven through the shipped panel (#2737 item 2)', () => {
   it('a genuine arc shows a fitted radius WITH its provenance in the panel', () => {
-    const container = renderNode(<MeasureOverlay />);
+    const container = renderNode(<MeasurementsPanel />);
     openSection(container, 'List');
 
     act(() => {
@@ -172,7 +175,7 @@ describe('radius mode, driven through the shipped panel (#2737 item 2)', () => {
   });
 
   it('a straight run shows a VISIBLE refusal in the panel, not silence or a stale reading', () => {
-    const container = renderNode(<MeasureOverlay />);
+    const container = renderNode(<MeasurementsPanel />);
     openSection(container, 'List');
 
     act(() => {
@@ -188,7 +191,7 @@ describe('radius mode, driven through the shipped panel (#2737 item 2)', () => {
   });
 
   it('the in-progress readout updates LIVE as points are added, before any finish', () => {
-    const container = renderNode(<MeasureOverlay />);
+    const container = renderNode(<MeasurementsPanel />);
     openSection(container, 'List');
 
     const pts = arcPoints();
@@ -217,7 +220,7 @@ describe('radius mode, driven through the shipped panel (#2737 item 2)', () => {
 
 /**
  * Revert-oracle witness (#4918): a small, independent proof that the
- * panel TITLE is actually wired to `t()` rather than a hardcoded "Measure"
+ * bar's tool caption is actually wired to `t()` rather than a hardcoded "Measure"
  * string, using only pre-existing public i18n API (`registerLocale` /
  * `setLocale` from `@/i18n`, no import of the new `measure.en.ts` catalogue
  * module). Deliberately kept separate from `Measure.i18n.test.tsx`'s
@@ -236,12 +239,13 @@ describe('MeasureOverlay panel title is localized (#4918 revert-oracle witness)'
   it('renders a registered locale override for the panel title instead of the hardcoded English string', () => {
     registerLocale('measure-witness', { 'measure.panelTitle': 'MEASURE-WITNESS-TITLE' });
     setLocale('measure-witness');
-    const container = renderNode(<MeasureOverlay />);
+    // The bar portals into the HUD host, so both are mounted in one container.
+    const container = renderNode(<><ViewportHud /><MeasureOverlay /></>);
     const text = container.textContent ?? '';
     assert.match(
       text,
       /MEASURE-WITNESS-TITLE/,
-      'panel title must come from the active locale (t("measure.panelTitle")), not a hardcoded "Measure" string',
+      'tool caption must come from the active locale (t("measure.panelTitle")), not a hardcoded "Measure" string',
     );
   });
 });

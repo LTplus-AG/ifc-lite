@@ -95,7 +95,7 @@ const noopRenderer: ChartRenderer = async () => () => ({
 /** No model loaded: the "Load a model to chart it." empty state. */
 async function mountNoModel(): Promise<HTMLElement> {
   useViewerStore.setState({ models: new Map(), activeModelId: null, dashboards: [], activeDashboardId: null });
-  const container = render(<ChartsPanel renderer={noopRenderer} onClose={() => {}} />);
+  const container = render(<ChartsPanel renderer={noopRenderer} />);
   await act(async () => { await Promise.resolve(); });
   return container;
 }
@@ -104,7 +104,7 @@ async function mountNoModel(): Promise<HTMLElement> {
 async function mountEmptyDashboard(): Promise<HTMLElement> {
   const model = fixtureModel('m1');
   useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, dashboards: [], activeDashboardId: null });
-  const container = render(<ChartsPanel renderer={noopRenderer} onClose={() => {}} />);
+  const container = render(<ChartsPanel renderer={noopRenderer} />);
   await act(async () => { await Promise.resolve(); });
   act(() => {
     const dashboard = useViewerStore.getState().dashboards[0];

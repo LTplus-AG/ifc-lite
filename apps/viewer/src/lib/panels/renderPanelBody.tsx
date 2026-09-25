@@ -31,6 +31,8 @@ import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
 import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
+import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
+import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
@@ -51,6 +53,8 @@ const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((
 // Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
 // (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
 const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
+// Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
+const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
@@ -60,19 +64,23 @@ function AppearancePanelBody() {
   return <ChunkErrorBoundary label="Appearance panel"><Suspense fallback={null}><AppearancePanel /></Suspense></ChunkErrorBoundary>;
 }
 
-function DocumentPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Document panel"><Suspense fallback={null}><DocumentPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function DocumentPanelBody() {
+  return <ChunkErrorBoundary label="Document panel"><Suspense fallback={null}><DocumentPanel /></Suspense></ChunkErrorBoundary>;
 }
-function FlowPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-}
-
-function DrawingPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function FlowPanelBody() {
+  return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel /></Suspense></ChunkErrorBoundary>;
 }
 
-function ChartsPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function DrawingPanelBody() {
+  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel /></Suspense></ChunkErrorBoundary>;
+}
+
+function PresentationPanelBody() {
+  return <ChunkErrorBoundary label="Presentation panel"><Suspense fallback={null}><PresentationPanel /></Suspense></ChunkErrorBoundary>;
+}
+
+function ChartsPanelBody() {
+  return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel /></Suspense></ChunkErrorBoundary>;
 }
 
 function LayersPanelBody({ onClose }: { onClose: () => void }) {
@@ -111,7 +119,10 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
  * panel" handler (re-dock to Information, remove the float, or re-dock the
- * window). The Information panel ignores it — it is the always-on fallback.
+ * window). The Information panel ignores it — it is the always-on fallback —
+ * and so do the bottom-strip panels (Script / Schedule / Lists / Charts /
+ * Document / Flow / Drawing / Presentation), whose own close row #5498
+ * retired in favour of the strip header's single Close.
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
@@ -126,20 +137,23 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
-    case 'script': return <ScriptPanel onClose={onClose} />;
-    case 'gantt': return <GanttPanel onClose={onClose} />;
-    case 'lists': return <ListPanel onClose={onClose} />;
+    case 'script': return <ScriptPanel />;
+    case 'gantt': return <GanttPanel />;
+    case 'lists': return <ListPanel />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanel onClose={onClose} />;
     case 'layers': return <LayersPanelBody onClose={onClose} />;
     case 'sources': return <SourcesPanelBody onClose={onClose} />;
-    case 'charts': return <ChartsPanelBody onClose={onClose} />;
-    case 'flow': return <FlowPanelBody onClose={onClose} />;
-    case 'document': return <DocumentPanelBody onClose={onClose} />;
+    case 'charts': return <ChartsPanelBody />;
+    case 'flow': return <FlowPanelBody />;
+    case 'document': return <DocumentPanelBody />;
     case 'cost': return <CostPanel onClose={onClose} />;
     case 'environment': return <EnvironmentPanel onClose={onClose} />;
-    case 'drawing': return <DrawingPanelBody onClose={onClose} />;
+    case 'drawing': return <DrawingPanelBody />;
+    case 'presentation': return <PresentationPanelBody />;
     case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
+    case 'measurements': return <MeasurementsPanel onClose={onClose} />;
+    case 'placement': return <PlacementPanel onClose={onClose} />;
   }
 }

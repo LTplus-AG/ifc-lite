@@ -11,7 +11,8 @@
  * content digest and — for nodes that declare `reads: 'model'` — the
  * per-model revisions the caller supplies. The caller owns those revisions:
  * it bumps one when the graph's own write nodes touch a model, and when the
- * host reports an external change. Write nodes are never memoised.
+ * host reports an external change. Write nodes are never memoised, nor are
+ * volatile ones, nor a run in which any lane called `ctx.markVolatile()`.
  */
 
 import { nodeAvailability, type HostFeatures } from './availability.js';
@@ -266,12 +267,16 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       const kept = trackingPlan.keep.find((e) => e.laneKey === k);
       return kept ? { action: 'keep', globalId: kept.globalId } : undefined;
     };
+    // Set when any lane reports that its result came from outside the graph:
+    // the node's outputs are then not memoised, so a rerun fetches again.
+    let markedVolatile = false;
     const makeCtx = (laneKey: string | null, tracking?: LaneTracking) => ({
       host: opts.host,
       laneKey,
       tracking,
       signal: opts.signal,
       log: (level: LogLevel, message: string) => log.push({ nodeId, laneKey, level, message }),
+      markVolatile: () => { markedVolatile = true; },
     });
 
     const results: (NodeOutputs | null)[] = [];
@@ -367,7 +372,10 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       writesThisRun += 1;
       if (opts.cache) opts.cache.writeGeneration += 1;
     }
-    if (memoKey && opts.cache) opts.cache.set(nodeId, memoKey, assembled);
+    if (memoKey && opts.cache) {
+      if (markedVolatile) opts.cache.invalidate(nodeId);
+      else opts.cache.set(nodeId, memoKey, assembled);
+    }
     report({
       status: 'ok',
       lanes: plan.lanes.length,

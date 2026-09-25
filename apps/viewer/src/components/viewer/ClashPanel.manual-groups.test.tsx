@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import { MANUAL_CLASH_GROUPS_KEY } from '@/lib/clash/manual-groups';
 import { ClashPanel } from './ClashPanel.js';
 import { ClashManualGroupDialog } from './ClashManualGroupDialog.js';
+import { Toaster } from '@/components/ui/toast.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 800 });
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
@@ -69,16 +70,19 @@ beforeEach(async () => {
     clashReviews: new Map(),
     clashStatusFilter: new Set(['open', 'resolved', 'accepted']),
     bcfProject: null,
+    bcfPanelVisible: false,
     cameraCallbacks: {},
     fromGlobalId: (expressId: number) => ({ modelId: 'model', expressId }),
   });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => root!.render(<ClashPanel />));
+  await act(async () => root!.render(<><ClashPanel /><Toaster /></>));
 });
 
 afterEach(async () => {
+  const dismiss = container?.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]');
+  if (dismiss) await act(async () => dismiss.click());
   const current = root;
   root = null;
   if (current) await act(async () => current.unmount());
@@ -145,6 +149,9 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     assert.ok(topics?.has(concurrentTopic.guid), 'the concurrent topic is not overwritten by stale project state');
     const groupTopic = [...topics!.values()].find((topic) => topic.title === 'Riser coordination');
     assert.ok(groupTopic, 'one group action creates its BCF topic');
+    assert.equal(useViewerStore.getState().bcfPanelVisible, false,
+      'creating a group topic must leave the Clash workspace open (#5827)');
+    assert.ok(container!.textContent?.includes('Topic created'), 'the group path shows its success toast');
     assert.deepEqual(
       groupTopic.header?.map((file) => file.filename),
       ['model.ifc'],
@@ -170,6 +177,8 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     assert.equal(container!.querySelector('button[aria-label="Collapse Level 2 riser"]'), null);
     const afterUngroup = JSON.parse(localStorage.getItem(MANUAL_CLASH_GROUPS_KEY) ?? 'null') as { groups: unknown[] };
     assert.deepEqual(afterUngroup.groups, []);
+    await act(async () => buttonWithText('Open BCF').click());
+    assert.equal(useViewerStore.getState().bcfPanelVisible, true, 'the toast action opens BCF');
   });
 
   it('keeps the create dialog open when its persistence callback fails', async () => {

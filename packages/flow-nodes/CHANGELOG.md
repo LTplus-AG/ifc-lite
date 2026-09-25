@@ -1,5 +1,61 @@
 # @ifc-lite/flow-nodes
 
+## 0.5.0
+
+### Minor Changes
+
+- [#5933](https://github.com/LTplus-AG/ifc-lite/pull/5933) [`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114) Thanks [@louistrue](https://github.com/louistrue)! - Add Autodesk Platform Services receive nodes for flow graphs ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634)): `aps.token` mints a 2-legged client-credentials token (or wraps a provided 3-legged one) as an opaque handle that is never output, logged or serialised, and `aps.modelProperties` reads Model Derivative metadata and properties of a translated model (derivative URN or Docs/ACC version id) into a table keyed by `externalId`, with `category`, `IfcGUID` and every property as a `Group.Property` column, ready for `table.joinByKey`. All requests go through the gated `coreNetworkRequest` (`network.fetch:developer.api.autodesk.com`), and APS's `202` "still processing" answer is retried a bounded number of times.
+
+- [#5935](https://github.com/LTplus-AG/ifc-lite/pull/5935) [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenCDE Documents API flow nodes and `model.openFromSource` ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634), [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.4).
+  
+  `@ifc-lite/flow-nodes` gains `documents.queryVersions` (polls `POST /document-versions` with the previous ETag; outputs a versions table, the new ETag and `changed`, which is `false` on a 304), `documents.download` (downloads a version's file as base64 with its name, size and content type) and `model.openFromSource` (opens downloaded bytes as a model through the new optional `FlowHost.openModel`, gated by the `openModel` backend feature). Every Documents API request goes through `coreNetworkRequest` with the graph's `network.fetch:<host>` grants; the bearer token param takes `{{secret:NAME}}`. `model.select` and `model.byType` gain an optional `modelId` input, so a read can be wired to run after, and on, an opened model.
+  
+  `@ifc-lite/sandbox`: `coreNetworkRequest` accepts `responseType: 'bytes'` and then returns the capped body as `NetworkResponse.bytes`, unmangled by a text decode. A new `allowNotModified: true` option returns a 304 Not Modified as a response; without it a 304 is still refused like every other 3xx, so existing `http.request` and `bim.network.fetch` behaviour is unchanged.
+  
+  `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`) implement `openModel` with their own loaders: the opened model becomes the one the rest of the run (and the CLI's `--out`) works on, and MCP registers it for later tool calls. The viewer loads it through `addModel`, the same path as a dropped file.
+
+- [#5925](https://github.com/LTplus-AG/ifc-lite/pull/5925) [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b) Thanks [@louistrue](https://github.com/louistrue)! - Add the `speckle.receive` flow node: fetches a Speckle model version (modern `/projects/<p>/models/<m>[@<v>]` URLs and legacy stream commit/object URLs) through the gated network request path, and writes its walls, floors, flat roofs, columns and beams into a target storey with Revit parameters as property sets. Anything the v1 mapping cannot reproduce is reported by type, reason and count. Display meshes are not written, and bodies are rebuilt parametrically.
+
+### Patch Changes
+
+- Updated dependencies [[`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc)]:
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/sandbox@2.8.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/bcf-api@0.2.4
+  - @ifc-lite/sdk@7.1.3
+
+## 0.4.0
+
+### Minor Changes
+
+- [#5921](https://github.com/LTplus-AG/ifc-lite/pull/5921) [`ca5ff8d`](https://github.com/LTplus-AG/ifc-lite/commit/ca5ff8d98979cbcadd1644e32ddad4990d178eb4) Thanks [@louistrue](https://github.com/louistrue)! - Add BCF API flow nodes: `bcf.listTopics` (topics as a table plus the raw list, with OData filter/orderby/top), `bcf.createTopic` (from params or one topic per table row) and `bcf.addComment`. They use `@ifc-lite/bcf-api`'s client over the gated `coreNetworkRequest` transport, so every request needs a declared `network.fetch:<host>` grant, and the bearer token can come from a `{{secret:NAME}}` reference. The nodes are never memoised.
+
+- [#5446](https://github.com/LTplus-AG/ifc-lite/pull/5446) [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef) Thanks [@louistrue](https://github.com/louistrue)! - Add outbound network requests and environment secrets to flow graphs ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phases 3.3/3.5), deny-by-default throughout.
+  
+  `@ifc-lite/extensions` gains a `secret` capability scope: `secret.read:<NAME>` grants a graph read access to one named env var, with a strict exact-match target (`[A-Z][A-Z0-9_]*`, no glob, no universal wildcard) — the one capability target grammar stricter than the general pattern grammar.
+  
+  `@ifc-lite/sandbox` gains `bim.network.fetch`, gated by a new `network` permission (off by default) plus an exact-host allow-list re-checked on every call against the running graph's actual `network.fetch:<host>` grants. Requests are restricted to `https:`, matched against `new URL(url).hostname` (never the raw URL string, so userinfo/suffix spoofing is rejected by construction), refuse every redirect, cap the response body mid-stream, enforce a combined timeout/abort signal, and strip `Host`/`Cookie`/hop-by-hop headers. The core request logic (`network-request.ts`) is the single implementation shared by the sandbox bridge and the new `HttpRequest` flow node.
+  
+  `@ifc-lite/flow-nodes` gains the `http.request` node and a `secrets.ts` module: a node param may reference `{{secret:NAME}}`, validated against the graph's declared `secret.read:<NAME>` capabilities and the real environment BEFORE a run starts (an undeclared or unset reference is a validation error, never a silently empty string), then substituted into a throwaway copy of the document. Every resolved secret at least 6 characters long is redacted (`<secret:NAME>`) from run logs, node outputs, and errors — applied at the outer boundary, so a secret that comes back inside a fetched response body is still caught.
+  
+  Secrets resolve from `process.env` ONLY in `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`), which now also redact their `--json`/tool-result output. The viewer's `HostFeatures.secrets` stays always-empty (the browser has no `process.env`), so a graph referencing a secret is reported `unavailable` before it runs, not mid-run; `HostFeatures.network` is `true` there too, so `http.request` runs subject to the browser's own CORS enforcement, surfacing a blocked cross-origin request as an explicit CORS-likely error rather than a silent empty result.
+  
+  `@ifc-lite/flow` now owns the `{{secret:NAME}}` grammar (`referencedSecrets`, `replaceSecretRefs`), and `checkAvailability` reports a node whose params reference a secret the host lacks as `unavailable`, so `flow validate` no longer calls such a graph runnable.
+
+### Patch Changes
+
+- [#5928](https://github.com/LTplus-AG/ifc-lite/pull/5928) [`4c7bd47`](https://github.com/LTplus-AG/ifc-lite/commit/4c7bd47e5e8c9bf62d88af6260cc6384a77e0cdf) Thanks [@louistrue](https://github.com/louistrue)! - A Script node that calls `bim.network.fetch` is no longer served a stale memoised result on a rerun ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634)). `NodeRunContext` gains an optional `markVolatile()`: a node calls it when a run's result came from outside the graph, and the scheduler then does not memoise that run. `script.run` / `script.list` call it only when the evaluation actually sent a request, so a script that never touches the network stays memoised. The sandbox's `SandboxConfig.network` accepts a `transport`, and the Script node now routes `bim.network.fetch` through the host's `networkTransport`, as `HttpRequest` already did.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f), [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`42b3f21`](https://github.com/LTplus-AG/ifc-lite/commit/42b3f214290d6c7d5fb27f697ec8451b323aabd4), [`a0e1bfe`](https://github.com/LTplus-AG/ifc-lite/commit/a0e1bfe567e3a892287faa8ee3e1b3610b59511d), [`11478f7`](https://github.com/LTplus-AG/ifc-lite/commit/11478f7b7e3b530a6111874bb233fada1a36d785), [`4c7bd47`](https://github.com/LTplus-AG/ifc-lite/commit/4c7bd47e5e8c9bf62d88af6260cc6384a77e0cdf), [`a3dfacb`](https://github.com/LTplus-AG/ifc-lite/commit/a3dfacb2862d1db09267ebe52707193630c35ff7)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/export@4.7.3
+  - @ifc-lite/extensions@0.10.0
+  - @ifc-lite/sandbox@2.7.0
+  - @ifc-lite/flow@0.4.0
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/sdk@7.1.2
+  - @ifc-lite/query@2.5.1
+
 ## 0.3.1
 
 ### Patch Changes

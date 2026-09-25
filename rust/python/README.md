@@ -103,41 +103,46 @@ Pass `include_directrices=True` to either geometry function. The result adds
 `swept_disks`, keyed by occurrence STEP id, and `directrix_diagnostics`. Each
 occurrence can have multiple source `IfcSweptDiskSolid` items. A description
 preserves `solid_id`, `directrix_id`, `Radius`, `InnerRadius`, `mapping_path`,
-`source_modified`, `status`, and an ordered `Directrix` of typed line and
-circular-arc segments.
-Coordinates are in absolute IFC Z-up world metres, matching mesh vertices.
+`source_modified`, `status`, an ordered `Directrix` of typed line and
+circular-arc segments, and `directrix_metrics`. Coordinates are in absolute IFC
+Z-up world metres, matching mesh vertices.
 For a complete description, `Radius` and `InnerRadius` are the effective world
 radii in metres. For an unsupported transform, they retain the authored radii
 converted to metres; the status indicates that no world circular radius is
-available. Angle values are in radians. The buffer path uses integer keys; the
-JSON path uses string object keys.
+available. `directrix_metrics` gives `total_length` and one entry per directrix
+segment, with a matching `segment_index` and centreline `length` in world
+metres. Arc entries have a positive `bend_angle` in radians; line entries have
+`bend_angle=None`. The signed arc `sweep_angle` on `Directrix` still gives
+travel direction. These are geometric bend angles, without bend allowances or
+fabrication deductions. The buffer path uses integer keys; the JSON path uses
+string object keys.
 
 ```python
 data = ifclite_geom.geometry_data_buffers(ifc_bytes, include_directrices=True)
 for step_id, sweeps in data["swept_disks"].items():
     for sweep in sweeps:
-        for segment in sweep["Directrix"]:
+        metrics = sweep["directrix_metrics"]
+        if metrics is None:
+            print(step_id, sweep["status"])
+            continue
+        print(step_id, "centreline metres:", metrics["total_length"])
+        for segment, measured in zip(sweep["Directrix"], metrics["segments"]):
             if segment["type"] == "line":
-                print(step_id, segment["start"], segment["end"])
+                print(step_id, segment["start"], segment["end"], measured["length"])
             else:  # circular arc
-                print(step_id, segment["center"], segment["radius"])
+                print(step_id, segment["center"], segment["radius"],
+                      measured["bend_angle"])
 ```
 
 An arc also carries `normal`, `x_axis`, `start_angle`, and `sweep_angle` to
 define its orientation and travel. `status` is `{"type": "complete"}` or
 `{"type": "unsupported", "reason": ...}`; unsupported paths have no partial
-segments. `source_modified=True` means the sweep is a source operand and later
-booleans may alter the final solid. Inspect that field before using the source
-path for fabrication. The flag does not describe cuts from external
-`IfcRelVoidsElement` openings. Extraction issues appear in
-`directrix_diagnostics`. With
-the flag omitted, both functions keep their existing output shape and skip
-this extraction.
-
-For a partial composite sweep or a raw-circle sweep with solid-level bounds,
-the current triangle mesher may cover a different extent ([#5566](https://github.com/LTplus-AG/ifc-lite/issues/5566)).
-The analytic `Directrix` follows the IFC parameters; check this distinction
-when comparing it to the returned mesh.
+segments and `directrix_metrics=None`. `source_modified=True` means the sweep is
+a source operand and later booleans may alter the final solid. Inspect that
+field before using the source path for fabrication. The flag does not describe
+cuts from external `IfcRelVoidsElement` openings. Extraction issues appear in
+`directrix_diagnostics`. With the flag omitted, both functions keep their
+existing output shape and skip this extraction.
 
 ### Tessellation quality
 

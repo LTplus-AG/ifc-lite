@@ -811,7 +811,7 @@ function LensEditor({
             onDragStart={rules.length > 1 ? setDragIndex : undefined}
             onDragEnter={setDragOverIndex}
             onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
-            onDrop={handleDrop}
+            onDrop={dragIndex !== null ? handleDrop : undefined /* a file drag is not a reorder (#5845) */}
             onMove={rules.length > 1 ? moveRule : undefined}
           />
         ))}

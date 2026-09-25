@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions';
+import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName } from './hud-regions';
 
 /**
  * Per-region layout: anchor corner/edge, stack alignment, and a safe-area
@@ -15,12 +15,29 @@ import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions
  * `top-6 right-6` (`ViewportOverlays.tsx` ~284-302, unmoved by this PR): 24px
  * inset + 60px cube = 84px, so anything placed in this region starts below
  * the cube instead of colliding with it.
+ *
+ * `bottom-center` used to reserve the always-on Presentation pill and the
+ * storey pill, both anchored at `bottom-4 left-1/2` outside the HUD. Both
+ * are gone now (#5478 items 22 and 26): the storey pill and hidden count
+ * moved into the status bar (#5504), and the Presentation pill became the
+ * `presentation` bottom panel (#5508), so this region is back to the same
+ * 1rem inset every other edge uses.
+ *
+ * `top-center` is capped at the viewport width minus a 14rem lane on each
+ * side (#5503): the left lane holds the status chips (a `HudChip` is capped
+ * at 13rem and truncates, so a long model name in the Editing chip cannot
+ * outgrow the lane), the right lane the ViewCube. A tool bar wider than what
+ * is left wraps (`HudToolbar` is `flex-wrap`) and a card shrinks, instead of
+ * sliding under either — the Space Sketch bar and plan card did exactly that
+ * at 1600px / 1280px with both side panels open. Wrapping is the fallback: a
+ * bar with lower-priority controls steps down to a narrower one-row form
+ * first (`useHudBarTier`, measured against the lane ruler rendered below).
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
     'top-0 left-0 items-start pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]',
   'top-center':
-    'top-0 left-1/2 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))]',
+    'top-0 left-1/2 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))] max-w-[calc(100%-28rem)]',
   'top-right':
     'top-0 right-0 items-end pt-[84px] pr-[max(1.5rem,env(safe-area-inset-right))]',
   'bottom-left':
@@ -50,8 +67,8 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
  * docked bottom panel that shrinks the viewport shrinks this with it instead
  * of being covered by it — no separate sizing logic needed here.
  *
- * No overlay has been migrated onto this yet (#5478 item 3 ships the kernel
- * with zero consumers; migrations are later items).
+ * Consumers portal in through `HudItem`; the first is the edit-mode chip
+ * (`EditModeHudChip`, #5489). The remaining overlays migrate in later items.
  */
 export function ViewportHud() {
   return (
@@ -59,6 +76,13 @@ export function ViewportHud() {
       {HUD_REGIONS.map((name) => (
         <HudRegionSlot key={name} name={name} />
       ))}
+      {/* The top-center lane ruler (#5975): same classes as the region, but
+          `w-full` and childless, so its width IS the lane cap. */}
+      <div
+        ref={setHudLaneRulerNode}
+        aria-hidden="true"
+        className={cn('pointer-events-none invisible absolute h-0 w-full', REGION_CLASSNAME['top-center'])}
+      />
     </div>
   );
 }

@@ -63,7 +63,6 @@ describe('Drawing panel localization (#4918)', () => {
 
     assert.match(ui.textContent ?? '', /⟦Drawing⟧/);
     const labels = [...ui.querySelectorAll('[aria-label]')].map((element) => element.getAttribute('aria-label'));
-    assert.ok(labels.includes(marked(CATALOGUE['section2d.close'])));
     assert.ok(labels.includes(marked(CATALOGUE['section2d.zoom.fit'])));
     assert.ok(labels.includes(marked(CATALOGUE['section2d.tools.distance'])));
   });

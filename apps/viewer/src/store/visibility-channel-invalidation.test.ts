@@ -52,8 +52,6 @@ beforeEach(() => {
     isolatedEntities: null,
     ghostExceptEntities: null,
     classFilter: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
     pinboardEntities: new Set(),
     activeBasketViewId: null,
     basketVisibilityOwned: null,

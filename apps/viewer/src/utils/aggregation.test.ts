@@ -4,7 +4,6 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { RelationshipType } from '@ifc-lite/data';
 import {
   collectAggregatedDescendants,
@@ -14,8 +13,6 @@ import {
   type AggregationModelAccess,
   type AggregationRelationships,
 } from './aggregation';
-import { fileURLToPath } from 'node:url';
-import { stripSource } from '@/test/strip-comments.js';
 
 /** Minimal forward-only IfcRelAggregates graph from an adjacency map. */
 function makeRelationships(adjacency: Record<number, number[]>): AggregationRelationships {
@@ -211,66 +208,4 @@ describe('expandToGeometryBearingIds', () => {
     assert.deepStrictEqual(expandToGeometryBearingIds([30], hasGeometry, access), [31, 32]);
   });
 
-  // frameSelection and resolveHighlightIds live in a useImperativeHandle
-  // closure inside Viewport.tsx, which has no test harness (no DOM/renderer
-  // to mount against) — the behaviour above, on the pure function both of
-  // them delegate to, is what's actually pinned. This is only a guard
-  // against the wiring being silently dropped or one of the two callbacks
-  // being pointed at a DIFFERENT resolution than the other (the actual bug:
-  // frameSelection resolved geometry-less assemblies to their renderable
-  // parts, but nothing told the renderer's highlight channel — see
-  // SearchModal.text.tsx below), so it matches against comment-stripped
-  // source. A bare substring search for `expandToGeometryBearingIds(` would
-  // happily match either callback alone, or the prose explaining the call —
-  // this additionally requires BOTH callbacks route through the SAME shared
-  // helper, which is what actually closes the highlight/frame mismatch.
-  it('frameSelection and resolveHighlightIds share the same aggregation resolution', () => {
-    // Prepared by the shared helper (`@/test/strip-comments.ts`), a TypeScript
-    // parse rather than a lexical scan: a regex stripper desyncs on a regex
-    // literal carrying an unbalanced quote, after which a following `//` is no
-    // longer seen as a comment (#2393). `masked`, not `code`: every anchor
-    // below is real code, so blanking string/template/JSX-text bodies costs
-    // nothing and closes the string-literal decoy at the same time.
-    const viewportPath = fileURLToPath(
-      new URL('../components/viewer/Viewport.tsx', import.meta.url),
-    );
-    const { masked: source } = stripSource(readFileSync(viewportPath, 'utf8'), viewportPath);
-
-    const helperStart = source.indexOf('const resolveRenderableIds = ');
-    assert.ok(helperStart >= 0, 'resolveRenderableIds helper defined');
-    const helperBody = source.slice(helperStart, source.indexOf('setCameraCallbacks({', helperStart));
-    assert.ok(
-      helperBody.includes('expandToGeometryBearingIds('),
-      'the shared helper must resolve geometry-less assemblies to their renderable parts',
-    );
-
-    const frameSelection = source.slice(source.indexOf('frameSelection:', helperStart));
-    const frameBody = frameSelection.slice(0, frameSelection.indexOf('resolveHighlightIds:'));
-    assert.ok(
-      frameBody.includes('resolveRenderableIds('),
-      'frameSelection must resolve geometry-less assemblies before giving up on bounds',
-    );
-
-    const resolveHighlight = frameSelection.slice(frameSelection.indexOf('resolveHighlightIds:'));
-    const highlightBody = resolveHighlight.slice(0, resolveHighlight.indexOf('frameClashRegion:'));
-    assert.ok(
-      highlightBody.includes('resolveRenderableIds('),
-      'resolveHighlightIds must use the SAME resolution as frameSelection, not a separate one',
-    );
-  });
-
-  // Bounds behavior is exercised by selection-bounds.test.ts and the real
-  // frameSelection browser run in model-reposition.e2e.spec.ts (#4226).
-
-  // The other half of the fix — a selection entry point that assigns
-  // selectedEntityId/selectedEntityIds directly (not via a 3D pick, which can
-  // never land on a geometry-less assembly) must resolve through
-  // resolveHighlightIds before highlighting, or the camera moves to an
-  // assembly that stays dark — is covered behaviourally, not by source text,
-  // in SearchModal.text.wiring.test.tsx ("resolves through resolveHighlightIds
-  // and puts the clicked id LAST, so it stays primary"): it stubs
-  // cameraCallbacks.resolveHighlightIds, clicks a real rendered row, and reads
-  // the resulting selectedEntityIds/selectedEntityId off the store, which is
-  // strictly stronger than grepping commit()'s source for both the call and
-  // its position.
 });

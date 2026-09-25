@@ -46,8 +46,6 @@ export interface FocusedClashGroup {
     hiddenEntities: ReadonlySet<number>;
     isolatedEntities: ReadonlySet<number> | null;
     ghostExceptEntities: ReadonlySet<number> | null;
-    hiddenEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
-    isolatedEntitiesByModel: ReadonlyMap<string, ReadonlySet<number>>;
     selectionRevision: number;
     clashHighlightColors: ViewerState['clashHighlightColors'];
     colorPresentationRevision: number;
@@ -111,8 +109,6 @@ export function focusedSceneRevisionIsCurrent(focused: FocusedClashGroup): boole
     && state.hiddenEntities === revision.hiddenEntities
     && state.isolatedEntities === revision.isolatedEntities
     && state.ghostExceptEntities === revision.ghostExceptEntities
-    && state.hiddenEntitiesByModel === revision.hiddenEntitiesByModel
-    && state.isolatedEntitiesByModel === revision.isolatedEntitiesByModel
     && state.selectionRevision === revision.selectionRevision
     && state.clashHighlightColors === revision.clashHighlightColors
     && state.colorPresentationRevision === revision.colorPresentationRevision
@@ -297,8 +293,6 @@ export function focusClashGroup(
       hiddenEntities: focusedState.hiddenEntities,
       isolatedEntities: focusedState.isolatedEntities,
       ghostExceptEntities: focusedState.ghostExceptEntities,
-      hiddenEntitiesByModel: focusedState.hiddenEntitiesByModel,
-      isolatedEntitiesByModel: focusedState.isolatedEntitiesByModel,
       selectionRevision: focusedState.selectionRevision,
       clashHighlightColors: focusedState.clashHighlightColors,
       colorPresentationRevision: focusedState.colorPresentationRevision,

@@ -62,7 +62,7 @@ function normalizeHeaders(raw: unknown): Record<string, string> | undefined {
  * `Number(x) || fallback` read an explicit `maxBytes: 0` as "unset" and
  * lifted the cap to the 5 MiB default.
  */
-function boundOr(value: unknown, fallback: number, min: number): number {
+export function boundOr(value: unknown, fallback: number, min: number): number {
   const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
   return Number.isFinite(n) && n >= min ? n : fallback;
 }

@@ -4,6 +4,8 @@
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { makePlacementManifest, parsePlacementManifest, type PlacementManifest } from '@/lib/model-placement/manifest';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
@@ -31,32 +33,33 @@ export function PlacementFiles() {
       setBindings(next); setManifest(document); setError(''); setStatus(t('repositionPanel.files.statusReviewMapping'));
     } catch (err) { setStatus(''); setError(err instanceof Error ? err.message : String(err)); setManifest(null); }
   };
-  return <details className="border-t pt-2"><summary>{t('repositionPanel.files.summary')}</summary>
-    <p>{t('repositionPanel.files.intro')}</p>
-    <button className="border px-2 py-1" onClick={() => {
+  return <details className="border-t pt-2 text-xs"><summary>{t('repositionPanel.files.summary')}</summary>
+    <p className="text-muted-foreground">{t('repositionPanel.files.intro')}</p>
+    <Button size="sm" variant="outline" onClick={() => {
       const state = useViewerStore.getState();
       const value = makePlacementManifest(state.models, state.modelPlacement.placements, placementFrameKey(state));
       downloadBlob(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }), `${sanitizeFilename('model-placements')}.json`);
-    }}>{t('repositionPanel.files.exportButton')}</button>
+    }}>{t('repositionPanel.files.exportButton')}</Button>
     <label className="block">{t('repositionPanel.files.openLabel')}<input aria-label={t('repositionPanel.files.openLabel')} type="file" accept=".json,application/json"
       onChange={(event) => { const file = event.target.files?.[0]; if (file) void read(file); event.target.value = ''; }} /></label>
-    {manifest && <fieldset><legend>{t('repositionPanel.files.matchLegend')}</legend>
-      {manifest.models.map((entry) => <label className="block" key={entry.instanceId}>{entry.instanceId}
-        <select aria-label={t('repositionPanel.files.bindAriaLabel', { instance: entry.instanceId })} value={bindings.get(entry.instanceId) ?? ''} className="border w-full bg-transparent"
-          onChange={(event) => setBindings((prior) => new Map(prior).set(entry.instanceId, event.target.value))}>
-          <option value="">{t('repositionPanel.files.chooseSourceOption')}</option>
-          {[...models].filter(([, model]) => entry.sourceContentHash === null || entry.sourceContentHash === model.sourceContentHash)
-            .map(([id, model]) => <option key={id} value={id}>{model.name} ({id})</option>)}
-        </select></label>)}
-      <p>{t('repositionPanel.files.importNote')}</p>
-      <button className="border px-2 py-1" onClick={() => {
+    {manifest && <fieldset className="space-y-1"><legend>{t('repositionPanel.files.matchLegend')}</legend>
+      {manifest.models.map((entry) => <label className="flex flex-col gap-0.5" key={entry.instanceId}>{entry.instanceId}
+        <Select value={bindings.get(entry.instanceId) ?? undefined} onValueChange={(value) => setBindings((prior) => new Map(prior).set(entry.instanceId, value))}>
+          <SelectTrigger aria-label={t('repositionPanel.files.bindAriaLabel', { instance: entry.instanceId })}><SelectValue placeholder={t('repositionPanel.files.chooseSourceOption')} /></SelectTrigger>
+          <SelectContent>
+            {[...models].filter(([, model]) => entry.sourceContentHash === null || entry.sourceContentHash === model.sourceContentHash)
+              .map(([id, model]) => <SelectItem key={id} value={id}>{model.name} ({id})</SelectItem>)}
+          </SelectContent>
+        </Select></label>)}
+      <p className="text-muted-foreground">{t('repositionPanel.files.importNote')}</p>
+      <Button size="sm" variant="outline" onClick={() => {
         try {
           if (manifest.models.some((entry) => !bindings.get(entry.instanceId))) throw new Error('Map every saved instance before importing.');
           useViewerStore.getState().importModelPlacements(manifest, bindings);
           setManifest(null); setError(''); setStatus(t('repositionPanel.files.statusImported'));
         } catch (err) { setStatus(''); setError(err instanceof Error ? err.message : String(err)); }
-      }}>{t('repositionPanel.files.importButton')}</button>
+      }}>{t('repositionPanel.files.importButton')}</Button>
     </fieldset>}
-    {status && <p role="status">{status}</p>}{error && <p role="alert">{error}</p>}
+    {status && <p role="status">{status}</p>}{error && <p role="alert" className="text-destructive">{error}</p>}
   </details>;
 }

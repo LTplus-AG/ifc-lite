@@ -5,17 +5,17 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Split tool's own two overlays (#4918 slice): `SplitNumericInput`
- * (the floating precise-distance panel with its metres/percent mode
- * toggle, Cut button and Snap-fraction row) and `SplitOverlay` (the idle
- * hint chip shown before an element is hovered). The live SVG guide/label
- * drawn once an element IS hovered is numeric only (distance/length via
- * `formatSplitHoverLabel`) and carries no prose of its own.
+ * The Split tool's HUD presence (#4918 slice, on the `TOOL_HUD` registry
+ * since #5503): its bar (`SplitHud`), the bottom-center hint the registry
+ * declares, and the cursor-anchored distance entry (`SplitCursorInput`).
+ * The live SVG guide/label drawn once an element IS hovered is numeric
+ * only (distance/length via `formatSplitHoverLabel`) and carries no prose
+ * of its own.
  */
 export const splitToolEn = {
-  'splitTool.modeMetres': 'm',
-  'splitTool.ofLength': 'of {length}m',
-  'splitTool.cutButton': 'Cut',
-  'splitTool.snapLabel': 'Snap',
-  'splitTool.hintChip': 'Move the cursor to set the cut point on the selected element — Esc to exit',
+  'splitTool.barLabel': 'Split',
+  'splitTool.closeAria': 'Exit the Split tool',
+  'splitTool.hint': 'Point at the selected element to place the cut · type a distance or a % · Esc to exit',
+  'splitTool.unitMetres': 'm',
+  'splitTool.cutDistanceAria': 'Cut distance in metres, or a percentage of the element length',
 } as const satisfies Record<string, TranslationValue>;

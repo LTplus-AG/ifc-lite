@@ -743,15 +743,6 @@ body {
   border-color: rgba(0, 0, 0, 0.10) !important;
 }
 
-/* Purple borders (property editor) stay purple but softened */
-.colorful .border-purple-200,
-.colorful .border-purple-300\/50,
-.colorful .border-purple-500\/30,
-.colorful .border-purple-700,
-.colorful .border-purple-800 {
-  border-color: rgba(157, 124, 216, 0.25) !important;
-}
-
 /* ── Text ── */
 .colorful .text-zinc-900,
 .colorful .text-zinc-800,
@@ -1172,35 +1163,6 @@ body {
 .toolbar-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Annotation pin idle introduction — fires once on mount, then settles.
-   Driven by a `prefers-reduced-motion` guard so accessibility users
-   don't get hit by the pulse. The pulse is the pin's own ink (#5491); the
-   100% keyframe leaves box-shadow out so the pin settles on its own halo
-   ring and shadow instead of a frozen keyframe value. */
-@keyframes annotation-pin-idle {
-  0% {
-    transform: scale(0.7);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--overlay-ink) 55%, transparent);
-  }
-  60% {
-    transform: scale(1.08);
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--overlay-ink) 0%, transparent);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.annotation-pin-idle {
-  animation: annotation-pin-idle 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .annotation-pin-idle {
-    animation: none;
-  }
 }
 
 /* Loading skeleton animation */

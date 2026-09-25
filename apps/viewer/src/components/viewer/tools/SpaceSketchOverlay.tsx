@@ -1382,11 +1382,7 @@ export function SpaceSketchOverlay() {
         canCleanup={rooms.length > 0}
         onCleanup={cleanupOrphans}
         canFit={derivedStorey != null}
-        onFit={() => fitToPoints(
-          rooms.length > 0
-            ? rooms.flatMap((r) => r.outline)
-            : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners),
-        )}
+        onFit={() => fitToPoints(rooms.length > 0 ? rooms.flatMap((r) => r.outline) : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners))}
         unbounded={unboundedCount > 0 ? { count: unboundedCount, boundaryMode } : null}
         diagnostics={showDiagnostics ? { leak: leakCount, failed: badCount } : null}
         resizeHandlers={resizeHandlers}

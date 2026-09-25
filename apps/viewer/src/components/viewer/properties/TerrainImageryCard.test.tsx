@@ -4,7 +4,8 @@
 
 /**
  * #5942 — the card reports what the drape measured (spec §15.4): the covered
- * fraction, the CRS path and the ground sample distance.
+ * fraction, the CRS path and the ground sample distance; and it says, before
+ * anything is fetched, that tile drapes are viewer-only.
  */
 
 import '@/test/setup-dom.js';
@@ -40,18 +41,23 @@ describe('TerrainImageryCard (#5942)', () => {
     assert.match(text, /ortho\.png/);
   });
 
-  it('names a reprojection into the terrain CRS', () => {
-    const text = render(<TerrainImageryCard model={model(drape({ imageCrs: 'EPSG:3857', reprojected: true }))} />).textContent ?? '';
+  it('names a reprojection and marks a tile drape as never exported', () => {
+    const text = render(<TerrainImageryCard model={model(drape({
+      source: 'tiles', sourceName: 'tile.example tiles, zoom 17', imageCrs: 'EPSG:3857', reprojected: true,
+    }))} />).textContent ?? '';
     assert.match(text, /EPSG:3857, reprojected to EPSG:2056/);
+    assert.match(text, /viewer only, never exported/);
   });
 
   it('explains how to drape when nothing is, and why it cannot on a terrain with no CRS', () => {
     const withCrs = render(<TerrainImageryCard model={model()} />).textContent ?? '';
     assert.match(withCrs, /Drop a GeoTIFF, or a PNG\/JPEG with its world file/);
+    assert.match(withCrs, /Drape tiles/);
     cleanup();
     const noCrs = orthoTerrainDocument();
     noCrs.coordinateSystem = undefined;
     const without = render(<TerrainImageryCard model={model(undefined, noCrs)} />).textContent ?? '';
     assert.match(without, /declares no coordinate system/);
+    assert.doesNotMatch(without, /Drape tiles/, 'no tile form where nothing can be placed');
   });
 });

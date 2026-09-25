@@ -5,7 +5,7 @@
 /**
  * Drape a georeferenced raster on every loaded LandXML terrain (#5942,
  * mapping spec §15). Reached from `useIfcLoader.loadFile` — the one load path
- * — for a raster bundle.
+ * — for a raster bundle, and from the tile-source panel for a tile mosaic.
  *
  * A raster creates no model. Per terrain it is placed through the same CRS
  * contract federation uses (`spatialMetadataFromLandXml`,

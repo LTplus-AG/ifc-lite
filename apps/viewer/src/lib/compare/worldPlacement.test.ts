@@ -300,6 +300,46 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
     assert.ok(fi, 'an X-parallel Axis must still compose via the Y fallback');
     assert.strictEqual(fi, worldPlacementFingerprint(explicit, siteId(explicit)));
   });
+
+  // #5922: for an Axis of exactly -X the projection of X vanishes and the
+  // schema gives no answer. The renderer (`build_axis2_matrix`) takes
+  // (0,0,1) x Axis = (0,-1,0) there; world Y turned the compare frame 180
+  // degrees about the Axis relative to what the viewer draws.
+  it('fills an absent RefDirection on a -X Axis with (0,-1,0), as the renderer does', async () => {
+    const implicit = await storeFromStep(siteWithAxis('-1.,0.,0.', ''));
+    const rendered = await storeFromStep(siteWithAxis('-1.,0.,0.', '0.,-1.,0.'));
+    const worldY = await storeFromStep(siteWithAxis('-1.,0.,0.', '0.,1.,0.'));
+    const fi = worldPlacementFingerprint(implicit, siteId(implicit));
+    assert.ok(fi, 'an anti-X Axis must compose');
+    assert.strictEqual(fi, worldPlacementFingerprint(rendered, siteId(rendered)));
+    assert.notStrictEqual(fi, worldPlacementFingerprint(worldY, siteId(worldY)));
+
+    // The composed basis itself: local X = (0,-1,0), local Z = (-1,0,0), so
+    // local Y = Z x X = (0,0,1).
+    const m = composeWorldPlacement(implicit, siteId(implicit));
+    assert.ok(m);
+    const column = (c: number) => [m[c]!, m[4 + c]!, m[8 + c]!].map((v) => v + 0);
+    assert.deepStrictEqual(column(0), [0, -1, 0]);
+    assert.deepStrictEqual(column(1), [0, 0, 1]);
+    assert.deepStrictEqual(column(2), [-1, 0, 0]);
+  });
+
+  it('follows the renderer next to X: projects X outside its 1e-6 tolerance, switches inside it', async () => {
+    // Axis 4e-5 off +X: still projected, so local X is about (0,-1,0).
+    const outside = await storeFromStep(siteWithAxis('1.,0.00004,0.', ''));
+    const outsideProjected = await storeFromStep(siteWithAxis('1.,0.00004,0.', '1.,0.,0.'));
+    const fo = worldPlacementFingerprint(outside, siteId(outside));
+    assert.ok(fo);
+    assert.strictEqual(fo, worldPlacementFingerprint(outsideProjected, siteId(outsideProjected)));
+
+    // Axis 1e-7 off +X: inside the renderer's tolerance it takes (0,0,1) x
+    // Axis, about (0,+1,0), which is what an explicit (0,1,0) gives too.
+    const inside = await storeFromStep(siteWithAxis('1.,0.0000001,0.', ''));
+    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,1.,0.'));
+    const fin = worldPlacementFingerprint(inside, siteId(inside));
+    assert.ok(fin);
+    assert.strictEqual(fin, worldPlacementFingerprint(insideRendered, siteId(insideRendered)));
+  });
 });
 
 describe('worldPlacementFingerprint - georeferenced-magnitude translations (review find)', () => {

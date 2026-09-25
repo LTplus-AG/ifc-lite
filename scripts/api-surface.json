@@ -4916,6 +4916,7 @@
     "findEntity: function",
     "findPropertySet: function",
     "findStoreyByElevation: function",
+    "firstProjAxis: function",
     "flattenRelationshipEdges: function",
     "formatStepReal: function",
     "generateHeader: function",

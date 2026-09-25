@@ -2311,3 +2311,67 @@ fn fixture_without_newly_covered_subtypes_is_unaffected_by_the_schema_derived_ga
         dm.relationships
     );
 }
+
+/// A federated file can carry two IfcProjects with independent units (#5296,
+/// #3554). The second wall's 300 mm layer must be 0.3 m, while the first
+/// wall's 0.2 m layer must remain 0.2 m.
+const MIXED_PROJECT_MATERIAL_UNITS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'Metres',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#101=IFCPROJECT('Proj0000000000000000002',$,'Millimetres',$,$,$,$,$,#102);
+#102=IFCUNITASSIGNMENT((#103));
+#103=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#10=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'A',$,$,$,$,$,$);
+#110=IFCBUILDINGSTOREY('Stor0000000000000000002',$,'B',$,$,$,$,$,$);
+#11=IFCWALL('Wall0000000000000000001',$,'MetreWall',$,$,$,$,$,$);
+#111=IFCWALL('Wall0000000000000000002',$,'MilliWall',$,$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#10));
+#120=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#101,(#110));
+#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#11),#10);
+#121=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#111),#110);
+#30=IFCMATERIAL('Core',$,$);
+#31=IFCMATERIALLAYER(#30,0.2,.F.,$,$,$,$);
+#32=IFCMATERIALLAYERSET((#31),'First',$);
+#33=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#11),#32);
+#130=IFCMATERIAL('Core',$,$);
+#131=IFCMATERIALLAYER(#130,300.,.F.,$,$,$,$);
+#132=IFCMATERIALLAYERSET((#131),'Second',$);
+#133=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#111),#132);
+ENDSEC;
+END-ISO-10303-21;"#;
+
+#[test]
+fn material_layer_thickness_uses_owning_project_units_5296() {
+    let dm = extract_data_model_checked(MIXED_PROJECT_MATERIAL_UNITS_IFC);
+    let first = dm.materials.iter().find(|m| m.element_id == 11).expect("first wall material");
+    let second = dm.materials.iter().find(|m| m.element_id == 111).expect("second wall material");
+    assert!((first.thickness.unwrap() - 0.2).abs() < 1e-9);
+    assert!((second.thickness.unwrap() - 0.3).abs() < 1e-9,
+        "the later project's 300 mm layer must not use the first project's metre scale");
+
+    // The manual cross-runtime oracle supplies MergedExporter output from two
+    // catalogued real IFC fixtures. Keep the synthetic test runnable in CI
+    // without those optional files; when supplied, assert the server's real
+    // model result before writing Parquet for the TS decoder/viewer check.
+    if let Ok(input) = std::env::var("IFCLITE_MATERIAL_MERGED_IN") {
+        let source = std::fs::read(input).expect("read merged IFC oracle input");
+        let merged = extract_data_model_checked(&source);
+        let wall_id = merged.entities.iter()
+            .find(|e| e.global_id.as_deref() == Some("3ZYW59sxj8lei475l7EhLU"))
+            .expect("millimetre wall in merged IFC").entity_id;
+        let wall_layer = merged.materials.iter().find(|m| m.element_id == wall_id)
+            .expect("material layer on millimetre wall");
+        assert!((wall_layer.thickness.unwrap() - 0.3).abs() < 1e-9,
+            "server must convert the real merged wall's 300 mm layer to 0.3 m");
+        let output = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT")
+            .expect("set IFCLITE_MATERIAL_PARQUET_OUT for merged IFC oracle");
+        let payload = crate::services::serialize_data_model_to_parquet(&merged)
+            .expect("serialize merged IFC data model");
+        std::fs::write(output, payload).expect("write merged IFC Parquet oracle payload");
+    }
+}

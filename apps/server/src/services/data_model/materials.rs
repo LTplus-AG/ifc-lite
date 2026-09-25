@@ -4,9 +4,11 @@
 
 //! Material association extraction.
 
+use super::material_units::MaterialUnitContext;
 use super::types::{EntityJob, MaterialAssociation};
 use ifc_lite_core::EntityDecoder;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// One resolved material layer (intermediate, before element fan-out).
@@ -225,7 +227,7 @@ pub(super) fn extract_materials(
     jobs: &[EntityJob],
     content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
-    unit_scale: f64,
+    units: &MaterialUnitContext,
 ) -> Vec<MaterialAssociation> {
     let rel_jobs: Vec<_> = jobs
         .iter()
@@ -250,31 +252,34 @@ pub(super) fn extract_materials(
             let Some(material_id) = rel.get_ref(5) else {
                 return Vec::new();
             };
-            let layers = resolve_material(&mut decoder, material_id, unit_scale);
-            if layers.is_empty() {
-                return Vec::new();
-            }
-
+            let mut resolved_by_scale: HashMap<u64, Vec<ResolvedLayer>> = HashMap::new();
             related
                 .into_iter()
                 .flat_map(|element_id| {
-                    layers.iter().map(move |layer| MaterialAssociation {
-                        element_id,
-                        association_id: job.id,
-                        definition_id: material_id,
-                        member_count: layer.member_count,
-                        kind: layer.kind.to_string(),
-                        set_name: layer.set_name.clone(),
-                        layer_index: layer.layer_index,
-                        material_name: layer.material_name.clone(),
-                        material_id: layer.material_id,
-                        member_name: layer.member_name.clone(),
-                        material_category: layer.material_category.clone(),
-                        fraction: layer.fraction,
-                        thickness: layer.thickness,
-                        is_ventilated: layer.is_ventilated,
-                        category: layer.category.clone(),
-                    })
+                    let scale = units.scale_for(element_id);
+                    let layers = resolved_by_scale
+                        .entry(scale.to_bits())
+                        .or_insert_with(|| resolve_material(&mut decoder, material_id, scale));
+                    layers
+                        .iter()
+                        .map(move |layer| MaterialAssociation {
+                            element_id,
+                            association_id: job.id,
+                            definition_id: material_id,
+                            member_count: layer.member_count,
+                            kind: layer.kind.to_string(),
+                            set_name: layer.set_name.clone(),
+                            layer_index: layer.layer_index,
+                            material_name: layer.material_name.clone(),
+                            material_id: layer.material_id,
+                            member_name: layer.member_name.clone(),
+                            material_category: layer.material_category.clone(),
+                            fraction: layer.fraction,
+                            thickness: layer.thickness,
+                            is_ventilated: layer.is_ventilated,
+                            category: layer.category.clone(),
+                        })
+                        .collect::<Vec<_>>()
                 })
                 .collect()
         })

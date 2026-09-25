@@ -54,16 +54,26 @@ impl StructureClaims {
                 continue;
             }
             let Some(line) = index.line_str(id) else { continue };
-            for child in nth_attr(&line, 5).map(ref_list).unwrap_or_default() {
-                if !included.contains(&child) {
-                    continue;
-                }
-                let final_id = remap.get(&child).copied().unwrap_or(child.saturating_add(base));
-                if !self.decomposes.insert(final_id) && dedupe {
-                    withheld.insert((id, child));
-                }
+            let children: Vec<(u32, u32)> = nth_attr(&line, 5)
+                .map(ref_list)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|child| included.contains(child))
+                .map(|child| (child, remap.get(&child).copied().unwrap_or(child.saturating_add(base))))
+                .collect();
+            // Judged against the claims made BEFORE this rel, as the emit loop
+            // does: a member listed twice in one rel is not redundant with itself.
+            if dedupe {
+                withheld.extend(
+                    children.iter().filter(|(_, f)| self.decomposes.contains(f)).map(|&(child, _)| (id, child)),
+                );
             }
+            self.decomposes.extend(children.iter().map(|&(_, f)| f));
         }
         withheld
     }
 }
+
+#[cfg(test)]
+#[path = "empty_claims_tests.rs"]
+mod tests;

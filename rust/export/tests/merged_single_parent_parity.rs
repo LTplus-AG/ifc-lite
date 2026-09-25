@@ -14,18 +14,22 @@ use ifc_lite_export::{export_merged_models, ContainerMergeStrategy, MergedModel,
 use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 struct CaseOptions {
     drop_empty_containers: bool,
     merge_sites: Option<String>,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Case {
     name: String,
+    #[allow(dead_code)] // documentation for the reader of the fixture
+    why: String,
     #[serde(default)]
     schema: Option<String>,
+    #[serde(default)]
+    output_schema: Option<String>,
     #[serde(default)]
     rels: Option<Vec<String>>,
     #[serde(default)]
@@ -115,12 +119,14 @@ fn merged_export_keeps_one_decomposition_parent_per_object() {
             .map(|(i, t)| MergedModel { content: t.as_bytes(), id: i.to_string(), included: None })
             .collect();
         let mut opts = MergedOptions {
-            schema: Some(schema.clone()),
+            schema: Some(case.output_schema.clone().unwrap_or_else(|| schema.clone())),
             drop_empty_containers: case.options.drop_empty_containers,
             ..MergedOptions::default()
         };
-        if case.options.merge_sites.as_deref() == Some("by-name") {
-            opts.merge_sites = ContainerMergeStrategy::ByName;
+        match case.options.merge_sites.as_deref() {
+            None => {}
+            Some("by-name") => opts.merge_sites = ContainerMergeStrategy::ByName,
+            Some(other) => panic!("{}: mergeSites {other:?} has no Rust mapping in this harness", case.name),
         }
         let (out, _) = export_merged_models(&models, &opts);
         let guids = guid_of(&out);

@@ -20,6 +20,7 @@ import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 interface Case {
   name: string;
   schema?: 'IFC2X3' | 'IFC4';
+  outputSchema?: 'IFC2X3' | 'IFC4';
   rels?: string[];
   options?: { dropEmptyContainers?: boolean; mergeSites?: 'by-name' };
   models: string[][];
@@ -66,7 +67,7 @@ describe('merged one-decomposition-parent parity vectors (#5471, #5727, #5802)',
       const schema = c.schema ?? 'IFC4';
       const relTypes = c.rels ?? ['IFCRELAGGREGATES'];
       const inputs = await Promise.all(c.models.map((lines, i) => model(String(i), lines, schema)));
-      const out = new TextDecoder().decode(new MergedExporter(inputs).export({ schema, ...c.options }).content);
+      const out = new TextDecoder().decode(new MergedExporter(inputs).export({ schema: c.outputSchema ?? schema, ...c.options }).content);
       const guidOf = new Map<number, string>();
       for (const m of out.matchAll(/^#(\d+)=\w+\('([^']*)'/gm)) guidOf.set(Number(m[1]), m[2]);
       const parents = new Map<string, string[]>();

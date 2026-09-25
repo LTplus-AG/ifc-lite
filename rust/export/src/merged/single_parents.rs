@@ -22,6 +22,13 @@
 //! stripped, and a rel left with no members is not written. A unified member
 //! with no parent yet is kept, since that rel is then its only parentage
 //! statement (#3550).
+//!
+//! Known ordering difference from the TypeScript twin: claims are made in line
+//! order, while TypeScript claims every aggregation of a model before any of
+//! its nests. The two can only pick a different winner in IFC2X3 output when
+//! ONE later model both nests and aggregates the same unclaimed object (legal
+//! only in an IFC4 source converted down); both keep exactly one `Decomposes`
+//! parent, which is the invariant this module enforces.
 
 use std::collections::{HashMap, HashSet};
 

@@ -4,11 +4,13 @@
 #raw access is removed so a future regression still fails.
 apps/viewer/src/store/slices/mutationSlice.ts
 apps/viewer/src/store/slices/storeyPlacement.ts
+apps/viewer/src/components/viewer/properties/RawStepCard.tsx
 packages/cache/src/adapt.ts
 packages/cache/src/sections/entities.ts
 packages/cache/src/sections/entity-index.ts
 packages/charts/src/elements-dataset.ts
 packages/cli/src/commands/anonymize.ts
+packages/cli/src/commands/clash-csv.ts
 packages/cli/src/commands/diff-engine.ts
 packages/cli/src/commands/diff-scope.ts
 packages/cli/src/commands/diff.ts
@@ -30,6 +32,7 @@ packages/export/src/entity-iteration.ts
 packages/export/src/georef-closure.ts
 packages/export/src/ifc5-tree-scope.ts
 packages/export/src/merged-context.ts
+packages/export/src/merged-subcontext.ts
 packages/export/src/merged-exporter.ts
 packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
@@ -55,6 +58,7 @@ packages/parser/src/structural-step-values.ts
 packages/parser/src/columnar-parser-root-attributes.ts
 packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts
+packages/parser/src/owning-project.ts
 packages/parser/src/property-unit.ts
 packages/parser/src/property-value-parser.ts
 packages/parser/src/project-units.ts
@@ -65,6 +69,7 @@ packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
 packages/query/src/duckdb-integration.ts
 packages/query/src/entity-query.ts
+packages/query/src/resolve-type-name.ts
 packages/rules/src/engine/rule-engine.ts
 packages/rules/src/filter/filter-iteration-source.ts
 packages/sdk/src/cost-reference-scan.ts

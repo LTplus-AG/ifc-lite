@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { downloadFile } from '@/lib/export/download.js';
+import { downloadFile, modelExportFilename } from '@/lib/export/download.js';
 
 /** One queued edit, as the mutation view records it. */
 export type ExportedMutation = unknown;
@@ -16,7 +16,7 @@ export type ExportedMutation = unknown;
  * it is why the dialog's data-store guard must not cover this branch.
  */
 export function exportChangesJson(
-  modelId: string, modelName: string, baseName: string, mutations: ExportedMutation[],
+  modelId: string, modelName: string, mutations: ExportedMutation[],
 ): string {
   const data = {
     version: 1,
@@ -25,6 +25,6 @@ export function exportChangesJson(
     mutations,
     exportedAt: new Date().toISOString(),
   };
-  downloadFile(JSON.stringify(data, null, 2), `${baseName}_changes.json`, 'application/json');
+  downloadFile(JSON.stringify(data, null, 2), modelExportFilename(modelName, 'json', '_changes'), 'application/json');
   return `Exported ${mutations.length} changes as JSON`;
 }

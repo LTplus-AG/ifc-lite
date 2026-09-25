@@ -385,3 +385,202 @@ describe('downloadBinary - checksum verification gates extraction (PR #2650)', (
     expect(versionWrites).toHaveLength(0);
   });
 });
+
+/**
+ * #5525: server-bin 1.20.0 and 1.21.0 reached npm with no `v<version>` GitHub
+ * release, so every platform 404'd. A clean 404 on every version-derived URL
+ * now falls back to the newest OLDER release that carries this platform's
+ * archive and a checksum, resolved through the GitHub releases API - and the
+ * fallback is checksum-verified exactly like the primary download.
+ */
+describe('downloadBinary - fallback when the version has no release (#5525)', () => {
+  const RELEASES = 'https://github.com/LTplus-AG/ifc-lite/releases/download';
+  const API = 'https://api.github.com/repos/LTplus-AG/ifc-lite/releases';
+
+  function archiveName(): string {
+    return getBinaryInfo().platform.archiveName;
+  }
+
+  function okDownload() {
+    const bytes = new TextEncoder().encode('fallback-archive-bytes');
+    let drained = false;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => String(bytes.length) },
+      body: {
+        getReader: () => ({
+          read: async () =>
+            drained ? { done: true, value: undefined } : ((drained = true), { done: false, value: bytes }),
+        }),
+      },
+    };
+  }
+
+  function status(code: number, statusText: string, headers: Record<string, string> = {}) {
+    return { ok: false, status: code, statusText, headers: { get: (k: string) => headers[k.toLowerCase()] ?? null } };
+  }
+
+  function json(body: unknown) {
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+  }
+
+  /** A `v<version>` release; `assets` lists asset names (the archive's own name via `$`). */
+  function release(version: string, assets: string[], extra: Record<string, unknown> = {}) {
+    return {
+      tag_name: `v${version}`,
+      draft: false,
+      prerelease: false,
+      assets: assets.map((a) => {
+        const name = a.replace('$', archiveName());
+        return { name, state: 'uploaded', browser_download_url: `${RELEASES}/v${version}/${name}` };
+      }),
+      ...extra,
+    };
+  }
+
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let apiBody: unknown;
+
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    apiBody = [];
+    fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith(API)) return json(apiBody);
+      // Every version-derived URL for the package version 404s.
+      if (url.includes(`/v${PKG_VERSION}/`) || url.includes(`/server-v${PKG_VERSION}/`) || url.includes(`/${PKG_VERSION}/`)) {
+        return status(404, 'Not Found');
+      }
+      return okDownload();
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the newest OLDER release carrying the archive plus a checksum, and verifies it', async () => {
+    apiBody = [
+      // Package-level releases share the listing and never carry archives.
+      { tag_name: '@ifc-lite/wasm@10.0.0', draft: false, prerelease: false, assets: [] },
+      // Newer than the requested version: never a fallback target.
+      release('1.17.0', ['$', '$.sha256']),
+      // Root-version release without server archives.
+      release('9.2.0', []),
+      release('1.16.5', ['$', '$.sha256'], { draft: true }),
+      // Archive but no checksum: would fail closed, so skipped.
+      release('1.16.4', ['$']),
+      release('1.16.2', ['$', '$.sha256']),
+      release('1.16.3', ['$', 'SHA256SUMS']),
+    ];
+
+    await downloadBinary();
+
+    const expectedUrl = `${RELEASES}/v1.16.3/${archiveName()}`;
+    expect(fetchMock.mock.calls.map(([u]) => u)).toContain(expectedUrl);
+    expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(expectedUrl);
+    expect(tarExtractMock.mock.calls.length + execFileSyncMock.mock.calls.length).toBeGreaterThan(0);
+
+    const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warning).toContain(PKG_VERSION);
+    expect(warning).toContain('v1.16.3');
+  });
+
+  it('extracts nothing when the fallback archive fails checksum verification', async () => {
+    apiBody = [release('1.16.2', ['$', '$.sha256'])];
+    verifyChecksumMock.mockRejectedValueOnce(new Error('checksum mismatch (fallback)'));
+
+    await expect(downloadBinary()).rejects.toThrow(/checksum mismatch \(fallback\)/);
+
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+    expect(tarExtractMock).not.toHaveBeenCalled();
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(chmodSyncMock).not.toHaveBeenCalled();
+  });
+
+  it('names the concrete npm fix, not Docker, when no release carries the archive', async () => {
+    apiBody = [release('1.16.2', ['ifc-lite-server-some-other-target.tar.gz'])];
+
+    const error = await downloadBinary().then(
+      () => null,
+      (e: unknown) => e as Error
+    );
+    expect(error?.message).toMatch(/npm i @ifc-lite\/server-bin@X\.Y\.Z/);
+    expect(error?.message).toContain(archiveName());
+    expect(error?.message).not.toMatch(/Docker/);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
+  });
+
+  it('reports an exhausted API rate limit instead of throwing from the lookup', async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url.startsWith(API)
+        ? status(403, 'Forbidden', { 'x-ratelimit-remaining': '0' })
+        : status(404, 'Not Found')
+    );
+
+    await expect(downloadBinary()).rejects.toThrow(/rate limit[\s\S]*npm i @ifc-lite\/server-bin@/);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
+  });
+
+  it('does not swap in another version when the primary failed for a reason other than 404', async () => {
+    apiBody = [release('1.16.2', ['$', '$.sha256'])];
+    fetchMock.mockImplementation(async (url: string) =>
+      url.startsWith(API) ? json(apiBody) : status(503, 'Service Unavailable')
+    );
+
+    await expect(downloadBinary()).rejects.toThrow(/No fallback release was used: .*503/);
+    expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith(API))).toBe(false);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
+  });
+
+  it('records the fallback in the version sidecar, and every cached run warns about it', async () => {
+    apiBody = [release('1.16.3', ['$', '$.sha256'])];
+    await downloadBinary();
+
+    const sidecarWrite = writeFileMock.mock.calls.find(([p]) => String(p).endsWith('version.txt'));
+    const sidecar = String(sidecarWrite?.[1]);
+    expect(sidecar).toMatch(/^1\.16\.6\nfallback 1\.16\.3/);
+
+    // A later run reuses the install (same package version) but says so.
+    vi.mocked(console.warn).mockClear();
+    readFileMock.mockImplementation(async (path: string) =>
+      String(path).endsWith('package.json') ? JSON.stringify({ version: PKG_VERSION }) : sidecar
+    );
+    await expect(isBinaryCached()).resolves.toBe(true);
+    const warning = vi.mocked(console.warn).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warning).toContain('release v1.16.3');
+    expect(warning).toContain('npx @ifc-lite/server-bin download');
+  });
+
+  it('never falls back for a version that is not a plain X.Y.Z (e.g. a prerelease)', async () => {
+    readFileMock.mockImplementation(async () => JSON.stringify({ version: '1.17.0-next.0' }));
+    apiBody = [release('1.18.0', ['$', '$.sha256']), release('1.16.2', ['$', '$.sha256'])];
+    fetchMock.mockImplementation(async (url: string) => (url.startsWith(API) ? json(apiBody) : status(404, 'Not Found')));
+
+    await expect(downloadBinary()).rejects.toThrow(/not a plain X\.Y\.Z version/);
+    expect(verifyChecksumMock).not.toHaveBeenCalled();
+  });
+
+  it('skips a release whose asset URL is not that release on github.com', async () => {
+    const foreign = release('1.16.3', ['$', '$.sha256']);
+    foreign.assets[0].browser_download_url = `https://example.invalid/v1.16.3/${archiveName()}`;
+    apiBody = [foreign, release('1.16.2', ['$', '$.sha256'])];
+
+    await downloadBinary();
+    expect(verifyChecksumMock.mock.calls[0][1]).toBe(`${RELEASES}/v1.16.2/${archiveName()}`);
+  });
+
+  it('authenticates the releases lookup with GITHUB_TOKEN when it is set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'test-token');
+    apiBody = [release('1.16.2', ['$', '$.sha256'])];
+    await downloadBinary();
+    vi.unstubAllEnvs();
+
+    const apiCall = fetchMock.mock.calls.find(([u]) => String(u).startsWith(API));
+    expect(apiCall).toBeDefined();
+    expect((apiCall![1] as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer test-token');
+  });
+});

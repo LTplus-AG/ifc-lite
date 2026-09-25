@@ -11,6 +11,7 @@ import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
+import { packMeshMaterial } from './mesh-material.js';
 import {
     ENVIRONMENT_UNIFORM_SIZE,
     packEnvironmentUniforms,
@@ -610,13 +611,8 @@ export class RenderPipeline {
             buffer.set([1.0, 1.0, 1.0, 1.0], 32);
         }
 
-        // metallicRoughness: vec2<f32> at offset 36 (2 floats)
-        const metallic = material?.metallic ?? 0.0;
-        const roughness = material?.roughness ?? 0.6;
-        buffer[36] = metallic;
-        buffer[37] = roughness;
-
-        // padding at offset 38-39 (2 floats)
+        // metallicRoughness: vec2<f32> at offset 36 (2 floats) + padding
+        packMeshMaterial(buffer, color?.[3], material);
 
         // sectionPlane: vec4<f32> at offset 40 (4 floats - normal xyz + distance w)
         if (sectionPlane) {

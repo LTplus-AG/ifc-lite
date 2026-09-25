@@ -61,5 +61,21 @@ describe('numeric property values keep their declared measure type', () => {
     expect(() => propertyLines([
       { Name: 'Bad', NominalValue: 1, Type: "IfcLengthMeasure(1));#9=IFCWALL('x" as 'IfcLengthMeasure' },
     ])).toThrow(/Invalid property value type/);
+    // The string branch splices the declared type the same way.
+    expect(() => propertyLines([
+      { Name: 'Bad', NominalValue: 'x', Type: "IfcLabel('x');#9=IFCWALL('evil" as 'IfcLabel' },
+    ])).toThrow(/Invalid property value type/);
+  });
+
+  it('treats an empty declared type as undeclared', () => {
+    // JSON callers may default an unset field to '' rather than omitting it.
+    const lines = propertyLines([
+      { Name: 'Whole', NominalValue: 3, Type: '' as 'IfcReal' },
+      { Name: 'Fraction', NominalValue: 0.25, Type: '' as 'IfcReal' },
+      { Name: 'Text', NominalValue: 'abc', Type: '' as 'IfcLabel' },
+    ]);
+    expect(lines).toContain("'Whole',$,IFCINTEGER(3),$)");
+    expect(lines).toContain("'Fraction',$,IFCREAL(0.25),$)");
+    expect(lines).toContain("'Text',$,IFCLABEL('abc'),$)");
   });
 });

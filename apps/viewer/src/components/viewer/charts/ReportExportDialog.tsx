@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n/useTranslation';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -67,14 +68,14 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const [page, setPage] = useState<ReportPageSetup>(isReport(dashboard) ? dashboard.page : { size: 'A4', orientation: 'portrait' });
   const [snapshots, setSnapshots] = useState(isReport(dashboard) ? dashboard.snapshots : true);
   const [fields, setFields] = useState<Record<string, string>>(seeded);
-  const openDialog = useCallback(() => {
+  const reseed = useCallback(() => {
     setFields(seeded);
     if (isReport(dashboard)) {
       setPage(dashboard.page);
       setSnapshots(dashboard.snapshots);
     }
-    setOpen(true);
   }, [seeded, dashboard]);
+  const handleOpenChange = useExportDialogOpenGuard({ busy, setOpen, onOpen: reseed });
 
   const run = useCallback(async () => {
     if (!dashboard) return;
@@ -108,7 +109,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? openDialog() : setOpen(false))}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!dashboard || dashboard.charts.length === 0} title={t('reportExportDialog.triggerTitle')}>
           <FileText className="h-3.5 w-3.5 mr-1" />

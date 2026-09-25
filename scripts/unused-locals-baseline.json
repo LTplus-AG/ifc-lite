@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 229,
-  "apps/viewer-embed": 234,
+  "apps/viewer": 228,
+  "apps/viewer-embed": 233,
   "examples/babylonjs-viewer": 0,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -47,7 +47,7 @@
   "packages/rules": 1,
   "packages/sandbox": 1,
   "packages/sdk": 11,
-  "packages/server-bin": 7,
+  "packages/server-bin": 2,
   "packages/server-client": 1,
   "packages/solar": 1,
   "packages/source-dalux": 0,

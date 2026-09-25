@@ -145,6 +145,24 @@ describe('window-level file drop (#5845)', () => {
     act(() => { img.dispatchEvent(new window.Event('dragend', { bubbles: true })); });
   });
 
+  it('a drag a component cancelled in dragstart does not disable later file drops', async () => {
+    stubWebGpu();
+    render(<ViewportContainer />);
+    await advance(0);
+    // SpaceSketch cancels its own dragstart on every vertex drag; no dragend follows.
+    const handle = document.createElement('div');
+    chrome.appendChild(handle);
+    handle.addEventListener('dragstart', (e) => e.preventDefault());
+    act(() => { handle.dispatchEvent(new window.Event('dragstart', { bubbles: true, cancelable: true })); });
+
+    const file = new File(['x'], 'after-cancel.blend');
+    drag(chrome, 'dragenter', fileTransfer(file));
+    drag(chrome, 'dragover', fileTransfer(file));
+    const drop = drag(chrome, 'drop', fileTransfer(file));
+    assert.equal(drop.defaultPrevented, true, 'the browser does not open the file');
+    assert.match(latestToast(), /after-cancel\.blend/, 'the drop is still routed');
+  });
+
   it('ignores a non-file drag (text or a link)', async () => {
     stubWebGpu();
     render(<ViewportContainer />);

@@ -49,6 +49,9 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     // The current dragover was claimed by a child drop zone.
     let claimed = false;
     // A drag that started inside the page (dragstart only fires for those).
+    // Cleared by the next pointerdown, dragend or drop, so a drag a component
+    // cancelled in its own dragstart (no dragend follows) cannot leave it set
+    // and make every later OS file drop navigate.
     let inPage = false;
     const sync = () => setOverlay(state.dragging && !claimed);
     const step = (event: DragOverlayEvent) => {
@@ -58,12 +61,16 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     };
     const ours = (e: DragEvent) => !inPage && isFileDrag(e.dataTransfer);
 
-    const onDragStart = () => { inPage = true; };
-    const onDragEnd = () => { inPage = false; };
+    // Bubble phase: a component that cancelled its drag has already said so.
+    const onDragStart = (e: DragEvent) => { if (!e.defaultPrevented) inPage = true; };
+    const clearInPage = () => { inPage = false; };
     // Capture phase: runs before any child zone can stop propagation.
     const onEnterCapture = (e: DragEvent) => { if (ours(e)) step('enter'); };
     const onLeaveCapture = (e: DragEvent) => { if (ours(e)) step('leave'); };
-    const onDropCapture = (e: DragEvent) => { if (ours(e)) step('drop'); };
+    const onDropCapture = (e: DragEvent) => {
+      if (ours(e)) step('drop');
+      else if (inPage) queueMicrotask(clearInPage); // after the bubble phase saw it
+    };
     const onOverCapture = (e: DragEvent) => {
       if (!ours(e)) return;
       claimed = true; // until the bubble phase proves no zone took it
@@ -86,8 +93,9 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     };
 
     const listeners: Array<[string, (e: DragEvent) => void, boolean]> = [
-      ['dragstart', onDragStart, true],
-      ['dragend', onDragEnd, true],
+      ['dragstart', onDragStart, false],
+      ['dragend', clearInPage, true],
+      ['pointerdown', clearInPage, true],
       ['dragenter', onEnterCapture, true],
       ['dragleave', onLeaveCapture, true],
       ['drop', onDropCapture, true],

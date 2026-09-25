@@ -62,6 +62,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
@@ -297,7 +298,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
@@ -338,19 +338,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     ? selectedEntityIds.size
     : (selectedEntityId !== null ? 1 : 0);
 
-  const clearSelection = useViewerStore((state) => state.clearSelection);
-
-  const handleHide = useCallback(() => {
-    // Hide ALL selected entities (multi-select or single)
-    const state = useViewerStore.getState();
-    const ids: number[] = state.selectedEntityIds.size > 0
-      ? Array.from(state.selectedEntityIds)
-      : selectedEntityId !== null ? [selectedEntityId] : [];
-    if (ids.length > 0) {
-      hideEntities(ids);
-      clearSelection();
-    }
-  }, [selectedEntityId, hideEntities, clearSelection]);
 
   const handleShowAll = useCallback(() => {
     resetVisibilityForHomeFromStore();
@@ -839,7 +826,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
           </span>
           <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="I" />
-          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={handleHide} shortcut="Del / Space" />
+          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={hideSelectionFromStore} shortcut="Del / Space" />
           <ActionButton
             icon={Crosshair}
             label={t('mainToolbar.frameSelection')}

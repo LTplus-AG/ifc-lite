@@ -41,6 +41,7 @@ import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
@@ -71,7 +72,6 @@ export function MobileToolbar() {
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
@@ -118,12 +118,6 @@ export function MobileToolbar() {
   const handleShowAll = useCallback(() => {
     resetVisibilityForHomeFromStore();
   }, []);
-
-  const handleHide = useCallback(() => {
-    if (selectedEntityId !== null) {
-      hideEntities([selectedEntityId]);
-    }
-  }, [selectedEntityId, hideEntities]);
 
   const handleHome = useCallback(() => {
     goHomeFromStore();
@@ -292,7 +286,7 @@ export function MobileToolbar() {
             <Eye className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.isolateSelection')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleHide} disabled={!hasSelection}>
+          <DropdownMenuItem onClick={hideSelectionFromStore} disabled={!hasSelection}>
             <EyeOff className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.hideSelection')}
           </DropdownMenuItem>

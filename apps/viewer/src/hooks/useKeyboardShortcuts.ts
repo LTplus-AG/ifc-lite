@@ -10,6 +10,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -26,18 +27,6 @@ interface KeyboardShortcutsOptions {
   enabled?: boolean;
 }
 
-/** Get all selected global IDs — multi-select if available, else single selectedEntityId */
-function getAllSelectedGlobalIds(): number[] {
-  const state = useViewerStore.getState();
-  if (state.selectedEntityIds.size > 0) {
-    return Array.from(state.selectedEntityIds);
-  }
-  if (state.selectedEntityId !== null) {
-    return [state.selectedEntityId];
-  }
-  return [];
-}
-
 /** Double-escape threshold in milliseconds */
 const DOUBLE_ESCAPE_MS = 500;
 
@@ -46,10 +35,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
   const lastEscapeRef = useRef<number>(0);
 
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
   const toggleBasketPresentationVisible = useViewerStore((s) => s.toggleBasketPresentationVisible);
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
@@ -227,18 +214,15 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
     }
 
-    if ((key === 'delete' || key === 'backspace') && !ctrl && !shift && selectedEntityId) {
-      e.preventDefault();
-      const ids = getAllSelectedGlobalIds();
-      hideEntities(ids);
+    // Hide selection (#5852): the same command every surface runs.
+    if ((key === 'delete' || key === 'backspace') && !ctrl && !shift) {
+      if (hideSelectionFromStore()) e.preventDefault();
     }
     // Space to hide — skip when focused on buttons/selects/links where Space has native behavior
-    if (key === ' ' && !ctrl && !shift && selectedEntityId) {
+    if (key === ' ' && !ctrl && !shift) {
       const tag = document.activeElement?.tagName;
-      if (tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A') {
+      if (tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A' && hideSelectionFromStore()) {
         e.preventDefault();
-        const ids = getAllSelectedGlobalIds();
-        hideEntities(ids);
       }
     }
     if (key === 'a' && !ctrl && !shift) {
@@ -405,10 +389,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // Help - handled by KeyboardShortcutsDialog hook
     // The dialog hook listens for '?' key globally
   }, [
-    selectedEntityId,
     activeTool,
     setActiveTool,
-    hideEntities,
     toggleTheme,
     toggleBasketPresentationVisible,
     activeMeasurement,

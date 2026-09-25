@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/rules",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

@@ -34,10 +34,35 @@ export async function loadIfcBytes(
   bytes: Uint8Array,
   label = 'input',
 ): Promise<IfcDataStore> {
+  try {
+    return await parseIfcBytes(bytes, label);
+  } catch (err) {
+    if (!(err instanceof IfcBytesRejectedError)) throw err;
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+/** Bytes {@link parseIfcBytes} refused before parsing: empty, not STEP, truncated, or with no DATA section. */
+export class IfcBytesRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IfcBytesRejectedError';
+  }
+}
+
+/**
+ * {@link loadIfcBytes} for a caller that must survive a bad file (a flow's
+ * `model.openFromSource` mid-run): the same checks, but a rejection throws
+ * {@link IfcBytesRejectedError} instead of exiting the process.
+ */
+export async function parseIfcBytes(
+  bytes: Uint8Array,
+  label = 'input',
+): Promise<IfcDataStore> {
   // Validate the file is a STEP/IFC file
   if (bytes.byteLength === 0) {
-    process.stderr.write(`Error: ${label} is empty (0 bytes)\n`);
-    process.exit(1);
+    throw new IfcBytesRejectedError(`${label} is empty (0 bytes)`);
   }
 
   // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
@@ -47,8 +72,7 @@ export async function loadIfcBytes(
   try {
     bytes = new Uint8Array(await unwrapIfcZipView(bytes));
   } catch (err) {
-    process.stderr.write(`Error: ${label}: ${(err as Error).message}\n`);
-    process.exit(1);
+    throw new IfcBytesRejectedError(`${label}: ${(err as Error).message}`);
   }
 
   // Check for STEP file signature ("ISO-10303-21") in the first 256 bytes.
@@ -57,8 +81,7 @@ export async function loadIfcBytes(
     bytes.subarray(0, Math.min(bytes.byteLength, 256)),
   );
   if (!headerSnippet.includes('ISO-10303-21')) {
-    process.stderr.write(`Error: ${label} is not a valid IFC/STEP file\n`);
-    process.exit(1);
+    throw new IfcBytesRejectedError(`${label} is not a valid IFC/STEP file`);
   }
 
   // A STEP file ends with `END-ISO-10303-21;`. Its absence means the bytes are
@@ -74,12 +97,11 @@ export async function loadIfcBytes(
   const tailStart = Math.max(0, bytes.byteLength - 256);
   const tailSnippet = new TextDecoder('latin1').decode(bytes.subarray(tailStart));
   if (!tailSnippet.includes('END-ISO-10303-21;')) {
-    process.stderr.write(
-      `Error: ${label} is truncated: it starts like a STEP file but has no ` +
+    throw new IfcBytesRejectedError(
+      `${label} is truncated: it starts like a STEP file but has no ` +
         `END-ISO-10303-21; terminator, so any entity count or schema read from it ` +
-        `would describe only the part that arrived.\n`,
+        `would describe only the part that arrived.`,
     );
-    process.exit(1);
   }
 
   // A file with a header and no DATA section carries no entities at all. It is
@@ -92,10 +114,7 @@ export async function loadIfcBytes(
     bytes.subarray(0, Math.min(bytes.byteLength, 64 * 1024)),
   );
   if (!/^\s*DATA\s*;/m.test(headText)) {
-    process.stderr.write(
-      `Error: ${label} has no DATA section, so it contains no IFC entities.\n`,
-    );
-    process.exit(1);
+    throw new IfcBytesRejectedError(`${label} has no DATA section, so it contains no IFC entities.`);
   }
 
   const parser = new IfcParser();

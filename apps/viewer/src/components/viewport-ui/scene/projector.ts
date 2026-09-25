@@ -6,7 +6,7 @@
  * `SceneProjector`: the one `requestAnimationFrame` loop for every
  * world-anchored overlay primitive (#5486, charter #5478).
  *
- * Today five components (`SectionPlaneDragGizmo`, `SectionPickPreviewOverlay`,
+ * Before this kernel, five components (the section drag gizmo and pick preview,
  * `BasepointOverlay`, `PeerPresenceLayer`, the BCF overlay renderer) each run
  * their own unconditional `requestAnimationFrame` + `projectToScreen` loop —
  * five timers doing the same matrix work forever, even when the camera has

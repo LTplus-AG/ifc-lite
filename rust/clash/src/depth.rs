@@ -22,7 +22,7 @@ use crate::vec3::Vec3;
 /// a thin member piercing clean through the other, e.g. a duct through a
 /// wall — where the MTD is dominated by the piercing member's own extent,
 /// not the material crossed, so `depth_clash_result` reports the caller's
-/// AABB estimate instead. The MTD is still returned (not discarded here)
+/// AABB estimate instead, capped by the MTD (#5742). The MTD is still returned (not discarded here)
 /// because the f32 floor must see it: which number gets REPORTED is a
 /// separate, later decision from whether the pair is measurable at all.
 /// Faithful port of the TS `boxPenetration` (#2536).
@@ -34,7 +34,8 @@ pub(crate) struct BoxPenetration {
     /// direction, #5405).
     pub(crate) axis: Vec3,
     /// The MTD is inflated by the piercing member's own extent; report the
-    /// AABB estimate instead (see `is_through_penetration`).
+    /// AABB estimate instead, capped by the MTD (see `is_through_penetration`
+    /// and `depth_clash_result`, #5742).
     pub(crate) through: bool,
 }
 
@@ -229,7 +230,7 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// - the crossing-vertex penetration, for a CONTAINED pair with a crossing
 ///   vertex inside the other solid (`mesh_evidence`) — evidence for this
 ///   gate only, never a reported depth (see `crossing_vertex_penetration`),
-///   and only where the reported depth would be the ESTIMATE (#5717).
+///   and only where the reported depth is labelled `Estimate` (#5717; that includes a through-pair capped by its MTD, #5742).
 ///
 /// Each candidate is tested against the floor OF ITS OWN DIRECTION — the
 /// pair's per-axis f32 noise projected onto the direction that candidate was
@@ -240,7 +241,7 @@ pub(crate) const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
 /// the threshold for contacts that have no X component at all.
 ///
 /// The pair is `Hard` only when every candidate that BEARS ON THE REPORTED
-/// NUMBER clears its floor — all three when the report is the estimate, and
+/// NUMBER clears its floor — all three when the report is labelled `Estimate`, and
 /// the estimate and the MTD when the box path certified a depth, since a
 /// sampling probe may not overrule an exact one (#5717).
 /// That is what makes the floor unreachable by depth-source selection: a sub-floor box MTD cannot be promoted by the through-
@@ -271,8 +272,9 @@ pub(crate) fn depth_clash_result(
     // NaN candidate never counts as below its floor, on either side.
     let est_floor = estimate_floor(aabb_a, aabb_b);
     let box_floor = box_pen.map(|b| depth_floor(b.axis, aabb_a, aabb_b));
-    // Whether the pair has a CERTIFIED depth, i.e. whether the number this
-    // function would report is the exact box MTD or the AABB estimate. Bound
+    // Whether the pair has a CERTIFIED depth (the box MTD, labelled `Mesh`).
+    // A through-pair capped by its MTD (below) is NOT certified: it is
+    // labelled `Estimate`, so the mesh-evidence guard still applies to it. Bound
     // here rather than below because the mesh-evidence term needs it too.
     let measured = box_pen.filter(|b| !b.through);
     let below_floor = estimate <= est_floor
@@ -306,19 +308,33 @@ pub(crate) fn depth_clash_result(
     }
     // Estimate-vs-mesh selection, reachable only above the floor: the box
     // MTD is certified (`Mesh`) unless the pair is a through-penetration,
-    // where the AABB estimate is the honest number (see `box_penetration`).
-    // The reported depth carries ITS OWN floor out with it (#5639), so the
-    // reported touching band is decided by the same rule as this verdict.
+    // where the AABB estimate is the honest number (see `box_penetration`)
+    // -- CAPPED by the MTD (#5742). The MTD is a translation proven to
+    // separate the pair, so a reported depth above it over-reports by
+    // construction; for rotated boxes the AABB estimate routinely does (it
+    // is inflated by the rotation). At the through/partial boundary, which
+    // f32 noise decides per placement, the partial side reports the MTD;
+    // with the cap, a through side whose estimate EXCEEDS the MTD reports
+    // it too, instead of swinging to an estimate 30x larger (#5742). A
+    // through side whose estimate is SMALLER (a thin rod through a thick
+    // wall: the estimate is the rod's width) still reports the estimate,
+    // the #2536 contract, so that tie is not continuous; the cap only
+    // removes the over-report. The label stays `Estimate`: through a
+    // through-penetration the MTD bounds the depth, it does not measure the
+    // material crossed. The reported depth carries ITS OWN floor out with
+    // it (#5639), so the reported touching band is decided by the same rule
+    // as this verdict.
+    let (depth, distance_kind, depth_floor) = match (box_pen, box_floor) {
+        (Some(b), Some(f)) if !b.through => (b.mtd, DistanceKind::Mesh, f),
+        (Some(b), Some(f)) if b.mtd < estimate => (b.mtd, DistanceKind::Estimate, f),
+        _ => (estimate, DistanceKind::Estimate, est_floor),
+    };
     Some(NarrowResult {
         status: ClashStatus::Hard,
-        distance: -measured.map_or(estimate, |b| b.mtd),
-        distance_kind: if measured.is_some() {
-            DistanceKind::Mesh
-        } else {
-            DistanceKind::Estimate
-        },
+        distance: -depth,
+        distance_kind,
         point,
         bounds,
-        depth_floor: Some(measured.and(box_floor).unwrap_or(est_floor)),
+        depth_floor: Some(depth_floor),
     })
 }

@@ -12,7 +12,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, type } from '@/test/render.js';
+import { blur, cleanup, type } from '@/test/render.js';
 import { renderScene } from '../test/scene-test-support.js';
 import { WorldLabel } from './WorldLabel.js';
 import { AnchoredCard } from './AnchoredCard.js';
@@ -95,16 +95,50 @@ describe('CursorInput', () => {
     });
     assert.equal(cancelled, true);
   });
+
+  it('commits on blur by default, and does not when `commitOnBlur` is false (#5503)', () => {
+    // Default: blur is a commit (the HudValueField convention).
+    lastCommit = '';
+    const first = renderScene(<Harness />);
+    first.flush();
+    const input = first.container.querySelector('input') as HTMLInputElement;
+    blur(input);
+    assert.equal(lastCommit, '2.5');
+    cleanup();
+
+    // Opted out: the Split tool's canvas click both blurs the input and
+    // performs the click-split, so a blur commit would cut twice.
+    lastCommit = '';
+    const second = renderScene(<Harness commitOnBlur={false} />);
+    second.flush();
+    const input2 = second.container.querySelector('input') as HTMLInputElement;
+    blur(input2);
+    assert.equal(lastCommit, '', 'blur must not commit when commitOnBlur is false');
+    // Enter still commits.
+    act(() => {
+      input2.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    assert.equal(lastCommit, '2.5');
+  });
+
+  it('renders the unit caption after the field', () => {
+    const { container, flush } = renderScene(<Harness unit="m" />);
+    flush();
+    const card = container.querySelector('[data-scene-primitive="cursor-input"]')!.firstElementChild as HTMLElement;
+    assert.equal(card.textContent, 'm');
+  });
 });
 
 let lastCommit = '';
 let cancelled = false;
 
-function Harness() {
+function Harness({ commitOnBlur, unit }: { commitOnBlur?: boolean; unit?: string }) {
   return (
     <CursorInput
       worldPoint={{ x: 2, y: 2, z: 0 }}
       value="2.5"
+      commitOnBlur={commitOnBlur}
+      unit={unit}
       onChange={() => {}}
       onCommit={(v) => {
         lastCommit = v;

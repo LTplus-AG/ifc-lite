@@ -83,6 +83,11 @@ jobs:
       # and `pull_requests: read+write` survives org/repo moves and removes
       # the App-management surface entirely. Rotate the PAT in the repo
       # secrets when it expires; no workflow change needed for rotation.
+      #
+      # The PAT must belong to an account NOTHING ELSE USES (#5693): a PAT
+      # spends its owner's hourly API quota, and a run fails when anything
+      # else on that account has drained it. See RELEASE.md, "Release
+      # credential", and the quota check before `Setup pnpm`.
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -223,6 +228,22 @@ jobs:
           echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
         env:
           PENDING: ${{ steps.pre.outputs.pending }}
+
+      # THE RELEASE CREDENTIAL'S QUOTA (#5693). RELEASE_PAT spends its OWNER's
+      # hourly API quota, shared with everything else that account does. Run
+      # 36009885836 died mid-job when agent sessions on the same account had
+      # drained its GraphQL bucket. Read `GET /rate_limit` (free) HERE, before
+      # anything is pushed, published or minted: wait for a reset that is near,
+      # fail with the owner and reset time otherwise. It runs on every
+      # non-superseded run, not only release commits: an ordinary push also
+      # retries a failed publish and refreshes the version PR, both on this
+      # credential. The real fix is a credential nothing else spends; see
+      # RELEASE.md, "Release credential".
+      - name: Check the release credential's API quota
+        if: steps.superseded.outputs.skip != 'true'
+        run: node scripts/check-release-credential-quota.mjs
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
         if: steps.superseded.outputs.skip != 'true'

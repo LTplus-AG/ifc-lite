@@ -19,12 +19,11 @@ import { isTypeClass } from './type-owned-psets.js';
 import {
   type PropertySetContext,
   getPropertySetName,
-  getPropertyIdsInSet,
   getTypeOwnedHasPropertySetIds,
   getElementQuantityName,
 } from './step-property-set-readers.js';
 import {
-  SharedRelationDetachments,
+  SharedSetDetachments,
   retainReusedSourceMembers,
   unmodifiedSourceMembers,
 } from './step-pset-copy-on-write.js';
@@ -77,9 +76,9 @@ export function collectPropertyAndQuantitySetMutations(
   // owns that gate: reaching here means the view exists and mutations are
   // enabled. Named once here rather than asserted at each of the six reads.
   const mutationView = ctx.mutationView as MutablePropertyView;
-  // A relation reached by an edit is only withheld once no other element is
+  // A shared set reached by an edit is only withheld once nothing else is
   // left on it; see `step-pset-copy-on-write.ts` (#5794).
-  const detachments = new SharedRelationDetachments();
+  const detachments = new SharedSetDetachments();
   // Collect modified property sets and find original psets to skip
   for (const [entityId, psetNames] of entityPropMutations) {
     // A deleted entity must not cause the exporter to REMOVE anything.
@@ -170,11 +169,9 @@ export function collectPropertyAndQuantitySetMutations(
         if (!psetName || !psetNames.has(psetName)) continue;
         typeOwnedAffected.add(psetName);
         reuseSourceMembers(psetName, psetId);
-        pass.skipPropertySetIds.add(psetId);
-        const propIds = getPropertyIdsInSet(ctx, psetId);
-        for (const propId of propIds) {
-          pass.skipPropertySetIds.add(propId);
-        }
+        // Withheld only if no other type object or relation still names it:
+        // another type sharing the set keeps it (#5794).
+        detachments.withholdTypeOwned(psetId, entityId);
         // No `recordWithheld` twin of the rel-defined branch above, and
         // deliberately: a name that matches an OWNED pset is either dropped
         // from the resolved list or swapped for the replacement this export
@@ -340,6 +337,6 @@ export function collectPropertyAndQuantitySetMutations(
 
   // Both loops have named every shared relation they reached; only now is it
   // known which of them still relate somebody else.
-  detachments.settle(pass, ctx, relatedByRel);
+  detachments.settle(pass, ctx, { relatedByRel, relDefinesByEntity });
   retainReusedSourceMembers(pass);
 }

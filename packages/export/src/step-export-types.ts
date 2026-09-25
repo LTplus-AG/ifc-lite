@@ -361,13 +361,7 @@ export interface ExportPass {
   // ---- the collection passes' output ----
   readonly modifiedEntities: Set<number>;
   readonly modifiedAttributes: Map<number, Map<string, string>>;
-  /** `sourceMembers`: per set name, the source member atom this export may
-   *  reference as-is for each property the session did not edit (#5794). */
-  readonly newPropertySets: Array<{
-    entityId: number;
-    psets: PropertySet[];
-    sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>>;
-  }>;
+  readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[]; sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>> }>; // set → property → reusable source atom (#5794)
   readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }>;
   readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;
   readonly typeOwnedPsetIdsByEntity: Map<number, number[]>;
@@ -376,10 +370,7 @@ export interface ExportPass {
   readonly overlayTypeOwnedPsets: Map<number, IfcAttributeValue>;
   readonly skipPropertySetIds: Set<number>;
   readonly skipRelationshipIds: Set<number>;
-  /** Shared `IfcRelDefinesByProperties` id → the elements whose set this
-   *  export copied on write, which leave that relation's `RelatedObjects`
-   *  while the others keep it (#5794). */
-  readonly detachedRelatedObjects: Map<number, Set<number>>;
+  readonly detachedRelatedObjects: Map<number, Set<number>>; // shared rel → elements copied on write off it (#5794)
   readonly newGeorefLines: string[];
   readonly warnings: string[];
   /** The slots an IFC2X3 downgrade must settle: `OwnerHistory` by reuse

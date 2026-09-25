@@ -14,6 +14,9 @@
  * set, byte for byte. The relation and the set are withheld only when no
  * surviving element is left on them.
  *
+ * A type object's own set (`HasPropertySets`) follows the same rule: another
+ * type object naming the same set keeps it.
+ *
  * The regenerated copy references the source member atom of every property
  * the session did not edit instead of re-serializing it as a single value, so
  * list, enumerated, bounded, table, reference and complex members keep their
@@ -24,11 +27,29 @@
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ExportPass } from './step-export-types.js';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
-import { type PropertySetContext, getPropertyIdsInSet } from './step-property-set-readers.js';
+import {
+  type PropertySetContext,
+  getPropertyIdsInSet,
+  getTypeOwnedHasPropertySetIds,
+} from './step-property-set-readers.js';
+import { isTypeClass } from './type-owned-psets.js';
 
-/** The shared relations one collection pass has detached elements from. */
-export class SharedRelationDetachments {
+/** What `settle` reads to tell whether anything else still names a set. */
+export interface RelationIndex {
+  /** Every effective IfcRelDefinesByProperties → its RelatedObjects. */
+  readonly relatedByRel: ReadonlyMap<number, readonly number[]>;
+  /** Element → the relations (and their set) that relate it. */
+  readonly relDefinesByEntity: ReadonlyMap<number, ReadonlyArray<{ relId: number; psetId: number }>>;
+}
+
+/**
+ * The shared sets one collection pass has taken an edited owner off: a
+ * relation's related element, or a type object's `HasPropertySets` entry.
+ */
+export class SharedSetDetachments {
   private readonly byRel = new Map<number, { setId: number; detached: Set<number> }>();
+  /** Type-owned set id → the type objects whose own copy replaces it. */
+  private readonly typeOwned = new Map<number, Set<number>>();
 
   /** `entityId` gets its own copy of the set `relId` relates it to. */
   detach(relId: number, setId: number, entityId: number): void {
@@ -40,24 +61,65 @@ export class SharedRelationDetachments {
     entry.detached.add(entityId);
   }
 
+  /** Type object `typeId` drops `setId` from its `HasPropertySets`. */
+  withholdTypeOwned(setId: number, typeId: number): void {
+    let owners = this.typeOwned.get(setId);
+    if (!owners) {
+      owners = new Set();
+      this.typeOwned.set(setId, owners);
+    }
+    owners.add(typeId);
+  }
+
   /**
-   * Decide, once every edit is collected, what each touched relation becomes.
-   * A relation that still relates a live element is narrowed at write time
-   * (`pass.detachedRelatedObjects`) and keeps its set and members. One left
-   * with nobody is withheld with its set and member atoms, as before #5794;
-   * `retainSharedAtoms` still rescues an atom another set names.
+   * Decide, once every edit is collected, what each touched set becomes. A
+   * relation that still relates a live element is narrowed at write time
+   * (`pass.detachedRelatedObjects`) and keeps its set and members; so does a
+   * type-owned set another type object or a surviving relation still names.
+   * Anything left with nobody is withheld with its member atoms, as before
+   * #5794; `retainSharedAtoms` still rescues an atom another set names.
    */
-  settle(pass: ExportPass, ctx: PropertySetContext, relatedByRel: ReadonlyMap<number, readonly number[]>): void {
+  settle(pass: ExportPass, ctx: PropertySetContext, index: RelationIndex): void {
+    const withhold = (setId: number): void => {
+      pass.skipPropertySetIds.add(setId);
+      for (const memberId of getPropertyIdsInSet(ctx, setId)) pass.skipPropertySetIds.add(memberId);
+    };
+    const keptByRelation = new Set<number>();
+    const touchedSetByRel = new Map<number, number>();
     for (const [relId, { setId, detached }] of this.byRel) {
-      const related = relatedByRel.get(relId) ?? [];
-      const stays = related.some((id) => !detached.has(id) && !pass.effective.isDeleted(id));
-      if (stays) {
+      touchedSetByRel.set(relId, setId);
+      const related = index.relatedByRel.get(relId) ?? [];
+      if (related.some((id) => !detached.has(id) && !pass.effective.isDeleted(id))) {
         pass.detachedRelatedObjects.set(relId, detached);
+        keptByRelation.add(setId);
         continue;
       }
       pass.skipRelationshipIds.add(relId);
-      pass.skipPropertySetIds.add(setId);
-      for (const memberId of getPropertyIdsInSet(ctx, setId)) pass.skipPropertySetIds.add(memberId);
+      withhold(setId);
+    }
+    if (this.typeOwned.size === 0) return;
+
+    // Only paid for when a type object's own set was edited: every other
+    // owner of those sets, among live type objects and live relations.
+    const stillNamed = new Set(keptByRelation);
+    for (const [entityId, rels] of index.relDefinesByEntity) {
+      if (pass.effective.isDeleted(entityId)) continue;
+      for (const { relId, psetId } of rels) {
+        if (touchedSetByRel.has(relId) || !this.typeOwned.has(psetId)) continue;
+        if (!pass.skipRelationshipIds.has(relId)) stillNamed.add(psetId);
+      }
+    }
+    for (const [type, ids] of pass.effective.byType) {
+      if (!isTypeClass(type.toUpperCase())) continue;
+      for (const typeId of ids) {
+        if (pass.effective.isDeleted(typeId)) continue;
+        for (const setId of getTypeOwnedHasPropertySetIds(ctx, typeId, pass.effective)) {
+          if (this.typeOwned.get(setId)?.has(typeId) === false) stillNamed.add(setId);
+        }
+      }
+    }
+    for (const setId of this.typeOwned.keys()) {
+      if (!stillNamed.has(setId)) withhold(setId);
     }
   }
 }

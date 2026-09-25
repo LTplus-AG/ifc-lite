@@ -250,6 +250,31 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     expect(ownSets).toHaveLength(1);
   });
 
+  it('a set two type objects own is kept for the type that was not edited', async () => {
+    const typeOwned = SHARED_PSET_IFC
+      .replace("#41=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M1',$,$,$,(#20,#21,#22),#40);\n", '')
+      .replace('ENDSEC;\nEND-ISO', [
+        "#60=IFCWALLTYPE('02noD_fgv7DRHMvfv0SV01',$,'T1',$,$,(#40),$,$,$,.SOLIDWALL.);",
+        "#61=IFCWALLTYPE('02noD_fgv7DRHMvfv0SV02',$,'T2',$,$,(#40),$,$,$,.SOLIDWALL.);",
+        'ENDSEC;\nEND-ISO',
+      ].join('\n'));
+    const { text } = await exportEdited((view) => {
+      view.setProperty(60, 'Custom_B', 'B1', 'edited', PropertyValueType.Label);
+    }, typeOwned);
+    const recs = records(text);
+    // T2 still names #40, so #40 and every member it lists must be written.
+    expect(recs.get(61)?.args).toContain('(#40)');
+    expect(recs.get(40)?.type).toBe('IFCPROPERTYSET');
+    for (const id of refs(recs.get(40)!.args.slice(recs.get(40)!.args.lastIndexOf('(')))) {
+      expect(recs.has(id), `member #${id}`).toBe(true);
+    }
+    // T1 got its own set in place of #40.
+    const t1Sets = refs(recs.get(60)!.args.match(/\(([^()]*)\),\$,\$,\$/)![1]);
+    expect(t1Sets).toHaveLength(1);
+    expect(t1Sets[0]).not.toBe(40);
+    expect(recs.get(t1Sets[0])?.type).toBe('IFCPROPERTYSET');
+  });
+
   it('a deleted member is dropped from the copy and kept in the shared original', async () => {
     const { text } = await exportEdited((view) => {
       view.deleteProperty(WALL_A, 'Custom_B', 'Layers');

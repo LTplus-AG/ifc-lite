@@ -26,7 +26,7 @@
  * The guide geometry itself (a perpendicular through the cut point, which
  * needs the projected axis direction, not just a point) is re-projected off
  * the shared scene-overlay kernel's dirty tick (#5486/#5512, charter
- * #5478): `useProjectorFrameTick` re-renders this component once per tick
+ * #5478): `useProjectorTick` re-renders this component once per tick
  * of the ONE shared `SceneProjector` loop instead of running its own
  * `requestAnimationFrame` poll (`useCameraTickSubscription`), so the
  * preview tracks the element through orbit/zoom without re-rendering on
@@ -35,7 +35,7 @@
 
 import { useViewerStore } from '@/store';
 import { formatSplitHoverLabel } from './formatDistance';
-import { WorldLabel, useProjectorFrameTick } from '../../viewport-ui/scene';
+import { WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -76,7 +76,7 @@ export function SplitOverlay() {
     activeTool === 'split' &&
     (splitMode === 'aiming' || splitMode === 'first-anchor') &&
     splitHoverPoint !== null;
-  void useProjectorFrameTick(active);
+  void useProjectorTick(active);
 
   if (!active || !projectToScreen) return null;
 

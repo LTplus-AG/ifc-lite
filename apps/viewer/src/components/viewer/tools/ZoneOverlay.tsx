@@ -6,7 +6,7 @@
  * 3D display + interactive editing for location zones (issue #1810 v1).
  *
  * On the shared scene-overlay kernel (#5486/#5512, charter #5478): mounted
- * inside `ViewportContainer`'s `<SceneOverlayRoot>`, so `useProjectorFrameTick`
+ * inside `ViewportContainer`'s `<SceneOverlayRoot>`, so `useProjectorTick`
  * re-renders this component once per dirty tick of the ONE shared
  * `SceneProjector` loop instead of running its own unconditional
  * `requestAnimationFrame` poll (`useCameraTickSubscription`, deleted here).
@@ -23,7 +23,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { useProjectorFrameTick } from '@/components/viewport-ui/scene';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
 import { zoneColorForIndex, zoneWorldCorners, type Zone } from '@/lib/zones';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
@@ -174,7 +174,7 @@ export function ZoneOverlay() {
   // zoom re-render would reuse the memoized screen coordinates and the boxes
   // would visibly detach from the model (PR #1869 review, P1). Sourced from
   // the shared `SceneProjector`'s dirty tick, not a private rAF poll.
-  const frameTick = useProjectorFrameTick(anyVisible);
+  const frameTick = useProjectorTick(anyVisible);
 
   const dragRef = useRef<DragState | null>(null);
 

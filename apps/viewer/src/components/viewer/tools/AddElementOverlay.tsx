@@ -25,7 +25,7 @@
  *     when ≥3 points exist (so the user can preview the close)
  *
  * On the shared scene-overlay kernel (#5486/#5512, charter #5478): mounted
- * inside `ToolOverlays`' `<SceneOverlayRoot>`. `useProjectorFrameTick`
+ * inside `ToolOverlays`' `<SceneOverlayRoot>`. `useProjectorTick`
  * re-renders this component off the ONE shared `SceneProjector` dirty tick
  * instead of running its own unconditional `requestAnimationFrame` poll.
  */
@@ -34,7 +34,7 @@ import React, { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import type { AddElementVec3 } from '@/store/slices/addElementSlice';
-import { OVERLAY_GLOW_FILTER, WorldLabel, useProjectorFrameTick } from '../../viewport-ui/scene';
+import { OVERLAY_GLOW_FILTER, WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
 import { formatDistance } from './formatDistance';
 import { formatArea } from './computePolygonArea';
 
@@ -64,7 +64,7 @@ export function AddElementOverlay() {
   // Camera realtime updates intentionally bypass React renders for
   // performance (see `updateCameraRotationRealtime`), so we need a tick to
   // re-project pending + hover points on camera motion. Sourced from the
-  // ONE shared `SceneProjector` dirty tick (`useProjectorFrameTick`)
+  // ONE shared `SceneProjector` dirty tick (`useProjectorTick`)
   // instead of a private `requestAnimationFrame` poll: it already skips
   // work while idle (static camera) and while there's nothing to project
   // — `hasOverlayContent` below gates registration the same way the old
@@ -73,7 +73,7 @@ export function AddElementOverlay() {
     pendingPoints.length > 0 ||
     hoverPoint !== null ||
     (autoSpacePreview != null && autoSpacePreview.outlines.length > 0);
-  const frameTick = useProjectorFrameTick(activeTool === 'addElement' && hasOverlayContent);
+  const frameTick = useProjectorTick(activeTool === 'addElement' && hasOverlayContent);
 
   const projection = useMemo(
     () => makeProjection(projectToScreen),

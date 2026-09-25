@@ -119,7 +119,7 @@
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
-   664 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   663 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1153 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx

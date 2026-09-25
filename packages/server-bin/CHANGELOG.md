@@ -1,5 +1,15 @@
 # @ifc-lite/server-bin
 
+## 1.22.0
+
+### Minor Changes
+
+- [#5734](https://github.com/LTplus-AG/ifc-lite/pull/5734) [`6c98f57`](https://github.com/LTplus-AG/ifc-lite/commit/6c98f579bdbd255573961732d49da1fddf87a831) Thanks [@louistrue](https://github.com/louistrue)! - Fall back to the newest older GitHub release that carries this platform's binary when the package version's own `v<version>` release is missing ([#5525](https://github.com/LTplus-AG/ifc-lite/issues/5525)). `npx @ifc-lite/server-bin` 404'd on every platform for 1.20.0 and 1.21.0 because those versions reached npm without a matching release. The fallback is found through the GitHub releases API, only considers releases that also publish a checksum, is SHA-256 verified like the primary download, and prints a warning naming both the requested and the used version. It only triggers on a 404, never on a network or server error. When no fallback is available, the error now says how to pin a version that has binaries instead of recommending the Docker template.
+
+### Patch Changes
+
+- [#5741](https://github.com/LTplus-AG/ifc-lite/pull/5741) [`f0e92a0`](https://github.com/LTplus-AG/ifc-lite/commit/f0e92a0e2f5acd0214d3d373facc286f2f8eef9d) Thanks [@louistrue](https://github.com/louistrue)! - Fix `GET /api/v1/cache/{key}` never hitting for the `cache_key` a `POST /api/v1/parse` returned, so `getCached(result.cache_key)` from `@ifc-lite/server-client` now returns the cached response instead of `null`: the route looks up the entry under the key the JSON parse route actually writes. Every Parquet replay (`POST /api/v1/parse/parquet` and `/parquet/optimized` hits, `GET /api/v1/cache/geometry/{hash}`, and the `parquet-stream` replay's `complete` event) now reports `stats.from_cache: true`, so `parseParquet()` no longer says `from_cache: false` on a warm cache.
+
 ## 1.21.0
 
 ### Minor Changes

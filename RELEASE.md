@@ -120,6 +120,19 @@ OIDC trusted publishing for both registries:
   OIDC token for a short-lived crates.io token.
 - `GITHUB_TOKEN`: automatically provided by GitHub Actions.
 
+### Release credential
+
+The git side of a release (pushing `changeset-release/main`, opening and updating the Version Packages PR, and the `v*` / server-bin GitHub releases) authenticates with `secrets.RELEASE_PAT`. It cannot be `GITHUB_TOKEN`: events that token creates do not start workflows, so the version PR would never get its required checks (#766) and `server-binaries.yml` would never see `release: published`.
+
+A PAT spends its **owner's** hourly API quota (5,000 REST and 5,000 GraphQL points), shared with everything else that account does. If agent sessions or scripts run `gh` as the same account, they drain it and the Release run fails mid-job (#5693). So the PAT must belong to an account that nothing else uses:
+
+1. Create a dedicated machine account (for example `ifc-lite-release-bot`) and give it **Write** access to `LTplus-AG/ifc-lite`. If the `main` ruleset restricts who may push `changeset-release/main` or create `v*` tags, allow this account too.
+2. As that account, create a fine-grained PAT for `LTplus-AG/ifc-lite` only, with repository permissions **Contents: Read and write**, **Pull requests: Read and write** (Metadata: Read is implied).
+3. Replace the **repository** secret `RELEASE_PAT` (Settings, Secrets and variables, Actions) with it. No workflow change is needed.
+4. Never log agent sessions or local tooling in with this token.
+
+The Release job's `Check the release credential's API quota` step (`scripts/check-release-credential-quota.mjs`) reads `GET /rate_limit` before the run changes anything. It waits up to 20 minutes for a reset that is near, and otherwise fails with the token owner, the drained bucket and its reset time, before anything is pushed or published.
+
 ## FAQ
 
 ### Q: Do I need to update version numbers manually?
@@ -164,6 +177,9 @@ OIDC trusted publishing for both registries:
 - For a brand-new package, do the one-time manual first publish before trusted publishing can take over
 - For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
+
+### "Release credential out of API quota"
+- Something else that uses the `RELEASE_PAT` account spent its hourly quota. Nothing was pushed or published; re-run after the reset time in the error. To stop it recurring, see [Release credential](#release-credential).
 
 ### "Release commit still carries changesets"
 - The Version Packages PR was stale when it merged or was queued. See [A Version Packages PR must be fresh when it lands](#a-version-packages-pr-must-be-fresh-when-it-lands).

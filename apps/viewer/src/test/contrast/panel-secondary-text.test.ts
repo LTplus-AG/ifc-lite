@@ -279,7 +279,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'EntityContextMenu row shortcut hint',
       file: ENTITY_CONTEXT_MENU,
-      anchor: '{shortcut && (\n        <span ',
+      anchor: '{shortcut && <span ',
       surface: 'bg-popover',
     },
     {

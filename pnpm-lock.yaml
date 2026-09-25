@@ -614,14 +614,14 @@ importers:
         specifier: ^9.27.0
         version: 9.27.0
       '@ifc-lite/data':
-        specifier: workspace:*
-        version: link:../../packages/data
+        specifier: ^5.3.0
+        version: 5.3.0
       '@ifc-lite/geometry':
-        specifier: workspace:*
-        version: link:../../packages/geometry
+        specifier: ^7.5.0
+        version: 7.5.1
       '@ifc-lite/parser':
-        specifier: workspace:*
-        version: link:../../packages/parser
+        specifier: ^8.0.0
+        version: 8.2.0
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -683,14 +683,14 @@ importers:
   examples/threejs-viewer:
     dependencies:
       '@ifc-lite/data':
-        specifier: workspace:*
-        version: link:../../packages/data
+        specifier: ^5.3.0
+        version: 5.3.0
       '@ifc-lite/geometry':
-        specifier: workspace:*
-        version: link:../../packages/geometry
+        specifier: ^7.5.0
+        version: 7.5.1
       '@ifc-lite/parser':
-        specifier: workspace:*
-        version: link:../../packages/parser
+        specifier: ^8.0.0
+        version: 8.2.0
       three:
         specifier: ^0.186.0
         version: 0.186.0
@@ -2369,6 +2369,36 @@ packages:
 
   '@iconify/utils@3.1.7':
     resolution: {integrity: sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==}
+
+  '@ifc-lite/data@5.3.0':
+    resolution: {integrity: sha512-Vfy718RAz7lmqdKV7sOHwaFdPyzsdQ02xgTf1nioqoBhXfb+8tGj/Uj4m+h9shxLyhlwlWBJJIEIIPCgZCVJfA==}
+
+  '@ifc-lite/encoding@2.2.0':
+    resolution: {integrity: sha512-YfnM5G4zS93y8Dh0rKUfayBPczOwIBEjvmSXL2Nx5AOmLTh9/+mfyPlWIOxkP6I95uxtk6QXsUSMHFMgVY4IEg==}
+
+  '@ifc-lite/geometry@7.5.1':
+    resolution: {integrity: sha512-orxyMMJZAzHrfJ6AOsU/vJWAL59LFOs9hHxDPzTe8slp2EOpvjMf/9LuEvwT37ycObbohYp9KxHvuN10VyGrgQ==}
+
+  '@ifc-lite/ifcx@4.2.0':
+    resolution: {integrity: sha512-ZEQghnNDlRXB1kpy8fc8mKh2kMuusW1zT3gmhv83Z/iqxHAEL6akD0idJFipdgr7fTh685j9JMOnMQeTz0Lmiw==}
+
+  '@ifc-lite/mutations@2.7.0':
+    resolution: {integrity: sha512-cumVMfBkUi4Crd2HeLeacPGwPcjAXUF3EUu+3wvgIK0Ch9ErEcBMPAzRK40Iondj9gYOFqlX0Fzv1LLIvBoRHg==}
+
+  '@ifc-lite/parser@8.2.0':
+    resolution: {integrity: sha512-8ZM/5PuBxWkYtGBQNsNgW8QXFHjtt57G1MEE/IDjv2Qle0K0CqP3ES/0yW/Pl5ehTlKhX7iKIlaR8grwRAC7wA==}
+
+  '@ifc-lite/pointcloud@0.11.0':
+    resolution: {integrity: sha512-my9ymYgP5MCV3GkigecJmABz4Lnzdozq6HlY3ceih21oHaM6vSmFqn142/QyXQiuUtDy4izAZr77bGgOmnkhZQ==}
+
+  '@ifc-lite/regex-guard@0.2.0':
+    resolution: {integrity: sha512-s9QLHRLNWWW6l+bdlpgGSZCttyY549qZohMJg6rCKNqmUYv7nruyz6oTNhx1WwsYihNHMZM4nT1+Fxcpz7s3rw==}
+
+  '@ifc-lite/wasm-lifecycle@0.2.0':
+    resolution: {integrity: sha512-PEmr5+DfXMnjZLzeupQtiW2b7RcxjmpgLvE73lqnzeq+DUQg9dOrfkyatOQOoLW+1r3gMD3CaOFJBIB7N6L5Kg==}
+
+  '@ifc-lite/wasm@10.1.0':
+    resolution: {integrity: sha512-xnEeVV8C3V6sJgkVkbEHOVdyGdsL3WvsyVbVWWRD5loec4kOSAkIglnZ/WtN55BLFD6sFeIEdMIk8hwVDll0JA==}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -6876,6 +6906,54 @@ snapshots:
       '@antfu/install-pkg': 2.0.1
       '@iconify/types': 2.0.0
       import-meta-resolve: 4.2.0
+
+  '@ifc-lite/data@5.3.0':
+    dependencies:
+      '@ifc-lite/encoding': 2.2.0
+
+  '@ifc-lite/encoding@2.2.0': {}
+
+  '@ifc-lite/geometry@7.5.1':
+    dependencies:
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/wasm': 10.1.0
+      '@ifc-lite/wasm-lifecycle': 0.2.0
+    optionalDependencies:
+      '@tauri-apps/api': 2.11.1
+
+  '@ifc-lite/ifcx@4.2.0':
+    dependencies:
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/mutations': 2.7.0
+      '@ifc-lite/pointcloud': 0.11.0
+      '@noble/hashes': 2.4.0
+
+  '@ifc-lite/mutations@2.7.0':
+    dependencies:
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/regex-guard': 0.2.0
+      '@noble/hashes': 2.4.0
+
+  '@ifc-lite/parser@8.2.0':
+    dependencies:
+      '@ifc-lite/data': 5.3.0
+      '@ifc-lite/encoding': 2.2.0
+      '@ifc-lite/ifcx': 4.2.0
+      '@ifc-lite/wasm': 10.1.0
+      '@ifc-lite/wasm-lifecycle': 0.2.0
+      decimal.js: 10.6.0
+      fflate: 0.8.3
+      jszip: 3.10.2
+
+  '@ifc-lite/pointcloud@0.11.0':
+    dependencies:
+      laz-perf: 0.0.7
+
+  '@ifc-lite/regex-guard@0.2.0': {}
+
+  '@ifc-lite/wasm-lifecycle@0.2.0': {}
+
+  '@ifc-lite/wasm@10.1.0': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:

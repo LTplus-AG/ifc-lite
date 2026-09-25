@@ -107,12 +107,15 @@ impl DiskCache {
     /// content is not read, so this is the cheap pre-filter, never the
     /// decision a reader acts on.
     ///
-    /// `cacache::metadata` answers `Ok(None)` for a key it has no entry for,
-    /// so this used to report every absent key present (`is_ok()`); it had no
-    /// caller until `GET /api/v1/cache/{key}` used it to answer a miss before
-    /// taking an admission slot (#5750). A lookup error answers `false`.
-    pub async fn has(&self, key: &str) -> bool {
-        matches!(cacache::metadata(&self.cache_dir, key).await, Ok(Some(_)))
+    /// `Ok(false)` is "absent"; a lookup that FAILS is an error, not an
+    /// absence, so a caller answering `404` on `false` still answers a broken
+    /// cache store with `500 CACHE_ERROR` (#5750 review). `cacache::metadata`
+    /// answers `Ok(None)` for a key it has no entry for.
+    pub async fn has(&self, key: &str) -> Result<bool, ApiError> {
+        match cacache::metadata(&self.cache_dir, key).await {
+            Ok(entry) => Ok(entry.is_some()),
+            Err(e) => Err(ApiError::Cache(e.to_string())),
+        }
     }
 
     /// Remove a cached entry.

@@ -146,7 +146,7 @@ pub async fn get_cached(
     tracing::debug!(key = %key, response_key = %response_key, "Cache lookup");
 
     let not_found = || ApiError::NotFound(format!("Cache key not found: {}", key));
-    if !state.cache.has(&response_key).await {
+    if !state.cache.has(&response_key).await? {
         tracing::debug!(key = %key, "Cache MISS");
         return Err(not_found());
     }

@@ -398,3 +398,38 @@ async fn issue_5750_the_admission_slot_outlives_a_dropped_cache_get() {
     }
     assert!(freed, "the slot never came back after the decode finished");
 }
+
+/// Review of #5791: the miss pre-filter must not read a broken cache store as
+/// "absent". With `CACHE_DIR` replaced by a plain file, every index lookup
+/// fails; the GET must answer `500 CACHE_ERROR` (what reading the entry
+/// answered before the pre-filter existed), never the `404` a genuine miss
+/// gets. The control: the same key on a healthy, empty store is a `404`.
+#[tokio::test]
+async fn issue_5750_a_cache_lookup_error_is_a_500_not_a_miss() {
+    let key = format!("{}-default", "3".repeat(64));
+
+    let healthy = test_state("5750-lookup-error-control").await;
+    assert_eq!(get_cache(&healthy, &key).await.status(), StatusCode::NOT_FOUND);
+
+    let broken = test_state("5750-lookup-error").await;
+    let dir = std::env::temp_dir().join(format!(
+        "ifc-lite-server-5128-cache-get-{}-5750-lookup-error",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::write(&dir, b"not a cache directory").expect("inject the lookup failure");
+    assert!(
+        broken.cache.has("anything").await.is_err(),
+        "the injected failure must reach `has` as an error"
+    );
+
+    let response = get_cache(&broken, &key).await;
+    let _ = std::fs::remove_file(&dir);
+    assert_eq!(
+        response.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "a failed index lookup was reported as a cache miss"
+    );
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["code"], "CACHE_ERROR");
+}

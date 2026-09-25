@@ -246,6 +246,9 @@ describe('typeNameOfGlobalId (#5884)', () => {
   ]);
   // Canonical resolution: offset ids, plus an overlay-allocated id (2900)
   // that only the store's mutation views know, which the registry does not.
+  // The fake base table holds 900 only to show the lookup lands in the right
+  // model; in the viewer a created entity is not in the parsed base table, so
+  // its class reads undefined (safe: never treated as a proxy marker).
   const resolve = (id: number) => {
     if (id === 2900) return { modelId: 'b', expressId: 900 };
     if (id >= 1000 && id < 2000) return { modelId: 'b', expressId: id - 1000 };

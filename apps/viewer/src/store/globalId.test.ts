@@ -27,6 +27,7 @@ import {
   localIdInOverlay,
   type ForwardModelMapLike,
   type OwnershipView,
+  typeNameOfGlobalId,
 } from './globalId.js';
 import { modelRemovedScope } from './teardown-scope.js';
 
@@ -234,5 +235,24 @@ describe('parse-range vs. overlay ownership — cross-model shadowing', () => {
 
     // And B's own answer for that id is unambiguous, independent of A's overlay.
     assert.equal(localIdInParseRange(modelB, 150), 49);
+  });
+});
+
+describe('typeNameOfGlobalId (#5884)', () => {
+  const storeOf = (types: Record<number, string>) => ({ entities: { getTypeName: (id: number) => types[id] ?? '' } });
+
+  it("reads a federated id's class from its OWN model store", () => {
+    const state = {
+      fromGlobalId: (id: number) => (id >= 1000 ? { modelId: 'b', expressId: id - 1000 } : { modelId: 'a', expressId: id }),
+      models: new Map([['a', { ifcDataStore: storeOf({ 5: 'IfcWall' }) }], ['b', { ifcDataStore: storeOf({ 5: 'IfcBuildingElementProxy' }) }]]),
+    };
+    assert.equal(typeNameOfGlobalId(state, 1005, storeOf({ 1005: 'IfcDoor' })), 'IfcBuildingElementProxy');
+    assert.equal(typeNameOfGlobalId(state, 5, null), 'IfcWall');
+  });
+
+  it('pre-federation (no lookup) reads the active store, and an unknown id has no class', () => {
+    const state = { fromGlobalId: () => null, models: new Map() };
+    assert.equal(typeNameOfGlobalId(state, 7, storeOf({ 7: 'IfcSlab' })), 'IfcSlab');
+    assert.equal(typeNameOfGlobalId(state, 8, storeOf({})), undefined);
   });
 });

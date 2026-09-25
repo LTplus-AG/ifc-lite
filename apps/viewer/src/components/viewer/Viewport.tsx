@@ -36,6 +36,7 @@ import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
+import { typeNameOfGlobalId } from '@/store/globalId';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -1016,7 +1017,8 @@ export function Viewport({
           calculateScale();
         },
         fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
-          const target = fitAllBounds({ meshIds: (geometryRef.current ?? []).map((m) => m.expressId), wholeScene: geometryBoundsRef.current,
+          const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
+            typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),
             instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [], instancedDrawn: instancedPassDrawn(useViewerStore.getState()),
             boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current } });
           camera.zoomExtent(target.min, target.max, 300); calculateScale();
@@ -1180,11 +1182,7 @@ export function Viewport({
           if (scene) {
             const state = useViewerStore.getState();
             for (const id of scene.getInstancedEntityIds()) {
-              const loc = state.fromGlobalId(id);
-              const store = loc
-                ? state.models.get(loc.modelId)?.ifcDataStore
-                : ifcDataStoreRef.current;
-              const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+              const type = typeNameOfGlobalId(state, id, ifcDataStoreRef.current);
               if (type && EXCLUDE.has(type)) continue;
               const b = scene.getInstancedEntityBounds(id);
               if (!b) continue;

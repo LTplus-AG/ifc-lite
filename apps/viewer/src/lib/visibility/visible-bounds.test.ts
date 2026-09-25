@@ -32,12 +32,14 @@ const WING = [...Array(300)].map((_, i) => 1001 + i);
 const BUILDING_BOX = span(0, 30, 10);
 const WHOLE: BoundingBox3D = { min: { x: -7, y: -7, z: -7 }, max: { x: 7, y: 7, z: 7 } };
 const NONE = new Set<number>();
+const meshes = (...ids: number[]) => ids.map((expressId) => ({ expressId }));
 
 function fit(over: Partial<FitAllInput>): BoundingBox3D {
   return fitAllBounds({
-    meshIds: [...BUILDING, 9999],
+    meshes: meshes(...BUILDING, 9999),
     instancedIds: WING,
     instancedDrawn: true,
+    typeOf: () => undefined,
     boundsOf: (id) => BOXES.get(id) ?? null,
     visibility: { hidden: NONE, isolated: null },
     wholeScene: WHOLE,
@@ -76,11 +78,11 @@ describe('fitAllBounds (#5884)', () => {
       instancedGeometryAabbs: new Map(WING.map((id) => [id, {}])),
     } as unknown as FederatedModel['geometryResult'];
     const hidden = modelHiddenEntities(new Map([['a', a], ['b', b]]), new Set(), (m, id) => (m === 'b' ? id + 1000 : id));
-    assert.deepEqual(fit({ meshIds: BUILDING, visibility: { hidden, isolated: null } }), BUILDING_BOX);
+    assert.deepEqual(fit({ meshes: meshes(...BUILDING), visibility: { hidden, isolated: null } }), BUILDING_BOX);
   });
 
   it('a hidden model with flat meshes only is not framed, whatever the load-time box spans', () => {
-    assert.deepEqual(fit({ meshIds: BUILDING, instancedIds: [], wholeScene: span(0, 9001) }), BUILDING_BOX);
+    assert.deepEqual(fit({ meshes: meshes(...BUILDING), instancedIds: [], wholeScene: span(0, 9001) }), BUILDING_BOX);
   });
 
   it('a model moved after load is framed where it now is (placed bounds, no cached box)', () => {
@@ -93,6 +95,24 @@ describe('fitAllBounds (#5884)', () => {
     assert.deepEqual(fit({ boundsOf: moved }), span(0, 1530, 10));
   });
 
+  it('leaves coordination-marker proxies out, flat and instanced, as the load-time fit does (#5633)', () => {
+    // Two small proxy markers ~0.6 building lengths east: one flat mesh, one
+    // instanced occurrence whose class comes from the store.
+    const markers = new Map<number, BoundingBox3D>([[7001, box(49)], [7002, box(50)]]);
+    const boundsOf = (id: number) => markers.get(id) ?? BOXES.get(id) ?? null;
+    const input = {
+      meshes: [...meshes(...BUILDING), { expressId: 7001, ifcType: 'IfcBuildingElementProxy' }],
+      instancedIds: [7002],
+      boundsOf,
+    };
+    assert.deepEqual(fit({ ...input, typeOf: () => 'IfcBuildingElementProxy' }), BUILDING_BOX);
+    // A lamp post there is typed as what it is, so it stays framed.
+    assert.deepEqual(
+      fit({ ...input, meshes: [...meshes(...BUILDING), { expressId: 7001, ifcType: 'IfcLamp' }], typeOf: () => 'IfcLamp' }),
+      span(0, 51, 10),
+    );
+  });
+
   it('Types view: the undrawn instanced occurrences are not framed', () => {
     assert.deepEqual(fit({ instancedDrawn: false }), BUILDING_BOX);
   });
@@ -103,7 +123,7 @@ describe('fitAllBounds (#5884)', () => {
 
   it('ignores a non-finite box instead of framing garbage', () => {
     const bad = (id: number) => (id === 1 ? box(Number.NaN) : id === 2 ? box(0) : null);
-    assert.deepEqual(fit({ meshIds: [1, 2, 3], instancedIds: [], boundsOf: bad, visibility: { hidden: NONE, isolated: new Set([1, 2]) } }), box(0));
+    assert.deepEqual(fit({ meshes: meshes(1, 2, 3), instancedIds: [], boundsOf: bad, visibility: { hidden: NONE, isolated: new Set([1, 2]) } }), box(0));
   });
 
   it('the instanced pass is hidden only in the Types view of a model with a type library', () => {

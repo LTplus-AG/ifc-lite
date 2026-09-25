@@ -49,13 +49,16 @@ export function instancedPassDrawn(s: { hasTypeGeometry: boolean; typeViewMode: 
 }
 
 export interface FitAllInput {
-  /** Ids of the flat meshes currently drawn (global ids). Already filtered:
-   *  a hidden model's and a toggled-off class's meshes are not in it. */
-  meshIds: Iterable<number>;
+  /** The flat meshes currently drawn (global ids). Already filtered: a
+   *  hidden model's and a toggled-off class's meshes are not in it. */
+  meshes: Iterable<{ expressId: number; ifcType?: string }>;
   /** Ids of the GPU-instanced occurrences (global ids). */
   instancedIds: Iterable<number>;
   /** False in the Types view, where the instanced pass is not drawn. */
   instancedDrawn: boolean;
+  /** IFC class of an instanced occurrence (they carry none): the #5633
+   *  marker rule drops a detached cluster made only of proxies. */
+  typeOf: (id: number) => string | undefined;
   /** PLACED world bounds per id (model placement offsets applied). */
   boundsOf: (id: number) => BoundingBox3D | null | undefined;
   visibility: EffectiveVisibility;
@@ -74,16 +77,16 @@ export interface FitAllInput {
 export function fitAllBounds(input: FitAllInput): BoundingBox3D {
   const boxes: RobustFitMeshInput[] = [];
   const seen = new Set<number>();
-  const take = (id: number) => {
+  const take = (id: number, ifcType: string | undefined) => {
     if (seen.has(id)) return;
     seen.add(id);
     if (!isEffectivelyVisible(id, input.visibility)) return;
     const b = input.boundsOf(id);
-    if (b) boxes.push({ positions: Float64Array.of(b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z) });
+    if (b) boxes.push({ positions: Float64Array.of(b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z), ifcType });
   };
-  for (const id of input.meshIds) take(id);
-  if (input.instancedDrawn) for (const id of input.instancedIds) take(id);
-  const fit = robustFitBoundsFull(boxes);
+  for (const mesh of input.meshes) take(mesh.expressId, mesh.ifcType);
+  if (input.instancedDrawn) for (const id of input.instancedIds) take(id, input.typeOf(id));
+  const fit = robustFitBoundsFull(boxes, { quiet: true });
   const bounds = fit ? (fit.robust ?? fit.full) : null;
   return bounds && isSaneBounds(bounds) ? bounds : input.wholeScene;
 }

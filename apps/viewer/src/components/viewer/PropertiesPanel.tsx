@@ -27,6 +27,7 @@ import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLike
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
+import { overlayClassifications, overlayMaterials } from '@/lib/authoring/association-overlay';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
@@ -656,8 +657,10 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
+    return [...extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId),
+      ...overlayClassifications(view, selectedEntity.expressId, dataStore.schemaVersion)]; // session-created (#5876)
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract materials for the selected entity from the IFC data store —
   // ALL associations, so an element carrying e.g. a layer set AND a fallback
@@ -666,8 +669,10 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
+    return [...extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId),
+      ...overlayMaterials(view, selectedEntity.expressId, dataStore.schemaVersion)]; // session-created (#5876)
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Property sets attached to the selected entity's material(s) via
   // IfcMaterialProperties (e.g. Pset_MaterialConcrete). These live on the

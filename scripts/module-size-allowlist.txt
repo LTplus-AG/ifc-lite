@@ -95,7 +95,7 @@
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
   2164 apps/viewer/src/components/viewer/PropertiesPanel.tsx
   1694 apps/viewer/src/components/viewer/PropertyEditor.tsx
-   535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
+  535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts

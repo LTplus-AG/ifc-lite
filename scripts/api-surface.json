@@ -6670,6 +6670,7 @@
   "@ifc-lite/mutations": [
     "AttributeExtractor: type",
     "AttributeMutation: interface",
+    "BULK_WRITABLE_ATTRIBUTES: const",
     "BulkAction: type",
     "BulkQuery: interface",
     "BulkQueryEngine: class",

@@ -309,7 +309,8 @@ function resolveMaterial(
                 if (!matRef) continue;
                 const matEntity = extractor.extractEntity(matRef);
                 if (matEntity) {
-                    const name = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : '';
+                    const name = typeof matEntity.attributes?.[0] === 'string' && matEntity.attributes[0]
+                        ? matEntity.attributes[0] : `Material #${matId}`;
                     const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
                     materials.push({ name, ...(category ? { category } : {}) });
                 }

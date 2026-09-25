@@ -7,7 +7,7 @@ import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
-import { extractAllMaterialsOnDemand, extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { checkClassificationFacet, checkMaterialFacet } from '@ifc-lite/ids';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
@@ -25,6 +25,15 @@ const parseResult: ServerParseResult = {
     total_triangles: 0,
   },
 };
+
+function materialTestHierarchy(projectId: number): DataModel['spatialHierarchy'] {
+  return {
+    nodes: [{ entity_id: projectId, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT',
+      name: 'P', children_ids: [], element_ids: [] }],
+    project_id: projectId, element_to_storey: new Map(), element_to_building: new Map(),
+    element_to_site: new Map(), element_to_space: new Map(),
+  };
+}
 
 describe('convertServerDataModel', () => {
   it('preserves IFC4.3 facility-part hierarchies from server spatial data', () => {
@@ -744,6 +753,7 @@ it('server hydration preserves one-hop IfcSpatialZone storey membership (#4775)'
 it('forwards server material values with own-before-type precedence and distinct associations (#5296)', () => {
   const model: DataModel = {
     entities: ServerEntityIndex.fromRows([
+      { entity_id: 1000, type_name: 'IFCPROJECT', has_geometry: false },
       { entity_id: 1, type_name: 'IFCWALL', has_geometry: true },
       { entity_id: 2, type_name: 'IFCWALL', has_geometry: true },
       { entity_id: 3, type_name: 'IFCWALL', has_geometry: true },
@@ -751,6 +761,7 @@ it('forwards server material values with own-before-type precedence and distinct
       { entity_id: 5, type_name: 'IFCWALL', has_geometry: true },
       { entity_id: 6, type_name: 'IFCWALL', has_geometry: true },
       { entity_id: 7, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 8, type_name: 'IFCWALL', has_geometry: true },
       { entity_id: 100, type_name: 'IFCWALLTYPE', has_geometry: false },
     ]),
     propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
@@ -765,6 +776,7 @@ it('forwards server material values with own-before-type precedence and distinct
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 340, related_id: 5, rel_id: 35 },
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 350, related_id: 6, rel_id: 36 },
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 360, related_id: 7, rel_id: 37 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 370, related_id: 8, rel_id: 38 },
     ],
     materials: [
       { element_id: 100, association_id: 30, member_count: 1, definition_id: 300, kind: 'IfcMaterialLayerSet',
@@ -789,9 +801,10 @@ it('forwards server material values with own-before-type precedence and distinct
         layer_index: 0, material_name: 'Known only' },
       { element_id: 7, association_id: 37, member_count: 1, definition_id: 360, kind: 'IfcMaterial',
         layer_index: 0, material_name: '' },
+      { element_id: 8, association_id: 38, member_count: 1, definition_id: 370, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: '' },
     ],
-    spatialHierarchy: { nodes: [], project_id: 0, element_to_storey: new Map(),
-      element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map() },
+    spatialHierarchy: materialTestHierarchy(1000),
   };
   const store = convertServerDataModel(model, parseResult, { size: 1 }, []);
   const values = (id: number) => createDataAccessor(store).getMaterials(id).map((m) => m.name);
@@ -801,10 +814,47 @@ it('forwards server material values with own-before-type precedence and distinct
   assert.deepEqual(values(3), ['Steel', 'Metal', 'Timber', 'Wood']);
   assert.deepEqual(extractAllMaterialsOnDemand(store, 4), [{ type: 'Material', unresolved: true }]);
   const unknown = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unknown member' } };
+  assert.deepEqual(values(5), ['Named member', 'Material #341']);
   assert.equal(checkMaterialFacet(unknown, 5, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
   assert.equal(checkMaterialFacet({ ...unknown, value: { ...unknown.value, value: 'Named member' } }, 5, createDataAccessor(store)).passed, true);
   assert.equal(checkMaterialFacet(unknown, 6, createDataAccessor(store)).failure?.type, 'MATERIAL_UNRESOLVED');
   assert.equal(checkMaterialFacet({ type: 'material' }, 7, createDataAccessor(store)).passed, true);
   assert.equal(checkMaterialFacet(unknown, 7, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet(unknown, 8, createDataAccessor(store)).failure?.type, 'MATERIAL_UNRESOLVED');
   assert.equal(store.resolvedMaterials?.get(100)?.get(300)?.type, 'MaterialLayerSet');
+});
+
+it('matches raw and server material-list fallbacks for an unnamed IfcMaterial (#5296)', async () => {
+  const ifc = `ISO-10303-21;
+HEADER; FILE_SCHEMA(('IFC4')); ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W',$,$,$,$,$,$);
+#86=IFCMATERIAL($,$,$);
+#84=IFCMATERIALLIST((#86));
+#85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#28),#84);
+ENDSEC;
+END-ISO-10303-21;`;
+  const source = new TextEncoder().encode(ifc);
+  const raw = await new IfcParser().parseColumnar(source.buffer, { disableWorkerScan: true });
+  const model: DataModel = {
+    entities: ServerEntityIndex.fromRows([
+      { entity_id: 1, type_name: 'IFCPROJECT', has_geometry: false },
+      { entity_id: 28, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 84, type_name: 'IFCMATERIALLIST', has_geometry: false },
+      { entity_id: 86, type_name: 'IFCMATERIAL', has_geometry: false },
+    ]),
+    propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
+    relationships: [{ rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 84, related_id: 28, rel_id: 85 }],
+    materials: [{ element_id: 28, association_id: 85, definition_id: 84, member_count: 1,
+      kind: 'IfcMaterialList', layer_index: 0, material_name: '', material_id: 86 }],
+    spatialHierarchy: materialTestHierarchy(1),
+  };
+  const server = convertServerDataModel(model, parseResult, { size: source.length }, []);
+  const names = (store: typeof raw) => createDataAccessor(store).getMaterials(28).map((m) => m.name);
+  assert.deepEqual(names(raw), ['Material #86']);
+  assert.deepEqual(names(server), names(raw));
+  const facet = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Material #86' } };
+  assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(raw)).passed, true);
+  assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(server)).passed, true);
 });

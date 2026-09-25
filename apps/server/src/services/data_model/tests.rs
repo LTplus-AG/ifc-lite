@@ -723,7 +723,8 @@ DATA;
 #30=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$);
 #82=IFCMATERIAL($,$,'CategoryOnly');
 #83=IFCRELASSOCIATESMATERIAL('Mat0000000000000000005',$,$,$,(#29),#82);
-#84=IFCMATERIALLIST((#80,#82));
+#86=IFCMATERIAL($,$,$);
+#84=IFCMATERIALLIST((#80,#82,#86));
 #85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#30),#84);
 ENDSEC;
 END-ISO-10303-21;
@@ -744,9 +745,11 @@ fn resolves_a_direct_material_association_including_its_category() {
     assert_eq!(unnamed.material_name, "");
     assert_eq!(unnamed.material_category.as_deref(), Some("CategoryOnly"));
     let list: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 30).collect();
-    assert_eq!(list.len(), 2, "unnamed list member must not disappear");
+    assert_eq!(list.len(), 3, "unnamed list members must not disappear");
     assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(82)
         && m.material_category.as_deref() == Some("CategoryOnly")));
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(86)
+        && m.material_category.is_none()));
     assert_eq!(m.category.as_deref(), Some("Masonry"));
     assert_eq!(m.set_name, None);
     assert_eq!(m.thickness, None);

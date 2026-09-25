@@ -30,6 +30,7 @@ export function resolvedServerMaterials(rows: readonly MaterialAssociation[]): M
           r.member_count !== first.member_count)) continue;
       const ordered = [...rows].sort((a, b) => a.layer_index - b.layer_index);
       if (first.member_count !== ordered.length || ordered.some((r, index) => r.layer_index !== index)) continue;
+      if (first.kind === 'IfcMaterialList' && ordered.some((r) => !r.material_name && r.material_id === undefined)) continue;
       const value = (s?: string): string | undefined => s || undefined;
       let info: MaterialInfo;
       switch (first.kind) {
@@ -38,7 +39,7 @@ export function resolvedServerMaterials(rows: readonly MaterialAssociation[]): M
           break;
         case 'IfcMaterialList':
           info = { type: 'MaterialList', materials: ordered.map((r) => ({
-            name: r.material_name,
+            name: r.material_name || `Material #${r.material_id}`,
             category: value(r.material_category),
           })) };
           break;

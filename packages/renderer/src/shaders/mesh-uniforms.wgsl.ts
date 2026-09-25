@@ -18,7 +18,7 @@ export const meshUniformsWgsl = `
           metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
           transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
+          flags: vec4<u32>,             // x = isSelected, y = section/clip bits; z, w unused (0) since #5746 dropped the derivative edges
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
           clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
           quantParams: vec4<f32>, // local min xyz, lattice step w

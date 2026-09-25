@@ -24,6 +24,7 @@ import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 const s = () => useViewerStore.getState();
 
@@ -81,7 +82,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const renderTool = () => render(<><ViewportHud /><ToolOverlays /></>);
+const renderTool = () => render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
 
 function region(name: string): HTMLElement {
   const node = document.querySelector<HTMLElement>(`[data-hud-region="${name}"]`);

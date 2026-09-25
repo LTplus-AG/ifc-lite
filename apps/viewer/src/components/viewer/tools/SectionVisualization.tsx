@@ -3,261 +3,182 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Section plane visual indicator/gizmo.
+ * The Section tool's scene side on the scene-overlay kernel (#5501,
+ * charter #5478 §6): the face-picked plane's drag gizmo and the face-pick
+ * hover preview, drawn with the shared primitives (`AxisArrow`, `Handle`,
+ * `PlaneOutline`) on the one projector loop `SceneOverlayRoot` runs. The
+ * two hand-rolled `requestAnimationFrame` + `projectToScreen` loops this
+ * file and `SectionPlaneDragGizmo` used to own are gone, as is their own
+ * `<svg>` layer: every mark portals into the kernel's SVG layer.
  *
- * In addition to the cardinal-axis corner badge (existing), this also
- * renders the 3D drag gizmo for face-picked custom planes (issue #243):
- * an accent dot at the live plane anchor (`pickedAt` projected onto the
- * current plane via `customPlaneCenter`) plus an arrow along the picked
- * normal that the user can click + drag to slide the cut plane
- * perpendicular to its surface. Anchoring to the projected center —
- * instead of `pickedAt` directly — keeps the gizmo glued to the plane
- * as `distance` changes; using `pickedAt` directly would freeze the
- * gizmo at the original face-pick location while the geometry clip
- * slides to the new distance. The drag math projects the cursor delta
- * onto the screen-projected normal and converts pixels-per-meter via
- * the camera's point-projection of `center + normal * 1m`.
- *
- * Colour (#5488, charter #5478): the section plane is the thing being
- * manipulated, so the badge, gizmo and pick preview all draw in the one
- * interaction accent (`overlay-accent` / `overlay-accent-soft`) for every
- * axis and for face-picked planes alike, matching the GPU plane quad that
- * `Renderer.setOverlayTheme` tints with the same token. Axis identity is
- * carried only by a small axis-token dot on the badge.
+ * Colour (#5488): the plane is the thing being manipulated, so the gizmo
+ * and the preview draw in the one interaction accent for every axis and
+ * for face-picked planes alike, matching the GPU plane quad
+ * `Renderer.setOverlayTheme` tints with the same token.
  */
 
-import { useEffect, useState } from 'react';
-import { AXIS_INFO } from './sectionConstants';
-import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
-import { useViewerStore } from '@/store';
-import { getGlobalRenderer } from '@/hooks/useBCF';
+import { useCallback, useEffect, useId, useRef } from 'react';
+import { customPlaneCenter, useViewerStore } from '@/store';
+import type { CustomSectionPlane } from '@/store/types';
 import { useTranslation } from '@/i18n';
-import { SectionPlaneDragGizmo } from './SectionPlaneDragGizmo';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { AxisArrow, Handle, PlaneOutline, useSceneProjector } from '../../viewport-ui/scene';
+import { isAnchorVisible, vec3Key } from '../../viewport-ui/scene/projection';
+import { useWakeOnChange } from '../../viewport-ui/scene/useWakeOnChange';
+import type { ScreenPoint, Vec3 } from '../../viewport-ui/scene/types';
+import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
+import type { SectionPickPreview } from '@/store/slices/sectionSlice';
+
+const toVec3 = (p: readonly [number, number, number]): Vec3 => ({ x: p[0], y: p[1], z: p[2] });
+
+/** On-screen length of the drag gizmo's arrow, CSS px, whatever the camera distance. */
+const GIZMO_ARROW_PX = 60;
+/** On-screen length of the pick preview's normal telltale: small, so it never competes with the quad. */
+const PREVIEW_ARROW_PX = 36;
 
 interface SectionPlaneVisualizationProps {
-  axis: 'down' | 'front' | 'side';
   enabled: boolean;
 }
 
-// Section plane visual indicator component
-export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisualizationProps) {
-  const { t } = useTranslation();
+export function SectionPlaneVisualization({ enabled }: SectionPlaneVisualizationProps) {
   const customPlane = useViewerStore((s) => s.sectionPlane.custom);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
-  // Live face-pick hover preview (issue #243 follow-up). Only set
-  // while pick mode is armed AND the cursor has dwelled ~200ms over a
-  // surface. Drives the accent quad + arrow that telegraph "this is
-  // where I'll cut if you click here" before the user commits.
+  // Live face-pick hover preview (issue #243 follow-up): set while pick mode
+  // is armed and the cursor has dwelled ~200 ms over a surface.
   const sectionPickPreview = useViewerStore((s) => s.sectionPickPreview);
-  const isCustom = customPlane !== undefined;
+
+  const onDragStart = useCallback(() => { if (pointCloudAssetCount > 0) setPreviewStride(4); }, [pointCloudAssetCount, setPreviewStride]);
+  const onDragEnd = useCallback(() => setPreviewStride(1), [setPreviewStride]);
 
   return (
-    <svg
-      className="absolute inset-0 pointer-events-none z-20"
-      style={{ overflow: 'visible', pointerEvents: 'none' }}
-    >
-      {/* Axis indicator in corner. Accent ring for every axis; the label is
-          ink because the accent is a graphics token (3:1), not a text one. */}
-      <g transform="translate(24, 24)" data-section-badge>
-        <circle
-          cx="20" cy="20" r="18"
-          className="fill-overlay-accent-soft stroke-overlay-accent"
-          strokeWidth={enabled ? 2 : 1.5}
-          strokeOpacity={enabled ? 1 : 0.6}
-        />
-        {!isCustom && (
-          <circle
-            data-section-axis-dot={axis}
-            cx="33" cy="7" r="4"
-            className={`${AXIS_INFO[axis].axisFill} stroke-overlay-halo`}
-            strokeWidth="1.5"
-          />
-        )}
-        <text
-          x="20"
-          y="20"
-          textAnchor="middle"
-          dominantBaseline="central"
-          className="fill-overlay-ink"
-          fontFamily="monospace"
-          fontSize="11"
-          fontWeight="bold"
-        >
-          {t(isCustom ? 'sectionTool.badge.custom' : AXIS_INFO[axis].badgeKey)}
-        </text>
-        {/* Active indicator */}
-        {enabled && (
-          <text
-            x="20"
-            y="32"
-            textAnchor="middle"
-            className="fill-overlay-ink"
-            fontFamily="monospace"
-            fontSize="7"
-            fontWeight="bold"
-          >
-            {t('sectionTool.badge.active')}
-          </text>
-        )}
-      </g>
-
+    <>
       {enabled && customPlane && (
-        <SectionPlaneDragGizmo
-          customPlane={customPlane}
-          setDistance={setSectionCustomDistance}
-          onDragStart={() => { if (pointCloudAssetCount > 0) setPreviewStride(4); }}
-          onDragEnd={()  => setPreviewStride(1)}
-        />
+        <SectionPlaneDragGizmo customPlane={customPlane} setDistance={setSectionCustomDistance} onDragStart={onDragStart} onDragEnd={onDragEnd} />
       )}
-
-      {/* Face-pick hover preview — purely visual, click-through. */}
-      {sectionPickPreview && (
-        <SectionPickPreviewOverlay
-          preview={sectionPickPreview}
-        />
-      )}
-    </svg>
+      {sectionPickPreview && <SectionPickPreviewOverlay preview={sectionPickPreview} />}
+    </>
   );
 }
 
 /**
- * Translucent accent quad + tiny normal arrow painted on the surface
- * the user is hovering while section pick mode is armed (issue #243
- * follow-up). Purely a hint — does not commit a section plane;
- * `selectionHandlers.ts` does that on click.
- *
- * Rendered as an SVG overlay to match `CustomPlaneDragGizmo` (no new
- * GPU pipeline, follows the camera "for free" via per-frame
- * projection). The quad's footprint follows `tangent`/`bitangent` of
- * the hit normal so it looks like a flat square laid on the surface
- * regardless of camera angle, and its on-screen radius is clamped to
- * `[24px, 80px]` so it stays readable from any zoom.
- *
- * Pointer-events are forced off so the overlay never intercepts the
- * click that would commit the actual cut — the SVG container above
- * already disables them, but child <g> elements with `pointerEvents:
- * 'auto'` (e.g. the drag gizmo's circle) co-exist in the same tree.
+ * Click+drag handle that slides the custom section plane along its picked
+ * normal. The foot sits at `pickedAt` projected onto the LIVE plane
+ * (`customPlaneCenter`): as `distance` changes only the plane moves, and a
+ * gizmo anchored to `pickedAt` itself would be stranded at the original
+ * pick while the cut slid away. The drag converts cursor pixels to metres
+ * through the screen-projected normal (`foot -> foot + normal * 1 m`), read
+ * from the same projector tick that places the marks — resolution-
+ * independent and correct for any tilt. Orbit/pan still work underneath:
+ * only the handle's circle takes pointer events.
  */
-function SectionPickPreviewOverlay(props: {
-  preview: NonNullable<ReturnType<typeof useViewerStore.getState>['sectionPickPreview']>;
+export function SectionPlaneDragGizmo(props: {
+  customPlane: CustomSectionPlane;
+  setDistance: (d: number) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
-  const { preview } = props;
-  // Project the four quad corners + the arrow tip every animation
-  // frame so the overlay tracks camera orbit/pan without any extra
-  // store subscription. Cheap (5 mat-mul per frame).
-  const [proj, setProj] = useState<{
-    quad: Array<{ x: number; y: number }>;
-    foot: { x: number; y: number };
-    tip:  { x: number; y: number };
+  const { t } = useTranslation();
+  const { customPlane, setDistance, onDragStart, onDragEnd } = props;
+  const projector = useSceneProjector();
+  const id = useId();
+
+  const center = customPlaneCenter(customPlane);
+  const foot: Vec3 = { x: center[0], y: center[1], z: center[2] };
+  const tip: Vec3 = { x: center[0] + customPlane.normal[0], y: center[1] + customPlane.normal[1], z: center[2] + customPlane.normal[2] };
+
+  // The latest screen positions of foot and tip, written by the shared
+  // projector — no loop of this component's own.
+  const latest = useRef({ foot, tip });
+  latest.current = { foot, tip };
+  const screen = useRef<{ foot: ScreenPoint | null; tip: ScreenPoint | null }>({ foot: null, tip: null });
+  useEffect(() => {
+    if (!projector) return;
+    const unFoot = projector.registerAnchor(`${id}-foot`, () => latest.current.foot, (p) => { screen.current.foot = isAnchorVisible(p) ? p.screen : null; });
+    const unTip = projector.registerAnchor(`${id}-tip`, () => latest.current.tip, (p) => { screen.current.tip = isAnchorVisible(p) ? p.screen : null; });
+    return () => { unFoot(); unTip(); };
+  }, [projector, id]);
+  useWakeOnChange(projector, `${vec3Key(foot)}|${vec3Key(tip)}`);
+
+  const dragRef = useRef<{
+    startDistance: number;
+    startCursor: ScreenPoint;
+    screenNormal: ScreenPoint;
+    pixelsPerMeter: number;
   } | null>(null);
 
-  useEffect(() => {
-    let raf = 0;
-    // World-space anchors depend only on the pick, so they are derived once
-    // per preview rather than per frame; only the projection is per-frame.
-    // `null` means the pick carries nothing drawable (a non-finite point, or a
-    // normal with no direction) — paint nothing rather than emitting NaN SVG
-    // coordinates (#2495).
-    const anchors = sectionPickPreviewAnchors(preview.point, preview.normal);
-    if (!anchors) {
-      // Drop any projection left over from the previous (drawable) pick so the
-      // quad does not linger on the wrong face.
-      setProj(null);
-      return;
-    }
-    const project = () => {
-      const renderer = getGlobalRenderer();
-      const camera = renderer?.getCamera();
-      const canvas = renderer?.getCanvas();
-      if (camera && canvas) {
-        const w = canvas.clientWidth, h = canvas.clientHeight;
-        const toScreen = (p: readonly [number, number, number]) =>
-          camera.projectToScreen({ x: p[0], y: p[1], z: p[2] }, w, h);
-
-        // Quad corners: 0.5m half-extent in world space to start; the
-        // apparent size is clamped in screen pixels below by interpolating
-        // along the projected diagonal.
-        const c0 = toScreen(anchors.corners[0]);
-        const c1 = toScreen(anchors.corners[1]);
-        const c2 = toScreen(anchors.corners[2]);
-        const c3 = toScreen(anchors.corners[3]);
-        const foot = toScreen(anchors.foot);
-        const tip = toScreen(anchors.tip);
-
-        if (c0 && c1 && c2 && c3 && foot && tip) {
-          // On-screen size clamp: rescale the four corners about the
-          // foot so the apparent diagonal falls in [24px, 80px]. This
-          // keeps the preview readable at extreme zooms (a 1m quad
-          // can otherwise shrink to 2px from far away or fill the
-          // canvas up close).
-          const dx = c2.x - c0.x;
-          const dy = c2.y - c0.y;
-          const diag = Math.hypot(dx, dy) || 1;
-          const minPx = 50;  // ~50px diagonal — visible but not
-                             // overpowering
-          const maxPx = 140;
-          const scale = diag < minPx ? minPx / diag
-                      : diag > maxPx ? maxPx / diag
-                      : 1;
-          const rescale = (c: { x: number; y: number }) => ({
-            x: foot.x + (c.x - foot.x) * scale,
-            y: foot.y + (c.y - foot.y) * scale,
-          });
-          setProj({
-            quad: [rescale(c0), rescale(c1), rescale(c2), rescale(c3)],
-            foot,
-            tip,
-          });
-        }
-      }
-      raf = requestAnimationFrame(project);
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
+    const { foot: f, tip: tp } = screen.current;
+    if (!f || !tp) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const dx = tp.x - f.x;
+    const dy = tp.y - f.y;
+    const ppm = Math.hypot(dx, dy);
+    if (ppm < 1e-3) return; // edge-on view — a drag would be unstable
+    // Capture only once a drag will start: an edge-on bail would leave it held (#5403).
+    capturePointer(e.target as Element, e.pointerId);
+    dragRef.current = {
+      startDistance: customPlane.distance,
+      startCursor: { x: e.clientX, y: e.clientY },
+      screenNormal: { x: dx / ppm, y: dy / ppm },
+      pixelsPerMeter: ppm,
     };
-    project();
-    return () => cancelAnimationFrame(raf);
-  }, [preview.point, preview.normal, preview.faceKey]);
+    onDragStart();
+  }, [customPlane.distance, onDragStart]);
 
-  if (!proj) return null;
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
+    const s = dragRef.current;
+    if (!s) return;
+    e.stopPropagation();
+    const cdx = e.clientX - s.startCursor.x;
+    const cdy = e.clientY - s.startCursor.y;
+    // Project the cursor delta onto the screen-projected normal, then pixels -> metres.
+    const along = cdx * s.screenNormal.x + cdy * s.screenNormal.y;
+    setDistance(s.startDistance + along / s.pixelsPerMeter);
+  }, [setDistance]);
 
-  const { quad, foot, tip } = proj;
-  // Arrow pixel length capped at 36px so it stays a small "telltale"
-  // rather than visually competing with the quad. Direction comes
-  // from the projected normal so it tracks camera orientation.
-  const adx = tip.x - foot.x, ady = tip.y - foot.y;
-  const aLen = Math.hypot(adx, ady) || 1;
-  const ARROW_PX = Math.min(36, aLen);
-  const tipX = foot.x + (adx / aLen) * ARROW_PX;
-  const tipY = foot.y + (ady / aLen) * ARROW_PX;
+  const handlePointerUp = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    releasePointer(e.target as Element, e.pointerId);
+    onDragEnd();
+  }, [onDragEnd]);
 
+  // Fragments, not a wrapper `<g>`: each primitive portals its own element
+  // into the kernel's SVG layer.
   return (
-    <g style={{ pointerEvents: 'none' }} aria-hidden data-section-pick-preview>
-      {/* Translucent accent quad — the "you'll cut here" hint. */}
-      <polygon
-        points={quad.map((p) => `${p.x},${p.y}`).join(' ')}
-        className="fill-overlay-accent-soft stroke-overlay-accent"
-        strokeWidth="1.5"
+    <>
+      <AxisArrow foot={foot} tip={tip} lengthPx={GIZMO_ARROW_PX} variant="accent" className="stroke-[3px]" />
+      <Handle
+        worldPoint={foot}
+        active
+        radius={10}
+        title={t('sectionTool.gizmo.dragTitle')}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       />
-      {/* Tiny normal arrow — shaft. */}
-      <line
-        x1={foot.x} y1={foot.y}
-        x2={tipX}   y2={tipY}
-        className="stroke-overlay-accent"
-        strokeWidth="2" strokeLinecap="round"
-      />
-      {/* Arrowhead — small triangle perpendicular to the shaft. */}
-      <polygon
-        points={(() => {
-          const ux = adx / aLen, uy = ady / aLen;
-          const nxp = -uy, nyp = ux;
-          const baseX = tipX - ux * 6;
-          const baseY = tipY - uy * 6;
-          const ax = baseX + nxp * 4, ay = baseY + nyp * 4;
-          const bx = baseX - nxp * 4, by = baseY - nyp * 4;
-          return `${tipX},${tipY} ${ax},${ay} ${bx},${by}`;
-        })()}
-        className="fill-overlay-accent"
-      />
-    </g>
+    </>
+  );
+}
+
+/**
+ * The "you'll cut here" hint painted on the hovered face while pick mode
+ * is armed: the plane's own styling (`PlaneOutline`, accent-soft fill with
+ * an accent edge) as a square laid on the face, plus a short normal
+ * telltale. Purely visual and click-through — `selectionHandlers.ts`
+ * commits the cut on click. `null` anchors (a non-finite pick, #2495)
+ * paint nothing rather than NaN coordinates.
+ */
+function SectionPickPreviewOverlay({ preview }: { preview: SectionPickPreview }) {
+  const anchors = sectionPickPreviewAnchors(preview.point, preview.normal);
+  if (!anchors) return null;
+  return (
+    <>
+      <PlaneOutline corners={anchors.corners.map(toVec3)} className="stroke-[1.5px]" />
+      <AxisArrow foot={toVec3(anchors.foot)} tip={toVec3(anchors.tip)} lengthPx={PREVIEW_ARROW_PX} variant="accent" />
+    </>
   );
 }

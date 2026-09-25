@@ -156,6 +156,36 @@ describe('slab-edit', () => {
     assert.deepStrictEqual(chain.footprint[2], [111, 72]);
   });
 
+  // #5922: an Axis-only solid Position (`$` RefDirection) on the X axis takes
+  // the renderer's fill (`firstProjAxis`, mirroring `build_axis2_matrix`):
+  // +X -> local X (0,1,0), -X -> local X (0,-1,0), and local Y = Z x X =
+  // (0,0,1) for both. Filling `$` with world X as-is left nothing to
+  // orthogonalise here, so the footprint silently fell back to identity.
+  const axisOnlyCases: ReadonlyArray<[string, [number, number, number], [number, number][]]> = [
+    // solidXform(p) = (100, 50 + p.x), + placement (10, 20)
+    ['+X', [1, 0, 0], [[110, 70], [110, 72], [110, 71]]],
+    // solidXform(p) = (100, 50 - p.x), + placement (10, 20)
+    ['-X', [-1, 0, 0], [[110, 70], [110, 68], [110, 69]]],
+  ];
+  for (const [label, axis, expected] of axisOnlyCases) {
+    it(`fills an absent RefDirection on a ${label} Axis as the renderer does (#5922)`, () => {
+      const entities = makePolygonSlabFixture();
+      entities.push(
+        { expressId: 70, type: 'IFCCARTESIANPOINT', attributes: [[100, 50, 0]] },
+        { expressId: 71, type: 'IFCDIRECTION', attributes: [axis] },
+        { expressId: 73, type: 'IFCAXIS2PLACEMENT3D', attributes: [70, 71, null] },
+      );
+      entities.find((e) => e.expressId === 93)!.attributes = [92, 73, null, 0.25];
+
+      const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
+      const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
+      const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100);
+      assert.ok(chain);
+      const rounded = chain.footprint.map((p) => p.map((v) => Math.round(v * 1e9) / 1e9 || 0));
+      assert.deepStrictEqual(rounded, expected);
+    });
+  }
+
   it('ignores lengthUnitScale for authored (overlay) entities', () => {
     // The in-store builders already emit metres, so a freshly-authored
     // slab must NOT be re-scaled even on a millimetre model — otherwise

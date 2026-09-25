@@ -78,7 +78,6 @@ export const listsEn = {
   'lists.panel.editConfiguration': 'Edit Configuration',
   'lists.panel.backToLists': 'Back to Lists',
   'lists.panel.cancel': 'Cancel',
-  'lists.panel.close': 'Close',
   'lists.panel.copyName': '{name} (Copy)',
 
   // ListLibrary

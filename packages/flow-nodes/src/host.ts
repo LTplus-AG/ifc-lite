@@ -73,6 +73,15 @@ export interface FlowHost {
   readonly defaultModelId?: string;
   /** See {@link TableAccess}. `modelId` defaults to `defaultModelId`. */
   tables?(modelId?: string): TableAccess | undefined;
+  /**
+   * Open `bytes` (an IFC file named `name`) as a model through the host's
+   * own load path, resolving to the id the loaded model answers to in
+   * `bim`. Backs `model.openFromSource`; a host that can do this lists the
+   * `openModel` backend feature. The viewer adds the model to the
+   * federation; a headless host (one model per `BimContext`) makes it the
+   * model `bim` and `defaultModelId` answer for from then on.
+   */
+  openModel?(bytes: Uint8Array, name: string): Promise<{ readonly modelId: string }>;
 }
 
 export type FlowNodeDef = NodeDef<FlowHost>;

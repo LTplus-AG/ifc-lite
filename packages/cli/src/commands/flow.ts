@@ -57,9 +57,9 @@ import {
   resolveSecretValues,
   usableSecretNames,
   validateSecretReferences,
-  type FlowHost,
 } from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
+import { createCliFlowSession } from './flow-host.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
 
@@ -213,19 +213,10 @@ export async function flowCommand(args: string[]): Promise<void> {
   const redaction = buildRedactionMap(secretValues);
   const runDoc = interpolateSecrets(doc, secretValues);
 
-  const { bim, store, backend } = await createHeadlessContext(modelPath);
-  // `networkGrants` is always the graph's own declared capabilities: a
-  // trusted local run is still not trusted to reach a host the graph never
-  // declared (see the module doc above and `FlowHost.networkGrants`).
-  const host: FlowHost = {
-    bim,
-    networkGrants: capsResult.value,
-    defaultModelId: bim.model.activeId() ?? undefined,
-    // `table.joinByKey`'s tag/property strategies reuse `@ifc-lite/mutations`'
-    // csv-match.ts index builder, which needs the raw entity table + mutation
-    // view rather than per-ref BimContext accessors (see host.ts's TableAccess).
-    tables: (modelId) => backend.tableAccess(modelId),
-  };
+  // The host follows the model the graph works on: `model.openFromSource`
+  // can replace the command-line model mid-run (see `flow-host.ts`).
+  const session = createCliFlowSession(await createHeadlessContext(modelPath), capsResult.value);
+  const host = session.host;
 
   let tracking: FileTrackingStore | undefined;
   const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
@@ -259,6 +250,7 @@ export async function flowCommand(args: string[]): Promise<void> {
   const out = requireFlagValue(args, '--out');
   const wrote = out !== undefined && result.ok;
   if (wrote) {
+    const { bim, store } = session.active();
     const content = bim.export.ifc(null, { schema: (store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4', includeMutations: true });
     await writeFile(out, typeof content === 'string' ? content : Buffer.from(content));
   }

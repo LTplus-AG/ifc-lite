@@ -129,3 +129,28 @@ export async function advance(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
 }
+
+/**
+ * Let React and the code under test run until `done()` holds, then return.
+ *
+ * For async work whose duration is not the test's business (lazy module loads,
+ * real reprojection, a handler's `await` chain): the wait ends on the
+ * condition, not on a tick count. A fixed budget such as 50 x 5 ms passes when
+ * the file runs alone and fails once the runner is loaded (#5977). The
+ * deadline is only a safety net for a condition that will never hold; it
+ * throws `message`, so a real regression fails here, by name, instead of at
+ * whichever assertion happens to read the state next.
+ */
+export async function waitFor(
+  done: () => boolean,
+  message: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!done()) {
+    if (Date.now() > deadline) {
+      throw new Error(`waitFor: gave up after ${timeoutMs} ms: ${message}`);
+    }
+    await advance(5);
+  }
+}

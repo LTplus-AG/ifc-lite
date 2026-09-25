@@ -24,7 +24,8 @@ const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
 
 /** Mount the hook, press Escape `presses` times in quick succession, unmount. */
-async function pressEscape(presses = 1): Promise<void> {
+async function pressEscape(presses = 1, init: KeyboardEventInit & { consumed?: boolean } = {}): Promise<void> {
+  const { consumed = false, ...eventInit } = init;
   function Harness(): null {
     useKeyboardShortcuts();
     return null;
@@ -36,7 +37,11 @@ async function pressEscape(presses = 1): Promise<void> {
     await act(async () => { root = createRoot(container); root.render(<Harness />); });
     for (let i = 0; i < presses; i++) {
       await act(async () => {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...eventInit });
+        // A layer between the key and this window listener (a Radix popover's
+        // document-capture Escape handler) marks the event handled.
+        if (consumed) event.preventDefault();
+        window.dispatchEvent(event);
       });
     }
   } finally {
@@ -100,5 +105,15 @@ describe('Esc keyboard shortcut (#5595)', () => {
     const after = useViewerStore.getState();
     assert.deepEqual([...(after.isolatedEntities ?? [])].sort(), [1, 2]);
     assert.equal(after.hiddenEntities.size, 1);
+  });
+
+  it('an Escape another layer already consumed leaves the tool open (#5499 Cap popover)', async () => {
+    useViewerStore.getState().setActiveTool('section');
+
+    await pressEscape(1, { consumed: true });
+    assert.equal(useViewerStore.getState().activeTool, 'section', 'a popover dismissing itself must not also close the tool');
+
+    await pressEscape();
+    assert.equal(useViewerStore.getState().activeTool, 'select', 'an unconsumed Escape still leaves the tool');
   });
 });

@@ -16,6 +16,7 @@ import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
+import { toast } from '@/components/ui/toast';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -41,11 +42,31 @@ export function syncTypeOverride(get: Get, modelId: string, entityId: number): v
   dataStore?.entities?.setTypeOverride?.(entityId, newType);
 }
 
+/**
+ * Whole-set mutations are replayed from their `setOverlay` snapshots, the
+ * first branch of both handlers; every other type has its own branch. Only a
+ * whole-set record WITHOUT snapshots can fall through to here (one built by
+ * hand rather than by `MutablePropertyView`), and the parameter type makes a
+ * new `MutationType` with no undo / redo branch a compile error (#5965). The
+ * user is told, so a step that changed nothing never reads as one that worked.
+ */
+function reportUnreplayable(
+  direction: 'undo' | 'redo',
+  type: 'CREATE_PROPERTY_SET' | 'DELETE_PROPERTY_SET' | 'DELETE_QUANTITY' | 'DELETE_QUANTITY_SET',
+  entityId: number,
+): void {
+  console.warn(`${direction}: ${type} on #${entityId} carries no set snapshot; the view was left unchanged`);
+  toast.error(`Could not ${direction} this change: it was recorded without the data needed to reverse it.`);
+}
+
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
 export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
+  } else if (mutation.setOverlay) {
+    // A whole-set edit carries its set's overlay rows from right before (#5965).
+    view.restoreSetOverlay(mutation.setOverlay.before);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
     // Decide by mutation TYPE, not by `oldValue === null`: a property can have
     // a null (unset) value yet still have existed before the edit (an unset
@@ -174,8 +195,9 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
       view.removeTypeMutation(mutation.entityId);
     }
     syncTypeOverride(get, modelId, mutation.entityId);
+  } else {
+    reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
-
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
@@ -183,6 +205,9 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
+  } else if (mutation.setOverlay) {
+    // ...and from right after, so redo lands the edit exactly again (#5965).
+    view.restoreSetOverlay(mutation.setOverlay.after);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
     if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
       view.setProperty(
@@ -277,6 +302,7 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
       view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
     }
     syncTypeOverride(get, modelId, mutation.entityId);
+  } else {
+    reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
-
 }

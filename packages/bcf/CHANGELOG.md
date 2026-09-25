@@ -1,5 +1,11 @@
 # @ifc-lite/bcf
 
+## 5.0.0
+
+### Major Changes
+
+- [#5970](https://github.com/LTplus-AG/ifc-lite/pull/5970) [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8) Thanks [@louistrue](https://github.com/louistrue)! - Removed `BCFOverlayRenderer` and `BCFOverlayRendererOptions` ([#5511](https://github.com/LTplus-AG/ifc-lite/issues/5511), charter [#5478](https://github.com/LTplus-AG/ifc-lite/issues/5478)). The framework-agnostic DOM overlay class — and the injected `<style>` stylesheet it carried — is gone; the viewer's `BCFOverlay` was its only consumer and now renders markers, connector lines and hover tooltips as `Pin` / `AnchoredCard` primitives on the viewport's shared scene-overlay projector instead of running its own `requestAnimationFrame` polling loop against this class. `computeMarkerPositions` and every other export of `@ifc-lite/bcf` are unchanged — marker *position* computation stays a pure, viewer-agnostic function; only the DOM rendering class is removed. A consumer still wanting a plain-DOM BCF overlay (no React) needs to render markers itself from `computeMarkerPositions`' output.
+
 ## 4.2.1
 
 ### Patch Changes

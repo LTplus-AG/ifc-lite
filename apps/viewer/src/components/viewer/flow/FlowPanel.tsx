@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { Play, X } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
@@ -43,7 +43,7 @@ function PaletteWithDrop({ onAdd }: { onAdd: (type: string, pos: [number, number
   return <FlowPalette registry={flowRegistry()} onAdd={(type) => onAdd(type, dropPosition())} />;
 }
 
-export function FlowPanel({ onClose }: { onClose: () => void }) {
+export function FlowPanel() {
   const { t } = useTranslation();
   const savedFlows = useViewerStore((s) => s.savedFlows);
   const activeFlowId = useViewerStore((s) => s.activeFlowId);
@@ -230,7 +230,6 @@ export function FlowPanel({ onClose }: { onClose: () => void }) {
           <span className="text-amber-300">{t('flowPanel.contributed.diagnostics', { count: contributed.diagnostics.length })}</span>
         )}
         {notice && <span className="text-amber-300">{notice}</span>}
-        <button type="button" className="ml-auto rounded p-0.5 hover:bg-muted" onClick={onClose} aria-label={t('flowPanel.close')}><X className="h-3.5 w-3.5" /></button>
       </div>
 
       {flowDoc ? (

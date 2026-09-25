@@ -14,6 +14,8 @@
  * checksum exactly as it does the primary download.
  */
 
+import { parseExpectedSha256 } from './checksum-parse.js';
+
 const GITHUB_REPO = 'LTplus-AG/ifc-lite';
 const RELEASES_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
 const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO}/releases`;
@@ -75,7 +77,31 @@ function compareSemver(a: [number, number, number], b: [number, number, number])
  * checksum would fail the fail-closed verification anyway, so skip it here
  * and keep looking for one that can actually install.
  */
-function usableAsset(release: ApiRelease, archiveName: string): FallbackRelease | null {
+/** A fallback candidate, and whether its only checksum is a release-wide SHA256SUMS. */
+type Candidate = FallbackRelease & { sumsOnly: boolean };
+
+/**
+ * A release-wide SHA256SUMS need not list every platform: one that covers the
+ * others but not this archive would be chosen, downloaded, and then fail the
+ * fail-closed verification, aborting the install while an older release could
+ * still have worked. So a SHA256SUMS-only candidate counts only once its body
+ * is seen to carry a line for this archive.
+ */
+async function sumsCoverArchive(candidate: Candidate, archiveName: string): Promise<boolean> {
+  if (!candidate.sumsOnly) return true;
+  try {
+    const response = await fetch(candidate.assetUrl.replace(/[^/]+$/, 'SHA256SUMS'), {
+      headers: { 'User-Agent': 'ifc-lite-server-bin' },
+      redirect: 'follow',
+    });
+    return response.ok && parseExpectedSha256(await response.text(), archiveName) !== null;
+  } catch {
+    // Unreadable now means unverifiable at install time too: try an older one.
+    return false;
+  }
+}
+
+function usableAsset(release: ApiRelease, archiveName: string): Candidate | null {
   if (release.draft === true || release.prerelease === true) return null;
   if (typeof release.tag_name !== 'string' || !release.tag_name.startsWith('v')) return null;
   const version = release.tag_name.slice(1);
@@ -85,12 +111,13 @@ function usableAsset(release: ApiRelease, archiveName: string): FallbackRelease 
     (a) => typeof a.name === 'string' && (a.state === undefined || a.state === 'uploaded')
   );
   const archive = assets.find((a) => a.name === archiveName);
-  const hasChecksum = assets.some((a) => a.name === `${archiveName}.sha256` || a.name === 'SHA256SUMS');
-  if (!archive || !hasChecksum || typeof archive.browser_download_url !== 'string') return null;
+  const hasSidecar = assets.some((a) => a.name === `${archiveName}.sha256`);
+  const hasSums = assets.some((a) => a.name === 'SHA256SUMS');
+  if (!archive || !(hasSidecar || hasSums) || typeof archive.browser_download_url !== 'string') return null;
   // The checksum is fetched relative to this URL, so it must be the release's
   // own asset on github.com, not whatever the API response names.
   if (!archive.browser_download_url.startsWith(`${RELEASES_DOWNLOAD_URL}/${release.tag_name}/`)) return null;
-  return { version, assetUrl: archive.browser_download_url };
+  return { version, assetUrl: archive.browser_download_url, sumsOnly: !hasSidecar };
 }
 
 /**
@@ -109,8 +136,6 @@ export async function findFallbackRelease(
   if (!requested) {
     return { found: null, reason: `v${requestedVersion} is not a plain X.Y.Z version, so no older release can be chosen` };
   }
-  let best: FallbackRelease | null = null;
-  let bestSemver: [number, number, number] | null = null;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `${RELEASES_API_URL}?per_page=${PER_PAGE}&page=${page}`;
@@ -139,6 +164,7 @@ export async function findFallbackRelease(
       return { found: null, reason: 'the GitHub releases API returned an unexpected response' };
     }
 
+    const candidates: Array<{ candidate: Candidate; semver: [number, number, number] }> = [];
     for (const release of releases as ApiRelease[]) {
       const candidate = usableAsset(release, archiveName);
       if (!candidate) continue;
@@ -147,23 +173,27 @@ export async function findFallbackRelease(
       // Only ever fall BACK: a release newer than the requested version is
       // not what this package version was built against.
       if (compareSemver(semver, requested) >= 0) continue;
-      if (!bestSemver || compareSemver(semver, bestSemver) > 0) {
-        best = candidate;
-        bestSemver = semver;
+      candidates.push({ candidate, semver });
+    }
+
+    // Releases are listed newest first, so this page's candidates are newer
+    // than any later page's; the newest one whose checksum covers the archive
+    // wins.
+    candidates.sort((a, b) => compareSemver(b.semver, a.semver));
+    for (const { candidate } of candidates) {
+      if (await sumsCoverArchive(candidate, archiveName)) {
+        return { found: { version: candidate.version, assetUrl: candidate.assetUrl } };
       }
     }
 
-    // Releases are listed newest first, so the first page holding a
-    // candidate holds the newest one; a short page is the end of the list.
-    if (best || releases.length < PER_PAGE) break;
+    // A short page is the end of the list.
+    if (releases.length < PER_PAGE) break;
   }
 
-  return best
-    ? { found: best }
-    : {
-        found: null,
-        reason: `no release older than v${requestedVersion} in the ${MAX_PAGES * PER_PAGE} most recent carries ${archiveName} with a checksum`,
-      };
+  return {
+    found: null,
+    reason: `no release older than v${requestedVersion} in the ${MAX_PAGES * PER_PAGE} most recent carries ${archiveName} with a checksum`,
+  };
 }
 
 /**

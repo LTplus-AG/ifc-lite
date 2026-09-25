@@ -160,7 +160,6 @@ const FIELD_CLASSIFICATION = {
   drawing2DPhase: 'preserved',
   drawing2DError: 'preserved',
   drawing2DPanelVisible: 'preserved',
-  suppressNextSection2DPanelAutoOpen: 'preserved',
   drawing2DSvgContent: 'preserved',
   drawing2DDisplayOptions: 'committed',
   graphicOverridePresets: 'preserved',

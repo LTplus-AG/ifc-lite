@@ -1,5 +1,16 @@
 # @ifc-lite/sdk
 
+## 7.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc)]:
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/clash@2.4.2
+
 ## 7.1.2
 
 ### Patch Changes

@@ -95,7 +95,7 @@ export interface WithheldParents {
   /** Rels skipped outright: every member already had a parent. */
   skipEntityIds: ReadonlySet<number>;
   /** Rel → members stripped from its RelatedObjects list. */
-  relParentStrip: ReadonlyMap<number, ReadonlySet<number>>;
+  relMemberStrip: ReadonlyMap<number, ReadonlySet<number>>;
 }
 
 /** Which containers the emit loop must not write. */
@@ -248,7 +248,7 @@ function recordEdges(
     if (relating === null) continue;
     const parent = canon.get(relating);
     if (parent === undefined) continue;
-    const stripped = withheld?.relParentStrip.get(localId);
+    const stripped = withheld?.relMemberStrip.get(localId);
     for (const child of refList(attrs[relatedIndex] ?? '')) {
       if (view.included !== null && !view.included.has(child)) continue;
       if (stripped?.has(child)) continue;

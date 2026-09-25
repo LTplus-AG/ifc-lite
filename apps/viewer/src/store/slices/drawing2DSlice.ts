@@ -135,8 +135,6 @@ export interface Drawing2DState {
   drawing2DError: string | null;
   /** Whether the 2D panel is visible */
   drawing2DPanelVisible: boolean;
-  /** Suppress auto-opening 2D panel on next section tool activation */
-  suppressNextSection2DPanelAutoOpen: boolean;
   /** SVG content for export (cached) */
   drawing2DSvgContent: string | null;
   /** Display options */
@@ -251,7 +249,6 @@ export interface Drawing2DSlice extends Drawing2DState {
   setDrawing2DProgress: (progress: number, phase: string) => void;
   setDrawing2DError: (error: string | null) => void;
   setDrawing2DPanelVisible: (visible: boolean) => void;
-  setSuppressNextSection2DPanelAutoOpen: (suppress: boolean) => void;
   toggleDrawing2DPanel: () => void;
   setDrawing2DSvgContent: (svg: string | null) => void;
   updateDrawing2DDisplayOptions: (options: Partial<Drawing2DState['drawing2DDisplayOptions']>) => void;
@@ -379,7 +376,6 @@ export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2DPhase: '',
   drawing2DError: null,
   drawing2DPanelVisible: false,
-  suppressNextSection2DPanelAutoOpen: false,
   drawing2DSvgContent: null,
   drawing2DDisplayOptions: getDefaultDisplayOptions(),
   // Graphic overrides
@@ -435,7 +431,6 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   }),
 
   setDrawing2DPanelVisible: (visible) => set({ drawing2DPanelVisible: visible }),
-  setSuppressNextSection2DPanelAutoOpen: (suppress) => set({ suppressNextSection2DPanelAutoOpen: suppress }),
 
   toggleDrawing2DPanel: () => set((state) => ({ drawing2DPanelVisible: !state.drawing2DPanelVisible })),
 

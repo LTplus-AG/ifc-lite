@@ -131,8 +131,10 @@ function usedOutsideImports(source: string, name: string): boolean {
 function StubIcon(props: React.SVGProps<SVGSVGElement>) {
   return <svg {...props} />;
 }
+/** Every key an icon set carries: one per registered format, plus the extension-exporter row icon (#5838). */
+const ICON_KEYS: (keyof ExportIconSet)[] = [...EXPORT_COMMAND_IDS, 'extension'];
 const STUB_ICONS = Object.fromEntries(
-  EXPORT_COMMAND_IDS.map((id) => [id, StubIcon]),
+  ICON_KEYS.map((id) => [id, StubIcon]),
 ) as ExportIconSet;
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -380,7 +382,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
   });
 
   it('the classic icon set covers every registered format', () => {
-    assert.deepEqual(Object.keys(CLASSIC_EXPORT_ICONS).sort(), [...EXPORT_COMMAND_IDS].sort());
+    assert.deepEqual(Object.keys(CLASSIC_EXPORT_ICONS).sort(), [...ICON_KEYS].sort());
   });
 
   it('the ribbon icon set covers every registered format', () => {
@@ -390,8 +392,8 @@ describe('export UI parity (ifc-lite#2511)', () => {
     // specifier onto a stub, so it can. That matters: the source form counted
     // KEYS THAT LOOK LIKE KEYS, so a key inside a nested object or a commented
     // block counted, and an entry whose value failed to resolve did not.
-    assert.deepEqual(Object.keys(RIBBON_EXPORT_ICONS).sort(), [...EXPORT_COMMAND_IDS].sort());
-    for (const id of EXPORT_COMMAND_IDS) {
+    assert.deepEqual(Object.keys(RIBBON_EXPORT_ICONS).sort(), [...ICON_KEYS].sort());
+    for (const id of ICON_KEYS) {
       assert.ok(RIBBON_EXPORT_ICONS[id], `the ribbon icon for ${id} must resolve to a component`);
     }
   });

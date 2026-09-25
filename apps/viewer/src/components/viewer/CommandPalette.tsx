@@ -105,7 +105,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   const { t } = useTranslation();
-  const { runExport, dialog: exportDialog } = usePaletteExportRunner();
+  const { runExport, dialog: exportDialog, extensionExporters } = usePaletteExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
@@ -119,7 +119,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     activateRightPanel,
     activateBottomPanel,
     runExport,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport]);
+    extensionExporters,
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters]);
 
 
   // ── Search: score, filter, sort ──

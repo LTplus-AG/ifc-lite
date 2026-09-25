@@ -180,7 +180,14 @@ impl<'a> Source<'a> {
                 return Err("Shared/mapped representation is unsupported".into());
             }
             for item in refs(rep.get(3))? {
-                if self.types.get(&item) != Some(&IfcType::IfcTriangulatedFaceSet) {
+                // IfcTriangulatedIrregularNetwork (a terrain TIN, #5942) is a
+                // subtype that only APPENDS `Flags`: Coordinates, Normals,
+                // Closed, CoordIndex and PnIndex keep positions 0-4, the only
+                // ones mapping and canonical meshing read.
+                if !matches!(
+                    self.types.get(&item),
+                    Some(IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork)
+                ) {
                     return Err("Only direct IfcTriangulatedFaceSet bodies are supported".into());
                 }
                 if let Some(parents) = self.incoming.get(&item) {

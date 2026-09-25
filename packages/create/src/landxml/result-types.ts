@@ -76,6 +76,44 @@ export interface LandXmlIfcCoverage {
   profiles?: number;
 }
 
+/**
+ * Georeferenced imagery draped on the terrain, recorded as provenance (§15.5).
+ * An imagery overlay is never a claim the LandXML contained it: LandXML has no
+ * raster element. The texture itself is written afterwards, by the appearance
+ * workspace's planner, on the TIN elements named in `surfaceElements`.
+ */
+export interface LandXmlIfcImagery {
+  /** The image file as the operator supplied it. */
+  sourceFileName: string;
+  /** SHA-256 (hex) of the supplied image bytes. */
+  sourceHash: string;
+  /** How the image was placed: its world file, or its GeoTIFF tags. */
+  placement: 'world file' | 'GeoTIFF';
+  /** The image's CRS as declared, e.g. `EPSG:2056`. */
+  crs: string;
+  /** The planar projection (§15.3), in the terrain CRS's native plan units. */
+  projection: {
+    crs: string;
+    origin: readonly [number, number];
+    axisU: readonly [number, number];
+    axisV: readonly [number, number];
+    extent: readonly [number, number];
+  };
+  /** Fraction of written TIN vertices on the image, 0–1. */
+  coveredFraction: number;
+  /** Set when the shipped image is not the supplied one (a GeoTIFF transcoded to PNG). */
+  shippedFileName?: string;
+  shippedHash?: string;
+}
+
+/** A written terrain surface and the `IfcGeographicElement` carrying it. */
+export interface LandXmlIfcSurfaceElement {
+  /** The LandXML surface's source id, e.g. `landxml:surface:1`. */
+  sourceId: string;
+  /** Express id of its `IfcGeographicElement` in `content`. */
+  expressId: number;
+}
+
 /** What the produced file records about where it came from (§7). */
 export interface LandXmlIfcProvenance {
   sourceFileName: string | null;
@@ -86,6 +124,8 @@ export interface LandXmlIfcProvenance {
   assumedLinearUnit: string | null;
   coordinateOrderSwapped: boolean;
   refusedFamilies: readonly LandXmlRefusedFamily[];
+  /** Imagery provenance (§15.5); absent when none was exported. */
+  imagery?: LandXmlIfcImagery;
 }
 
 export type LandXmlIfcResult =
@@ -93,6 +133,12 @@ export type LandXmlIfcResult =
     status: 'exported';
     content: string;
     coverage: LandXmlIfcCoverage;
+    /**
+     * Each written surface's element, so a caller can address it in
+     * `content` — the imagery export textures these (§15.5). Optional only so
+     * adding it is not a breaking change to a published result type.
+     */
+    surfaceElements?: readonly LandXmlIfcSurfaceElement[];
     provenance: LandXmlIfcProvenance;
     refusals: readonly LandXmlRefusal[];
     warnings: readonly LandXmlIfcWarning[];

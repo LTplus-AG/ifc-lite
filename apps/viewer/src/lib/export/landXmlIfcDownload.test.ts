@@ -53,7 +53,7 @@ function document(overrides: Partial<LandXmlTinDocument> = {}): LandXmlTinDocume
 }
 
 /** Record what `downloadBlob` offers the browser, without stubbing it. */
-async function captureDownload(run: () => void): Promise<{ filename: string; text: string }> {
+async function captureDownload(run: () => unknown): Promise<{ filename: string; text: string }> {
   const originalCreate = URL.createObjectURL;
   const originalRevoke = URL.revokeObjectURL;
   const originalClick = HTMLAnchorElement.prototype.click;
@@ -63,7 +63,7 @@ async function captureDownload(run: () => void): Promise<{ filename: string; tex
   URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
   try {
-    run();
+    await run();
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
@@ -74,9 +74,9 @@ async function captureDownload(run: () => void): Promise<{ filename: string; tex
 
 describe('downloadLandXmlAsIfc (#4937)', () => {
   it('offers an IFC4X3 STEP file named after the source', async () => {
-    let result: ReturnType<typeof downloadLandXmlAsIfc> | undefined;
-    const { filename, text } = await captureDownload(() => {
-      result = downloadLandXmlAsIfc({ document: document(), name: 'Example_Terrain.xml' });
+    let result: Awaited<ReturnType<typeof downloadLandXmlAsIfc>> | undefined;
+    const { filename, text } = await captureDownload(async () => {
+      result = await downloadLandXmlAsIfc({ document: document(), name: 'Example_Terrain.xml' });
     });
 
     assert.equal(result?.status, 'exported');
@@ -91,8 +91,8 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
   });
 
   it('writes georeferencing for a declared datum, passed through and not resolved', async () => {
-    const { text } = await captureDownload(() => {
-      downloadLandXmlAsIfc({
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({
         document: document({ coordinateSystem: { horizontalDatum: 'SWEREF99 TM', verticalDatum: 'RH2000' } }),
         name: 'terrain.xml',
       });
@@ -104,8 +104,8 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
   });
 
   it('writes no georeferencing at all when no datum is declared', async () => {
-    const { text } = await captureDownload(() => {
-      downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });
     });
     // A placeholder CRS would be worse than none: it reads as a claim.
     assert.doesNotMatch(text, /IFCPROJECTEDCRS/);
@@ -113,9 +113,9 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
   });
 
   it('reports the converter refusal instead of downloading an empty file', async () => {
-    let result: ReturnType<typeof downloadLandXmlAsIfc> | undefined;
-    const { filename } = await captureDownload(() => {
-      result = downloadLandXmlAsIfc({
+    let result: Awaited<ReturnType<typeof downloadLandXmlAsIfc>> | undefined;
+    const { filename } = await captureDownload(async () => {
+      result = await downloadLandXmlAsIfc({
         document: document({ surfaces: [], alignments: [{}, {}] as never }),
         name: 'alignment.xml',
       });
@@ -145,8 +145,8 @@ describe('finishLandXmlIfcExport (#4937)', () => {
 
   it('reports success and clears the exporting flag', async () => {
     const recorder = ui();
-    await captureDownload(() => {
-      finishLandXmlIfcExport({ document: document(), name: 'terrain.xml' }, recorder);
+    await captureDownload(async () => {
+      await finishLandXmlIfcExport({ document: document(), name: 'terrain.xml' }, recorder);
     });
 
     assert.equal(recorder.results[0]?.success, true);
@@ -158,8 +158,8 @@ describe('finishLandXmlIfcExport (#4937)', () => {
 
   it('reports a refusal as a failure, still clearing the exporting flag', async () => {
     const recorder = ui();
-    await captureDownload(() => {
-      finishLandXmlIfcExport(
+    await captureDownload(async () => {
+      await finishLandXmlIfcExport(
         { document: document({ surfaces: [], alignments: [{}] as never }), name: 'alignment.xml' },
         recorder,
       );
@@ -177,8 +177,8 @@ describe('finishLandXmlIfcExport (#4937)', () => {
     const broken = document({
       surfaces: [{ ...SURFACE, faces: [['1', '2', '99']] as Array<readonly [string, string, string]> }],
     });
-    await captureDownload(() => {
-      finishLandXmlIfcExport({ document: broken, name: 'broken.xml' }, recorder);
+    await captureDownload(async () => {
+      await finishLandXmlIfcExport({ document: broken, name: 'broken.xml' }, recorder);
     });
 
     assert.equal(recorder.results[0]?.success, false);

@@ -8,8 +8,7 @@
 
 Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented; v1.2 (vertical
 profiles, §12) implemented; v1.3 (station equations, §14) implemented; v1.4 (terrain imagery,
-§15) specified — the projection (§15.3) and the viewer drape (§15.4), tile sources included, are
-implemented; the export (§15.5) is not yet**.
+§15) implemented**.
 Version 1.4, 2026-09-25.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
@@ -834,7 +833,9 @@ with the same attributes at positions 0–4, so the shape is the one the appeara
 writes for building elements, and it is written **by the appearance workspace's planner**
 (`plan_appearance`, `planar` mapping in the `world` frame, with `O`, `U`, `V`, `W`, `H` scaled to
 metres). There is no second texture writer. The TIN written by §4.1 is unchanged: same vertices,
-same triangles, same `Flags`.
+same triangles, same `Flags`. The planner and the geometry router's textured
+path accept the TIN since v1.4, so a reopened `.ifcZIP` renders the drape in
+ifc-lite as well.
 
 - **Outside the extent.** `IfcIndexedTriangleTextureMap` maps every triangle of its face set, and
   `RepeatS = .F.` clamps coordinates to the image, so a consumer shows the image's edge pixels

@@ -180,9 +180,36 @@ describe('LandXML→IFC round trip (#4937, mapping §8.1)', () => {
         .map((id) => store.getEntity!(id)!)
         .map((property) => [property.attributes[0] as string, property.attributes[2] as [string, string]]),
     );
-    expect(byName.get('MappingVersion')).toEqual(['IFCLABEL', '1.3']);
+    expect(byName.get('MappingVersion')).toEqual(['IFCLABEL', '1.4']);
     expect(byName.get('LandXmlSchema')).toEqual(['IFCLABEL', 'LandXML-1.2']);
     expect(byName.get('SourceFileName')).toEqual(['IFCLABEL', 'eg.xml']);
     expect(byName.get('CoordinateOrderSwapped')).toEqual(['IFCLABEL', 'false']);
+  });
+
+  it('records imagery as provenance only when it is exported, and names each surface element (#5942)', async () => {
+    const imagery = {
+      sourceFileName: 'ortho.png', sourceHash: 'a'.repeat(64), placement: 'world file' as const, crs: 'EPSG:3006',
+      projection: { crs: 'EPSG:3006', origin: [157_850, 6_406_950] as const, axisU: [1, 0] as const, axisV: [0, 1] as const, extent: [100, 80] as const },
+      coveredFraction: 0.75,
+    };
+    const result = landXmlToIfc(SOURCE, { sourceFileName: 'eg.xml', timestampMs: 0, imagery });
+    expect(result.status).toBe('exported');
+    if (result.status !== 'exported') return;
+    expect(result.provenance.imagery).toEqual(imagery);
+    // The element id addresses the IfcGeographicElement in the written text.
+    expect(result.surfaceElements).toEqual([{ sourceId: 'landxml:surface:1', expressId: expressIdOf(result.content, 'IFCGEOGRAPHICELEMENT') }]);
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(result.content).buffer as ArrayBuffer);
+    const setId = [...result.content.matchAll(/#(\d+)=IFCPROPERTYSET\(/g)].map((match) => Number(match[1]))
+      .find((id) => store.getEntity!(id)!.attributes[2] === 'LandXML_Conversion')!;
+    const byName = new Map((store.getEntity!(setId)!.attributes[4] as number[]).map((id) => store.getEntity!(id)!)
+      .map((property) => [property.attributes[0] as string, (property.attributes[2] as [string, string])[1]]));
+    expect(byName.get('ImagerySourceFileName')).toBe('ortho.png');
+    expect(byName.get('ImageryCrs')).toBe('EPSG:3006');
+    expect(byName.get('ImageryProjection')).toBe('planar in EPSG:3006: O (157850, 6406950), U (1, 0), V (0, 1), W 100, H 80');
+    expect(byName.get('ImageryCoveredFraction')).toBe('0.75');
+    expect(byName.has('ImageryShippedFileName')).toBe(false);
+
+    const plain = landXmlToIfc(SOURCE, { sourceFileName: 'eg.xml', timestampMs: 0 });
+    expect(plain.status === 'exported' && plain.content.includes('ImagerySourceFileName')).toBe(false);
   });
 });

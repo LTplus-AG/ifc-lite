@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { buildExportFilename, downloadBlob, stripExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { LandXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 
 interface LandXmlExportRefusalProps {
@@ -38,7 +39,7 @@ interface LandXmlExportRefusalProps {
  *   end.
  */
 export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: LandXmlExportRefusalProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   // The source route is offered only for the model the dialog has SELECTED: in
   // a merged export the LandXML model may not be the one on screen, and
   // handing back another model's bytes would be the wrong file.
@@ -83,6 +84,17 @@ export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: Land
             <div className="mt-2">{t('exportDialog.landXml.assumedUnit', { unit: plan.assumedUnit })}</div>
           )}
           {plan.missingCrs && <div className="mt-2">{t('exportDialog.landXml.missingCrs')}</div>}
+          {/* #5942 §15.5: what happens to draped imagery, before the user commits. */}
+          {plan.imagery?.source === 'file' && (
+            <div className="mt-2">{t('exportDialog.landXml.imageryWillExport', {
+              name: plan.imagery.name, crs: plan.imagery.crs,
+              percent: formatLocaleNumber(locale, plan.imagery.coveredFraction * 100, { maximumFractionDigits: 1 }),
+            })}</div>
+          )}
+          {plan.imagery?.source === 'file' && plan.assumedUnit !== null && (
+            <div className="mt-2">{t('exportDialog.landXml.imageryAssumedUnit', { unit: plan.assumedUnit })}</div>
+          )}
+          {plan.imagery?.source === 'tiles' && <div className="mt-2">{t('exportDialog.landXml.imageryTiles')}</div>}
           {/* A declared CRS is written but UNVERIFIED: §2.2's transposition
               check needs bounds this repo deliberately does not resolve, so a
               mirrored source is not detectable here. Stated, not implied. */}

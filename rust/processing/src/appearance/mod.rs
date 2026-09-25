@@ -302,3 +302,5 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tin_tests;

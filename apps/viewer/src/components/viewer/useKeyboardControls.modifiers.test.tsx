@@ -20,8 +20,6 @@ import { useKeyboardControls } from './useKeyboardControls.js';
 
 function Harness(props: { cameraCalls: string[] }) {
   const record = (name: string) => () => { props.cameraCalls.push(name); };
-  // Z is the one Fit All (#5884), registered by Viewport as a camera callback.
-  useViewerStore.getState().setCameraCallbacks({ fitAll: record('fitAll') });
   const rendererRef = useRef<Renderer | null>({
     getCamera: () => ({
       frameBounds: record('frameBounds'),
@@ -64,6 +62,8 @@ describe('useKeyboardControls — camera shortcuts ignore modifier chords (#5596
 
   it('plain Z and 1 still move the camera (control)', () => {
     const cameraCalls: string[] = [];
+    // Z is the one Fit All (#5884), registered by Viewport as a camera callback.
+    useViewerStore.getState().setCameraCallbacks({ fitAll: () => { cameraCalls.push('fitAll'); } });
     render(<Harness cameraCalls={cameraCalls} />);
     press(window, 'z');
     press(window, '1');

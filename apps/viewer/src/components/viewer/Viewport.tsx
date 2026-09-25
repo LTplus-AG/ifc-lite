@@ -35,7 +35,7 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
-import { visibleBounds } from '@/lib/visibility/visible-bounds';
+import { fitAllBounds } from '@/lib/visibility/visible-bounds';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -1017,14 +1017,16 @@ export function Viewport({
         },
         fitAll: () => {
           // Zoom to fit without changing view direction, framing what is
-          // VISIBLE now (#5884): hidden, isolated-away and hidden-model
-          // geometry is left out. Nothing visible: the whole scene.
-          const ids = new Set<number>((geometryRef.current ?? []).map((mesh) => mesh.expressId));
-          for (const id of rendererRef.current?.getScene().getInstancedEntityIds() ?? []) ids.add(id);
-          const target = visibleBounds(ids, createRenderableBoundsLookup(), {
-            hidden: hiddenEntitiesRef.current,
-            isolated: isolatedEntitiesRef.current,
-          }) ?? geometryBoundsRef.current;
+          // VISIBLE now (#5884). Nothing filtered: the trimmed whole scene.
+          const { typeViewMode, hasTypeGeometry } = useViewerStore.getState();
+          const target = fitAllBounds({
+            meshIds: (geometryRef.current ?? []).map((mesh) => mesh.expressId),
+            instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [],
+            instancedDrawn: !hasTypeGeometry || typeViewMode === 'model', // the scene's own gate
+            boundsOf: createRenderableBoundsLookup(),
+            visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current },
+            wholeScene: geometryBoundsRef.current,
+          });
           camera.zoomExtent(target.min, target.max, 300);
           calculateScale();
         },

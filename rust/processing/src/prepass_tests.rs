@@ -381,3 +381,63 @@ fn find_ifcproject_keyword_matches_a_naive_reference_at_every_offset() {
         "only {checked} (buffer, offset) pairs checked"
     );
 }
+
+/// #5582: the authored finish survives the flatten, aligned with its id.
+/// Three sources share one wire: a METAL-rendered styled item (#10), a styled
+/// item with no specular evidence (#11), and an indexed-colour fallback (#30).
+/// #10 also has an indexed colour, which the geometry style must win together
+/// with its finish. A finish shifted by one slot lands on a neighbour that
+/// must stay NaN.
+#[test]
+fn flat_styles_with_finishes_carries_the_geometry_style_finish_by_id() {
+    let content = b"ISO-10303-21;\nDATA;\n\
+        #1=IFCCOLOURRGB($,0.8,0.8,0.85);\n\
+        #2=IFCSURFACESTYLERENDERING(#1,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.9),$,.METAL.);\n\
+        #3=IFCSURFACESTYLE('Brushed steel',.BOTH.,(#2));\n\
+        #4=IFCSTYLEDITEM(#10,(#3),$);\n\
+        #5=IFCCOLOURRGB($,0.2,0.4,0.6);\n\
+        #6=IFCSURFACESTYLERENDERING(#5,0.,$,$,$,$,$,$,.NOTDEFINED.);\n\
+        #7=IFCSURFACESTYLE('Plain',.BOTH.,(#6));\n\
+        #8=IFCSTYLEDITEM(#11,(#7),$);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let mut decoder = EntityDecoder::new(content);
+    let mut spans = PrepassSpans::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        spans.stash(type_name, id, start, end);
+    }
+    let mut resolved = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+    resolved.indexed_colour_index.insert(10, [0.0, 1.0, 0.0, 1.0]);
+    resolved.indexed_colour_index.insert(30, [1.0, 0.0, 0.0, 1.0]);
+
+    let geometry_finishes = resolve_geometry_finishes(&spans.styled_items, &mut decoder);
+    let (ids, rgba, finishes) = flat_styles_with_finishes(&resolved, &geometry_finishes, &mut decoder);
+    assert_eq!(ids, vec![10, 11, 30]);
+    assert_eq!((rgba.len(), finishes.len()), (12, 6), "4 bytes and 2 floats per id");
+    assert_eq!(
+        (ids.clone(), rgba.clone()),
+        flat_styles_rgba8(&resolved, &mut decoder),
+        "carrying finishes leaves the rgba8 wire unchanged"
+    );
+    assert_eq!(&rgba[0..4], &[204, 204, 217, 255], "#10 keeps its styled colour over the indexed one");
+
+    let finish_of = |i: usize| finish_from_wire([finishes[i * 2], finishes[i * 2 + 1]]);
+    let steel = finish_of(0).expect("#10's METAL rendering is on the wire");
+    assert_eq!(steel.metallic, Some(1.0));
+    assert!(steel.roughness.is_some_and(|r| (r - 0.1).abs() < 1e-6), "1 - 0.9 -> 0.1");
+    assert!(finishes[2..6].iter().all(|v| v.is_nan()), "#11 and #30 carry no finish: {finishes:?}");
+}
+
+#[test]
+fn finish_wire_pair_round_trips_and_treats_non_finite_as_absent() {
+    let both = SpecularMaterial { metallic: Some(0.0), roughness: Some(0.25) };
+    assert_eq!(finish_from_wire(finish_to_wire(Some(both))), Some(both), "0.0 is authored, not absent");
+    let half = SpecularMaterial { metallic: None, roughness: Some(0.5) };
+    assert_eq!(finish_from_wire(finish_to_wire(Some(half))), Some(half));
+    assert_eq!(finish_from_wire(finish_to_wire(None)), None);
+    assert_eq!(
+        finish_from_wire([f32::INFINITY, f32::NEG_INFINITY]),
+        None,
+        "an infinite field is as unauthored as NaN"
+    );
+}

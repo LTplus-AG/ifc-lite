@@ -12,6 +12,9 @@ pub(crate) struct PrePassData {
     /// The shared post-scan resolution (styles, material chain, voids) — the
     /// exact resolver the native pipeline and the streaming prepass run.
     pub resolved: ifc_lite_processing::prepass::ResolvedPrepass,
+    /// #5582 authored finish per styled representation item, from the same
+    /// styled-item spans (`resolve_geometry_finishes`); feeds `styleFinishes`.
+    pub geometry_finishes: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>,
     /// IfcProject entity ID (for unit extraction)
     pub project_id: Option<u32>,
     /// IfcSite entity position (id, start, end) — for building rotation extraction
@@ -33,7 +36,9 @@ pub(crate) fn combined_pre_pass(
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> PrePassData {
     use ifc_lite_core::{keyword_eq, EntityScanner};
-    use ifc_lite_processing::prepass::{resolve_prepass, PrepassSpans, ResolveOptions};
+    use ifc_lite_processing::prepass::{
+        resolve_geometry_finishes, resolve_prepass, PrepassSpans, ResolveOptions,
+    };
 
     let estimated_elements = content.len() / 2000;
 
@@ -97,6 +102,8 @@ pub(crate) fn combined_pre_pass(
             defer_attached_styles: false,
         },
     );
+    // Full resolution (never defer mode here), so every styled item is walked.
+    let geometry_finishes = resolve_geometry_finishes(&spans.styled_items, decoder);
 
     // #957 + Model/Types switch: emit IfcTypeProduct RepresentationMap geometry
     // (annex-E orphan types AND instanced type-library shapes). processGeometryBatch
@@ -105,6 +112,7 @@ pub(crate) fn combined_pre_pass(
 
     PrePassData {
         resolved,
+        geometry_finishes,
         project_id,
         site_position,
         simple_jobs,

@@ -102,6 +102,8 @@ import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 import type { StallPhaseHandle } from './stall-phase.js';
+import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
+import { buildPrePassWithFinishes } from './style-finishes.js';
 
 /**
  * Default quantization grid (metres) for per-entity geometry hashing,
@@ -109,8 +111,6 @@ import type { StallPhaseHandle } from './stall-phase.js';
  * side (1 mm). Used by {@link GeometryProcessor.enableGeometryHashes}.
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
-
-import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 
 export interface GeometryProcessorOptions {
   preferNative?: boolean; // Default: true in Tauri
@@ -439,7 +439,7 @@ export class GeometryProcessor {
     }
 
     const api = this.bridge.getApi();
-    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    const prePass = buildPrePassWithFinishes(api, buffer);
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
@@ -502,7 +502,7 @@ export class GeometryProcessor {
     }
 
     const api = this.bridge.getApi();
-    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    const prePass = buildPrePassWithFinishes(api, buffer);
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
 
     // try/finally releases the pre-pass cache on every exit: the totalJobs===0

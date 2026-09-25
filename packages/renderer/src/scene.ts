@@ -107,11 +107,10 @@ export interface TexturedMesh {
   color: [number, number, number, number];
   /**
    * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
-   * this today — `MeshData` (the WASM extraction boundary) carries no
-   * metallic/roughness fields, and IFC-authored specular is not extracted yet
-   * (#5582) — so `packMeshMaterial` falls back to its defaults for every
-   * textured draw. The field exists so a textured mesh has the SAME optional
-   * hook `Mesh` does, ready for #5582 without a second API.
+   * this today: IFC-authored specular (#5582) reaches flat and batched
+   * meshes as `finish`, but the textured path does not carry one yet, so
+   * `packMeshMaterial` falls back to its defaults for every textured draw.
+   * The field is the SAME optional hook `Mesh.material` is.
    */
   material?: Material;
   /**

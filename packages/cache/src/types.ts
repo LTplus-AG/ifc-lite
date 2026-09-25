@@ -159,7 +159,7 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
 /** v21: relationship indexing covers every schema-resolvable exact IfcRel*
  * class (#4205). The bytes are unchanged, but cache keys must miss v20 graphs
  * that were produced before those buckets existed. */
-export const FORMAT_VERSION = 21;
+export const FORMAT_VERSION = 22; // v22: per-mesh IFC finish (MeshData.material, NaN = absent) for the batch key, #5582
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

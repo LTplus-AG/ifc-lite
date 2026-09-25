@@ -153,7 +153,7 @@ export function createSceneBatch(
       color,
       // #5582: every piece in a bucket shares its material (the colour key
       // folds it in — see Scene.colorKey), so the first piece speaks for all.
-      ...(meshDataArray[0]?.material ? { material: meshDataArray[0].material } : {}),
+      ...(meshDataArray[0]?.material ? { finish: meshDataArray[0].material } : {}),
       expressIds,
       bindGroup,
       uniformBuffer,

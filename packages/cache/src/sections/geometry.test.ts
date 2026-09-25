@@ -174,3 +174,32 @@ describe('mesh record version gating', () => {
     expect('materialId' in out).toBe(false);
   });
 });
+
+/**
+ * #5582: the renderer folds `MeshData.material` into its batch key, so a
+ * record that dropped the finish would restore a mesh under a different
+ * bucket key than it was evicted from (and lose its authored gloss).
+ */
+describe('mesh record IFC-authored finish (#5582)', () => {
+  it('round-trips metallic and roughness, including an authored 0', () => {
+    expect(roundTrip(mesh({ material: { metallic: 1, roughness: 0 } })).material).toEqual({ metallic: 1, roughness: 0 });
+  });
+
+  it('round-trips a finish that authored only one field', () => {
+    const out = roundTrip(mesh({ material: { roughness: 0.25 } }));
+    expect(out.material).toEqual({ roughness: 0.25 });
+    expect('metallic' in out.material!).toBe(false);
+  });
+
+  it('leaves material absent when the mesh carried none', () => {
+    expect('material' in roundTrip(mesh())).toBe(false);
+  });
+
+  it('meshRecordByteLength counts the finish words', () => {
+    const m = mesh({ material: { metallic: 0.5, roughness: 0.5 } });
+    const writer = new BufferWriter();
+    writeMeshRecord(writer, m);
+    expect(writer.build().byteLength).toBe(meshRecordByteLength(m));
+  });
+});
+

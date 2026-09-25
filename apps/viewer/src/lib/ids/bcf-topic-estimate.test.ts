@@ -43,6 +43,10 @@ const REPORT: IDSReportInput = {
   specificationResults: [
     spec('Walls need fire rating', 'fail', [entity(1, 'A', 2), entity(2, 'A', 1), entity(3, 'A', 0), entity(1, 'B', 3)]),
     spec('Slabs need names', 'pass', [entity(10, 'A', 0), entity(11, 'B', 0)]),
+    // The same wall (A:1) failing a SECOND specification: the reporter emits
+    // one per-entity topic per (specification, entity), with no dedup, while
+    // snapshots are shared (one image per entity).
+    spec('Walls need names', 'fail', [entity(1, 'A', 1)]),
     spec('Model has a site', 'fail', []),
     spec('Doors need width', 'not_applicable', []),
   ],
@@ -65,6 +69,12 @@ describe('estimateIdsBcfTopicCount (#5824)', () => {
       });
     }
   }
+
+  it('counts an entity failing two specifications twice, like the reporter (one topic per spec and entity)', () => {
+    // 3 failing entities in spec 1, A:1 again in "Walls need names", 1 cardinality topic.
+    assert.equal(estimateIdsBcfTopicCount(REPORT, { topicGrouping: 'per-entity', includePassingEntities: false }), 5);
+    assert.equal(reporterTopicCount(REPORT, 'per-entity', false), 5);
+  });
 
   it('shows why per-entity is the wrong default: it scales with the model, per-specification does not', () => {
     const big: IDSReportInput = {

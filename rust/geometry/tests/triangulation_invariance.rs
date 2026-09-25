@@ -1988,7 +1988,11 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // #5033 judged the conform candidate with its collinear slivers removed. The
 // same change first tore #1401204 (0 -> 6) through the stray-shard sweep,
 // which is the fix #5127 carries; that host is back on its blessed row.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 23;
+// #5739: 19 measured on its base (the pin and golden had drifted from 23
+// unblessed; #1265258 and #1400391 had closed with fewer triangles) -> 6 once a
+// plan-rotated wall's analytic cut had to be closed as emitted, or lose to the
+// same cut made in the wall frame. No host got worse, open or strict.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 6;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

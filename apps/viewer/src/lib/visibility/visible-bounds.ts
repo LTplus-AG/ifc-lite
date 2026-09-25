@@ -38,8 +38,16 @@ function isSaneBounds(b: BoundingBox3D): boolean {
   return span >= 0 && span < 1e5;
 }
 
+/** The overlap of two boxes, or null when they are disjoint. */
+function intersect(a: BoundingBox3D, b: BoundingBox3D): BoundingBox3D | null {
+  const min = { x: Math.max(a.min.x, b.min.x), y: Math.max(a.min.y, b.min.y), z: Math.max(a.min.z, b.min.z) };
+  const max = { x: Math.min(a.max.x, b.max.x), y: Math.min(a.max.y, b.max.y), z: Math.min(a.max.z, b.max.z) };
+  return min.x <= max.x && min.y <= max.y && min.z <= max.z ? { min, max } : null;
+}
+
 export interface FitAllInput {
-  /** Ids of the flat meshes currently drawn (global ids). */
+  /** Ids of the flat meshes currently drawn (global ids). Already filtered:
+   *  a hidden model's and a toggled-off class's meshes are not in it. */
   meshIds: Iterable<number>;
   /** Ids of the GPU-instanced occurrences (global ids). */
   instancedIds: Iterable<number>;
@@ -48,23 +56,32 @@ export interface FitAllInput {
   boundsOf: (id: number) => BoundingBox3D | null | undefined;
   visibility: EffectiveVisibility;
   /**
-   * The whole-scene fit box: the load-time, outlier-trimmed bounds (#1107,
-   * #1394). Used as is when nothing is filtered out, so a stray far-away
-   * element still does not pull the fit into empty space.
+   * The load-time, outlier-trimmed whole-scene box (#1107, #1394). It is not
+   * recomputed when a model is hidden, so it is never framed as is; it only
+   * clamps the visible box, so a sparse far-away tail stays trimmed.
    */
   wholeScene: BoundingBox3D;
 }
 
-/** The box Fit All frames. */
+/**
+ * The box Fit All frames: the union of what is drawn and visible, clamped to
+ * the trimmed whole-scene box. When the two do not overlap (the user isolated
+ * the trimmed-away outlier itself) the visible box is framed unclamped. With
+ * nothing visible, or a degenerate union, the whole scene.
+ */
 export function fitAllBounds(input: FitAllInput): BoundingBox3D {
-  const ids = new Set(input.meshIds);
-  if (input.instancedDrawn) for (const id of input.instancedIds) ids.add(id);
   const visible: number[] = [];
-  for (const id of ids) if (isEffectivelyVisible(id, input.visibility)) visible.push(id);
-  // Nothing filtered out: the whole scene, outlier trimming included.
-  if (input.instancedDrawn && visible.length === ids.size) return input.wholeScene;
+  const seen = new Set<number>();
+  const take = (id: number) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    if (isEffectivelyVisible(id, input.visibility)) visible.push(id);
+  };
+  for (const id of input.meshIds) take(id);
+  if (input.instancedDrawn) for (const id of input.instancedIds) take(id);
   // With no flat mesh list every bound comes from `boundsOf`, the same union
   // frameEntities uses.
-  const bounds = unionEntityBounds(null, visible, input.boundsOf);
-  return bounds && isSaneBounds(bounds) ? bounds : input.wholeScene;
+  const union = unionEntityBounds(null, visible, input.boundsOf);
+  if (!union || !isSaneBounds(union)) return input.wholeScene;
+  return intersect(union, input.wholeScene) ?? union;
 }

@@ -51,6 +51,7 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 
 interface UsdExportDialogProps {
   trigger?: React.ReactNode;
@@ -143,8 +144,14 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
     }
   }, [selectedModel, getMutationView, t]);
 
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => setExportResult(null),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -231,7 +238,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('geometryExport.usd.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>

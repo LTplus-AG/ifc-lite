@@ -144,6 +144,50 @@ describe.skipIf(!canRun)('StepExporter output is schema-conformant per IfcOpenSh
     },
     IFCOPENSHELL_TEST_TIMEOUT_MS,
   );
+
+  it(
+    'validates an IFC2X3 MergedExporter output that unifies a nested object (#5726)',
+    async () => {
+      // duplex aggregates each stair's flight and two stringers (IfcMember)
+      // under the stair. The second model repeats the stringers by GlobalId
+      // (so both unify onto duplex's) and NESTS one under the other, which is
+      // valid on its own (IfcRelNests.WR1: same type). In IFC2X3 IfcRelNests
+      // and IfcRelAggregates both fill IfcObjectDefinition.Decomposes,
+      // SET [0:1], so writing that nest gives the stringer a second parent.
+      const text = readFileSync(resolve(MODELS_DIR, 'ara3d/duplex.ifc'), 'latin1');
+      const guidOf = (id: string) => new RegExp(`^${id}=IFC\\w+\\('([^']{22})'`, 'm').exec(text)![1];
+      const stair = /^(#\d+)=IFCSTAIR\(/m.exec(text)![1];
+      const [, , first, second] = new RegExp(`^#\\d+=IFCRELAGGREGATES\\([^;]*,${stair},\\((#\\d+),(#\\d+),(#\\d+)[,)]`, 'm').exec(text)!;
+      const project = /^(#\d+)=IFCPROJECT\(/m.exec(text)![1];
+      for (const stringer of [first, second]) expect(new RegExp(`^${stringer}=IFCMEMBER\\(`, 'm').test(text)).toBe(true);
+      const detailing = [
+        "#1=IFCPERSON($,$,'detailer',$,$,$,$,$);", "#2=IFCORGANIZATION($,'detailing',$,$,$);",
+        '#3=IFCPERSONANDORGANIZATION(#1,#2,$);', "#4=IFCAPPLICATION(#2,'1','detailing','detailing');",
+        '#5=IFCOWNERHISTORY(#3,#4,$,.NOCHANGE.,$,$,$,0);', '#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+        '#7=IFCUNITASSIGNMENT((#6));', '#8=IFCCARTESIANPOINT((0.,0.,0.));', '#9=IFCAXIS2PLACEMENT3D(#8,$,$);',
+        "#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-009,#9,$);",
+        `#11=IFCPROJECT('${guidOf(project)}',#5,'0001',$,$,$,$,(#10),#7);`,
+        `#12=IFCMEMBER('${guidOf(first)}',#5,'Stringer 1',$,$,$,$,$);`,
+        `#13=IFCMEMBER('${guidOf(second)}',#5,'Stringer 2',$,$,$,$,$);`,
+        "#14=IFCRELNESTS('3Nest5726Stringer00000',#5,$,$,#13,(#12));",
+      ];
+      const nestedModel = [
+        'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+        "FILE_NAME('detailing.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", "FILE_SCHEMA(('IFC2X3'));",
+        'ENDSEC;', 'DATA;', ...detailing, 'ENDSEC;', 'END-ISO-10303-21;',
+      ].join('\n');
+
+      const parser = new IfcParser();
+      const models: MergeModelInput[] = [];
+      for (const [id, bytes] of [['duplex', Buffer.from(text, 'latin1')], ['detailing', Buffer.from(nestedModel)]] as const) {
+        models.push({ id, name: id, dataStore: await parser.parseColumnar(toArrayBuffer(bytes)) });
+      }
+      const out = join(mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-5726-')), 'merged-IFC2X3.ifc');
+      writeFileSync(out, Buffer.from(new MergedExporter(models).export({ schema: 'IFC2X3' }).content));
+      runValidateOrThrow([out]);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
 });
 
 const canRunIfc4x3 = fixturesAvailable(IFC4X3_FIXTURES) && ifcopenshellAvailable();

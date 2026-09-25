@@ -21,7 +21,7 @@
 import { CLASH_TABLE_COLUMNS, clashTableRows, type ClashElementRef, type ClashTableRow } from '@ifc-lite/clash';
 import { tableToCsv } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
-import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { activeModelName, buildExportFilename, downloadFile, modelExportFilename } from '@/lib/export/download';
 
 export interface ClashTableExportResult {
   rows: number;
@@ -59,10 +59,8 @@ export function exportClashTableCsv(
 ): ClashTableExportResult | null {
   const rows = buildClashTable();
   if (!rows) return null;
-  const state = useViewerStore.getState();
-  const modelName = state.activeModelId ? state.models.get(state.activeModelId)?.name : undefined;
-  const base = modelName ? `${modelName.replace(/\.[^.]+$/, '')}-clashes` : 'clashes';
-  const filename = `${sanitizeFilename(base)}.csv`;
+  const modelName = activeModelName(useViewerStore.getState());
+  const filename = modelName ? modelExportFilename(modelName, 'csv', '-clashes') : buildExportFilename('clashes', 'csv');
   emit(tableToCsv(CLASH_TABLE_COLUMNS, rows), filename, 'text/csv');
   return { rows: rows.length, filename };
 }

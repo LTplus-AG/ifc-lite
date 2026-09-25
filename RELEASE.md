@@ -53,6 +53,18 @@ Add support for IFC4X3 entities
    - GitHub Release is created with version tag
    - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
 
+### A Version Packages PR must be fresh when it lands
+
+changesets/action publishes only from a tree with **no** pending `.changeset/*.md`, and the Release workflow runs once per push to `main`, on its tip. So a push that carries a Version Packages commit *and* a pending changeset opens a new version PR and publishes nothing (#5647). That happens in two ways:
+
+- The Version Packages PR is stale. It is refreshed by the Release run for each push, which lags `main`, and the merge queue squashes it onto whatever landed ahead of it. A changeset that landed after the last refresh is still in the tree.
+- A PR with a changeset is queued behind the Version Packages PR and lands in the same push (the queue merges up to five entries at once).
+
+Two checks stop that from passing silently. Both run `scripts/check-release-late-changesets.mjs`, which compares the tree with the start of the push: it fails when versions of existing workspace packages moved in that range *and* changesets are pending at the tip.
+
+- **Merge queue (fail closed).** The check is the first step of the `changes` job in `.github/workflows/test.yml`. That job feeds the required `Build + WASM + Rust + Node` check. On `merge_group` it compares the queued commit with the current `main` tip, and a failing entry is removed from the queue. If it is the Version Packages PR, wait for the Release run for the latest `main` push to refresh it, then queue it again. If it is an ordinary PR queued behind the Version Packages PR, queue it again once that PR has landed. On a pull request the check fails the same required check, so a stale Version Packages PR cannot be queued. On a push to `main` the commit has already landed, so it only annotates: failing `changes` there would skip every other lane of that push.
+- **Release backstop (fail loudly).** If such a push reaches `main` anyway (a bypass), its Release run still refreshes the Version Packages PR, then ends **red** with a "Release commit still carries changesets" error. The publish verifiers fail too, because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the earlier commit bumped.
+
 ## Release Workflow Diagram
 
 ```
@@ -152,6 +164,9 @@ OIDC trusted publishing for both registries:
 - For a brand-new package, do the one-time manual first publish before trusted publishing can take over
 - For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
+
+### "Release commit still carries changesets"
+- The Version Packages PR was stale when it merged or was queued. See [A Version Packages PR must be fresh when it lands](#a-version-packages-pr-must-be-fresh-when-it-lands).
 
 ### Versions out of sync
 - Run `pnpm version` locally to sync

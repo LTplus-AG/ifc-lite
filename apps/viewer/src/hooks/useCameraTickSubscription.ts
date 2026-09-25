@@ -9,11 +9,15 @@ type GetViewpoint = (() => CameraViewpoint | null) | undefined;
 
 /**
  * Wake a React component on camera moves without subscribing to
- * every camera tick. The three tool overlays (Gizmo, WallEndpoint,
- * Split) all need to re-project anchor points whenever the viewport
- * changes, but the camera tick is intentionally non-React (see
- * `Viewport.tsx` `updateCameraRotationRealtime`) so a manual RAF
- * loop is required.
+ * every camera tick. The remaining tool overlays not yet on the shared
+ * scene-overlay kernel (Gizmo, WallEndpoint, PlacementGizmo — #5510) need
+ * to re-project anchor points whenever the viewport changes, but the
+ * camera tick is intentionally non-React (see `Viewport.tsx`
+ * `updateCameraRotationRealtime`) so a manual RAF loop is required here.
+ * `ZoneOverlay` and `SplitOverlay` moved off this onto the kernel's shared
+ * `SceneProjector` loop via `useProjectorFrameTick` (#5512) — this hook's
+ * own private poll is exactly the duplicate the kernel exists to replace,
+ * so it goes away once the remaining three consumers migrate too.
  *
  * The hook:
  *   - returns a `frameTick` integer that increments only when the

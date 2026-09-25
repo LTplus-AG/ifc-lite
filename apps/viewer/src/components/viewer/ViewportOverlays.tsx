@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
-import { BasepointOverlay } from './BasepointOverlay';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
@@ -302,8 +301,10 @@ export function ViewportOverlays({
       )}
 
       {/* Per-model IFC (0,0,0) markers — toggled via BasepointToggleButton.
-          Hidden by default; component returns null when the toggle is off. */}
-      <BasepointOverlay />
+          Mounted on the shared scene-overlay kernel in `ViewportContainer`
+          (#5512), not here: it returns null when the toggle is off, so
+          `<BasepointOverlay />` living outside this component's own
+          render tree changes nothing about when the marker shows. */}
     </>
   );
 }

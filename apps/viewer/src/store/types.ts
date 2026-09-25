@@ -220,9 +220,12 @@ import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
- * `normal` + `distance` directly and ignores `axis` / `position`. The
- * cardinal `axis` / `position` / `flipped` fields are still kept in sync
- * (nearest-cardinal for axis, percentage along it for position) so any
+ * `normal` + `distance` directly and ignores `axis` / `position`, and
+ * `SectionPlane.flipped` is relative to `normal`, not to the cardinal axis
+ * (#5644): the shader's `side` multiplies `dot(p, normal) - distance`. The
+ * cardinal `axis` / `position` fields are still kept in sync
+ * (nearest-cardinal for axis, percentage along it for position; read the
+ * matching flip through `cardinalSectionFlipped`) so any
  * downstream reader that pre-dates custom planes (drawings export, BCF
  * snapshots, view controls) still gets a sensible projection rather than
  * crashing or emitting empty data.

@@ -22,6 +22,7 @@ export const MESH_UNIFORM_OFFSET = {
   viewProj: 0,
   model: 16,
   baseColor: 32,
+  metallicRoughness: 36,
   sectionPlane: 40,
   flags: 44,
   clipBoxMin: 48,

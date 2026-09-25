@@ -11,6 +11,7 @@ import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
+import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -1691,5 +1692,85 @@ describe('ambient occlusion post pass (#5384)', () => {
             h.stats.destroyedTextures.filter((l) => l === 'ao-target' || l === 'ao-scratch').sort(),
             ['ao-scratch', 'ao-target'],
         );
+    });
+});
+
+/**
+ * #5623 review — the textured draw path called `packMeshMaterial(tpl)` with
+ * neither the authored alpha nor `tm.material`, so every textured mesh
+ * silently got the opaque-dielectric default no matter what it was authored
+ * as. Fixed to `packMeshMaterial(tpl, tm.color[3], tm.material)`, matching
+ * the flat/batched call sites. Asserted at the level that actually caught the
+ * bug: the material row of the uniform buffer the real render() loop writes
+ * for a textured draw, not the source text of the call site.
+ */
+describe('the textured draw path passes authored alpha and material to packMeshMaterial (#5623 review)', () => {
+    function seedTextured(h: Harness, meshes: MeshData[]) {
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(meshes, device, pipeline, false);
+        return scene.getTexturedMeshes();
+    }
+
+    /** The material row (metallic, roughness, transmission flag) of the uniform written for `tm`. */
+    function materialRowFor(h: Harness, uniformBuffer: unknown): number[] | null {
+        const at = MESH_UNIFORM_OFFSET.metallicRoughness;
+        for (let i = h.stats.writes.length - 1; i >= 0; i--) {
+            const w = h.stats.writes[i];
+            if (w.buffer === uniformBuffer && w.floats.length > at + 3) {
+                return [w.floats[at], w.floats[at + 1], w.floats[at + 2]];
+            }
+        }
+        return null;
+    }
+
+    it('gives an opaque textured mesh the default dielectric', () => {
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1)]);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        assert.equal(row![1], Math.fround(0.9), 'roughness: default dielectric');
+        assert.equal(row![2], 0, 'transmission flag: not glass');
+    });
+
+    it('gives a textured mesh with an authored translucent tint the glass roughness and transmission flag, not the opaque default', () => {
+        const h = makeHarness();
+        const mesh = texturedTriangle(1);
+        mesh.color = [1, 1, 1, 0.4]; // translucent authored tint
+        const textured = seedTextured(h, [mesh]);
+        assert.strictEqual(textured.length, 1);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        // Before the fix this was 0.9 / 0 (the opaque default), because
+        // packMeshMaterial(tpl) never saw the authored alpha at all.
+        assert.equal(row![1], Math.fround(0.05), 'roughness: expected GLASS_ROUGHNESS from the authored alpha');
+        assert.equal(row![2], 1, 'transmission flag: expected glass from the authored alpha');
+    });
+
+    it('reads a material attached to the textured mesh, once one is set, the same way the flat/batched paths read mesh.material', () => {
+        // Nothing wires this from MeshData yet (#5582: IFC-authored specular is
+        // not extracted). This proves the DRAW PATH reads `tm.material` at
+        // all — the exact argument the #5623 review found silently dropped —
+        // independent of who eventually populates it.
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1)]);
+        (textured[0] as { material?: unknown }).material = { baseColor: [1, 1, 1, 1], metallic: 0.8, roughness: 0.2 };
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        assert.equal(row![0], Math.fround(0.8), 'metallic override reaches the uniform');
+        assert.equal(row![1], Math.fround(0.2), 'roughness override reaches the uniform');
     });
 });

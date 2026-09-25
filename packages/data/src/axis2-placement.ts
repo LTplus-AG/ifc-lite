@@ -12,11 +12,14 @@ const PROJECTION_EPSILON = 1e-6;
  * absent (`$`), as ifc-lite's renderer computes it (#5922).
  *
  * This is the single TypeScript definition. It mirrors `build_axis2_matrix`
- * in `rust/geometry/src/transform.rs`, the one Rust home every
- * `IfcAxis2Placement3D` parser feeds: each parser passes world X `(1,0,0)`
- * for a `$` RefDirection, and `build_axis2_matrix` projects it onto the plane
- * normal to the normalised Axis. That is the schema's `IfcFirstProjAxis(Axis,
- * $)` everywhere except next to the X axis:
+ * in `rust/geometry/src/transform.rs`, which the renderer's object and
+ * shape-placement parsers (`parse_axis2_placement_3d` and its siblings) feed:
+ * each passes world X `(1,0,0)` for a `$` RefDirection, and
+ * `build_axis2_matrix` projects it onto the plane normal to the normalised
+ * Axis. (Conic surface parametrisation in `advanced_face/conics.rs` picks its
+ * own reference direction; that is a different concern, not this fill.) That
+ * is the schema's `IfcFirstProjAxis(Axis, $)` everywhere except next to the
+ * X axis:
  *
  *   - when the projection is no longer than 1e-6 (Axis within about 1e-6 rad
  *     of +X or -X), the renderer takes `(0,0,1) x Axis` instead. For exactly

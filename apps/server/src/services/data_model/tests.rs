@@ -47,9 +47,9 @@ DATA;
 #6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
 #28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
 /* Material layer set: 200mm Concrete + 50mm ventilated Insulation */
-#30=IFCMATERIAL('Concrete',$,$);
+#30=IFCMATERIAL('Concrete',$,'Mineral');
 #31=IFCMATERIAL('Insulation',$,$);
-#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,$,$);
+#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,'load-bearing',$);
 #33=IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$);
 #34=IFCMATERIALLAYERSET((#32,#33),'WallSet',$);
 #35=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#28),#34);
@@ -62,13 +62,13 @@ DATA;
 #51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000001',$,$,$,(#28),#50);
 /* Column with a material constituent set */
 #60=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
-#61=IFCMATERIAL('Steel',$,$);
+#61=IFCMATERIAL('Steel',$,'Metal');
 #62=IFCMATERIALCONSTITUENT('Core',$,#61,$,'load-bearing');
 #63=IFCMATERIALCONSTITUENTSET('ColSet',$,(#62));
 #64=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#60),#63);
 /* Beam with a material profile set */
 #70=IFCBEAM('Bem0000000000000000001',$,'B1',$,$,$,$,$,$);
-#71=IFCMATERIAL('Timber',$,$);
+#71=IFCMATERIAL('Timber',$,'Wood');
 #72=IFCMATERIALPROFILE('Flange',$,#71,$,$,$);
 #73=IFCMATERIALPROFILESET('BeamSet',$,(#72),$);
 #74=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#70),#73);
@@ -99,6 +99,13 @@ fn extracts_classification_material_and_document_associations() {
     assert_eq!(layers.len(), 2, "expected two wall layers");
     assert_eq!(layers[0].element_id, 28);
     assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
+    assert_eq!(layers[0].association_id, 35);
+    assert_eq!(layers[0].definition_id, 34);
+    assert_eq!(layers[0].member_count, 2);
+    assert_eq!(layers[0].kind, "IfcMaterialLayerSet");
+    assert_eq!(layers[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(layers[0].category.as_deref(), Some("load-bearing"));
+    assert_eq!(layers[0].material_category.as_deref(), Some("Mineral"));
     assert_eq!(layers[0].material_name, "Concrete");
     assert!(
         (layers[0].thickness.unwrap() - 0.2).abs() < 1e-9,
@@ -106,6 +113,7 @@ fn extracts_classification_material_and_document_associations() {
     );
     assert_eq!(layers[0].is_ventilated, Some(false));
     assert_eq!(layers[1].material_name, "Insulation");
+    assert_eq!(layers[1].member_name.as_deref(), Some("Insul"));
     assert!(
         (layers[1].thickness.unwrap() - 0.05).abs() < 1e-9,
         "50mm -> 0.05m"
@@ -129,6 +137,9 @@ fn extracts_classification_material_and_document_associations() {
         "expected one constituent for the column"
     );
     assert_eq!(column_mats[0].material_name, "Steel");
+    assert_eq!(column_mats[0].kind, "IfcMaterialConstituentSet");
+    assert_eq!(column_mats[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(column_mats[0].material_category.as_deref(), Some("Metal"));
     assert_eq!(column_mats[0].set_name.as_deref(), Some("ColSet"));
 
     // The IfcRelAssociates* family must also land in the generic relationship
@@ -157,6 +168,9 @@ fn extracts_classification_material_and_document_associations() {
     let beam_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 70).collect();
     assert_eq!(beam_mats.len(), 1, "expected one profile for the beam");
     assert_eq!(beam_mats[0].material_name, "Timber");
+    assert_eq!(beam_mats[0].kind, "IfcMaterialProfileSet");
+    assert_eq!(beam_mats[0].member_name.as_deref(), Some("Flange"));
+    assert_eq!(beam_mats[0].material_category.as_deref(), Some("Wood"));
     assert_eq!(beam_mats[0].set_name.as_deref(), Some("BeamSet"));
 }
 
@@ -705,6 +719,12 @@ DATA;
 #28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
 #80=IFCMATERIAL('Brick',$,'Masonry');
 #81=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#28),#80);
+#29=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$);
+#30=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$);
+#82=IFCMATERIAL($,$,'CategoryOnly');
+#83=IFCRELASSOCIATESMATERIAL('Mat0000000000000000005',$,$,$,(#29),#82);
+#84=IFCMATERIALLIST((#80,#82));
+#85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#30),#84);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -718,9 +738,38 @@ fn resolves_a_direct_material_association_including_its_category() {
         .find(|m| m.element_id == 28)
         .expect("direct material association");
     assert_eq!(m.material_name, "Brick");
+    assert_eq!(m.kind, "IfcMaterial");
+    assert_eq!(m.material_category.as_deref(), Some("Masonry"));
+    let unnamed = dm.materials.iter().find(|m| m.element_id == 29).expect("unnamed material retained");
+    assert_eq!(unnamed.material_name, "");
+    assert_eq!(unnamed.material_category.as_deref(), Some("CategoryOnly"));
+    let list: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 30).collect();
+    assert_eq!(list.len(), 2, "unnamed list member must not disappear");
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(82)
+        && m.material_category.as_deref() == Some("CategoryOnly")));
     assert_eq!(m.category.as_deref(), Some("Masonry"));
     assert_eq!(m.set_name, None);
     assert_eq!(m.thickness, None);
+}
+
+#[test]
+fn forwards_revit_duplex_material_associations_with_identity_5296() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/models/ara3d/duplex.ifc");
+    let Ok(source) = std::fs::read(path) else {
+        eprintln!("skip: Revit duplex fixture absent; run pnpm fixtures");
+        return;
+    };
+    let dm = extract_data_model_checked(&source);
+    // Optional manual end-to-end parity run through the TS decoder/viewer.
+    if let Ok(path) = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT") {
+        let payload = crate::services::serialize_data_model_to_parquet(&dm).expect("serialize Revit data model");
+        std::fs::write(path, payload).expect("write Revit data model for cross-runtime parity check");
+    }
+    assert!(dm.materials.iter().any(|m| m.material_name == "Masonry - Brick"),
+        "Revit material assignment must survive server extraction");
+    assert!(dm.materials.iter().all(|m| m.association_id > 0 && m.definition_id > 0 && !m.kind.is_empty()),
+        "every forwarded row keeps its IFC relationship and definition identity");
 }
 
 /// A TWO-level `IfcClassificationReference` chain (leaf -> intermediate ref ->

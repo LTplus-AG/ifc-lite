@@ -7,9 +7,9 @@ import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { extractAllMaterialsOnDemand, extractClassificationsOnDemand } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import { checkClassificationFacet } from '@ifc-lite/ids';
+import { checkClassificationFacet, checkMaterialFacet } from '@ifc-lite/ids';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -739,4 +739,72 @@ it('server hydration preserves one-hop IfcSpatialZone storey membership (#4775)'
   assert.deepEqual(hierarchy.bySpace.get(3), [4]);
   assert.equal(hierarchy.elementToStorey.get(3), 2);
   assert.equal(hierarchy.getContainingSpace(4), 3);
+});
+
+it('forwards server material values with own-before-type precedence and distinct associations (#5296)', () => {
+  const model: DataModel = {
+    entities: ServerEntityIndex.fromRows([
+      { entity_id: 1, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 2, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 3, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 4, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 5, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 6, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 7, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 100, type_name: 'IFCWALLTYPE', has_geometry: false },
+    ]),
+    propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
+    relationships: [
+      { rel_type: 'IFCRELDEFINESBYTYPE', relating_id: 100, related_id: 1, rel_id: 10 },
+      { rel_type: 'IFCRELDEFINESBYTYPE', relating_id: 100, related_id: 2, rel_id: 11 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 300, related_id: 100, rel_id: 30 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 310, related_id: 2, rel_id: 31 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 320, related_id: 3, rel_id: 32 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 321, related_id: 3, rel_id: 33 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 330, related_id: 4, rel_id: 34 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 340, related_id: 5, rel_id: 35 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 350, related_id: 6, rel_id: 36 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 360, related_id: 7, rel_id: 37 },
+    ],
+    materials: [
+      { element_id: 100, association_id: 30, member_count: 1, definition_id: 300, kind: 'IfcMaterialLayerSet',
+        set_name: 'WallSet', layer_index: 0, material_name: 'Concrete', member_name: 'Core',
+        category: 'load-bearing', material_category: 'Mineral', thickness: 0.2 },
+      { element_id: 2, association_id: 31, member_count: 1, definition_id: 310, kind: 'IfcMaterial',
+        layer_index: 0, material_name: 'Brick', material_category: 'Masonry' },
+      { element_id: 3, association_id: 32, member_count: 1, definition_id: 320, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Steel', material_category: 'Metal' },
+      { element_id: 3, association_id: 33, member_count: 1, definition_id: 321, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Timber', material_category: 'Wood' },
+      // Old rows have no kind/identity. Their relationship still proves a
+      // material, but no value can safely be asserted from the partial wire.
+      { element_id: 4, layer_index: 0, material_name: 'Old-wire value' },
+      { element_id: 5, association_id: 35, member_count: 2, definition_id: 340, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Named member' },
+      { element_id: 5, association_id: 35, member_count: 2, definition_id: 340, kind: 'IfcMaterialList',
+        layer_index: 1, material_name: '', material_id: 341 },
+      // One of two members never arrived. The known name must not authorize
+      // a mismatch because the missing member could satisfy the constraint.
+      { element_id: 6, association_id: 36, member_count: 2, definition_id: 350, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Known only' },
+      { element_id: 7, association_id: 37, member_count: 1, definition_id: 360, kind: 'IfcMaterial',
+        layer_index: 0, material_name: '' },
+    ],
+    spatialHierarchy: { nodes: [], project_id: 0, element_to_storey: new Map(),
+      element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map() },
+  };
+  const store = convertServerDataModel(model, parseResult, { size: 1 }, []);
+  const values = (id: number) => createDataAccessor(store).getMaterials(id).map((m) => m.name);
+
+  assert.deepEqual(values(1), ['WallSet', 'Concrete', 'Core', 'Mineral']);
+  assert.deepEqual(values(2), ['Brick', 'Masonry']);
+  assert.deepEqual(values(3), ['Steel', 'Metal', 'Timber', 'Wood']);
+  assert.deepEqual(extractAllMaterialsOnDemand(store, 4), [{ type: 'Material', unresolved: true }]);
+  const unknown = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unknown member' } };
+  assert.equal(checkMaterialFacet(unknown, 5, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet({ ...unknown, value: { ...unknown.value, value: 'Named member' } }, 5, createDataAccessor(store)).passed, true);
+  assert.equal(checkMaterialFacet(unknown, 6, createDataAccessor(store)).failure?.type, 'MATERIAL_UNRESOLVED');
+  assert.equal(checkMaterialFacet({ type: 'material' }, 7, createDataAccessor(store)).passed, true);
+  assert.equal(checkMaterialFacet(unknown, 7, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(store.resolvedMaterials?.get(100)?.get(300)?.type, 'MaterialLayerSet');
 });

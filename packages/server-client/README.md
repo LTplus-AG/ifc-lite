@@ -91,6 +91,21 @@ import { decodeParquetGeometry } from '@ifc-lite/server-client';
 const meshes = await decodeParquetGeometry(arrayBuffer);
 ```
 
+The decoded data model's `materials` rows identify each
+`IfcRelAssociatesMaterial` through `association_id` and its
+`RelatingMaterial` through `definition_id`. `kind` uses the exact IFC definition
+name (`IfcMaterial`, `IfcMaterialLayerSet`, `IfcMaterialProfileSet`,
+`IfcMaterialConstituentSet`, or `IfcMaterialList`). Member names and categories
+are separate from the referenced `IfcMaterial` name and category; `material_id`
+also identifies an unnamed list member. `member_count` lets consumers reject
+incomplete association groups. These fields are absent in older server
+payloads. A client validating material values should treat such partial rows as
+unresolved rather than as proof of a mismatch.
+
+For `IfcMaterialLayerSetUsage` and `IfcMaterialProfileSetUsage`, `definition_id`
+is the usage entity from `RelatingMaterial`, while `kind` reports the effective
+referenced set.
+
 ## Which frame the meshes are in
 
 The one-shot parse responses and the Parquet metadata headers carry

@@ -94,7 +94,7 @@
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
   2092 apps/viewer/src/components/viewer/PropertiesPanel.tsx
-  1729 apps/viewer/src/components/viewer/PropertyEditor.tsx
+  1725 apps/viewer/src/components/viewer/PropertyEditor.tsx
    539 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    416 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts

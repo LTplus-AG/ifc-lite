@@ -38,7 +38,8 @@ export function globalIdProblem(
 export function modelGlobalIdOwner(modelId: string): (guid: string) => number {
   const state = useViewerStore.getState();
   const entities = state.models.get(modelId)?.ifcDataStore?.entities ?? state.ifcDataStore?.entities;
-  const view = state.mutationViews.get(modelId === 'legacy' ? '__legacy__' : modelId) ?? state.mutationViews.get(modelId);
+  const storeModelId = modelId === 'legacy' ? '__legacy__' : modelId;
+  const view = state.mutationViews.get(storeModelId) ?? state.mutationViews.get(modelId);
   const parsedGuid = (id: number): string | undefined => entities?.getGlobalId?.(id) || undefined;
   if (!view) return (guid) => entities?.getExpressIdByGlobalId?.(guid) ?? -1;
 
@@ -54,7 +55,7 @@ export function modelGlobalIdOwner(modelId: string): (guid: string) => number {
   // Every entity whose GlobalId an edit may have changed: attribute edits,
   // live positional edits (all on the undo stack), and created entities.
   const edited = new Set<number>(view.getAttributeMutationsByEntity().keys());
-  for (const m of state.undoStacks.get(modelId) ?? []) if (m.type === 'UPDATE_POSITIONAL_ATTRIBUTE') edited.add(m.entityId);
+  for (const m of state.undoStacks.get(storeModelId) ?? state.undoStacks.get(modelId) ?? []) if (m.type === 'UPDATE_POSITIONAL_ATTRIBUTE') edited.add(m.entityId);
   for (const e of view.getNewEntities()) edited.add(e.expressId);
 
   return (guid) => {

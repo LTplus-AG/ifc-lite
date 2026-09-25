@@ -78,7 +78,10 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
     settledRef.current = true;
     // setAttribute records the undo entry, marks the model dirty and bumps
     // mutationVersion itself; an unchanged value records nothing.
-    if (verdict.kind === 'commit') setAttribute(storeModelId, entityId, attrName, verdict.value, currentValue || undefined);
+    // Undo restores a prior session edit exactly (even ''); with none, a blank
+    // value restores the source's `$` by dropping the edit.
+    const prior = useViewerStore.getState().mutationViews.get(storeModelId)?.getAttributeMutationsForEntity(entityId).find((m) => m.name === attrName);
+    if (verdict.kind === 'commit') setAttribute(storeModelId, entityId, attrName, verdict.value, prior ? prior.value : currentValue || undefined);
     setEditing(false);
   }, [modelId, entityId, attrName, value, currentValue, setAttribute]);
 

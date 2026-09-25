@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
@@ -168,6 +168,28 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     key(input, 'Enter');
     assert.equal(container.querySelector('[role="alert"]'), null);
     assert.equal(undo().length, 2, 'the freed GUID commits');
+  });
+
+  it('editing a value this session blanked records the blank as the undo value', () => {
+    useViewerStore.getState().setAttribute('m', 1, 'Description', '', undefined);
+    const input = openEditor(mount('Description', ''), 'empty');
+    type(input, 'Filled');
+    key(input, 'Enter');
+    assert.equal(undo().length, 2);
+    assert.equal(undo()[1].oldValue, '', 'the previous value is the blank, not "no value"');
+    useViewerStore.getState().undo('m');
+    const view = useViewerStore.getState().mutationViews.get('m')!;
+    assert.deepEqual(view.getAttributeMutationsForEntity(1), [{ name: 'Description', value: '' }], 'undo returns to the blank edit');
+  });
+
+  it('the legacy model\'s positional GlobalId edits count toward uniqueness', async () => {
+    const { modelGlobalIdOwner } = await import('./global-id-check.js');
+    const store = await parse();
+    const view = new MutablePropertyView(null, '__legacy__');
+    useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map([['__legacy__', view]]), storeEditors: new Map([['__legacy__', new StoreEditor(store, view)]]), undoStacks: new Map() });
+    const fresh = '3FreshGuid000000000000';
+    useViewerStore.getState().setPositionalAttribute('__legacy__', 2, 0, fresh);
+    assert.equal(modelGlobalIdOwner('legacy')(fresh), 2, 'Wall B carries the GUID it was just given');
   });
 
   it('judgeAttributeEdit: a valid, unused GlobalId commits trimmed', () => {

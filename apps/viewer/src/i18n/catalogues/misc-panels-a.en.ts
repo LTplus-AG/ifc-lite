@@ -21,7 +21,10 @@
  *   overlay panel on the 2D section view (toggle, thickness/opacity
  *   sliders, and the status footnote).
  * - `spaceMousePanel.*` — `SpaceMousePanel.tsx`, the 3Dconnexion device
- *   panel (connect/disconnect, sensitivity, and diagnostics readout).
+ *   settings (connect/disconnect, sensitivity, and diagnostics readout).
+ *   Rendered inside the Preferences tab's Navigation section
+ *   (`KeyboardShortcutsDialog.tsx`, #5509), not as a floating panel; its own
+ *   section heading is catalogued there, not here.
  *
  * Several counted-fragment JSX expressions were combined into single
  * templated messages per the house rule against fragmenting a translated
@@ -29,7 +32,7 @@
  * report line, etc.) rather than left split across raw JSX text and a
  * bare unit suffix.
  *
- * `spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton`
+ * `spaceMousePanel.deviceNameFallback` / `connectButton`
  * keep the literal English word `SpaceMouse` as their value: it is a
  * product/device name, not translated prose, per the house rule — routed
  * through `t()` only so the ending gate does not see it as an unconverted
@@ -123,8 +126,6 @@ export const miscPanelsAEn = {
   'exportChangesReviewDialog.exportButton': 'Export',
 
   // ScanSectionPanel
-  'scanSectionPanel.title': 'Scan Layer',
-  'scanSectionPanel.closeAriaLabel': 'Close scan layer panel',
   'scanSectionPanel.showScanPointsLabel': 'Show scan points',
   'scanSectionPanel.noPointCloudMessage':
     'No point cloud is loaded. Load a .laz/.las/.e57/.ply/.pcd scan and this layer will show the points within a thin band around the section plane.',
@@ -137,9 +138,9 @@ export const miscPanelsAEn = {
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
 
-  // SpaceMousePanel
-  'spaceMousePanel.dragToMoveTitle': 'Drag to move',
-  'spaceMousePanel.headerLabel': 'SpaceMouse',
+  // SpaceMousePanel — the Navigation section's own heading (#5509) comes
+  // from `keyboardShortcuts.preferences.spaceMouseSectionTitle`, so no
+  // header/drag-title strings live here any more.
   'spaceMousePanel.noWebHidMessage':
     'This browser has no WebHID support. Use a Chromium-based browser (Chrome or Edge) to navigate with a 3D mouse.',
   'spaceMousePanel.deviceNameFallback': 'SpaceMouse',

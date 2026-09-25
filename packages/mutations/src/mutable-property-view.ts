@@ -34,7 +34,7 @@ export type { AttributeExtractor } from './effective-changes.js';
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; dataType?: string }>;
+  properties: Array<{ name: string; type: number; value: unknown; values?: string[]; unit?: string; unitSiScale?: number; dataType?: string; structure?: Property['structure'] }>;
 }>;
 
 /**
@@ -273,6 +273,9 @@ export class MutablePropertyView extends MutableOverlayState {
           type: prop.type as PropertyValueType,
           value: prop.value as PropertyValue,
           ...(prop.values ? { values: [...prop.values] } : {}),
+          // Rules read a list / table member by member (#5475); a base
+          // property seen through the overlay must keep saying it is one.
+          ...(prop.structure ? { structure: prop.structure } : {}),
           ...(prop.unit ? { unit: prop.unit } : {}),
           ...(prop.unitSiScale !== undefined ? { unitSiScale: prop.unitSiScale } : {}),
           dataType: prop.dataType,

@@ -297,7 +297,7 @@ fn a_crossing_within_f32_noise_is_a_touch_not_hard() {
     // from f32 rounding at this coordinate scale must be `Touch`, not `Hard`.
     //
     // Until #5406 the tri-tri predicate reported this as a crossing (its
-    // separation test was an exact tie) and `precision_floor` demoted it to a
+    // separation test was an exact tie) and the precision floor demoted it to a
     // `Touch` at the depth path's constant 0.0. The predicate now reads
     // overlap within the f32 noise band of the tested axis as contact itself,
     // so the pair never reaches the depth path: still `Touch`, still no
@@ -332,7 +332,7 @@ fn a_crossing_within_f32_noise_is_a_touch_not_hard() {
 #[test]
 fn genuine_small_overlap_above_the_precision_floor_stays_hard() {
     // Same crossing-bars construction and coordinate scale as
-    // `a_crossing_within_f32_noise_is_a_touch_not_hard` (floor ≈
+    // `a_crossing_within_f32_noise_is_a_touch_not_hard` (Z floor ≈
     // 1.45e-5 m), but the z overlap (1e-4 m) is ~7x the floor: a real,
     // measurable penetration that must NOT be swallowed by the
     // precision-floor gate. Guards against an over-generalized fix that
@@ -350,69 +350,69 @@ fn genuine_small_overlap_above_the_precision_floor_stays_hard() {
     );
 }
 
+/// `depth_clash_result` for one candidate, with a 0.5 m estimate unless
+/// the test is about the estimate itself. `true` = Touch, `false` = Hard.
+fn is_touch(
+    box_pen: Option<crate::depth::BoxPenetration>,
+    estimate: f64,
+    evidence: Option<crate::depth::VertexPenetration>,
+    a: &Aabb,
+    b: &Aabb,
+) -> bool {
+    let r = crate::depth::depth_clash_result(box_pen, estimate, evidence, a, b, true, [0.0; 3], *a)
+        .expect("report_touch is on, so a result always comes back");
+    r.status == ClashStatus::Touch
+}
+
+fn next_up(x: f64) -> f64 {
+    f64::from_bits(x.to_bits() + 1)
+}
+
 #[test]
-fn overlap_exactly_at_the_precision_floor_is_touch_not_hard() {
-    // `depth.rs:207` gates on `floor_depth <= precision_floor(...)`, but no
-    // existing fixture strikes that boundary bit-exactly: the two sibling
-    // tests above sit a decade below and ~7x above it. This one is solved
-    // algebraically to land the z-axis MTD exactly ON `precision_floor`'s
-    // returned value, so `<=` and a mutated `<` disagree on this fixture and
-    // only this fixture (a "close enough" gap would pass under both).
-    //
-    // Same crossing-bars shape as the two sibling fixtures above (needed so
-    // the pair takes the genuine-triangle-crossing path into
-    // `depth_clash_result` — two boxes merely STACKED with identical x/y
-    // footprints have parallel, non-crossing side faces and fall through a
-    // completely different branch of `narrow.rs` that never calls
-    // `precision_floor` at all when the overlap is this far under the
-    // 1 mm tolerance): A is a bar long in x, B a bar long in y, crossing at
-    // right angles over their shared x/y footprint, thin (half 0.25) and
-    // separated by a tiny gap on z.
-    //
-    // Derivation: `precision_floor` returns `extent * F32_ULP_SCALE` where
-    // `extent` is the max abs coordinate over both AABBs and
-    // `F32_ULP_SCALE = 2^-22`. Pin `extent` to a power of two via A's x-axis
-    // (A spans x = [32, 64], the dominant coordinate over both boxes since B
-    // is thin in x and short in z):
-    //   floor = 64.0 * 2^-22 = 2^-16 = 0.0000152587890625
-    // Both bars are 0.5 thick on z with A centred at z=60.0; B is shifted so
-    // the z overlap (A.max_z - B.min_z — the SAT minimum axis, since the x/y
-    // overlaps are 16.25 each, far larger) equals `floor` exactly:
-    //   B.center_z = A.center_z + 2*half_z - floor
-    //              = 60.0 + 0.5 - 0.0000152587890625 = 60.4999847412109375
-    // This literal is exactly representable in f32 (60.5 minus an exact
-    // multiple — 4 — of f32's ULP at that magnitude, 2^-18), so the f32
-    // round-trip through `box_mesh`'s vertex/AABB buffers introduces no
-    // further rounding: computed here in f64 and verified independently
-    // against Rust's own f32 arithmetic (and against the crate's own SAT
-    // formula, `r_a + r_b - dist`) before trusting this fixture.
-    let a = box_mesh([48.0, 0.0, 60.0], [16.0, 0.25, 0.25]);
-    let b = box_mesh([48.0, 0.0, 60.499_984_741_210_938], [0.25, 16.0, 0.25]);
+fn a_depth_exactly_at_its_own_directions_floor_is_touch_and_one_ulp_above_is_hard_5405() {
+    // The floor boundary is inclusive (`<=`), for each of the three depth
+    // candidates, and each is judged against the floor OF ITS OWN DIRECTION
+    // (#5405). Both boxes sit 10,000 out along X and reach Z = 64, and their
+    // own sizes are 2 and 1, so the Z noise is exactly (64 + 2 + 1) * 2^-22
+    // (position + size, see `BoxNoise`) while the X noise is ~150x larger: a max-over-all-axes floor (the old `precision_floor`, 10,001 *
+    // 2^-22 ~ 2.4e-3) would call every Z depth below 2.4 mm Touch. The old
+    // session-level pin reached this boundary through a crossing whose floor
+    // came from the X extent; with the floor projected onto Z it coincides
+    // with the tri-tri contact band (#5406, same rule), so such a crossing
+    // is contact before it ever gets here, and the boundary is pinned where
+    // it lives.
+    let a = Aabb::new([9_999.0, -1.0, 63.0], [10_001.0, 1.0, 64.0]);
+    let b = Aabb::new([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64.0]);
+    let z_floor = 67.0 / 4_194_304.0;
+    let z: Vec3 = [0.0, 0.0, 1.0];
+    let bp = |mtd: f64| Some(crate::depth::BoxPenetration { mtd, axis: z, through: false });
+    let ev = |depth: f64| Some(crate::depth::VertexPenetration { depth, axis: z });
 
-    let floor = 64.0f64 / 4_194_304.0;
-    assert_eq!(floor, 0.0000152587890625, "sanity: the derived floor value");
-    assert_eq!(
-        a.2[5] - b.2[2],
-        floor as f32,
-        "sanity: the generated f32 AABB overlap is exactly the precision floor"
-    );
+    assert!(is_touch(bp(z_floor), 0.5, None, &a, &b), "box MTD at its floor");
+    assert!(!is_touch(bp(next_up(z_floor)), 0.5, None, &a, &b), "box MTD one ulp above");
+    assert!(is_touch(None, 0.5, ev(z_floor), &a, &b), "crossing-vertex evidence at its floor");
+    assert!(!is_touch(None, 0.5, ev(next_up(z_floor)), &a, &b), "evidence one ulp above");
+    // The same depth along X IS within X's (much larger) noise.
+    let x: Vec3 = [1.0, 0.0, 0.0];
+    let bp_x = Some(crate::depth::BoxPenetration { mtd: 1e-3, axis: x, through: false });
+    assert!(is_touch(bp_x, 0.5, None, &a, &b), "1 mm along X, 10 km out in X");
+    assert!(!is_touch(bp(1e-3), 0.5, None, &a, &b), "1 mm along Z, 10 km out in X");
+}
 
-    let session = session_of(&[a, b]);
-    let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
-    assert!(
-        hard_only.records.is_empty(),
-        "an overlap exactly AT the precision floor must not report as a hard clash, got {:?}",
-        hard_only
-            .records
-            .iter()
-            .map(|r| (r.status, r.distance))
-            .collect::<Vec<_>>()
-    );
-
-    let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
-    assert_eq!(with_touch.records.len(), 1, "the boundary touch itself is real information and must still report");
-    assert_eq!(with_touch.records[0].status, ClashStatus::Touch);
-    assert_eq!(with_touch.records[0].distance, 0.0);
+#[test]
+fn the_aabb_estimate_is_judged_on_the_axis_it_measures_5405() {
+    // The estimate `-signed_gap` is the smallest per-axis AABB overlap, so
+    // its floor is that axis's noise. B overlaps A by exactly (65 + 2 + 2) *
+    // 2^-22 on Z (the Z noise: Z reaches 65, both elements are 2 across) and
+    // by far more on X and Y; the pair sits 10,000 out along X.
+    let d = 69.0 / 4_194_304.0;
+    let a = Aabb::new([9_999.0, -1.0, 63.0], [10_001.0, 1.0, 64.0]);
+    let b = Aabb::new([9_999.0, -0.5, 64.0 - d], [10_001.0, 0.5, 65.0]);
+    let est = -crate::aabb::signed_gap(&a, &b);
+    assert_eq!(est, d, "fixture premise: the estimate is the Z overlap, exactly");
+    assert_eq!(crate::aabb::estimate_floor(&a, &b), d);
+    assert!(is_touch(None, est, None, &a, &b));
+    assert!(!is_touch(None, next_up(est), None, &a, &b));
 }
 
 #[test]
@@ -616,14 +616,14 @@ fn probe_fixture_matches_the_ts_kernel() {
     for (p, inside, distance) in probes {
         assert_eq!(mesh.contains_point(p), inside, "contains_point {p:?}");
         assert_eq!(
-            mesh.distance_to_surface(p),
+            mesh.closest_on_surface(p).0,
             distance,
-            "distance_to_surface {p:?}"
+            "closest_on_surface {p:?}"
         );
     }
 }
 
-/// The BVH-accelerated `distance_to_surface` must equal an exhaustive scan when
+/// The BVH-accelerated `closest_on_surface` must equal an exhaustive scan when
 /// the answer lies OUTSIDE the first probe cube. The DECOY is one big slanted
 /// triangle whose AABB swallows the probe cube while its own surface sits 0.548
 /// away; the real nearest surface is a fine grid at z = 0.435, outside the seed
@@ -635,7 +635,7 @@ fn probe_fixture_matches_the_ts_kernel() {
 /// hand back the decoy's 0.548), and dropping the widened query entirely.
 /// Mirrors `tri-mesh.test.ts` "finds a near triangle the seed cube missed".
 #[test]
-fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
+fn closest_on_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     const A: f64 = 0.95;
     const SPAN: f64 = 1.16;
     const Z: f64 = 0.435;
@@ -676,11 +676,11 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
     // The probe that discriminates: the answer must be the grid (~0.435), not
     // the decoy (~0.548) that the seed cube found first.
     let centre = [0.0, 0.0, 0.0];
-    assert_eq!(mesh.distance_to_surface(centre), scan(centre));
+    assert_eq!(mesh.closest_on_surface(centre).0, scan(centre));
     assert!(
-        mesh.distance_to_surface(centre) < 0.5,
+        mesh.closest_on_surface(centre).0 < 0.5,
         "must reach the grid at z = 0.435, got {}",
-        mesh.distance_to_surface(centre)
+        mesh.closest_on_surface(centre).0
     );
 
     for p in [
@@ -689,13 +689,13 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
         [0.4, 0.4, 0.3],
         [9.0, 9.0, 9.0],
     ] {
-        assert_eq!(mesh.distance_to_surface(p), scan(p), "probe {p:?}");
+        assert_eq!(mesh.closest_on_surface(p).0, scan(p), "probe {p:?}");
     }
 }
 
 /// Brute-force `contains_point`: the SAME Möller–Trumbore crossing count, over
 /// EVERY triangle instead of the BVH's candidate set. This is the oracle the
-/// BVH acceleration never had — `distance_to_surface` has one (`scan` above),
+/// BVH acceleration never had — `closest_on_surface` has one (`scan` above),
 /// but `contains_point`'s "the candidate set is a superset of what a linear
 /// scan would count" was asserted only in a doc comment, so nothing in the
 /// suite would have noticed the traversal starting to prune a triangle the ray
@@ -918,4 +918,46 @@ fn clean_triangle_is_still_queryable() {
     let mesh = TriMesh::new(positions, vec![0u32, 1, 2]);
     let huge = Aabb::new([-10.0, -10.0, -10.0], [10.0, 10.0, 10.0]);
     assert_eq!(mesh.query_tris(&huge), vec![0u32]);
+}
+
+#[test]
+fn crossing_vertex_evidence_carries_the_direction_it_was_measured_along_5405() {
+    // A 1 m cube dipping 10 mm into the top of a slab: its bottom vertices
+    // are the deepest crossing vertices, 10 mm below the slab's top face, so
+    // the evidence is 0.01 measured straight along Z — the direction its
+    // precision floor is projected onto. Well inside the slab's X/Y extent,
+    // so no side face is nearer.
+    let slab = tri_mesh_of(&box_mesh([0.0, 0.0, 0.0], [5.0, 5.0, 0.5]));
+    let cube = tri_mesh_of(&box_mesh([0.0, 0.0, 0.99], [0.5, 0.5, 0.5]));
+    let flags = vec![true; cube.count];
+    let e = crate::depth::crossing_vertex_penetration(&cube, &slab, &flags).expect("vertices inside");
+    assert!((e.depth - 0.01).abs() < 1e-6, "{}", e.depth); // f32 corners
+    assert!(e.axis[0].abs() < 1e-9 && e.axis[1].abs() < 1e-9, "{:?}", e.axis);
+    assert!((e.axis[2].abs() - 1.0).abs() < 1e-9, "{:?}", e.axis);
+}
+
+#[test]
+fn a_hard_result_reports_the_floor_of_the_depth_it_reports_5639() {
+    // The pair sits 10,000 out along X, so the X floor is ~150x the Z floor.
+    // A certified box MTD measured along X is reported with the X floor; the
+    // AABB estimate (smallest overlap: Z here) with the Z floor — whichever
+    // depth `distance` carries, `depth_floor` is that depth's own floor.
+    let a = Aabb::new([9_999.0, -1.0, 63.0], [10_001.0, 1.0, 64.0]);
+    let b = Aabb::new([9_999.5, -0.5, 63.5], [10_000.5, 0.5, 64.0]);
+    let x: Vec3 = [1.0, 0.0, 0.0];
+    let hard = |box_pen, estimate| {
+        let r = crate::depth::depth_clash_result(box_pen, estimate, None, &a, &b, true, [0.0; 3], a)
+            .expect("a result");
+        assert_eq!(r.status, ClashStatus::Hard);
+        (r.distance, r.depth_floor.expect("a Hard result carries its floor"))
+    };
+    let x_floor = crate::aabb::depth_floor(x, &a, &b);
+    let est_floor = crate::aabb::estimate_floor(&a, &b);
+    assert!(x_floor > 100.0 * est_floor, "fixture premise: {x_floor} vs {est_floor}");
+
+    let measured = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: false });
+    assert_eq!(hard(measured, 0.5), (-0.1, x_floor), "certified MTD: its own axis's floor");
+    let through = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: true });
+    assert_eq!(hard(through, 0.5), (-0.5, est_floor), "through-penetration reports the estimate");
+    assert_eq!(hard(None, 0.5), (-0.5, est_floor), "no box: the estimate");
 }

@@ -4,7 +4,7 @@
 
 /**
  * Exact-value pins for the two BVH-driven point probes, `containsPoint` and
- * `distanceToSurface`.
+ * `closestOnSurface`.
  *
  * The literals below are the values the pre-BVH linear scans produced, to the
  * last bit, and `rust/clash/src/kernel_tests.rs::probe_fixture_matches_the_ts_kernel`
@@ -35,7 +35,7 @@ const PRISM_INDICES = new Uint32Array([
   0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
 ]);
 
-/** `[point, inside, distanceToSurface]` — shared with the Rust fixture. */
+/** `[point, inside, closestOnSurface]` — shared with the Rust fixture. */
 const PROBES: ReadonlyArray<readonly [Vec3, boolean, number]> = [
   // Closest feature is the slanted face → irrational.
   [[0.9, 0.85, 0.5], true, 0.17677669529663689],
@@ -59,8 +59,8 @@ describe('TriMesh point probes', () => {
       expect(mesh.containsPoint(p)).toBe(inside);
     });
 
-    it(`distanceToSurface ${JSON.stringify(p)} is exact`, () => {
-      expect(mesh.distanceToSurface(p)).toBe(distance);
+    it(`closestOnSurface ${JSON.stringify(p)} is exact`, () => {
+      expect(mesh.closestOnSurface(p)[0]).toBe(distance);
     });
   }
 
@@ -107,17 +107,17 @@ describe('TriMesh point probes', () => {
     // The probe that discriminates: the answer must be the grid (~0.435), not
     // the decoy (~0.548) the seed cube found first.
     const centre: Vec3 = [0, 0, 0];
-    expect(mesh.distanceToSurface(centre)).toBe(scan(centre));
-    expect(mesh.distanceToSurface(centre)).toBeLessThan(0.5);
+    expect(mesh.closestOnSurface(centre)[0]).toBe(scan(centre));
+    expect(mesh.closestOnSurface(centre)[0]).toBeLessThan(0.5);
 
     for (const p of [[0.1, -0.2, 0.05], [0, 0, -0.8], [0.4, 0.4, 0.3], [9, 9, 9]] as Vec3[]) {
-      expect(mesh.distanceToSurface(p)).toBe(scan(p));
+      expect(mesh.closestOnSurface(p)[0]).toBe(scan(p));
     }
   });
 
   it('reports Infinity for an empty mesh', () => {
     const empty = new TriMesh(new Float32Array(), new Uint32Array());
-    expect(empty.distanceToSurface([0, 0, 0])).toBe(Infinity);
+    expect(empty.closestOnSurface([0, 0, 0])[0]).toBe(Infinity);
     expect(empty.containsPoint([0, 0, 0])).toBe(false);
   });
 });
@@ -125,7 +125,7 @@ describe('TriMesh point probes', () => {
 /**
  * Brute-force `containsPoint`: the SAME Möller–Trumbore crossing count, over
  * EVERY triangle instead of the BVH's candidate set. This is the oracle the
- * BVH acceleration never had — `distanceToSurface` has one (the `scan` above,
+ * BVH acceleration never had — `closestOnSurface` has one (the `scan` above,
  * and `kernel_tests.rs:465`), but `containsPoint`'s "the candidate set is a
  * superset of what a linear scan would count" was asserted only in a doc
  * comment, so nothing in the suite would have noticed the traversal starting

@@ -26,6 +26,8 @@ import {
   usableOrthoSize,
 } from './camera-guards.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
+import { surfaceZoomStep } from './camera-surface-zoom.js';
+import { CAMERA_CONSTANTS } from './constants.js';
 
 export class Camera {
   private state: CameraInternalState;
@@ -36,6 +38,8 @@ export class Camera {
   private orientation: CameraOrientation;
   /** The sole renderer camera frame used by all RTE-capable consumers. */
   private readonly relativeToEyeFrame = new RelativeToEyeFrame();
+  /** Mirror of the controls' gate, for the surface zoom below (#5393). */
+  private interactionMode: InteractionMode = 'all';
 
   constructor() {
     // Geometry is converted from IFC Z-up to WebGL Y-up during import
@@ -140,6 +144,7 @@ export class Camera {
 
   /** Restrict interactive orbit/pan/zoom (embed `controls` param, #2934). */
   setInteractionMode(mode: InteractionMode): void {
+    this.interactionMode = mode;
     this.controls.setInteractionMode(mode);
   }
 
@@ -183,14 +188,39 @@ export class Camera {
    * @param mouseY - Mouse Y position in canvas coordinates
    * @param canvasWidth - Canvas width
    * @param canvasHeight - Canvas height
+   * @param fastZoom - Pure dolly (Shift / Cesium): the full step translates the rig
+   * @param surfacePoint - World point on the visible surface under the cursor
+   *   (#5393). Zooming IN approaches it and stops short of it; it is ignored
+   *   for zoom-out, fast zoom and orthographic. The surface step applies no
+   *   inertia, so `addVelocity` has no effect on it.
    */
-  zoom(delta: number, addVelocity = false, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean): void {
+  zoom(delta: number, addVelocity = false, mouseX?: number, mouseY?: number, canvasWidth?: number, canvasHeight?: number, fastZoom?: boolean, surfacePoint?: Vec3): void {
+    // Zooming IN over geometry approaches the picked surface instead of the
+    // target plane, so repeated notches stop short of it (#5393). Pure dolly
+    // (fast zoom, Cesium) and orthographic keep the plain path.
+    if (surfacePoint && delta < 0 && !fastZoom && this.zoomTowardSurface(delta, surfacePoint)) return;
     // Gate inertia on whether `zoom` applied, same reason as `orbit` above (#2934 review).
     if (!this.controls.zoom(delta, mouseX, mouseY, canvasWidth, canvasHeight, fastZoom)) return;
     if (addVelocity) {
       const normalizedDelta = Math.sign(delta) * Math.min(Math.abs(delta) * 0.001, 0.1);
       this.animator.addZoomVelocity(normalizedDelta);
     }
+  }
+
+  /** One zoom-in notch toward a picked surface point; false = not applied. */
+  private zoomTowardSurface(delta: number, point: Vec3): boolean {
+    // Same gate as CameraControls.zoom: only 'all' may dolly (#2934).
+    if (this.interactionMode !== 'all' || this.state.projectionMode !== 'perspective') return false;
+    const fraction = Math.min(Math.abs(delta) * CAMERA_CONSTANTS.ZOOM_SENSITIVITY, CAMERA_CONSTANTS.MAX_ZOOM_DELTA);
+    const next = surfaceZoomStep(this.state.camera, point, fraction);
+    if (!next) return false;
+    // The orbit centre is left where it is on purpose: the mouse path re-seats
+    // it on every orbit start, and the new target already sits at the surface.
+    // In place, like every other pose writer: callers may hold these objects.
+    Object.assign(this.state.camera.position, next.position);
+    Object.assign(this.state.camera.target, next.target);
+    this.updateMatrices();
+    return true;
   }
 
   /**
@@ -362,6 +392,11 @@ export class Camera {
 
   getViewProjMatrix(): Mat4 {
     return { m: new Float32Array(this.state.viewProjMatrix.m) };
+  }
+
+  /** The reverse-Z projection matrix (perspective or orthographic); a copy. */
+  getProjMatrix(): Mat4 {
+    return { m: new Float32Array(this.state.projMatrix.m) };
   }
 
   /**

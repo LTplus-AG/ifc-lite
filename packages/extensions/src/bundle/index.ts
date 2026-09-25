@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { buildBundleFromFiles } from './loader.js';
+export { normaliseBundlePath } from './path.js';
 export {
   packBundle,
   unpackBundle,

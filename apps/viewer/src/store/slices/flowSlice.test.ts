@@ -46,6 +46,14 @@ describe('flowSlice', () => {
     assert.equal(useViewerStore.getState().flowDoc?.nodes[0].id, 'n1');
   });
 
+  it('import never keeps a reserved ext: id, which would make the graph read as a contribution', () => {
+    const id = useViewerStore.getState().importFlow({ ...newFlowDocument('Imported'), id: 'ext:acme:check' });
+    assert.ok(id);
+    assert.notEqual(id, 'ext:acme:check');
+    assert.ok(!id.startsWith('ext:'));
+    assert.equal(useViewerStore.getState().activeFlowId, id);
+  });
+
   it('import keeps the id when free and mints a new one on a collision', () => {
     const doc = { ...newFlowDocument('Imported'), id: 'fixed-id' };
     assert.equal(useViewerStore.getState().importFlow(doc), 'fixed-id');

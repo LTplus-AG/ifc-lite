@@ -34,6 +34,7 @@ import {
   executeBasketSaveView, executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
@@ -103,12 +104,14 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       category: 'View' as const, icon: Building2,
       action: () => { useViewerStore.getState().toggleCesium(); },
     }] : []),
-    { id: 'view:lighting', label: 'Sun & Sky', ...withKey('commandPalette.view.lighting.label'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri',
+    { id: 'view:lighting', label: 'Environment', ...withKey('commandPalette.view.lighting.label'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
       category: 'View', icon: Sun,
-      action: () => { useViewerStore.getState().toggleEnvPanel(); } },
-    { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller',
+      action: () => { useViewerStore.getState().toggleWorkspacePanel('environment'); } },
+    { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
       category: 'View', icon: Orbit,
-      action: () => { useViewerStore.getState().toggleSpaceMousePanel(); } },
+      // Moved to Preferences → Navigation (#5509): the device panel no longer
+      // floats over the viewport, so this deep-links the Info dialog there.
+      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } })); } },
   );
 
   // ── Tools ──

@@ -14,6 +14,7 @@
  */
 
 import { CapabilityDeniedError, hasCapability, parseCapability, type Capability } from '@ifc-lite/extensions';
+import type { FetchTransport } from '@ifc-lite/sandbox';
 import type { NodeDef, NodeRunContext } from '@ifc-lite/flow';
 import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
 import type { EntityRef } from '@ifc-lite/flow';
@@ -52,6 +53,22 @@ export interface FlowHost {
    * passes the grants the user accepted.
    */
   readonly grants?: readonly Capability[];
+  /**
+   * The graph's own declared `network.fetch:<host>` (and `secret.read:<NAME>`)
+   * capabilities — ALWAYS populated by every caller (CLI, MCP, viewer),
+   * independent of `grants`/the trust gate above. Real network access and
+   * secret reads are the one place "trusted local caller" does not mean
+   * "unrestricted": a request still needs the graph to have written down
+   * which host it may reach, so `HttpRequest` (and `bim.network.fetch` in
+   * the sandbox) always check the actual host against this list rather
+   * than relying on `grants` being undefined to skip the check entirely.
+   */
+  readonly networkGrants?: readonly Capability[];
+  /**
+   * Transport for `http.request`; `fetch` when absent. Only changes how bytes
+   * move — the grant check against `networkGrants` always runs first.
+   */
+  readonly networkTransport?: FetchTransport;
   /** Model to query when a node does not name one. */
   readonly defaultModelId?: string;
   /** See {@link TableAccess}. `modelId` defaults to `defaultModelId`. */

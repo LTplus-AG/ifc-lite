@@ -11,8 +11,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Check, AlertCircle, Download, X } from 'lucide-react';
+import { Check, AlertCircle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/i18n';
 
 // ─── Store (vanilla, framework-agnostic) ─────────────────────────────────
 
@@ -20,37 +21,64 @@ interface Toast {
   id: number;
   type: 'success' | 'error' | 'info';
   message: string;
+  /** How many identical toasts were merged into this one. */
+  count: number;
+  /** Increases every time a toast is shown or merged into; orders by recency. */
+  seq: number;
 }
 
 type Listener = () => void;
 
+/** A burst of failures (e.g. repeated GPU device loss) must not bury the UI (#5603). */
+const MAX_VISIBLE = 3;
+
 let nextId = 0;
+let nextSeq = 0;
 let toasts: Toast[] = [];
 const listeners = new Set<Listener>();
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function notify() {
   for (const l of listeners) l();
 }
 
-function addToast(type: Toast['type'], message: string, durationMs = 3000) {
-  const id = nextId++;
-  toasts = [...toasts, { id, type, message }];
+function clearTimer(id: number) {
+  clearTimeout(timers.get(id));
+  timers.delete(id);
+}
+
+/**
+ * Show a toast, or bump the count of an identical one already on screen and
+ * make it the newest. `durationMs: null` keeps it until dismissed. Past
+ * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
+ * an error stays until dismissed, so newer successes must not push it off.
+ */
+function addToast(type: Toast['type'], message: string, durationMs: number | null) {
+  const existing = toasts.find((t) => t.type === type && t.message === message);
+  const id = existing?.id ?? nextId++;
+  const others = toasts.filter((t) => t.id !== id);
+  const excess = Math.max(0, others.length - (MAX_VISIBLE - 1));
+  // `others` is oldest-first, so this is oldest transient, then oldest error.
+  const evictOrder = [...others.filter((t) => t.type !== 'error'), ...others.filter((t) => t.type === 'error')];
+  const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
+  for (const evictedId of evicted) clearTimer(evictedId);
+  const kept = others.filter((t) => !evicted.has(t.id));
+  toasts = [...kept, { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++ }];
+  clearTimer(id);
+  if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
-  setTimeout(() => {
-    toasts = toasts.filter((t) => t.id !== id);
-    notify();
-  }, durationMs);
 }
 
 function dismiss(id: number) {
+  clearTimer(id);
   toasts = toasts.filter((t) => t.id !== id);
   notify();
 }
 
-/** Imperative toast API */
+/** Imperative toast API. Errors stay until the user dismisses them. */
 export const toast = {
   success: (message: string) => addToast('success', message, 3000),
-  error: (message: string) => addToast('error', message, 5000),
+  error: (message: string) => addToast('error', message, null),
   info: (message: string) => addToast('info', message, 3000),
 };
 
@@ -75,7 +103,7 @@ function useToasts(): Toast[] {
 const iconMap = {
   success: Check,
   error: AlertCircle,
-  info: Download,
+  info: Info,
 };
 
 const colorMap = {
@@ -84,42 +112,55 @@ const colorMap = {
   info: 'border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200',
 };
 
-/** Mount this once at the app root (e.g. in App.tsx) */
+/**
+ * Mount this once at the app root (e.g. in App.tsx). Both live regions stay
+ * mounted while empty so the first toast is announced; errors go to the
+ * assertive `alert` region. Each region shows its newest toast on top.
+ */
 export function Toaster() {
   const items = useToasts();
+  const { t } = useTranslation();
 
   const handleDismiss = useCallback((id: number) => dismiss(id), []);
 
-  if (items.length === 0) return null;
+  const renderItem = (item: Toast) => {
+    const Icon = iconMap[item.type];
+    return (
+      <div
+        key={item.id}
+        data-toast-seq={item.seq}
+        className={cn(
+          'pointer-events-auto flex items-center gap-2 border-2 px-3 py-2 shadow-lg',
+          'animate-in slide-in-from-bottom-2 fade-in-0 duration-200',
+          colorMap[item.type],
+        )}
+      >
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="text-xs font-medium flex-1 min-w-0">{item.message}</span>
+        {item.count > 1 && (
+          <span className="shrink-0 text-[10px] font-semibold tabular-nums opacity-70" aria-hidden="true">
+            ×{item.count}
+          </span>
+        )}
+        <button
+          onClick={() => handleDismiss(item.id)}
+          aria-label={t('viewerShell.toast.dismiss')}
+          className="shrink-0 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10"
+        >
+          <X className="h-3 w-3" aria-hidden="true" />
+        </button>
+      </div>
+    );
+  };
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-sm"
-    >
-      {items.map((t) => {
-        const Icon = iconMap[t.type];
-        return (
-          <div
-            key={t.id}
-            className={cn(
-              'pointer-events-auto flex items-center gap-2 border-2 px-3 py-2 shadow-lg',
-              'animate-in slide-in-from-bottom-2 fade-in-0 duration-200',
-              colorMap[t.type],
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="text-xs font-medium flex-1 min-w-0">{t.message}</span>
-            <button
-              onClick={() => handleDismiss(t.id)}
-              className="shrink-0 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        );
-      })}
+    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col pointer-events-none max-w-sm">
+      <div role="alert" aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
+        {items.filter((item) => item.type === 'error').map(renderItem)}
+      </div>
+      <div role="status" aria-live="polite" className="flex flex-col-reverse gap-2">
+        {items.filter((item) => item.type !== 'error').map(renderItem)}
+      </div>
     </div>
   );
 }

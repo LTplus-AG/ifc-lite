@@ -5,10 +5,12 @@
 /**
  * The Share dialog's scope field (#4444): with several models loaded, what
  * the room carries — the active model only, or every loaded model, each in
- * its own room slot. Rendered only when there is a choice to make.
+ * its own room slot — and the consent step that creates the room (#5599).
  *
  * The choice is live until the room exists (`editable`): a room's scope is
  * fixed by its seed, so the dialog creates the room only on "Create link".
+ * Creating it uploads the model, so that step is asked for at every model
+ * count and says so; with one model only the scope radios are left out.
  * Once the room exists the radios stay visible but disabled and the caption
  * reports how many models the room actually carries, which is what the seed
  * put there rather than the radio's current value.
@@ -20,6 +22,8 @@ import { useTranslation } from '@/i18n';
 import type { ShareScope } from '@/lib/collab/share-scope';
 
 interface ShareScopeFieldProps {
+  /** False with one model: no scope to pick, only the consent step. */
+  showScope: boolean;
   scope: ShareScope;
   onScopeChange: (scope: ShareScope) => void;
   /** True until the room exists: the radios and "Create link" are live. */
@@ -40,6 +44,7 @@ interface ShareScopeFieldProps {
 }
 
 export function ShareScopeField({
+  showScope,
   scope,
   onScopeChange,
   editable,
@@ -64,37 +69,44 @@ export function ShareScopeField({
         : t('shareScopeField.onlyActiveShared', { model: activeModelName });
   return (
     <div className="flex flex-col gap-2">
-      <Label>{t('shareScopeField.shareLabel')}</Label>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('shareScopeField.scopeAriaLabel')}>
-        <Button
-          type="button"
-          role="radio"
-          aria-checked={scope === 'active'}
-          variant={scope === 'active' ? 'default' : 'outline'}
-          size="sm"
-          className="truncate"
-          disabled={!editable}
-          onClick={() => onScopeChange('active')}
-        >
-          {t('shareScopeField.activeOnly')}
-        </Button>
-        <Button
-          type="button"
-          role="radio"
-          aria-checked={scope === 'all'}
-          variant={scope === 'all' ? 'default' : 'outline'}
-          size="sm"
-          disabled={!editable}
-          onClick={() => onScopeChange('all')}
-        >
-          {allLabel}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">{caption}</p>
+      {showScope && (
+        <>
+          <Label>{t('shareScopeField.shareLabel')}</Label>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('shareScopeField.scopeAriaLabel')}>
+            <Button
+              type="button"
+              role="radio"
+              aria-checked={scope === 'active'}
+              variant={scope === 'active' ? 'default' : 'outline'}
+              size="sm"
+              className="truncate"
+              disabled={!editable}
+              onClick={() => onScopeChange('active')}
+            >
+              {t('shareScopeField.activeOnly')}
+            </Button>
+            <Button
+              type="button"
+              role="radio"
+              aria-checked={scope === 'all'}
+              variant={scope === 'all' ? 'default' : 'outline'}
+              size="sm"
+              disabled={!editable}
+              onClick={() => onScopeChange('all')}
+            >
+              {allLabel}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{caption}</p>
+        </>
+      )}
       {editable && (
-        <Button type="button" size="sm" className="self-start" onClick={onConfirm}>
-          {t('shareScopeField.createLink')}
-        </Button>
+        <>
+          <p className="text-xs text-muted-foreground">{t('shareScopeField.uploadNotice')}</p>
+          <Button type="button" size="sm" className="self-start" onClick={onConfirm}>
+            {t('shareScopeField.createLink')}
+          </Button>
+        </>
       )}
     </div>
   );

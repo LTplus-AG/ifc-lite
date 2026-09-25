@@ -22,10 +22,13 @@
 
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
 import { loadPlaygroundGeometry } from './PlaygroundViewer.js';
-import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { dispatch, parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+import { playgroundGeometrySource } from './playground-geometry-source.js';
+import { playgroundFiles } from './playground-files.js';
 
 function ifc4(body: string): string {
   return [
@@ -133,6 +136,122 @@ describe('loadPlaygroundGeometry WASM disposal (#1959 P0 leak)', () => {
       disposeMock.mock.restore();
     }
   });
+});
+
+it('meshes the effective playground entity set after create and delete (#5249)', async () => {
+  const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsT8');
+  const created = await dispatch(model, 'entity_create', {
+    type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsT9', null, 'New door'],
+  });
+  assert.equal(created.isError, false, created.text);
+  const newId = (created.structured as { expressId: number }).expressId;
+  const deleted = await dispatch(model, 'entity_delete', { express_id: 1 });
+  assert.equal(deleted.isError, false, deleted.text);
+
+  const observed: Array<{ source: boolean; created: boolean }> = [];
+  const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+  const processMock = mock.method(GeometryProcessor.prototype, 'process', async (_bytes: Uint8Array, index?: Map<number, unknown>) => {
+    assert.ok(index);
+    observed.push({ source: index.has(1), created: index.has(newId) });
+    return { meshes: [] } as unknown as GeometryResult;
+  });
+  const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+  let cleared = false;
+  try {
+    await loadPlaygroundGeometry(model, {
+      isCancelled: () => false,
+      setPhase: () => undefined,
+      setPhaseMsg: () => undefined,
+      onMeshes: () => undefined,
+      onEmpty: () => { cleared = true; },
+    });
+    assert.equal(processMock.mock.callCount(), 1);
+    assert.deepEqual(observed, [{ source: false, created: true }],
+      'meshing must receive created entities and exclude deleted source entities');
+    assert.equal(cleared, true, 'an empty remesh must clear geometry from the previous revision');
+  } finally {
+    initMock.mock.restore();
+    processMock.mock.restore();
+    disposeMock.mock.restore();
+  }
+});
+
+/** The bundled sample the playground opens with, parsed the way it loads it. */
+async function architectureSample(): Promise<LoadedPlaygroundModel> {
+  const bytes = new Uint8Array(await readFile(
+    new URL('../../../public/samples/building-architecture.ifc', import.meta.url),
+  ));
+  return parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'building-architecture.ifc');
+}
+
+/** Mesh the model through the viewer's real loader (real wasm, no mocks). */
+async function meshPlayground(model: LoadedPlaygroundModel): Promise<MeshData[]> {
+  let meshes: MeshData[] = [];
+  await loadPlaygroundGeometry(model, {
+    isCancelled: () => false,
+    setPhase: () => undefined,
+    setPhaseMsg: () => undefined,
+    onMeshes: (result) => { meshes = result; },
+  });
+  return meshes;
+}
+
+// #262 is an IFCWALL with its own representation in the bundled IFC file.
+const SAMPLE_WALL_ID = 262;
+const SAMPLE_WALL_GLOBAL_ID = '1AQAupaRP1txwK1AGiN61V';
+
+it('removes a deleted wall mesh from the real architecture sample (#5249)', async () => {
+  const model = await architectureSample();
+  const original = await meshPlayground(model);
+  const wall = original.find((mesh) => mesh.expressId === SAMPLE_WALL_ID);
+  assert.ok(wall, 'the bundled building model must produce wall #262 before the edit');
+
+  const created = await dispatch(model, 'entity_create', {
+    type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsTA', null, 'New door'],
+  });
+  assert.equal(created.isError, false, created.text);
+  const newId = (created.structured as { expressId: number }).expressId;
+  const deleted = await dispatch(model, 'entity_delete', { express_id: wall.expressId });
+  assert.equal(deleted.isError, false, deleted.text);
+
+  const live = await meshPlayground(model);
+  assert.ok(live.length > 0, 'the edited building still has drawable geometry');
+  assert.equal(live.some((mesh) => mesh.expressId === wall.expressId), false,
+    'the deleted wall must disappear from the live mesh result');
+  const source = await playgroundGeometrySource(model);
+  assert.equal(source.store.entityIndex.byId.has(newId), true,
+    'the created entity is present in the STEP snapshot used for meshing');
+});
+
+it('deletes a wall as the first edit of a freshly loaded sample (#5681)', async () => {
+  const model = await architectureSample();
+  const original = await meshPlayground(model);
+  assert.ok(original.some((mesh) => mesh.expressId === SAMPLE_WALL_ID),
+    'the bundled building model must produce wall #262 before the edit');
+
+  // No entity_create (or any other edit) first: the delete itself has to
+  // bring the mutation overlay up.
+  const deleted = await dispatch(model, 'entity_delete', { express_id: SAMPLE_WALL_ID });
+  assert.equal(deleted.isError, false, deleted.text);
+  assert.equal((deleted.structured as { deleted: boolean }).deleted, true, deleted.text);
+
+  // Whole-model export, through the playground's own save tool.
+  const saved = await dispatch(model, 'model_save', {});
+  assert.equal(saved.isError, false, saved.text);
+  const fileId = (saved.structured as { fileId: string }).fileId;
+  const file = playgroundFiles.list().find((f) => f.id === fileId);
+  assert.ok(file, 'model_save must stage the exported IFC');
+  const step = await file.blob.text();
+  const records = step.split('\n').filter((line) => /^#\d+=/.test(line));
+  assert.equal(records.some((line) => line.includes(`'${SAMPLE_WALL_GLOBAL_ID}'`)), false,
+    'the exported IFC must not carry the deleted wall record');
+  assert.ok(records.some((line) => /^#\d+=IFCWALL\(/.test(line)),
+    'the other walls survive the export');
+
+  const live = await meshPlayground(model);
+  assert.ok(live.length > 0, 'the edited building still has drawable geometry');
+  assert.equal(live.some((mesh) => mesh.expressId === SAMPLE_WALL_ID), false,
+    'the deleted wall must disappear from the live mesh result');
 });
 
 describe('loadPlaygroundGeometry phase messages stay reactive to locale (#4918 slice 5b review)', () => {

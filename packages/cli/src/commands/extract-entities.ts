@@ -31,7 +31,8 @@
 import { constants as bufferConstants } from 'node:buffer';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
+import { expandTypes } from '@ifc-lite/parser';
+import { fatal, getFlag, getAllFlags, hasFlag, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { logger } from '../logger.js';
 import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
 import { spatialAncestors } from './spatial-ancestors.js';
@@ -342,6 +343,9 @@ async function triage(bytes: Uint8Array): Promise<TriageRow[]> {
 // ── Command ─────────────────────────────────────────────────────────────────
 
 export async function extractEntitiesCommand(args: string[]): Promise<void> {
+  // stdout carries this command's payload, so redirect console diagnostics
+  // BEFORE the first parse/geometry init (see the function's own docstring).
+  routeConsoleDiagnosticsToStderr();
   const filePath = args.find((a) => !a.startsWith('-') && !isFlagValue(args, a));
   if (!filePath) {
     fatal(
@@ -410,10 +414,23 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   for (const token of getAllFlags(args, '--product').flatMap((v) => v.split(','))) {
     if (token) seeds.add(resolveToId(token, parsed));
   }
-  for (const t of getAllFlags(args, '--type').flatMap((v) => v.split(','))) {
-    const want = t.trim().toUpperCase();
-    if (!want) continue;
-    for (const inst of parsed.instances.values()) if (inst.type === want) seeds.add(inst.id);
+  // `--type IfcWall` selects IfcWallStandardCase too, as `query`, `export`,
+  // `anonymize` and `mutate` all do on the same input. This command runs its
+  // own lightweight STEP parse and so has no resolved `schemaVersion`, which is
+  // exactly the case `expandTypes` documents its no-version union for: a
+  // superset across the bundled schemas, rather than picking one table on the
+  // caller's behalf and silently finding nothing in the other two.
+  const requestedTypes = getAllFlags(args, '--type')
+    .flatMap((v) => v.split(','))
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const wantedTypes = new Set(
+    expandTypes(requestedTypes).map((name) => name.toUpperCase())
+  );
+  if (wantedTypes.size > 0) {
+    for (const inst of parsed.instances.values()) {
+      if (wantedTypes.has(inst.type)) seeds.add(inst.id);
+    }
   }
   for (const t of getAllFlags(args, '--storey').flatMap((v) => v.split(','))) {
     if (!t) continue;
@@ -427,7 +444,14 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   }
 
   if (seeds.size === 0) {
-    fatal('No entities selected. Use --product, --type, --storey, or --detect.');
+    // Naming the selector that came back empty, rather than listing the flags
+    // the caller just used: `--type IfcWall` on a model with no walls used to
+    // answer "Use --product, --type, --storey, or --detect."
+    fatal(
+      requestedTypes.length > 0
+        ? `No entities selected: nothing in this file matches --type ${requestedTypes.join(', ')} (or its subtypes).`
+        : 'No entities selected. Use --product, --type, --storey, or --detect.'
+    );
     return;
   }
   if (!outPath) {

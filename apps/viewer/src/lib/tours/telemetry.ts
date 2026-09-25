@@ -8,7 +8,9 @@
  * never file or model names.
  *
  * `tour_step_broken` is the rot alarm: a PostHog insight grouped by
- * `anchor_id` (excluding the non-rot reasons) replaces any CI anchor check.
+ * `anchor_id` (excluding the non-rot reasons). CI only catches an anchor no
+ * component renders (`anchors.contract.test.ts`); one that is rendered but not
+ * mounted in the state a step reaches shows up here.
  */
 
 import { posthog } from '@/lib/analytics';

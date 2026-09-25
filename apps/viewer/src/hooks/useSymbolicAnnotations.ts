@@ -242,7 +242,7 @@ export function useSymbolicAnnotations(params: {
  *
  * The section position is in world units (already converted from the
  * 0-100% slider via `axisMin + (position / 100) * (axisMax - axisMin)`
- * by the caller — Section2DPanel computes the same value to feed the
+ * by the caller — the Drawing panel's `useDrawingLayers` computes the same value to feed the
  * drawing generator).
  */
 export interface DrawingAnnotationData {
@@ -258,10 +258,10 @@ const EMPTY_DRAWING_ANNOTATIONS: DrawingAnnotationData = {
 };
 
 /**
- * Whether `Section2DPanel` should ask this hook for data at all.
+ * Whether the Drawing panel should ask this hook for data at all.
  *
  * Pulled out of the call site as its own predicate (rather than an inline
- * `&&` chain) so the gate is unit-testable independent of `Section2DPanel`,
+ * `&&` chain) so the gate is unit-testable independent of the Drawing panel,
  * which imports `useIfc` → `ifcConfig.ts` → `import.meta.env` and is
  * consequently unrenderable under this repo's `tsx --test` runner
  * (`import.meta.env` is `undefined` outside a Vite build).

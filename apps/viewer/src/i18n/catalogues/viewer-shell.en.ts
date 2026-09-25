@@ -5,8 +5,10 @@
 /**
  * The viewer shell's own top-level chrome (#4918 slice 5): the lazy-chunk
  * error boundary's fallback (`ChunkErrorBoundary.tsx`, one of the components
- * root's five literals) and the shared `ui/dialog.tsx` primitive's
- * screen-reader-only close label.
+ * root's five literals), the stale-deployment notice
+ * (`StaleDeploymentNotice.tsx`), the shared `ui/dialog.tsx` primitive's
+ * screen-reader-only close label, and the `ui/toast.tsx` dismiss button's
+ * accessible name (#5603).
  */
 export const viewerShellEn = {
   'viewerShell.chunkError.loadFailed': '{label} could not be loaded',
@@ -14,9 +16,11 @@ export const viewerShellEn = {
   'viewerShell.chunkError.loadFailedDetail': 'This usually means the app was updated while your tab was open.',
   'viewerShell.chunkError.crashedDetail': 'An unexpected error stopped it from rendering.',
   'viewerShell.chunkError.reload': 'Reload',
+  'viewerShell.staleDeployment.notice': 'A new version of the viewer is available — reload to continue.',
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',
+  'viewerShell.chunkLabel.drawingPanel': 'Drawing panel',
   'viewerShell.chunkLabel.documentPanel': 'Document panel',
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',
@@ -24,4 +28,5 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.rteGpuWitness': 'RTE GPU witness',
 
   'viewerShell.dialog.close': 'Close',
+  'viewerShell.toast.dismiss': 'Dismiss notification',
 } as const;

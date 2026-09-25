@@ -71,8 +71,6 @@ const STATE = {
   cesiumEnabled: true,
   cesiumPlacementEditMode: false,
   basketPresentationVisible: false,
-  envPanelOpen: false,
-  spaceMousePanelOpen: false,
   mergeLayers: false,
 } as Partial<ReturnType<typeof useViewerStore.getState>>;
 
@@ -156,7 +154,6 @@ const NOT_RENDERED_IN_THIS_STATE: MainToolbarKey[] = [
   'mainToolbar.cesiumShow', // Cesium is enabled in this render
   'mainToolbar.moveGeorefStop', // not in placement mode
   'mainToolbar.sunSkyClose', // Sun & Sky panel is closed in this render
-  'mainToolbar.spaceMouseClose', // SpaceMouse panel is closed in this render
 ];
 
 beforeEach(() => {

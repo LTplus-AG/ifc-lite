@@ -38,7 +38,7 @@ pending generic mutation overlays are not included until reload.
 - `stats` - auto-calculated model KPIs and health check
 - `clash` - geometric clash detection, `--matrix`, `--bcf` output
 - `bcf` - create and inspect BCF collaboration files
-- `create` - create IFC elements from scratch (walls, slabs, stairs, 30+ types)
+- `create` - create IFC elements from scratch (walls, slabs, stairs, 29 types)
 - `mutate` - modify properties or attributes and save
 - `merge` - merge multiple IFC files into one federated file
 - `convert` - convert between IFC schema versions (`--schema IFC4`)

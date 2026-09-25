@@ -100,6 +100,7 @@ export const sharedCommandsEn = {
   'workspacePanels.bottom.gantt': 'Schedule (Gantt)',
   'workspacePanels.bottom.charts': 'Charts',
   'workspacePanels.bottom.flow': 'Flow',
+  'workspacePanels.bottom.drawing': 'Drawing',
   'workspacePanels.bottom.document': 'Document',
 
   'workspacePanels.authorLabel': 'Author',

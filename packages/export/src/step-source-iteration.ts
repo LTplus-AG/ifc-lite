@@ -65,6 +65,7 @@ import { decodeRange } from './source-ref-bounds.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
 import { retainSharedAtoms } from './step-shared-atom-retention.js';
 import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-exporter.js';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 
 /**
  * The exporter state this phase cannot read off the {@link ExportPass}.
@@ -242,10 +243,14 @@ export function writeSourceEntityLines(
       // has to agree with what actually got written, the same way
       // `getVisibleEntityIds` already does for the visibility walk itself.
       const effectiveRelType = pass.effective.effectiveType(expressId, entityRef.type).toUpperCase();
+      // UPPERCASE is load-bearing for the `startsWith('IFCREL')` and
+      // `STYLE_RESCUE_TYPES` matching below, but a warning is read by a person,
+      // so it gets the canonical IFC EXPRESS spelling (#5533).
+      const displayRelType = IFC_ENTITY_NAMES[effectiveRelType] ?? effectiveRelType;
       if (mayNameOmittedRefs && effectiveRelType.startsWith('IFCREL')) {
         const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
         if (filtered === null) {
-          pass.warnings.push(ctx.relationshipWithheldWarning(expressId, effectiveRelType));
+          pass.warnings.push(ctx.relationshipWithheldWarning(expressId, displayRelType));
           continue;
         }
         nextEntityText = filtered;
@@ -268,7 +273,7 @@ export function writeSourceEntityLines(
         // replaced (#5262).
         const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput, pass.sourceSchema);
         if (filtered === null) {
-          pass.warnings.push(styleEntityWithheldWarning(expressId, effectiveRelType));
+          pass.warnings.push(styleEntityWithheldWarning(expressId, displayRelType));
           continue;
         }
         nextEntityText = filtered;

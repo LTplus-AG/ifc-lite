@@ -1,6 +1,6 @@
 [package]
 name = "ifc-lite-python"
-version = "4.5.0"
+version = "4.5.1"
 edition = "2021"
 license = "MPL-2.0"
 repository = "https://github.com/LTplus-AG/ifc-lite"
@@ -30,3 +30,4 @@ ifc-lite-processing = { path = "../processing" }
 # (arrow + parquet + zstd + zip) into the wheel for an export Python never calls.
 ifc-lite-export = { path = "../export", default-features = false }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }
+serde_json = "1"

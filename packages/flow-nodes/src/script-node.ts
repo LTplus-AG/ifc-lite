@@ -22,6 +22,7 @@
 
 import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
+import type { Capability } from '@ifc-lite/extensions';
 import { ANY_ITEM, ANY_LIST, requireCapability, type Ctx, type FlowNodeDef } from './host.js';
 
 /**
@@ -34,8 +35,10 @@ import { ANY_ITEM, ANY_LIST, requireCapability, type Ctx, type FlowNodeDef } fro
  */
 const sandboxes = new WeakMap<BimContext, Map<string, Promise<Sandbox>>>();
 
-function sandboxFor(bim: BimContext, permissions: Record<string, boolean>, timeoutMs: number): Promise<Sandbox> {
-  const key = JSON.stringify({ permissions, timeoutMs });
+function sandboxFor(
+  bim: BimContext, permissions: Record<string, boolean>, timeoutMs: number, networkGrants: readonly Capability[],
+): Promise<Sandbox> {
+  const key = JSON.stringify({ permissions, timeoutMs, networkGrants });
   let perContext = sandboxes.get(bim);
   if (!perContext) {
     perContext = new Map();
@@ -46,7 +49,7 @@ function sandboxFor(bim: BimContext, permissions: Record<string, boolean>, timeo
     // A rejected creation (a wasm load failure, a transient resource limit)
     // must not be cached: every later lane would await the same rejection for
     // the lifetime of the context, turning one hiccup into a dead node.
-    pending = createSandbox(bim, { permissions, limits: { timeoutMs } }).catch((err) => {
+    pending = createSandbox(bim, { permissions, limits: { timeoutMs }, network: { grants: networkGrants } }).catch((err) => {
       if (perContext!.get(key) === pending) perContext!.delete(key);
       throw err;
     });
@@ -62,6 +65,7 @@ async function evaluate(ctx: Ctx, inputs: Readonly<Record<string, unknown>>, par
   // read the model through a capability the graph never had.
   requireCapability(ctx, 'model.read');
   const grants = ctx.host.grants;
+  const networkGrants = ctx.host.networkGrants ?? [];
   const has = (scope: string, action: string) => !grants || grants.some((g) => g.scope === scope && g.action === action);
   const permissions = {
     query: true,
@@ -72,6 +76,9 @@ async function evaluate(ctx: Ctx, inputs: Readonly<Record<string, unknown>>, par
     export: has('export', 'create'),
     lens: true,
     files: true,
+    // `bim.network` exists only when the graph holds a `network.fetch` grant;
+    // every call is still checked against those grants (#5446 review).
+    network: networkGrants.some((g) => g.scope === 'network' && g.action === 'fetch'),
   };
   const injected = JSON.stringify({ a: inputs.a ?? null, b: inputs.b ?? null, c: inputs.c ?? null });
   // Every lane shares one sandbox, and QuickJS evaluates a program in the
@@ -84,7 +91,7 @@ async function evaluate(ctx: Ctx, inputs: Readonly<Record<string, unknown>>, par
   // `inputs` in scope, and the last expression as the value (`eval` returns
   // its program's completion value, which a function body would not).
   const code = `(function (inputs) { return eval(${JSON.stringify(String(params.code ?? ''))}); })(${injected})`;
-  const sandbox = await sandboxFor(ctx.host.bim, permissions, Number(params.timeoutMs) || 30_000);
+  const sandbox = await sandboxFor(ctx.host.bim, permissions, Number(params.timeoutMs) || 30_000, networkGrants);
   // Plain JavaScript by contract: skipping the TypeScript strip avoids
   // initialising esbuild-wasm, which only works in the browser. It is also
   // what keeps the wrapper above honest — the source reaches `eval`

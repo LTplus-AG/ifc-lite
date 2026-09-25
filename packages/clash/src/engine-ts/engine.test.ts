@@ -604,29 +604,42 @@ describe('TsClashEngine: contained-pair penetration depth, non-box fallback (#18
     expect(-clash.distance).toBeCloseTo(0.4, 6);
   });
 
-  it('falls back to the same AABB estimate for a designed face contact (issue corpus scale)', async () => {
-    // Same layout, but the box crosses the notch wall by ~1e-6 m: a designed
-    // face contact as in the #1866 corpus (true worst depth 7.39e-6 m). A
-    // box-exact metric would need a box; the L-prism isn't one, so the
-    // reported depth is the SAME AABB cross-section estimate as the case
-    // above, not the true micrometre-scale depth — the known residual of
-    // narrowing the metric to boxes only.
-    const wall = lPrismElement('A', 'IfcWall');
-    const xMinTarget = 0.999999;
-    const duct = boxElementHxyz(
-      'B',
-      'IfcDuct',
-      [(xMinTarget + 1.45) / 2, 1.4, 0.5],
-      [(1.45 - xMinTarget) / 2, 0.2, 0.2],
-    );
-    const xMin = duct.bounds.min[0]; // f32-rounded, slightly below 1
-    expect(xMin).toBeLessThan(1);
-    const result = await engine.run([wall, duct], [hard()]);
+  /** The notch box crossing the notch wall (x = 1) by `depth`, f32-rounded. */
+  function notchDuct(depth: number): ClashElement {
+    const xMin = 1 - depth;
+    return boxElementHxyz('B', 'IfcDuct', [(xMin + 1.45) / 2, 1.4, 0.5], [(1.45 - xMin) / 2, 0.2, 0.2]);
+  }
+
+  it('falls back to the same AABB estimate at the #1866 corpus depth', async () => {
+    // Same layout, the box crossing the notch wall by 7.39e-6 m — the true
+    // worst depth of a designed face contact in the #1866 corpus, several
+    // times the pair's f32 noise along X. A box-exact metric would need a
+    // box; the L-prism isn't one, so the reported depth is the SAME AABB
+    // cross-section estimate as the case above, not the true
+    // micrometre-scale depth — the known residual of narrowing the metric to
+    // boxes only.
+    const result = await engine.run([lPrismElement('A', 'IfcWall'), notchDuct(7.39e-6)], [hard()]);
     expect(result.summary.total).toBe(1);
     const clash = result.clashes[0];
     expect(clash.status).toBe('hard');
     expect(clash.distanceKind).toBe('estimate');
     expect(-clash.distance).toBeCloseTo(0.4, 6);
+  });
+
+  it('reports a ~1 um crossing of the notch wall as a touch: within the X noise (#5405)', async () => {
+    // Until #5405 this 1e-6 m crossing was pinned as `hard` at the 0.4 m
+    // estimate. Along X it is within the pair's f32 noise — position
+    // max(1, 2) * 2^-22 plus size (2 + 0.45) * 2^-22 = 1.06e-6 — so the
+    // crossing-vertex evidence gates it to `touch`, like every other
+    // noise-scale contact.
+    const wall = lPrismElement('A', 'IfcWall');
+    const duct = notchDuct(1e-6);
+    expect(1 - duct.bounds.min[0], 'fixture premise: the crossing is within the X floor').toBeLessThan(
+      (2 + 2 + 0.45) / 4_194_304,
+    );
+    expect((await engine.run([wall, duct], [hard()])).summary.total).toBe(0);
+    const withTouch = await engine.run([wall, duct], [{ ...hard(), reportTouch: true }]);
+    expect(withTouch.clashes.map((c) => c.status)).toEqual(['touch']);
   });
 });
 

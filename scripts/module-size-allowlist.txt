@@ -79,14 +79,14 @@
    515 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
-  1147 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+  1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
-   568 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
+   565 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    546 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
-  1139 apps/viewer/src/components/viewer/MainToolbar.tsx
+  1133 apps/viewer/src/components/viewer/MainToolbar.tsx
    715 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    572 apps/viewer/src/components/viewer/properties/BsddCard.tsx
@@ -107,7 +107,6 @@
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
-  1302 apps/viewer/src/components/viewer/Section2DPanel.tsx
   1134 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
@@ -122,7 +121,7 @@
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    683 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
-  1194 apps/viewer/src/components/viewer/ViewportContainer.tsx
+  1181 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
@@ -137,7 +136,7 @@
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
-   445 apps/viewer/src/hooks/useKeyboardShortcuts.ts
+   443 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    457 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
@@ -165,7 +164,7 @@
    561 apps/viewer/src/services/ifc-cache.ts
    562 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
-   572 apps/viewer/src/store/index.ts
+   494 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
@@ -175,7 +174,7 @@
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
-  3224 apps/viewer/src/store/slices/mutationSlice.ts
+  3176 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    574 apps/viewer/src/store/slices/sectionSlice.ts
@@ -194,8 +193,8 @@
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
-   495 packages/cli/src/commands/create.ts
-   458 packages/cli/src/commands/extract-entities.ts
+   501 packages/cli/src/commands/create.ts
+   482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
    798 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
@@ -210,7 +209,7 @@
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts
    639 packages/create-ifc-lite/src/templates/server.ts
-  2835 packages/create/src/ifc-creator.ts
+  2827 packages/create/src/ifc-creator.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts

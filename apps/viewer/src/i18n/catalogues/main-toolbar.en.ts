@@ -96,8 +96,7 @@ export const mainToolbarEn = {
   'mainToolbar.sunSkyClose': 'Close Sun & Sky panel',
   'mainToolbar.sunSkyTooltip': 'Sun & sky',
 
-  'mainToolbar.spaceMouseOpen': 'Open SpaceMouse panel',
-  'mainToolbar.spaceMouseClose': 'Close SpaceMouse panel',
+  'mainToolbar.spaceMouseOpen': 'SpaceMouse settings',
   'mainToolbar.spaceMouseTooltip': 'SpaceMouse',
 
   'mainToolbar.viewOptions': 'View options',

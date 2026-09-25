@@ -74,6 +74,7 @@ import { SearchInline } from './SearchInline';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
@@ -321,16 +322,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  // Sun & Sky panel state (sky, lighting presets, sun-path study)
+  // Environment panel state (sky, lighting presets, sun-path study, #5506)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
-  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
-  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   // Effective, not raw: the Cesium world context defaults this on (#4771).
   const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
-  // SpaceMouse panel state (3D mouse navigation, #1677)
-  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
-  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  // SpaceMouse connection state (3D mouse navigation, #1677); its settings
+  // moved to Preferences → Navigation (#5509).
   const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
 
   // Selection chip uses the multi-select size when present; falls back
@@ -956,21 +954,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </>
       )}
 
-      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
-          Available for every model, georeferenced or not. */}
+      {/* Environment panel — sky, lighting presets and the sun-path study
+          (#5506: a docked side panel, not a floating one). Available for
+          every model, georeferenced or not. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={envPanelOpen ? 'default' : 'ghost'}
+            variant={activeWorkspacePanels.has('environment') ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={envPanelOpen ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
-            aria-pressed={envPanelOpen}
+            aria-label={activeWorkspacePanels.has('environment') ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
+            aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleEnvPanel();
+              useViewerStore.getState().toggleWorkspacePanel('environment');
             }}
             className={cn(
-              (envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default')
+              (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')
                 && 'bg-amber-500 text-zinc-950 hover:bg-amber-400',
             )}
           >
@@ -980,23 +979,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>{t('mainToolbar.sunSkyTooltip')}</TooltipContent>
       </Tooltip>
 
-      {/* SpaceMouse panel — connect a 3Dconnexion 3D mouse over WebHID and
-          tune its sensitivity (#1677). */}
+      {/* SpaceMouse — connect a 3Dconnexion 3D mouse over WebHID and tune its
+          sensitivity (#1677). Settings live in Preferences → Navigation now
+          (#5509); this opens the Info dialog straight to that tab. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={spaceMousePanelOpen ? 'default' : 'ghost'}
+            variant={spaceMouseConnected ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={spaceMousePanelOpen ? t('mainToolbar.spaceMouseClose') : t('mainToolbar.spaceMouseOpen')}
-            aria-pressed={spaceMousePanelOpen}
+            aria-label={t('mainToolbar.spaceMouseOpen')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleSpaceMousePanel();
+              window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }));
             }}
-            className={cn(
-              (spaceMousePanelOpen || spaceMouseConnected)
-                && 'bg-teal-600 text-white hover:bg-teal-500',
-            )}
+            className={cn(spaceMouseConnected && 'bg-primary text-primary-foreground hover:bg-primary/90')}
           >
             <Move3d className="h-4 w-4" />
           </Button>

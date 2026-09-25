@@ -140,6 +140,7 @@ export type {
 
 // Logging utilities
 export { createLogger, logger, type LogLevel, type LogContext } from './logger.js';
+export { readPackageVersion, UNKNOWN_VERSION } from './package-version.js';
 
 // SAB-safe TextDecoder helper. Both Firefox and Chromium reject
 // `TextDecoder.decode()` on SharedArrayBuffer-backed views as a

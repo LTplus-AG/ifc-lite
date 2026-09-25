@@ -41,6 +41,7 @@ import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
 
 export function EntityContextMenu() {
+  const { t } = useTranslation();
   const contextMenu = useViewerStore((s) => s.contextMenu);
   const closeContextMenu = useViewerStore((s) => s.closeContextMenu);
   const hideEntity = useViewerStore((s) => s.hideEntity);
@@ -52,7 +53,6 @@ export function EntityContextMenu() {
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
   const getMutationView = useViewerStore((s) => s.getMutationView);
-  // Basket actions
   const menuRef = useRef<HTMLDivElement>(null);
   const { ifcDataStore, models } = useIfc();
 
@@ -118,13 +118,15 @@ export function EntityContextMenu() {
     }
   }, [contextMenu.isOpen, closeContextMenu]);
 
-  const handleZoomTo = useCallback(() => {
+  // Frame like F/search do (#5597): drop the multi-selection `frameSelection` prefers; defer so Viewport's refs catch up.
+  const handleFrameSelection = useCallback(() => {
     if (contextMenu.entityId) {
+      setSelectedEntityIds([]);
       setSelectedEntityId(contextMenu.entityId);
-      cameraCallbacks.fitAll?.();
+      if (cameraCallbacks.frameSelection) window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
     closeContextMenu();
-  }, [contextMenu.entityId, setSelectedEntityId, cameraCallbacks, closeContextMenu]);
+  }, [contextMenu.entityId, setSelectedEntityIds, setSelectedEntityId, cameraCallbacks, closeContextMenu]);
 
   // Basket: = Set basket to this entity
   const handleSetBasket = useCallback(() => {
@@ -371,16 +373,16 @@ export function EntityContextMenu() {
             <div className="text-xs text-muted-foreground">{entityType}</div>
           </div>
 
-          <MenuItem icon={Maximize2} label="Zoom to" onClick={handleZoomTo} />
-          <MenuItem icon={EyeOff} label="Hide" onClick={handleHide} />
+          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="F" onClick={handleFrameSelection} />
+          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="Del" onClick={handleHide} />
 
           <div className="h-px bg-border my-1" />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label="Set Basket (=)" onClick={handleSetBasket} />
-          <MenuItem icon={Plus} label="Add to Basket (+)" onClick={handleAddToBasket} />
-          <MenuItem icon={Minus} label="Remove from Basket (−)" onClick={handleRemoveFromBasket} />
-          <MenuItem icon={Save} label="Save Basket View (B)" onClick={handleSaveBasketView} />
+          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="=" onClick={handleSetBasket} />
+          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="+" onClick={handleAddToBasket} />
+          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="−" onClick={handleRemoveFromBasket} />
+          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="B" onClick={handleSaveBasketView} />
 
           <div className="h-px bg-border my-1" />
 
@@ -411,9 +413,7 @@ export function EntityContextMenu() {
       )}
 
       {!contextMenu.entityId && (
-        <>
-          <MenuItem icon={Eye} label="Show all" onClick={handleShowAll} />
-        </>
+        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="A" onClick={handleShowAll} />
       )}
 
       <ExtensionContextItems

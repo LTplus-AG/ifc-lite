@@ -237,6 +237,7 @@ export class ViewerManager {
   private handlePicked(expressId: number, ifcType?: string): void {
     const model = this.resolveModel(this.modelId);
     let globalId: string | undefined;
+    // @raw-entity-enumeration-ok optional GlobalId enrichment for one source pick event, not a live entity enumeration
     if (model && model.store.entityIndex.byId.has(expressId)) {
       try {
         globalId = new EntityNode(model.store, expressId).globalId || undefined;

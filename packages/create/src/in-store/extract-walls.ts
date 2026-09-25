@@ -48,7 +48,13 @@ import {
   storeyPlacementChain,
   type OverlayWallReader,
 } from './placement-frame.js';
-import { buildRelatingChildrenIndex, effectiveMemberType, isOverlayCreated } from './spatial-children.js';
+import {
+  buildRelatingChildrenIndex,
+  createOverlayLookup,
+  effectiveMemberType,
+  effectiveStoreyIds,
+  type OverlayLookup,
+} from './spatial-children.js';
 
 export type { OverlayWallReader };
 
@@ -166,7 +172,8 @@ export function extractWallSegmentsForStorey(
   }
 
   const extractor = new EntityExtractor(store.source);
-  const dividerIds = collectDividerIdsOnStorey(store, extractor, overlay, storeyExpressId, dividerTypes, log);
+  const lookup = createOverlayLookup(overlay);
+  const dividerIds = collectDividerIdsOnStorey(store, extractor, lookup, storeyExpressId, dividerTypes, log);
   log(`storey #${storeyExpressId}: ${dividerIds.length} contained divider element(s)`);
 
   // Segments are emitted in the STOREY frame, so composition of each
@@ -176,7 +183,7 @@ export function extractWallSegmentsForStorey(
 
   for (const id of dividerIds) {
     // Created dividers have no source bytes; the overlay loop below reads them.
-    if (isOverlayCreated(overlay, id)) continue;
+    if (lookup.createdType(id) !== undefined) continue;
     const result = extractWallAxisFromSource(store, extractor, id, storeyChain, log);
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
@@ -189,8 +196,15 @@ export function extractWallSegmentsForStorey(
 
   let overlayCount = 0;
   if (overlay) {
+    // Only the created dividers the spatial walk found on THIS storey: it
+    // indexes overlay-created IfcRelContainedInSpatialStructure too, and every
+    // authoring path writes one. Taking all of getNewEntities() made a wall
+    // authored on one storey a room boundary on every storey (#5642).
+    const onStorey = new Set(dividerIds);
     for (const ent of overlay.getNewEntities()) {
-      if (!dividerTypes.has(ent.type.toLowerCase())) continue;
+      if (!onStorey.has(ent.expressId)) continue;
+      // Effective class: a created wall retyped away is not a divider (#5249).
+      if (!dividerTypes.has((lookup.retypeOf(ent.expressId) ?? ent.type).toLowerCase())) continue;
       overlayCount++;
       const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, storeyChain, log);
       if (result.segment) {
@@ -223,7 +237,8 @@ export function extractWallSegmentsForStorey(
     contributingWallIds: contributing,
     wallThicknesses,
     skipped,
-    considered: dividerIds.length + overlayCount,
+    // dividerIds already holds the created dividers on this storey (#5642).
+    considered: dividerIds.length,
     lengthUnitScale,
   };
 }
@@ -259,7 +274,7 @@ type Logger = (...args: unknown[]) => void;
 function collectDividerIdsOnStorey(
   store: IfcDataStore,
   extractor: EntityExtractor,
-  overlay: OverlayWallReader | undefined,
+  lookup: OverlayLookup,
   storeyId: number,
   dividerTypes: Set<string>,
   log: Logger,
@@ -274,15 +289,15 @@ function collectDividerIdsOnStorey(
   // entity in the file looking for one with the right relating id —
   // O(R·N) total in the number of rels and parents visited.
   const aggregateChildren = buildRelatingChildrenIndex(
-    store, extractor, overlay, 'IFCRELAGGREGATES', 4, 5,
+    store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5,
   );
   const containmentChildren = buildRelatingChildrenIndex(
-    store, extractor, overlay, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4,
+    store, extractor, lookup, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4,
   );
 
   const visitMember = (memberId: number) => {
     if (seen.has(memberId)) return;
-    const memberType = effectiveMemberType(store, overlay, memberId);
+    const memberType = effectiveMemberType(store, lookup, memberId);
     if (memberType && isDividerType(memberType, dividerTypes)) {
       seen.add(memberId);
       ids.push(memberId);
@@ -353,17 +368,18 @@ export function existingSpaceFootprintsByStorey(
   const scale = safeLengthUnitScale(store.source, store.entityIndex, 'existingSpaceFootprintsByStorey');
   if (scale === null) return out;
   // Spaces baked earlier this session count as existing (#5249).
-  const aggregated = buildRelatingChildrenIndex(store, extractor, overlay, 'IFCRELAGGREGATES', 4, 5);
-  const contained = buildRelatingChildrenIndex(store, extractor, overlay, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
-  for (const st of store.getEntitiesByType('IfcBuildingStorey')) {
-    if (overlay?.isDeleted?.(st.expressId)) continue;
+  const lookup = createOverlayLookup(overlay);
+  const aggregated = buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5);
+  const contained = buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
+  for (const storeyId of effectiveStoreyIds(store, lookup)) {
+    const st = { expressId: storeyId };
     const kids = [...(aggregated.get(st.expressId) ?? []), ...(contained.get(st.expressId) ?? [])];
     // Same frame as the extracted wall segments — storey-local — so the
     // overlap test in generate-spaces compares like with like.
     const storeyChain = storeyPlacementChain(store, extractor, overlay, st.expressId);
     const footprints: Vec2[][] = [];
     for (const id of kids) {
-      if ((effectiveMemberType(store, overlay, id) ?? '').toUpperCase() !== 'IFCSPACE') continue;
+      if ((effectiveMemberType(store, lookup, id) ?? '').toUpperCase() !== 'IFCSPACE') continue;
       const ent = readEntity(store, extractor, overlay, id);
       if (!ent) continue;
       const placementId = numericAttr(ent.attributes[5]);   // ObjectPlacement
@@ -373,7 +389,7 @@ export function existingSpaceFootprintsByStorey(
       const localPts = gatherBodyFootprintPoints(store, extractor, overlay, representationId);
       if (!frame || !localPts || localPts.length < 3) continue;
       // An authored (baked) space is written in metres; a parsed one is native.
-      const k = isOverlayCreated(overlay, id) ? 1 : scale;
+      const k = lookup.createdType(id) !== undefined ? 1 : scale;
       footprints.push(localPts.map((p) => {
         const w = applyFrame(frame, p);
         return [w[0] * k, w[1] * k] as Vec2;

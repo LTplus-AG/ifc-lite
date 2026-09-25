@@ -278,67 +278,23 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             .get_float(2)
             .filter(|&r| r.is_finite() && r > 0.0 && r < radius);
 
-        // StartParam / EndParam (optional IfcParameterValue). Per IFC spec, when the
-        // directrix is an IfcCompositeCurve the curve is parameterised so that segment
-        // index `i` covers parameter range [i, i+1]. Without honoring these, files that
-        // intend e.g. only the first segment to be swept render every segment — the
-        // common rebar case where a 2 m bar reads as 12 m with hooks unfolded.
+        // StartParam / EndParam (optional IfcParameterValue), in the directrix's
+        // own IFC parametrisation. Without honoring these, files that intend e.g.
+        // only the first leg to be swept render every segment — the common rebar
+        // case where a 2 m bar reads as 12 m with hooks unfolded.
         let start_param = entity.get_float(3);
         let end_param = entity.get_float(4);
 
-        // Resolve the directrix curve
         let directrix = decoder
             .resolve_ref(directrix_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Directrix".to_string()))?;
-
-        // Get points along the curve, honoring trim parameters where the directrix's
-        // parameterisation is well-defined and obvious from the entity:
-        //   - IfcCompositeCurve (and IfcCompositeCurveOnSurface): segment-index based,
-        //     each segment contributes 1.0 to the parameter.
-        //   - IfcPolyline: point-index based, each segment between consecutive points
-        //     contributes 1.0 to the parameter.
-        //   - IfcLine: linearly parameterised P(u) = Pnt + u·V, so StartParam/EndParam
-        //     map straight onto the segment endpoints.
-        // Other directrix types (IfcCircle, IfcBSplineCurve) have angle-/knot-based
-        // parameterisations and fall back to the full sampler. An IfcTrimmedCurve
-        // directrix is sampled over its own Trim1/Trim2 by get_curve_points (a
-        // trimmed IfcLine retains full 3D); a file's redundant solid-level
-        // StartParam/EndParam are then a no-op. Files using a raw circle/spline
-        // directrix with explicit StartParam/EndParam still render the full curve —
-        // flagged as a known limitation.
-        // The lower-level trimmed samplers below don't take a `quality`
-        // argument; set it on the profile processor so any arcs they sample
-        // honour the requested detail level.
-        self.profile_processor.set_tessellation_quality(quality);
-        let has_trim = start_param.is_some() || end_param.is_some();
-        let curve_points = if has_trim
-            && directrix.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve)
-        {
-            self.profile_processor
-                .get_composite_curve_points_trimmed(
-                    &directrix,
-                    decoder,
-                    start_param,
-                    end_param,
-                )?
-        } else if has_trim && directrix.ifc_type == IfcType::IfcPolyline {
-            self.profile_processor
-                .get_polyline_points_trimmed(&directrix, decoder, start_param, end_param)?
-        } else if has_trim && directrix.ifc_type == IfcType::IfcLine {
-            // A bare IfcLine directrix is parameterised as P(u) = Pnt + u·V, so the
-            // solid's StartParam/EndParam map straight onto the segment endpoints.
-            // Without this the line samples over its unit range [0,1] only and the
-            // swept extent collapses to the (tool-emitted) vector magnitude.
-            self.profile_processor.get_line_points_3d(
-                &directrix,
-                decoder,
-                start_param.unwrap_or(0.0),
-                end_param.unwrap_or(1.0),
-            )?
-        } else {
-            self.profile_processor
-                .get_curve_points(&directrix, decoder, quality)?
-        };
+        let curve_points = self.profile_processor.get_directrix_points(
+            &directrix,
+            decoder,
+            start_param,
+            end_param,
+            quality,
+        )?;
 
         if !directrix_is_sweepable(&curve_points)? {
             return Ok(Mesh::new());

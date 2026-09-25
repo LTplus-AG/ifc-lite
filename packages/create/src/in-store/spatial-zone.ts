@@ -37,6 +37,7 @@ import { IfcSpatialZoneTypeEnum } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitPolygonProfile, ownerHistoryRef } from './_emit-helpers.js';
+import { completePlacementAxes } from '../ifc-creator-math.js';
 
 /**
  * One zone to emit. Coordinates are IFC-AXES (Z-up) WORLD metres: the caller
@@ -211,13 +212,15 @@ export function addSpatialZonesToStore(
     // rather than rotated into the profile.
     const originPt = editor.addEntity('IfcCartesianPoint', [position]).expressId;
     const rotation = usePolygon ? 0 : (zone.RotationZ ?? 0);
-    const refDirectionId = rotation === 0
-      ? null
-      : editor.addEntity('IfcDirection', [[Math.cos(rotation), Math.sin(rotation), 0]]).expressId;
+    // Axis and RefDirection are written both or neither (#5469).
+    const axes = completePlacementAxes(
+      undefined,
+      rotation === 0 ? undefined : [Math.cos(rotation), Math.sin(rotation), 0],
+    );
     const axisId = editor.addEntity('IfcAxis2Placement3D', [
       `#${originPt}`,
-      null,
-      refDirectionId === null ? null : `#${refDirectionId}`,
+      axes ? `#${editor.addEntity('IfcDirection', [axes.Axis]).expressId}` : null,
+      axes ? `#${editor.addEntity('IfcDirection', [axes.RefDirection]).expressId}` : null,
     ]).expressId;
     const placementId = editor.addEntity('IfcLocalPlacement', [null, `#${axisId}`]).expressId;
 

@@ -75,8 +75,8 @@
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    423 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
-   845 apps/viewer/src/components/viewer/ExportDialog.tsx
-   531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
+   834 apps/viewer/src/components/viewer/ExportDialog.tsx
+   520 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
@@ -85,7 +85,7 @@
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
-   548 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
+   546 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1133 apps/viewer/src/components/viewer/MainToolbar.tsx
    713 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
@@ -137,7 +137,7 @@
   2234 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    443 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   467 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   457 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
@@ -162,7 +162,7 @@
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
    638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
-   581 apps/viewer/src/store/basketVisibleSet.ts
+   562 apps/viewer/src/store/basketVisibleSet.ts
    485 apps/viewer/src/store/constants.ts
    494 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
@@ -180,7 +180,6 @@
    574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    412 apps/viewer/src/store/slices/uiSlice.ts
-   497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts

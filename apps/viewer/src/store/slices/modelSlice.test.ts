@@ -36,8 +36,6 @@ interface ModelHarnessCrossState {
   isolatedEntities: Set<number> | null;
   ghostExceptEntities: Set<number> | null;
   classFilter: { ids: Set<number>; label: string } | null;
-  hiddenEntitiesByModel: Map<string, Set<number>>;
-  isolatedEntitiesByModel: Map<string, Set<number>>;
   pinboardEntities: Set<string>;
   hierarchyBasketSelection: Set<string>;
 }
@@ -142,8 +140,6 @@ describe('ModelSlice', () => {
       isolatedEntities: null,
       ghostExceptEntities: null,
       classFilter: null,
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
       pinboardEntities: new Set<string>(),
       hierarchyBasketSelection: new Set<string>(),
       ...getDefaultDrawing2DState(),
@@ -747,26 +743,6 @@ describe('ModelSlice', () => {
         assert.strictEqual(after.selectedEntityId, null, 'id 9 belonged only to the removed model');
         assert.deepStrictEqual(after.classFilter, { ids: new Set([1010]), label: 'Walls' });
       });
-
-      it('drops the removed model\'s key from hiddenEntitiesByModel / isolatedEntitiesByModel', () => {
-        state.addModel(federatedModel('model-1', 0));
-        state.addModel(federatedModel('model-2', 1000));
-        Object.assign(state, {
-          hiddenEntitiesByModel: new Map([['model-1', new Set([1])], ['model-2', new Set([2])]]),
-          isolatedEntitiesByModel: new Map([['model-1', new Set([3])], ['model-2', new Set([4])]]),
-        });
-
-        state.removeModel('model-1');
-
-        const after = state as unknown as {
-          hiddenEntitiesByModel: Map<string, Set<number>>;
-          isolatedEntitiesByModel: Map<string, Set<number>>;
-        };
-        assert.strictEqual(after.hiddenEntitiesByModel.has('model-1'), false);
-        assert.strictEqual(after.hiddenEntitiesByModel.has('model-2'), true);
-        assert.strictEqual(after.isolatedEntitiesByModel.has('model-1'), false);
-        assert.strictEqual(after.isolatedEntitiesByModel.has('model-2'), true);
-      });
     });
 
     it('purges the REMOVED model\'s refs from the pinboard basket and keeps every survivor', () => {
@@ -850,8 +826,6 @@ describe('ModelSlice', () => {
         selectedStoreys: new Set([5]),
         selectedEntityId: 6,
         classFilter: { ids: new Set([7]), label: 'Doors' },
-        hiddenEntitiesByModel: new Map([['model-1', new Set([8])]]),
-        isolatedEntitiesByModel: new Map([['model-1', new Set([9])]]),
       });
 
       state.clearAllModels();
@@ -864,8 +838,6 @@ describe('ModelSlice', () => {
         selectedStoreys: Set<number>;
         selectedEntityId: number | null;
         classFilter: unknown;
-        hiddenEntitiesByModel: Map<string, Set<number>>;
-        isolatedEntitiesByModel: Map<string, Set<number>>;
       };
       assert.strictEqual(after.isolatedEntities, null);
       assert.strictEqual(after.ghostExceptEntities, null);
@@ -874,8 +846,6 @@ describe('ModelSlice', () => {
       assert.strictEqual(after.selectedStoreys.size, 0);
       assert.strictEqual(after.selectedEntityId, null);
       assert.strictEqual(after.classFilter, null);
-      assert.strictEqual(after.hiddenEntitiesByModel.size, 0);
-      assert.strictEqual(after.isolatedEntitiesByModel.size, 0);
     });
 
     it('clears the pinboard basket along with every model', () => {

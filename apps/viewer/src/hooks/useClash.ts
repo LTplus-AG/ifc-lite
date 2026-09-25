@@ -38,7 +38,7 @@ import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { bcfWorldOffset } from '@/hooks/bcf/viewpoint-world-frame';
 import { withInstancedMeshes } from '@/utils/instancedExport';
-import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { buildClashPairColors, CLASH_COLOR_A } from '@/lib/clash/clash-colors';
 import {
   elementPairExclusion,
   typeAnyExclusion,
@@ -887,7 +887,7 @@ export function useClash() {
           );
           const vertices = contactLineList(clusters);
           if (vertices.length >= 6) {
-            state.setClashContactLines({ vertices, color: CLASH_COLOR_OVERLAP });
+            state.setClashContactLines({ vertices });
             state.setClashOverlapBox(null);
             contactDrawn = true;
           }

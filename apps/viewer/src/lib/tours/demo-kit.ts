@@ -60,13 +60,21 @@ async function fetchAsFile(path: string, name: string): Promise<File> {
 }
 
 /**
+ * The demo project as a `File`, for callers that already hold the canonical
+ * `loadFile` (the first-run card) and so need no bus event.
+ */
+export function fetchDemoProjectFile(): Promise<File> {
+  return fetchAsFile(DEMO_KIT_PATHS.base, BASE_NAME);
+}
+
+/**
  * Load the demo project into the viewer, replacing the current model (the
  * `ifc-lite:load-file` listener routes to `loadFile`). The caller observes
  * completion through the store (`models.size > 0 && !loading &&
  * !geometryStreamingActive`) - same contract as a user-driven open.
  */
 export async function loadDemoProject(): Promise<void> {
-  const file = await fetchAsFile(DEMO_KIT_PATHS.base, BASE_NAME);
+  const file = await fetchDemoProjectFile();
   // detail IS the File - the MainToolbar listener reads e.detail directly.
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
 }

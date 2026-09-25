@@ -25,11 +25,11 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
-      <span className="w-4 text-[11px] font-mono text-purple-700 dark:text-purple-400">{label}</span>
+      <span className="w-4 text-[11px] font-mono text-muted-foreground">{label}</span>
       <Button
         variant="ghost"
         size="icon-xs"
-        className="h-6 w-6 text-purple-600"
+        className="h-6 w-6 text-overlay-accent"
         onClick={onNudgeMinus}
         aria-label={t('geometryAxisRow.decreaseAriaLabel', { label })}
       >
@@ -39,13 +39,13 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-6 text-xs font-mono px-1 flex-1 border-purple-200 dark:border-purple-800/60 bg-white dark:bg-zinc-950"
+        className="h-6 text-xs font-mono px-1 flex-1 border-overlay-accent/40 bg-white dark:bg-zinc-950"
         step="any"
       />
       <Button
         variant="ghost"
         size="icon-xs"
-        className="h-6 w-6 text-purple-600"
+        className="h-6 w-6 text-overlay-accent"
         onClick={onNudgePlus}
         aria-label={t('geometryAxisRow.increaseAriaLabel', { label })}
       >

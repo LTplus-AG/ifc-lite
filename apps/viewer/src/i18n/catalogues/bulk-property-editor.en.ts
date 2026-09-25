@@ -93,6 +93,7 @@ export const bulkPropertyEditorEn = {
   'bulkPropertyEditor.entityError': 'Entity {id}: {detail}',
   'bulkPropertyEditor.executionFailed': 'Bulk edit failed: {detail}',
   'bulkPropertyEditor.cancel': 'Cancel',
+  'bulkPropertyEditor.cancelledAfter': 'Cancelled after {done} of {total} entities. Undo reverts the changes already applied.',
   'bulkPropertyEditor.reset': 'Reset',
   'bulkPropertyEditor.preview': 'Preview',
   'bulkPropertyEditor.editorAccessRequired': 'Editing requires editor access in this shared session',

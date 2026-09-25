@@ -28,9 +28,8 @@ export const TOUR_ANCHORS = {
   /** ViewCube wrapper div (top-right viewport overlay). Card placement
    *  must stay clear of this corner - never anchor a card 'bottom' here. */
   viewcube: 'viewcube',
-  /** SectionOverlay panel root. Exists while collapsed; the position
-   *  slider itself only mounts once the panel is expanded, so anchor the
-   *  root, not the slider. */
+  /** The Section bar (`SectionToolbar`, HUD top-center) while the Section
+   *  tool is active; carries the distance field, so steps anchor here. */
   sectionPanel: 'section-panel',
   /** IDSPanel empty-state "Load IDS File" button (only while no doc). */
   idsLoad: 'ids-load',

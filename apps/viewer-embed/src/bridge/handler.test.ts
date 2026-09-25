@@ -184,7 +184,6 @@ function makeState() {
     setSectionPlaneEnabled: rec('setSectionPlaneEnabled'),
     flipSectionPlane: rec('flipSectionPlane'),
     setActiveTool: rec('setActiveTool'),
-    setSuppressNextSection2DPanelAutoOpen: rec('setSuppressNextSection2DPanelAutoOpen'),
     toggleTypeVisibility: rec('toggleTypeVisibility'),
     resolveGlobalIdFromModels: (id: number) =>
       id === 1005 ? { modelId: 'm1', expressId: 5 }

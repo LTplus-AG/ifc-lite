@@ -1,5 +1,43 @@
 # @ifc-lite/wasm
 
+## 10.1.2
+
+### Patch Changes
+
+- [#6018](https://github.com/LTplus-AG/ifc-lite/pull/6018) [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a) Thanks [@louistrue](https://github.com/louistrue)! - The native (Rust) merged exporter now matches the TypeScript `MergedExporter` on decomposition parents ([#5802](https://github.com/LTplus-AG/ifc-lite/issues/5802), the Rust twin of [#5726](https://github.com/LTplus-AG/ifc-lite/issues/5726) and [#5725](https://github.com/LTplus-AG/ifc-lite/issues/5725)). `IfcRelNests` now counts against the one-parent rule, per output schema: in IFC2X3 a nest and an aggregation share `Decomposes : SET [0:1]`, so a unified part that is already aggregated no longer gets a nesting parent too. In IFC4 and later `Nests` is its own `SET [0:1]`, so a second nesting parent is refused. `drop_empty_containers` now also drops a container that the one-parent pass empties, for example a later model's Site whose only child is a Building that unified with one already parented.
+
+- [#5943](https://github.com/LTplus-AG/ifc-lite/pull/5943) [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6) Thanks [@louistrue](https://github.com/louistrue)! - Plan-rotated walls whose openings are cut in the wall's own frame no longer come back with T-junction seams. When that cut returns an open mesh, it is retried on operands whose coincident planes (scattered by the f32 world quantum) are snapped back onto one value. The retry is kept only if it is closed and consistently wound. Walls whose cut was already closed are unchanged.
+
+## 10.1.1
+
+### Patch Changes
+
+- [#5724](https://github.com/LTplus-AG/ifc-lite/pull/5724) [`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c) Thanks [@louistrue](https://github.com/louistrue)! - Clash depths between rotated boxes no longer drift with the model's distance from the origin.
+  
+  Box recognition, which lets the engine report an exact box-to-box penetration depth labelled as measured, rebuilt each box's centre from absolute world coordinates along axes taken from a single triangle each. Any error in those axes was multiplied by the element's distance from the origin. A 20 mm overlap between a 50 mm curtain-wall panel and a mullion, both rotated, read 23 mm (30 mm for a three-axis rotation) 123 m from the origin. From 1 km out it fell back to the AABB estimate (0.25 m / 1.38 m), and 10 km out the panel was not recognised as a box at all.
+  
+  Recognition now measures from a point on the element instead of the world origin. It takes each axis from the area-weighted normals of all the faces in that direction, makes the frame exactly orthonormal starting from the most precise faces, and sizes its tolerances from the float32 noise of the coordinates, capped at 0.1 rad so noise alone never certifies a non-box. The same 20 mm overlap now reads 20.0 mm and is certified at every placement up to 10 km, where the remaining 0.4 mm is the float32 resolution of the input itself. The TypeScript and Rust/WASM kernels change identically.
+  
+  On eight sample models the results at their own placement are unchanged.
+
+- [#5764](https://github.com/LTplus-AG/ifc-lite/pull/5764) [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90) Thanks [@louistrue](https://github.com/louistrue)! - Flush contacts are no longer reported as hard clashes at an element dimension depending on where the model sits.
+  
+  When two elements' bounding boxes overlap but no triangles cross, the engine decides between a hard clash and a face touch by checking whether a probe point lies inside both solids. For elements that meet flush, the probe (the centre of the bounding-box overlap) lies on the shared face, where the inside/outside test is decided by float32 rounding. When it came out "inside", the pair was reported as a hard clash at the bounding-box overlap, e.g. 0.5 m for two footings or 0.3 m for two walls. Moving the whole model changed which pairs that happened to.
+  
+  A probe now counts only when it is farther from each surface than the pair's own depth floor along the probe's direction, the same floor that decides hard vs touch. The enclosed-solid check uses the same rule, so there is one definition of "clearly inside". On the sample models this turns 87 such pairs (12 on one model, 75 on another) from hard clashes into touches. In every one, no vertex of either element lies deeper inside the other than that floor. No new hard clashes appear, and the verdicts that change when a model is moved 10 km drop on every affected model (from 145 to 75 on the largest; to 0 on another).
+
+- [#5903](https://github.com/LTplus-AG/ifc-lite/pull/5903) [`975c430`](https://github.com/LTplus-AG/ifc-lite/commit/975c43086065cc7eaaf841d18f6f5ecbe626f0bd) Thanks [@louistrue](https://github.com/louistrue)! - A swept solid whose composite directrix has a segment the parameter reader cannot interpret (for example an arc with a negative radius) meshes again. The composite is swept whole instead of failing the element.
+
+- [#5747](https://github.com/LTplus-AG/ifc-lite/pull/5747) [`b218ab4`](https://github.com/LTplus-AG/ifc-lite/commit/b218ab440fc09011c6bb1d39524525120e119cb1) Thanks [@louistrue](https://github.com/louistrue)! - Bare conic swept solids now use the directrix domain end when `EndParam` is omitted, and an explicit full-circle range keeps the existing mesh tessellation.
+
+- [#5753](https://github.com/LTplus-AG/ifc-lite/pull/5753) [`6bf4181`](https://github.com/LTplus-AG/ifc-lite/commit/6bf418103e872f13666037ae4868e03468e3840c) Thanks [@louistrue](https://github.com/louistrue)! - The native (Rust) merged exporter now keeps one `IfcRelAggregates` parent per object, matching the TypeScript `MergedExporter` ([#5727](https://github.com/LTplus-AG/ifc-lite/issues/5727), the twin of [#5471](https://github.com/LTplus-AG/ifc-lite/issues/5471)). Before, it dropped a later model's aggregation only when both its parent and every member had unified into the first model. An aggregation that named a unified container and also a new object was kept whole, which gave the container a second parent and failed `IfcSpatialStructureElement.WR41`. Now any member that already has a parent in the output is removed, and the rest of the aggregation is kept. The rule runs on the final written line, after spatial and GlobalId unification, and carries across every later model. It replaces the old all-members rule.
+
+- [#5762](https://github.com/LTplus-AG/ifc-lite/pull/5762) [`d2cfb9e`](https://github.com/LTplus-AG/ifc-lite/commit/d2cfb9e66affc2674d6de5da44ecdc5d8a76b59e) Thanks [@louistrue](https://github.com/louistrue)! - The native (Rust) STEP converter now pads `IfcCartesianPointList2D` / `IfcCartesianPointList3D` with the optional `TagList` that IFC4X3 appends, matching the TypeScript converter ([#5755](https://github.com/LTplus-AG/ifc-lite/issues/5755)). IFC4 → IFC4X3 conversion (`exportStep`, `export_merged`, the CLI) wrote these one attribute short, which `ifcopenshell.validate` rejects. It hit every IFC4 model with tessellated geometry: 26 issues (two per point list) on a two-model merge of buildingSMART samples, now 0.
+
+- [#5689](https://github.com/LTplus-AG/ifc-lite/pull/5689) [`477c1d5`](https://github.com/LTplus-AG/ifc-lite/commit/477c1d5ef5bb5057ff12f9d074270ec2359b39e1) Thanks [@louistrue](https://github.com/louistrue)! - Preserve site-local IFC mesh detail with LV95 placements while retaining raw-world RTC rebasing.
+
+- [#5676](https://github.com/LTplus-AG/ifc-lite/pull/5676) [`db7f991`](https://github.com/LTplus-AG/ifc-lite/commit/db7f991eb63998c65389a28e7331ac984a5448ad) Thanks [@louistrue](https://github.com/louistrue)! - Swept disks and surface-curve swept solids now honour `StartParam`/`EndParam` in the directrix's own IFC parametrisation. On a composite directrix the parameter is the running sum of each segment's span (a trimmed line's length, a trimmed arc's angle), so a partial range sweeps the authored extent instead of reading each segment as one unit. On a bare circle or ellipse the parameters are angles in the project's plane-angle unit, so `StartParam 0, EndParam 0.79` sweeps a 0.79 rad arc, not the full ring.
+
 ## 10.1.0
 
 ### Minor Changes

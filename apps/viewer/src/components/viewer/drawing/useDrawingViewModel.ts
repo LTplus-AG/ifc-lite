@@ -21,6 +21,7 @@ import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { resolveDrawingPaperTheme } from './paper-theme';
 
 /** The settings panels beside the canvas, as inspector tabs (#5495); they
  *  share one slot. Re-exported for the drawing/ subtree's existing imports. */
@@ -40,6 +41,7 @@ export function useDrawingViewModel() {
   const drawingError = useViewerStore((s) => s.drawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  const theme = useViewerStore((s) => s.theme);
   // LENGTHUNIT display override for the on-canvas measure distance/perimeter
   // labels (#2199 slice not covered by #2538 — see Drawing2DCanvas.tsx).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
@@ -224,6 +226,20 @@ export function useDrawingViewModel() {
     setDrawingStatus('idle');
   }, [displayOptions.useSymbolicRepresentations, updateDisplayOptions, setDrawing, setDrawingStatus]);
 
+  // Print preview (#5496): a display toggle, not a regenerate — it only
+  // changes the canvas's paper/ink, never the cut geometry.
+  const togglePrintPreview = useCallback(() => {
+    updateDisplayOptions({ showPrintPreview: !displayOptions.showPrintPreview });
+  }, [displayOptions.showPrintPreview, updateDisplayOptions]);
+
+  // The canvas's paper/ink (#5496): dark paper in dark theme, forced white by
+  // print preview, always white in sheet mode (Drawing2DCanvas decides that
+  // last part itself since it also owns the desk colour).
+  const paperTheme = useMemo(
+    () => resolveDrawingPaperTheme(theme, displayOptions.showPrintPreview),
+    [theme, displayOptions.showPrintPreview],
+  );
+
   const togglePinned = useCallback(() => setIsPinned((prev) => !prev), []);
 
   const selectTool = useCallback((tool: Annotation2DTool) => setAnnotation2DActiveTool(tool), [setAnnotation2DActiveTool]);
@@ -283,6 +299,7 @@ export function useDrawingViewModel() {
     cloudAnnotation2DPoints, cloudAnnotations2D,
     selectedAnnotation2D, clearAllAnnotations2D, markupCounts, hasMarkup,
     toggleIfcAnnotations, toggleConstructionProjection, toggle3DOverlay, toggleSymbolicRepresentations,
+    togglePrintPreview, paperTheme,
   };
 }
 

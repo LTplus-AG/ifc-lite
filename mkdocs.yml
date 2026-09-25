@@ -191,6 +191,7 @@ nav:
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
     - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
+    - Speckle → IFC Mapping: architecture/speckle-mapping.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Relative-to-Eye Rendering: architecture/renderer-relative-to-eye.md
     - Coordinate Handling: architecture/coordinate-handling.md

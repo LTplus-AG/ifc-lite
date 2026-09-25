@@ -12,8 +12,12 @@
  * without growing it. Living here it is also testable on its own.
  */
 
-import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck, Building2, GitMerge, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { toast } from '@/components/ui/toast';
+import { fetchDemoProjectFile } from '@/lib/tours/demo-kit';
+import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { useViewerStore } from '@/store';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
 import { formatFileSize, getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
@@ -26,6 +30,10 @@ import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
  *  an inline `<style>{`…`}</style>` template literal) so the i18n literal
  *  gate, which only inspects JSX-child string LITERALS, never mistakes a
  *  keyframe declaration for translatable prose. */
+/** Formats named under the Open button, derived from the one extension list
+ *  so the copy can never advertise less (or more) than the picker accepts. */
+const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
+
 const FLOAT_SLOW_KEYFRAMES = `
   @keyframes float-slow {
     0%, 100% { transform: translateY(0px) rotate(0deg); }
@@ -50,6 +58,31 @@ export interface ViewportWelcomeCardProps {
 export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentFiles, loadFile }: ViewportWelcomeCardProps) {
   const { t } = useTranslation();
   const actionsDisabled = !webgpu.supported || webgpu.checking;
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  // The first-run primary action (#5840): 43% of sessions never loaded a
+  // model, and the sample the tours use already ships with the viewer. It
+  // goes through the same `loadFile` as every other open.
+  const loadDemo = async () => {
+    setDemoLoading(true);
+    try {
+      await loadFile(await fetchDemoProjectFile());
+    } catch (err) {
+      console.error('[welcome] demo project failed to load', err);
+      toast.error(t('viewportLighting.container.emptyState.loadDemo.failed'));
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const loadLayersDemo = () => {
+    void import('@/lib/layers/demo-stack')
+      .then((m) => m.loadDemoLayerStack())
+      .catch((err: unknown) => {
+        console.error('[welcome] layers demo stack failed to load', err);
+        toast.error(t('viewportLighting.container.emptyState.loadDemo.failed'));
+      });
+  };
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
@@ -89,8 +122,29 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         CTA + a tacked-on link, while keeping the file-open path
         visually dominant via the filled-on-hover treatment.
       */}
-      {/* Track 1 — open / drag */}
+      {/* Track 1 — the demo project is the primary action for a first
+          visit (#5840); opening your own file sits right under it. */}
       <button
+        type="button"
+        onClick={() => { void loadDemo(); }}
+        disabled={actionsDisabled || demoLoading}
+        className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm font-bold border transition-all ${
+          actionsDisabled
+            ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+            : 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer'
+        }`}
+      >
+        {demoLoading
+          ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          : <Building2 className="h-4 w-4" aria-hidden="true" />}
+        <span>{t('viewportLighting.container.emptyState.loadDemo.button')}</span>
+      </button>
+      <p className="mt-1.5 mb-3 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
+        {webgpu.supported ? t('viewportLighting.container.emptyState.loadDemo.caption') : <WebGpuDisabledCaption />}
+      </p>
+
+      <button
+        type="button"
         onClick={onOpenClick}
         disabled={actionsDisabled}
         className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all ${
@@ -109,9 +163,12 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         </span>
       </button>
 
-      <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
-        {webgpu.supported ? t('viewportLighting.container.emptyState.dragDropHint') : <WebGpuDisabledCaption />}
-      </p>
+      {webgpu.supported && (
+        <p className="mt-2.5 text-[11px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
+          <span>{t('viewportLighting.container.emptyState.dragDropHint')}</span>
+          <span className="block mt-0.5 text-[10px] opacity-80">{MODEL_FORMATS_LABEL}</span>
+        </p>
+      )}
 
       {/* Subtle "or" rule — anchors the symmetry between the two tracks */}
       <div className="mt-5 mb-5 w-full flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-400 dark:text-[#565f89]">
@@ -163,6 +220,22 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           <span>{t('viewportLighting.container.emptyState.driveWithLlm')}</span>
           <ArrowUpRight className="h-2.5 w-2.5 opacity-60 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
         </a>
+        {/* The Layers demo stack (#1717) — folded into the card as a peer
+            pill instead of a second floating promo (#5840). Desktop only:
+            multi-file .ifcx layering is not a phone workflow. */}
+        <button
+          type="button"
+          onClick={loadLayersDemo}
+          disabled={actionsDisabled}
+          className={`group hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
+            actionsDisabled
+              ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+              : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+          }`}
+        >
+          <GitMerge className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
+          <span>{t('viewportLighting.container.emptyState.layersDemo')}</span>
+        </button>
       </div>
 
       <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">

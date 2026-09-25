@@ -6,15 +6,15 @@
  * Shared SVG `<defs>` for the scene overlay: one glow filter and two
  * arrowhead markers, defined once (#5486).
  *
- * Today four components each define their own copy of the same glow filter
- * (`SectionVisualization` `#section-glow`, `AddElementOverlay`
- * `#add-elem-glow`, `MeasurementVisuals` `#glow` and `#snap-glow`) — same
- * `feGaussianBlur` + merge, four ids. `OverlayDefs` PROVIDES the one shared
- * instance those four migrate onto — mounted once by `SceneOverlayRoot`,
+ * Today two components define their own copies of the same glow filter
+ * (`AddElementOverlay` `#add-elem-glow`, `MeasurementVisuals` `#glow` and
+ * `#snap-glow`) — same `feGaussianBlur` + merge, three ids
+ * (`SectionVisualization`'s `#section-glow` was deleted outright in #5488).
+ * `OverlayDefs` PROVIDES the one shared instance those three migrate onto — mounted once by `SceneOverlayRoot`,
  * referenced by `OVERLAY_GLOW_FILTER` / `OVERLAY_ARROWHEAD_ACCENT_MARKER` /
  * `OVERLAY_ARROWHEAD_INK_MARKER` instead of inventing a local id (a second
  * `<defs>` mounting the same id in the same document is undefined behaviour
- * — the browser picks one). This PR does NOT wire those four existing
+ * — the browser picks one). This PR does NOT wire those existing
  * components onto it; no consumers are migrated here (that's #5510-#5512).
  */
 

@@ -5,38 +5,36 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Space Sketch (DCEL) tool (#4918 slice): the main panel
- * (`SpaceSketchOverlay` — header, storey picker, tool row, footer/confirm),
- * its collapsed affordance (`SpaceSketchReopenPill`), its two disclosure
- * popovers (`space-sketch/SpaceSketchPopovers` — Options and the gesture
- * Help legend), and the canvas's one tooltip
+ * The Space Sketch (DCEL) tool (#4918 slice; on the HUD since #5503): its
+ * bar, plan card, hint and parked chip (`space-sketch/SpaceSketchHud`),
+ * its two disclosure popovers (`space-sketch/SpaceSketchPopovers` —
+ * Options and the gesture Help legend), and the canvas's one tooltip
  * (`space-sketch/SpaceSketchCanvas`'s "unbounded boundary" `<title>`).
  * The tool's live `setStatus(...)` narration strings (drag/undo/derive
  * progress messages) are plain function-call arguments, not JSX, and are
  * out of this slice's gate-driven scope.
  */
 export const spaceSketchEn = {
-  // Reopen pill (collapsed panel)
-  'spaceSketch.reopenPill.title': 'Reopen the Space Sketch panel',
-  'spaceSketch.reopenPill.label': 'Space Sketch',
-  'spaceSketch.reopenPill.toConfirm': '{count} to confirm',
+  // Parked chip (minimized tool)
+  'spaceSketch.parkedChip.resumeTitle': 'Reopen the Space Sketch tool',
+  'spaceSketch.parkedChip.label': 'Space Sketch',
+  'spaceSketch.parkedChip.toConfirm': '{count} to confirm',
 
-  // Main panel header
+  // Bar
   'spaceSketch.panel.heading': 'Space Sketch',
-  'spaceSketch.panel.pendingBadgeTitle': 'Spaces to create when you confirm, across all storeys',
-  'spaceSketch.panel.pendingBadge': '{count} to confirm',
-  // Only rendered when pendingStoreys > 1, so "floors" is always plural in
-  // English — one complete message per case (#4918 review, PR #5001)
-  // rather than concatenating a separately-translated suffix, so a locale
-  // can reorder/re-punctuate the whole phrase.
-  'spaceSketch.panel.pendingBadgeMultiStorey': '{count} to confirm · {floors} floors',
+  'spaceSketch.bar.storeyAria': 'Storey to sketch on',
+  'spaceSketch.bar.drawModeAria': 'Draw mode',
+  // Compact-mode overflow trigger (#5975): shown once the bar no longer
+  // fits the top-center lane at both side panels open, in place of the
+  // inline history/snap/Help controls it replaces.
+  'spaceSketch.bar.moreTitle': 'More: history, snap, help',
   'spaceSketch.panel.helpTitle': 'How it works',
   'spaceSketch.panel.minimizeTitle': 'Minimize (drafts and 3D preview stay live)',
   'spaceSketch.panel.closeTitle': 'Close without creating (Esc)',
   'spaceSketch.panel.noModelOption': 'no model',
   'spaceSketch.panel.deriveAllTitle': 'Derive rooms on every storey. Drafts only until you confirm; storeys you already edited are kept.',
   'spaceSketch.panel.roomCount': { other: '{count} rooms', one: '{count} room' },
-  'spaceSketch.panel.resizeTitle': 'Drag to resize the panel',
+  'spaceSketch.panel.resizeTitle': 'Drag to resize the plan',
 
   // Tool row
   'spaceSketch.tools.editTitle': 'Edit / freeform: drag corners, split, merge, draw a polygon room',
@@ -47,6 +45,9 @@ export const spaceSketchEn = {
   'spaceSketch.tools.redoTitle': 'Redo (Ctrl+Shift+Z)',
   'spaceSketch.tools.snapOnTitle': 'Snap to walls + corners: on',
   'spaceSketch.tools.snapOffTitle': 'Snap to walls + corners: off',
+  // The More popover's checkbox row (#5975) needs a state-agnostic label,
+  // unlike the icon button's on/off tooltip pair above.
+  'spaceSketch.tools.snapLabel': 'Snap to walls + corners',
   'spaceSketch.tools.optionsTitle': 'Options: boundary, corner tolerance, underlay, generate all storeys',
   'spaceSketch.tools.cleanupTitle': 'Clean up: remove orphaned inner walls and redundant nodes (room shapes unchanged)',
   'spaceSketch.tools.fitTitle': 'Fit plan to canvas (reset zoom & pan)',

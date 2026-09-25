@@ -1,5 +1,42 @@
 # @ifc-lite/create
 
+## 3.1.0
+
+### Minor Changes
+
+- [#5932](https://github.com/LTplus-AG/ifc-lite/pull/5932) [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde) Thanks [@louistrue](https://github.com/louistrue)! - LandXML → IFC (mapping v1.3, spec §14): station equations are now written instead of refused. Each `StaEquation` on a written alignment becomes an `IfcReferent` / `.STATION.` with `Pset_Stationing` (`Station`, `IncomingStation`, `HasIncreasingStation`), linearly placed at its distance along the alignment's curve and nested with the start referent in order along the alignment. An alignment's equations are refused all or none, by name, when one cannot be placed. A vertical profile on an alignment with station equations is no longer refused: its PVI stations are read as displayed stations and placed through the stationing, and only a station in an equation's gap or displayed at more than one place is refused. `AlignmentParams` gains an optional `StationEquations` list and `AlignmentResult` an `equationReferentIds` list; `StationEquationParams` is exported. `CgPoint`s stay `IfcAnnotation` / `.SURVEY.` (§14.3 records why).
+
+- [#5930](https://github.com/LTplus-AG/ifc-lite/pull/5930) [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42) Thanks [@louistrue](https://github.com/louistrue)! - LandXML → IFC mapping v1.2: a written alignment's design profile (`ProfAlign`) is now exported as `IfcAlignmentVertical` with `IfcAlignmentVerticalSegment`s (`CONSTANTGRADIENT`, `PARABOLICARC`, `CIRCULARARC`; an `UnsymParaCurve` as two parabolic arcs) and an `IfcGradientCurve` over the horizontal composite curve, following IfcOpenShell's vertical segment mapping. Profiles that cannot be mapped exactly (sampled `ProfSurf`, unlinked, a second design profile, station equations, inconsistent curves, a profile running past its alignment) are refused by name with their reason. `AlignmentParams` gains an optional `Vertical` layout, `AlignmentResult` optional `verticalId` / `gradientCurveId`, and `LandXmlIfcCoverage` an optional `profiles` count.
+
+### Patch Changes
+
+- Updated dependencies [[`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9)]:
+  - @ifc-lite/mutations@2.8.0
+
+## 3.0.0
+
+### Major Changes
+
+- [#5722](https://github.com/LTplus-AG/ifc-lite/pull/5722) [`cddb321`](https://github.com/LTplus-AG/ifc-lite/commit/cddb32122c9d628b635910158a06fa5a94c0071a) Thanks [@louistrue](https://github.com/louistrue)! - Remove `ProjectParams.FileSchemaIdentifier` ([#5562](https://github.com/LTplus-AG/ifc-lite/issues/5562)). It has done nothing since [#5351](https://github.com/LTplus-AG/ifc-lite/issues/5351): `IfcCreator` declares every IFC4X3 file as `FILE_SCHEMA(('IFC4X3_ADD2'))` on its own. The only thing it still did was throw when combined with a `Schema` other than `'IFC4X3'`. Callers just delete the option; the output does not change.
+
+### Minor Changes
+
+- [#5731](https://github.com/LTplus-AG/ifc-lite/pull/5731) [`91b1340`](https://github.com/LTplus-AG/ifc-lite/commit/91b1340bbba42abc42d9842169e422b540aa96eb) Thanks [@louistrue](https://github.com/louistrue)! - Numeric property values are now written as the measure type they declare. `addIfcPropertySet` used to emit every number as `IFCREAL` or `IFCINTEGER` whatever `Type` said, so a `ThermalTransmittance` declared `IfcThermalTransmittanceMeasure` came out `IFCREAL(0.25)` and failed IDS data-type checks against `Pset_WallCommon`. `PropertyType` now accepts any `Ifc…Measure` (new `PropertyMeasureType`); a whole `IfcCountMeasure` is written as an integer, and a type name that is not a bare IFC identifier is refused instead of being spliced into the STEP line.
+
+### Patch Changes
+
+- [#5671](https://github.com/LTplus-AG/ifc-lite/pull/5671) [`e095908`](https://github.com/LTplus-AG/ifc-lite/commit/e0959083fa58854ce536c0a68d7b0c52f824f5ef) Thanks [@louistrue](https://github.com/louistrue)! - `IfcCreator` and the in-store builders no longer write an `IfcAxis2Placement3D` with a `RefDirection` but no `Axis` (or the reverse), which failed the `AxisAndRefDirProvision` rule in IfcOpenShell validation. Walls, stairs, curtain walls, furnishing elements, rotated spatial zones and any `addLocalPlacement` given only one of the two now write both, with the missing one set to its schema default, so the placement's geometry is unchanged ([#5469](https://github.com/LTplus-AG/ifc-lite/issues/5469)). The one case the schema leaves undefined, an `Axis` of exactly `-X` with no `RefDirection` (world X projects to zero), now writes world Y as the RefDirection.
+
+- [#5920](https://github.com/LTplus-AG/ifc-lite/pull/5920) [`d83d9fe`](https://github.com/LTplus-AG/ifc-lite/commit/d83d9fe4138e0d6ae64a3ed439c8a5c9a280878a) Thanks [@louistrue](https://github.com/louistrue)! - A placement given only an `Axis` of exactly `-X` now writes `RefDirection (0,-1,0)`, the value ifc-lite's own reader uses for an absent RefDirection there, instead of world Y, which rendered it turned 180 degrees compared with before ([#5469](https://github.com/LTplus-AG/ifc-lite/issues/5469)).
+
+- [#5908](https://github.com/LTplus-AG/ifc-lite/pull/5908) [`dcdc8df`](https://github.com/LTplus-AG/ifc-lite/commit/dcdc8dff3ea9e0588ffcce802b0f3ec781082f2e) Thanks [@louistrue](https://github.com/louistrue)! - `addIfcPropertySet` now rejects a malformed `Type` on a string property too, as it already did for numbers, so the type name can't be spliced into the STEP line. An empty `Type` (a JSON payload that defaults an unset field to `''`) is treated as undeclared and no longer throws.
+
+- [#5904](https://github.com/LTplus-AG/ifc-lite/pull/5904) [`ddebcd9`](https://github.com/LTplus-AG/ifc-lite/commit/ddebcd91b999d6304e19358f90d142cd439a420a) Thanks [@louistrue](https://github.com/louistrue)! - Auto Spaces: a wall created in this session now bounds rooms only on the storey it is contained in ([#5642](https://github.com/LTplus-AG/ifc-lite/issues/5642)). `extractWallSegmentsForStorey` used to add every overlay-created divider to whichever storey was being processed, so a wall authored on one storey split rooms on every storey. Created dividers now come from the same spatial walk as source ones: a created divider with no `IfcRelContainedInSpatialStructure` (for example a raw `IfcWall` added through a generic entity-create tool) no longer bounds any storey, and the extraction's `considered` count no longer counts created walls twice.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/mutations@2.7.1
+
 ## 2.9.2
 
 ### Patch Changes

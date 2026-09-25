@@ -3,7 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SVG measurement overlay visualizations (lines, labels, snap indicators)
+ * SVG measurement overlay visualizations (lines, snap indicators) and the
+ * world-anchored labels (`WorldLabel`, #5502): ink when finished, accent
+ * while live. Lines still use the store's per-frame `screenX`/`screenY`;
+ * labels anchor to the world point through the scene projector, which is
+ * the same camera projection one frame apart at most.
  */
 
 import React, { useMemo } from 'react';
@@ -16,6 +20,48 @@ import { inclination, formatInclination } from './measure-modes/inclination';
 import { polylineOpenLength, polylineBasisLabelKey } from './measure-modes/polyline';
 import { CLOSE_LOOP_SCREEN_RADIUS_PX } from '../measureHandlers';
 import { useTranslation } from '@/i18n/useTranslation';
+import { overlayColor } from '@/lib/viewport-ui/overlay-theme';
+import { OVERLAY_GLOW_FILTER, WorldLabel } from '../../viewport-ui/scene';
+
+// Overlay tokens (#5490): finished measurements are passive ink; the live
+// drag, polyline, snap and pending marks are the one accent; point fills are
+// the halo so they read against the model in every theme.
+const INK = overlayColor('overlay-ink');
+const ACCENT = overlayColor('overlay-accent');
+const HALO = overlayColor('overlay-halo');
+
+// Label placement: centred above its anchor. `translate` composes with the
+// inline `transform` WorldLabel writes for `offset`, so the card ends up
+// centred horizontally with its bottom edge 6 px above the point.
+const LABEL_OFFSET = { dx: 0, dy: -6 };
+const LABEL_CLASS = '-translate-x-1/2 -translate-y-full leading-tight';
+const SUB_CLASS = 'text-[10px] text-overlay-ink-muted';
+
+type Point3 = { x: number; y: number; z: number };
+
+function midpoint(a: Point3, b: Point3): Point3 {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
+}
+
+function centroid(points: readonly Point3[]): Point3 {
+  const n = points.length;
+  return {
+    x: points.reduce((s, p) => s + p.x, 0) / n,
+    y: points.reduce((s, p) => s + p.y, 0) / n,
+    z: points.reduce((s, p) => s + p.z, 0) / n,
+  };
+}
+
+/** dX/dY/dZ, H/V and inclination under a distance label (#2199 §4). */
+function Breakdown({ components, unitDisplayOverrides }: { components: ReturnType<typeof distanceComponents>; unitDisplayOverrides: Record<string, string> }) {
+  return (
+    <div className={SUB_CLASS}>
+      <div>{formatAxisDeltas(components, unitDisplayOverrides)}</div>
+      <div>{formatHorizontalVertical(components, unitDisplayOverrides)}</div>
+      <div>{formatInclination(inclination(components))}</div>
+    </div>
+  );
+}
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
@@ -70,26 +116,6 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
 
   return (
     <>
-      {/* SVG filter definitions for glow effect */}
-      <svg className="absolute w-0 h-0 pointer-events-none" style={{ pointerEvents: 'none' }}>
-        <defs>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-          <filter id="snap-glow">
-            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-      </svg>
-
       {/* Completed measurements */}
       {measurements.map((m) => {
         const components = distanceComponents(m.start, m.end);
@@ -97,7 +123,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         <div key={m.id} className="pointer-events-none">
           {/* Line connecting start and end */}
           <svg
-            className="absolute inset-0 pointer-events-none z-20"
+            className="absolute inset-0 pointer-events-none"
             style={{ overflow: 'visible', pointerEvents: 'none' }}
           >
             <line
@@ -105,18 +131,18 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={m.start.screenY}
               x2={m.end.screenX}
               y2={m.end.screenY}
-              stroke="var(--color-primary)"
+              stroke={INK}
               strokeWidth="2"
               strokeDasharray="6,3"
-              filter="url(#glow)"
+              filter={OVERLAY_GLOW_FILTER}
             />
             {/* Start point */}
             <circle
               cx={m.start.screenX}
               cy={m.start.screenY}
               r="5"
-              fill="white"
-              stroke="var(--color-primary)"
+              fill={HALO}
+              stroke={INK}
               strokeWidth="2"
             />
             {/* End point */}
@@ -124,33 +150,18 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cx={m.end.screenX}
               cy={m.end.screenY}
               r="5"
-              fill="white"
-              stroke="var(--color-primary)"
+              fill={HALO}
+              stroke={INK}
               strokeWidth="2"
             />
           </svg>
 
-          {/* Distance label at midpoint - brutalist style */}
-          <div
-            className="absolute pointer-events-none z-20 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-2 py-1 font-mono text-xs font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-zinc-900 dark:border-zinc-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]"
-            style={{
-              left: (m.start.screenX + m.end.screenX) / 2,
-              top: (m.start.screenY + m.end.screenY) / 2,
-            }}
-          >
-            {formatDistance(m.distance, unitDisplayOverrides)}
+          {/* Distance label at the midpoint: ink, the measurement is finished. */}
+          <WorldLabel worldPoint={midpoint(m.start, m.end)} offset={LABEL_OFFSET} className={LABEL_CLASS}>
+            <div className="font-medium">{formatDistance(m.distance, unitDisplayOverrides)}</div>
             {/* Axis breakdown, derived on render (see measure-modes/components). */}
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatAxisDeltas(components, unitDisplayOverrides)}
-            </div>
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatHorizontalVertical(components, unitDisplayOverrides)}
-            </div>
-            {/* Inclination to horizontal (#2199 §4), from the same endpoints. */}
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatInclination(inclination(components))}
-            </div>
-          </div>
+            <Breakdown components={components} unitDisplayOverrides={unitDisplayOverrides} />
+          </WorldLabel>
         </div>
         );
       })}
@@ -160,28 +171,21 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         if (pl.points.length < 2) return null;
         const pathPoints = pl.closed ? [...pl.points, pl.points[0]] : pl.points;
         const d = pathPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.screenX} ${p.screenY}`).join(' ');
-        // Label at the vertex centroid — stable regardless of point order,
-        // and always inside a closed loop rather than off to one side.
-        const cx = pl.points.reduce((sum, p) => sum + p.screenX, 0) / pl.points.length;
-        const cy = pl.points.reduce((sum, p) => sum + p.screenY, 0) / pl.points.length;
         return (
           <div key={pl.id} className="pointer-events-none">
-            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
-              <path d={d} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeDasharray="6,3" filter="url(#glow)" />
+            <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={d} fill="none" stroke={INK} strokeWidth="2" strokeDasharray="6,3" filter={OVERLAY_GLOW_FILTER} />
               {pl.points.map((p, i) => (
-                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill="white" stroke="var(--color-primary)" strokeWidth="2" />
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill={HALO} stroke={INK} strokeWidth="2" />
               ))}
             </svg>
-            <div
-              className="absolute pointer-events-none z-20 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-2 py-1 font-mono text-xs font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-zinc-900 dark:border-zinc-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]"
-              style={{ left: cx, top: cy }}
-            >
-              {/* Basis is printed alongside the number, never left implicit
-                  (#2199 panel discipline: an open length and a closed
-                  perimeter are different claims). */}
-              <div className="font-normal text-[10px] leading-tight opacity-80">{t(polylineBasisLabelKey(pl.closed))}</div>
-              {formatDistance(pl.length, unitDisplayOverrides)}
-            </div>
+            {/* Label at the vertex centroid — stable regardless of point
+                order, and always inside a closed loop. Basis is printed
+                alongside the number, never left implicit (#2199). */}
+            <WorldLabel worldPoint={centroid(pl.points)} offset={LABEL_OFFSET} className={LABEL_CLASS}>
+              <div className={SUB_CLASS}>{t(polylineBasisLabelKey(pl.closed))}</div>
+              <div className="font-medium">{formatDistance(pl.length, unitDisplayOverrides)}</div>
+            </WorldLabel>
           </div>
         );
       })}
@@ -196,8 +200,8 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         const runningLength = polylineOpenLength(points);
         return (
           <div className="pointer-events-none">
-            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
-              <path d={placedD} fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter="url(#glow)" />
+            <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={placedD} fill="none" stroke={ACCENT} strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter={OVERLAY_GLOW_FILTER} />
               {/* Rubber-band segment to the cursor's current snap/hover position. */}
               {hoverPosition && (
                 <line
@@ -205,14 +209,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   y1={last.screenY}
                   x2={hoverPosition.x}
                   y2={hoverPosition.y}
-                  stroke="var(--color-primary)"
+                  stroke={ACCENT}
                   strokeWidth="1.5"
                   strokeDasharray="3,3"
                   strokeOpacity="0.5"
                 />
               )}
               {points.map((p, i) => (
-                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill="white" stroke="var(--color-primary)" strokeWidth="2" />
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill={HALO} stroke={ACCENT} strokeWidth="2" />
               ))}
               {/* First point gets a visible "close the loop here" ring once
                   there are enough points to close (>= 3) — clicking inside
@@ -225,22 +229,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   cy={first.screenY}
                   r={CLOSE_LOOP_SCREEN_RADIUS_PX}
                   fill="none"
-                  stroke="#FFEB3B"
+                  stroke={ACCENT}
                   strokeWidth="1.5"
                   strokeDasharray="2,2"
                   strokeOpacity="0.8"
                 />
               )}
             </svg>
-            <div
-              className="absolute pointer-events-none z-20 bg-primary text-primary-foreground px-2.5 py-1 font-mono text-sm font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-primary shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]"
-              style={{ left: last.screenX, top: last.screenY - 20 }}
-            >
-              <div className="font-normal text-[10px] leading-tight opacity-90">
+            {/* Live running length at the last placed point: accent. */}
+            <WorldLabel worldPoint={last} active offset={LABEL_OFFSET} className={LABEL_CLASS}>
+              <div className={SUB_CLASS}>
                 {t('measure.visuals.polylineSoFar', { basis: t('measure.polyline.basisLength'), count: points.length })}
               </div>
-              {formatDistance(runningLength, unitDisplayOverrides)}
-            </div>
+              <div className="font-medium">{formatDistance(runningLength, unitDisplayOverrides)}</div>
+            </WorldLabel>
           </div>
         );
       })()}
@@ -249,7 +251,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       {activeMeasurement && (
         <div className="pointer-events-none">
           <svg
-            className="absolute inset-0 pointer-events-none z-20"
+            className="absolute inset-0 pointer-events-none"
             style={{ overflow: 'visible', pointerEvents: 'none' }}
           >
             {/* Animated dashed line (marching ants effect) */}
@@ -258,58 +260,42 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={activeMeasurement.start.screenY}
               x2={activeMeasurement.current.screenX}
               y2={activeMeasurement.current.screenY}
-              stroke="var(--color-primary)"
+              stroke={ACCENT}
               strokeWidth="2"
               strokeDasharray="6,3"
               strokeOpacity="0.7"
-              filter="url(#glow)"
+              filter={OVERLAY_GLOW_FILTER}
             />
             {/* Start point */}
             <circle
               cx={activeMeasurement.start.screenX}
               cy={activeMeasurement.start.screenY}
               r="6"
-              fill="white"
-              stroke="var(--color-primary)"
+              fill={HALO}
+              stroke={ACCENT}
               strokeWidth="2"
-              filter="url(#glow)"
+              filter={OVERLAY_GLOW_FILTER}
             />
             {/* Current point (slightly larger, pulsing) */}
             <circle
               cx={activeMeasurement.current.screenX}
               cy={activeMeasurement.current.screenY}
               r="7"
-              fill="white"
-              stroke="var(--color-primary)"
+              fill={HALO}
+              stroke={ACCENT}
               strokeWidth="2"
-              filter="url(#glow)"
+              filter={OVERLAY_GLOW_FILTER}
               className="animate-pulse"
             />
           </svg>
 
-          {/* Live distance label - brutalist style */}
-          <div
-            className="absolute pointer-events-none z-20 bg-primary text-primary-foreground px-2.5 py-1 font-mono text-sm font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-primary shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]"
-            style={{
-              left: (activeMeasurement.start.screenX + activeMeasurement.current.screenX) / 2,
-              top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
-            }}
-          >
-            {formatDistance(activeMeasurement.distance, unitDisplayOverrides)}
-            {/* Live axis breakdown, derived on render (see measure-modes/components).
-                Mirrors the completed-measurement label: axis deltas first, then
-                horizontal/vertical — the drag is exactly when a setting-out user
-                wants dX/dY/dZ, so the live readout must not be the poorer one. */}
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
-            </div>
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
-            </div>
-            <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatInclination(inclination(distanceComponents(activeMeasurement.start, activeMeasurement.current)))}
-            </div>
-          </div>
+          {/* Live distance label: accent while dragging. Mirrors the finished
+              label's breakdown — the drag is exactly when a setting-out user
+              wants dX/dY/dZ, so the live readout must not be the poorer one. */}
+          <WorldLabel worldPoint={midpoint(activeMeasurement.start, activeMeasurement.current)} active offset={LABEL_OFFSET} className={LABEL_CLASS}>
+            <div className="font-medium">{formatDistance(activeMeasurement.distance, unitDisplayOverrides)}</div>
+            <Breakdown components={distanceComponents(activeMeasurement.start, activeMeasurement.current)} unitDisplayOverrides={unitDisplayOverrides} />
+          </WorldLabel>
         </div>
       )}
 
@@ -362,7 +348,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
 
         return (
           <svg
-            className="absolute inset-0 pointer-events-none z-25"
+            className="absolute inset-0 pointer-events-none"
             style={{ overflow: 'visible', pointerEvents: 'none' }}
           >
             {/* Axis 1 */}
@@ -406,7 +392,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               cx={startScreen.x}
               cy={startScreen.y}
               r="4"
-              fill="white"
+              fill={HALO}
               stroke={colors[activeAxis]}
               strokeWidth="2"
             />
@@ -427,7 +413,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
 
         return (
           <svg
-            className="absolute inset-0 pointer-events-none z-30"
+            className="absolute inset-0 pointer-events-none"
             style={{ overflow: 'visible', pointerEvents: 'none' }}
           >
             {/* Edge line with snap color (orange for edges) */}
@@ -436,11 +422,11 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={start.y}
               x2={end.x}
               y2={end.y}
-              stroke="#FF9800"
+              stroke={ACCENT}
               strokeWidth="4"
               strokeOpacity="0.9"
               strokeLinecap="round"
-              filter="url(#snap-glow)"
+              filter={OVERLAY_GLOW_FILTER}
             />
             {/* Outer glow line for better visibility */}
             <line
@@ -448,14 +434,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               y1={start.y}
               x2={end.x}
               y2={end.y}
-              stroke="#FF9800"
+              stroke={ACCENT}
               strokeWidth="8"
               strokeOpacity="0.3"
               strokeLinecap="round"
             />
             {/* Edge endpoints */}
-            <circle cx={start.x} cy={start.y} r="4" fill="#FF9800" fillOpacity="0.6" />
-            <circle cx={end.x} cy={end.y} r="4" fill="#FF9800" fillOpacity="0.6" />
+            <circle cx={start.x} cy={start.y} r="4" fill={ACCENT} fillOpacity="0.6" />
+            <circle cx={end.x} cy={end.y} r="4" fill={ACCENT} fillOpacity="0.6" />
 
             {/* Corner rings - shows strong attraction at corners */}
             {cornerPos && snapVisualization.cornerRings && (
@@ -466,7 +452,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   cy={cornerPos.y}
                   r="18"
                   fill="none"
-                  stroke="#FFEB3B"
+                  stroke={ACCENT}
                   strokeWidth="2"
                   strokeOpacity="0.4"
                   className="animate-pulse"
@@ -477,7 +463,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   cy={cornerPos.y}
                   r="12"
                   fill="none"
-                  stroke="#FFEB3B"
+                  stroke={ACCENT}
                   strokeWidth="2"
                   strokeOpacity="0.6"
                 />
@@ -486,9 +472,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   cx={cornerPos.x}
                   cy={cornerPos.y}
                   r="6"
-                  fill="#FFEB3B"
+                  fill={ACCENT}
                   fillOpacity="0.8"
-                  stroke="white"
+                  stroke={HALO}
                   strokeWidth="1"
                 />
                 {/* Center dot */}
@@ -496,14 +482,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
                   cx={cornerPos.x}
                   cy={cornerPos.y}
                   r="2"
-                  fill="white"
+                  fill={HALO}
                 />
                 {/* Valence indicators (small dots around corner) */}
                 {snapVisualization.cornerRings.valence >= 3 && (
                   <>
-                    <circle cx={cornerPos.x - 10} cy={cornerPos.y} r="2" fill="#FFEB3B" fillOpacity="0.7" />
-                    <circle cx={cornerPos.x + 10} cy={cornerPos.y} r="2" fill="#FFEB3B" fillOpacity="0.7" />
-                    <circle cx={cornerPos.x} cy={cornerPos.y - 10} r="2" fill="#FFEB3B" fillOpacity="0.7" />
+                    <circle cx={cornerPos.x - 10} cy={cornerPos.y} r="2" fill={ACCENT} fillOpacity="0.7" />
+                    <circle cx={cornerPos.x + 10} cy={cornerPos.y} r="2" fill={ACCENT} fillOpacity="0.7" />
+                    <circle cx={cornerPos.x} cy={cornerPos.y - 10} r="2" fill={ACCENT} fillOpacity="0.7" />
                   </>
                 )}
               </>
@@ -515,7 +501,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       {/* Plane indicator - subtle grid/cross for face snaps */}
       {snapVisualization?.planeIndicator && (
         <svg
-          className="absolute inset-0 pointer-events-none z-25"
+          className="absolute inset-0 pointer-events-none"
           style={{ overflow: 'visible', pointerEvents: 'none' }}
         >
           {/* Cross indicator */}
@@ -524,7 +510,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             y1={snapVisualization.planeIndicator.y}
             x2={snapVisualization.planeIndicator.x + 20}
             y2={snapVisualization.planeIndicator.y}
-            stroke="var(--color-primary)"
+            stroke={ACCENT}
             strokeWidth="2"
             strokeOpacity="0.4"
           />
@@ -533,7 +519,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             y1={snapVisualization.planeIndicator.y - 20}
             x2={snapVisualization.planeIndicator.x}
             y2={snapVisualization.planeIndicator.y + 20}
-            stroke="var(--color-primary)"
+            stroke={ACCENT}
             strokeWidth="2"
             strokeOpacity="0.4"
           />
@@ -542,7 +528,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             cx={snapVisualization.planeIndicator.x}
             cy={snapVisualization.planeIndicator.y}
             r="4"
-            fill="var(--color-primary)"
+            fill={ACCENT}
             fillOpacity="0.6"
           />
         </svg>
@@ -560,7 +546,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       {/* Pending point (legacy - keep for backward compatibility) */}
       {pending && !activeMeasurement && (
         <svg
-          className="absolute inset-0 pointer-events-none z-20"
+          className="absolute inset-0 pointer-events-none"
           style={{ overflow: 'visible', pointerEvents: 'none' }}
         >
           <circle
@@ -568,14 +554,14 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
             cy={pending.screenY}
             r="5"
             fill="none"
-            stroke="var(--color-primary)"
+            stroke={ACCENT}
             strokeWidth="1.5"
           />
           <circle
             cx={pending.screenX}
             cy={pending.screenY}
             r="2.5"
-            fill="var(--color-primary)"
+            fill={ACCENT}
           />
         </svg>
       )}
@@ -765,25 +751,55 @@ interface SnapIndicatorProps {
   snapType: SnapType;
 }
 
+/**
+ * One glyph per snap kind, all in the accent (#5490): the shape says what was
+ * snapped, so the kinds no longer each need a hue of their own. A
+ * `Record<SnapType, …>` so a future SnapType without a glyph fails to compile
+ * instead of silently rendering nothing (mirrors getBestSnapTarget's priority
+ * map in snap-detector.ts).
+ */
+const SNAP_GLYPHS: Record<SnapType, (x: number, y: number) => React.ReactNode> = {
+  // Vertex: filled dot (a point).
+  [SnapType.VERTEX]: (x, y) => (
+    <>
+      <circle cx={x} cy={y} r="5" fill={ACCENT} opacity="0.3" />
+      <circle cx={x} cy={y} r="2.5" fill={ACCENT} />
+    </>
+  ),
+  // Edge: horizontal line with centre dot.
+  [SnapType.EDGE]: (x, y) => (
+    <>
+      <line x1={x - 8} y1={y} x2={x + 8} y2={y} stroke={ACCENT} strokeWidth="2" strokeLinecap="round" />
+      <circle cx={x} cy={y} r="2" fill={ACCENT} />
+    </>
+  ),
+  // Face: filled square outline.
+  [SnapType.FACE]: (x, y) => (
+    <rect x={x - 5} y={y - 5} width="10" height="10" fill={ACCENT} fillOpacity="0.2" stroke={ACCENT} strokeWidth="1.5" />
+  ),
+  // Face centre: hollow square with centre dot.
+  [SnapType.FACE_CENTER]: (x, y) => (
+    <>
+      <rect x={x - 5} y={y - 5} width="10" height="10" fill="none" stroke={ACCENT} strokeWidth="1.5" />
+      <circle cx={x} cy={y} r="2" fill={ACCENT} />
+    </>
+  ),
+  // Point cloud: a scan point, so a small dot inside a dotted ring, set apart
+  // from the vertex's solid dot by shape now that both share the accent (#1860).
+  [SnapType.POINT_CLOUD]: (x, y) => (
+    <>
+      <circle cx={x} cy={y} r="5" fill="none" stroke={ACCENT} strokeWidth="1.5" strokeDasharray="1.5,2" />
+      <circle cx={x} cy={y} r="1.5" fill={ACCENT} />
+    </>
+  ),
+};
+
 function SnapIndicator({ screenX, screenY, snapType }: SnapIndicatorProps) {
-  // Distinct colors for each snap type - no labels needed, shapes are self-explanatory
-  // Record<SnapType, string> so a future SnapType member without a colour
-  // fails to compile instead of silently rendering undefined (mirrors
-  // getBestSnapTarget's priority map in snap-detector.ts).
-  const snapColors: Record<SnapType, string> = {
-    [SnapType.VERTEX]: '#FFEB3B', // Yellow - circle = point
-    [SnapType.EDGE]: '#FF9800', // Orange - line = edge
-    [SnapType.FACE]: '#03A9F4', // Light Blue - square = face
-    [SnapType.FACE_CENTER]: '#00BCD4', // Cyan - square with dot = center
-    [SnapType.POINT_CLOUD]: '#AB47BC', // Violet - small dot = snapped scan point (#1860)
-  };
-
-  const color = snapColors[snapType];
-
   return (
     <svg
-      className="absolute inset-0 pointer-events-none z-25"
+      className="absolute inset-0 pointer-events-none"
       style={{ overflow: 'visible', pointerEvents: 'none' }}
+      data-snap-kind={snapType}
     >
       {/* Outer glow ring - subtle pulsing indicator */}
       <circle
@@ -791,77 +807,12 @@ function SnapIndicator({ screenX, screenY, snapType }: SnapIndicatorProps) {
         cy={screenY}
         r="10"
         fill="none"
-        stroke={color}
+        stroke={ACCENT}
         strokeWidth="1.5"
         strokeOpacity="0.4"
-        filter="url(#snap-glow)"
+        filter={OVERLAY_GLOW_FILTER}
       />
-
-      {/* Vertex: filled circle (point) */}
-      {snapType === SnapType.VERTEX && (
-        <>
-          <circle cx={screenX} cy={screenY} r="5" fill={color} opacity="0.3" />
-          <circle cx={screenX} cy={screenY} r="2.5" fill={color} />
-        </>
-      )}
-
-      {/* Point cloud: same "point" shape as vertex, distinct colour, so
-          a snapped scan point reads as a subtly different kind of point
-          rather than a wholly new indicator (#1860). */}
-      {snapType === SnapType.POINT_CLOUD && (
-        <>
-          <circle cx={screenX} cy={screenY} r="5" fill={color} opacity="0.3" />
-          <circle cx={screenX} cy={screenY} r="2.5" fill={color} />
-        </>
-      )}
-
-      {/* Edge: horizontal line with center dot */}
-      {snapType === SnapType.EDGE && (
-        <>
-          <line
-            x1={screenX - 8}
-            y1={screenY}
-            x2={screenX + 8}
-            y2={screenY}
-            stroke={color}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <circle cx={screenX} cy={screenY} r="2" fill={color} />
-        </>
-      )}
-
-      {/* Face: square outline */}
-      {snapType === SnapType.FACE && (
-        <>
-          <rect
-            x={screenX - 5}
-            y={screenY - 5}
-            width="10"
-            height="10"
-            fill={color}
-            fillOpacity="0.2"
-            stroke={color}
-            strokeWidth="1.5"
-          />
-        </>
-      )}
-
-      {/* Face Center: square with center dot */}
-      {snapType === SnapType.FACE_CENTER && (
-        <>
-          <rect
-            x={screenX - 5}
-            y={screenY - 5}
-            width="10"
-            height="10"
-            fill="none"
-            stroke={color}
-            strokeWidth="1.5"
-          />
-          <circle cx={screenX} cy={screenY} r="2" fill={color} />
-        </>
-      )}
+      {SNAP_GLYPHS[snapType](screenX, screenY)}
     </svg>
   );
 }

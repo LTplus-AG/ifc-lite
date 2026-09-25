@@ -62,7 +62,7 @@ describe('ClashPanel unmount ends the focused-clash presentation (#2654 review)'
         clashSelectedId: 'rule-1 m:1 m:2',
         clashHighlightColors: new Map<number, [number, number, number, number]>([[1, [1, 0.6, 0, 1]]]),
         clashOverlapBox: null,
-        clashContactLines: { vertices: [0, 0, 0, 1, 0, 0], color: [1, 0, 1, 1] },
+        clashContactLines: { vertices: [0, 0, 0, 1, 0, 0] },
         clashSolidStatus: 'solid',
         clashSolidMesh: { positions: new Float64Array([0, 0, 0]), indices: new Uint32Array([0]) },
         clashSolidVolumeM3: 0.42,

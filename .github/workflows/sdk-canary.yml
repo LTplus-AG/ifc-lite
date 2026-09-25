@@ -28,6 +28,7 @@ on:
     branches: [main]
     paths:
       - 'packages/bcf/**'
+      - 'packages/bcf-api/**'
       - 'packages/cache/**'
       - 'packages/clash/**'
       - 'packages/cli/**'
@@ -36,6 +37,7 @@ on:
       - 'packages/create/**'
       - 'packages/data/**'
       - 'packages/diff/**'
+      - 'packages/documents-api/**'
       - 'packages/drawing-2d/**'
       - 'packages/encoding/**'
       - 'packages/export/**'
@@ -50,6 +52,7 @@ on:
       - 'packages/mcp/**'
       - 'packages/merge/**'
       - 'packages/mutations/**'
+      - 'packages/opencde-foundation/**'
       - 'packages/parser/**'
       - 'packages/pointcloud/**'
       - 'packages/query/**'

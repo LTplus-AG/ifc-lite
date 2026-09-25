@@ -6,10 +6,11 @@ import type { TranslationValue } from '../types';
 
 /**
  * The 3D-viewport-chrome + sun/lighting catalogue (#4918 viewport/lighting
- * slice, `viewportLighting.*`) covers seven files: `ViewportContainer.tsx`
+ * slice, `viewportLighting.*`) covers eight files: `ViewportContainer.tsx`
  * (the empty/welcome state, its WebGPU-unavailable banner, and the
  * "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
- * cluster and the per-model basepoint toggle), `Viewport.tsx`'s own
+ * cluster and the per-model basepoint toggle), `EditModeHudChip.tsx` (the
+ * edit-mode status chip), `Viewport.tsx`'s own
  * render-failure fallback, `FlySpeedIndicator.tsx`'s fly-mode HUD,
  * `ShadowControls.tsx` and `SunTimeControls.tsx` (the Environment panel's
  * shadow and manual time-of-day sub-panels), and `EnvironmentPanel.tsx` itself
@@ -41,9 +42,9 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.title': 'IFClite',
   'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
-  'viewportLighting.container.emptyState.openButton.open': 'Open .ifc file',
+  'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drag & drop anywhere',
+  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
   'viewportLighting.container.emptyState.orDivider': 'or',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
@@ -54,11 +55,12 @@ export const viewportLightingEn = {
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  'viewportLighting.container.emptyState.layersPromo.badge': 'New',
-  'viewportLighting.container.emptyState.layersPromo.title': 'Layers',
-  'viewportLighting.container.emptyState.layersPromo.description':
-    'Version your model like code: layers, drafts, merges, reviews',
-  'viewportLighting.container.emptyState.layersPromo.cta': 'Try the demo stack →',
+  // First-run primary action (#5840): the demo-kit sample, loaded through
+  // the same `loadFile` as any user file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
+  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
+  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
@@ -83,6 +85,11 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.basepointToggle.hide': 'Hide model basepoints',
   'viewportLighting.overlays.basepointToggle.showAria': 'Show model basepoints',
   'viewportLighting.overlays.basepointToggle.showTooltip': 'Show model basepoints (IFC 0,0,0)',
+
+  // ── EditModeHudChip.tsx — the top-left "Editing" status chip (#5489);
+  // `{model}` is the model's own displayed name, runtime data ──────────
+  'viewportLighting.overlays.editingChip': 'Editing',
+  'viewportLighting.overlays.editingChipWithModel': 'Editing · {model}',
 
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',

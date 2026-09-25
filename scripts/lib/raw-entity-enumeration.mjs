@@ -117,6 +117,11 @@ function rawReason(source, node) {
 function kindOf(node) {
   if (!ts.isPropertyAccessExpression(node)) return null;
   const name = node.name.text;
+  if (['byStorey', 'byBuilding', 'bySite', 'bySpace', 'elementToStorey'].includes(name)
+      && ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'spatialHierarchy')
+        || (ts.isIdentifier(node.expression) && node.expression.text === 'spatialHierarchy'))) {
+    return `spatialHierarchy.${name}`;
+  }
   if ((name === 'byType' || name === 'byId')
       && ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'entityIndex')
         || (ts.isIdentifier(node.expression) && node.expression.text === 'entityIndex'))) return `entityIndex.${name}`;
@@ -147,6 +152,7 @@ export function scanRawEntityAccess(path, text) {
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       hits.push({
         key: `${path}|${ownerOf(node)}@${statementPath(node)}:${expressionPath(node)}|${kind}|${node.getText(source).replace(/\s+/g, '')}`,
+        kind,
         line,
         reason: rawReason(source, node),
       });
@@ -160,9 +166,13 @@ export function scanRawEntityAccess(path, text) {
 /** Each existing site has one slot. A second copy in the same function fails. */
 export function excessRawAccess(before, after, reviewed = false) {
   const budget = new Map();
-  if (!reviewed) {
-    for (const hit of before) {
-      if (!hit.reason) budget.set(hit.key, (budget.get(hit.key) ?? 0) + 1);
+  for (const hit of before) {
+    // #5249 spatial containment is newly scanned. Preserve its existing
+    // sites during the migration, even in files reviewed for entity tables.
+    // A new spatial read still has no old slot and fails the ratchet.
+    const spatial = hit.kind?.startsWith('spatialHierarchy.');
+    if ((!reviewed || spatial) && !hit.reason) {
+      budget.set(hit.key, (budget.get(hit.key) ?? 0) + 1);
     }
   }
   const excess = [];

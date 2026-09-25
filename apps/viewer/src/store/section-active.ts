@@ -26,6 +26,8 @@
 
 import type { SectionPlane, SectionPlaneAxis } from './types.js';
 import { clearLastSectionMode } from './slices/sectionSlice.js';
+import { cardinalSectionFlipped } from './slices/sectionFacePick.js';
+export { cardinalSectionFlipped };
 
 interface SectionVisibilityState {
   activeTool: string;
@@ -66,7 +68,6 @@ interface SectionWriterState extends SectionVisibilityState {
   setSectionPlaneEnabled: (enabled: boolean) => void;
   flipSectionPlane: () => void;
   setActiveTool: (tool: string) => void;
-  setSuppressNextSection2DPanelAutoOpen: (suppress: boolean) => void;
 }
 
 /**
@@ -91,8 +92,6 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
   const state = getState();
   if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // parked until the tool opens
   if (getState().activeTool !== 'section') {
-    // A programmatic cut is not the user opening the tool: don't pop the 2D panel.
-    state.setSuppressNextSection2DPanelAutoOpen(true);
     state.setActiveTool('section');
   }
 }
@@ -106,4 +105,30 @@ export function clearSectionCut(getState: () => SectionWriterState): void {
   const plane = getState().sectionPlane;
   if (plane.enabled || plane.parked) getState().setSectionPlaneEnabled(false);
   clearLastSectionMode();
+}
+
+/**
+ * The Section panel's cardinal choice: its axis buttons, and "Reset to axis"
+ * (the picked plane's own nearest `axis`, the default). Choosing the axis a
+ * face-picked plane already approximates drops `custom` and keeps the side
+ * that is on screen: a face pick's `flipped` is relative to its own normal
+ * (#5644), so carrying it over raw inverts the cut for a -X/-Y/-Z pick (on
+ * AC20-FZK-Haus the whole model vanished). Any other axis is a new cut and
+ * goes straight to `setSectionPlaneAxis`. Not folded into that action: the
+ * floor-plan view calls it with 'down', which is also a -Y pick's axis, and
+ * must not turn into a reflected ceiling plan.
+ */
+export function resetSectionToAxis(
+  getState: () => Pick<SectionWriterState, 'sectionPlane' | 'setSectionPlaneAxis' | 'flipSectionPlane'>,
+  axis: SectionPlaneAxis = getState().sectionPlane.axis,
+): void {
+  const plane = getState().sectionPlane;
+  if (!plane.custom || axis !== plane.axis) {
+    getState().setSectionPlaneAxis(axis);
+    return;
+  }
+  const flipped = cardinalSectionFlipped(plane);
+  getState().setSectionPlaneAxis(axis);
+  // With `custom` gone this flip is a cardinal one, so the slice persists it.
+  if (getState().sectionPlane.flipped !== flipped) getState().flipSectionPlane();
 }

@@ -15,7 +15,7 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  * - IFC2X3 / IFC4 / IFC4X3 → .ifc (STEP), or .ifczip with image resources
  * - IFC5 → .ifcx (JSON + USD geometry)
  *
- * "Changes Only" exports just mutations:
+ * "Changes only" exports just mutations:
  * - Below IFC5 → .json
  * - IFC5 → .ifcx
  */

@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { resolveEnglish } from '@/i18n/registry';
@@ -26,7 +27,7 @@ afterEach(() => {
   useViewerStore.setState(initialState);
 });
 
-function openDialogFor(schemaVersion: string): string {
+function openDialogFor(schemaVersion: FederatedModel['schemaVersion']): string {
   const model = fixtureModel('model');
   model.schemaVersion = schemaVersion;
   useViewerStore.setState({ ...fixtureModels(model), dirtyModels: new Set() });

@@ -77,7 +77,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (IFCX overlay)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only switch is available');
     click(toggle);

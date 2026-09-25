@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mainShaderSource } from './shaders/main.wgsl.js';
-import { SELECTION_MASK_DEPTH_GROUP, selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
+import { MASK_DEPTH_REL_TOLERANCE, SELECTION_MASK_DEPTH_GROUP, selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
 
 /**
  * The selection-mask pipeline pairs `mainShaderSource`'s `vs_main` (which
@@ -67,3 +67,27 @@ describe('selection mask honours the section plane and clip box (#5390)', () => 
     });
   }
 });
+
+/**
+ * #5390: the first cut compared against the scene depth with a fixed 1e-7
+ * epsilon. The stored depth is MSAA sample 0 from the (possibly quantized)
+ * batch draw, so on a real WebGPU frame every selected pixel failed and the
+ * visible outline never drew. The slack must scale with the surface.
+ */
+describe('visible mask depth test tolerates the same surface (#5390)', () => {
+  const src = selectionMaskFragmentSource(true);
+  it('allows the fragment depth slope plus a relative slack, not a fixed epsilon', () => {
+    assert.match(src, /let slack = depthSlope \+ fragPos\.z \* MASK_DEPTH_REL_TOLERANCE;/);
+    assert.doesNotMatch(src, /loadDepth\(ip\) - 1e-7/);
+    assert.ok(MASK_DEPTH_REL_TOLERANCE > 0 && MASK_DEPTH_REL_TOLERANCE <= 0.01, 'a sliver of the distance, not a see-through');
+  });
+
+  it('takes fwidth before branching, so the derivative stays in uniform control flow', () => {
+    for (const entry of ['fs_mask_selected_visible', 'fs_mask_hover_visible']) {
+      const body = new RegExp(`fn ${entry}\\(input: MaskInput\\)[^{]*\\{([^}]*)\\}`).exec(src)?.[1] ?? '';
+      const lines = body.trim().split('\n').map((l) => l.trim());
+      assert.equal(lines[0], 'let depthSlope = fwidth(input.fragPos.z);', `${entry}: fwidth must come first`);
+    }
+  });
+});
+

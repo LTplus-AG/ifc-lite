@@ -164,9 +164,21 @@ describe('BCFOverlayRenderer theme (#5491)', () => {
     expect(ui.pin('open').backgroundColor).toBe(DARK_HOST['--overlay-status-danger']);
     expect(ui.pin('odd').backgroundColor).toBe(DARK_HOST['--overlay-ink']);
     expect(ui.index('open').color).toBe(DARK_HOST['--overlay-halo']);
-    // The connector follows the same token (a presentation attribute cannot
-    // hold var(), so it has to be set as a style).
+    // The connector follows the same token, through a custom property the
+    // stylesheet reads (a presentation attribute cannot hold var()).
     expect(getComputedStyle(ui.connector()).stroke).toBe(DARK_HOST['--overlay-status-danger']);
+    ui.overlay.dispose();
+  });
+
+  it('lets a host stylesheet restyle the connector without !important', () => {
+    setHost(DARK_HOST);
+    const override = document.createElement('style');
+    override.textContent = '.bcf-overlay-connector { stroke: #00ff00; }';
+    document.head.appendChild(override);
+    const ui = mount([marker()]);
+
+    expect(getComputedStyle(ui.connector()).stroke).toBe('#00ff00');
+    override.remove();
     ui.overlay.dispose();
   });
 

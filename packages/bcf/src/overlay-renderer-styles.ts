@@ -164,6 +164,7 @@ export const OVERLAY_STYLES = `
   /* Connector lines */
   .${CONNECTOR_CLASS} {
     pointer-events: none;
+    stroke: var(--bcf-connector-color, ${THEME.ink});
   }
 
   /* Pulse animation for active marker */

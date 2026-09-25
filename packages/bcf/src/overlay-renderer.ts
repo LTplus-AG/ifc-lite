@@ -249,7 +249,9 @@ export class BCFOverlayRenderer {
         conn.setAttribute('y1', String(markerY));
         conn.setAttribute('x2', String(anchorScreen.x));
         conn.setAttribute('y2', String(anchorScreen.y));
-        conn.style.stroke = color;
+        // A custom property, not an inline `stroke`, so a page stylesheet that
+        // restyles `.bcf-overlay-connector { stroke: ... }` still wins.
+        conn.style.setProperty('--bcf-connector-color', color);
         conn.setAttribute('stroke-width', '1.5');
         conn.setAttribute('stroke-dasharray', '3 2');
         conn.setAttribute('stroke-opacity', String((opacity * 0.5).toFixed(2)));

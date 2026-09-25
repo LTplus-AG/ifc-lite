@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, cleanup, click, render, type } from '@/test/render.js';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type ViewerState } from '@/store';
 import { extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
@@ -65,13 +65,14 @@ DATA;
 #90= IFCWALLTYPE('${guid('WTYP')}',$,'WT',$,$,(#91),$,$,$,.STANDARD.);
 #92= IFCPROPERTYSINGLEVALUE('T1',$,IFCLABEL('t1'),$);
 #93= IFCPROPERTYSINGLEVALUE('T2',$,IFCLABEL('t2'),$);
-#91= IFCPROPERTYSET('${guid('PST')}',$,'Custom_T',$,(#92,#93));
+#95= IFCPROPERTYSINGLEVALUE('TW',$,IFCLENGTHMEASURE(0.2),$);
+#91= IFCPROPERTYSET('${guid('PST')}',$,'Custom_T',$,(#92,#93,#95));
 #94= IFCRELDEFINESBYTYPE('${guid('RDT')}',$,$,$,(#72),#90);
 ENDSEC;
 END-ISO-10303-21;
 `;
 
-const TYPE_ROWS = ['90:Custom_T:T1', '90:Custom_T:T2'];
+const TYPE_ROWS = ['90:Custom_T:T1', '90:Custom_T:T2', '90:Custom_T:TW'];
 
 function inputByPlaceholder(placeholder: string): HTMLInputElement {
   const input = document.body.querySelector(`input[placeholder="${placeholder}"]`);
@@ -101,6 +102,10 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
 
   it('the dialog says the set is inherited, and the export carries T1, T2 and T3 on the wall', async () => {
     const { container, full } = await mountWall();
+    // Every write of the override reaches collab peers (createPropertySet is not mirrored).
+    const mirrored: string[] = [];
+    const mirror: ViewerState['mirrorPropertyEdit'] = (_m, id, pset, prop) => { mirrored.push(`${id}:${pset}:${prop}`); };
+    useViewerStore.setState({ mirrorPropertyEdit: mirror });
     const trigger = container.querySelector('button[title="Add property"]');
     assert.ok(trigger);
     click(trigger);
@@ -118,14 +123,18 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
 
     assert.deepEqual(panelRows(container), [
       '72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_B:B1',
-      '72:Custom_T:T1', '72:Custom_T:T2', '72:Custom_T:T3', ...TYPE_ROWS,
+      '72:Custom_T:T1', '72:Custom_T:T2', '72:Custom_T:T3', '72:Custom_T:TW', ...TYPE_ROWS,
     ]);
     const reparsed = await exportAndReparse(MODEL_ID, full);
     assert.deepEqual(fileRows(extractPropertiesOnDemand(reparsed, WALL)), [
       'Custom_A.A1=a1', 'Custom_A.A2=a2', 'Custom_B.B1=b1',
-      'Custom_T.T1=t1', 'Custom_T.T2=t2', 'Custom_T.T3=t3',
+      'Custom_T.T1=t1', 'Custom_T.T2=t2', 'Custom_T.T3=t3', 'Custom_T.TW=0.2',
     ]);
-    assert.deepEqual(fileRows(extractTypeEntityOwnProperties(reparsed, WALL_TYPE)), ['Custom_T.T1=t1', 'Custom_T.T2=t2'], 'the type set is untouched');
+    const tw = extractPropertiesOnDemand(reparsed, WALL).find((p) => p.name === 'Custom_T')?.properties.find((p) => p.name === 'TW');
+    assert.match(String(tw?.dataType), /^IFCLENGTHMEASURE$/i, 'a carried measure keeps its IFC data type');
+    assert.deepEqual(fileRows(extractTypeEntityOwnProperties(reparsed, WALL_TYPE)), ['Custom_T.T1=t1', 'Custom_T.T2=t2', 'Custom_T.TW=0.2'], 'the type set is untouched');
+
+    assert.deepEqual(mirrored.sort(), ['72:Custom_T:T1', '72:Custom_T:T2', '72:Custom_T:T3', '72:Custom_T:TW']);
 
     // One Ctrl+Z removes the whole override.
     replayWorkspaceHistory(useViewerStore.getState(), 'undo');
@@ -147,7 +156,65 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     await advance(0);
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
     const set = view.getForEntity(WALL).find((p) => p.name === 'Custom_T');
-    assert.deepEqual(set?.properties.map((p) => `${p.name}=${String(p.value)}`), ['T1=t1', 'T2=mine', 'T4=t4']);
+    assert.deepEqual(set?.properties.map((p) => `${p.name}=${String(p.value)}`).sort(), ['T1=t1', 'T2=mine', 'T4=t4', 'TW=0.2']);
     assert.ok(panelRows(container).includes('90:Custom_T:T2'));
   });
+
+  it('the bSDD card\'s "add all" on an inherited set carries the type\'s properties too', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      uri: 'https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWall', code: 'IfcWall', name: 'IfcWall',
+      classProperties: [{ name: 'T5', propertyCode: 'T5', dataType: 'IfcLabel', propertySet: 'Custom_T', units: null }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
+    try {
+      const full = await parseStep(MODEL);
+      seedModel(MODEL_ID, ID_OFFSET, full, WALL);
+      useViewerStore.setState({ propertiesActiveTab: 'bsdd' });
+      render(<PropertiesPanel />);
+      await advance(50);
+      const header = [...document.body.querySelectorAll('button')].find((b) => b.textContent?.includes('Custom_T'));
+      assert.ok(header, 'the bSDD card lists the Custom_T group');
+      const addAll = header!.querySelector('svg.lucide-plus')?.closest('button');
+      assert.ok(addAll, 'the group offers "add all"');
+      click(addAll!);
+      await advance(0);
+
+      const reparsed = await exportAndReparse(MODEL_ID, full);
+      assert.deepEqual(fileRows(extractPropertiesOnDemand(reparsed, WALL)).filter((r) => r.startsWith('Custom_T.')).map((r) => r.split('=')[0]),
+        ['Custom_T.T1', 'Custom_T.T2', 'Custom_T.T5', 'Custom_T.TW']);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('an IFC2X3 door style\'s set is carried too (a type object not named *Type)', async () => {
+    const store = await parseStep(DOOR_STYLE_MODEL);
+    seedModel(MODEL_ID, ID_OFFSET, store, 10);
+    const container = render(<PropertiesPanel />);
+    await advance(0);
+    assert.deepEqual(panelRows(container), ['20:Custom_S:S1']);
+    addToPropertySet(useViewerStore.getState(), {
+      modelId: MODEL_ID, entityId: 10, existingPsets: ['Custom_S'],
+      inheritedFrom: { typeId: 20, typeName: 'DS', psetNames: ['Custom_S'] },
+    }, 'Custom_S', [{ name: 'S2', value: 's2', type: PropertyValueType.Label }]);
+    const set = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getForEntity(10).find((p) => p.name === 'Custom_S');
+    assert.deepEqual(set?.properties.map((p) => p.name).sort(), ['S1', 'S2']);
+  });
 });
+
+const DOOR_STYLE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('d','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,$,$);
+#10= IFCDOOR('${guid('DOOR')}',$,'Door',$,$,$,$,$,1.,1.);
+#21= IFCPROPERTYSINGLEVALUE('S1',$,IFCLABEL('s1'),$);
+#22= IFCPROPERTYSET('${guid('PSS')}',$,'Custom_S',$,(#21));
+#20= IFCDOORSTYLE('${guid('DSTY')}',$,'DS',$,$,(#22),$,$,.SINGLE_SWING_LEFT.,.NOTDEFINED.,.F.,.F.);
+#30= IFCRELDEFINESBYTYPE('${guid('RDT')}',$,$,$,(#10),#20);
+ENDSEC;
+END-ISO-10303-21;
+`;

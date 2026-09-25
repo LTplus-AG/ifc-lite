@@ -49,7 +49,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     // The current dragover was claimed by a child drop zone.
     let claimed = false;
     // A drag that started inside the page (dragstart only fires for those).
-    // Cleared by the next pointerdown, dragend or drop, so a drag a component
+    // Cleared by the next pointerdown, dragend or window drop, so a drag a component
     // cancelled in its own dragstart (no dragend follows) cannot leave it set
     // and make every later OS file drop navigate.
     let inPage = false;
@@ -67,10 +67,7 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
     // Capture phase: runs before any child zone can stop propagation.
     const onEnterCapture = (e: DragEvent) => { if (ours(e)) step('enter'); };
     const onLeaveCapture = (e: DragEvent) => { if (ours(e)) step('leave'); };
-    const onDropCapture = (e: DragEvent) => {
-      if (ours(e)) step('drop');
-      else if (inPage) queueMicrotask(clearInPage); // after the bubble phase saw it
-    };
+    const onDropCapture = (e: DragEvent) => { if (ours(e)) step('drop'); };
     const onOverCapture = (e: DragEvent) => {
       if (!ours(e)) return;
       claimed = true; // until the bubble phase proves no zone took it
@@ -87,7 +84,14 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       sync();
     };
     const onDrop = (e: DragEvent) => {
-      if (!ours(e) || e.defaultPrevented) return; // a child drop zone handled it
+      if (inPage) {
+        // Cleared here, at the end of the drop, not in capture: the bubble
+        // phase must still see the in-page drag. A zone that stops the drop
+        // leaves the reset to dragend / the next pointerdown.
+        clearInPage();
+        return;
+      }
+      if (!isFileDrag(e.dataTransfer) || e.defaultPrevented) return; // a child drop zone handled it
       e.preventDefault();
       if (accept && e.dataTransfer) onDropRef.current(e.dataTransfer);
     };

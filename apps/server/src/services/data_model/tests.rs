@@ -47,9 +47,9 @@ DATA;
 #6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
 #28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
 /* Material layer set: 200mm Concrete + 50mm ventilated Insulation */
-#30=IFCMATERIAL('Concrete',$,$);
+#30=IFCMATERIAL('Concrete',$,'Mineral');
 #31=IFCMATERIAL('Insulation',$,$);
-#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,$,$);
+#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,'load-bearing',$);
 #33=IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$);
 #34=IFCMATERIALLAYERSET((#32,#33),'WallSet',$);
 #35=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#28),#34);
@@ -62,19 +62,62 @@ DATA;
 #51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000001',$,$,$,(#28),#50);
 /* Column with a material constituent set */
 #60=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
-#61=IFCMATERIAL('Steel',$,$);
+#61=IFCMATERIAL('Steel',$,'Metal');
 #62=IFCMATERIALCONSTITUENT('Core',$,#61,$,'load-bearing');
 #63=IFCMATERIALCONSTITUENTSET('ColSet',$,(#62));
 #64=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#60),#63);
 /* Beam with a material profile set */
 #70=IFCBEAM('Bem0000000000000000001',$,'B1',$,$,$,$,$,$);
-#71=IFCMATERIAL('Timber',$,$);
+#71=IFCMATERIAL('Timber',$,'Wood');
 #72=IFCMATERIALPROFILE('Flange',$,#71,$,$,$);
 #73=IFCMATERIALPROFILESET('BeamSet',$,(#72),$);
 #74=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#70),#73);
 ENDSEC;
 END-ISO-10303-21;
 "#;
+
+#[test]
+fn keeps_optional_material_absence_but_drops_unreadable_set_members_5296() {
+    let malformed = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER(#999999,")
+        .replace("IFCMATERIALCONSTITUENT('Core',$,#61,", "IFCMATERIALCONSTITUENT('Core',$,#999999,")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,", "IFCMATERIALPROFILE('Flange',$,#999999,");
+    let dm = extract_data_model_checked(&malformed);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "unreadable second layer is not forwarded as an empty material");
+    assert_eq!(layers[0].member_count, 2, "client must detect the incomplete set");
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "unreadable constituent and profile members are not asserted as complete");
+
+    let air_gap = ASSOCIATIONS_IFC.replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER($,");
+    let dm = extract_data_model_checked(&air_gap);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 2, "an authored absent material ref remains a complete layer");
+    assert_eq!(layers[1].material_id, None);
+    assert!(!layers[1].material_name_present);
+
+    let wrong_members = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYERSET((#32,#33)", "IFCMATERIALLAYERSET((#32,#30)")
+        .replace("IFCMATERIALCONSTITUENTSET('ColSet',$,(#62))", "IFCMATERIALCONSTITUENTSET('ColSet',$,(#61))")
+        .replace("IFCMATERIALPROFILESET('BeamSet',$,(#72),$)", "IFCMATERIALPROFILESET('BeamSet',$,(#71),$)");
+    let dm = extract_data_model_checked(&wrong_members);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "wrong-type layer member must not complete the set");
+    assert_eq!(layers[0].member_count, 2);
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "wrong-type constituent and profile members must not be forwarded");
+
+    let offset_subtypes = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$)",
+            "IFCMATERIALLAYERWITHOFFSETS(#31,50.,.T.,'Insul',$,$,$,.AXIS1.,(0.,0.))")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,$,$,$)",
+            "IFCMATERIALPROFILEWITHOFFSETS('Flange',$,#71,$,$,$,(0.,0.))");
+    let dm = extract_data_model_checked(&offset_subtypes);
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 28).count(), 2,
+        "valid IfcMaterialLayerWithOffsets subtype must remain readable");
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 70).count(), 1,
+        "valid IfcMaterialProfileWithOffsets subtype must remain readable");
+}
 
 #[test]
 fn extracts_classification_material_and_document_associations() {
@@ -99,6 +142,13 @@ fn extracts_classification_material_and_document_associations() {
     assert_eq!(layers.len(), 2, "expected two wall layers");
     assert_eq!(layers[0].element_id, 28);
     assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
+    assert_eq!(layers[0].association_id, 35);
+    assert_eq!(layers[0].definition_id, 34);
+    assert_eq!(layers[0].member_count, 2);
+    assert_eq!(layers[0].kind, "IfcMaterialLayerSet");
+    assert_eq!(layers[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(layers[0].category.as_deref(), Some("load-bearing"));
+    assert_eq!(layers[0].material_category.as_deref(), Some("Mineral"));
     assert_eq!(layers[0].material_name, "Concrete");
     assert!(
         (layers[0].thickness.unwrap() - 0.2).abs() < 1e-9,
@@ -106,6 +156,7 @@ fn extracts_classification_material_and_document_associations() {
     );
     assert_eq!(layers[0].is_ventilated, Some(false));
     assert_eq!(layers[1].material_name, "Insulation");
+    assert_eq!(layers[1].member_name.as_deref(), Some("Insul"));
     assert!(
         (layers[1].thickness.unwrap() - 0.05).abs() < 1e-9,
         "50mm -> 0.05m"
@@ -129,6 +180,9 @@ fn extracts_classification_material_and_document_associations() {
         "expected one constituent for the column"
     );
     assert_eq!(column_mats[0].material_name, "Steel");
+    assert_eq!(column_mats[0].kind, "IfcMaterialConstituentSet");
+    assert_eq!(column_mats[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(column_mats[0].material_category.as_deref(), Some("Metal"));
     assert_eq!(column_mats[0].set_name.as_deref(), Some("ColSet"));
 
     // The IfcRelAssociates* family must also land in the generic relationship
@@ -157,6 +211,9 @@ fn extracts_classification_material_and_document_associations() {
     let beam_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 70).collect();
     assert_eq!(beam_mats.len(), 1, "expected one profile for the beam");
     assert_eq!(beam_mats[0].material_name, "Timber");
+    assert_eq!(beam_mats[0].kind, "IfcMaterialProfileSet");
+    assert_eq!(beam_mats[0].member_name.as_deref(), Some("Flange"));
+    assert_eq!(beam_mats[0].material_category.as_deref(), Some("Wood"));
     assert_eq!(beam_mats[0].set_name.as_deref(), Some("BeamSet"));
 }
 
@@ -705,6 +762,14 @@ DATA;
 #28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
 #80=IFCMATERIAL('Brick',$,'Masonry');
 #81=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#28),#80);
+#29=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$);
+#30=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$);
+#82=IFCMATERIAL($,$,'CategoryOnly');
+#83=IFCRELASSOCIATESMATERIAL('Mat0000000000000000005',$,$,$,(#29),#82);
+#86=IFCMATERIAL($,$,$);
+#87=IFCMATERIAL('',$,$);
+#84=IFCMATERIALLIST((#80,#82,#86,#87));
+#85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#30),#84);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -718,9 +783,44 @@ fn resolves_a_direct_material_association_including_its_category() {
         .find(|m| m.element_id == 28)
         .expect("direct material association");
     assert_eq!(m.material_name, "Brick");
+    assert!(m.material_name_present);
+    assert_eq!(m.kind, "IfcMaterial");
+    assert_eq!(m.material_category.as_deref(), Some("Masonry"));
+    let unnamed = dm.materials.iter().find(|m| m.element_id == 29).expect("unnamed material retained");
+    assert_eq!(unnamed.material_name, "");
+    assert!(!unnamed.material_name_present);
+    assert_eq!(unnamed.material_category.as_deref(), Some("CategoryOnly"));
+    let list: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 30).collect();
+    assert_eq!(list.len(), 4, "unnamed list members must not disappear");
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(82)
+        && m.material_category.as_deref() == Some("CategoryOnly")));
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(86)
+        && m.material_category.is_none() && !m.material_name_present));
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(87)
+        && m.material_category.is_none() && m.material_name_present));
     assert_eq!(m.category.as_deref(), Some("Masonry"));
     assert_eq!(m.set_name, None);
     assert_eq!(m.thickness, None);
+}
+
+#[test]
+fn forwards_revit_duplex_material_associations_with_identity_5296() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/models/ara3d/duplex.ifc");
+    let Ok(source) = std::fs::read(path) else {
+        eprintln!("skip: Revit duplex fixture absent; run pnpm fixtures");
+        return;
+    };
+    let dm = extract_data_model_checked(&source);
+    // Optional manual end-to-end parity run through the TS decoder/viewer.
+    if let Ok(path) = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT") {
+        let payload = crate::services::serialize_data_model_to_parquet(&dm).expect("serialize Revit data model");
+        std::fs::write(path, payload).expect("write Revit data model for cross-runtime parity check");
+    }
+    assert!(dm.materials.iter().any(|m| m.material_name == "Masonry - Brick"),
+        "Revit material assignment must survive server extraction");
+    assert!(dm.materials.iter().all(|m| m.association_id > 0 && m.definition_id > 0 && !m.kind.is_empty()),
+        "every forwarded row keeps its IFC relationship and definition identity");
 }
 
 /// A TWO-level `IfcClassificationReference` chain (leaf -> intermediate ref ->
@@ -2258,4 +2358,87 @@ fn fixture_without_newly_covered_subtypes_is_unaffected_by_the_schema_derived_ga
         "fixture has none of the newly-covered types, but one was extracted: {:?}",
         dm.relationships
     );
+}
+
+/// A federated file can carry two IfcProjects with independent units (#5296,
+/// #3554). The second wall's 300 mm layer must be 0.3 m, while the first
+/// wall's 0.2 m layer must remain 0.2 m.
+const MIXED_PROJECT_MATERIAL_UNITS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'Metres',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#101=IFCPROJECT('Proj0000000000000000002',$,'Millimetres',$,$,$,$,$,#102);
+#102=IFCUNITASSIGNMENT((#103));
+#103=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#10=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'A',$,$,$,$,$,$);
+#110=IFCBUILDINGSTOREY('Stor0000000000000000002',$,'B',$,$,$,$,$,$);
+#11=IFCWALL('Wall0000000000000000001',$,'MetreWall',$,$,$,$,$,$);
+#111=IFCWALL('Wall0000000000000000002',$,'MilliWall',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000003',$,'SharedTypeMetreWall',$,$,$,$,$,$);
+#112=IFCWALL('Wall0000000000000000004',$,'SharedTypeMilliWall',$,$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#10));
+#120=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#101,(#110));
+#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#11,#12),#10);
+#121=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#111,#112),#110);
+#30=IFCMATERIAL('Core',$,$);
+#31=IFCMATERIALLAYER(#30,0.2,.F.,$,$,$,$);
+#32=IFCMATERIALLAYERSET((#31),'First',$);
+#33=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#11),#32);
+#130=IFCMATERIAL('Core',$,$);
+#131=IFCMATERIALLAYER(#130,300.,.F.,$,$,$,$);
+#132=IFCMATERIALLAYERSET((#131),'Second',$);
+#133=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#111),#132);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'Shared',$,$,$,$,$,$,.NOTDEFINED.);
+#201=IFCRELDEFINESBYTYPE('Def0000000000000000001',$,$,$,(#12,#112),#200);
+#202=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#200),#132);
+#210=IFCWALLTYPE('Type00000000000000001B',$,'SameUnit',$,$,$,$,$,$,.NOTDEFINED.);
+#211=IFCRELDEFINESBYTYPE('Def0000000000000000002',$,$,$,(#11,#12),#210);
+#212=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#210),#32);
+ENDSEC;
+END-ISO-10303-21;"#;
+
+#[test]
+fn material_layer_thickness_uses_owning_project_units_5296() {
+    let dm = extract_data_model_checked(MIXED_PROJECT_MATERIAL_UNITS_IFC);
+    let first = dm.materials.iter().find(|m| m.element_id == 11).expect("first wall material");
+    let second = dm.materials.iter().find(|m| m.element_id == 111).expect("second wall material");
+    assert!((first.thickness.unwrap() - 0.2).abs() < 1e-9);
+    assert!((second.thickness.unwrap() - 0.3).abs() < 1e-9,
+        "the later project's 300 mm layer must not use the first project's metre scale");
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 12));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 112));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELASSOCIATESMATERIAL"
+        && r.related_id == 200 && r.relating_id == 132));
+    assert!(dm.materials.iter().all(|m| m.element_id != 200),
+        "a type shared across projects with different units must remain unresolved");
+    let same_unit_type = dm.materials.iter().find(|m| m.element_id == 210)
+        .expect("same-unit shared type stays resolved");
+    assert!((same_unit_type.thickness.unwrap() - 0.2).abs() < 1e-9);
+
+    // The manual cross-runtime oracle supplies MergedExporter output from two
+    // catalogued real IFC fixtures. Keep the synthetic test runnable in CI
+    // without those optional files; when supplied, assert the server's real
+    // model result before writing Parquet for the TS decoder/viewer check.
+    if let Ok(input) = std::env::var("IFCLITE_MATERIAL_MERGED_IN") {
+        let source = std::fs::read(input).expect("read merged IFC oracle input");
+        let merged = extract_data_model_checked(&source);
+        let wall_id = merged.entities.iter()
+            .find(|e| e.global_id.as_deref() == Some("3ZYW59sxj8lei475l7EhLU"))
+            .expect("millimetre wall in merged IFC").entity_id;
+        let wall_layer = merged.materials.iter().find(|m| m.element_id == wall_id)
+            .expect("material layer on millimetre wall");
+        assert!((wall_layer.thickness.unwrap() - 0.3).abs() < 1e-9,
+            "server must convert the real merged wall's 300 mm layer to 0.3 m");
+        let output = std::env::var("IFCLITE_MATERIAL_PARQUET_OUT")
+            .expect("set IFCLITE_MATERIAL_PARQUET_OUT for merged IFC oracle");
+        let payload = crate::services::serialize_data_model_to_parquet(&merged)
+            .expect("serialize merged IFC data model");
+        std::fs::write(output, payload).expect("write merged IFC Parquet oracle payload");
+    }
 }

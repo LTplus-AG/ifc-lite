@@ -8,6 +8,7 @@
 
 import { ensureParquetInit } from './parquet-decoder.js';
 import { nullableFloat64Column } from './parquet-nullable.js';
+import { decodeMaterialAssociations } from './material-association-decoder.js';
 
 export interface EntityMetadata {
   entity_id: number;
@@ -285,11 +286,24 @@ export interface ClassificationAssociation {
 /** A material (or one material layer) associated with an element. */
 export interface MaterialAssociation {
   element_id: number;
-  /** Layer-set name; absent for a single material / list / constituent set. */
+  /** IfcRelAssociatesMaterial id; absent on older server payloads. */
+  association_id?: number;
+  definition_id?: number;
+  member_count?: number;
+  /** Effective resolved definition kind (a *Usage is reported as its set);
+   * absent on older server payloads. */
+  kind?: 'IfcMaterial' | 'IfcMaterialLayerSet' | 'IfcMaterialProfileSet' | 'IfcMaterialConstituentSet' | 'IfcMaterialList';
+  /** Name of a layer, profile, or constituent set; absent for a single material or list. */
   set_name?: string;
-  /** 0-based layer index within its set (0 for a single material). */
+  /** 0-based member index within its set or list (0 for a single material). */
   layer_index: number;
   material_name: string;
+  /** Whether IfcMaterial.Name was present, including an authored empty string. */
+  material_name_present?: boolean;
+  material_id?: number;
+  member_name?: string;
+  material_category?: string;
+  fraction?: number;
   /** Layer thickness in metres (already unit-scaled); absent if not a layer. */
   thickness?: number;
   is_ventilated?: boolean;
@@ -705,30 +719,9 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
     }
   }
 
-  // Material associations (issue #900).
-  const materials: MaterialAssociation[] = [];
-  if (materialsData) {
-    const t = arrow.tableFromIPC(parquet.readParquet(materialsData).intoIPCStream());
-    const elementIds = t.getChild('element_id')?.toArray() as Uint32Array;
-    const setNames = t.getChild('set_name')?.toArray() as (string | null)[];
-    const layerIndices = t.getChild('layer_index')?.toArray() as Uint32Array;
-    const materialNames = t.getChild('material_name')?.toArray() as (string | null)[];
-    const thicknesses = nullableFloat64Column(t, 'thickness');
-    const ventChild = t.getChild('is_ventilated');
-    const categories = t.getChild('category')?.toArray() as (string | null)[];
-    for (let i = 0; i < elementIds.length; i++) {
-      const vent = ventChild?.get(i);
-      materials.push({
-        element_id: elementIds[i],
-        set_name: setNames?.[i] || undefined,
-        layer_index: layerIndices[i],
-        material_name: materialNames?.[i] ?? '',
-        thickness: thicknesses?.[i] ?? undefined,
-        is_ventilated: vent === null || vent === undefined ? undefined : Boolean(vent),
-        category: categories?.[i] || undefined,
-      });
-    }
-  }
+  const materials = materialsData
+    ? decodeMaterialAssociations(arrow.tableFromIPC(parquet.readParquet(materialsData).intoIPCStream()))
+    : [];
 
   // Document associations (issue #900).
   const documents: DocumentAssociation[] = [];

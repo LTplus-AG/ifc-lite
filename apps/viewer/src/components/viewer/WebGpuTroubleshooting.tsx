@@ -7,7 +7,7 @@ import type { WebGPUUnavailableReason } from '@/hooks/useWebGPU';
 import { useTranslation } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 
-/** One-line caption under the disabled "Open .ifc file" button on the empty-state card. */
+/** One-line caption under the disabled demo and Open buttons on the empty-state card. */
 export function WebGpuDisabledCaption() {
   const { t } = useTranslation();
   return (

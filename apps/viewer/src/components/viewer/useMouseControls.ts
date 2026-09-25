@@ -27,14 +27,8 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
-import {
-  handleMeasureDown,
-  handleMeasureDrag,
-  handleMeasureHover,
-  handleMeasureUp,
-  updateMeasureScreenCoords,
-  shouldStartDragMeasurement,
-} from './measureHandlers.js';
+import { handleMeasureDown, handleMeasureDrag, handleMeasureHover, handleMeasureUp, updateMeasureScreenCoords, shouldStartDragMeasurement } from './measureHandlers.js';
+import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
@@ -872,9 +866,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
     };
 
-    canvas.addEventListener('pointerdown', handleMouseDown);
-    canvas.addEventListener('pointermove', handleMouseMove);
-    canvas.addEventListener('pointerup', handleMouseUp);
+    // Touch belongs to useTouchControls; a Measure tap comes back through the tap handler (#5856).
+    const onPointerDown = ignoreTouchPointers(handleMouseDown), onPointerMove = ignoreTouchPointers(handleMouseMove), onPointerUp = ignoreTouchPointers(handleMouseUp);
+    setMeasureTapHandler(canvas, (x, y) => handleMeasureTap(ctx, x, y));
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('mouseleave', handleMouseLeave);
     canvas.addEventListener('contextmenu', handleContextMenu);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -883,9 +880,10 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     return () => {
       invalidateSelectionPick(canvas);
-      canvas.removeEventListener('pointerdown', handleMouseDown);
-      canvas.removeEventListener('pointermove', handleMouseMove);
-      canvas.removeEventListener('pointerup', handleMouseUp);
+      setMeasureTapHandler(canvas, null);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       canvas.removeEventListener('contextmenu', handleContextMenu);
       canvas.removeEventListener('wheel', handleWheel);

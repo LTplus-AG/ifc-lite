@@ -19,11 +19,12 @@
 
 import {
   Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
-  Palette, Puzzle, Sun, Info,
+  Palette, Puzzle, Sun, Info, Settings,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { openSettings } from '@/lib/settings/open-settings';
 import { useViewerStore } from '@/store';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { toast as paletteToast } from '@/components/ui/toast';
@@ -146,6 +147,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().toggleTheme(); } },
     { id: 'pref:tooltips', label: 'Hover Tooltips', ...withKey('commandPalette.pref.tooltips.label'), keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
       action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
+    { id: 'pref:settings', label: 'Settings…', ...withKey('commandPalette.pref.settings.label'), keywords: 'settings preferences options configure theme toolbar spacemouse', category: 'Preferences', icon: Settings,
+      action: () => { openSettings(); } },
   );
 
   // ── Learn (tours) ──

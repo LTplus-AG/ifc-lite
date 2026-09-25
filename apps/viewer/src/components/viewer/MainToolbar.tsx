@@ -65,7 +65,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud, FileWarning, Coins } from 'lucide-react';
+import { Filter, Upload, Pencil, DraftingCompass, Box, Cloud, FileWarning, Coins, Settings } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -74,7 +74,7 @@ import { SearchInline } from './SearchInline';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
-import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { openSettings } from '@/lib/settings/open-settings';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
@@ -979,9 +979,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>{t('mainToolbar.sunSkyTooltip')}</TooltipContent>
       </Tooltip>
 
-      {/* SpaceMouse — connect a 3Dconnexion 3D mouse over WebHID and tune its
-          sensitivity (#1677). Settings live in Preferences → Navigation now
-          (#5509); this opens the Info dialog straight to that tab. */}
+      {/* SpaceMouse (#1677): its controls live in Settings → Display →
+          Navigation (#5509, #5857); this opens Settings there. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -990,7 +989,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-label={t('mainToolbar.spaceMouseOpen')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }));
+              openSettings('display');
             }}
             className={cn(spaceMouseConnected && 'bg-primary text-primary-foreground hover:bg-primary/90')}
           >
@@ -1052,6 +1051,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.hoverTooltips')}
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openSettings()}><Settings className="h-4 w-4 mr-2" />{t('mainToolbar.openSettings')}</DropdownMenuItem>
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.toolbarLabel')}
           </DropdownMenuLabel>

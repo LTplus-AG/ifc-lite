@@ -127,6 +127,7 @@ export const commandPaletteEn = {
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
+  'commandPalette.pref.settings.label': 'Settings…',
 
   // ── Learn ──
   'commandPalette.learn.hub.label': 'Open Learn Hub',

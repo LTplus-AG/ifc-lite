@@ -7,11 +7,11 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar, Settings } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
-import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { openSettings } from '@/lib/settings/open-settings';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -180,7 +180,7 @@ export function ViewTab() {
             tooltip={t('ribbon.view.spaceMouseTooltip')}
             active={spaceMouseConnected}
             activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
-            onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }))}
+            onClick={() => openSettings('display')}
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -216,6 +216,12 @@ export function ViewTab() {
             tooltip={t('ribbon.view.classicBarTooltip')}
             onClick={() => setToolbarStyle('classic')}
             {...tourAnchor(TOUR_ANCHORS.ribbonClassicSwitch)}
+          />
+          <RibbonSmallButton
+            icon={Settings}
+            label={t('ribbon.view.settings')}
+            tooltip={t('ribbon.view.settingsTooltip')}
+            onClick={() => openSettings()}
           />
         </RibbonSmallStack>
       </RibbonGroup>

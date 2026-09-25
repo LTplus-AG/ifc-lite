@@ -34,7 +34,7 @@ import {
   executeBasketSaveView, executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
-import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
+import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
@@ -109,9 +109,8 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().toggleWorkspacePanel('environment'); } },
     { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
       category: 'View', icon: Orbit,
-      // Moved to Preferences → Navigation (#5509): the device panel no longer
-      // floats over the viewport, so this deep-links the Info dialog there.
-      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } })); } },
+      // Lives in Settings → Display → Navigation (#5509, #5857).
+      action: () => { openSettings('display'); } },
   );
 
   // ── Tools ──

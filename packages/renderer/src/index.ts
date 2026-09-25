@@ -469,9 +469,6 @@ export class Renderer {
     private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
-    // X-Ray resolution reused while `_partialBatchEpoch` holds: its per-batch
-    // cache carries the walk of every batch's ids and the mixed-batch split,
-    // which otherwise repeat on every frame of an orbit.
     private _xrayAlpha: XRayAlpha | null = null;
     private _xrayAlphaEpoch: number = -1;
     private _lastColorOverrideGen: number = -1;
@@ -1829,10 +1826,6 @@ export class Renderer {
         // no-op when visibility is unchanged.
         this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
-        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // XRayAlpha snapshots the caller's map so mid-frame mutation can't desync
-        // classification and uniform-write decisions for the same batch/mesh, and
-        // owns the per-entity resolution + the mixed-batch partition (#4129).
         // X-Ray *context* mode (`ghostExceptIds`) feeds the same machinery, so it
         // routes through the transparent pipeline with no extra call sites — and
         // avoids building a Map over every element just to fade "the rest".

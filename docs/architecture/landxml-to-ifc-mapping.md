@@ -6,8 +6,9 @@
 
 # LandXML → IFC mapping specification (v1, proposed)
 
-Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented**.
-Version 1.1, 2026-09-24.
+Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented; v1.2 (vertical
+profiles, §12) implemented**.
+Version 1.2, 2026-09-24.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
@@ -424,7 +425,7 @@ The converted file declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, not the bare `IFC4X3
 
 ### 11.5 Still refused
 
-Vertical profiles (`IfcAlignmentVertical`), cant, superelevation, station equations,
+Vertical profiles (`IfcAlignmentVertical`; mapped since v1.2, §12), cant, superelevation, station equations,
 cross sections and roadways. Each is named with its count, as in §5. `IfcReferent` for
 `CgPoint` (§9.3) stays deferred: v1.1 writes a station referent for the alignment start
 only.
@@ -437,3 +438,124 @@ only.
    boundary must land on the LandXML-authored point.
 3. **Schema conformance.** `ifcopenshell.validate(express_rules=True)`, as §3 requires.
 4. **Refusals.** One test per refusal reason in §11.2 and §11.4.
+
+## 12. v1.2 — vertical profiles
+
+§11.5 refused vertical profiles. v1.2 maps a written alignment's **design** profile
+(`Profile/ProfAlign`) to `IfcAlignmentVertical`, bounded, as in §11, to what can be written
+correctly and proven correct against IfcOpenShell.
+
+### 12.1 What is written
+
+| LandXML | IFC4X3 |
+|---|---|
+| the alignment's `ProfAlign` | `IfcAlignmentVertical`, nested under the `IfcAlignment` in the same `IfcRelNests` as the horizontal layout (horizontal first); `Name` = the profile's name, `GlobalId` from the profile's source id (§4.3) |
+| each grade and vertical curve | `IfcAlignmentSegment` → `IfcAlignmentVerticalSegment`, nested in order under the vertical layout |
+| — | a **zero-length terminating** `CONSTANTGRADIENT` segment at the profile's end, carrying its end height and gradient |
+| the geometry | an `IfcGradientCurve` of `IfcCurveSegment`s whose `BaseCurve` is the horizontal `IfcCompositeCurve` |
+
+With a vertical layout the alignment carries two representations, exactly as IfcOpenShell
+0.8.5's `_create_geometric_representation` writes the horizontal + vertical case: the
+composite curve as `'FootPrint'` / `'Curve2D'` (first), and the gradient curve as
+`'Axis'` / `'Curve3D'`. An alignment without a profile keeps §11's single
+`'Axis'` / `'Curve2D'`. The station referent stays on the composite curve, which is the
+curve IfcOpenShell's `get_basis_curve` returns for the same structure.
+
+### 12.2 Which profile
+
+- A profile belongs to the alignment named by its `parentAlignmentSourceId`. When that
+  alignment also lists `profileSourceIds`, the list must name it; a profile the two
+  disagree about, or whose alignment is not in the file, is refused as **unlinked**.
+- A profile whose alignment is refused (§11.2, §11.4) is refused with it: it has no
+  horizontal to measure distance along.
+- IFC nests one vertical layout directly under an alignment. An alignment with **more than
+  one** design profile has all of them refused by name, because choosing one would be a
+  guess (IfcOpenShell's answer, child alignments per profile, is a separate structure and
+  not v1.2).
+- A sampled profile (`ProfSurf`, a ground line along the alignment) is a survey, not a
+  design layout, and is refused.
+- A profile on an alignment with station equations is refused: its stations do not map
+  linearly to distance along, and station equations are not mapped (§11.5).
+
+### 12.3 Segment types
+
+| LandXML | `PredefinedType` | Geometry (`IfcCurveSegment.ParentCurve`) |
+|---|---|---|
+| grade between curves, and each grade break at a bare `PVI` | `CONSTANTGRADIENT` | `IfcLine` |
+| `ParaCurve` | `PARABOLICARC` | `IfcPolynomialCurve` |
+| `UnsymParaCurve` | **two** `PARABOLICARC`, split at the PVI station | `IfcPolynomialCurve` (each) |
+| `CircCurve` | `CIRCULARARC` | `IfcCircle` |
+
+IFC has no asymmetric parabola. An `UnsymParaCurve` with legs `Lin`, `Lout` and grade change
+`Δ = g2 − g1` is two parabolas meeting at the PVI station with a common height and gradient
+`gm = g1 + Δ·Lout / (Lin + Lout)`: the curve both legs of the LandXML definition describe
+(the same reading as `rust/landxml`'s profile evaluator). Written as two segments it is
+exact, not an approximation.
+
+Each `IfcCurveSegment` follows IfcOpenShell's `_map_alignment_vertical_segment` exactly:
+placement at `(StartDistAlong, StartHeight)` along the start gradient; a line of length
+`HorizontalLength / cos(atan(g))`; a polynomial with `CoefficientsY = (StartHeight,
+StartGradient, (EndGradient − StartGradient) / (2·HorizontalLength))` and its closed-form
+arc length; a circle whose radius and `SegmentStart` / `SegmentLength` angles derive from
+the two gradients and the horizontal length. Transition codes compare position, gradient
+and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
+
+### 12.4 Conventions
+
+- **Distance along** is `(station − staStart) × linearScaleToMeters`; heights are
+  `elevation × elevationScaleToMeters`. Gradients are computed from the converted values, so
+  a file whose elevation unit differs from its linear unit still gets dimensionless ratios.
+- **Lengths.** A `ParaCurve` / `UnsymParaCurve` length is horizontal. A `CircCurve` is fixed
+  by its PVI, its radius and the two grades; its `length` only confirms them. Producers differ
+  on which length they write: 3D-Win writes the **arc** length `R·|θ2 − θ1|` (θ = atan of each
+  grade; its M3 road profile agrees to the millimetre on all nine curves, and one of them
+  differs from the horizontal length by 1 cm), while `rust/landxml`'s evaluator reads the
+  **horizontal** length `R·|sin θ2 − sin θ1|`. A declared length that equals either within
+  §11.4's tolerance is accepted; one that equals neither is refused, naming both values.
+- **`RadiusOfCurvature` sign.** Positive for a sag (the curve turns counter-clockwise in
+  the distance/height plane, IFC's "positive values imply a CCW direction"), negative for a
+  crest: `HorizontalLength / (EndGradient − StartGradient)` for a parabola, which is the
+  `1/k` IfcOpenShell's `layout_vertical_alignment_by_pi_method` writes, and `±R` for a
+  circle. A `CircCurve` in a file whose elevation unit differs from its linear unit is
+  refused: its radius has no single unit. LandXML defines no sign for a `CircCurve` radius, but some
+  producers (3D-Win) sign it with the same convention, negative for a crest; the magnitude is
+  used, and a negative radius on a sag is refused as contradictory.
+- A `ParaCurve` between two equal grades is a straight grade; the grade is written and no
+  curve segment is, since there is no curvature to carry.
+
+### 12.5 Self-check before writing
+
+The profile is refused whole, naming the PVI or curve and the reason, when:
+
+- it has fewer than two PVIs, a PVI without an elevation, or stations that do not increase;
+- a vertical curve is not at an interior PVI, or has a missing or non-positive length or
+  radius;
+- a curve starts before the previous curve (or the first PVI) ends, or ends after the next
+  begins (or the last PVI);
+- the profile starts before distance 0 or ends past the end of the horizontal layout by more
+  than §11.4's tolerance — an `IfcGradientCurve` cannot run off its base curve.
+
+After mapping, each segment's parameters are evaluated to its end and compared with the
+next segment's start, in height and gradient; and the evaluated profile must pass through
+every authored point that lies on it: the first and last PVI, and every PVI without a curve.
+A curve's own PVI is a tangent intersection, not a point on the profile, so there the check
+is that both tangents extended meet at the authored PVI.
+
+### 12.6 Still refused
+
+Sampled (`ProfSurf`) profiles, second and later design profiles of one alignment, profiles on
+alignments with station equations, cant, superelevation, cross sections and roadways. Each
+refused profile is named with its reason in the `profiles` refusal, as alignments are in
+§11.
+
+### 12.7 Acceptance
+
+1. **Independent geometry parity.** IfcOpenShell regenerates each vertical `IfcCurveSegment`
+   from our `IfcAlignmentVerticalSegment` through `_map_alignment_vertical_segment`, and the
+   result must equal ours, and IfcOpenShell's `get_curve_segment_transition_code` must agree
+   with every transition code we wrote.
+2. **Independent evaluation.** IfcOpenShell's kernel evaluates each of our vertical curve
+   segments; its heights at every authored PVI station and at every segment boundary must
+   equal the heights the fixture generator computes on its own from the LandXML definition.
+3. **Schema conformance.** `ifcopenshell.validate(express_rules=True)` reports 0 issues.
+4. **Refusals.** One test per refusal reason in §12.2 and §12.5.

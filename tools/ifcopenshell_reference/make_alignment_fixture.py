@@ -2,13 +2,20 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Author a SYNTHETIC, geometrically consistent LandXML horizontal alignment.
+"""Author SYNTHETIC, geometrically consistent LandXML alignments and profiles.
 
 Writes `alignment_fixture.json`: the alignments in ifc-lite's LandXML source
 shape (northing-first, as LandXML authors them) plus every segment boundary as
 (easting, northing). The boundaries are computed HERE, by this script's own
 integration — independent of ifc-lite's TypeScript mapping — so a check of
 ifc-lite's output against them is not ifc-lite checking itself.
+
+Since mapping v1.2 (spec §12) it also writes design profiles (`profiles`, in the
+viewer's `LandXmlProfile` shape) and `authoredVertical`: for each profiled
+alignment, the height of the LandXML-defined profile at every PVI station and
+at every vertical-curve boundary and quarter point, evaluated HERE from the
+LandXML definition of each curve (see `profile_height`), not from ifc-lite's
+IFC segments.
 
 Synthetic by construction: it proves the mapping's invariants (axis order,
 radius sign, clothoid constant and offset, continuity). It certifies no vendor
@@ -94,6 +101,99 @@ def build(name, source_id, start, heading_deg, parts, sta_start):
     return alignment, boundaries
 
 
+def circular_geometry(g1, g2, radius):
+    """Tangent length and horizontal length of a circular vertical curve."""
+    t1, t2 = math.atan(g1), math.atan(g2)
+    return radius * math.tan(abs(t2 - t1) / 2), radius * abs(math.sin(t2) - math.sin(t1))
+
+
+def profile_height(pvis, curves, station):
+    """Height of a LandXML design profile at `station`, straight from its definition.
+
+    `pvis`: [(station, elevation)], `curves`: {pvi index: curve dict}. Grades
+    run PVI to PVI; a curve replaces the grades around its PVI over its extent.
+    """
+    for index, curve in curves.items():
+        (s0, e0), (s1, e1), (s2, e2) = pvis[index - 1], pvis[index], pvis[index + 1]
+        g1, g2 = (e1 - e0) / (s1 - s0), (e2 - e1) / (s2 - s1)
+        if curve["kind"] == "parabolic":
+            half = curve["length"] / 2
+            if s1 - half <= station <= s1 + half:
+                x = station - (s1 - half)
+                return e1 - g1 * half + g1 * x + (g2 - g1) * x * x / (2 * curve["length"])
+        elif curve["kind"] == "unsymmetrical_parabolic":
+            lin, lout = curve["lengthIn"], curve["lengthOut"]
+            if s1 - lin <= station <= s1 + lout:
+                # y(x) = e1 - g1*lin + g1*x + k*x^2 on the first leg, and the
+                # mirror form from the end on the second: both legs meet the
+                # tangents, and share height and slope at the PVI station.
+                total = lin + lout
+                r_in = (g2 - g1) * lout / (lin * total)
+                r_out = (g2 - g1) * lin / (lout * total)
+                if station <= s1:
+                    x = station - (s1 - lin)
+                    return e1 - g1 * lin + g1 * x + r_in * x * x / 2
+                x = (s1 + lout) - station
+                return e1 + g2 * lout - g2 * x + r_out * x * x / 2
+        else:
+            radius = curve["radius"]
+            tangent, _ = circular_geometry(g1, g2, radius)
+            t1 = math.atan(g1)
+            bvc = (s1 - tangent * math.cos(t1), e1 - tangent * math.sin(t1))
+            t2 = math.atan(g2)
+            evc_station = s1 + tangent * math.cos(t2)
+            if bvc[0] <= station <= evc_station:
+                side = 1 if g2 > g1 else -1  # sag: centre above the curve
+                cx = bvc[0] - side * radius * math.sin(t1)
+                cy = bvc[1] + side * radius * math.cos(t1)
+                return cy - side * math.sqrt(radius * radius - (station - cx) ** 2)
+    for (s0, e0), (s1, e1) in zip(pvis, pvis[1:]):
+        if s0 <= station <= s1:
+            return e0 + (e1 - e0) * (station - s0) / (s1 - s0)
+    raise ValueError(f"station {station} is outside the profile")
+
+
+def build_profile(alignment, name, pvis, curves):
+    """A `ProfAlign` in the viewer's shape, plus its independently evaluated heights."""
+    source_id = f"landxml:profile:{alignment['sourceId']}:1:design:{name}"
+    alignment["profileSourceIds"] = [source_id]
+    points, vertical_curves = [], []
+    stations = set()
+    for index, (station, elevation) in enumerate(pvis):
+        points.append({"sourceId": f"{source_id}:pvi:{index + 1}", "station": station, "elevation": elevation})
+        stations.add(station)
+        curve = curves.get(index)
+        if curve is None:
+            continue
+        g1 = (elevation - pvis[index - 1][1]) / (station - pvis[index - 1][0])
+        g2 = (pvis[index + 1][1] - elevation) / (pvis[index + 1][0] - station)
+        record = {
+            "sourceId": f"{source_id}:curve:{len(vertical_curves) + 1}", "kind": curve["kind"],
+            "station": station, "elevation": elevation,
+            "length": None, "lengthIn": None, "lengthOut": None, "radius": None,
+        }
+        if curve["kind"] == "parabolic":
+            record["length"] = curve["length"]
+            ends = (station - curve["length"] / 2, station + curve["length"] / 2)
+        elif curve["kind"] == "unsymmetrical_parabolic":
+            record["lengthIn"], record["lengthOut"] = curve["lengthIn"], curve["lengthOut"]
+            ends = (station - curve["lengthIn"], station + curve["lengthOut"])
+        else:
+            tangent, horizontal = circular_geometry(g1, g2, curve["radius"])
+            # LandXML's CircCurve length, read as the HORIZONTAL length (§12.4).
+            record["radius"], record["length"] = curve["radius"], round(horizontal, 6)
+            ends = (station - tangent * math.cos(math.atan(g1)), station + tangent * math.cos(math.atan(g2)))
+        vertical_curves.append(record)
+        for q in range(5):
+            stations.add(ends[0] + (ends[1] - ends[0]) * q / 4)
+    profile = {
+        "sourceId": source_id, "parentAlignmentSourceId": alignment["sourceId"], "ordinal": 1, "name": name,
+        "kind": "design", "pvis": points, "verticalCurves": vertical_curves, "gradeLines": [],
+    }
+    heights = [[round(s, 9), profile_height(pvis, curves, s)] for s in sorted(stations)]
+    return profile, {"staStart": alignment["staStart"], "heights": heights}
+
+
 def main():
     left, left_b = build(
         "A-Left", "landxml:alignment:1", (157800.0, 6406900.0), 30.0,
@@ -135,11 +235,26 @@ def main():
         ],
         250.0,
     )
+    # A-Left: a CREST parabola, a bare grade break, then a SAG circular arc.
+    left_profile, left_v = build_profile(
+        left, "P-Left",
+        [(1000.0, 20.0), (1150.0, 23.0), (1300.0, 21.5), (1420.0, 18.9), (1530.0, 20.0)],
+        {1: {"kind": "parabolic", "length": 80.0}, 3: {"kind": "circular", "radius": 2000.0}},
+    )
+    # A-Right: a SAG parabola, then an UNSYMMETRICAL crest (unequal legs).
+    right_profile, right_v = build_profile(
+        right, "P-Right",
+        [(0.0, 50.0), (120.0, 47.0), (260.0, 49.8), (415.0, 46.7)],
+        {1: {"kind": "parabolic", "length": 100.0}, 2: {"kind": "unsymmetrical_parabolic", "lengthIn": 40.0, "lengthOut": 70.0}},
+    )
+    # A-Compound stays horizontal-only: one file carries both kinds (§12.1).
     fixture = {
         "synthetic": True,
         "generator": "tools/ifcopenshell_reference/make_alignment_fixture.py",
         "alignments": [left, right, compound],
+        "profiles": [left_profile, right_profile],
         "authored": {"A-Left": left_b, "A-Right": right_b, "A-Compound": compound_b},
+        "authoredVertical": {"A-Left": left_v, "A-Right": right_v},
     }
     out = os.path.join(os.path.dirname(__file__), "alignment_fixture.json")
     with open(out, "w", encoding="utf-8") as handle:

@@ -77,6 +77,7 @@ on:
       - "packages/wasm/**"
       - "packages/wasm-lifecycle/**"
       - "tools/ifcopenshell_reference/check_alignment.py"
+      - "tools/ifcopenshell_reference/check_vertical.py"
       - "tools/ifcopenshell_reference/alignment_fixture.json"
       - "tools/ifcopenshell_reference/make_alignment_fixture.py"
       - "tools/ifcopenshell_reference/validate_export.py"

@@ -7,7 +7,7 @@
  */
 
 import { useCallback } from 'react';
-import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
+import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
@@ -31,6 +31,8 @@ export function ElementsTab() {
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
+  const hoverHighlightEnabled = useViewerStore((state) => state.hoverHighlightEnabled);
+  const toggleHoverHighlight = useViewerStore((state) => state.toggleHoverHighlight);
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
   const setSearchModalOpen = useViewerStore((state) => state.setSearchModalOpen);
   const setSearchModalTab = useViewerStore((state) => state.setSearchModalTab);
@@ -102,6 +104,13 @@ export function ElementsTab() {
           tooltip={t('ribbon.elements.hoverTipsTooltip')}
           active={hoverTooltipsEnabled}
           onClick={() => toggleHoverTooltips()}
+        />
+        <RibbonLargeButton
+          icon={Select}
+          label={t('ribbon.elements.hoverHighlight')}
+          tooltip={t('ribbon.elements.hoverHighlightTooltip')}
+          active={hoverHighlightEnabled}
+          onClick={() => toggleHoverHighlight()}
         />
       </RibbonGroup>
 

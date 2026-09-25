@@ -52,6 +52,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
+  BULK_WRITABLE_ATTRIBUTES,
   BulkQueryEngine,
   MutablePropertyView,
   type SelectionCriteria,
@@ -64,7 +65,7 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
+import { FILTER_OPERATORS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -484,7 +485,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     } else if (actionType === 'DELETE_PROPERTY') {
       action = { type: 'DELETE_PROPERTY', psetName: targetPset, propName: targetProp };
     } else {
-      action = { type: 'SET_ATTRIBUTE', attribute: targetProp as 'name' | 'description' | 'objectType', value: targetValue };
+      action = { type: 'SET_ATTRIBUTE', attribute: targetProp, value: targetValue };
     }
     return { ok: true, action };
   }, [actionType, targetPset, targetProp, targetValue, valueType, t]);
@@ -903,9 +904,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                       <SelectValue placeholder={t('bulkPropertyEditor.selectAttribute')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="name">{IFC_ATTRIBUTE_LABELS.name}</SelectItem>
-                      <SelectItem value="description">{IFC_ATTRIBUTE_LABELS.description}</SelectItem>
-                      <SelectItem value="objectType">{IFC_ATTRIBUTE_LABELS.objectType}</SelectItem>
+                      {/* Exact EXPRESS names, never translated or aliased; the engine's own list (#5867). */}
+                      {BULK_WRITABLE_ATTRIBUTES.map((attribute) => (
+                        <SelectItem key={attribute} value={attribute}>{attribute}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 ) : (

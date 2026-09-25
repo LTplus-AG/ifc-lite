@@ -13,6 +13,7 @@ import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 import { compileGuardedRegex } from '@ifc-lite/regex-guard';
 import { effectiveBulkCandidates, effectiveRootAttribute } from './bulk-query-candidates.js';
+import { applyBulkAttribute } from './bulk-attribute-action.js';
 
 /**
  * Filter operators for property values
@@ -82,7 +83,12 @@ export type BulkAction =
     }
   | {
       type: 'SET_ATTRIBUTE';
-      attribute: 'name' | 'description' | 'objectType';
+      /**
+       * Exact EXPRESS attribute name, one of `BULK_WRITABLE_ATTRIBUTES`
+       * (`Name`, `Description`, `ObjectType`, `Tag`). An entity whose class
+       * does not declare it fails the run instead of being skipped.
+       */
+      attribute: string;
       value: string;
     }
   | {
@@ -328,9 +334,7 @@ export class BulkQueryEngine {
         );
 
       case 'SET_ATTRIBUTE':
-        // Attribute mutations would need to be implemented
-        // For now, we'll skip these
-        return null;
+        return applyBulkAttribute(this.entities, this.mutationView, entityId, action.attribute, action.value);
 
       case 'SET_ENTITY_TYPE':
         return this.mutationView.setEntityType(

@@ -42,13 +42,6 @@ export const FILTER_OPERATORS: { value: FilterOperator; labelKey: TranslationKey
   { value: 'IS_NOT_NULL', labelKey: 'bulkPropertyEditor.operator.isNotNull' },
 ];
 
-/** Exact IFC EXPRESS attribute names; intentionally not translated or aliased. */
-export const IFC_ATTRIBUTE_LABELS = {
-  name: 'Name',
-  description: 'Description',
-  objectType: 'ObjectType',
-} as const;
-
 const PLURAL_SUFFIX = {
   zero: 'Zero',
   one: 'One',

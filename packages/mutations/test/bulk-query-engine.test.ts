@@ -608,3 +608,66 @@ describe('BulkQueryEngine selects the effective model (#5249)', () => {
     expect(engine.select({ globalIds: ['guid-new'] })).toEqual([]);
   });
 });
+
+/**
+ * #5867: SET_ATTRIBUTE returned null for every entity, so a run reported
+ * `success: true` with nothing written. It now writes the EXPRESS attribute
+ * through the view, and an attribute the class does not declare fails.
+ */
+describe('BulkQueryEngine SET_ATTRIBUTE (#5867)', () => {
+  function makeEngine(classes: Record<number, string>) {
+    const ids = Object.keys(classes).map(Number);
+    const entities = { ...makeEntities(ids.length), getTypeName: (id: number) => classes[id] ?? 'Unknown' };
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    return { engine: new BulkQueryEngine(entities, view, null, null, null), view };
+  }
+  const attr = (view: MutablePropertyView, id: number, name: string) =>
+    view.getAttributeMutationsForEntity(id).find((a) => a.name === name)?.value;
+
+  it('writes Name on every selected wall and reports each entity', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcWall' });
+    const result = engine.execute({ select: { expressIds: [1, 2] }, action: { type: 'SET_ATTRIBUTE', attribute: 'Name', value: 'X' } });
+
+    expect(result.success).toBe(true);
+    expect(result.affectedEntityCount).toBe(2);
+    expect(attr(view, 1, 'Name')).toBe('X');
+    expect(attr(view, 2, 'Name')).toBe('X');
+    expect(result.mutations.map((m) => [m.type, m.attributeName, m.newValue])).toEqual([
+      ['UPDATE_ATTRIBUTE', 'Name', 'X'],
+      ['UPDATE_ATTRIBUTE', 'Name', 'X'],
+    ]);
+  });
+
+  it('records the overlay value it replaces, so undo can restore an earlier edit', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall' });
+    view.setAttribute(1, 'ObjectType', 'EARLIER');
+    const [mutation] = engine.execute({ select: { expressIds: [1] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'LATER' } }).mutations;
+    expect(mutation.oldValue).toBe('EARLIER');
+    expect(attr(view, 1, 'ObjectType')).toBe('LATER');
+  });
+
+  it('fails, not skips, an entity whose class lacks the attribute', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall', 2: 'IfcWallType' });
+    const result = engine.execute({ select: { expressIds: [1, 2] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'X' } });
+
+    expect(result.success).toBe(false);
+    expect(result.affectedEntityCount).toBe(1);
+    expect(result.errors).toEqual(['Entity 2: IfcWallType has no ObjectType attribute']);
+    expect(attr(view, 2, 'ObjectType')).toBeUndefined();
+  });
+
+  it('refuses a name that is not a writable EXPRESS attribute (no lower-case aliases)', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall' });
+    const result = engine.execute({ select: { expressIds: [1] }, action: { type: 'SET_ATTRIBUTE', attribute: 'name', value: 'X' } });
+    expect(result.success).toBe(false);
+    expect(view.getAttributeMutationsForEntity(1)).toEqual([]);
+  });
+
+  it('judges a retyped entity by its new class', () => {
+    const { engine, view } = makeEngine({ 1: 'IfcWall' });
+    view.setEntityType(1, 'IfcWallType');
+    const result = engine.execute({ select: { expressIds: [1] }, action: { type: 'SET_ATTRIBUTE', attribute: 'ObjectType', value: 'X' } });
+    expect(result.errors).toEqual(['Entity 1: IfcWallType has no ObjectType attribute']);
+  });
+});

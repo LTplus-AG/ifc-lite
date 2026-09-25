@@ -34,6 +34,9 @@ use super::{MergedModel, MergedOptions};
 #[path = "empty_claims.rs"]
 mod claims;
 use claims::StructureClaims;
+#[path = "empty_guids.rs"]
+mod guids;
+use guids::{GuidModel, PlannerGuids};
 
 /// Spatial container types that are dropped when they end up empty: every
 /// instantiable `IfcSpatialStructureElement`, including the IFC4X3 facilities
@@ -67,9 +70,13 @@ struct DropCtx<'a> {
     merge_sites: ContainerMergeStrategy,
     merge_buildings: ContainerMergeStrategy,
     merge_storeys: StoreyMergeStrategy,
-    /// Per model: whether it unifies into the first model (same verdict the emit
-    /// loop uses, from `units::resolve_model_modes`).
-    compatible: &'a [bool],
+    /// Per model: its unit verdict (same one the emit loop uses, from
+    /// `units::resolve_model_modes`).
+    modes: &'a [ModelUnitMode],
+    /// The unit every compatible model is recorded in.
+    primary_scale: f64,
+    /// The output schema, to tell which models are exported across schemas.
+    schema: &'a str,
 }
 
 /// Which containers the emit loop must not write.
@@ -107,17 +114,20 @@ pub(super) fn plan_drops(
     opts: &MergedOptions,
     spatial_lookup: &SpatialLookup,
     modes: &[ModelUnitMode],
+    primary_scale: f64,
+    schema: &str,
 ) -> Option<DropPlan> {
     if !opts.drop_empty_containers {
         return None;
     }
-    let compatible: Vec<bool> = modes.iter().map(|m| m.compatible).collect();
     Some(plan_container_drops(models, &DropCtx {
         spatial_lookup,
         merge_sites: opts.merge_sites,
         merge_buildings: opts.merge_buildings,
         merge_storeys: opts.merge_storeys,
-        compatible: &compatible,
+        modes,
+        primary_scale,
+        schema,
     }))
 }
 
@@ -131,6 +141,7 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
     let mut per_model_containers: Vec<Vec<(u32, Node)>> = Vec::with_capacity(models.len());
     let mut offset: u32 = 0;
     let mut claims = StructureClaims::default();
+    let mut guids = PlannerGuids::new(ctx.primary_scale);
 
     for (i, model) in models.iter().enumerate() {
         let index = ModelIndex::build(model.content);
@@ -146,7 +157,8 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
         // Same rule, one home (`plan::next_offset`), so the two cannot disagree.
         let Some(next) = next_offset(offset, &included) else { break };
         let base = std::mem::replace(&mut offset, next);
-        let compatible = ctx.compatible.get(i).copied().unwrap_or(false);
+        let mode = ctx.modes.get(i);
+        let compatible = mode.is_some_and(|m| m.compatible);
         let mut remap: HashMap<u32, u32> = HashMap::new();
         if i > 0 && compatible {
             let mut skip: HashSet<u32> = HashSet::new();
@@ -164,7 +176,13 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
 
         let canon = canonical_containers(&index, &included, &remap, compatible, i, &mut guid_node);
         graph.nodes.extend(canon.values().copied());
-        let withheld = claims.withheld(&index, &included, &remap, base, i > 0 && compatible);
+        // GlobalId unification the emit loop is sure to repeat (#5937).
+        let converting = crate::schema_convert::needs_conversion(&crate::schema_detect::detect_schema(model.content), ctx.schema);
+        let scale = mode.map_or(1.0, |m| m.scale);
+        let guid_model = GuidModel { index: &index, included: &included, remap: &remap, first: i == 0, compatible, base, scale, converting };
+        let mut resolved = guids.plan(&guid_model);
+        resolved.extend(remap.iter().map(|(&k, &v)| (k, v)));
+        let withheld = claims.withheld(&index, &included, &resolved, base, i > 0 && compatible);
         record_edges(&index, &included, &canon, &withheld, &mut graph);
         record_blocks(&index, &included, &canon, &mut graph);
         per_model_containers.push(canon.into_iter().collect());

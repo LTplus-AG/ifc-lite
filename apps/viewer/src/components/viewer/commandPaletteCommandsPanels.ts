@@ -134,7 +134,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   );
 
   // ── Export ── (built from the toolbar registry, #5601)
-  c.push(...buildExportCommands(p.runExport));
+  c.push(...buildExportCommands(p.runExport, p.extensionExporters));
 
   // ── Automation (scripts — last, power-user feature) ──
   for (const t of SCRIPT_TEMPLATES) {

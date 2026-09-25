@@ -8,7 +8,7 @@
  * larger oracle in `FlavorListView.i18n.test.tsx`): `ExtensionsPanel`,
  * `FlavorDialog`, `FlavorMergeDialog`, `FlavorImportPreview`,
  * `FlavorIndicator`, `HelpHint`, `BundlePreview`, `ExtensionDockHost`,
- * `ExtensionExportSlot`, `ExtensionToolbarSlot`.
+ * the export menu's extension rows, `ExtensionToolbarSlot`.
  *
  * Same oracle shape as `FlavorListView.i18n.test.tsx`: `extensionsFlavorsEn`
  * is registered under its own locale id (not literal `'en'` — it isn't
@@ -46,7 +46,8 @@ import { FlavorIndicator } from './FlavorIndicator.js';
 import { HelpHint } from './HelpHint.js';
 import { BundlePreview } from './BundlePreview.js';
 import { ExtensionDockHost } from './ExtensionDockHost.js';
-import { ExtensionExportSlot } from './ExtensionExportSlot.js';
+import { ClassicExportMenuItems } from '@/components/viewer/toolbar/ClassicExportMenuItems';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExtensionToolbarSlot } from './ExtensionToolbarSlot.js';
 import { flavorSwitchPartial } from './flavor-dialog-feedback.js';
 
@@ -869,8 +870,8 @@ describe('ExtensionDockHost localization (#4918)', () => {
   });
 });
 
-describe('ExtensionExportSlot localization (#4918)', () => {
-  it('translates the "From extensions" section label', () => {
+describe('extension exporter rows localization (#4918, #5838)', () => {
+  it('translates the "From extensions" group label in the export menu', () => {
     const host = new StubHost();
     host.slotRegistry.register('ext.a', [
       {
@@ -881,11 +882,14 @@ describe('ExtensionExportSlot localization (#4918)', () => {
     ]);
     render(
       <ExtensionHostContext.Provider value={host}>
-        <ExtensionExportSlot baseName="model" />
+        <DropdownMenu open modal={false}>
+          <DropdownMenuTrigger>Export</DropdownMenuTrigger>
+          <DropdownMenuContent><ClassicExportMenuItems /></DropdownMenuContent>
+        </DropdownMenu>
       </ExtensionHostContext.Provider>,
     );
 
-    assertAllTranslate([{ key: 'extensionsFlavors.extensionExportSlot.fromExtensionsLabel' }]);
+    assertAllTranslate([{ key: 'exportCommands.extension.groupLabel' }]);
   });
 });
 

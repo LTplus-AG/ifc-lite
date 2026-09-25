@@ -65,6 +65,15 @@ export const sharedCommandsEn = {
   'exportCommands.pdf.menuLabel': 'Export PDF (to-scale 3D view)',
   'exportCommands.pdf.tooltip': 'Export PDF (to-scale 3D view)',
 
+  'exportCommands.modifiedIfc.label': 'Modified IFC',
+  'exportCommands.modifiedIfc.menuLabel': 'Export modified IFC…',
+  'exportCommands.modifiedIfc.tooltip': 'Export every model with unexported edits, edits applied',
+
+  // Extension-contributed exporters: the row text is the exporter's own name.
+  'exportCommands.extension.groupLabel': 'From extensions',
+  'exportCommands.extension.exportedToast': 'Exported with {name}',
+  'exportCommands.extension.failedToast': '"{name}" failed: {error}',
+
   'cameraCommands.group.camera': 'Camera',
   'cameraCommands.group.preset': 'Preset views',
   'cameraCommands.group.rotate': 'Rotate',

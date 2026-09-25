@@ -167,6 +167,9 @@ const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
   'exportCommands.csv.item.properties',
   'exportCommands.csv.item.quantities',
   'exportCommands.csv.item.spatial',
+  // Only rendered once an extension exporter is installed; translated in
+  // `extensions-flavors-chrome.i18n.test.tsx` with one registered (#5838).
+  'exportCommands.extension.groupLabel',
 ];
 
 function renderAllSurfaces(): HTMLElement {

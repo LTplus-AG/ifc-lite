@@ -132,7 +132,9 @@ fn not_a_request_cache_key(value: &str) -> ApiError {
 /// is the whole model, so the read, decode and re-encode hold a parse
 /// admission slot, reserved exactly as the parse route reserves one, and run
 /// on the blocking pool (#4696, #5750): without the slot, concurrent GETs of
-/// a large model were an unbounded number of whole-model working sets. A miss
+/// a large model were an unbounded number of whole-model working sets. The
+/// slot travels with the blocking decode, not with this handler, so a client
+/// that hangs up mid-decode does not free it while the decode runs on. A miss
 /// is answered from the index before any slot is taken, so a key nobody wrote
 /// costs one metadata lookup, like the hash-only probes (#3901).
 pub async fn get_cached(
@@ -161,14 +163,21 @@ pub async fn get_cached(
         }
     };
 
-    let encoded = tokio::task::spawn_blocking(move || {
-        let mut response = serde_json::from_slice::<SymbolicParseResponse>(&bytes)?;
-        response.mark_from_cache();
-        serde_json::to_vec(&response)
+    // The guard moves INTO the blocking task and comes back with the result,
+    // as in `parse_full`: if a disconnect or the TimeoutLayer cancels this
+    // handler future, the detached decode keeps running and keeps its slot
+    // until it actually exits, so a replacement is not admitted on top of it.
+    let gate_key = response_key.clone();
+    let (encoded, _admission) = tokio::task::spawn_blocking(move || {
+        decode_gate(&gate_key);
+        let encoded = serde_json::from_slice::<SymbolicParseResponse>(&bytes).and_then(|mut response| {
+            response.mark_from_cache();
+            serde_json::to_vec(&response)
+        });
+        (encoded, admission_guard)
     })
     .await
     .map_err(|e| ApiError::Internal(e.to_string()))?;
-    drop(admission_guard);
 
     match encoded {
         Ok(body) => {
@@ -181,6 +190,16 @@ pub async fn get_cached(
         }
     }
 }
+
+/// Test seam: lets a test hold one entry's decode open to observe what the
+/// handler does while it runs. Compiled out of every non-test build.
+#[cfg(test)]
+fn decode_gate(response_key: &str) {
+    cache_get_tests::hold_decode_if_gated(response_key);
+}
+
+#[cfg(not(test))]
+fn decode_gate(_response_key: &str) {}
 
 /// Response body for `DELETE /api/v1/cache/:key`.
 #[derive(Debug, Serialize, PartialEq, Eq)]

@@ -158,6 +158,13 @@ async fn issue_5542_get_cached_serves_the_cache_key_the_json_parse_returned() {
 /// `POST /api/v1/parse` for `MINIMAL_IFC`, then poll `GET` until its cache
 /// write lands. Returns the parsed response's `cache_key`.
 async fn parse_and_wait_for_cache(state: &AppState) -> String {
+    parse_and_wait_for_cache_of(state, MINIMAL_IFC).await
+}
+
+/// [`parse_and_wait_for_cache`] for chosen file bytes. A test that keys
+/// anything process-global by the cache key (the decode gates below) needs
+/// bytes no other test parses, or the tests running beside it share its key.
+async fn parse_and_wait_for_cache_of(state: &AppState, ifc: &str) -> String {
     let mut multipart = Vec::new();
     multipart.extend_from_slice(
         format!(
@@ -165,7 +172,7 @@ async fn parse_and_wait_for_cache(state: &AppState) -> String {
         )
         .as_bytes(),
     );
-    multipart.extend_from_slice(MINIMAL_IFC.as_bytes());
+    multipart.extend_from_slice(ifc.as_bytes());
     multipart.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
     let request = Request::builder()
         .method("POST")
@@ -268,4 +275,126 @@ async fn issue_5750_cache_get_takes_a_parse_admission_slot() {
 
     drop(held);
     assert_eq!(get_cache(&state, &cache_key).await.status(), StatusCode::OK);
+}
+
+/// One gated decode: `entered` flips when the decode reaches the gate,
+/// `open` releases it.
+#[derive(Default)]
+struct DecodeGate {
+    state: std::sync::Mutex<(bool, bool)>, // (entered, open)
+    changed: std::sync::Condvar,
+}
+
+impl DecodeGate {
+    fn open(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.1 = true;
+        self.changed.notify_all();
+    }
+}
+
+/// Opens and uninstalls a gate when dropped, so a failing assertion cannot
+/// leave a blocking decode parked (the runtime would wait on it at shutdown
+/// and the test would hang instead of failing).
+struct OpenOnDrop(String, Arc<DecodeGate>);
+
+impl Drop for OpenOnDrop {
+    fn drop(&mut self) {
+        self.1.open();
+        if let Ok(mut gates) = DECODE_GATES.lock() {
+            gates.retain(|(key, _)| key != &self.0);
+        }
+    }
+}
+
+/// Gates installed by tests, keyed by the storage key whose decode they hold.
+/// Keyed so that concurrently running tests never block each other's decodes.
+static DECODE_GATES: std::sync::Mutex<Vec<(String, Arc<DecodeGate>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Called by `get_cached`'s blocking decode (test builds only): parks until
+/// the test opens the gate installed for `response_key`, if there is one.
+pub(super) fn hold_decode_if_gated(response_key: &str) {
+    let gate = DECODE_GATES
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|(key, _)| key == response_key)
+        .map(|(_, gate)| Arc::clone(gate));
+    let Some(gate) = gate else { return };
+    let mut state = gate.state.lock().unwrap();
+    state.0 = true;
+    gate.changed.notify_all();
+    while !state.1 {
+        state = gate.changed.wait(state).unwrap();
+    }
+}
+
+/// Review of #5791: the admission slot must travel with the blocking decode,
+/// not with the handler future. A client that disconnects (or the request
+/// timeout) drops the handler mid-decode; if the slot dropped with it, the
+/// decode would run on unbounded while a fresh request took its slot. So:
+/// hold one decode open, drop the request future that started it, and the
+/// only slot must still be taken until the decode itself ends.
+#[tokio::test]
+async fn issue_5750_the_admission_slot_outlives_a_dropped_cache_get() {
+    let mut state = test_state("5750-slot-outlives-handler").await;
+    // Bytes no other test parses: the gate is keyed by the storage key, and a
+    // shared fixture would let a concurrent test's decode park here and
+    // report `entered` before this test's own request took its slot.
+    let own_fixture = MINIMAL_IFC.replace("issue-5542 cache-get fixture", "issue-5750 slot-outlives-handler fixture");
+    assert_ne!(own_fixture, MINIMAL_IFC);
+    let cache_key = parse_and_wait_for_cache_of(&state, &own_fixture).await;
+    state.admission = Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {
+        max_concurrent_parses: 1,
+        mem_budget_bytes: 0,
+        queue_depth: 0,
+        queue_timeout: std::time::Duration::from_millis(50),
+        shed_pct: 85,
+    }));
+
+    let response_key = crate::routes::parse::cache_keys::json_response_cache_key(&cache_key);
+    let gate = Arc::new(DecodeGate::default());
+    DECODE_GATES.lock().unwrap().push((response_key.clone(), Arc::clone(&gate)));
+    let gate_guard = OpenOnDrop(response_key.clone(), Arc::clone(&gate));
+
+    let request = {
+        let state = state.clone();
+        let cache_key = cache_key.clone();
+        tokio::spawn(async move { get_cache(&state, &cache_key).await })
+    };
+    // Wait (bounded) for the decode to reach the gate, i.e. with the slot taken.
+    let entered = tokio::task::spawn_blocking({
+        let gate = Arc::clone(&gate);
+        move || {
+            let state = gate.state.lock().unwrap();
+            let (state, timeout) = gate
+                .changed
+                .wait_timeout_while(state, std::time::Duration::from_secs(10), |s| !s.0)
+                .unwrap();
+            state.0 && !timeout.timed_out()
+        }
+    })
+    .await
+    .unwrap();
+    assert!(entered, "the cache GET never reached its decode");
+
+    // The client hangs up: the handler future is dropped mid-decode.
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+
+    let still_held = state.admission.acquire(0).await.is_err();
+    // Once the decode itself ends, the slot comes back. Opened before the
+    // assertion so a failure reports rather than hangs.
+    drop(gate_guard);
+    assert!(still_held, "the slot was released with the dropped handler while its decode still runs");
+    let mut freed = false;
+    for _ in 0..200 {
+        if let Ok(guard) = state.admission.acquire(0).await {
+            drop(guard);
+            freed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(freed, "the slot never came back after the decode finished");
 }

@@ -80,6 +80,10 @@ async fn check_cache_returns_404_when_uncached() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
     assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
 }
 
 /// HIT: a parquet entry exists under the exact key the writer would have used

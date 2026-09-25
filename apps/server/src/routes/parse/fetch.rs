@@ -194,9 +194,12 @@ pub async fn check_cache(
                 geometry_cached = cached.is_some(),
                 "Cache check MISS"
             );
-            Err(ApiError::NotFound(format!(
-                "Nothing cached for hash {hash} under this opening_filter / tessellation_quality / parquet_layout"
-            )))
+            // The hash is caller-supplied and unvalidated here, so it is not
+            // echoed back (as `not_a_file_digest` does not echo it either).
+            Err(ApiError::NotFound(
+                "Nothing cached for this hash under this opening_filter / tessellation_quality / parquet_layout"
+                    .to_owned(),
+            ))
         }
     }
 }

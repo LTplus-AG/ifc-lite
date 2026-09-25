@@ -25,6 +25,7 @@ interface Toast {
   count: number;
   /** Increases every time a toast is shown or merged into; orders by recency. */
   seq: number;
+  action?: { label: string; onClick: () => void };
 }
 
 type Listener = () => void;
@@ -53,7 +54,7 @@ function clearTimer(id: number) {
  * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
  * an error stays until dismissed, so newer successes must not push it off.
  */
-function addToast(type: Toast['type'], message: string, durationMs: number | null) {
+function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action']) {
   const existing = toasts.find((t) => t.type === type && t.message === message);
   const id = existing?.id ?? nextId++;
   const others = toasts.filter((t) => t.id !== id);
@@ -63,7 +64,7 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   const evicted = new Set(evictOrder.slice(0, excess).map((t) => t.id));
   for (const evictedId of evicted) clearTimer(evictedId);
   const kept = others.filter((t) => !evicted.has(t.id));
-  toasts = [...kept, { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++ }];
+  toasts = [...kept, { id, type, message, count: (existing?.count ?? 0) + 1, seq: nextSeq++, action }];
   clearTimer(id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
@@ -77,7 +78,7 @@ function dismiss(id: number) {
 
 /** Imperative toast API. Errors stay until the user dismisses them. */
 export const toast = {
-  success: (message: string) => addToast('success', message, 3000),
+  success: (message: string, action?: Toast['action']) => addToast('success', message, action ? null : 3000, action),
   error: (message: string) => addToast('error', message, null),
   info: (message: string) => addToast('info', message, 3000),
 };
@@ -112,12 +113,28 @@ const colorMap = {
   info: 'border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200',
 };
 
+export interface ToasterProps {
+  /**
+   * `fixed` (default) pins the stack to the browser viewport — the app
+   * shell's own mount (`App.tsx`, and the `/mcp` routes, which have no
+   * viewport panel to anchor to). `absolute` anchors it to the nearest
+   * positioned ancestor instead: the main viewer mounts one inside
+   * `ViewportContainer`'s own `relative` root (#5504, charter #5478 item
+   * 22) so toasts sit at the viewport's bottom-right, above the status bar,
+   * rather than the whole window's.
+   */
+  variant?: 'fixed' | 'absolute';
+}
+
 /**
- * Mount this once at the app root (e.g. in App.tsx). Both live regions stay
+ * Mount once per anchor (app root by default, or a `relative` viewport
+ * container — see {@link ToasterProps.variant}). Both live regions stay
  * mounted while empty so the first toast is announced; errors go to the
  * assertive `alert` region. Each region shows its newest toast on top.
+ * Mount only ONE live instance at a time: every `Toaster` reads the same
+ * module-level store, so two mounted together would render every toast twice.
  */
-export function Toaster() {
+export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
   const items = useToasts();
   const { t } = useTranslation();
 
@@ -142,6 +159,17 @@ export function Toaster() {
             ×{item.count}
           </span>
         )}
+        {item.action && (
+          <button
+            onClick={() => {
+              item.action?.onClick();
+              handleDismiss(item.id);
+            }}
+            className="shrink-0 rounded-sm px-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/10 dark:hover:bg-white/10"
+          >
+            {item.action.label}
+          </button>
+        )}
         <button
           onClick={() => handleDismiss(item.id)}
           aria-label={t('viewerShell.toast.dismiss')}
@@ -154,10 +182,17 @@ export function Toaster() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col pointer-events-none max-w-sm">
+    <div
+      className={cn(
+        'bottom-4 right-4 z-(--z-toast) flex flex-col pointer-events-none max-w-sm',
+        variant === 'absolute' ? 'absolute' : 'fixed',
+      )}
+    >
       <div role="alert" aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
         {items.filter((item) => item.type === 'error').map(renderItem)}
       </div>
+      {/* A toast row contains block elements, which cannot be children of output. */}
+      {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
       <div role="status" aria-live="polite" className="flex flex-col-reverse gap-2">
         {items.filter((item) => item.type !== 'error').map(renderItem)}
       </div>

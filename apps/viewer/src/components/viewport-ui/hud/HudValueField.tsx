@@ -22,6 +22,20 @@ export interface HudValueFieldProps {
   precision?: number;
   /** Pixels of horizontal pointer movement per `step` while dragging. */
   scrubSensitivity?: number;
+  /**
+   * Values a pointer scrub snaps onto when it lands within `snapTolerance`
+   * of one — the Section bar's storey elevations (#5499). Only a scrub
+   * snaps: a typed value and an arrow-key step are the precise paths, and a
+   * step that snapped back into the catchment it just left would never
+   * escape it.
+   */
+  snaps?: readonly number[];
+  /** Half-width of each snap's catchment, in value units. */
+  snapTolerance?: number;
+  /** Fires once when a pointer scrub starts moving (not on a plain click). */
+  onScrubStart?: () => void;
+  /** Fires when a scrub that fired `onScrubStart` ends or is cancelled. */
+  onScrubEnd?: () => void;
   /** Accessible name — required, caller-supplied and translated. */
   'aria-label': string;
   className?: string;
@@ -50,16 +64,35 @@ export function HudValueField({
   max = Infinity,
   precision = 2,
   scrubSensitivity = DEFAULT_SCRUB_SENSITIVITY,
+  snaps,
+  snapTolerance = 0,
+  onScrubStart,
+  onScrubEnd,
   className,
   ...aria
 }: HudValueFieldProps) {
   const [editing, setEditing] = useState(false);
+  // What `toFixed` would print as "-0.00" (a face-picked plane a hair below
+  // its face, #5480's inset) is zero to the user.
+  const shown = Math.abs(value) < 0.5 * 10 ** -precision ? 0 : value;
   const [draft, setDraft] = useState('');
   const dragRef = useRef<{ pointerId: number; startX: number; startValue: number; moved: boolean } | null>(
     null,
   );
 
   const clamp = (next: number): number => Math.min(max, Math.max(min, next));
+  // Nearest snap wins when several catchments overlap; outside every
+  // catchment the value passes through untouched.
+  const snap = (next: number): number => {
+    if (!snaps || snaps.length === 0 || snapTolerance <= 0) return next;
+    let best = next;
+    let bestDist = snapTolerance;
+    for (const s of snaps) {
+      const d = Math.abs(s - next);
+      if (d <= bestDist) { best = s; bestDist = d; }
+    }
+    return best;
+  };
 
   function startEdit(): void {
     setDraft(value.toFixed(precision));
@@ -82,9 +115,12 @@ export function HudValueField({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = e.clientX - drag.startX;
-    if (Math.abs(dx) > CLICK_SLOP_PX) drag.moved = true;
+    if (Math.abs(dx) > CLICK_SLOP_PX && !drag.moved) {
+      drag.moved = true;
+      onScrubStart?.();
+    }
     const steps = Math.trunc(dx / scrubSensitivity);
-    const next = clamp(drag.startValue + steps * step);
+    const next = clamp(snap(drag.startValue + steps * step));
     if (next !== value) onChange(next);
   }
 
@@ -97,6 +133,7 @@ export function HudValueField({
     // fall into type-to-set rather than leaving the user no way to open it
     // from a pointer.
     if (!drag.moved) startEdit();
+    else onScrubEnd?.();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>): void {
@@ -150,7 +187,7 @@ export function HudValueField({
       aria-valuenow={value}
       aria-valuemin={Number.isFinite(min) ? min : undefined}
       aria-valuemax={Number.isFinite(max) ? max : undefined}
-      aria-valuetext={`${value.toFixed(precision)}${unit}`}
+      aria-valuetext={`${shown.toFixed(precision)}${unit}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
@@ -161,7 +198,7 @@ export function HudValueField({
         className,
       )}
     >
-      <span>{value.toFixed(precision)}</span>
+      <span>{shown.toFixed(precision)}</span>
       {unit && <span className="text-muted-foreground">{unit}</span>}
     </div>
   );

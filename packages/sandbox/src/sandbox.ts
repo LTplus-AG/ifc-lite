@@ -266,7 +266,7 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants);
+      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
       this.logs = logs;
       this.resetLogs = resetLogs;
       this.hostWork = hostWork;

@@ -8,7 +8,16 @@ import { act } from 'react';
 import { render, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { registerLocale, setLocale } from '@/i18n';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { MergeLayersBanner } from './MergeLayersBanner';
+
+/**
+ * `MergeLayersBanner` portals into `ViewportHud`'s top-center region
+ * (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+ */
+function renderBanner(): HTMLElement {
+  return render(<><ViewportHud /><MergeLayersBanner /></>);
+}
 
 beforeEach(() => {
   act(() => {
@@ -25,7 +34,7 @@ afterEach(() => {
 });
 
 it('renders the English catalogue value by default (#4785)', () => {
-  const container = render(<MergeLayersBanner />);
+  const container = renderBanner();
   const status = container.querySelector('[role="status"]');
   assert.ok(status?.textContent?.includes('Merge Multilayer Walls enabled'));
   assert.ok(status?.textContent?.includes('Reload model to apply the new setting.'));
@@ -40,7 +49,7 @@ it('renders a registered locale value when present, and falls back to English fo
   // that key must still surface in English, not blank.
   registerLocale('de', { 'mergeLayersBanner.titleEnabled': 'Mehrschichtige Wände zusammenführen aktiviert' });
   setLocale('de');
-  const container = render(<MergeLayersBanner />);
+  const container = renderBanner();
   const status = container.querySelector('[role="status"]');
   assert.ok(status?.textContent?.includes('Mehrschichtige Wände zusammenführen aktiviert'));
   // Fallback: English subtitle, not an empty string.

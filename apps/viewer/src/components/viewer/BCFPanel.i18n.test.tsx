@@ -86,6 +86,20 @@ afterEach(() => {
 });
 
 describe('BCFPanel localization (#4918)', () => {
+  it('uses upload for import and download for export (#5822)', () => {
+    assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
+    const container = renderPanel();
+    for (const [titleKey, iconClass] of [
+      ['bcf.panel.importTitle', 'lucide-upload'],
+      ['bcf.panel.exportTitle', 'lucide-download'],
+    ] as const) {
+      const title = CATALOGUE[titleKey] as string;
+      const button = [...container.querySelectorAll('button')].find((item) => item.title === title);
+      assert.ok(button, `expected a button titled ${title}`);
+      assert.ok(button.querySelector(`svg.${iconClass}`), `${title} should show ${iconClass}`);
+    }
+  });
+
   it('renders English header chrome by default', () => {
     assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
     const container = renderPanel();

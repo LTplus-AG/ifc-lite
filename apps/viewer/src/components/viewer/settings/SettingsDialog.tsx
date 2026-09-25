@@ -50,7 +50,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
         >
           <TabsList className="flex h-auto w-40 shrink-0 flex-col items-stretch justify-start gap-1 bg-transparent p-0">
             {SETTINGS_SECTIONS.map((id) => (
-              <TabsTrigger key={id} value={id} className="justify-start data-[state=active]:bg-muted">
+              <TabsTrigger key={id} value={id} className="justify-start data-[state=active]:bg-muted data-[state=active]:font-medium data-[state=active]:text-foreground">
                 {t(SECTIONS[id].label)}
               </TabsTrigger>
             ))}

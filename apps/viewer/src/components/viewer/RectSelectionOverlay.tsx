@@ -7,6 +7,10 @@
  * over the canvas in select mode). Renders an SVG outline whenever
  * `rect` is non-null; the parent supplies / clears the prop in step
  * with the mouse handler.
+ *
+ * Drawn in the one selection accent (`overlay-accent`, #5491), the same token
+ * the renderer tints selected meshes with, so the marquee and what it selects
+ * read as one colour in every theme.
  */
 
 export interface RectSelectionRect {
@@ -38,8 +42,7 @@ export function RectSelectionOverlay({ rect }: RectSelectionOverlayProps) {
         y={top}
         width={width}
         height={height}
-        fill="rgba(20, 184, 166, 0.10)"
-        stroke="rgb(20, 184, 166)"
+        className="fill-overlay-accent-soft stroke-overlay-accent"
         strokeWidth={1}
         strokeDasharray="4 3"
       />

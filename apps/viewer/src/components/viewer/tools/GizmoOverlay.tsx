@@ -38,17 +38,13 @@ import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { getEntityCenter } from '@/utils/viewportUtils';
 import { dragTranslation } from '@/lib/model-placement/drag';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 type Axis = 'x' | 'y' | 'z';
 
-const AXIS_COLORS: Record<Axis, string> = {
-  x: '#ef4444', // red — IFC X
-  y: '#10b981', // green — IFC Y
-  z: '#3b82f6', // blue — IFC Z (up)
-};
 
 /** Renderer-frame unit vector for each IFC axis. */
 const AXIS_RENDERER_OFFSET: Record<Axis, Vec3> = {
@@ -257,7 +253,7 @@ export function GizmoOverlay() {
             markerHeight="6"
             orient="auto"
           >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={AXIS_COLORS[axis]} />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={IFC_AXIS_COLORS[axis]} />
           </marker>
         ))}
       </defs>
@@ -269,7 +265,7 @@ export function GizmoOverlay() {
       {(['x', 'y', 'z'] as const).map((axis) => {
         const tip = axisTips[axis];
         if (!tip) return null;
-        const colour = AXIS_COLORS[axis];
+        const colour = IFC_AXIS_COLORS[axis];
         return (
           <g key={axis} style={{ pointerEvents: 'auto' }}>
             <line
@@ -305,8 +301,7 @@ export function GizmoOverlay() {
         cx={originScreen.x}
         cy={originScreen.y}
         r={4}
-        fill="#fff"
-        stroke="#71717a"
+        className="fill-overlay-halo stroke-overlay-ink-muted"
         strokeWidth={1.5}
         pointerEvents="none"
       />

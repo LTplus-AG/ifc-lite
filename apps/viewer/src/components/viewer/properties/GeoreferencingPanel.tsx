@@ -929,11 +929,11 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         mapConversion={mergedConversion}
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}
-        // Withhold geometry (rather than fall through to an unfiltered,
-        // leaky export) when this panel's model id hasn't resolved and more
-        // than one model is loaded — see `canExportKmz` above.
+        // Withhold geometry (rather than fall through to an unfiltered, leaky export) when this
+        // panel's model id hasn't resolved and more than one model is loaded — see `canExportKmz`.
         geometryResult={canExportKmz ? geometryResult : null}
         instancedModelRange={instancedModelRange}
+        modelName={modelId ? models.get(modelId)?.name : undefined}
         lengthUnitScale={lengthUnitScale}
         editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined}

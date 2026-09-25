@@ -42,7 +42,7 @@ import {
   EMPTY_MODEL_VIEW,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { claimAggregationParents, applyRelAggregateStrip } from './merged-rel-aggregates.js';
+import { DecompositionClaims, claimDecompositionParents, applyRelParentStrip } from './merged-decomposition-parents.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -104,8 +104,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Final ids that already have an IfcRelAggregates parent: primary's, grown per later model (#5471). */
-  aggregatedObjects: Set<number>;
+  /** Final ids that already have a decomposition parent, per output-schema inverse: primary's, grown per later model (#5471, #5726). */
+  parentClaims: DecompositionClaims;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -172,12 +172,12 @@ interface ModelMergePlan {
    *  naming one is narrowed, or withheld with it. */
   droppedContainerIds?: ReadonlySet<number>;
   /**
-   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
-   * local ids of its RelatedObjects members to drop from the written list
-   * because they already have an aggregation parent in the output (#5471,
-   * see `claimAggregationParents`).
+   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES or
+   * IFCRELNESTS → the local ids of its RelatedObjects members to drop from the
+   * written list because they already have that parent in the output (#5471,
+   * #5726, see `claimDecompositionParents`).
    */
-  relAggregateStrip: Map<number, Set<number>>;
+  relParentStrip: Map<number, Set<number>>;
 }
 
 /**
@@ -824,14 +824,14 @@ export class MergedExporter {
     };
   }
 
-  /** One IfcRelAggregates parent per object (#5471): record the members this model writes, stripping ones already parented. */
+  /** One decomposition parent per object and inverse (#5471, #5726): record the members this model writes, stripping ones already parented. */
   private claimParents(model: MergeModelInput, plan: ModelMergePlan, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup): void {
     const hidden = visibility?.hiddenProductIds;
-    claimAggregationParents({
+    claimDecompositionParents({
       ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
       isIncluded: id => visibility === null || visibility.included.has(id),
       isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
-    }, setup.aggregatedObjects, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
+    }, setup.parentClaims, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
   }
 
   /** Fold a model's dropped containers into its plan: the container lines are
@@ -893,7 +893,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      aggregatedObjects: new Set(),
+      parentClaims: new DecompositionClaims(options.schema || 'IFC4'),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1103,7 +1103,7 @@ export class MergedExporter {
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
     const guidRewrite = new Map<number, string>();
-    const relAggregateStrip = new Map<number, Set<number>>();
+    const relParentStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
     const localGuids = new Map<number, string>();
@@ -1160,7 +1160,7 @@ export class MergedExporter {
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relParentStrip };
   }
 
   /**
@@ -1230,11 +1230,11 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES
-    // that already have an aggregation parent in the output (#5471) — see
-    // claimAggregationParents / applyRelAggregateStrip. Runs in LOCAL id
+    // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES or
+    // IFCRELNESTS that already have that parent in the output (#5471, #5726) — see
+    // claimDecompositionParents / applyRelParentStrip. Runs in LOCAL id
     // space, before the remap below. `null` propagates like the passes above.
-    const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    const stripped = applyRelParentStrip(entityText, localId, plan.relParentStrip);
     if (stripped === null) return null;
     entityText = stripped;
 

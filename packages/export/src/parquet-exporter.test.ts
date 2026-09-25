@@ -393,6 +393,29 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
     }
   });
 
+  it('writes ZIP version-needed 2.0 on every DEFLATE entry of the .bos archive (#3612)', async () => {
+    // JSZip hardcoded "version needed to extract" to 1.0 on every entry while
+    // compressing with DEFLATE, which the ZIP APPNOTE (4.4.3) says needs 2.0.
+    // Read the raw headers: JSZip's own reader never checks the field.
+    const bytes = await new ParquetExporter(buildDataStoreWithById()).exportBOS({ includeGeometry: false });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let eocd = bytes.length - 22;
+    while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd--;
+    expect(eocd).toBeGreaterThanOrEqual(0);
+    const count = view.getUint16(eocd + 10, true);
+    expect(count).toBeGreaterThan(1);
+    let p = view.getUint32(eocd + 16, true);
+    for (let i = 0; i < count; i++) {
+      expect(view.getUint32(p, true)).toBe(0x02014b50);
+      const lfh = view.getUint32(p + 42, true);
+      expect(view.getUint16(p + 10, true), 'central directory method').toBe(8);
+      expect(view.getUint16(p + 6, true), 'central directory version needed').toBe(0x0014);
+      expect(view.getUint32(lfh, true)).toBe(0x04034b50);
+      expect(view.getUint16(lfh + 4, true), 'local header version needed').toBe(0x0014);
+      p += 46 + view.getUint16(p + 28, true) + view.getUint16(p + 30, true) + view.getUint16(p + 32, true);
+    }
+  });
+
   it('exports an express id above 2^31 without wrapping it negative', async () => {
     // IFC entity ids are bounded only by the `u32` every reader here uses -
     // `Uint32Array` in the parser's entity index, `u32` in the Rust crates - so

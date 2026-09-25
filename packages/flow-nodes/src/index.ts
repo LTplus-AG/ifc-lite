@@ -14,6 +14,7 @@ import { httpRequestNode } from './http-request-node.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
 import { scriptListNode, scriptNode } from './script-node.js';
+import { speckleReceiveNode } from './speckle-receive-node.js';
 import { tableNodes } from './table-nodes.js';
 import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
@@ -58,6 +59,7 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     httpRequestNode,
     ...bcfNodes,
     ...apsNodes,
+    speckleReceiveNode,
   ]);
 }
 

@@ -357,6 +357,48 @@ graph. The nodes are never memoised, so every run asks the server again.
 }
 ```
 
+### Receiving a Speckle model
+
+`speckle.receive` fetches one Speckle model version and writes its walls,
+floors, flat roofs, columns and beams into a target storey, with the Revit
+parameters as `Speckle_TypeParameters` / `Speckle_InstanceParameters`
+property sets and the source identity as `Speckle_Source`. Its `url` is
+the address you copy from the Speckle web app
+(`https://<server>/projects/<project>/models/<model>`, optionally
+`@<version>`; legacy `/streams/<id>/commits/<id>` and
+`/streams/<id>/objects/<id>` URLs work too). It speaks to Speckle only
+through the same gated request function as `http.request`, so the graph
+must grant the server's host, and a private project's token comes in as a
+secret:
+
+```json
+{
+  "capabilities": ["model.read", "model.create", "network.fetch:app.speckle.systems", "secret.read:SPECKLE_TOKEN"],
+  "nodes": [
+    { "id": "storeys", "type": "model.byType", "params": { "type": "IfcBuildingStorey" } },
+    { "id": "first", "type": "core.first" },
+    {
+      "id": "rx",
+      "type": "speckle.receive",
+      "params": {
+        "url": "https://app.speckle.systems/projects/<project>/models/<model>",
+        "token": "{{secret:SPECKLE_TOKEN}}"
+      }
+    }
+  ],
+  "edges": [
+    { "from": ["storeys", "entities"], "to": ["first", "items"] },
+    { "from": ["first", "item"], "to": ["rx", "storey"] }
+  ]
+}
+```
+
+Everything the mapping cannot reproduce is reported on the `refusals`
+output, by Speckle type, reason and count, and nothing is dropped silently.
+Display meshes are never written: the element body is rebuilt parametrically.
+The mapping table and its limits are in
+[Speckle → IFC mapping](../architecture/speckle-mapping.md).
+
 ### Running a graph in CI, with secrets from GitHub Actions
 
 A workflow can install the CLI, run a graph with a secret passed through

@@ -11,18 +11,33 @@
  */
 const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+const DECODE = (() => {
+  const table = new Int16Array(128).fill(-1);
+  for (let i = 0; i < BASE64_CHARS.length; i += 1) table[BASE64_CHARS.charCodeAt(i)] = i;
+  return table;
+})();
+const PAD = 0x3d; // '='
+
+/**
+ * Encode into one preallocated ASCII buffer and decode it once. Appending
+ * four characters per 3 bytes built hundreds of millions of intermediate
+ * strings for a large download (#5935 review).
+ */
 export function toBase64(bytes: Uint8Array): string {
-  let out = '';
+  const out = new Uint8Array(Math.ceil(bytes.length / 3) * 4);
+  let o = 0;
   for (let i = 0; i < bytes.length; i += 3) {
     const b0 = bytes[i];
-    const b1 = bytes[i + 1];
-    const b2 = bytes[i + 2];
-    out += BASE64_CHARS[b0 >> 2];
-    out += BASE64_CHARS[((b0 & 0x03) << 4) | (b1 === undefined ? 0 : b1 >> 4)];
-    out += b1 === undefined ? '=' : BASE64_CHARS[((b1 & 0x0f) << 2) | (b2 === undefined ? 0 : b2 >> 6)];
-    out += b2 === undefined ? '=' : BASE64_CHARS[b2 & 0x3f];
+    const has1 = i + 1 < bytes.length;
+    const has2 = i + 2 < bytes.length;
+    const b1 = has1 ? bytes[i + 1] : 0;
+    const b2 = has2 ? bytes[i + 2] : 0;
+    out[o++] = BASE64_CHARS.charCodeAt(b0 >> 2);
+    out[o++] = BASE64_CHARS.charCodeAt(((b0 & 0x03) << 4) | (b1 >> 4));
+    out[o++] = has1 ? BASE64_CHARS.charCodeAt(((b1 & 0x0f) << 2) | (b2 >> 6)) : PAD;
+    out[o++] = has2 ? BASE64_CHARS.charCodeAt(b2 & 0x3f) : PAD;
   }
-  return out;
+  return new TextDecoder('ascii').decode(out);
 }
 
 export function fromBase64(text: string): Uint8Array {
@@ -34,7 +49,7 @@ export function fromBase64(text: string): Uint8Array {
   let value = 0;
   let outIdx = 0;
   for (let i = 0; i < len; i += 1) {
-    value = (value << 6) | BASE64_CHARS.indexOf(clean[i]);
+    value = ((value << 6) | DECODE[clean.charCodeAt(i)]) & 0xffffff;
     bits += 6;
     if (bits >= 8) {
       bits -= 8;

@@ -33,11 +33,18 @@ export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry,
     // table, as the CLI and viewer hosts do — without it those strategies fail
     // at run time over MCP only. The mutation view is the one `bim.mutate`
     // writes through, so a join sees what an earlier node in the run wrote.
-    tables: () => ({
-      entities: active.store.entities,
-      mutationView: active.backend.getOrCreateMutationView(),
-      strings: active.store.strings ?? null,
-    }),
+    // It honours `modelId`, as the CLI's does: once `model.openFromSource`
+    // switches the active model mid-run, a join aimed at the earlier model
+    // must get that model's table, not the new one's (#5935 review).
+    tables: (modelId) => {
+      const model = modelId === undefined || modelId === active.id ? active : registry.get(modelId);
+      if (!model) return undefined;
+      return {
+        entities: model.store.entities,
+        mutationView: model.backend.getOrCreateMutationView(),
+        strings: model.store.strings ?? null,
+      };
+    },
     async openModel(bytes, name) {
       const loaded = await loadIfcModelFromBytes(bytes, name, freeModelId(registry, deriveModelId(name)));
       registry.add(loaded);

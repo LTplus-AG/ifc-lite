@@ -551,6 +551,30 @@ model through the `IfcGUID` that Revit's IFC exporter writes:
     { "from": ["tok", "token"], "to": ["props", "token"] },
     { "from": ["props", "table"], "to": ["join", "table"] },
     { "from": ["walls", "entities"], "to": ["join", "entities"] }
+  ]
+}
+```
+
+```bash
+APS_CLIENT_ID=… APS_CLIENT_SECRET=… ifc-lite flow run aps-join.json model.ifc --json
+```
+
+**Getting a URN.** `urn` takes either form:
+
+- The version id of a Docs, ACC or BIM 360 file, such as
+  `urn:adsk.wipprod:fs.file:vf.…?version=N`. The Data Management API returns
+  it (`GET /data/v1/projects/{project}/items/{item}/versions`, the `id` of
+  each version). The node base64url-encodes it for you. An item id
+  (`…:dm.lineage:…`) names no version, so the node refuses it.
+- An already-encoded derivative URN, which the APS Viewer and translation
+  jobs print (the `urn:` prefix the viewer adds is accepted).
+
+The file must already be translated. Opening it once in ACC or Docs does
+that; for your own OSS bucket, start a Model Derivative job first. A
+2-legged token can read an ACC project only when the APS app has been added
+to the ACC account as a custom integration. Otherwise, pass a user's
+3-legged token as `accessToken: "{{secret:APS_TOKEN}}"` and declare
+`secret.read:APS_TOKEN`.
 
 ## OpenCDE documents
 
@@ -609,26 +633,6 @@ aim at it. The node needs the `model.create` capability.
 }
 ```
 
-```bash
-APS_CLIENT_ID=… APS_CLIENT_SECRET=… ifc-lite flow run aps-join.json model.ifc --json
-```
-
-**Getting a URN.** `urn` takes either form:
-
-- The version id of a Docs, ACC or BIM 360 file, such as
-  `urn:adsk.wipprod:fs.file:vf.…?version=N`. The Data Management API returns
-  it (`GET /data/v1/projects/{project}/items/{item}/versions`, the `id` of
-  each version). The node base64url-encodes it for you. An item id
-  (`…:dm.lineage:…`) names no version, so the node refuses it.
-- An already-encoded derivative URN, which the APS Viewer and translation
-  jobs print (the `urn:` prefix the viewer adds is accepted).
-
-The file must already be translated. Opening it once in ACC or Docs does
-that; for your own OSS bucket, start a Model Derivative job first. A
-2-legged token can read an ACC project only when the APS app has been added
-to the ACC account as a custom integration. Otherwise, pass a user's
-3-legged token as `accessToken: "{{secret:APS_TOKEN}}"` and declare
-`secret.read:APS_TOKEN`.
 
 ## Editing a graph
 

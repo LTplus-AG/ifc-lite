@@ -18,6 +18,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { createMcpFlowHost } from './flow-host.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '../../../../');
@@ -76,4 +77,20 @@ describe('run_flow: model.openFromSource', () => {
     expect(summary.outputs.find((o) => o.key === 'open.modelId')?.data).toBe('hello_wall_2');
     expect(ctx.registry.list().map((m) => m.id)).toEqual(['sample', 'hello_wall', 'hello_wall_2']);
   });
+});
+
+describe('MCP flow host: tables() after model.openFromSource (#5935 review)', () => {
+  it('serves the table of the model a join names, not whichever model is active now', async () => {
+    const registry = new InMemoryModelRegistry();
+    const sample = await loadIfcModel(SAMPLE_IFC, { modelId: 'sample' });
+    registry.add(sample);
+    const host = createMcpFlowHost(sample, registry, []);
+    const opened = await host.openModel!(new Uint8Array(await readFile(HELLO_WALL)), 'Hello Wall.ifc');
+
+    expect(host.defaultModelId).toBe(opened.modelId);
+    expect(host.tables!('sample')?.entities).toBe(sample.store.entities);
+    expect(host.tables!(opened.modelId)?.entities).toBe(registry.get(opened.modelId)!.store.entities);
+    expect(host.tables!(undefined)?.entities).toBe(registry.get(opened.modelId)!.store.entities);
+    expect(host.tables!('not-loaded')).toBeUndefined();
+  }, 60_000);
 });

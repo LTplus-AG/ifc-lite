@@ -199,6 +199,23 @@ fn non_finite_specular_roughness_is_treated_as_absent() {
     );
 }
 
+/// Same non-finite guard, `SpecularColour` as an `IfcColourRgb` tint: an
+/// overflowed component (`1.0e40` parses to `+inf` as `f32`) must not reach
+/// the tint test or the luminance fallback. It carries no evidence, so with
+/// nothing else authored the extractor reports none, rather than a
+/// `roughness = 0` mirror (or a tinted metal) built from `inf`.
+#[test]
+fn non_finite_specular_colour_rgb_is_treated_as_absent() {
+    let ifc = format!(
+        "{HEADER}#1=IFCCOLOURRGB($,0.8,0.8,0.8);\n\
+         #4=IFCCOLOURRGB($,1.0e40,0.5,0.5);\n\
+         #2=IFCSURFACESTYLERENDERING(#1,0.,$,$,$,$,#4,$,.NOTDEFINED.);\n\
+         #3=IFCSURFACESTYLE('Overflowed tint',.BOTH.,(#2));\n{FOOTER}"
+    );
+    let mut decoder = EntityDecoder::new(&ifc);
+    assert_eq!(extract_surface_style_specular(3, &mut decoder), None);
+}
+
 /// No `SpecularColour`, no `SpecularHighlight`, `ReflectanceMethod`
 /// `.NOTDEFINED.` — nothing authored, so the extractor reports no evidence at
 /// all and the caller keeps its own defaults.

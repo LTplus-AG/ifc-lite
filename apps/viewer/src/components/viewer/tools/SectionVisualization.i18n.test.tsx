@@ -11,6 +11,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { setGlobalRendererRef } from '@/hooks/useBCF.js';
 import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
 
 let originalRequestAnimationFrame: typeof requestAnimationFrame;
@@ -21,10 +22,6 @@ function pointer(target: Element, type: string, x: number): void {
   act(() => target.dispatchEvent(new window.PointerEvent(type, {
     bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: 100,
   })));
-}
-
-function svgText(ui: HTMLElement): string {
-  return [...ui.querySelectorAll('svg text')].map((node) => node.textContent).join(' ');
 }
 
 beforeEach(() => {
@@ -52,25 +49,6 @@ afterEach(() => {
 });
 
 describe('mounted Section visualization localization (#4785)', () => {
-  it('renders translated independent badges and updates replacement catalogues live', () => {
-    registerLocale('badges', {
-      'sectionTool.badge.down': 'BAS', 'sectionTool.badge.front': 'AVT',
-      'sectionTool.badge.side': 'COT', 'sectionTool.badge.custom': 'PER',
-      'sectionTool.badge.active': 'ACT',
-    });
-    setLocale('badges');
-    const ui = render(<ToolOverlays />);
-    assert.match(svgText(ui), /BAS.*ACT/s);
-    act(() => useViewerStore.getState().setSectionPlaneAxis('front'));
-    assert.match(svgText(ui), /AVT.*ACT/s);
-    act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [2, 0, 0]));
-    assert.match(svgText(ui), /PER.*ACT/s);
-    act(() => registerLocale('badges', {
-      'sectionTool.badge.custom': 'NOU', 'sectionTool.badge.active': 'ON',
-    }));
-    assert.match(svgText(ui), /NOU.*ON/s);
-  });
-
   it('renders a translated custom-plane gizmo title and preserves dragging', () => {
     registerLocale('gizmo', { 'sectionTool.gizmo.dragTitle': 'Glisser la coupe sur sa normale' });
     setLocale('gizmo');
@@ -82,7 +60,7 @@ describe('mounted Section visualization localization (#4785)', () => {
     const renderer = new Renderer(canvas);
     setGlobalRendererRef({ current: renderer });
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 1, 0], [0, 0, 0]));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ViewportHud /><ToolOverlays /></>);
     act(() => frame?.(16));
     const title = [...ui.querySelectorAll('title')].find((candidate) => candidate.textContent === 'Glisser la coupe sur sa normale');
     assert.ok(title, 'translated title is reachable through ToolOverlays and the production visualization');
@@ -104,8 +82,8 @@ describe('mounted Section visualization localization (#4785)', () => {
     assert.equal(useViewerStore.getState().pointCloudPreviewStride, 1);
   });
 
-  it('falls back missing badge and tooltip keys to exact English', () => {
-    registerLocale('partial-visual', { 'sectionTool.badge.active': 'ACTIVE LOCAL' });
+  it('falls back a missing tooltip key to exact English, and draws no badge text at all', () => {
+    registerLocale('partial-visual', { 'sectionTool.heading': 'Coupe' });
     setLocale('partial-visual');
     const canvas = document.createElement('canvas');
     Object.defineProperties(canvas, {
@@ -113,11 +91,10 @@ describe('mounted Section visualization localization (#4785)', () => {
       clientHeight: { configurable: true, value: 600 },
     });
     setGlobalRendererRef({ current: new Renderer(canvas) });
-    const ui = render(<ToolOverlays />);
-    assert.match(svgText(ui), /DOWN.*ACTIVE LOCAL/s);
+    const ui = render(<><ViewportHud /><ToolOverlays /></>);
+    assert.equal(ui.querySelectorAll('svg text').length, 0, 'the corner badge is gone (#5500)');
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [0, 0, 0]));
     act(() => frame?.(16));
-    assert.match(svgText(ui), /CUS.*ACTIVE LOCAL/s);
     assert.ok([...ui.querySelectorAll('title')].some((candidate) => candidate.textContent === 'Drag to slide the cut along its normal'));
   });
 });

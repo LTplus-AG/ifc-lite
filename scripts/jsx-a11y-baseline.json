@@ -96,7 +96,7 @@
   "apps/viewer/src/components/viewer/TextAnnotationEditor.tsx": 2,
   "apps/viewer/src/components/viewer/TitleBlockEditor.tsx": 1,
   "apps/viewer/src/components/viewer/toolbar/ClassVisibilityMenu.tsx": 4,
-  "apps/viewer/src/components/viewer/tools/SectionPanel.tsx": 1,
+  "apps/viewer/src/components/viewer/tools/SectionPanel.tsx": 0,
   "apps/viewer/src/components/viewer/validation/ValidationPanel.idsSummary.tsx": 1,
   "apps/viewer/src/components/viewer/ViewCube.tsx": 1,
   "apps/viewer/src/components/viewer/ViewerLayout.tsx": 3,

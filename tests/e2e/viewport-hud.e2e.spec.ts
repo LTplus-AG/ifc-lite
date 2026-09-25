@@ -9,7 +9,8 @@
  * overlap any other HUD item, and (c) not overlap the ViewCube. Layout is
  * only observable with real layout, so this runs in the browser with a
  * model loaded (the tool overlays only render over a model); tools are
- * opened through the store. Section joined in #5499; Measure joins once
+ * opened through the store. Section joined in #5499 and its parked chip
+ * beside the Solo chip in #5500 (the #5481 collision); Measure joins once
  * #5510 puts its bar on the table.
  */
 
@@ -20,6 +21,8 @@ import { join } from 'path';
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 const TOOLS = ['split', 'spaceSketch', 'addElement', 'section'] as const;
+/** After the tools: leave Section with a cut on (it parks) and solo the top storey — two top-left chips. */
+const PARKED_SOLO = 'parked+solo';
 
 interface Box { name: string; left: number; top: number; right: number; bottom: number }
 
@@ -45,9 +48,15 @@ for (const width of [1280, 1600, 1920]) {
       }, [STORE, scheme] as const);
 
       const failures: string[] = [];
-      for (const tool of TOOLS) {
+      for (const tool of [...TOOLS, PARKED_SOLO]) {
         await page.evaluate(([k, t]) => {
-          (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setActiveTool(t);
+          const state = (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState();
+          if (t !== 'parked+solo') { state.setActiveTool(t); return; }
+          state.setActiveTool('section');
+          state.setSectionPlaneAxis('down');
+          state.setSectionPlanePosition(50);
+          state.setActiveTool('select');
+          state.setLevelDisplayMode('solo');
         }, [STORE, tool] as const);
         await expect(page.locator('[data-viewport]').first()).toBeAttached({ timeout: 60000 });
         await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });

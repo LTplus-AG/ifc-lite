@@ -7,9 +7,9 @@
  * `TOOL_HUD` (#5499, charter #5478 §6); the row's `Bar` is `SectionToolbar`
  * (axis, flip, distance, Cap, Cut, 2D, close). This composes:
  *
- *  - the bottom hint strip (moves to `HudHint` in #5500);
- *  - `SectionPlaneVisualization` — the corner badge (removed in #5500), the
- *    face-picked plane's drag gizmo and the pick preview.
+ *  - `SectionHint` — the one hint line in the HUD's bottom-center region;
+ *  - `SectionPlaneVisualization` — the face-picked plane's drag gizmo and
+ *    the pick preview.
  *
  * What remains here is the tool's lifecycle: restoring the last-used mode
  * on open, disarming the face pick on close, and never leaving a scan
@@ -18,20 +18,16 @@
 
 import { useEffect } from 'react';
 import { useViewerStore, loadLastSectionMode } from '@/store';
-import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
-import { useTranslation } from '@/i18n';
+import { SectionHint } from './SectionHint';
 
 export function SectionOverlay() {
-  const { t } = useTranslation();
-  const sectionPlane = useViewerStore((s) => s.sectionPlane);
+  const sectionEnabled = useViewerStore((s) => s.sectionPlane.enabled);
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const flipSectionPlane = useViewerStore((s) => s.flipSectionPlane);
-  const sectionPickMode = useViewerStore((s) => s.sectionPickMode);
   const setSectionPickMode = useViewerStore((s) => s.setSectionPickMode);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
-  const isCustom = sectionPlane.custom !== undefined;
 
   // Reset the scan preview stride if the tool disappears mid-scrub (the user
   // closes the tool without releasing the distance field). Without this the
@@ -85,37 +81,10 @@ export function SectionOverlay() {
 
   return (
     <>
-      {/* Bottom hint strip (#5391). z-[45] keeps it above the 2D drawing
-          window (z-40, docked bottom-left), which used to hide its left half.
-          Becomes a `HudHint` in #5500. */}
-      <div className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2">
-        <div
-          data-section-hint
-          className="whitespace-nowrap bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150"
-          style={{
-            boxShadow: sectionPlane.enabled
-              ? '4px 4px 0px 0px var(--overlay-accent)' // Interaction accent when active (#5488)
-              : '3px 3px 0px 0px rgba(0,0,0,0.3)'
-          }}
-        >
-          <span className="font-mono text-xs uppercase tracking-wide">
-            {sectionPickMode
-              ? t('sectionTool.hint.pick')
-              : sectionPlane.enabled
-                ? isCustom
-                  ? t(sectionPlane.flipped ? 'sectionTool.hint.customFlipped' : 'sectionTool.hint.custom', {
-                    distance: sectionPlane.custom!.distance.toFixed(2),
-                  })
-                  : t(sectionPlane.flipped
-                    ? AXIS_INFO[sectionPlane.axis].flippedStatusKey
-                    : AXIS_INFO[sectionPlane.axis].statusKey, { position: sectionPlane.position.toFixed(1) })
-                : t('sectionTool.hint.off')}
-          </span>
-        </div>
-      </div>
+      <SectionHint />
 
       {/* Section plane visualization overlay */}
-      <SectionPlaneVisualization axis={sectionPlane.axis} enabled={sectionPlane.enabled} />
+      <SectionPlaneVisualization enabled={sectionEnabled} />
     </>
   );
 }

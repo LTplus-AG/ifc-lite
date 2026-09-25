@@ -80,3 +80,22 @@ describe('SDK getSection() after a face pick (#5644)', () => {
     });
   }
 });
+
+describe('SDK setSection() without `flipped` after a face pick (#5644 follow-up)', () => {
+  it('falls back to the side on screen, not the raw custom-frame flag', () => {
+    const s = useViewerStore.getState();
+    s.setActiveTool('section');
+    // A -X face at x = 0: the default keeps the solid at x > 0, which is the
+    // flipped side in the +X cardinal frame (custom-frame `flipped` is false).
+    s.setSectionPlaneFromFace([-1, 0, 0], [0, 1, 1], { min: [0, 0, 0], max: [4, 4, 4] });
+    const reported = viewer.getSection();
+    assert.equal(reported?.flipped, true);
+    // `flipped` is required by the type, but untyped callers (sandbox scripts,
+    // JSON over the bridge) omit it and hit the adapter's fallback.
+    const untyped: unknown = { axis: 'x', position: reported!.position, enabled: true };
+    viewer.setSection(untyped as Parameters<typeof viewer.setSection>[0]);
+    const after = useViewerStore.getState().sectionPlane;
+    assert.equal(after.custom, undefined);
+    assert.equal(after.flipped, true);
+  });
+});

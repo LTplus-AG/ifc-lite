@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, loadLastSectionMode } from '@/store';
+import { resetSectionToAxis } from '@/store/section-active';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { AXIS_INFO } from './sectionConstants';
@@ -44,9 +45,10 @@ export function SectionOverlay() {
     setActiveTool('select');
   }, [setActiveTool]);
 
+  // From a face-picked plane, its own axis keeps the side on screen (#5644).
   const handleAxisChange = useCallback((axis: 'down' | 'front' | 'side') => {
-    setSectionPlaneAxis(axis);
-  }, [setSectionPlaneAxis]);
+    resetSectionToAxis(useViewerStore.getState, axis);
+  }, []);
 
   // Toggle the "next click picks a face" arming. The actual click is
   // intercepted in `selectionHandlers.ts`, which calls
@@ -55,13 +57,11 @@ export function SectionOverlay() {
     setSectionPickMode(!sectionPickMode);
   }, [sectionPickMode, setSectionPickMode]);
 
-  // "Reset to axis" in custom mode — clearing the custom field via
-  // setSectionPlaneAxis re-uses the existing cardinal pathway. We pick
-  // the nearest cardinal that's already in `axis` (kept in sync at pick
-  // time) so the user lands on the closest preset they had before.
+  // "Reset to axis" in custom mode: land on the nearest cardinal (kept in
+  // `axis` at pick time), keeping the side on screen (#5644).
   const handleResetToAxis = useCallback(() => {
-    setSectionPlaneAxis(sectionPlane.axis);
-  }, [sectionPlane.axis, setSectionPlaneAxis]);
+    resetSectionToAxis(useViewerStore.getState);
+  }, []);
 
   const handleCustomDistanceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const v = Number(e.target.value);

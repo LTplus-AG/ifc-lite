@@ -41,8 +41,14 @@ export function installPrimaryLoadCanceller(supersede: () => void): () => void {
     release();
     const state = store.getState();
     // A primary point-cloud load also streams: stop the stream itself, not
-    // just the session, so it cannot keep ingesting or report progress.
-    state.activeStreamCanceller?.();
+    // just the session, so it cannot keep ingesting or report progress. Clear
+    // the slot now rather than when the loader's async cleanup catches up, so
+    // no Cancel stays bound to a stream that is already cancelled.
+    const cancelStream = state.activeStreamCanceller;
+    if (cancelStream) {
+      cancelStream();
+      state.setActiveStreamCanceller(null);
+    }
     // The same reset a primary load starts with (useIfcLoader.loadFile).
     state.resetViewerState();
     state.clearAllModels();

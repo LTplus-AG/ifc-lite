@@ -113,5 +113,6 @@ describe('primary load cancel (#5849)', () => {
     installPrimaryLoadCanceller(() => {});
     store.getState().activeLoadCanceller?.();
     assert.equal(streamCancelled, 1, 'the stream is stopped, not just orphaned by the session bump');
+    assert.equal(store.getState().activeStreamCanceller, null, 'no Cancel stays bound to the stopped stream');
   });
 });

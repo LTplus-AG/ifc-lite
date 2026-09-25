@@ -22,6 +22,7 @@ import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-li
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
+import { MergedExporter } from './merged-exporter.js';
 
 const SHARED_GUID = '3wkd_mjInDCfOthy7w_A60';
 const WALL_A = 20;
@@ -327,6 +328,27 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     }, SHARED_PSET_IFC, new Set([WALL_C]));
     expect(refs(records(text).get(41)!.args.match(/\(([^()]*)\)\s*,\s*#40\s*$/)![1])).toEqual([WALL_B]);
     expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+  });
+
+  it('federated (merged) export gets the same copy-on-write', async () => {
+    // Review finding on #6012: `MergedExporter` bakes each model's edits
+    // through `StepExporter` (`bakeMutatedModels`), so it must inherit the fix.
+    const store = await parse(SHARED_PSET_IFC);
+    const view = liveView(store);
+    view.setProperty(WALL_A, 'Custom_B', 'B1', 'edited', PropertyValueType.Label);
+    const result = await new MergedExporter([{ id: 'm', name: 'M', dataStore: store, mutationView: view }])
+      .exportAsync({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+    const idOf = (guid: string): number =>
+      [...records(text)].find(([, r]) => r.type === 'IFCWALL' && r.args.startsWith(`'${guid}'`))![0];
+    const [a, b, c] = ['2Z2BGIG3j5fRzbeoRb82L1', '2Z2BGIG3j5fRzbeoRb82L2', '2Z2BGIG3j5fRzbeoRb82L3'].map(idOf);
+    for (const other of [b, c]) {
+      expect(customBSets(text, other)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+    }
+    const [copy, ...extra] = customBSets(text, a);
+    expect(extra).toEqual([]);
+    expect(copy.guid).not.toBe(SHARED_GUID);
+    expect(copy.kinds).toEqual(SOURCE_KINDS);
   });
 
   it('a deleted member is dropped from the copy and kept in the shared original', async () => {

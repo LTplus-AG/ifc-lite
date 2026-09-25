@@ -192,7 +192,7 @@ export function createSceneBatchShell(
     indexBuffer: source.indexBuffer,
     indexCount: merged.indices.length,
     color: meshDataArray[0].color,
-    ...(meshDataArray[0]?.material ? { material: meshDataArray[0].material } : {}), // #5582
+    ...(meshDataArray[0]?.material ? { finish: meshDataArray[0].material } : {}), // #5582
     expressIds: meshDataArray.map((mesh) => mesh.expressId),
     modelIndices: meshDataArray.map((mesh) => mesh.modelIndex),
     bounds: merged.bounds,

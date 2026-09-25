@@ -18,6 +18,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Scene } from './scene.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { createSceneBatchShell } from './scene-batch-upload.js';
+import type { BatchedMesh } from './types.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
@@ -110,6 +112,13 @@ describe('batching folds IFC-authored material into the colour key (#5582)', () 
     assert.deepEqual(overlays.map((b) => b.finish?.metallic).sort(), [0, 1]);
     assert.deepEqual(overlays.map((b) => b.colorKey).sort(), ['1000|0|0|1000|0|900', '1000|0|0|1000|1000|200'],
       'the overlay label carries its finish, like the bucket key it came from');
+  });
+
+  it('a shell batch (shared source buffers) carries the finish on `finish`, the field the draw path reads', () => {
+    const source = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, origin: undefined } as unknown as BatchedMesh;
+    const shell = createSceneBatchShell([meshData(11, 0, { metallic: 1, roughness: 0.2 })], source, 1, 'k');
+    assert.deepEqual(shell.finish, { metallic: 1, roughness: 0.2 });
+    assert.equal('material' in shell, false, 'nothing reads a batch-level material');
   });
 });
 

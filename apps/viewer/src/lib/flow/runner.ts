@@ -41,6 +41,8 @@ export interface ViewerRunInput {
   readonly signal?: AbortSignal;
   /** Entity-table access for `table.joinByKey`'s tag/property strategies — see `viewer-tables.ts`. */
   readonly tables?: FlowHost['tables'];
+  /** Loads a model for `model.openFromSource` through `addModel` — see `open-model.ts`. */
+  readonly openModel?: FlowHost['openModel'];
 }
 
 export class FlowCapabilityError extends Error {
@@ -84,6 +86,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
     networkGrants: parsed.value,
     defaultModelId: input.bim.model.activeId() ?? undefined,
     ...(input.tables ? { tables: input.tables } : {}),
+    ...(input.openModel ? { openModel: input.openModel } : {}),
   };
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
   const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>

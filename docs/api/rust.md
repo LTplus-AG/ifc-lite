@@ -542,8 +542,11 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
-// Optional authored swept-disk descriptions, keyed by product occurrence ID
-pub use analytic_export::{extract_swept_disk_descriptions, SweptDiskDescriptions};
+// Optional authored swept-disk descriptions and measurements, keyed by product occurrence ID
+pub use analytic_export::{
+    extract_swept_disk_descriptions, DirectrixMetrics, DirectrixSegmentMetrics,
+    SweptDiskDescriptions, SweptDiskOccurrence,
+};
 
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
@@ -557,18 +560,25 @@ pub use parallel_scan::build_entity_index_parallel;
 
 `extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
 optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for
-supported `IfcSweptDiskSolid` items. Coordinates and radii are absolute IFC
-world metres, Z-up; `ids` optionally filters product STEP IDs. Each record
-identifies its source solid and mapped-item path. `source_modified` identifies
-boolean operands whose authored sweep alone does not describe the final body.
-It does not indicate cuts from external `IfcRelVoidsElement` openings.
-Unsupported curves or transforms have an explicit status and no partial
-directrix. For an unsupported transform, radii retain their authored values
-converted to metres; no world circular radius is implied. The existing mesh
-export remains a separate, unchanged operation.
-For partial composite sweeps and raw-circle bounds, the existing mesher can
-cover a different extent ([#5566](https://github.com/LTplus-AG/ifc-lite/issues/5566));
-the analytic description follows the IFC source parameters.
+supported `IfcSweptDiskSolid` items. Call `disk.directrix_metrics()` on an
+occurrence to get `Option<DirectrixMetrics>`. A complete description returns
+`Some`, with `total_length` and indexed `segments` containing centreline
+`length` and optional `bend_angle`. Lengths, coordinates, and radii are
+absolute IFC world metres, Z-up. An arc's
+`bend_angle` is the positive sweep magnitude in radians; its signed
+`Directrix::Arc::sweep_angle` retains travel direction. Line segments have no
+bend angle. These geometric measurements do not include fabrication bend
+allowances or deductions. `ids` optionally filters product STEP IDs.
+
+Each record identifies its source solid and mapped-item path.
+`source_modified` identifies an authored CSG operand whose sweep may differ
+from the final body, so its metrics are source geometry measurements rather
+than final fabricated quantities. It does not indicate cuts from external
+`IfcRelVoidsElement` openings. Unsupported curves or transforms have an
+explicit status, no partial directrix, and the method returns `None`. For an
+unsupported transform, radii retain their authored values converted to metres;
+no world circular radius is implied. The existing mesh export remains a
+separate operation.
 
 ### Appearance authoring
 

@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkQueryEngine, CsvConnector, MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
-import { useViewerStore } from '@/store/index.js';
+import { useViewerStore, type ViewerState } from '@/store/index.js';
 
 const WALLS = [1, 2, 3, 4, 5].map((n) => 100 + n);
 
@@ -120,6 +120,74 @@ describe('bulk writers are one undo step (#5861)', () => {
     assert.equal(value(views.get('b')!, WALLS[0]), 'X', 'undo on another model leaves it alone');
     useViewerStore.getState().undo('b');
     assert.equal(value(views.get('b')!, WALLS[0]), null);
+  });
+
+  it('a Bulk retype (SET_ENTITY_TYPE) is reverted by one undo and re-applied by one redo (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const engine = new BulkQueryEngine(store.entities, view);
+    const mutations = WALLS.map((id) => engine.applyAction(id, { type: 'SET_ENTITY_TYPE', entityType: 'IfcColumn' }))
+      .filter((m): m is Mutation => m !== null);
+    assert.equal(mutations.length, WALLS.length);
+    useViewerStore.getState().recordMutationBatch('m', mutations);
+
+    useViewerStore.getState().undo('m');
+    for (const id of WALLS) assert.equal(view.getEntityTypeMutation(id), null, `wall #${id} keeps its class`);
+    useViewerStore.getState().redo('m');
+    for (const id of WALLS) assert.equal(view.getEntityTypeMutation(id)?.newType.toUpperCase(), 'IFCCOLUMN', `wall #${id} retyped again`);
+  });
+
+  it('chunks recorded under one batch id are one undo step (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const write = (ids: readonly number[]) => ids.map((id) => view.setProperty(id, 'Pset_Bulk', 'Code', 'X', PropertyValueType.Label));
+    const batchId = useViewerStore.getState().recordMutationBatch('m', write(WALLS.slice(0, 2)));
+    assert.ok(batchId);
+    assert.equal(useViewerStore.getState().recordMutationBatch('m', write(WALLS.slice(2)), batchId), batchId);
+
+    useViewerStore.getState().undo('m');
+    for (const id of WALLS) assert.equal(value(view, id), null, `wall #${id} restored`);
+    assert.equal(useViewerStore.getState().undoStacks.get('m')!.length, 0);
+  });
+
+  it('a chunk never extends a tag map another writer has replaced since (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const write = (ids: readonly number[]) => ids.map((id) => view.setProperty(id, 'Pset_Bulk', 'Code', 'X', PropertyValueType.Label));
+    const batchId = useViewerStore.getState().recordMutationBatch('m', write(WALLS.slice(0, 2)))!;
+    const before = useViewerStore.getState().mutationBatchTags;
+    // Another writer tags something in between: the map is replaced.
+    useViewerStore.getState().tagMutationBatch(['elsewhere'], 'other');
+    const later = write(WALLS.slice(2));
+    useViewerStore.getState().recordMutationBatch('m', later, batchId);
+    assert.ok(later.every((m) => !before.has(m.id)), 'the replaced map is left as it was');
+    assert.ok(later.every((m) => useViewerStore.getState().mutationBatchTags.get(m.id) === batchId));
+    useViewerStore.getState().undo('m');
+    for (const id of WALLS) assert.equal(value(view, id), null, `wall #${id} restored by one undo`);
+  });
+
+  it('recording a 100,000-mutation run in 500-mutation chunks stays fast (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const chunks: Mutation[][] = [];
+    for (let c = 0; c < 200; c += 1) {
+      chunks.push(Array.from({ length: 500 }, (_, i) => view.setProperty(c * 500 + i + 1, 'Pset_Bulk', 'Code', 'X', PropertyValueType.Label)));
+    }
+    const t0 = performance.now();
+    let batchId: string | undefined;
+    for (const chunk of chunks) batchId = useViewerStore.getState().recordMutationBatch('m', chunk, batchId) ?? batchId;
+    const elapsed = performance.now() - t0;
+    assert.equal(useViewerStore.getState().undoStacks.get('m')!.length, 100_000);
+    assert.ok(elapsed < 3_000, `recording took ${elapsed.toFixed(0)} ms`);
+    useViewerStore.getState().undo('m');
+    assert.equal(useViewerStore.getState().undoStacks.get('m')!.length, 0, 'still one undo step');
+  });
+
+  it('every chunk of a run ends the placement redo branch, not only the first (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const write = (id: number) => [view.setProperty(id, 'Pset_Bulk', 'Code', 'X', PropertyValueType.Label)];
+    const batchId = useViewerStore.getState().recordMutationBatch('m', write(WALLS[0]))!;
+    // A model move lands mid-run and is undone: it sits on the placement redo branch.
+    const move = { timestamp: Date.now() } as ViewerState['modelPlacement']['redo'][number];
+    useViewerStore.setState((s) => ({ modelPlacement: { ...s.modelPlacement, undo: [], redo: [move] } }));
+    useViewerStore.getState().recordMutationBatch('m', write(WALLS[1]), batchId);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.redo, [], 'a new chunk is a new operation');
   });
 
   it('undoing a 10,000-mutation batch neither overflows the stack nor takes seconds', () => {

@@ -1490,11 +1490,11 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ifc-lite-clash"
-version = "19.1.1"
+version = "19.1.2"
 
 [[package]]
 name = "ifc-lite-core"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-export"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "arrow",
  "bytemuck",
@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-ffi"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "ifc-lite-processing",
  "mimalloc",
@@ -1539,7 +1539,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "approx",
  "bnum",
@@ -1569,7 +1569,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-landxml"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
@@ -1580,7 +1580,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "19.1.1"
+version = "19.1.2"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",

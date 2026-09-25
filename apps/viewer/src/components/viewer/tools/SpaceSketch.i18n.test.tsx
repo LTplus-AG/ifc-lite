@@ -13,9 +13,11 @@
  *    always-safe render — deriving rooms needs the Rust `space_dcel` wasm
  *    module, which `useSpacePlateSessions.ts`'s own docblock notes
  *    `ensureSpaceWasm()` rejects under the node test harness, no `fetch` for
- *    `.wasm`). This surfaces the panel chrome, the tool row, and the
- *    close/Done footer (no drafted rooms ⇒ `needsConfirm` stays false).
- *  - `OptionsPopover` / `HelpPopover` / `SpaceSketchReopenPill` /
+ *    `.wasm`). Mounted next to a `ViewportHud` (#5503: the bar renders
+ *    inline as the tool's `TOOL_HUD` Bar, the plan card portals into the
+ *    HUD's top-center region). This surfaces the bar and the Done state (no
+ *    drafted rooms ⇒ `needsConfirm` stays false).
+ *  - `OptionsPopover` / `HelpPopover` / `SpaceSketchParkedChip` /
  *    `SpaceSketchCanvas` are pure presentational sub-components, so they are
  *    rendered STANDALONE with hand-built props (`hasWallData: true`,
  *    `snapDelta` set, `pendingCount > 0`, an "unbounded" room) — this reaches
@@ -46,9 +48,10 @@ import { en } from '@/i18n/en';
 import type { spaceSketchEn as SpaceSketchEnType } from '@/i18n/catalogues/space-sketch.en';
 import type { PluralTranslation } from '@/i18n/types';
 import { useViewerStore } from '@/store';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { SpaceSketchOverlay } from './SpaceSketchOverlay.js';
 import { OptionsPopover, HelpPopover } from './space-sketch/SpaceSketchPopovers.js';
-import { SpaceSketchReopenPill } from './space-sketch/SpaceSketchReopenPill.js';
+import { SpaceSketchParkedChip } from './space-sketch/SpaceSketchHud.js';
 import { SpaceSketchCanvas } from './space-sketch/SpaceSketchCanvas.js';
 
 // Guarded dynamic import (#4918 revert-oracle): a static `import { spaceSketchEn }
@@ -94,6 +97,8 @@ function addReadable(root: ParentNode, out: Set<string>): void {
     if (label) out.add(label);
     const title = element.getAttribute('title');
     if (title) out.add(title);
+    const placeholder = element.getAttribute('placeholder');
+    if (placeholder) out.add(placeholder);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
@@ -144,10 +149,12 @@ afterEach(() => {
 });
 
 describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-sketch.en.ts catalogue module not present (revert-oracle probe)' }, () => {
-  it('translates the panel chrome and tool row with no model loaded', () => {
-    const ui = render(<SpaceSketchOverlay />);
+  it('translates the bar and plan card with no model loaded', () => {
+    const ui = render(<><ViewportHud /><SpaceSketchOverlay /></>);
     assertTranslates(ui, [
       'spaceSketch.panel.heading',
+      'spaceSketch.bar.storeyAria',
+      'spaceSketch.bar.drawModeAria',
       'spaceSketch.panel.helpTitle',
       'spaceSketch.panel.minimizeTitle',
       'spaceSketch.panel.closeTitle',
@@ -171,7 +178,7 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
   });
 
   it('translates the snap-toggle "off" title on click (pure state, no wasm needed)', () => {
-    const ui = render(<SpaceSketchOverlay />);
+    const ui = render(<><ViewportHud /><SpaceSketchOverlay /></>);
     const snapButton = [...ui.querySelectorAll('button')].find(
       (b) => b.title === CATALOGUE['spaceSketch.tools.snapOnTitle'],
     );
@@ -258,20 +265,20 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
     ], 'space-sketch-help-pseudo');
   });
 
-  it('translates the reopen pill, including the interpolated pending count', () => {
-    const ui = render(<SpaceSketchReopenPill pendingCount={3} onReopen={() => {}} />);
+  it('translates the parked chip, including the interpolated pending count', () => {
+    const ui = render(<><ViewportHud /><SpaceSketchParkedChip pendingCount={3} onReopen={() => {}} /></>);
     const english = new Set<string>();
     addReadable(ui, english);
     assert.ok([...english].some((s) => s.includes('3 to confirm')));
 
-    registerLocale('space-sketch-pill-pseudo', PSEUDO);
-    act(() => setLocale('space-sketch-pill-pseudo'));
+    registerLocale('space-sketch-chip-pseudo', PSEUDO);
+    act(() => setLocale('space-sketch-chip-pseudo'));
     const after = new Set<string>();
     addReadable(ui, after);
-    assert.ok(after.has(mark('spaceSketch.reopenPill.title')));
-    assert.ok(after.has(mark('spaceSketch.reopenPill.label')));
+    assert.ok(after.has(mark('spaceSketch.parkedChip.resumeTitle')));
+    assert.ok(after.has(mark('spaceSketch.parkedChip.label')));
     assert.ok(
-      [...after].some((s) => s === '⟦spaceSketch.reopenPill.toConfirm|{count} to confirm⟧'.replace('{count}', '3')),
+      [...after].some((s) => s === '⟦spaceSketch.parkedChip.toConfirm|{count} to confirm⟧'.replace('{count}', '3')),
       'expected the interpolated toConfirm key to render marked with its {count} value substituted',
     );
   });
@@ -318,9 +325,6 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
  * template + interpolation machinery is still exercised end to end.
  */
 const NOT_RENDERED_BY_A_REAL_COMPONENT: { key: Exclude<SpaceSketchKey, PluralKey>; params?: Record<string, string | number> }[] = [
-  { key: 'spaceSketch.panel.pendingBadgeTitle' }, // needsConfirm requires a drafted room
-  { key: 'spaceSketch.panel.pendingBadge', params: { count: 2 } }, // same gate
-  { key: 'spaceSketch.panel.pendingBadgeMultiStorey', params: { count: 2, floors: 3 } }, // needs pendingStoreys > 1, itself gated on drafted rooms
   { key: 'spaceSketch.tools.footprintArmedTitle', params: { count: 1 } }, // needs rooms.length > 0 (a derive) and a prior footprint click
   { key: 'spaceSketch.footer.rectHint' }, // needs rectStartRef set by a real pointerdown, which onPointerDown short-circuits without a live session
   { key: 'spaceSketch.footer.drawHint' }, // same: onPointerDown returns early without `sessionRef.current?.alive`

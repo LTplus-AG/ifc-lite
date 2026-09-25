@@ -61,7 +61,7 @@ mod symbolic;
 mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
-pub use analytic_export::{extract_swept_disk_descriptions, SweptDiskDescriptions, SweptDiskOccurrence};
+pub use analytic_export::{extract_swept_disk_descriptions, DirectrixMetrics, DirectrixSegmentMetrics, SweptDiskDescriptions, SweptDiskOccurrence};
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };

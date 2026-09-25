@@ -63,7 +63,7 @@ function twoFieldGraph(name: string) {
 function mountFlowPanel() {
   return render(
     <BimProvider>
-      <FlowPanel onClose={() => {}} />
+      <FlowPanel />
     </BimProvider>,
   );
 }

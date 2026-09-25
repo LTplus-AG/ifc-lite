@@ -29,12 +29,23 @@
  * batching). Each call lands as one mutation on the undo stack,
  * which is intentionally coarse — fine for v1; if it gets noisy we
  * can collapse runs in a later pass.
+ *
+ * Re-render wake (#5510): re-projecting the arrows on every camera move
+ * used to run its own `requestAnimationFrame` polling loop
+ * (`useCameraTickSubscription`) — one more per-component timer doing the
+ * same camera-pose diff the scene kernel's shared `SceneProjector` already
+ * does once per viewport (#5486). `useProjectorTick` subscribes to that
+ * one loop instead; the actual projection math below is unchanged (still
+ * `cameraCallbacks.projectToScreen` in the render body, not the
+ * projector's own anchor system — this component's drag math needs the
+ * raw screen-space "pixels per metre" basis per axis, which the
+ * projector's fire-and-forget anchors don't expose).
  */
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { getEntityCenter } from '@/utils/viewportUtils';
 import { dragTranslation } from '@/lib/model-placement/drag';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
@@ -66,7 +77,6 @@ export function GizmoOverlay() {
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
   const translateEntity = useViewerStore((s) => s.translateEntity);
   const readEntityPosition = useViewerStore((s) => s.readEntityPosition);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -118,11 +128,11 @@ export function GizmoOverlay() {
     mutationVersion,
   ]);
 
-  // Camera-tick subscription — wakes the gizmo on real viewport
+  // Shared-projector wake (#5510) — re-renders the gizmo on real viewport
   // motion (camera tick bypasses React renders for perf, see
-  // `Viewport.tsx` `updateCameraRotationRealtime`). Skipped when
-  // the gizmo isn't visible.
-  void useCameraTickSubscription(getViewpoint, ready !== null);
+  // `Viewport.tsx` `updateCameraRotationRealtime`). Skipped when the gizmo
+  // isn't visible.
+  void useProjectorTick(ready !== null);
 
   if (!ready) return null;
 

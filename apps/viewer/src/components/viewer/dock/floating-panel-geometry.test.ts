@@ -68,7 +68,8 @@ describe('computeFloatingPanelStyle', () => {
 });
 
 describe('free panels stay on screen (#5854)', () => {
-  const AREA = { width: 1280, height: 720 };
+  // A 1280x720 window whose 48px toolbar ends at y = 48 (#5957).
+  const AREA = { width: 1280, height: 720, top: 48 };
 
   it('clamps a panel saved past the right / bottom edge back inside the window', () => {
     // Saved on a 2560px screen, drawn on a 1280px one.
@@ -76,15 +77,29 @@ describe('free panels stay on screen (#5854)', () => {
     assert.deepEqual(s, { left: 1280 - 360, top: 720 - 460, width: 360, height: 460 });
   });
 
-  it('clamps a negative position to the top-left corner', () => {
+  it('clamps a negative position to the left edge and BELOW the toolbar (#5957)', () => {
     const s = computeFloatingPanelStyle(panel('free', { x: -500, y: -40 }), null, AREA);
     assert.equal(s.left, 0);
-    assert.equal(s.top, 0);
+    // top: 0 put the whole 32px title bar (drag handle, dock, close) under
+    // the z-50 toolbar.
+    assert.equal(s.top, 48);
   });
 
-  it('shrinks a panel larger than the window to fit', () => {
+  it('clamps a panel saved at y = 0 below the toolbar too (#5957)', () => {
+    const s = computeFloatingPanelStyle(panel('free', { y: 0 }), null, AREA);
+    assert.equal(s.top, 48);
+  });
+
+  it('shrinks a panel larger than the window to fit below the toolbar (#5957)', () => {
     const s = computeFloatingPanelStyle(panel('free', { w: 2000, h: 1500 }), null, AREA);
-    assert.deepEqual(s, { left: 0, top: 0, width: 1280, height: 720 });
+    assert.deepEqual(s, { left: 0, top: 48, width: 1280, height: 720 - 48 });
+  });
+
+  it('keeps a tall panel reopened in a shorter window below the toolbar (#5957)', () => {
+    // Saved 1440px tall, reopened in an 800px window.
+    const s = computeFloatingPanelStyle(panel('free', { y: 0, h: 1440 }), null, { ...AREA, height: 800 });
+    assert.equal(s.top, 48);
+    assert.equal(s.height, 800 - 48);
   });
 
   it('leaves an on-screen panel exactly where it was put', () => {

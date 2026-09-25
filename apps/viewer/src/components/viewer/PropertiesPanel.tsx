@@ -1174,6 +1174,11 @@ export function PropertiesPanel() {
   const renderedSpatialContainment = spatialContainment;
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
+  // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
+  const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
+    typeId: renderedTypeProperties.typeId, typeName: renderedTypeProperties.typeName,
+    psetNames: renderedTypeProperties.psets.map((p) => p.name).filter((n) => !renderedOccurrenceProperties.some((o) => o.name === n)),
+  } : null, [renderedTypeProperties, renderedOccurrenceProperties, isTypeEntity]);
   const renderedIsTypeEntity = isTypeEntity;
   const renderedProjectUnits = projectUnits;
   const renderedExistingProps = useMemo(() => {
@@ -1616,6 +1621,7 @@ export function PropertiesPanel() {
                   existingPsets={renderedMergedProperties.map(p => p.name)}
                   existingQtos={renderedQuantities.map(q => q.name)}
                   schemaVersion={activeDataStore?.schemaVersion}
+                  inheritedFrom={inheritedFrom}
                 />
               </>
             )}
@@ -1820,6 +1826,7 @@ export function PropertiesPanel() {
                 existingQsets={renderedQuantities.map(q => q.name)}
                 existingQuants={renderedExistingQuants}
                 existingAttributes={renderedExistingAttributeNames}
+                inheritedFrom={inheritedFrom}
               />
             )}
           </TabsContent>

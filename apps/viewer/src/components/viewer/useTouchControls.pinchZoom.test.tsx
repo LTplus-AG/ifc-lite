@@ -97,19 +97,25 @@ function pinch(r: ReturnType<typeof rig>, spreads: number[]): number[] {
 }
 
 /**
- * Spreads 400, 380, ..., 20: 19 steps, each a full-size zoom notch. Today
- * bringing the fingers together zooms IN and spreading them zooms out, the
- * reverse of the mobile convention (#5777); these tests need a zoom-in and a
- * zoom-out pinch, not a particular finger direction, so a fix there swaps
- * these two and nothing else. The sanity asserts below flag it.
+ * Spreads 20, 40, ..., 400: 19 steps, each a full-size zoom notch. Spreading
+ * the fingers zooms in and bringing them together zooms out, the mobile
+ * convention (#5777; it was the reverse until then).
  */
-const ZOOM_IN = Array.from({ length: 20 }, (_, i) => 400 - 20 * i);
-const ZOOM_OUT = [...ZOOM_IN].reverse();
+const ZOOM_OUT = Array.from({ length: 20 }, (_, i) => 400 - 20 * i);
+const ZOOM_IN = [...ZOOM_OUT].reverse();
 
 describe('touch pinch zooms toward the surface under the pinch (#5547)', () => {
   afterEach(() => {
     cleanup();
     for (const canvas of document.querySelectorAll('canvas')) canvas.remove();
+  });
+
+  it('spreading the fingers zooms in and closing them zooms out, the mobile convention (#5777)', () => {
+    const spread = pinch(rig({ hit: false }), [100, 140]);
+    assert.ok(spread[0] < 10, `spreading moved the camera away: z ${spread[0]}`);
+    cleanup();
+    const close = pinch(rig({ hit: false }), [140, 100]);
+    assert.ok(close[0] > 10, `closing moved the camera closer: z ${close[0]}`);
   });
 
   it('without a surface hit, repeated zoom-in pinches pass through the wall (the defect)', () => {
@@ -144,7 +150,7 @@ describe('touch pinch zooms toward the surface under the pinch (#5547)', () => {
 
   it('re-picks after a zoom-out step moved the camera off the picked ray within one pinch', () => {
     const r = rig();
-    pinch(r, [400, 360, 320, 360, 320]); // in, in, out, in (#5777: closing zooms in)
+    pinch(r, [320, 360, 400, 360, 400]); // in, in, out, in (#5777: spreading zooms in)
     assert.equal(r.raycasts.length, 2, 'a point picked before the plain zoom-out step was reused');
   });
 

@@ -808,7 +808,7 @@ function LensEditor({
             onDragStart={rules.length > 1 ? setDragIndex : undefined}
             onDragEnter={setDragOverIndex}
             onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
-            onDrop={handleDrop}
+            onDrop={dragIndex !== null ? handleDrop : undefined /* a file drag is not a reorder (#5845) */}
             onMove={rules.length > 1 ? moveRule : undefined}
           />
         ))}
@@ -1406,13 +1406,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // un-isolate click leaves the model stuck isolated.
     setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
   }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
-
-  // Safety net: if the lens got deactivated while the panel was unmounted
-  // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation
-  // has no owner anymore — release it so the model isn't stuck isolated.
-  useEffect(() => {
-    if (activeLensId === null) releaseRuleIsolation();
-  }, [activeLensId, releaseRuleIsolation]);
 
   const handleNewLens = useCallback(() => {
     setCreatingAutoColor(false);

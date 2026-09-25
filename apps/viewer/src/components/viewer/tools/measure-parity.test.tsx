@@ -62,6 +62,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
+import { renderPanelBody } from '@/lib/panels/renderPanelBody.js';
 import { MainToolbar } from '../MainToolbar.js';
 import { RibbonToolbar } from '../ribbon/RibbonToolbar.js';
 import { HomeTab } from '../ribbon/tabs/HomeTab.js';
@@ -115,7 +118,20 @@ function renderNode(node: ReactNode): HTMLElement {
   return container;
 }
 
-const render = (): HTMLElement => renderNode(<ToolOverlays />);
+/**
+ * The shipped hosts together (#5502): `ToolOverlays` renders the tool off
+ * `activeTool`, its bar portals into the `ViewportHud` host, and the LIST /
+ * POINT / QTY readouts are the `measurements` side panel reached through
+ * `renderPanelBody` — the one id → body map every sidebar host uses.
+ */
+const render = (): HTMLElement =>
+  renderNode(
+    <>
+      <ViewportHud />
+      <SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>
+      {renderPanelBody('measurements', () => {})}
+    </>,
+  );
 
 /** A real bubbling click, the way it arrives at React's root listener. */
 function click(element: Element): void {
@@ -166,15 +182,25 @@ const TOOLBAR_ROOTS = [
   { name: 'RibbonToolbar (ribbon root)', Toolbar: RibbonToolbar },
 ] as const;
 
-/** The measure panel's own section buttons, which nothing else renders. */
-function sectionButtons(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('button')]
+/** The Measure bar's own mode control (#5502), which nothing else renders. */
+const MODES = ['Distance', 'Polyline', 'Angle', 'Radius'];
+function modeControls(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('[role="radio"]')]
     .map((b) => b.textContent?.trim() ?? '')
-    .filter((label) => label === 'List' || label === 'Point' || label === 'Qty');
+    .filter((label) => MODES.includes(label));
+}
+
+/** The Measurements panel's own tabs (the ribbon has tabs of its own). */
+const PANEL_TABS = ['List', 'Point', 'Qty'];
+function panelTabs(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('[role="tab"]')]
+    .map((b) => b.textContent?.trim() ?? '')
+    .filter((label) => PANEL_TABS.includes(label));
 }
 
 function assertNoMeasurePanel(container: HTMLElement, name: string): void {
-  assert.deepEqual(sectionButtons(container), [], `${name} hosts measurement UI of its own`);
+  assert.deepEqual(modeControls(container), [], `${name} hosts measurement UI of its own`);
+  assert.deepEqual(panelTabs(container), [], `${name} hosts measurement UI of its own`);
   assert.equal(
     container.textContent?.includes('Drag to measure'),
     false,
@@ -230,12 +256,12 @@ function coordRow(container: HTMLElement, label: string): { value: string; hint:
   return { value: spans[1]?.textContent ?? '', hint: spans[2]?.textContent ?? '' };
 }
 
-/** Click the panel's section button whose label is `label`. */
+/** Click the Measurements panel's tab whose label is `label`. */
 function openSection(container: HTMLElement, label: string): void {
-  const button = [...container.querySelectorAll('button')].find(
+  const button = [...container.querySelectorAll('[role="tab"]')].find(
     (b) => b.textContent?.trim() === label,
   );
-  assert.ok(button, `no section button labelled "${label}" on the measure panel`);
+  assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
@@ -299,18 +325,28 @@ beforeEach(() => {
 });
 
 describe('measure tool is hosted once, for both toolbars', () => {
-  it('renders the shared panel off activeTool alone, with all three sections', () => {
+  it('renders the bar off activeTool alone, with all four modes, and the panel with all three tabs', () => {
     const container = render();
-    const labels = [...container.querySelectorAll('button')].map((b) => b.textContent?.trim());
-    for (const section of ['List', 'Point', 'Qty']) {
-      assert.ok(labels.includes(section), `missing "${section}" section button; saw ${labels.join(', ')}`);
-    }
+    assert.deepEqual(modeControls(container), MODES);
+    assert.deepEqual(panelTabs(container), PANEL_TABS);
   });
 
-  it('does not render the panel for another tool', () => {
+  it('does not render the bar for another tool', () => {
     useViewerStore.setState({ activeTool: 'select' });
     const container = render();
+    assert.deepEqual(modeControls(container), []);
     assert.equal(container.textContent?.includes('Drag to measure'), false);
+  });
+
+  it("the bar's List button opens the measurements panel in the sidebar (#5502)", () => {
+    useViewerStore.setState({ sidebarActivePanel: 'properties' });
+    const container = render();
+    const button = container.querySelector('button[title="Show or hide the Measurements panel"]');
+    assert.ok(button, 'the bar has no Measurements panel button');
+    click(button);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'measurements');
+    click(button);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
   });
 
   for (const { name, Toolbar } of TOOLBARS) {
@@ -338,7 +374,7 @@ describe('measure tool is hosted once, for both toolbars', () => {
     });
   }
 
-  it('the shared panel is hosted by the viewport, not by either toolbar', async () => {
+  it('the bar is hosted by the viewport, not by either toolbar', async () => {
     // Both halves matter and neither implies the other: a panel nobody hosts
     // is a dead feature, and a panel two surfaces host is the drift this
     // structure exists to prevent. Asserted by mounting the three candidate
@@ -360,9 +396,10 @@ describe('measure tool is hosted once, for both toolbars', () => {
 
       const viewport = renderNode(<ViewportContainer />);
       await advance(10);
-      assert.ok(
-        sectionButtons(viewport).includes('List'),
-        `the viewport must host the measure panel; saw ${sectionButtons(viewport).join(', ')}`,
+      assert.deepEqual(
+        modeControls(viewport),
+        MODES,
+        `the viewport must host the measure bar; saw ${modeControls(viewport).join(', ')}`,
       );
 
       for (const { name, Toolbar } of TOOLBAR_ROOTS) {

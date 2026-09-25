@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, PencilRuler, Puzzle, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -48,7 +48,10 @@ export type WorkspacePanelId =
   | 'cost'
   | 'environment'
   | 'drawing'
-  | 'pointclouds';
+  | 'pointclouds'
+  | 'measurements'
+  | 'placement'
+  | 'presentation';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -143,6 +146,31 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // only shows its rail icon while `pointCloudAssetCount > 0`, the same way
   // it hides the Room icon while collab is disabled.
   { id: 'pointclouds', title: 'Point Clouds', short: 'Point Clouds', Icon: Scan, group: 'inspect', region: 'side' },
+  // The Measure tool's LIST / POINT / QTY readouts (#5502): they used to expand
+  // out of a floating card over the model; the tool's bar now lives on the
+  // HUD and opens this docked panel instead. Flag-free like 'environment' /
+  // 'pointclouds' (#1869 precedent). APPENDED so the frozen Alt+1..0 mapping
+  // stays intact (no Alt shortcut).
+  { id: 'measurements', title: 'Measurements', short: 'Measure', Icon: Ruler, group: 'inspect', region: 'side' },
+  // Local reposition + georeference editing (#5505): replaces the floating
+  // `RepositionPanel` (`absolute top-32 right-4`) and the floating
+  // `CesiumPlacementEditor` card with one docked panel, Local / Georeference
+  // tabs. Flag-free like 'zones'/'loadReport'/'cost'/'pointclouds' above
+  // (#1869 precedent) — driven by `repositionOpen` / `cesiumPlacementEditMode`,
+  // no dedicated visibility boolean. APPENDED so the frozen Alt+1..0 mapping
+  // stays intact (no Alt shortcut). The gizmos stay scene overlays.
+  { id: 'placement', title: 'Placement', short: 'Placement', Icon: Move3d, group: 'author', region: 'side' },
+  // A filmstrip of saved basket views (#5508). Replaces `BasketPresentationDock`,
+  // which drew an always-on "Presentation 0" pill at the viewport's
+  // bottom-center even with an empty basket, and opened as its own
+  // draggable / resizable floating card. Bottom strip like Charts/Document/
+  // Flow/Drawing above — table-driven; the bottom-strip flag it reuses is
+  // `basketPresentationVisible` (`lib/panels/bottom-panels.ts`), unchanged
+  // from the floating dock so saved views and their transitions are
+  // unaffected. APPENDED so the frozen Alt+1..0 mapping stays intact (no Alt
+  // shortcut). Entry points: the status bar and the ribbon / classic
+  // toolbar's Present button.
+  { id: 'presentation', title: 'Presentation', short: 'Present', Icon: Presentation, group: 'work', region: 'bottom', prefersWide: true },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

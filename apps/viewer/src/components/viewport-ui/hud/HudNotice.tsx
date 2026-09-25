@@ -33,6 +33,16 @@ export interface HudNoticeProps {
   description?: ReactNode;
   action?: HudNoticeAction;
   dismiss?: HudNoticeDismiss;
+  /**
+   * A custom control row below the description — e.g. the LandXML units
+   * prompt's unit picker plus its Retry button — for a notice whose body
+   * needs more than one action. Renders alongside `action` when both are
+   * given, `action` first.
+   */
+  children?: ReactNode;
+  /** `alert` for a notice needing immediate announcement (e.g. a blocking
+   *  refusal); default `status`. */
+  role?: 'status' | 'alert';
   className?: string;
 }
 
@@ -42,9 +52,15 @@ export interface HudNoticeProps {
  * HUD's top-center region on the shared `HudSurface`, replacing three
  * differently-styled floating banners with one.
  */
-export function HudNotice({ tone = 'info', icon, title, description, action, dismiss, className }: HudNoticeProps) {
+export function HudNotice({
+  tone = 'info', icon, title, description, action, dismiss, children, role = 'status', className,
+}: HudNoticeProps) {
   return (
-    <HudSurface className={cn('flex items-start gap-2 px-3 py-2 text-xs', className)} role="status">
+    <HudSurface
+      className={cn('flex items-start gap-2 px-3 py-2 text-xs', className)}
+      role={role}
+      aria-live={role === 'alert' ? 'assertive' : 'polite'}
+    >
       {icon && <span className={cn('mt-0.5', TONE_CLASS[tone])}>{icon}</span>}
       <div className="min-w-0 flex-1">
         <div className="font-medium">{title}</div>
@@ -58,6 +74,7 @@ export function HudNotice({ tone = 'info', icon, title, description, action, dis
             {action.label}
           </button>
         )}
+        {children && <div className="mt-1.5 flex items-center gap-1.5">{children}</div>}
       </div>
       {dismiss && (
         <button

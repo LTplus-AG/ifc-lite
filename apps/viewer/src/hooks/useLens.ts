@@ -38,7 +38,7 @@ import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
-import { planLensHiddenSync } from '@/components/viewer/lens-visibility-ownership';
+import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
 
 const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
 
@@ -198,4 +198,17 @@ export function useLens(): void {
       state.setLensAppliedHiddenIds(plan.nextApplied);
     }
   }, [activeLensId, lensHiddenIds]);
+
+  // A lens deactivated while its panel is closed (a flavor switch clears
+  // activeLensId) leaves its recorded rule isolation with no owner. Release it
+  // here, panel or not; the channel is cleared only if the lens still owns it,
+  // so an isolation the user applied since is left alone.
+  useEffect(() => {
+    if (activeLensId !== null) return;
+    const state = useViewerStore.getState();
+    const isolation = state.lensRuleIsolation;
+    if (!isolation) return;
+    if (ruleIsolationOwnsChannel(state.isolatedEntities, isolation.entityIds)) state.clearIsolation();
+    state.setLensRuleIsolation(null);
+  }, [activeLensId]);
 }

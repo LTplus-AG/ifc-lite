@@ -415,7 +415,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onClick={() => { void handleImportClick(); }}
             title={t('bcf.panel.importTitle')}
           >
-            <Download className="h-4 w-4" />
+            <Upload className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -426,7 +426,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             title={t('bcf.panel.exportTitle')}
             {...tourAnchor(TOUR_ANCHORS.bcfExport)}
           >
-            <Upload className="h-4 w-4" />
+            <Download className="h-4 w-4" />
           </Button>
           <BCFServerControl />
           <Button

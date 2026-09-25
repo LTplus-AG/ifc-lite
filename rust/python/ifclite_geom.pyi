@@ -48,12 +48,22 @@ class UnsupportedDirectrix(TypedDict):
 
 DirectrixStatus = Union[CompleteDirectrix, UnsupportedDirectrix]
 
+class DirectrixSegmentMetrics(TypedDict):
+    segment_index: int  # index into Directrix
+    length: float  # world centreline metres
+    bend_angle: Optional[float]  # arc sweep magnitude in radians; None for lines
+
+class DirectrixMetrics(TypedDict):
+    total_length: float  # sum of segment centreline lengths in world metres
+    segments: List[DirectrixSegmentMetrics]
+
 class SweptDiskOccurrence(TypedDict):
     solid_id: int
     directrix_id: int
     Radius: float  # world radius when complete; authored radius in metres when unsupported
     InnerRadius: Optional[float]  # same coordinate rule as Radius
     Directrix: List[DirectrixSegment]  # IFC Z-up, absolute world metres
+    directrix_metrics: Optional[DirectrixMetrics]  # None when status is unsupported
     status: DirectrixStatus
     mapping_path: List[int]
     source_modified: bool  # source operand may differ from final boolean result
@@ -143,7 +153,10 @@ def geometry_data_buffers(
 
     ``include_directrices=True`` adds ``swept_disks`` (keyed by occurrence STEP
     id) and ``directrix_diagnostics``. Each sweep preserves its IFC Radius,
-    InnerRadius, and ordered analytic line/arc Directrix in world metres.
+    InnerRadius, ordered analytic line/arc Directrix, and centreline lengths and
+    arc bend angles in ``directrix_metrics``. Lengths are world metres and bend
+    angles are positive radians; the signed arc ``sweep_angle`` retains travel
+    direction. Unsupported sweeps have ``directrix_metrics=None``.
 
     Raises:
         RuntimeError: the geometry pipeline failed.

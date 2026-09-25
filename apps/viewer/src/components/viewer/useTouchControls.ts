@@ -208,7 +208,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const panDx = centerX - touchState.lastCenter.x;
         const panDy = centerY - touchState.lastCenter.y;
 
-        const zoomDelta = distance - touchState.lastDistance;
+        // Positive when the fingers close. `Camera.zoom` reads a positive
+        // delta as zoom OUT (as the wheel's scroll-down), so spreading the
+        // fingers zooms in, the mobile convention (#5777).
+        const zoomDelta = touchState.lastDistance - distance;
 
         // Determine dominant gesture if not yet locked
         if (touchState.twoFingerGesture === 'none') {

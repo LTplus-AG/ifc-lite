@@ -44,14 +44,10 @@ type _IfcAttributeValueMirrorInSync = AssertTrue<
   MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
 >;
 
-/**
- * Property value types supported by mutations
- */
+/** Property value types supported by mutations */
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
 
-/**
- * Types of mutations that can be applied to IFC data
- */
+/** Types of mutations that can be applied to IFC data */
 export type MutationType =
   | 'CREATE_PROPERTY'
   | 'UPDATE_PROPERTY'

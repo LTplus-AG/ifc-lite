@@ -102,6 +102,13 @@ function parseZip(buf: Uint8Array): ParsedEntry[] {
   return entries;
 }
 
+/** Index of the first differing byte, or -1 when the arrays match. */
+function firstMismatch(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return i;
+  return a.length === b.length ? -1 : n;
+}
+
 function buildSampleProject() {
   const project = createBCFProject({ name: 'ZIP metadata test', version: '2.1' });
   const topic = createBCFTopic({ title: 'Sample topic', author: 'tester@example.com' });
@@ -189,7 +196,10 @@ describe('writeBCF ZIP "version needed to extract" field (#3612)', () => {
 
     const archive = await JSZip.loadAsync(blob);
     const back = await archive.file(png!.name)!.async('uint8array');
-    expect(back).toEqual(snapshotData);
+    // Not `toEqual`: its per-element deep equality over 400,000 bytes took
+    // ~1.3 s idle and >5 s under CI contention, timing the test out.
+    expect(back.length).toBe(snapshotData.length);
+    expect(firstMismatch(back, snapshotData)).toBe(-1);
   });
 
   it.each(['2.1', '3.0'] as const)(

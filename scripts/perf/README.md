@@ -64,6 +64,10 @@ spread exceeded any base-versus-branch difference. Only the output of
 now keeps its surveyed vertices instead of a 0.5 m f32 grid. The rebase costs
 one extra first-vertex probe per raw-coordinate item on models with an RTC
 offset; the f64 coordinate parse runs only for items that are actually rebased.
+Measure A/B on a shared host by process CPU time and minima, not wall medians:
+wall medians swung 10-20% between identical binaries under load.
+Element-frame rebasing must go through the cached item path, keyed by its
+offset: a bespoke path silently drops content dedup and instancing.
 
 ## LV95 site-local vertices and RTC frames (#5684)
 

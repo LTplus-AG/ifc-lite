@@ -101,6 +101,7 @@ export const commandPaletteEn = {
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
+  'commandPalette.pref.hoverOutline.label': 'Hover Outline',
   'commandPalette.pref.settings.label': 'Settings…',
 
   // ── Learn ──

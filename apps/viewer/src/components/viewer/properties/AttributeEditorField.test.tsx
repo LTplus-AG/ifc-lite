@@ -21,7 +21,16 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { AttributeEditorField, judgeAttributeEdit } from './AttributeEditorField.js';
+
+// Guarded: the module is new in #5872. With the fix reverted it is absent, and
+// the tests must fail on an assertion (the revert oracle), not on a load error.
+const editorModule: Partial<typeof import('./AttributeEditorField.js')> =
+  await import('./AttributeEditorField.js').catch(() => ({}));
+function editor() {
+  const { AttributeEditorField, judgeAttributeEdit } = editorModule;
+  assert.ok(AttributeEditorField && judgeAttributeEdit, 'properties/AttributeEditorField exports the editor (#5872)');
+  return { AttributeEditorField, judgeAttributeEdit };
+}
 
 const GUID_A = '0Wall00000000000000001';
 const GUID_B = '0Wall00000000000000002';
@@ -61,11 +70,12 @@ async function seed(): Promise<void> {
 }
 
 function mount(attrName: string, currentValue: string): HTMLElement {
+  const { AttributeEditorField } = editor();
   return render(<AttributeEditorField modelId="m" entityId={1} attrName={attrName} currentValue={currentValue} />);
 }
 
 function openEditor(container: HTMLElement, currentValue: string): HTMLInputElement {
-  const display = [...container.querySelectorAll('span')].find((s) => s.textContent === currentValue);
+  const display = [...container.querySelectorAll('button')].find((b) => b.textContent === currentValue);
   assert.ok(display, 'the attribute value renders');
   click(display!);
   const input = container.querySelector('input');
@@ -141,6 +151,7 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
   });
 
   it('judgeAttributeEdit: a valid, unused GlobalId commits trimmed', () => {
+    const { judgeAttributeEdit } = editor();
     const owner = (guid: string) => (guid === GUID_B ? 2 : -1);
     assert.deepEqual(judgeAttributeEdit('GlobalId', ` ${'3'.repeat(22)} `, GUID_A, 1, owner), { kind: 'commit', value: '3'.repeat(22) });
     assert.deepEqual(judgeAttributeEdit('GlobalId', GUID_A, GUID_A, 1, owner), { kind: 'unchanged' });

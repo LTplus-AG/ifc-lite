@@ -132,13 +132,14 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
 
   return (
     <div className="flex items-center gap-1 min-w-0 group/attr">
-      <span
-        className="font-medium whitespace-nowrap truncate flex-1 min-w-0 cursor-text"
+      <button
+        type="button"
+        className="font-medium whitespace-nowrap truncate flex-1 min-w-0 cursor-text text-left"
         title={currentValue}
         onClick={begin}
       >
         {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
-      </span>
+      </button>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

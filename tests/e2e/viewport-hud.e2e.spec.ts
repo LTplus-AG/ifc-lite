@@ -12,6 +12,16 @@
  * opened through the store. Section joined in #5499 and its parked chip
  * beside the Solo chip in #5500 (the #5481 collision); Measure joins once
  * #5510 puts its bar on the table.
+ *
+ * A second suite below (#5975) additionally asserts the Space Sketch bar
+ * renders as a SINGLE row at 1280/1600px with both side panels open (the
+ * default `leftPanelCollapsed`/`rightPanelCollapsed` state, unchanged here):
+ * below that width the bar used to `flex-wrap` onto two rows, which never
+ * failed the collision checks above (a wrapped bar still doesn't overlap
+ * anything) but read as heavy. Single-row is measured directly (every
+ * visible child of the bar crosses one horizontal line), not inferred from
+ * the overflow trigger being present, so a bar that collapses and STILL
+ * wraps fails too.
  */
 
 import { test, expect } from '@playwright/test';
@@ -94,6 +104,68 @@ for (const width of [1280, 1600, 1920]) {
         }
       }
       expect(failures).toEqual([]);
+    });
+  }
+}
+
+// #5975: the Space Sketch bar stays a single row at 1280/1600px with both
+// side panels open (`leftPanelCollapsed`/`rightPanelCollapsed` default to
+// `false` and are left alone here — that IS "both open").
+for (const width of [1280, 1600]) {
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`Space Sketch bar stays one row at ${width}px ${scheme} with both side panels open`, async ({ page }) => {
+      test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto('/');
+      await page.waitForFunction((k) => !!(globalThis as Record<string, unknown>)[k], STORE, { timeout: 120000 });
+      await page.locator('input[type="file"]').first().setInputFiles(join(process.cwd(), FIXTURE));
+      await page.waitForFunction((k) => {
+        const s = (globalThis as Record<string, { getState(): { models: Map<string, unknown>; geometryResult?: { meshes?: unknown[] } } }>)[k].getState();
+        return s.models.size > 0 && (s.geometryResult?.meshes?.length ?? 0) > 0;
+      }, STORE, { timeout: 180000 });
+      await page.evaluate(([k, theme]) => {
+        (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setTheme(theme);
+      }, [STORE, scheme] as const);
+      // Both side panels open: the default, asserted explicitly rather than
+      // just relied on, so a future default change can't silently narrow
+      // what this test covers.
+      await page.evaluate((k) => {
+        const s = (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState();
+        s.setLeftPanelCollapsed(false);
+        s.setRightPanelCollapsed(false);
+      }, STORE);
+      await page.evaluate((k) => {
+        (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setActiveTool('spaceSketch');
+      }, STORE);
+      const bar = page.locator('[data-tool-bar="spaceSketch"]');
+      await expect(bar).toBeVisible({ timeout: 60000 });
+      // Space Sketch derives rooms through wasm and then lays out its plan card.
+      await page.waitForTimeout(4000);
+
+      // One row means every visible child's vertical extent crosses one common
+      // horizontal line (latest top above earliest bottom). Distinct `top`s
+      // alone would not do: `items-center` offsets a 15px label from a 24px
+      // button on the SAME row.
+      const rows = await page.evaluate(() => {
+        const el = document.querySelector<HTMLElement>('[data-tool-bar="spaceSketch"]');
+        if (!el) return null;
+        const boxes = Array.from(el.children)
+          .map((c) => (c as HTMLElement).getBoundingClientRect())
+          .filter((r) => r.width > 0 && r.height > 0);
+        return {
+          count: boxes.length,
+          maxTop: Math.max(...boxes.map((r) => r.top)),
+          minBottom: Math.min(...boxes.map((r) => r.bottom)),
+          tier: el.dataset.barTier,
+        };
+      });
+      expect(rows, 'the bar rendered').not.toBeNull();
+      expect(rows!.count, 'the bar has visible children').toBeGreaterThan(0);
+      expect(
+        rows!.maxTop,
+        `Space Sketch bar wraps at ${width}px (tier ${rows!.tier}): a child starts at ${rows!.maxTop}px, below another ending at ${rows!.minBottom}px`,
+      ).toBeLessThan(rows!.minBottom);
     });
   }
 }

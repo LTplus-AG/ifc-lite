@@ -463,9 +463,7 @@ export function Viewport({
     return { enabled: true, resolution: shadowResolution, sunAngleDeg: shadowSunAngle };
   }, [cesiumActive, shadowsEnabled, shadowResolution, shadowSunAngle]);
   const sunShadowsRef = useLatestRef(sunShadows);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [sunShadows]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [sunShadows]);
 
   // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
   // instanced pass in the Types view mode, where the flat path renders the
@@ -638,7 +636,8 @@ export function Viewport({
   const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled || hoverHighlightEnabled);
   const hoveredOutlineId = hoverHighlightEnabled ? hoverState.entityId : null;
   const hoveredIdRef = useLatestRef(hoveredOutlineId);
-  useEffect(() => { rendererRef.current?.requestRender(); }, [hoveredOutlineId]); // idle view redraws only on request (#5390)
+  const hoveredModelIndexRef = useLatestRef(hoverState.modelIndex);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [hoveredOutlineId, hoverState.modelIndex]); // idle view redraws only on request (#5390)
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -1582,7 +1581,7 @@ export function Viewport({
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
-    hoveredIdRef,
+    hoveredIdRef, hoveredModelIndexRef,
     selectedModelIndexRef,
     clearColorRef,
     sectionPlaneRef,

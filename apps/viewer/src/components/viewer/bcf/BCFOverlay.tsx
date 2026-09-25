@@ -27,7 +27,7 @@
  *   - BCF panel (click marker → open topic, bidirectional sync)
  */
 
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -105,9 +105,9 @@ function Connector({ from, to, color }: { from: Vec3; to: Vec3; color: string })
       <g ref={anchor2} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
       <line
         ref={lineRef}
-        style={{ display: 'none', ['--bcf-connector-color' as string]: color } as CSSProperties}
+        style={{ display: 'none' }}
         data-scene-primitive="bcf-connector"
-        stroke="var(--bcf-connector-color)"
+        stroke={color}
         strokeWidth={1.5}
         strokeDasharray="3 2"
         strokeOpacity={0.5}

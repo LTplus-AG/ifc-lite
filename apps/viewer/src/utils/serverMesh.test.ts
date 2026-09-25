@@ -80,3 +80,15 @@ test('does not truthiness-gate the source ids the way it gates origin and class'
   const out = convertServerMesh({ ...base, geometry_item_id: 0 });
   assert.equal(out.geometryItemId, 0, 'a 0 id was dropped by a truthiness check');
 });
+
+// #5582: the server serializes the IFC-authored finish as `metallic` /
+// `roughness`; the REST path must hand the renderer the same
+// `MeshData.material` the WASM path does, including an authored 0.
+test('carries the IFC-authored metallic / roughness as MeshData.material', () => {
+  assert.deepEqual(convertServerMesh({ ...base, metallic: 1, roughness: 0 }).material, { metallic: 1, roughness: 0 });
+  assert.deepEqual(convertServerMesh({ ...base, roughness: 0.25 }).material, { roughness: 0.25 });
+});
+
+test('omits material when the server sent no finish', () => {
+  assert.equal('material' in convertServerMesh(base), false);
+});

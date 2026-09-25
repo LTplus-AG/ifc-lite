@@ -47,5 +47,16 @@ export function convertServerMesh(m: ServerMeshData): MeshData {
     // host loses the ability to drill from a picked piece to its source.
     ...(m.geometry_item_id !== undefined ? { geometryItemId: m.geometry_item_id } : {}),
     ...(m.material_id !== undefined ? { materialId: m.material_id } : {}),
+    // IFC-authored finish (#5582), the same `MeshData.material` shape the WASM
+    // path produces. `undefined` tests, not truthiness: metallic 0 and
+    // roughness 0 are real authored values.
+    ...(m.metallic !== undefined || m.roughness !== undefined
+      ? {
+        material: {
+          ...(m.metallic !== undefined ? { metallic: m.metallic } : {}),
+          ...(m.roughness !== undefined ? { roughness: m.roughness } : {}),
+        },
+      }
+      : {}),
   };
 }

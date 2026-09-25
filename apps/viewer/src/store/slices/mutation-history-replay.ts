@@ -124,17 +124,17 @@ export function recordMutationBatch(
 ): string | null {
   if (mutations.length === 0) return null;
   const batchId = continuing ?? newMutationBatchId();
-  const owns = (container: object) => continuing !== undefined && batchOwned.get(container) === batchId;
   set((s) => {
+    // The stack is always copied: `withPlacementHistory` tells a new operation
+    // from a replayed one by comparing the new top against the PREVIOUS
+    // stack, so appending in place would hide this chunk from it.
     const undoStacks = new Map(s.undoStacks);
-    const stack = undoStacks.get(modelId) ?? [];
-    if (owns(stack)) (stack as Mutation[]).push(...mutations);
-    else undoStacks.set(modelId, own([...stack, ...mutations], batchId));
+    undoStacks.set(modelId, [...(undoStacks.get(modelId) ?? []), ...mutations]);
     const redoStacks = new Map(s.redoStacks);
     redoStacks.set(modelId, []);
     let tags = s.mutationBatchTags;
-    if (owns(tags)) for (const m of mutations) tags.set(m.id, batchId);
-    else tags = own(withMutationBatchTags(tags, mutations.map((m) => m.id), batchId), batchId);
+    if (continuing !== undefined && batchOwned.get(tags) === batchId) for (const m of mutations) tags.set(m.id, batchId);
+    else batchOwned.set(tags = withMutationBatchTags(tags, mutations.map((m) => m.id), batchId), batchId);
     return {
       undoStacks,
       redoStacks,
@@ -147,16 +147,10 @@ export function recordMutationBatch(
 }
 
 /**
- * The undo stack and tag map this module copied for a batch that later
- * chunks may extend. A later chunk of that batch appends to them in place
- * instead of copying the whole history again: a 100k-entity Bulk run is 200
- * chunks, and a copy per chunk made recording quadratic. Every other writer
- * replaces the stack or map, which ends the ownership, so this never touches
- * a container someone else made.
+ * The tag map this module copied for a batch that later chunks may extend.
+ * A later chunk of that batch adds to it in place instead of copying every
+ * tag of the session again (a 100k-entity Bulk run is 200 chunks). Every
+ * other writer replaces the map, which ends the ownership, and nothing
+ * compares tag maps by reference.
  */
-const batchOwned = new WeakMap<object, string>();
-
-function own<T extends object>(container: T, batchId: string): T {
-  batchOwned.set(container, batchId);
-  return container;
-}
+const batchOwned = new WeakMap<Map<string, string>, string>();

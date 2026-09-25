@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkQueryEngine, CsvConnector, MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
-import { useViewerStore } from '@/store/index.js';
+import { useViewerStore, type ViewerState } from '@/store/index.js';
 
 const WALLS = [1, 2, 3, 4, 5].map((n) => 100 + n);
 
@@ -163,7 +163,7 @@ describe('bulk writers are one undo step (#5861)', () => {
     for (const id of WALLS) assert.equal(value(view, id), null, `wall #${id} restored by one undo`);
   });
 
-  it('recording a 100,000-mutation run in 500-mutation chunks stays linear (#5958)', () => {
+  it('recording a 100,000-mutation run in 500-mutation chunks stays fast (#5958)', () => {
     const view = install(['m']).get('m')!;
     const chunks: Mutation[][] = [];
     for (let c = 0; c < 200; c += 1) {
@@ -177,6 +177,17 @@ describe('bulk writers are one undo step (#5861)', () => {
     assert.ok(elapsed < 3_000, `recording took ${elapsed.toFixed(0)} ms`);
     useViewerStore.getState().undo('m');
     assert.equal(useViewerStore.getState().undoStacks.get('m')!.length, 0, 'still one undo step');
+  });
+
+  it('every chunk of a run ends the placement redo branch, not only the first (#5958)', () => {
+    const view = install(['m']).get('m')!;
+    const write = (id: number) => [view.setProperty(id, 'Pset_Bulk', 'Code', 'X', PropertyValueType.Label)];
+    const batchId = useViewerStore.getState().recordMutationBatch('m', write(WALLS[0]))!;
+    // A model move lands mid-run and is undone: it sits on the placement redo branch.
+    const move = { timestamp: Date.now() } as ViewerState['modelPlacement']['redo'][number];
+    useViewerStore.setState((s) => ({ modelPlacement: { ...s.modelPlacement, undo: [], redo: [move] } }));
+    useViewerStore.getState().recordMutationBatch('m', write(WALLS[1]), batchId);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.redo, [], 'a new chunk is a new operation');
   });
 
   it('undoing a 10,000-mutation batch neither overflows the stack nor takes seconds', () => {

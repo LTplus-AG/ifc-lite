@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { computePosition, autoUpdate, offset, flip, shift, type Placement } from '@floating-ui/dom';
 import { Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { isTextEntryElement } from '@/lib/keyboard-event';
@@ -109,15 +110,14 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
             />
           ))}
         </div>
-        <Button
-          variant="ghost"
+        <IconButton
+          label={t('tours.tourStepCard.endTourAriaLabel')}
           size="icon-xs"
-          aria-label={t('tours.tourStepCard.endTourAriaLabel')}
           onClick={() => abortTour('close')}
           className="-mr-1.5 -mt-1.5 text-muted-foreground"
         >
           <X />
-        </Button>
+        </IconButton>
       </div>
 
       <div className="mt-1.5 text-sm font-semibold">{step.title}</div>

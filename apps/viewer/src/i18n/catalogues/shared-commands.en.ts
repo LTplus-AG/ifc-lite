@@ -54,8 +54,8 @@ export const sharedCommandsEn = {
   'exportCommands.csv.item.spatial': 'Spatial Hierarchy',
 
   'exportCommands.json.label': 'JSON',
-  'exportCommands.json.menuLabel': 'Export JSON (All Data)',
-  'exportCommands.json.tooltip': 'Export JSON (all data)',
+  'exportCommands.json.menuLabel': 'Export JSON (active model)',
+  'exportCommands.json.tooltip': 'Export the active model as JSON',
 
   'exportCommands.screenshot.label': 'Screenshot',
   'exportCommands.screenshot.menuLabel': 'Screenshot',
@@ -64,6 +64,15 @@ export const sharedCommandsEn = {
   'exportCommands.pdf.label': 'PDF',
   'exportCommands.pdf.menuLabel': 'Export PDF (to-scale 3D view)',
   'exportCommands.pdf.tooltip': 'Export PDF (to-scale 3D view)',
+
+  'exportCommands.modifiedIfc.label': 'Modified IFC',
+  'exportCommands.modifiedIfc.menuLabel': 'Export modified IFC…',
+  'exportCommands.modifiedIfc.tooltip': 'Export every model with unexported edits, edits applied',
+
+  // Extension-contributed exporters: the row text is the exporter's own name.
+  'exportCommands.extension.groupLabel': 'From extensions',
+  'exportCommands.extension.exportedToast': 'Exported with {name}',
+  'exportCommands.extension.failedToast': '"{name}" failed: {error}',
 
   'cameraCommands.group.camera': 'Camera',
   'cameraCommands.group.preset': 'Preset views',

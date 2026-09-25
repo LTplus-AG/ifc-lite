@@ -4,6 +4,7 @@
 
 import type { SourceContainer, SourceProject } from '@ifc-lite/plugin-api';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 
@@ -49,15 +50,13 @@ export function SourceBrowserHeader({
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 border-b px-3 py-2">
-      <Button
-        variant="ghost"
-        size="icon"
+      <IconButton
+        label={t('sources.sourceBrowserHeader.backAria')}
         className="h-7 w-7"
         onClick={onBack}
-        aria-label={t('sources.sourceBrowserHeader.backAria')}
       >
         <ChevronLeft className="h-4 w-4" />
-      </Button>
+      </IconButton>
       <span className="truncate text-sm font-medium">
         {step === 'projects' && providerTitle}
         {step === 'file-areas' && selectedProject?.name}

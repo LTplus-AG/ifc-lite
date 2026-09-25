@@ -20,6 +20,7 @@ import {
 import { closePanelWindow } from '@/services/panel-windows';
 import { BOTTOM_PANEL_IDS, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
+import { trackPanelOpened, type UiSurface } from '@/store/uiTelemetry';
 
 /** Registry ids, deliberately. This hook used to spell the entity-list panel
  *  `'list'` while the registry and the store spell it `'lists'`, and the cost
@@ -30,7 +31,8 @@ export type BottomPanel = BottomPanelId;
 export type RightPanel = 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
-export function useWorkspacePanelControls() {
+/** `surface`: the chrome these controls sit in, reported with each open (#5618). */
+export function useWorkspacePanelControls(surface?: UiSurface) {
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
@@ -93,15 +95,15 @@ export function useWorkspacePanelControls() {
     // Lists panel cleared its dock flag and left the floating window on screen
     // with the toolbar latch off, while the same click from the activity bar
     // (which routes here) brought it home correctly.
-    useViewerStore.getState().toggleBottomPanel(panel);
-  }, [activeAnalysisExtension?.placement]);
+    useViewerStore.getState().toggleBottomPanel(panel, surface);
+  }, [activeAnalysisExtension?.placement, surface]);
 
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
     if (panel === 'appearance') {
-      useViewerStore.getState().toggleWorkspacePanel(panel);
+      useViewerStore.getState().toggleWorkspacePanel(panel, surface);
       return;
     }
 
@@ -125,6 +127,12 @@ export function useWorkspacePanelControls() {
     const nextSourcesVisible = panel === 'sources' ? !docked(sourcesPanelVisible) : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
+    // These flags bypass the store's panel actions, so report the open here,
+    // with the side slot's occupant as the store's own actions do.
+    if (panel !== 'addElement' && (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible)) {
+      const { sidebarMode, sidebarActivePanel } = useViewerStore.getState();
+      trackPanelOpened(panel, surface, sidebarMode === 'expanded' ? sidebarActivePanel : undefined);
+    }
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
@@ -171,6 +179,7 @@ export function useWorkspacePanelControls() {
     sourcesPanelVisible,
     floatingPanels,
     poppedOutIds,
+    surface,
   ]);
 
   const handleToggleAnalysisExtension = useCallback((id: string) => {

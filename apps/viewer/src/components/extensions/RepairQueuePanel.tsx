@@ -23,6 +23,7 @@ import type {
   RevalidationSummary,
 } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
@@ -122,9 +123,9 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
             {t('extensionsPanels.repairQueuePanel.rerunButton')}
           </Button>
           {onClose && (
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.repairQueuePanel.closeAriaLabel')}>
+            <IconButton label={t('extensionsPanels.repairQueuePanel.closeAriaLabel')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

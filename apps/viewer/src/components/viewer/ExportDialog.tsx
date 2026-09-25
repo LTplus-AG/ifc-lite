@@ -15,7 +15,7 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  * - IFC2X3 / IFC4 / IFC4X3 → .ifc (STEP), or .ifczip with image resources
  * - IFC5 → .ifcx (JSON + USD geometry)
  *
- * "Changes Only" exports just mutations:
+ * "Changes only" exports just mutations:
  * - Below IFC5 → .json
  * - IFC5 → .ifcx
  */
@@ -69,12 +69,11 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadFile, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
+import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { finishLandXmlIfcExport } from '@/lib/export/landXmlIfcDownload.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
-import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
@@ -737,7 +736,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {exportScope === 'single' && (
             <div className="flex items-center justify-between">
               <div>
-                <Label>{t('exportDialog.changesOnlyLabel')}</Label>
+                <Label>{isIfc5 ? t('exportDialog.changesOnlyLabel.ifc5') : t('exportDialog.changesOnlyLabel.default')}</Label>
                 <p className="text-xs text-muted-foreground">
                   {isIfc5 ? t('exportDialog.changesOnlyHint.ifc5') : t('exportDialog.changesOnlyHint.default')}
                 </p>
@@ -799,15 +798,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             </Alert>
           )}
 
-          {/* Extension-contributed exporters (#1907). Rendered alongside the
-              built-in formats so a third-party exporter is actually reachable. */}
-          <ExtensionExportSlot
-            baseName={
-              selectedModel
-                ? sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' })
-                : 'model'
-            }
-          />
         </div>
 
         <DialogFooter>

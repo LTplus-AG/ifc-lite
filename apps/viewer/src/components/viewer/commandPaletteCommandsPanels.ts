@@ -47,7 +47,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   c.push(
     ...bottomPanelCommands(p.activateBottomPanel),
     { id: 'panel:properties', label: 'Information', ...withKey('commandPalette.panel.properties.label'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
-      action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
+      action: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); } },
     { id: 'panel:tree', label: 'Hierarchy', ...withKey('commandPalette.panel.tree.label'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
       action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
     { id: 'panel:bcf', label: 'BCF Topics', ...withKey('commandPalette.panel.bcf.label'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
@@ -134,7 +134,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   );
 
   // ── Export ── (built from the toolbar registry, #5601)
-  c.push(...buildExportCommands(p.runExport));
+  c.push(...buildExportCommands(p.runExport, p.extensionExporters));
 
   // ── Automation (scripts — last, power-user feature) ──
   for (const t of SCRIPT_TEMPLATES) {

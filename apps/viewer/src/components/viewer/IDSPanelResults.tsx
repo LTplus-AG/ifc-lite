@@ -22,11 +22,10 @@ import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { useViewerStore } from '@/store';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { ReportExportButton } from './IDSReportExportButton';
 import { SpecificationCard } from './IDSSpecificationCard';
@@ -187,70 +186,61 @@ export function IDSPanelResults({
 
         <div className="flex-1 min-w-2" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={failedActive ? 'secondary' : 'ghost'} size="sm"
-              className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
-              aria-pressed={failedActive} aria-label={failedLabel}
-              onClick={handleIsolateFailed} disabled={noActiveSpec}
-              {...tourAnchor(TOUR_ANCHORS.idsIsolateFailed)}
-            >
-              <EyeOff className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{failedLabel}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={failedLabel}
+          variant={failedActive ? 'secondary' : 'ghost'}
+          size="sm"
+          className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
+          aria-pressed={failedActive}
+          onClick={handleIsolateFailed}
+          disabled={noActiveSpec}
+          {...tourAnchor(TOUR_ANCHORS.idsIsolateFailed)}
+        >
+          <EyeOff className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={passedActive ? 'secondary' : 'ghost'} size="sm"
-              className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
-              aria-pressed={passedActive} aria-label={passedLabel}
-              onClick={handleIsolatePassed} disabled={noActiveSpec}
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{passedLabel}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={passedLabel}
+          variant={passedActive ? 'secondary' : 'ghost'}
+          size="sm"
+          className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
+          aria-pressed={passedActive}
+          onClick={handleIsolatePassed}
+          disabled={noActiveSpec}
+        >
+          <Eye className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={involvedActive ? 'secondary' : 'ghost'} size="sm"
-              className="h-8 w-8 p-0"
-              aria-pressed={involvedActive} aria-label={involvedLabel}
-              onClick={handleIsolateInvolved} disabled={noActiveSpec}
-            >
-              <Boxes className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{involvedLabel}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={involvedLabel}
+          variant={involvedActive ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-8 w-8 p-0"
+          aria-pressed={involvedActive}
+          onClick={handleIsolateInvolved}
+          disabled={noActiveSpec}
+        >
+          <Boxes className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost" size="sm" className="h-8 w-8 p-0"
-              aria-label={t('idsPanel.clearIsolation')}
-              onClick={clearIsolation} disabled={!visibilityFilterActive}
-            >
-              <Focus className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('idsPanel.clearIsolation')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('idsPanel.clearIsolation')}
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={clearIsolation}
+          disabled={!visibilityFilterActive}
+        >
+          <Focus className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={t('idsPanel.reapplyColors')} onClick={applyColors}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('idsPanel.reapplyColors')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('idsPanel.reapplyColors')}
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={applyColors}
+        >
+          <RefreshCw className="h-4 w-4" />
+        </IconButton>
 
         <Separator orientation="vertical" className="h-4 mx-1" />
 

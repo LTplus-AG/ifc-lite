@@ -136,4 +136,6 @@ export const sheetsPdfEn = {
   'sheetsPdf.pdfView.perspectiveDescription': 'The PDF is an orthographic (parallel) projection along your current view direction, so near and far objects print at the same scale. That is the only way a printed drawing can carry a single scale. Switch to orthographic to see the same parallel projection on screen.',
   'sheetsPdf.pdfView.switchToOrthographicButton': 'Switch camera to orthographic',
   'sheetsPdf.pdfView.orthographicNote': 'Orthographic camera, so the printed scale is exact. The sheet covers everything currently visible, not only the part framed on screen: panning and zooming change what you look at, not what is printed.',
+  'sheetsPdf.titleBlock.removeFieldLabel': 'Remove field {label}',
+  'sheetsPdf.titleBlock.removeRevisionLabel': 'Remove revision {revision}',
 } as const satisfies Record<string, TranslationValue>;

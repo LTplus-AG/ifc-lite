@@ -423,6 +423,8 @@ export const propertiesEn = {
   'properties.panel.zonesHeading': 'Zones',
   'properties.panel.attributeEditor.emptyValue': 'empty',
   'properties.panel.attributeEditor.editTooltip': 'Edit attribute',
+  'properties.panel.attributeEditor.invalidGlobalId': 'A GlobalId is 22 characters: 0-9, A-Z, a-z, _ and $.',
+  'properties.panel.attributeEditor.duplicateGlobalId': 'Another element in this model already has this GlobalId.',
 
   // PropertiesPanel: tabs
   'properties.panel.tab.properties': 'Properties',

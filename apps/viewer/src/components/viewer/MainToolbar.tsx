@@ -83,6 +83,9 @@ import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 
+/** Edit mode's latched state: the interaction accent, never a mode-specific hue (#5489). */
+const EDIT_ACTIVE_CLASS = 'bg-overlay-accent text-overlay-halo hover:bg-overlay-accent/90';
+
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
 // This fixes Radix UI Tooltip's asChild prop becoming stale during re-renders
 interface ToolButtonProps {
@@ -713,7 +716,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               (e.currentTarget as HTMLButtonElement).blur();
               toggleEditEnabled();
             }}
-            className={cn(editEnabled && 'bg-purple-600 text-white hover:bg-purple-700')}
+            className={cn(editEnabled && EDIT_ACTIVE_CLASS)}
           >
             <PenLine className="h-4 w-4" />
           </Button>
@@ -735,12 +738,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           user has a one-click recovery for any change. */}
       <UndoRedoButtons />
 
-      {/* Space Sketch is authoring chrome (it bakes IfcSpace
-          entities), so like every other authoring affordance it only
-          surfaces in edit mode — keeping the default toolbar lean.
-          It lives next to the Edit pill that reveals it, with the
-          same purple accent, and a drafting icon distinct from the
-          square/grid icons (Panels, Basket, View options). */}
+      {/* Space Sketch is authoring chrome (it bakes IfcSpace entities), so
+          it only surfaces in edit mode, next to the Edit pill with the same
+          accent and a drafting icon distinct from Panels/Basket/View. */}
       {editEnabled && (
         <ToolButton
           tool="spaceSketch"
@@ -748,7 +748,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           label={t('mainToolbar.spaceSketch')}
           activeTool={activeTool}
           onToolChange={setActiveTool}
-          activeAccentClass="bg-purple-600 text-white hover:bg-purple-700"
+          activeAccentClass={EDIT_ACTIVE_CLASS}
         />
       )}
 

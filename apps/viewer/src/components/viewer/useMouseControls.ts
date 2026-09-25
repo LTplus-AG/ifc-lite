@@ -19,7 +19,7 @@ import type {
   EdgeLockState,
   SectionPlane,
 } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
+import type { HoverState, MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
@@ -122,12 +122,7 @@ export interface UseMouseControlsParams {
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
-  setHoverState: (state: {
-    entityId: number;
-    screenX: number;
-    screenY: number;
-    worldXYZ?: { x: number; y: number; z: number };
-  }) => void;
+  setHoverState: (state: HoverState & { entityId: number }) => void;
   /**
    * Called during a rectangle-selection drag with the current rect
    * (CSS pixels, canvas-relative). Passed `null` on drag end to clear

@@ -31,8 +31,9 @@ import type { TranslationValue } from '../types';
  * still plain JSX attributes, out of THIS slice's scope), `textAnnotationEditor.*`
  * (`TextAnnotationEditor.tsx`, the 2D-drawing text annotation inline
  * editor), `peerPresenceLayer.*` (`presence/PeerPresenceLayer.tsx`, the
- * live-cursor DOM overlay), `bottomStrip.*` (`BottomStrip.tsx`'s detach
- * grip), `saveMarkupToModelButton.*` / `exportChangesButton.*`
+ * live-cursor DOM overlay), `bottomStrip.*` (`BottomStrip.tsx` /
+ * `BottomStripHeader.tsx`'s tab row, detach grip, maximize/restore and
+ * Close, #5498), `saveMarkupToModelButton.*` / `exportChangesButton.*`
  * (`SaveMarkupToModelButton.tsx`, `ExportChangesButton.tsx` — the two
  * dedicated export-adjacent toolbar buttons), and `searchableSelect.*`
  * (`SearchableSelect.tsx`, the searchable dropdown `LensPanel`'s editors
@@ -257,8 +258,16 @@ export const miscPanelsBEn = {
   'peerPresenceLayer.guestName': 'Guest',
   'peerPresenceLayer.nameWithTool': '{name} — {tool}',
 
-  // ---- BottomStrip.tsx -----------------------------------------------------
+  // ---- BottomStrip.tsx / BottomStripHeader.tsx --------------------------------
   'bottomStrip.gripTitle': 'Drag to float · drag onto another screen to pop out',
+  'bottomStrip.tabListAriaLabel': 'Open bottom panels',
+  'bottomStrip.closeTabAriaLabel': 'Close {name}',
+  'bottomStrip.maximize': 'Maximize',
+  'bottomStrip.restore': 'Restore',
+  'bottomStrip.close': 'Close',
+  // Side-by-side 2D/3D layout preset (#5515) — Drawing-only toggle.
+  'bottomStrip.dockBeside': 'Dock beside 3D view',
+  'bottomStrip.dockBelow': 'Dock below 3D view',
 
   // ---- SaveMarkupToModelButton.tsx -------------------------------------------
   'saveMarkupToModelButton.menuItemLabel': 'Save Markup to Model',

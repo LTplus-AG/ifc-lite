@@ -66,6 +66,26 @@ describe('generateLod0', () => {
   });
 });
 
+// #5922: an Axis of exactly -X with a `$` RefDirection. The renderer fills
+// that RefDirection with (0,0,1) x Axis = (0,-1,0), so local Y is (0,0,1) and
+// the 2 x 3 x 4 box spans world X [-4,0], Y [-2,0], Z [0,3].
+const IFC_NEG_X_AXIS = IFC_WITH_BOUNDING_BOX
+  .replace('#11=IFCAXIS2PLACEMENT3D(#12,$,$);', '#11=IFCAXIS2PLACEMENT3D(#12,#13,$);\n#13=IFCDIRECTION((-1.,0.,0.));')
+  .replace('#12=IFCCARTESIANPOINT((10.,20.,30.));', '#12=IFCCARTESIANPOINT((0.,0.,0.));');
+
+describe('generateLod0 - absent RefDirection (#5922)', () => {
+  it('places a -X Axis box in the frame the renderer draws', async () => {
+    const lod0 = await generateLod0(new TextEncoder().encode(IFC_NEG_X_AXIS));
+    expect(lod0.elements).toHaveLength(1);
+    const { min, max } = lod0.elements[0].bbox;
+    const expected = { min: [-4, -2, 0], max: [0, 0, 3] };
+    for (let i = 0; i < 3; i++) {
+      expect(min[i]).toBeCloseTo(expected.min[i]!, 9);
+      expect(max[i]).toBeCloseTo(expected.max[i]!, 9);
+    }
+  });
+});
+
 /**
  * Every fixture above is METRE-scaled with its bounding-box corner at the local
  * origin — two constants that make the unit multiply and the corner offset

@@ -49,12 +49,26 @@ export interface NetworkRequestInit {
   readonly maxBytes: number;
   /** Caller's own cancellation, combined with the timeout's. */
   readonly signal?: AbortSignal;
+  /**
+   * `'bytes'` returns the capped body as raw {@link NetworkResponse.bytes}
+   * (binary downloads) instead of UTF-8 text; `body` is then `''`. The byte
+   * cap applies identically. Defaults to `'text'`.
+   */
+  readonly responseType?: 'text' | 'bytes';
+  /**
+   * Return a `304 Not Modified` as a response instead of refusing it with
+   * every other 3xx. Opt-in: a conditional request (`If-None-Match`) asks for
+   * it, and existing callers keep the refusal they already handle (#5935 review).
+   */
+  readonly allowNotModified?: boolean;
 }
 
 export interface NetworkResponse {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
+  /** The raw capped body; set only when the request asked for `responseType: 'bytes'`. */
+  readonly bytes?: Uint8Array<ArrayBuffer>;
   readonly truncated: boolean;
 }
 
@@ -153,9 +167,9 @@ function describeFetchFailure(err: unknown): string {
  * exceeded — never via `response.text()`/`arrayBuffer()`, which buffer the
  * whole body before any cap could apply.
  */
-async function readCappedBody(response: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
+async function readCappedBody(response: Response, maxBytes: number): Promise<{ bytes: Uint8Array<ArrayBuffer>; truncated: boolean }> {
   const body = response.body;
-  if (!body) return { text: '', truncated: false };
+  if (!body) return { bytes: new Uint8Array(0), truncated: false };
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -184,7 +198,7 @@ async function readCappedBody(response: Response, maxBytes: number): Promise<{ t
     combined.set(c, offset);
     offset += c.byteLength;
   }
-  return { text: new TextDecoder('utf-8', { fatal: false }).decode(combined), truncated };
+  return { bytes: combined, truncated };
 }
 
 /**
@@ -235,18 +249,22 @@ export async function executeUngatedRequest(
   // trying to read and re-validate `Location`, is the one policy that
   // behaves identically in both runtimes: it never depends on being able
   // to read a header a browser will not hand over.
-  if (response.status >= 300 && response.status < 400) {
+  // 304 Not Modified is a conditional-request answer (If-None-Match), not a
+  // redirect: it has no `Location` and nothing to follow.
+  if (response.status >= 300 && response.status < 400 && !(response.status === 304 && init.allowNotModified)) {
     throw new NetworkDeniedError(`network.fetch refused: server responded with a redirect (${response.status}); redirects are not followed`);
   }
   if (response.type === 'opaqueredirect') {
     throw new NetworkDeniedError('network.fetch refused: server responded with a redirect; redirects are not followed');
   }
 
-  const { text, truncated } = await readCappedBody(response, init.maxBytes);
+  const { bytes, truncated } = await readCappedBody(response, init.maxBytes);
   const responseHeaders: Record<string, string> = {};
   response.headers.forEach((value, key) => {
     responseHeaders[key] = value;
   });
+  if (init.responseType === 'bytes') return { status: response.status, headers: responseHeaders, body: '', bytes, truncated };
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   return { status: response.status, headers: responseHeaders, body: text, truncated };
 }
 

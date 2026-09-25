@@ -87,7 +87,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'sheetEnabled', 'sheetPanelVisible', 'slabCutAnchor', 'slabCutFootprint',
   'slabCutStoreyElevation', 'splitHoverAxisDirection', 'splitHoverCutPoint',
   'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
-  'splitTargetExpressId', 'splitTargetModelId', 'suppressNextSection2DPanelAutoOpen',
+  'splitTargetExpressId', 'splitTargetModelId',
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
@@ -108,6 +108,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'slabCutAnchor', 'slabCutFootprint', 'slabCutStoreyElevation', 'splitHoverAxisDirection',
   'splitHoverCutPoint', 'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
   'splitTargetExpressId', 'splitTargetModelId',
+  'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 full unload discards the unsaved editor
 ];
 
 /**
@@ -275,10 +276,11 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'sheetEnabled', 'sheetPanelVisible', 'slabCutAnchor', 'slabCutFootprint',
   'slabCutStoreyElevation', 'splitHoverAxisDirection', 'splitHoverCutPoint',
   'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
-  'splitTargetExpressId', 'splitTargetModelId', 'suppressNextSection2DPanelAutoOpen',
+  'splitTargetExpressId', 'splitTargetModelId',
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
+  'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
 ];
 
 

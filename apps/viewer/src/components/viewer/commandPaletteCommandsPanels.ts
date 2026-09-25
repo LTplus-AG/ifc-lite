@@ -22,6 +22,7 @@ import {
   Palette, Puzzle, Sun, Info,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
+  Ruler,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
@@ -68,6 +69,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('loadReport'); } },
     { id: 'panel:pointclouds', label: 'Point Clouds', ...withKey('commandPalette.panel.pointClouds.label'), keywords: 'point cloud scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
       action: () => { p.activateRightPanel('pointclouds'); } },
+    { id: 'panel:measurements', label: 'Measurements', ...withKey('commandPalette.panel.measurements.label'), keywords: 'measure distance polyline angle radius coordinates point quantities area volume list', category: 'Panels', icon: Ruler,
+      action: () => { p.activateRightPanel('measurements'); } },
     { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()

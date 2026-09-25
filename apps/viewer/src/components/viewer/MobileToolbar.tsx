@@ -179,6 +179,7 @@ export function MobileToolbar() {
           fileInputRef.current?.click();
         }}
         disabled={loading}
+        aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -195,6 +196,7 @@ export function MobileToolbar() {
           className="h-9 w-9 flex-shrink-0 text-[#9ece6a]"
           onClick={() => addModelInputRef.current?.click()}
           disabled={loading}
+          aria-label={t('shellChrome.mobileToolbar.addModelAriaLabel')}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -270,7 +272,12 @@ export function MobileToolbar() {
       {/* Overflow menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="h-9 w-9 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-9 w-9 flex-shrink-0"
+            aria-label={t('shellChrome.mobileToolbar.moreActionsAriaLabel')}
+          >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

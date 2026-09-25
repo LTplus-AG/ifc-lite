@@ -23,7 +23,7 @@ let root: Root;
 
 /** Each toast is the row holding its dismiss button. */
 function dismissButtons(): HTMLButtonElement[] {
-  return [...host.querySelectorAll('button')];
+  return [...host.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')];
 }
 
 function toastItems(): HTMLElement[] {
@@ -92,6 +92,16 @@ describe('Toaster (#5603)', () => {
     act(() => toast.success('Exported 42 entities'));
     const [button] = dismissButtons();
     assert.equal(button?.getAttribute('aria-label'), 'Dismiss notification');
+  });
+
+  it('runs a success action and dismisses its toast (#5827)', () => {
+    let opened = 0;
+    act(() => toast.success('Topic created', { label: 'Open BCF', onClick: () => { opened++; } }));
+    const action = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Open BCF');
+    assert.ok(action, 'the action is visible and named');
+    act(() => action.click());
+    assert.equal(opened, 1);
+    assert.equal(toastItems().length, 0);
   });
 
   it('puts errors in the role=alert region and other toasts in the polite one', () => {

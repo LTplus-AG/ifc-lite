@@ -69,6 +69,7 @@ beforeEach(async () => {
     clashReviews: new Map(),
     clashStatusFilter: new Set(['open', 'resolved', 'accepted']),
     bcfProject: null,
+    bcfPanelVisible: false,
     cameraCallbacks: {},
     fromGlobalId: (expressId: number) => ({ modelId: 'model', expressId }),
   });
@@ -145,6 +146,8 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     assert.ok(topics?.has(concurrentTopic.guid), 'the concurrent topic is not overwritten by stale project state');
     const groupTopic = [...topics!.values()].find((topic) => topic.title === 'Riser coordination');
     assert.ok(groupTopic, 'one group action creates its BCF topic');
+    assert.equal(useViewerStore.getState().bcfPanelVisible, false,
+      'creating a group topic must leave the Clash workspace open (#5827)');
     assert.deepEqual(
       groupTopic.header?.map((file) => file.filename),
       ['model.ifc'],

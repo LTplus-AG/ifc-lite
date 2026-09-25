@@ -8,8 +8,8 @@
 
 Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented; v1.2 (vertical
 profiles, §12) implemented; v1.3 (station equations, §14) implemented; v1.4 (terrain imagery,
-§15) specified — its projection (§15.3) is implemented, the viewer drape (§15.4) and the export
-(§15.5) are not yet**.
+§15) specified — the projection (§15.3) and the viewer drape of image files (§15.4) are
+implemented; tile sources and the export (§15.5) are not yet**.
 Version 1.4, 2026-09-25.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),

@@ -259,9 +259,10 @@ export function StatusBar() {
         ) : (
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
-        {/* Cancel button — only visible while a long-running stream
-            (LAS/LAZ/PLY/PCD/E57) is in flight. The loader hooks
-            register/clear the canceller around `await ingest.done`. */}
+        {/* Cancel button — visible while a load has published a canceller:
+            a primary model load (hooks/primaryLoadCanceller.ts, #5849) or a
+            point-cloud stream (LAS/LAZ/PLY/PCD/E57). The in-viewport
+            loading card calls the same canceller. */}
         {activeStreamCanceller && (
           <button
             type="button"

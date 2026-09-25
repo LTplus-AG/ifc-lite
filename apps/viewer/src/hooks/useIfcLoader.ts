@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
+import { installPrimaryLoadCanceller } from './primaryLoadCanceller.js';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
@@ -296,6 +297,7 @@ export function useIfcLoader() {
       : loadSessionRef.current;
     // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
     const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
+    const releaseCanceller = target.kind === 'primary' ? installPrimaryLoadCanceller(() => { loadSessionRef.current += 1; }) : null; // #5849
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -2206,6 +2208,7 @@ export function useIfcLoader() {
       // and a `dispose()` placed after the last statement would miss all of
       // them. The free itself still waits on the parse chain; see
       // createGeometryProcessorDisposer.
+      releaseCanceller?.();
       try { appearanceLoad?.finishForModel(useViewerStore.getState().models.get(modelId)); }
       finally { geometryHandle?.release(); }
     }

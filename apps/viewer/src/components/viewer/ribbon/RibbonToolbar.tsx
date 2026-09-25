@@ -21,6 +21,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, HelpCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
@@ -69,9 +70,9 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   // hidden file inputs exactly once for this toolbar style.
   const fileCommands = useFileCommands();
 
-  const { loading, progress, geometryProgress, metadataProgress } = useIfc();
+  const { loading, geometryProgress, metadataProgress } = useIfc();
   const error = useViewerStore((state) => state.error);
-  const activeProgress = geometryProgress ?? metadataProgress ?? progress;
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const handleTabClick = (id: RibbonTabId) => {
     if (id === activeTab && !ribbonCollapsed) return;

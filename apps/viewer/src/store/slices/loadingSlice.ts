@@ -105,3 +105,15 @@ export const loadingTeardown = defineSliceTeardown(
     'all-models-cleared': notApplicable,
   },
 );
+
+type LoadProgressFields = Pick<LoadingSlice, 'progress' | 'geometryProgress' | 'metadataProgress'>;
+
+/**
+ * The one progress a load surface shows: geometry streaming, then metadata
+ * hydration, then the generic load phase. Every progress UI (ribbon, classic
+ * and mobile toolbars, the in-viewport loading card) reads this rather than
+ * repeating the fallback chain (#5849).
+ */
+export function selectActiveLoadProgress(state: LoadProgressFields): LoadingSlice['progress'] {
+  return state.geometryProgress ?? state.metadataProgress ?? state.progress;
+}

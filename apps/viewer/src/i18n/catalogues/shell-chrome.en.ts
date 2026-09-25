@@ -102,7 +102,7 @@ export const shellChromeEn = {
   // StatusBar.tsx
   'shellChrome.statusBar.loadingFallback': 'Loading...',
   'shellChrome.statusBar.ready': 'Ready',
-  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the active point cloud stream',
+  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the model or point cloud that is loading',
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },

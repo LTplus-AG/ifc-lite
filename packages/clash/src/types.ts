@@ -165,7 +165,9 @@ export interface ClashSettings {
  *   `'mesh'` for exactly that reason. The value is then a property of the two
  *   BOXES, not of the solids — it can equal an element's own thickness rather
  *   than how far the two actually interpenetrate. Treat it as an indication of
- *   scale, not as a measurement.
+ *   scale, not as a measurement. For a through-penetration between two boxes
+ *   it never exceeds the box-box minimum translation distance, a distance
+ *   proven to separate them (#5742).
  */
 export type ClashDistanceKind = 'mesh' | 'estimate';
 

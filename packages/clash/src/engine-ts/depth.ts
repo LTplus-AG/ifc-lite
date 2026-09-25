@@ -28,8 +28,8 @@ import { depthFloor, estimateFloor } from '../math/aabb.js';
  * member's own extent along the shared axis, not by the material actually
  * crossed (review: #2536, reproduced a 5.5x inflation on exactly this
  * shape), so `depthClashResult` reports the caller's AABB estimate for that
- * shape — matching what `main` did before the box-exact metric existed, and
- * honest about not being a measurement. The MTD is still returned (not
+ * shape, capped by the MTD (#5742) — matching what `main` did before the
+ * box-exact metric existed, and honest about not being a measurement. The MTD is still returned (not
  * discarded here) because the f32 floor must see it: which number gets
  * REPORTED is a separate, later decision from whether the pair is
  * measurable at all (see `depthClashResult`).
@@ -41,7 +41,8 @@ export interface BoxPenetration {
    * direction, #5405). */
   axis: Vec3;
   /** The MTD is inflated by the piercing member's own extent; report the
-   * AABB estimate instead (see `isThroughPenetration`). */
+   * AABB estimate instead, capped by the MTD (see `isThroughPenetration`
+   * and `depthClashResult`, #5742). */
   through: boolean;
 }
 
@@ -278,15 +279,31 @@ export function depthClashResult(
   }
   // Estimate-vs-mesh selection, reachable only above the floor: the box MTD
   // is certified (`mesh`) unless the pair is a through-penetration, where
-  // the AABB estimate is the honest number (see `boxPenetration`).
-  // The reported depth carries ITS OWN floor out with it (#5639), so the
-  // reported touching band is decided by the same rule as this verdict.
-  return {
-    status: 'hard',
-    distance: -(measured ? box.mtd : estimate),
-    distanceKind: measured ? 'mesh' : 'estimate',
-    point,
-    bounds,
-    depthFloor: measured && boxFloor != null ? boxFloor : estFloor,
-  };
+  // the AABB estimate is the honest number (see `boxPenetration`) -- CAPPED
+  // by the MTD (#5742). The MTD is a translation proven to separate the
+  // pair, so a reported depth above it over-reports by construction; for
+  // rotated boxes the AABB estimate routinely does (it is inflated by the
+  // rotation). And the cap is what keeps the report continuous across the
+  // through/partial boundary, which f32 noise decides per placement: at that
+  // boundary the piercing member's overlap along its own axis is exactly the
+  // MTD candidate there, so both sides report the MTD instead of one side
+  // swinging to an estimate 30x larger. The label stays `estimate`: through
+  // a through-penetration the MTD bounds the depth, it does not measure the
+  // material crossed. The reported depth carries ITS OWN floor out with it
+  // (#5639), so the reported touching band is decided by the same rule as
+  // this verdict. Same selection, in the same order, as the Rust kernel.
+  let depth = estimate;
+  let distanceKind: 'mesh' | 'estimate' = 'estimate';
+  let floor = estFloor;
+  if (box != null && boxFloor != null) {
+    if (!box.through) {
+      depth = box.mtd;
+      distanceKind = 'mesh';
+      floor = boxFloor;
+    } else if (box.mtd < estimate) {
+      depth = box.mtd;
+      floor = boxFloor;
+    }
+  }
+  return { status: 'hard', distance: -depth, distanceKind, point, bounds, depthFloor: floor };
 }

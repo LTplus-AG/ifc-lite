@@ -288,6 +288,26 @@ fn l_bar_metrics_include_only_the_authored_quarter_bend() {
 }
 
 #[test]
+fn mapped_scale_doubles_arc_length_and_keeps_bend_angle() {
+    // #5754: arc length is Radius x |sweep| AFTER occurrence mapping. Wrap the
+    // L-bar body in an IfcMappedItem whose operator scales by 2.
+    let source = String::from_utf8(fixture("swept_disk_composite_arc_lbar")).unwrap();
+    let source = source.replace(
+        "#77=IFCPRODUCTDEFINITIONSHAPE($,$,(#66));",
+        "#1000=IFCREPRESENTATIONMAP(#32,#66);\n#1001=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#29,2.,$);\n\
+         #1002=IFCMAPPEDITEM(#1000,#1001);\n#1003=IFCSHAPEREPRESENTATION(#42,'Body','MappedRepresentation',(#1002));\n\
+         #77=IFCPRODUCTDEFINITIONSHAPE($,$,(#1003));",
+    );
+    let result = extract_swept_disk_descriptions(source.as_bytes(), None);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let metrics = result.elements[&78][0].directrix_metrics().unwrap();
+    assert_eq!(metrics.segments.len(), 3);
+    assert_near(metrics.total_length, 2.0 * (1.601 + 0.0895 * std::f64::consts::FRAC_PI_2 + 0.160));
+    assert_near(metrics.segments[1].length, 2.0 * 0.0895 * std::f64::consts::FRAC_PI_2);
+    assert_near(metrics.segments[1].bend_angle.unwrap(), std::f64::consts::FRAC_PI_2);
+}
+
+#[test]
 fn crank_bar_metrics_include_both_small_bends() {
     let result = extract_swept_disk_descriptions(&fixture("swept_disk_composite_arc_crankbar"), None);
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);

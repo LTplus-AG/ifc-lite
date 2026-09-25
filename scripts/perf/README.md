@@ -29,21 +29,12 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
 ## Derived swept-disk metrics (#5754)
 
-The new length/bend calculations run when an analytic description is requested
-or serialized, outside normal mesh production. An interleaved base/branch
-native probe on AC20-FZK-Haus initially measured 11/15/28 ms versus
-11/22/33 ms for median parse/geometry/total (three pairs, `--iters 5`). A
-second CPU-pinned, four-pair run with 20 iterations per process reversed the
-apparent direction: base totals ranged 64–91 ms, branch 67–78 ms. Other builds
-were active throughout, so neither timing difference supports a performance
-claim. Every run on both revisions produced 285 meshes, 35,940 vertices and
-20,322 triangles with the same ordered mesh FNV-1a64
-`c4d504b83ff698ea`.
-
-Verdict: default mesh output is byte-identical, while timing is unresolved on
-this contested host. The lesson is to measure opt-in analytic extraction on
-representative swept-disk models separately from ordinary mesh loading; a
-default-load probe cannot establish its caller-visible cost.
+The length/bend calculations run only when an analytic description is
+requested or serialized, outside normal mesh production. Verdict: default mesh
+output is byte-identical (same ordered mesh hash on both revisions); a
+default-load probe cannot measure this code's cost, and timing on a contested
+host was unresolved. Measure opt-in analytic extraction on representative
+swept-disk models separately from ordinary mesh loading.
 
 ## Opt-in swept-disk source descriptions (#5559)
 

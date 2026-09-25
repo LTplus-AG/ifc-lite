@@ -79,12 +79,12 @@
    406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
-   565 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
+   552 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1692 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    546 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
-  1133 apps/viewer/src/components/viewer/MainToolbar.tsx
+  1132 apps/viewer/src/components/viewer/MainToolbar.tsx
    713 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    572 apps/viewer/src/components/viewer/properties/BsddCard.tsx

@@ -4,18 +4,18 @@
 
 /**
  * The Drawing panel (#5494): the `drawing` workspace panel's view, docked in
- * the bottom strip, floating, or popped out. A header like the other bottom
- * panels (title, the cut it shows, Regenerate, Export, Close), one toolbar
- * row, the canvas with the settings drawers beside it, and a status line.
- * Its runtime (generation, persistence, the Section-tool auto-open) is
- * `DrawingRuntimeHost` and runs whether or not this is mounted (#5492).
+ * the bottom strip, floating, or popped out. A slim action row (the cut it
+ * shows, Regenerate, Export — the strip / floating / pop-out host owns title
+ * and Close, #5498), one toolbar row, the canvas with the settings drawers
+ * beside it, and a status line. Its runtime (generation, persistence, the
+ * Section-tool auto-open) is `DrawingRuntimeHost` and runs whether or not
+ * this is mounted (#5492).
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2, PencilRuler, RefreshCw, X } from 'lucide-react';
+import { Loader2, PencilRuler, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { AXIS_INFO } from '../tools/sectionConstants';
 import { TitleBlockEditor } from '../TitleBlockEditor';
@@ -63,9 +63,8 @@ function HeaderAction({ label, onClick, disabled, children }: { label: string; o
   );
 }
 
-export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.ReactElement {
+export function DrawingPanel(): React.ReactElement {
   const { t } = useTranslation();
-  const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
   const vm = useDrawingViewModel();
   const layers = useDrawingLayers(vm);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -76,9 +75,6 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
   const cutLabel = sectionPlane.custom !== undefined
     ? t('sectionTool.header.custom', { distance: sectionPlane.custom.distance.toFixed(2) })
     : t('sectionTool.header.axis', { axis: t(AXIS_INFO[sectionPlane.axis].labelKey), position: sectionPlane.position.toFixed(1) });
-
-  // The host's close also drops a floating / popped-out drawing, not just the dock flag.
-  const handleClose = () => { if (onClose) onClose(); else setDrawingPanelVisible(false); };
 
   return (
     <div ref={panelRef} className="flex h-full w-full flex-col overflow-hidden bg-background">
@@ -99,7 +95,6 @@ export function DrawingPanel({ onClose }: { onClose?: () => void } = {}): React.
             displayedScale={displayOptions.scale || 100}
             sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
           />
-          <HeaderAction label={t('section2d.close')} onClick={handleClose}><X className="h-3.5 w-3.5" /></HeaderAction>
         </div>
       </div>
 

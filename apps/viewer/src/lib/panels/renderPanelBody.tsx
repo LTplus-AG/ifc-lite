@@ -61,19 +61,19 @@ function AppearancePanelBody() {
   return <ChunkErrorBoundary label="Appearance panel"><Suspense fallback={null}><AppearancePanel /></Suspense></ChunkErrorBoundary>;
 }
 
-function DocumentPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Document panel"><Suspense fallback={null}><DocumentPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function DocumentPanelBody() {
+  return <ChunkErrorBoundary label="Document panel"><Suspense fallback={null}><DocumentPanel /></Suspense></ChunkErrorBoundary>;
 }
-function FlowPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-}
-
-function DrawingPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function FlowPanelBody() {
+  return <ChunkErrorBoundary label="Flow panel"><Suspense fallback={null}><FlowPanel /></Suspense></ChunkErrorBoundary>;
 }
 
-function ChartsPanelBody({ onClose }: { onClose: () => void }) {
-  return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+function DrawingPanelBody() {
+  return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel /></Suspense></ChunkErrorBoundary>;
+}
+
+function ChartsPanelBody() {
+  return <ChunkErrorBoundary label="Charts panel"><Suspense fallback={null}><ChartsPanel /></Suspense></ChunkErrorBoundary>;
 }
 
 function LayersPanelBody({ onClose }: { onClose: () => void }) {
@@ -112,7 +112,10 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
  * panel" handler (re-dock to Information, remove the float, or re-dock the
- * window). The Information panel ignores it — it is the always-on fallback.
+ * window). The Information panel ignores it — it is the always-on fallback —
+ * and so do the bottom-strip panels (Script / Schedule / Lists / Charts /
+ * Document / Flow / Drawing), whose own close row #5498 retired in favour of
+ * the strip header's single Close.
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
@@ -127,20 +130,20 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
-    case 'script': return <ScriptPanel onClose={onClose} />;
-    case 'gantt': return <GanttPanel onClose={onClose} />;
-    case 'lists': return <ListPanel onClose={onClose} />;
+    case 'script': return <ScriptPanel />;
+    case 'gantt': return <GanttPanel />;
+    case 'lists': return <ListPanel />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanel onClose={onClose} />;
     case 'layers': return <LayersPanelBody onClose={onClose} />;
     case 'sources': return <SourcesPanelBody onClose={onClose} />;
-    case 'charts': return <ChartsPanelBody onClose={onClose} />;
-    case 'flow': return <FlowPanelBody onClose={onClose} />;
-    case 'document': return <DocumentPanelBody onClose={onClose} />;
+    case 'charts': return <ChartsPanelBody />;
+    case 'flow': return <FlowPanelBody />;
+    case 'document': return <DocumentPanelBody />;
     case 'cost': return <CostPanel onClose={onClose} />;
     case 'environment': return <EnvironmentPanel onClose={onClose} />;
-    case 'drawing': return <DrawingPanelBody onClose={onClose} />;
+    case 'drawing': return <DrawingPanelBody />;
     case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
   }

@@ -102,7 +102,6 @@ export const documentEn = {
   'document.panel.exportTitle': 'Print this page to a PDF',
   'document.panel.exportBusy': 'Exporting…',
   'document.panel.exportIdle': 'Export PDF',
-  'document.panel.closeAriaLabel': 'Close document panel',
   'document.panel.emptyBlocks': 'No blocks yet — "Add block" above.',
   'document.panel.unsavedWarning':
     'The document could not be saved in this browser (storage blocked or full). Export it as a template before you reload.',

@@ -51,7 +51,6 @@ export const section2dEn = {
   'section2d.export.print': 'Print',
   'section2d.regenerate': 'Regenerate',
   'section2d.more': 'More options',
-  'section2d.close': 'Close',
   'section2d.error.generation': 'Generation failed',
   'section2d.error.retry': 'Retry',
   'section2d.updating': 'Updating...',

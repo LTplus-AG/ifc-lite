@@ -466,6 +466,37 @@ mod tests {
         assert!((m[(2, 1)] - 0.0).abs() < 1e-9);
     }
 
+    // #5922: the frame the renderer draws for an Axis-only (`$` RefDirection)
+    // placement along each world axis. The viewer's compare reader
+    // (`apps/viewer/src/lib/compare/worldPlacement.test.ts`) pins the SAME
+    // table, so a change to the fill here must move both.
+    #[test]
+    fn parse_axis2_placement_3d_axis_only_frames_on_world_axes() {
+        type V = [f64; 3];
+        let cases: [(V, V, V); 6] = [
+            // (Axis, local X, local Y)
+            ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+            ([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),
+            ([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]),
+            ([0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+            ([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+            ([0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]),
+        ];
+        for (axis, x, y) in cases {
+            let content = format!(
+                "#1=IFCCARTESIANPOINT((0.0,0.0,0.0));\n#2=IFCDIRECTION(({:?},{:?},{:?}));\n#3=IFCAXIS2PLACEMENT3D(#1,#2,$);",
+                axis[0], axis[1], axis[2]
+            );
+            let mut decoder = EntityDecoder::new(&content);
+            let placement = decoder.decode_by_id(3).unwrap();
+            let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+            for i in 0..3 {
+                assert!((m[(i, 0)] - x[i]).abs() < 1e-9, "Axis {axis:?}: X = {:?}", m.column(0));
+                assert!((m[(i, 1)] - y[i]).abs() < 1e-9, "Axis {axis:?}: Y = {:?}", m.column(1));
+            }
+        }
+    }
+
     #[test]
     fn rotation_angle_about_z_handles_identity_rotation_and_scale() {
         // Identity → 0 rad.

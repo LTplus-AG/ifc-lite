@@ -192,6 +192,12 @@ function triple(
 }
 
 /** Unit vector, or `undefined` for a degenerate one. */
+type Vec3 = [number, number, number];
+
+function cross(a: readonly [number, number, number], b: readonly [number, number, number]): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
 function normalize(v: readonly [number, number, number]): [number, number, number] | undefined {
   const length = Math.hypot(v[0], v[1], v[2]);
   if (!Number.isFinite(length) || length === 0) return undefined;
@@ -240,30 +246,23 @@ function axisPlacementMatrix(
   const refDirection = triple(store, asRef(type === 'IFCAXIS2PLACEMENT3D' ? attrs[2] : attrs[1]));
 
   const z = (axis && normalize(axis)) ?? [0, 0, 1];
-  // EXPRESS `IfcFirstProjAxis` with a NIL argument: project global X — for
-  // EVERY Axis that is not parallel to it (zero cross product, i.e. no
-  // component off the X axis at all) — and only then fall back to global Y.
-  // Not a nearness heuristic: for an Axis of (0.95, 0.31, 0) the standard
-  // still projects [1,0,0], and a threshold that switches early diverges from
-  // every writer that spells the default explicitly. One edge is decided
-  // rather than derived: for the ANTI-parallel axis [-1,0,0] the standard's
-  // own projection degenerates (it literal-compares against [1,0,0] only), so
-  // the derivation is indeterminate there — this code takes the global-Y seed
-  // for both ±X, which both revisions compute identically, so no diff can
-  // arise from the choice.
-  const seed = (refDirection && normalize(refDirection))
-    ?? (z[1] === 0 && z[2] === 0 ? ([0, 1, 0] as const) : ([1, 0, 0] as const));
+  // An absent RefDirection is filled EXACTLY as the renderer does
+  // (`build_axis2_matrix`, rust/geometry/src/transform.rs), so compare speaks
+  // about the frame the viewer draws: project global X — for an Axis merely
+  // near X, e.g. (0.95, 0.31, 0), too, as EXPRESS `IfcFirstProjAxis` says —
+  // and where that projection vanishes (Axis along ±X) take (0,0,1) x Axis:
+  // (0,1,0) for +X, (0,-1,0) for -X (#5922; world Y there turned it 180°).
+  const explicitRef = refDirection && normalize(refDirection);
+  const seed = explicitRef ?? [1, 0, 0];
   const dot = seed[0] * z[0] + seed[1] * z[1] + seed[2] * z[2];
-  const x = normalize([seed[0] - z[0] * dot, seed[1] - z[1] * dot, seed[2] - z[2] * dot]);
-  // A RefDirection parallel to Axis leaves nothing to orthogonalise. The file
-  // is malformed; abstaining beats inventing an X axis of our own choosing,
-  // because the two revisions might invent different ones.
+  const residual: Vec3 = [seed[0] - z[0] * dot, seed[1] - z[1] * dot, seed[2] - z[2] * dot];
+  const parallel = Math.hypot(...residual) <= 1e-6; // the renderer's threshold
+  // An EXPLICIT RefDirection parallel to Axis is malformed: abstain rather
+  // than invent an X axis the other revision might not share.
+  if (parallel && explicitRef) return undefined;
+  const x = parallel ? normalize(cross(Math.abs(z[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], z)) : normalize(residual);
   if (!x) return undefined;
-  const y: [number, number, number] = [
-    z[1] * x[2] - z[2] * x[1],
-    z[2] * x[0] - z[0] * x[2],
-    z[0] * x[1] - z[1] * x[0],
-  ];
+  const y = cross(z, x);
   return [
     x[0], y[0], z[0], location[0],
     x[1], y[1], z[1], location[1],

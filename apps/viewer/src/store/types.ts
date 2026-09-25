@@ -218,6 +218,7 @@ import type { SectionCapStyle } from '@ifc-lite/renderer';
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
+import type { TerrainImageryDrape } from '../lib/terrain-imagery/drape-state.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
  * `normal` + `distance` directly and ignores `axis` / `position`, and
@@ -562,6 +563,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design. */
   landXmlDocument?: LandXmlTinDocument;
+  /** Georeferenced imagery draped on this LandXML terrain (#5942); provenance, never a LandXML claim. */
+  terrainImagery?: TerrainImageryDrape;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */

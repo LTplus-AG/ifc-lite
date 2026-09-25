@@ -63,6 +63,7 @@ import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
 import { landXmlUnitsRefusalPrompt } from './ingest/landXmlUnitsRefusal.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
@@ -286,6 +287,15 @@ export function useIfcLoader() {
       assumedLinearUnit?: string;
     },
   ) => {
+    // #5942: a georeferenced raster is imagery for a loaded terrain, not a
+    // model. It enters here like every source, but creates no model, so it
+    // must not bump the load session or reset the scene below.
+    if (file instanceof GeoRasterBundle) {
+      const { drapeGeoRasterBundle } = await import('./ingest/terrainImageryDrape.js');
+      await drapeGeoRasterBundle(file);
+      setLoading(false);
+      return;
+    }
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // Only a primary (destructive, replace-everything) load bumps the session.
     // Federated adds are independent and run concurrently — they capture the

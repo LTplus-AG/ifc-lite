@@ -9,6 +9,7 @@ import '../../test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { prepareModelFiles } from './usePreparedModelFileRoute.js';
+import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
 
 /** A standalone glTF 2.0 document whose only buffer is embedded, so packing needs no sidecar. */
 function gltfDocument(name: string, Ctor: typeof File = File): File {
@@ -61,5 +62,18 @@ describe('prepared model file routing #4476', () => {
     const sidecars = [new File([new Uint8Array(4)], 'scan.bin'), new File([new Uint8Array(8)], 'scan.png', { type: 'image/png' })];
     await assert.rejects(prepareModelFiles(sidecars, undefined, () => { routed = true; }), /\.gltf document together with its \.bin and texture files/);
     assert.equal(routed, false);
+  });
+
+  it('routes a raster and its world file as ONE bundle, after the terrain picked with it (#5942)', async () => {
+    let routed: File[] = [];
+    const picked = [
+      new File([new Uint8Array(8)], 'ortho.png', { type: 'image/png' }),
+      new File(['0.5\n0\n0\n-0.5\n2600000.25\n1200049.75'], 'ortho.pgw'),
+      new File(['<LandXML/>'], 'terrain.xml'),
+    ];
+    await prepareModelFiles(picked, undefined, (files) => { routed = files; });
+    assert.deepEqual(routed.map((file) => file.name), ['terrain.xml', 'ortho.png']);
+    assert.ok(routed[1] instanceof GeoRasterBundle);
+    assert.equal((routed[1] as GeoRasterBundle).worldFile?.name, 'ortho.pgw');
   });
 });

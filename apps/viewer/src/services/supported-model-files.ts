@@ -15,6 +15,8 @@
  * in the Chromium Open dialog.
  */
 
+import { GEO_RASTER_FILE_EXTENSIONS, isGeoRasterFile } from '@/lib/terrain-imagery/raster-bundle';
+
 /** Model formats routed to the model-load pipeline. */
 export const MODEL_FILE_EXTENSIONS = [
   '.ifc',
@@ -53,6 +55,8 @@ export const PICKER_FILE_EXTENSIONS: readonly string[] = [
   ...MODEL_FILE_EXTENSIONS,
   ...REFERENCE_FILE_EXTENSIONS,
   '.bin', '.png', '.jpg', '.jpeg',
+  // #5942: georeferenced imagery and its sidecars, draped on a loaded terrain.
+  ...GEO_RASTER_FILE_EXTENSIONS,
 ];
 
 /** `accept` attribute for the hidden `<input type="file">` elements. */
@@ -74,6 +78,15 @@ export function isSupportedMobileModelFile(f: File): boolean {
 }
 
 /** Files retained alongside a `.gltf` document until its local bundle is packed. */
-export function isGltfBundleFile(f: File): boolean {
+function isGltfBundleFile(f: File): boolean {
   return /\.(?:gltf|bin|png|jpe?g)$/i.test(f.name);
+}
+
+/**
+ * Files that are not models on their own but travel with one through routing:
+ * a `.gltf`'s buffers and textures, and a georeferenced raster with its world
+ * file / `.prj` (#5942). `prepareModelFiles` packs both before `loadFile`.
+ */
+export function isModelSidecarFile(f: File): boolean {
+  return isGltfBundleFile(f) || isGeoRasterFile(f);
 }

@@ -47,7 +47,7 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
@@ -480,7 +480,7 @@ export function ViewportContainer() {
     if (allDropped.length === 0) return;
 
     // Keep glTF sidecars beside the document until they are packed into GLB.
-    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
+    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -496,7 +496,7 @@ export function ViewportContainer() {
       // Prefer the handle-paired files (Chromium): each file + handle comes from
       // the same dropped item, so no filename matching is needed. Fall back to
       // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
       const useHandles = supportedOpened.length > 0;
       const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
       const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
@@ -520,7 +520,7 @@ export function ViewportContainer() {
 
     // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
     // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
+    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
 
     if (supportedFiles.length === 0) {
       e.target.value = '';
@@ -547,7 +547,7 @@ export function ViewportContainer() {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
-    const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
+    const supported = opened.filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
     if (supported.length === 0) return;
 
     const files = supported.map((o) => o.file);

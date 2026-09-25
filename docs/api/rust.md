@@ -564,14 +564,16 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
-// Optional authored swept-disk descriptions, checks and reusable sources
+// Optional authored swept-disk checks and reusable swept-disk/extrusion sources
 pub use analytic_export::{
-    check_swept_disk, extract_swept_disk_definitions,
-    extract_swept_disk_descriptions, extrusion_nominal_quantities,
-    DirectrixMetrics, DirectrixSegmentMetrics, ExtrusionNominalQuantities,
+    check_swept_disk, extract_swept_disk_descriptions, extract_swept_disk_definitions,
+    extract_extrusion_definitions, AnalyticSourceContext, AnalyticSourceKey,
+    extrusion_nominal_quantities, DirectrixMetrics, DirectrixSegmentMetrics,
+    ExtrusionDefinition, ExtrusionDefinitions, ExtrusionInstance,
+    ExtrusionNominalQuantities, SweptDiskDescriptions,
     SweptDiskCheckError, SweptDiskCheckFinding, SweptDiskCheckOptions,
-    SweptDiskCheckReport, SweptDiskDescriptions, SweptDiskFindingCode,
-    SweptDiskOccurrence, SweptDiskDefinition, SweptDiskDefinitions,
+    SweptDiskCheckReport, SweptDiskFindingCode, SweptDiskOccurrence,
+    SweptDiskDefinition, SweptDiskDefinitions,
     SweptDiskInstance, SweptDiskSourceKey, SweptDiskSourceContext,
     SweptDiskNominalQuantities,
 };
@@ -663,6 +665,29 @@ a world radius until the uniform instance scale is applied. Nonuniform world
 disks carry an unsupported instance status; invalid matrices have `None` and
 an unsupported status. The source remains available for inspection. Work and
 output budgets are reported in `diagnostics` when reached.
+
+`extract_extrusion_definitions(ifc_bytes, ids)` uses the same bounded
+representation walk to return exact `IfcExtrudedAreaSolid` source profiles and
+placed product occurrences without tessellation. `AnalyticSourceKey` contains
+the model SHA-256, schema, exact unit-scale bits, solid ID, and either a direct
+representation ID or ordered representation-map IDs. Repeated mapping targets
+share one `ExtrusionDefinition` while preserving separate `ExtrusionInstance`
+ordinals, mapped-item paths, and f64 transforms.
+
+Source `ProfileType`, `DirectionRatios`, `Depth`, profile loops, area, perimeter,
+and profile/solid `Position` matrices remain in IFC file units. For a complete
+source with valid positive net profile area, `nominal_quantities` reuses
+`extrusion_nominal_quantities` to
+report net profile area, projected height, and nominal volume in squared,
+linear, and cubed IFC file-length units; unsupported or invalid sources yield `None`.
+For a boundary point, apply the profile `profile_position`, then the extrusion
+`position_matrix`, then the instance `world_from_source`; the last matrix maps
+to absolute IFC Z-up metres and includes product placement, mapping, and file
+unit scale. A missing `Position` matrix is identity. Unsupported or tapered
+source geometry and invalid or singular occurrence transforms have explicit statuses.
+`source_modified` marks CSG operands, not final post-boolean geometry. Source
+and instance output budgets are independent and report truncation in
+`diagnostics`.
 
 ### Appearance authoring
 

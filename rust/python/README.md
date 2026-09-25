@@ -27,6 +27,7 @@ same geometry and differ only in output format; pass
 reads attributes and property sets instead, without tessellating.
 `check_swept_disks` checks authored swept-disk paths without tessellating, and
 `swept_disk_definitions` returns reusable raw source paths and occurrence transforms.
+`extrusion_definitions` returns exact source profiles and placed extrusion occurrences.
 
 ```python
 import ifclite_geom
@@ -218,6 +219,39 @@ appears in `diagnostics`.
 
 ```python
 view = ifclite_geom.swept_disk_definitions(ifc_bytes, ids={50})
+for instance in view["instances"].get(50, []):
+    print(instance["source"], instance["world_from_source"])
+```
+
+### `extrusion_definitions(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Return exact authored `IfcExtrudedAreaSolid` profiles once per source and a
+separate record for each product occurrence. Sources retain raw IFC file-length
+units, `ProfileType`, ordered line and arc loops, signed area and perimeter,
+authored `DirectionRatios`, normalized `axis_unit_vector`, and `Depth`.
+Complete sources with valid positive net profile area carry
+`nominal_quantities` from the shared Rust calculator: net profile area in
+squared file units, projected height in file units, and their nominal volume
+in cubed file units. Unsupported or invalid sources have
+`nominal_quantities=None`.
+Unsupported or tapered sources carry an explicit `status`; no approximate
+boundary is substituted. A source key uses the same model/schema/unit/context
+identity as `swept_disk_definitions`, so repeated `MappingTarget`s share a
+definition while each use has its own deterministic `ordinal` and mapped-item
+path. `source_modified=True` marks a CSG operand whose final body can differ.
+
+For a source-profile point, apply `profile_position`, then the extrusion's
+`position_matrix`, then the occurrence's `world_from_source`. Matrices are
+column-major f64. The first two use raw IFC file units; the last includes file
+unit scale and maps to absolute IFC Z-up world metres. A missing position matrix
+is identity. A non-finite transform is `None`; a singular transform retains its
+matrix, and both have unsupported status.
+The API does not infer a post-boolean solid or a world volume from a raw source.
+Source and occurrence budgets are independent; truncation is reported in
+`diagnostics`.
+
+```python
+view = ifclite_geom.extrusion_definitions(ifc_bytes, ids={50})
 for instance in view["instances"].get(50, []):
     print(instance["source"], instance["world_from_source"])
 ```

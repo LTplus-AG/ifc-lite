@@ -87,6 +87,30 @@ def test_quality_is_monotonic_and_defaults_to_medium():
     assert counts["lowest"] < counts["medium"] / 2
 
 
+def test_issue_5784_extrusion_definitions_share_source_across_mapped_occurrences():
+    fixture = REPO / "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc"
+    view = ifclite_geom.extrusion_definitions(read(fixture), ids={31, 38})
+    assert view["diagnostics"] == []
+    assert len(view["sources"]) == 1
+    source = view["sources"][0]
+    assert source["source"]["Depth"] == 1.0
+    assert source["source"]["profile"]["loops"][0]["signed_area"] == 1.0
+    assert source["nominal_quantities"] == {
+        "profile_area": 1.0, "projected_height": 1.0, "nominal_volume": 1.0,
+    }
+    first, second = view["instances"][31][0], view["instances"][38][0]
+    assert first["source"] == second["source"] == source["key"]
+    assert first["mapping_path"] == [25]
+    assert second["mapping_path"] == [32]
+    assert second["world_from_source"][12] == 3.0
+    assert ifclite_geom.extrusion_definitions(read(fixture), ids=set())["instances"] == {}
+    tapered = read(fixture).replace(
+        b"#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,1.0);",
+        b"#12=IFCEXTRUDEDAREASOLIDTAPERED(#8,#11,#9,1.0,#8);",
+    )
+    assert ifclite_geom.extrusion_definitions(tapered, ids={31})["sources"][0]["nominal_quantities"] is None
+
+
 def test_unknown_quality_raises_rather_than_falling_back():
     with pytest.raises(ValueError, match="unknown tessellation quality"):
         ifclite_geom.geometry_data_buffers(read(REBAR), "ultra")

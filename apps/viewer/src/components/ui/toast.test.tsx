@@ -103,6 +103,20 @@ describe('Toaster (#5603)', () => {
     assert.equal(success?.closest('[role]')?.getAttribute('role'), 'status');
   });
 
+  it('anchors to the nearest positioned ancestor with variant="absolute" (#5504)', () => {
+    // Own root/container: `variant="absolute"` is what lets `ViewportContainer`
+    // anchor the stack to the viewport panel instead of the whole window.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const localRoot = createRoot(container);
+    act(() => localRoot.render(<Toaster variant="absolute" />));
+    const stack = container.firstElementChild as HTMLElement;
+    assert.ok(stack.className.includes('absolute'), 'expected the "absolute" utility class');
+    assert.ok(!stack.className.includes('fixed'), 'must not also carry "fixed"');
+    act(() => localRoot.unmount());
+    container.remove();
+  });
+
   it('keeps an error until it is dismissed', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     act(() => toast.error('Export failed'));

@@ -50,7 +50,7 @@ const PROPERTIES_PANEL = join(VIEWER_DIR, 'PropertiesPanel.tsx');
 const CLASH_PANEL = join(VIEWER_DIR, 'ClashPanel.tsx');
 const TOUR_STEP_CARD = join(__dirname, '../../components/tours/TourStepCard.tsx');
 const HOVER_TOOLTIP = join(VIEWER_DIR, 'HoverTooltip.tsx');
-const MEASURE_PANEL = join(VIEWER_DIR, 'tools/MeasurePanel.tsx');
+const MEASURE_GEO_READOUT = join(VIEWER_DIR, 'tools/MeasureHudReadouts.tsx');
 const MEASURE_QUANTITIES = join(VIEWER_DIR, 'tools/MeasureQuantities.tsx');
 const MEASURE_POINT_READOUT = join(VIEWER_DIR, 'tools/MeasurePointReadout.tsx');
 
@@ -194,25 +194,14 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-popover',
     },
     {
-      name: 'MeasurePanel projected-CRS name',
-      file: MEASURE_PANEL,
-      anchor: "reground\">{t('measure.geo.unitMeters')}</span>\n            </div>\n          </div>\n          <div ",
-      // MeasurePanel's real panel surface is `bg-background/95 backdrop-blur-sm`,
-      // floating translucent over the live 3D viewport. #4825's harness
-      // extension (`measureTextContrastOnSurface`'s `backdropClassName`)
-      // makes the `/95` alpha itself measurable — composited here over the
-      // app's own `bg-background` token as the nearest fixed backdrop,
-      // still a proxy for the true composited result: the real backdrop is
-      // whatever geometry/background sits under the floating panel at the
-      // time, which this harness cannot render, and `backdrop-blur-sm`'s
-      // blur is not modeled by alpha compositing at all (see
-      // `render-harness.ts`'s doc comment). Measured floor with this
-      // backdrop: 4.83:1 light / 5.16:1 dark / 5.32:1 colorful — still
-      // clears AA in every theme, but with less margin than the old
-      // fully-opaque `bg-background` proxy suggested (was 4.83 / 5.42 /
-      // 6.66), most visibly in colorful (6.66 -> 5.32).
-      surface: 'bg-background/95 backdrop-blur-sm',
-      backdrop: 'bg-background',
+      name: 'MeasureGeoReadout projected-CRS name',
+      file: MEASURE_GEO_READOUT,
+      anchor: "{t('measure.geo.unitMeters')}</span>\n          </span>\n        </div>\n        <div ",
+      // The geo readout sits on the shared HUD card (`HudSurface`:
+      // `bg-popover/[.94] backdrop-blur-md`, #5502) over the live 3D
+      // viewport; measured on the opaque `bg-popover` proxy like the other
+      // HUD/popover sites here.
+      surface: 'bg-popover',
     },
     {
       name: 'MeasureQuantities row label',

@@ -15,6 +15,13 @@ import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions
  * `top-6 right-6` (`ViewportOverlays.tsx` ~284-302, unmoved by this PR): 24px
  * inset + 60px cube = 84px, so anything placed in this region starts below
  * the cube instead of colliding with it.
+ *
+ * `bottom-center` likewise reserves the always-on Presentation pill and the
+ * storey pill, both still anchored at `bottom-4 left-1/2` outside the HUD
+ * (`BasketPresentationDock`, `ViewportOverlays.tsx`): 16px offset + ~32px
+ * pill + 8px gap = 3.5rem, so the Measure hint (#5502) stacks above the pill
+ * instead of through it. Drops back to 1rem once #5478 items 22 and 26 move
+ * those two into the status bar and the Presentation bottom panel.
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
@@ -26,7 +33,7 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'bottom-left':
     'bottom-0 left-0 items-start pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
   'bottom-center':
-    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(1rem,env(safe-area-inset-bottom))]',
+    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(3.5rem,env(safe-area-inset-bottom))]',
   'bottom-right':
     'bottom-0 right-0 items-end pb-[max(1rem,env(safe-area-inset-bottom))] pr-[max(1rem,env(safe-area-inset-right))]',
 };

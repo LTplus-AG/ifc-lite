@@ -3,10 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Tool-specific overlays for measure and section tools
+ * Tool-specific overlays for measure and section tools.
+ *
+ * Wrapped in `SceneOverlayRoot` (#5486 kernel, first consumer #5502): the
+ * scene layers and projector are React context, so every world-anchored
+ * primitive a tool renders (`WorldLabel` in `MeasurementVisuals`) must sit
+ * under it. Mounted here rather than in `ViewportContainer` (at its module
+ * budget); the root's own layer div is a sibling of the tool overlays in the
+ * same viewport container, so `RendererProjectorSource` still resolves the
+ * canvas through `closest('[data-viewport]')`.
  */
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { SceneOverlayRoot } from '../viewport-ui/scene';
 import { RepositionPanel } from './reposition/RepositionPanel';
 import { useViewerStore } from '@/store';
 import { MeasureOverlay } from './tools/MeasurePanel';
@@ -19,6 +28,10 @@ import { SplitNumericInput } from './tools/SplitNumericInput';
 import { SpaceSketchOverlay } from './tools/SpaceSketchOverlay';
 
 export function ToolOverlays() {
+  return <SceneOverlayRoot><ToolOverlaysBody /></SceneOverlayRoot>;
+}
+
+function ToolOverlaysBody(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   useEffect(() => {

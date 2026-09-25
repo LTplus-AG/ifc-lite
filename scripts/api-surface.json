@@ -15,8 +15,6 @@
     "BCFMarker3D: interface",
     "BCFOrthogonalCamera: interface",
     "BCFOverlayProjection: interface",
-    "BCFOverlayRenderer: class",
-    "BCFOverlayRendererOptions: interface",
     "BCFPerspectiveCamera: interface",
     "BCFPoint: interface",
     "BCFProject: interface",

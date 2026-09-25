@@ -56,6 +56,7 @@ import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
+import { useThemeDocumentClass } from './useThemeDocumentClass';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -65,8 +66,10 @@ const SAFE_MODE_QUERY_FLAG = '?safe=0';
 export function ViewerLayout() {
   const { t } = useTranslation();
   useSearchIndex();
+  // Initialize keyboard shortcuts
   useKeyboardShortcuts();
-  useDuplicateShortcut(); // ⌘D / Ctrl+D duplicates the current selection
+  // ⌘D / Ctrl+D to duplicate the current selection.
+  useDuplicateShortcut();
   useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
@@ -75,7 +78,8 @@ export function ViewerLayout() {
   useOverlayCompositor();
   // Bridge viewer state transitions into the extension action log so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
-  usePrivacyDisclosure(); // the RFC §06 §7 privacy disclosure, on first launch
+  // Show the RFC §06 §7 privacy disclosure on first launch.
+  usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
@@ -189,8 +193,6 @@ export function ViewerLayout() {
     };
   }, [shortcutsDialog]);
 
-  // Initialize theme on mount
-  const theme = useViewerStore((s) => s.theme);
   // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
   const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
@@ -270,11 +272,7 @@ export function ViewerLayout() {
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();
 
-  // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('colorful', theme === 'colorful');
-  }, [theme]);
+  useThemeDocumentClass();
 
   const safeMode = isSafeMode();
 

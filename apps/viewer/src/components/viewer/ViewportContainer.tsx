@@ -27,6 +27,7 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -58,7 +59,7 @@ import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
-import { toast } from '@/components/ui/toast';
+import { toast, Toaster } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
 import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -947,37 +948,29 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* WebGPU Not Supported Banner — compact on mobile */}
+        {/* WebGPU Not Supported Banner — compact on mobile; tokens, not the hard-coded Tokyo Night hex (#5504). */}
         {!webgpu.checking && !webgpu.supported && (
           <div className="absolute top-0 left-0 right-0 z-40 max-h-[40vh] overflow-auto">
             {/* Hazard stripes background */}
             <div
               className="absolute inset-0 opacity-10"
-              style={{
-                backgroundImage: `repeating-linear-gradient(
-                  -45deg,
-                  transparent,
-                  transparent 10px,
-                  #f7768e 10px,
-                  #f7768e 20px
-                )`
-              }}
+              style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 10px, var(--color-destructive) 10px, var(--color-destructive) 20px)' }}
             />
-            <div className="relative border-b-4 border-[#f7768e] bg-[#1a1b26] dark:bg-[#1a1b26] px-4 py-5">
+            <div className="relative border-b-4 border-destructive bg-background px-4 py-5">
               <div className="max-w-3xl mx-auto flex items-start gap-4">
                 {/* Icon container with brutalist frame */}
-                <div className="flex-shrink-0 border-2 border-[#f7768e] p-2 bg-[#f7768e]/10">
-                  <AlertTriangle className="h-6 w-6 text-[#f7768e]" />
+                <div className="flex-shrink-0 border-2 border-destructive p-2 bg-destructive/10">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-black text-lg uppercase tracking-wider text-[#f7768e] mb-1">
+                  <h3 className="font-black text-lg uppercase tracking-wider text-destructive mb-1">
                     {t('viewportLighting.container.emptyState.webgpuBanner.heading')}
                   </h3>
-                  <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
+                  <p className="font-mono text-sm text-foreground/80 leading-relaxed">
                     {webGpuBannerBlurb(webgpu.category, t)}
                     {webgpu.reason && (
-                      <span className="block mt-1 text-[#565f89]">
+                      <span className="block mt-1 text-muted-foreground">
                         {webgpu.reason}
                       </span>
                     )}
@@ -987,12 +980,12 @@ export function ViewportContainer() {
                       href="https://caniuse.com/webgpu"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-[#3b4261] text-[#7aa2f7] hover:border-[#7aa2f7] hover:bg-[#7aa2f7]/10 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-border text-primary hover:border-primary hover:bg-primary/10 transition-colors"
                     >
                       {t('viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport')}
                       <ExternalLink className="h-3 w-3" />
                     </a>
-                    <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-[#565f89] border border-[#3b4261]">
+                    <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-muted-foreground border border-border">
                       {t('viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers')}
                     </span>
                   </div>
@@ -1000,7 +993,7 @@ export function ViewportContainer() {
                   {/* Troubleshooting Section */}
                   <button
                     onClick={() => setShowTroubleshooting(!showTroubleshooting)}
-                    className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-[#ff9e64] hover:text-[#e0af68] transition-colors"
+                    className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-amber-600 hover:text-amber-500 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
                   >
                     <ChevronDown className={`h-4 w-4 transition-transform ${showTroubleshooting ? 'rotate-180' : ''}`} />
                     {showTroubleshooting
@@ -1064,6 +1057,7 @@ export function ViewportContainer() {
 
           </div>
         </div>
+        <Toaster variant="absolute" />
       </div>
     );
   }
@@ -1077,14 +1071,14 @@ export function ViewportContainer() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drop overlay for when a file is already loaded - shows "Add Model" */}
+      {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-50 bg-[#9ece6a]/10 backdrop-blur-[2px] flex items-center justify-center">
-          <div className="bg-white dark:bg-[#1a1b26] border-4 border-dashed border-[#9ece6a] p-8 shadow-2xl">
+        <div className="pointer-events-none absolute inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
+          <div className="bg-background border-4 border-dashed border-status-ok p-8 shadow-2xl">
             <div className="text-center">
-              <Plus className="h-12 w-12 mx-auto text-[#9ece6a] mb-4" />
-              <p className="text-xl font-black uppercase text-[#9ece6a]">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
-              <p className="text-sm font-mono text-zinc-500 dark:text-[#565f89] mt-2">
+              <Plus className="h-12 w-12 mx-auto text-status-ok mb-4" />
+              <p className="text-xl font-black uppercase text-status-ok">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
+              <p className="text-sm font-mono text-muted-foreground mt-2">
                 {t('viewportLighting.container.dropOverlay.addModelSubtitle', { count: models.size })}
               </p>
             </div>
@@ -1129,9 +1123,14 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      <AnnotationLayer />
-      <CollabPresenceLayer />
-      {bcfOverlayVisible && <BCFOverlay />}
+      {/* One scene-overlay kernel per viewport (#5486, #5511): the shared
+          projector (single rAF loop) and SVG+DOM layers every world-anchored
+          consumer below portals into via Pin/AnchoredCard/WorldLabel. */}
+      <SceneOverlayRoot>
+        <AnnotationLayer />
+        <CollabPresenceLayer />
+        {bcfOverlayVisible && <BCFOverlay />}
+      </SceneOverlayRoot>
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the
@@ -1148,6 +1147,7 @@ export function ViewportContainer() {
       <ZoneAssignmentSyncMount />
       <BasketPresentationDock />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
+      <Toaster variant="absolute" />
     </div>
   );
 }

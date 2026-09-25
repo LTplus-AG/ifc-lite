@@ -29,6 +29,7 @@ import {
 import { IdbFlavorStorage } from '@/services/extensions/idb-flavor-storage.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { Toaster } from '@/components/ui/toast';
+import { latestToast } from '@/test/toasts.js';
 import { FlavorDialog } from './FlavorDialog.js';
 
 function flavor(id: string): Flavor {
@@ -86,20 +87,6 @@ async function activate(): Promise<void> {
     buttons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await tick();
   });
-}
-
-/**
- * The most recent toast's message. Read as "the last one" rather than "the
- * only one": toasts live in a module-level store with a timed dismissal, so an
- * earlier test's toast can still be on screen.
- */
-function latestToast(): string {
-  const stack = [...document.body.querySelectorAll('div')].find((d) =>
-    d.className.includes('z-[9999]'),
-  );
-  assert.ok(stack, 'no toast was shown');
-  const last = stack.children[stack.children.length - 1];
-  return last?.textContent ?? '';
 }
 
 describe('FlavorDialog activate - reports a flavor part that was not applied', () => {

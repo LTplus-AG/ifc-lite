@@ -106,3 +106,83 @@ describe('UsdExportDialog', () => {
     }
   });
 });
+
+/**
+ * #5605: the USD dialog passed `setOpen` straight to Radix, so Escape (and an
+ * outside press, which funnels through the same `onOpenChange(false)`) closed
+ * it mid-export, Cancel stayed clickable, and a reopened dialog still showed
+ * the previous run's result. The export is pinned in flight by an `init()`
+ * that never settles.
+ */
+describe('UsdExportDialog open guard (#5605)', () => {
+  beforeEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+    useViewerStore.setState({ models: new Map([['model-1', makeModel()]]) });
+  });
+
+  function dialogIsOpen(): boolean {
+    return [...document.body.querySelectorAll('*')].some(
+      (el) => el.textContent?.trim() === 'Export USD (OpenUSD)',
+    );
+  }
+
+  function cancelButton(): HTMLButtonElement | undefined {
+    return [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel');
+  }
+
+  async function pressEscape(): Promise<void> {
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    });
+  }
+
+  it('keeps the dialog open on Escape and disables Cancel while an export is in flight', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', () => new Promise(() => {}));
+    try {
+      const container = renderDialog();
+      await clickExport(container);
+      assert.equal(dialogIsOpen(), true, 'precondition: the dialog is open with an export running');
+      assert.equal(cancelButton()?.disabled, true, 'Cancel must be disabled mid-export');
+
+      await pressEscape();
+
+      assert.equal(dialogIsOpen(), true, 'Escape must not close the dialog mid-export');
+    } finally {
+      initMock.mock.restore();
+    }
+  });
+
+  it('clears the previous run\'s result when the dialog is reopened', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportUsd', () => null);
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const alerts = () => [...document.body.querySelectorAll('[role="alert"]')];
+    try {
+      const container = renderDialog();
+      await clickExport(container);
+      assert.equal(alerts().length, 1, 'precondition: the failed run shows its error');
+
+      await pressEscape();
+      assert.equal(dialogIsOpen(), false, 'an idle dialog still closes on Escape');
+
+      const trigger = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export USD'));
+      assert.ok(trigger, 'trigger button must render');
+      await act(async () => {
+        trigger.click();
+      });
+      assert.equal(dialogIsOpen(), true, 'precondition: the dialog reopened');
+      assert.equal(alerts().length, 0, 'a reopened dialog must not show the previous run\'s error');
+    } finally {
+      initMock.mock.restore();
+      exportMock.mock.restore();
+      disposeMock.mock.restore();
+    }
+  });
+});

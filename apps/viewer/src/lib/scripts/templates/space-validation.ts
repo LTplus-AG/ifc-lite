@@ -85,7 +85,15 @@ for (const space of spaces) {
     }
   }
 
-  // Also check entity attributes
+  // `LongName` is an EXPRESS attribute of IfcSpace (the room's human name --
+  // "Schlafzimmer", where `Name` is the room number "4"), not a property-set
+  // value, so the pset scan above can never find it. Reading only psets flagged
+  // every room of every model "Missing LongName" and named the schedule rows by
+  // number.
+  if (!data.longName) {
+    const longName = bim.query.attributes(space).find(a => a.name === 'LongName')?.value
+    if (longName !== null && longName !== undefined && longName !== '') data.longName = String(longName)
+  }
   if (!data.longName && space.Description) data.longName = space.Description
 
   // Check for issues
@@ -137,7 +145,8 @@ let totalArea = 0
 let totalVolume = 0
 
 for (const s of sorted) {
-  const name = ((s.entity.Name || '<unnamed>') + '                        ').slice(0, 24)
+  const label = s.longName ? (s.entity.Name ? s.entity.Name + ' ' + s.longName : s.longName) : (s.entity.Name || '<unnamed>')
+  const name = (label + '                        ').slice(0, 24)
   const area = s.area !== null ? (s.area.toFixed(1) + '    ').slice(0, 8) : '-       '
   const vol = s.volume !== null ? (s.volume.toFixed(1) + '     ').slice(0, 9) : '-        '
   const height = s.height !== null ? (s.height.toFixed(2) + '   ').slice(0, 8) : '-       '

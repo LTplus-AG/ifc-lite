@@ -35,13 +35,19 @@ function query(ctx: Ctx, modelId: unknown) {
   return id ? q.model(id) : q;
 }
 
+/**
+ * Optional model id wired from `model.openFromSource`: it wins over the
+ * `model` param, and the edge makes the read run after the model is open.
+ */
+const MODEL_ID_INPUT = { name: 'modelId', type: SCALAR_ITEM, optional: true, nullable: true } as const;
+
 export const modelNodes: FlowNodeDef[] = [
   {
     type: 'model.select',
     title: 'Select',
     category: 'model',
     doc: 'Entities matching an IfcOpenShell-style selector, e.g. `IfcWall, Pset_WallCommon.IsExternal=TRUE`.',
-    inputs: [],
+    inputs: [MODEL_ID_INPUT],
     outputs: [{ name: 'entities', type: ENTITY_LIST }],
     params: [
       { name: 'selector', kind: 'string', default: 'IfcWall' },
@@ -49,16 +55,16 @@ export const modelNodes: FlowNodeDef[] = [
     ],
     capabilities: ['model.read'],
     reads: 'model',
-    run: (ctx, _i, p) => {
+    run: (ctx, i, p) => {
       requireCapability(ctx, 'model.read');
-      return { entities: query(ctx, p.model).select(str(p.selector, 'selector')).toArray().map(toRef) };
+      return { entities: query(ctx, i.modelId ?? p.model).select(str(p.selector, 'selector')).toArray().map(toRef) };
     },
   },
   {
     type: 'model.byType',
     title: 'By type',
     category: 'model',
-    inputs: [],
+    inputs: [MODEL_ID_INPUT],
     outputs: [{ name: 'entities', type: ENTITY_LIST }],
     params: [
       { name: 'type', kind: 'string', default: 'IfcWall' },
@@ -66,9 +72,9 @@ export const modelNodes: FlowNodeDef[] = [
     ],
     capabilities: ['model.read'],
     reads: 'model',
-    run: (ctx, _i, p) => {
+    run: (ctx, i, p) => {
       requireCapability(ctx, 'model.read');
-      return { entities: query(ctx, p.model).byType(str(p.type, 'type')).toArray().map(toRef) };
+      return { entities: query(ctx, i.modelId ?? p.model).byType(str(p.type, 'type')).toArray().map(toRef) };
     },
   },
   {

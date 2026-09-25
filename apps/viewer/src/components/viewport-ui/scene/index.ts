@@ -11,6 +11,7 @@ export { useSceneProjector } from './SceneProjectorProvider';
 export { useSceneLayer } from './SceneLayers';
 export { useWorldAnchor, defaultApplyTransform } from './useWorldAnchor';
 export type { WorldAnchorHandle, UseWorldAnchorOptions } from './useWorldAnchor';
+export { useProjectorTick } from './useProjectorTick';
 export type {
   Vec3,
   ScreenPoint,

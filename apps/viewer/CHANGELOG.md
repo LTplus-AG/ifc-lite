@@ -1,5 +1,52 @@
 # @ifc-lite/viewer
 
+## 3.3.0
+
+### Minor Changes
+
+- [#5935](https://github.com/LTplus-AG/ifc-lite/pull/5935) [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenCDE Documents API flow nodes and `model.openFromSource` ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634), [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.4).
+  
+  `@ifc-lite/flow-nodes` gains `documents.queryVersions` (polls `POST /document-versions` with the previous ETag; outputs a versions table, the new ETag and `changed`, which is `false` on a 304), `documents.download` (downloads a version's file as base64 with its name, size and content type) and `model.openFromSource` (opens downloaded bytes as a model through the new optional `FlowHost.openModel`, gated by the `openModel` backend feature). Every Documents API request goes through `coreNetworkRequest` with the graph's `network.fetch:<host>` grants; the bearer token param takes `{{secret:NAME}}`. `model.select` and `model.byType` gain an optional `modelId` input, so a read can be wired to run after, and on, an opened model.
+  
+  `@ifc-lite/sandbox`: `coreNetworkRequest` accepts `responseType: 'bytes'` and then returns the capped body as `NetworkResponse.bytes`, unmangled by a text decode. A new `allowNotModified: true` option returns a 304 Not Modified as a response; without it a 304 is still refused like every other 3xx, so existing `http.request` and `bim.network.fetch` behaviour is unchanged.
+  
+  `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`) implement `openModel` with their own loaders: the opened model becomes the one the rest of the run (and the CLI's `--out`) works on, and MCP registers it for later tool calls. The viewer loads it through `addModel`, the same path as a dropped file.
+
+### Patch Changes
+
+- [#5954](https://github.com/LTplus-AG/ifc-lite/pull/5954) [`c8ed2e4`](https://github.com/LTplus-AG/ifc-lite/commit/c8ed2e45489991f303e56cd3a432aa619fe60166) Thanks [@louistrue](https://github.com/louistrue)! - The bottom strip (Script, Schedule, Lists, Charts, Document, Flow, Drawing) now has its own header instead of each panel drawing its own title and close row ([#5498](https://github.com/LTplus-AG/ifc-lite/issues/5498)). A tab row shows every bottom panel opened this session — the active tab still follows the existing mutually-exclusive dock flag — alongside the detach grip, a maximize control that fills the viewport region (restore returns to the resizable dock), and a single Close. Script's script selector and AI-chat toggle, Schedule's playback toolbar, Lists' Settings, Charts' and Document's toolbars, Flow's run/save/publish row, and Drawing's Regenerate/Export stay in each panel's own slim action row; only the redundant title/close chrome moved out. The strip's resize height and its opened tabs persist across a reload.
+
+- [#5912](https://github.com/LTplus-AG/ifc-lite/pull/5912) [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9) Thanks [@louistrue](https://github.com/louistrue)! - Bulk edits and CSV imports are now one undo step each ([#5861](https://github.com/LTplus-AG/ifc-lite/issues/5861)).
+  
+  The Bulk property editor and the CSV importer write straight to the model's property overlay, so neither run reached the undo history: Ctrl+Z did nothing, the model was not flagged as having unsaved changes, and cancelling a Bulk run left the chunks it had already applied in place with no way back. Both now record their run as a single undo step (one Ctrl+Z reverts the run, one Ctrl+Y re-applies it) and mark the model as changed. A cancelled Bulk run says how far it got, and undo reverts what it applied.
+  
+  Undo and redo of a batch no longer recurse once per change and commit the stacks in one update, so a 10,000-element batch undoes in milliseconds instead of overflowing the call stack.
+  
+  `ImportStats` (`@ifc-lite/mutations`) gains `mutations`, the list of mutations the import applied, so a host with an undo history can record them.
+
+- [#5915](https://github.com/LTplus-AG/ifc-lite/pull/5915) [`0b1c31e`](https://github.com/LTplus-AG/ifc-lite/commit/0b1c31e52027de4a0fb0d14aedc3a7bddbe846ec) Thanks [@louistrue](https://github.com/louistrue)! - The empty viewer now leads with one first-run card whose main action is **Load demo project** (the bundled sample, loaded through the normal open path). The Layers demo moved into that card instead of a second floating promo, the Open button says "Open model file" and lists every supported format, and the "the toolbar changed" ribbon notice is only shown to people who used the viewer before the ribbon became the default.
+
+- [#5994](https://github.com/LTplus-AG/ifc-lite/pull/5994) [`ac48987`](https://github.com/LTplus-AG/ifc-lite/commit/ac4898731648b6c9143882bfeac9949893746f5a) Thanks [@louistrue](https://github.com/louistrue)! - A floating panel can no longer end up with its title bar hidden under the main toolbar. Panels reopened with a saved position above the window, or taller than the window, and panels dragged up by their header, now stop at the toolbar's bottom edge so the drag handle, dock and close buttons stay reachable ([#5957](https://github.com/LTplus-AG/ifc-lite/issues/5957)). The Customize sidebar's Reset now resets the whole layout like every other Reset layout entry point, Reset layout on mobile no longer pops the hierarchy sheet open, and the bottom strip keeps its resized height when it reopens after an earlier reset.
+
+- [#5910](https://github.com/LTplus-AG/ifc-lite/pull/5910) [`371279c`](https://github.com/LTplus-AG/ifc-lite/commit/371279c10f7f5ecdbb1ebc700ef8ccfce22866f9) Thanks [@louistrue](https://github.com/louistrue)! - Mobile: an open panel sheet no longer closes when the on-screen keyboard opens, the URL bar shows or hides, or the phone rotates. Panels now collapse only when the layout switches into mobile mode, not on every resize ([#5837](https://github.com/LTplus-AG/ifc-lite/issues/5837)).
+
+- [#5916](https://github.com/LTplus-AG/ifc-lite/pull/5916) [`c80cc58`](https://github.com/LTplus-AG/ifc-lite/commit/c80cc584a4789297ba49e4de1ab4218cecc14b7d) Thanks [@louistrue](https://github.com/louistrue)! - "Reset layout" (activity-bar menu and command palette) now resets the whole workspace: the sidebar, every floating panel, the hierarchy pane and the bottom strip's height. It used to reset only the sidebar. Free-floating panels are now kept inside the window when drawn, so a panel saved on a bigger screen, or before the window shrank, can no longer end up out of reach with its close button off screen.
+
+- [#5909](https://github.com/LTplus-AG/ifc-lite/pull/5909) [`8b075cb`](https://github.com/LTplus-AG/ifc-lite/commit/8b075cb4f0e9cecf9f6914b405fa7bdafb4b2ba6) Thanks [@louistrue](https://github.com/louistrue)! - Remove the per-model `hiddenEntitiesByModel` / `isolatedEntitiesByModel` visibility maps and their `*InModel` actions. Nothing wrote them, so they were always empty. Every hide and isolate already goes through the global-id `hiddenEntities` / `isolatedEntities` sets, which cover all federated models. Exports, drawings, BCF capture and the basket no longer consult a channel that could never hide anything.
+- Updated dependencies [[`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114), [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc), [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a), [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b), [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6)]:
+  - @ifc-lite/flow-nodes@0.5.0
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/sandbox@2.8.0
+  - @ifc-lite/mcp@0.22.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/wasm@10.1.2
+  - @ifc-lite/bcf-api@0.2.4
+  - @ifc-lite/clash@2.4.2
+  - @ifc-lite/sdk@7.1.3
+  - @ifc-lite/rules@0.4.1
+
 ## 3.2.0
 
 ### Minor Changes

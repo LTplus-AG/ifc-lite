@@ -37,6 +37,7 @@ export {
   type PropertyFilter,
   type FilterOperator,
 } from './bulk-query-engine.js';
+export { BULK_WRITABLE_ATTRIBUTES } from './bulk-attribute-action.js';
 export {
   CsvConnector,
   type CsvRow,

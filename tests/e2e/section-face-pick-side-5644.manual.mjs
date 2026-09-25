@@ -19,7 +19,12 @@ const OUT = process.env.WALKTHROUGH_OUT ?? join(tmpdir(), 'ifc-lite-section-5644
 mkdirSync(OUT, { recursive: true });
 const STORE = '__ifc_lite_viewer_store__';
 const BASE = process.env.WALKTHROUGH_BASE ?? 'http://localhost:5291';
-const MODEL = process.env.WALKTHROUGH_MODEL ?? '/samples/hello-wall.ifc';
+// Required: the default click fractions below are tuned for AC20-FZK-Haus.
+const MODEL = process.env.WALKTHROUGH_MODEL;
+if (!MODEL) {
+  console.error('Set WALKTHROUGH_MODEL to a served URL of tests/models/ara3d/AC20-FZK-Haus.ifc (`pnpm fixtures`), or tune WALKTHROUGH_PICK_X/Y for another model.');
+  process.exit(2);
+}
 const log = (...a) => console.log('[walk]', ...a);
 const failures = [];
 const expect = (ok, what) => { log(ok ? 'PASS' : 'FAIL', what); if (!ok) failures.push(what); };
@@ -91,6 +96,27 @@ for (const view of ['left', 'right']) {
   const flippedPlane = await state('s.sectionPlane');
   expect(!clipped(flippedPlane, face), `${tag}: Flip keeps the picked face`);
   await shot(`${tag}-flipped`);
+  // Back to the default side, then Reset to axis (the panel button): it must
+  // keep the side on screen (#5644 follow-up; on main a -X pick vanished the model).
+  await act('s.flipSectionPlane()');
+  await page.waitForTimeout(800);
+  const onScreen = await state('s.sectionPlane');
+  const probe = onScreen.custom.pickedAt.map((c, i) => c - onScreen.custom.normal[i] * 0.1);
+  const keptBefore = !clipped(onScreen, probe);
+  const resetButton = page.locator('button[title="Reset to nearest cardinal axis"]').first();
+  // The panel opens collapsed; its header (the chevron button) expands it.
+  const header = await page.locator('button', { hasText: /Custom\s+-?\d/ }).first().elementHandle();
+  if (!(await resetButton.isVisible())) await header.click();
+  await resetButton.click();
+  await page.waitForTimeout(1200);
+  const reset = await state('s.sectionPlane');
+  const axisIdx = reset.axis === 'side' ? 0 : reset.axis === 'down' ? 1 : 2;
+  // Cardinal renderer path: +axis normal through the picked point, flip relative to it.
+  const along = probe[axisIdx] - onScreen.custom.pickedAt[axisIdx];
+  const keptAfter = (along * (reset.flipped ? -1 : 1)) <= 0;
+  expect(reset.custom === undefined && keptAfter === keptBefore, `${tag}: Reset to axis keeps the side that was on screen`);
+  await shot(`${tag}-default-reset`);
+  await header.click(); // collapse again so the panel does not cover the next pick
 }
 
 log('console errors', errors.length, errors.slice(0, 5));

@@ -162,7 +162,8 @@ export function ActivityBar() {
                       setOverId(null);
                     }}
                     onDragOver={(e) => {
-                      if (!customizing) return;
+                      // Only an icon reorder claims the drag; a file is the window's (#5845).
+                      if (!customizing || !dragId) return;
                       e.preventDefault();
                       if (overId !== id) setOverId(id);
                     }}

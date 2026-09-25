@@ -45,6 +45,7 @@ import { landXmlEn } from './catalogues/landxml.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
+import { placementPanelEn } from './catalogues/placement-panel.en';
 import { repositionPanelEn } from './catalogues/reposition-panel.en';
 import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
@@ -140,6 +141,7 @@ export const en = {
   ...searchModalEn,
   ...searchFiltersEn,
   ...repositionPanelEn,
+  ...placementPanelEn,
   ...webgpuTroubleshootingEn,
   ...scriptPanelEn,
   ...zonesPanelEn,

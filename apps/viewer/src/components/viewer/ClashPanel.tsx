@@ -608,13 +608,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (vp) addViewpoint(topic.guid, vp);
-      setBcfPanelVisible(true);
+      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
     } catch (err) {
       console.error('[clash] BCF topic creation failed', err);
     } finally {
       setCreatingTopic(false);
     }
-  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible]);
+  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
 
   /** Switch the focus mode and immediately re-apply it to the selected clash so
    *  the change is visible without re-clicking the row (#1275). */

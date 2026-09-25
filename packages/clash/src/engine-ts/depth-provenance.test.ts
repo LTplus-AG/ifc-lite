@@ -661,8 +661,27 @@ describe('hard-clash distance provenance', () => {
       return [r.distance, r.depthFloor];
     };
     expect(hard({ mtd: 0.1, axis: x, through: false }, 0.5)).toEqual([-0.1, xFloor]);
-    expect(hard({ mtd: 0.1, axis: x, through: true }, 0.5)).toEqual([-0.5, estFloor]);
+    // A through-penetration reports the estimate, capped by the MTD (#5742):
+    // the capped depth is the MTD, so it carries the MTD's floor.
+    expect(hard({ mtd: 0.1, axis: x, through: true }, 0.5)).toEqual([-0.1, xFloor]);
+    expect(hard({ mtd: 0.9, axis: x, through: true }, 0.5)).toEqual([-0.5, estFloor]);
     expect(hard(null, 0.5)).toEqual([-0.5, estFloor]);
+  });
+
+  it('never reports a through-penetration deeper than its MTD, and keeps the estimate label (#5742)', () => {
+    // Mirrors `a_through_penetration_is_capped_by_its_mtd_and_stays_an_estimate_5742`.
+    // The #5742 tie: a member overlapping a 26 mm plate by 26 mm pokes out of
+    // the far face by microns, so `through` is decided by f32 noise per
+    // placement. The partial side reported the certified 0.026 MTD, the
+    // through side the rotated boxes' 0.786 AABB estimate: a 30x swing.
+    // Capping by the MTD makes both sides report 0.026.
+    const a = boundsEl([-1, -1, -1], [1, 1, 1]);
+    const b = boundsEl([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]);
+    const x: Vec3 = [1, 0, 0];
+    const at = (through: boolean) =>
+      depthClashResult({ mtd: 0.026078, axis: x, through }, 0.78598, null, a, b, TOUCH_RULE, [0, 0, 0], a.bounds)!;
+    expect(at(false)).toMatchObject({ status: 'hard', distance: -0.026078, distanceKind: 'mesh' });
+    expect(at(true)).toMatchObject({ status: 'hard', distance: -0.026078, distanceKind: 'estimate' });
   });
 
   it('pins the floor boundary per candidate, each on its own direction (#5405)', () => {

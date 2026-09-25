@@ -165,7 +165,10 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
         console.error('[CommandPalette] Failed to save basket view:', err);
       }) },
     { id: 'vis:toggle-presentation', label: 'Toggle Basket Presentation Dock', ...withKey('commandPalette.vis.togglePresentation.label'), keywords: 'basket panel carousel thumbnails', category: 'Visibility', icon: Layout,
-      action: () => { useViewerStore.getState().toggleBasketPresentationVisible(); } },
+      // Routed through the bottom-panel table (#5508: presentation is the
+      // `presentation` bottom panel now), so it stays mutually exclusive
+      // with Script/Schedule/Lists/etc. instead of the raw flag toggle.
+      action: () => { useViewerStore.getState().toggleBottomPanel('presentation'); } },
     { id: 'vis:clear-iso', label: 'Clear Basket', ...withKey('commandPalette.vis.clearBasket.label'), keywords: 'basket clear reset', category: 'Visibility', icon: RotateCcw,
       action: () => executeBasketClear() },
     { id: 'vis:spaces', label: 'Spaces', ...withKey('commandPalette.vis.spaces.label'), keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,

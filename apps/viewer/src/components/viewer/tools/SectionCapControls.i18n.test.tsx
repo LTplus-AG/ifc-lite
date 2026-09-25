@@ -9,9 +9,12 @@ import { cleanup, click, render, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 const CAP_LOCALE: Catalogue = {
+  'sectionTool.cap.label': 'Surface locale',
   'sectionCap.display': 'Affichage',
   'sectionCap.surfaces': 'Faces',
   'sectionCap.lines': 'Traits',
@@ -37,12 +40,17 @@ const CAP_LOCALE: Catalogue = {
   'sectionCap.widthLabel': 'Largeur locale',
 };
 
-function mountedExpanded(): HTMLElement {
-  const ui = render(<ToolOverlays />);
-  const header = [...ui.querySelectorAll('button')].find((candidate) => candidate.textContent?.includes('Section'));
-  assert.ok(header);
-  click(header);
-  return ui;
+/** Mount the Section tool through its production host and open the bar's Cap popover (#5499). */
+function mountedCap(capLabel = 'Cap'): HTMLElement {
+  render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+  const bar = document.querySelector<HTMLElement>('[data-tool-bar="section"]');
+  assert.ok(bar, 'the Section bar is mounted');
+  const trigger = [...bar.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === capLabel);
+  assert.ok(trigger, `Cap trigger "${capLabel}"`);
+  click(trigger);
+  const cap = document.querySelector<HTMLElement>('[data-section-cap-controls]');
+  assert.ok(cap, 'the Cap popover opened');
+  return cap;
 }
 
 function toggle(ui: HTMLElement, text: string): HTMLButtonElement {
@@ -75,7 +83,7 @@ afterEach(() => {
 
 describe('mounted Section cap localization (#4785)', () => {
   it('keeps English options, IDs and independent complete display titles', () => {
-    const ui = mountedExpanded();
+    const ui = mountedCap();
     assert.match(ui.textContent ?? '', /Display/);
     const select = labelledControl<HTMLSelectElement>(ui, 'Hatch pattern');
     assert.deepEqual([...select.options].map((option) => [option.value, option.textContent]), [
@@ -87,8 +95,10 @@ describe('mounted Section cap localization (#4785)', () => {
     const lines = toggle(ui, 'Lines');
     assert.equal(surfaces.title, 'Hide surfaces');
     assert.equal(lines.title, 'Hide lines');
+    assert.equal(surfaces.getAttribute('aria-pressed'), 'true');
     click(surfaces);
     assert.equal(toggle(ui, 'Surfaces').title, 'Show surfaces');
+    assert.equal(toggle(ui, 'Surfaces').getAttribute('aria-pressed'), 'false');
     assert.equal(useViewerStore.getState().sectionPlane.showOutlines, true);
     assert.equal(ui.querySelector('fieldset')?.hasAttribute('disabled'), true);
     click(lines);
@@ -99,7 +109,7 @@ describe('mounted Section cap localization (#4785)', () => {
   it('renders every translated option and complete tooltip through the production host', () => {
     registerLocale('cap-test', CAP_LOCALE);
     setLocale('cap-test');
-    const ui = mountedExpanded();
+    const ui = mountedCap('Surface locale');
     assert.match(ui.textContent ?? '', /Affichage/);
     assert.equal(toggle(ui, 'Faces').title, 'Masquer toutes les faces');
     assert.equal(toggle(ui, 'Traits').title, 'Masquer tous les traits');
@@ -120,7 +130,7 @@ describe('mounted Section cap localization (#4785)', () => {
   it('edits translated cap fields without changing IDs, alpha or angle semantics', () => {
     registerLocale('cap-test', CAP_LOCALE);
     setLocale('cap-test');
-    const ui = mountedExpanded();
+    const ui = mountedCap('Surface locale');
     const fill = ui.querySelector<HTMLInputElement>('input[aria-label="Couleur du fond"]');
     const hatch = ui.querySelector<HTMLInputElement>('input[aria-label="Couleur des hachures"]');
     assert.ok(fill && hatch);
@@ -143,7 +153,7 @@ describe('mounted Section cap localization (#4785)', () => {
   it('falls back per missing cap key and updates an active catalogue in place', () => {
     registerLocale('partial-cap', { 'sectionCap.display': 'Localized display', 'sectionCap.hideSurfaces': 'Localized hide' });
     setLocale('partial-cap');
-    const ui = mountedExpanded();
+    const ui = mountedCap();
     assert.match(ui.textContent ?? '', /Localized display/);
     assert.equal(toggle(ui, 'Surfaces').title, 'Localized hide');
     assert.equal(toggle(ui, 'Lines').title, 'Hide lines');

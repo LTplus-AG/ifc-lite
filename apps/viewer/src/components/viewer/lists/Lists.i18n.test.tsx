@@ -187,7 +187,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
   it('translates the library view: header, actions, and per-row controls', () => {
     const list = savedList();
     seedPanelStore([list]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
     const english = readableStrings(container);
 
     registerLocale('lists-panel-library-pseudo', PSEUDO);
@@ -196,7 +196,6 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
     const libraryKeys: ListsKey[] = [
       'lists.panel.title',
-      'lists.panel.close',
       'lists.library.newList',
       'lists.library.import',
       'lists.library.savedLists',
@@ -233,7 +232,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
   it('translates the "Use as Template" aria-label on a preset row', () => {
     seedPanelStore([]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     // Captured while still English: a preset row's aria-label reads
     // "Use <preset name> as template" (`useAsTemplateAriaLabel`).
@@ -252,7 +251,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
   it('translates the results view: header summary and the results-only actions', async () => {
     const list = savedList();
     seedPanelStore([list]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     const runButton = container.querySelector(`button[aria-label="Run list ${list.name}"]`);
     assert.ok(runButton, 'expected a Run button for the saved list');
@@ -288,7 +287,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
   it('translates the builder view chrome (New List / Cancel)', () => {
     seedPanelStore([]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New List'));
     assert.ok(newListButton, 'expected a New List button');

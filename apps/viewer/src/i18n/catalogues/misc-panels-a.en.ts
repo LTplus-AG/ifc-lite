@@ -7,10 +7,13 @@
  * five unrelated one-off dialogs/panels bundled purely for PR-count
  * efficiency, each under its own key prefix:
  *
- * - `basketPresentationDock.*` — `BasketPresentationDock.tsx`, the pinboard
- *   "Presentation" dock's own chrome (header counts, source/visibility/save/
- *   play-all controls, the saved-view strip and its rename/duration/delete
- *   actions, and the resize handle).
+ * - `presentationPanel.*` — `presentation/PresentationPanel.tsx`, the
+ *   `presentation` bottom panel's action row (counts, source/visibility/save/
+ *   play-all controls) and the saved-view strip's rename/duration/delete
+ *   actions. Formerly `BasketPresentationDock.tsx`'s own floating-card
+ *   chrome (drag-to-move, resize, its own title/Hide row) before it became a
+ *   bottom panel (#5508) and those moved to the strip's shared header
+ *   (#5498) — the drag/resize/hide keys retired with them.
  * - `deviationPanel.*` — `DeviationPanel.tsx`, the BIM/scan deviation
  *   heatmap controls (compute button, stats line, range slider, and the
  *   diverging-ramp legend).
@@ -41,32 +44,28 @@
  * is expected to leave unchanged.
  */
 export const miscPanelsAEn = {
-  // BasketPresentationDock
-  'basketPresentationDock.dragToMoveTitle': 'Drag to move',
-  'basketPresentationDock.presentationLabel': 'Presentation',
-  'basketPresentationDock.inBasketCount': '{count} in basket',
-  'basketPresentationDock.viewsCount': { one: '{count} view', other: '{count} views' },
-  'basketPresentationDock.setFromContextTitle': 'Set basket from current context',
-  'basketPresentationDock.addToBasketTitle': 'Add current context to basket',
-  'basketPresentationDock.removeFromBasketTitle': 'Remove current context from basket',
-  'basketPresentationDock.hideActiveBasketTitle': 'Hide active basket',
-  'basketPresentationDock.showActiveBasketTitle': 'Show active basket',
-  'basketPresentationDock.clearActiveBasketTitle': 'Clear active basket',
-  'basketPresentationDock.saveCurrentViewTitle': 'Save current basket as presentation view',
-  'basketPresentationDock.stopPlaybackTitle': 'Stop playback',
-  'basketPresentationDock.playAllTitle': 'Play all saved views (Shift+Click to loop)',
-  'basketPresentationDock.hideButton': 'Hide',
-  'basketPresentationDock.scrollLeftTitle': 'Scroll left',
-  'basketPresentationDock.emptyStripHint':
+  // PresentationPanel (`presentation` bottom panel, formerly BasketPresentationDock)
+  'presentationPanel.inBasketCount': '{count} in basket',
+  'presentationPanel.viewsCount': { one: '{count} view', other: '{count} views' },
+  'presentationPanel.setFromContextTitle': 'Set basket from current context',
+  'presentationPanel.addToBasketTitle': 'Add current context to basket',
+  'presentationPanel.removeFromBasketTitle': 'Remove current context from basket',
+  'presentationPanel.hideActiveBasketTitle': 'Hide active basket',
+  'presentationPanel.showActiveBasketTitle': 'Show active basket',
+  'presentationPanel.clearActiveBasketTitle': 'Clear active basket',
+  'presentationPanel.saveCurrentViewTitle': 'Save current basket as presentation view',
+  'presentationPanel.stopPlaybackTitle': 'Stop playback',
+  'presentationPanel.playAllTitle': 'Play all saved views (Shift+Click to loop)',
+  'presentationPanel.scrollLeftTitle': 'Scroll left',
+  'presentationPanel.emptyStripHint':
     'Save basket views here. Click any card to restore both visibility and viewpoint.',
-  'basketPresentationDock.activeBadge': 'Active',
-  'basketPresentationDock.objectsCount': { one: '{count} object', other: '{count} objects' },
-  'basketPresentationDock.transitionSuffix': ' · {duration}s',
-  'basketPresentationDock.renameViewTitle': 'Rename view',
-  'basketPresentationDock.setTransitionTitle': 'Set transition duration',
-  'basketPresentationDock.deleteViewTitle': 'Delete view',
-  'basketPresentationDock.scrollRightTitle': 'Scroll right',
-  'basketPresentationDock.resizeWidthTitle': 'Drag to resize width',
+  'presentationPanel.activeBadge': 'Active',
+  'presentationPanel.objectsCount': { one: '{count} object', other: '{count} objects' },
+  'presentationPanel.transitionSuffix': ' · {duration}s',
+  'presentationPanel.renameViewTitle': 'Rename view',
+  'presentationPanel.setTransitionTitle': 'Set transition duration',
+  'presentationPanel.deleteViewTitle': 'Delete view',
+  'presentationPanel.scrollRightTitle': 'Scroll right',
 
   // DeviationPanel
   'deviationPanel.sectionLabel': 'Deviation (BIM ↔ scan)',

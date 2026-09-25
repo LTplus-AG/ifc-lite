@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #5488 (charter #5478): the section badge, drag gizmo and face-pick preview
- * draw in the one interaction accent for every axis and for face-picked
- * planes alike. No per-axis Material hue and no custom-plane violet is
- * painted; axis identity survives only as an axis-token dot on the badge.
+ * #5488 (charter #5478): the section drag gizmo and face-pick preview draw
+ * in the one interaction accent for face-picked planes. No per-axis
+ * Material hue and no custom-plane violet is painted. The corner axis badge
+ * is gone (#5500): nothing in the scene carries an axis hue any more.
  */
 
 import '@/test/setup-dom.js';
@@ -69,37 +69,19 @@ afterEach(() => {
 });
 
 describe('section overlay uses the interaction accent (#5488)', () => {
-  const axes = [
-    ['down', 'fill-axis-z'],
-    ['front', 'fill-axis-y'],
-    ['side', 'fill-axis-x'],
-  ] as const;
+  it('cardinal cut: no badge, no axis hue, nothing painted in the scene', () => {
+    const ui = render(<SectionPlaneVisualization enabled />);
+    assert.equal(ui.querySelector('[data-section-badge]'), null, 'the corner badge is gone (#5500)');
+    assert.deepEqual(paintedLiterals(ui), []);
+    assert.deepEqual([...ui.querySelectorAll('svg *')].filter((el) => /\b(fill|stroke)-axis-/.test(el.getAttribute('class') ?? '')), []);
+  });
 
-  for (const [axis, axisFill] of axes) {
-    it(`${axis}: accent badge ring, axis identity only on the ${axisFill} dot`, () => {
-      const ui = render(<SectionPlaneVisualization axis={axis} enabled />);
-      assert.deepEqual(paintedLiterals(ui), [], 'no hard-coded colour is painted');
-      const ring = ui.querySelector('[data-section-badge] > circle');
-      assert.ok(classesOf(ring).includes('stroke-overlay-accent'));
-      assert.ok(classesOf(ring).includes('fill-overlay-accent-soft'));
-      const dots = ui.querySelectorAll('[data-section-axis-dot]');
-      assert.equal(dots.length, 1);
-      assert.equal(dots[0].getAttribute('data-section-axis-dot'), axis);
-      assert.ok(classesOf(dots[0]).includes(axisFill));
-      // No other element carries an axis hue: the plane styling is shared.
-      const axisPainted = [...ui.querySelectorAll('svg *')]
-        .filter((el) => /\b(fill|stroke)-axis-/.test(el.getAttribute('class') ?? ''));
-      assert.deepEqual(axisPainted, [dots[0]]);
-    });
-  }
-
-  it('face-picked plane: accent badge without an axis dot, accent drag gizmo', () => {
+  it('face-picked plane: accent drag gizmo', () => {
     mountRenderer();
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 1, 0], [0, 0, 0]));
-    const ui = render(<SectionPlaneVisualization axis="down" enabled />);
+    const ui = render(<SectionPlaneVisualization enabled />);
     act(() => frame?.(16));
     assert.deepEqual(paintedLiterals(ui), [], 'no violet or other literal is painted');
-    assert.equal(ui.querySelectorAll('[data-section-axis-dot]').length, 0);
     const handle = ui.querySelector('circle[cursor="grab"]');
     assert.ok(classesOf(handle).includes('fill-overlay-accent'), 'gizmo handle is accent');
     const shaft = handle?.parentElement?.querySelector('line') ?? null;
@@ -111,7 +93,7 @@ describe('section overlay uses the interaction accent (#5488)', () => {
     act(() => useViewerStore.setState({
       sectionPickPreview: { point: [0, 0, 0], normal: [0, 1, 0], faceKey: 'f' },
     }));
-    const ui = render(<SectionPlaneVisualization axis="front" enabled={false} />);
+    const ui = render(<SectionPlaneVisualization enabled={false} />);
     act(() => frame?.(16));
     const preview = ui.querySelector('[data-section-pick-preview]');
     assert.ok(preview, 'the preview is drawn');

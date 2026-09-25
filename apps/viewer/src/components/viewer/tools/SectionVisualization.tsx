@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Section plane visual indicator/gizmo.
+ * Section plane scene visuals.
  *
- * In addition to the cardinal-axis corner badge (existing), this also
- * renders the 3D drag gizmo for face-picked custom planes (issue #243):
+ * Renders the 3D drag gizmo for face-picked custom planes (issue #243):
  * an accent dot at the live plane anchor (`pickedAt` projected onto the
  * current plane via `customPlaneCenter`) plus an arrow along the picked
  * normal that the user can click + drag to slide the cut plane
@@ -19,29 +18,24 @@
  * the camera's point-projection of `center + normal * 1m`.
  *
  * Colour (#5488, charter #5478): the section plane is the thing being
- * manipulated, so the badge, gizmo and pick preview all draw in the one
- * interaction accent (`overlay-accent` / `overlay-accent-soft`) for every
- * axis and for face-picked planes alike, matching the GPU plane quad that
- * `Renderer.setOverlayTheme` tints with the same token. Axis identity is
- * carried only by a small axis-token dot on the badge.
+ * manipulated, so the gizmo and pick preview draw in the one interaction
+ * accent (`overlay-accent` / `overlay-accent-soft`) for every axis and for
+ * face-picked planes alike, matching the GPU plane quad that
+ * `Renderer.setOverlayTheme` tints with the same token. The corner axis
+ * badge is gone (#5500): the bar and the parked chip carry the state.
  */
 
 import { useEffect, useState } from 'react';
-import { AXIS_INFO } from './sectionConstants';
 import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { useTranslation } from '@/i18n';
 import { SectionPlaneDragGizmo } from './SectionPlaneDragGizmo';
 
 interface SectionPlaneVisualizationProps {
-  axis: 'down' | 'front' | 'side';
   enabled: boolean;
 }
 
-// Section plane visual indicator component
-export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisualizationProps) {
-  const { t } = useTranslation();
+export function SectionPlaneVisualization({ enabled }: SectionPlaneVisualizationProps) {
   const customPlane = useViewerStore((s) => s.sectionPlane.custom);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
@@ -51,58 +45,12 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
   // surface. Drives the accent quad + arrow that telegraph "this is
   // where I'll cut if you click here" before the user commits.
   const sectionPickPreview = useViewerStore((s) => s.sectionPickPreview);
-  const isCustom = customPlane !== undefined;
 
   return (
     <svg
       className="absolute inset-0 pointer-events-none z-20"
       style={{ overflow: 'visible', pointerEvents: 'none' }}
     >
-      {/* Axis indicator in corner. Accent ring for every axis; the label is
-          ink because the accent is a graphics token (3:1), not a text one. */}
-      <g transform="translate(24, 24)" data-section-badge>
-        <circle
-          cx="20" cy="20" r="18"
-          className="fill-overlay-accent-soft stroke-overlay-accent"
-          strokeWidth={enabled ? 2 : 1.5}
-          strokeOpacity={enabled ? 1 : 0.6}
-        />
-        {!isCustom && (
-          <circle
-            data-section-axis-dot={axis}
-            cx="33" cy="7" r="4"
-            className={`${AXIS_INFO[axis].axisFill} stroke-overlay-halo`}
-            strokeWidth="1.5"
-          />
-        )}
-        <text
-          x="20"
-          y="20"
-          textAnchor="middle"
-          dominantBaseline="central"
-          className="fill-overlay-ink"
-          fontFamily="monospace"
-          fontSize="11"
-          fontWeight="bold"
-        >
-          {t(isCustom ? 'sectionTool.badge.custom' : AXIS_INFO[axis].badgeKey)}
-        </text>
-        {/* Active indicator */}
-        {enabled && (
-          <text
-            x="20"
-            y="32"
-            textAnchor="middle"
-            className="fill-overlay-ink"
-            fontFamily="monospace"
-            fontSize="7"
-            fontWeight="bold"
-          >
-            {t('sectionTool.badge.active')}
-          </text>
-        )}
-      </g>
-
       {enabled && customPlane && (
         <SectionPlaneDragGizmo
           customPlane={customPlane}

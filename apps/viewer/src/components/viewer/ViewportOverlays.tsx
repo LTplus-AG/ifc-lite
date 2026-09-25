@@ -27,6 +27,7 @@ import { useTranslation } from '@/i18n';
 // zero-net addition since this already lives inside the same viewport panel.
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { EditModeHudChip } from './EditModeHudChip';
+import { SectionParkedChip } from './tools/SectionParkedChip';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -171,6 +172,7 @@ export function ViewportOverlays({
           anything below portals in. */}
       <ViewportHud />
       <EditModeHudChip />
+      <SectionParkedChip />
       <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list

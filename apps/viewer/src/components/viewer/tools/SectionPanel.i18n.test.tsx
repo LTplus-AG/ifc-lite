@@ -4,8 +4,8 @@
 
 /**
  * The mounted Section tool's localization (#4785), through the production
- * host (`ToolOverlays` + the HUD): the bar (#5499), the hint strip and the
- * face-pick timing all render whole translated messages, fall back per
+ * host (`ToolOverlays` + the HUD): the bar (#5499), the hint line (#5500)
+ * and the face-pick timing all render whole translated messages, fall back per
  * missing key, and re-render an active catalogue in place without losing
  * store state or restarting the tool's timers.
  */
@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SectionParkedChip } from './SectionParkedChip.js';
 
 const TEST_LOCALE: Catalogue = {
   'sectionTool.heading': 'Coupe',
@@ -46,15 +47,15 @@ const TEST_LOCALE: Catalogue = {
   'sectionTool.drawing.openTitle': 'Ouvrir le dessin en panneau',
   'sectionTool.drawing.closeTitle': 'Fermer le dessin',
   'sectionTool.hint.pick': 'Survolez puis cliquez',
+  'sectionTool.hint.cut': 'Glissez la distance pour déplacer la coupe',
   'sectionTool.hint.off': 'Coupe inactive',
-  'sectionTool.hint.down': '{position}% : coupe vers le bas',
-  'sectionTool.hint.downFlipped': '{position}% : coupe bas inversée',
-  'sectionTool.hint.front': '{position}% : coupe avant',
-  'sectionTool.hint.frontFlipped': '{position}% : coupe avant inversée',
-  'sectionTool.hint.side': '{position}% : coupe latérale',
-  'sectionTool.hint.sideFlipped': '{position}% : coupe latérale inversée',
-  'sectionTool.hint.custom': '{distance} m : coupe personnalisée',
-  'sectionTool.hint.customFlipped': '{distance} m : coupe personnalisée inversée',
+  'sectionTool.parked.label': '{distance} m — {axis}',
+  'sectionTool.parked.labelPercent': '{position} % — {axis}',
+  'sectionTool.parked.faceAxis': 'Face locale',
+  'sectionTool.parked.resumeAria': 'Reprendre la coupe',
+  'sectionTool.parked.resumeTitle': 'Rouvrir l\'outil',
+  'sectionTool.parked.clearAria': 'Oublier la coupe',
+  'sectionTool.parked.clearTitle': 'Oublier',
 };
 
 const bar = () => document.querySelector<HTMLElement>('[data-tool-bar="section"]')!;
@@ -72,8 +73,11 @@ function field(): HTMLElement {
   return el;
 }
 
-function hint(ui: HTMLElement): string {
-  return ui.querySelector('[data-section-hint]')?.textContent ?? '';
+function hint(): string {
+  return document.querySelector('[data-hud-region="bottom-center"]')?.textContent?.trim() ?? '';
+}
+function chip(): string {
+  return document.querySelector('[data-hud-region="top-left"]')?.textContent?.trim() ?? '';
 }
 
 beforeEach(() => {
@@ -100,7 +104,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const renderTool = () => render(<><ViewportHud /><ToolOverlays /></>);
+const renderTool = () => render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
 
 describe('mounted Section tool localization (#4785)', () => {
   it('preserves default English controls, cardinal states and clipping behavior', () => {
@@ -111,23 +115,18 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(button('Face').title, 'Pick a face to cut through');
     assert.equal(field().getAttribute('aria-label'), 'Cut distance along the axis');
 
-    for (const [axis, status] of [['Down', 'Cut down at 37.5%'], ['Front', 'Cut front at 37.5%'], ['Side', 'Cut side at 37.5%']] as const) {
-      click(button(axis));
-      act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
-      assert.equal(hint(ui), status);
-      click(button('Flip cut direction'));
-      assert.equal(button('Unflip cut direction').title, 'Cut direction is flipped');
-      assert.equal(hint(ui), `${status} (flipped)`);
-      click(button('Unflip cut direction'));
-    }
+    assert.equal(hint(), 'Drag the distance to move the cut · Esc to finish');
+    click(button('Flip cut direction'));
+    assert.equal(button('Unflip cut direction').title, 'Cut direction is flipped');
+    click(button('Unflip cut direction'));
 
     const cut = button('Cut');
     assert.equal(cut.title, 'Clipping the model — click to preview the plane without cutting');
-    assert.match([...ui.querySelectorAll('svg text')].map((node) => node.textContent).join(' '), /CUT/);
     click(cut);
     assert.equal(button('Cut').title, 'Not clipping — click to cut the model');
-    assert.equal(hint(ui), 'Cut off — turn on Cut to clip the model');
-    assert.doesNotMatch([...ui.querySelectorAll('svg text')].map((node) => node.textContent).join(' '), /CUT/);
+    assert.equal(hint(), 'Cut is off · turn on Cut to clip the model');
+    assert.equal(ui.querySelector('[data-section-hint]'), null, 'the black hint strip is gone (#5500)');
+    assert.equal(ui.querySelector('[data-section-badge]'), null, 'the corner badge is gone (#5500)');
   });
 
   it('renders whole reordered messages for translated cardinal and signed custom state', () => {
@@ -139,27 +138,31 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(bar().querySelector('[role="radiogroup"]')?.getAttribute('aria-label'), 'Axe de coupe');
     assert.equal(field().getAttribute('aria-valuetext'), '50.00 pour cent', 'no bounds: the percentage carries the translated unit');
     act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
-    assert.equal(hint(ui), '37.5% : coupe avant');
+    assert.equal(hint(), 'Glissez la distance pour déplacer la coupe');
     click(button('Inverser la coupe'));
-    assert.equal(hint(ui), '37.5% : coupe avant inversée');
+    assert.equal(button('Rétablir la coupe').title, 'Direction inversée');
 
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [-2.345, 0, 0]));
     assert.equal(button('Face locale').getAttribute('aria-checked'), 'true');
     assert.equal(field().getAttribute('aria-label'), 'Distance du plan local');
     assert.equal(field().getAttribute('aria-valuetext'), '-2.35 mètres');
-    assert.equal(hint(ui), '-2.35 m : coupe personnalisée');
-    click(button('Inverser la coupe'));
-    assert.equal(hint(ui), '-2.35 m : coupe personnalisée inversée');
     press(field(), 'Enter');
     const input = bar().querySelector<HTMLInputElement>('input[aria-label="Distance du plan local"]');
     assert.ok(input);
     type(input, '-1.125');
     press(input, 'Enter');
     assert.equal(useViewerStore.getState().sectionPlane.custom?.distance, -1.125);
-    assert.equal(hint(ui), '-1.13 m : coupe personnalisée inversée');
+
+    // Leave the tool: the parked chip renders the whole reordered message.
+    act(() => useViewerStore.getState().setActiveTool('select'));
+    assert.equal(chip(), '-1.13 m — Face locale');
+    assert.equal(document.querySelector('button[aria-label="Reprendre la coupe"]')?.getAttribute('title'), "Rouvrir l'outil");
+    click(document.querySelector('button[aria-label="Reprendre la coupe"]')!);
+    assert.equal(useViewerStore.getState().activeTool, 'section');
     click(button('Côté'));
     assert.equal(useViewerStore.getState().sectionPlane.custom, undefined);
-    assert.match(hint(ui), /coupe latérale/);
+    act(() => useViewerStore.getState().setActiveTool('select'));
+    assert.equal(chip(), '37.5 % — Côté', 'no bounds: the percentage form, reordered');
   });
 
   it('uses exact fallback and restores English for an unknown locale', () => {
@@ -171,7 +174,7 @@ describe('mounted Section tool localization (#4785)', () => {
     setLocale('partial-section');
     const ui = renderTool();
     assert.match(bar().textContent ?? '', /Localized section/);
-    assert.equal(hint(ui), 'Cut front at 42.3%');
+    assert.equal(hint(), 'Drag the distance to move the cut · Esc to finish');
     assert.equal(button('Face').title, 'Pick a face to cut through');
     const blankCut = button('Clipping the model — click to preview the plane without cutting');
     assert.equal(blankCut.textContent?.trim(), '', 'an explicit blank label stays blank, not English');
@@ -184,7 +187,7 @@ describe('mounted Section tool localization (#4785)', () => {
   it('updates a mounted active catalogue without remounting or losing state', () => {
     registerLocale('live-section', TEST_LOCALE);
     window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'side', position: 22, flipped: false }));
-    const ui = renderTool();
+    renderTool();
     act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
     click(button('Flip cut direction'));
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [-2.5, 0, 0]));
@@ -203,9 +206,9 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(useViewerStore.getState().sectionPlane, planeBeforeSwitch);
     assert.equal(window.localStorage.getItem('ifc-lite:section-last-mode'), storedMode);
 
-    act(() => registerLocale('live-section', { ...TEST_LOCALE, 'sectionTool.heading': 'Coupe remplacée', 'sectionTool.hint.customFlipped': 'Remplacé {distance}' }));
+    act(() => registerLocale('live-section', { ...TEST_LOCALE, 'sectionTool.heading': 'Coupe remplacée', 'sectionTool.hint.cut': 'Remplacé' }));
     assert.match(bar().textContent ?? '', /Coupe remplacée/);
-    assert.equal(hint(ui), 'Remplacé -2.50');
+    assert.equal(hint(), 'Remplacé');
 
     act(() => setLocale('en'));
     assert.equal(field(), fieldNode);
@@ -234,9 +237,9 @@ describe('mounted Section tool localization (#4785)', () => {
   it('translates delayed face-pick instructions and preserves drawing and close actions', async () => {
     registerLocale('section-test', TEST_LOCALE);
     setLocale('section-test');
-    const ui = renderTool();
+    renderTool();
     await advance(220);
-    assert.equal(hint(ui), 'Survolez puis cliquez');
+    assert.equal(hint(), 'Survolez puis cliquez');
     const face = button('Face locale');
     assert.equal(face.title, 'Cliquez une face dans la vue');
     assert.equal(face.getAttribute('aria-checked'), 'true');

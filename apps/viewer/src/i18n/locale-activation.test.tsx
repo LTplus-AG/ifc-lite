@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render';
 import { MergeLayersBanner } from '@/components/viewer/MergeLayersBanner';
+import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud';
 import { useViewerStore } from '@/store';
 import {
   LOCALE_STORAGE_KEY,
@@ -71,7 +72,7 @@ describe('locale activation from contributed catalogues (#4785)', () => {
       fr: async () => { throw new Error('fr must not load'); },
     };
     const html = { lang: 'en' };
-    const container = render(<MergeLayersBanner />);
+    const container = render(<><ViewportHud /><MergeLayersBanner /></>);
     assert.equal(reloadLabel(container), 'Reload');
 
     await act(async () => {

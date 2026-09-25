@@ -91,7 +91,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
   it('the Add Material dialog writes IfcMaterial + IfcRelAssociatesMaterial, not a property set', async () => {
     store = await seed(IFC4);
     const container = render(<AddMaterialDialog modelId="m" entityId={10} entityType="IfcWall" />);
-    click([...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Add material')!);
+    click([...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Add material')!);
     const input = [...document.body.querySelectorAll('input')].find((i) => i.placeholder === 'e.g., Concrete C30/37') as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
     setter.call(input, 'Steel');

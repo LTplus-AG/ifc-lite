@@ -81,6 +81,15 @@ on:
       - "tools/ifcopenshell_reference/check_referents.py"
       - "tools/ifcopenshell_reference/alignment_fixture.json"
       - "tools/ifcopenshell_reference/make_alignment_fixture.py"
+      # #5942: draped terrain imagery in the LandXML export. The texture is
+      # written by the Rust appearance planner through the wasm, and the export
+      # glue lives in the viewer, so the job below builds both.
+      - "tools/ifcopenshell_reference/check_terrain_texture.py"
+      - "rust/processing/src/appearance/**"
+      - "rust/geometry/src/router/textured.rs"
+      - "rust/geometry/src/router/processing.rs"
+      - "apps/viewer/src/lib/export/landXmlIfc*"
+      - "apps/viewer/src/lib/terrain-imagery/**"
       - "tools/ifcopenshell_reference/validate_export.py"
       - "tools/ifcopenshell_reference/test_validate_export.py"
       - "tools/ifcopenshell_reference/requirements.lock"
@@ -159,14 +168,65 @@ jobs:
       - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
         run: pnpm --filter @ifc-lite/create exec vitest run src/ifcopenshell-ifc4x3-conformance.test.ts
 
+  terrain-imagery:
+    # #5942 (mapping spec §15.5): a draped terrain exported as .ifcZIP must
+    # reopen in IfcOpenShell with its texture resolved on the TIN faces, the
+    # marked pixel landing on the marked vertex. The texture is written by the
+    # appearance planner (Rust, through the wasm), so unlike the job above this
+    # one builds the wasm from source: a prebuilt bundle would grade the
+    # planner of the last release, not of this change.
+    name: LandXML terrain imagery .ifcZIP vs IfcOpenShell
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ifcopenshell + pytest
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock
+
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: export-conformance
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # The viewer's workspace closure, the wasm included (its build script
+      # runs scripts/build-wasm.sh, which needs the toolchain above).
+      - name: Build the viewer's workspace dependencies
+        run: pnpm exec turbo run build --filter='@ifc-lite/viewer^...'
+
+      - name: Export a draped terrain and grade the .ifcZIP with IfcOpenShell
+        working-directory: apps/viewer
+        env:
+          IFCOPENSHELL_PYTHON: python
+          # Here a missing wasm or ifcopenshell is a broken lane, not a skip.
+          REQUIRE_TERRAIN_IMAGERY_CHECK: "1"
+        run: >-
+          pnpm exec tsx --import ./src/test/vite-module-hooks.mjs --test
+          src/lib/export/landXmlIfcImagery.test.ts
+
   report-scheduled-failure:
-    needs: validate
-    if: always() && github.event_name == 'schedule' && needs.validate.result != 'success'
+    needs: [validate, terrain-imagery]
+    if: always() && github.event_name == 'schedule' && (needs.validate.result != 'success' || needs.terrain-imagery.result != 'success')
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: Export schema conformance
-      jobs: validate
-      result: ${{ needs.validate.result }}
+      jobs: validate, terrain-imagery
+      result: validate=${{ needs.validate.result }}, terrain-imagery=${{ needs.terrain-imagery.result }}
     permissions:
       contents: read
       issues: write

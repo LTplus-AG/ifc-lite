@@ -82,4 +82,9 @@ export const exportDialogEn = {
   'exportDialog.landXml.mergedUnsupported': 'The LandXML mapping converts one file into a standalone IFC4X3 model; it cannot take part in a merged export. Switch the scope to a single model to convert it.',
   'exportDialog.landXml.schemaUnsupported': 'The LandXML mapping derives IFC4X3 STEP only. Choose IFC4X3 to convert this model, or export the original LandXML file.',
   'exportDialog.landXml.exported': 'Converted to IFC4X3: {records}.',
+  'exportDialog.landXml.imageryExported': 'The draped imagery is textured on the terrain and ships beside the IFC as {entry} in an .ifcZIP.',
+  'exportDialog.landXml.imageryRefused': 'The draped imagery was not exported: {reason}',
+  'exportDialog.landXml.imageryWillExport': 'The draped imagery {name} ({crs}) will be textured on the terrain and shipped beside the IFC in an .ifcZIP. {percent} % of the terrain\'s vertices lie on the image; beyond it, IFC consumers clamp to the image\'s edge pixels rather than showing the flat terrain colour.',
+  'exportDialog.landXml.imageryAssumedUnit': 'The imagery\'s texture mapping inherits the assumed linear unit ({unit}), like every other coordinate in the file.',
+  'exportDialog.landXml.imageryTiles': 'The draped map tiles are shown in the viewer only and are not exported: their bytes are the provider\'s and their coverage depends on the zoom.',
 } as const satisfies Record<string, TranslationValue>;

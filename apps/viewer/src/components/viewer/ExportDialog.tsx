@@ -339,8 +339,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
     if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
-        { t, setExportResult, setIsExporting });
+      // #5942: draped imagery rides along into an .ifcZIP (mapping spec §15.5).
+      void finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name,
+        imagery: 'terrainImagery' in selectedModel ? selectedModel.terrainImagery : undefined },
+      { t, setExportResult, setIsExporting });
       return;
     }
 

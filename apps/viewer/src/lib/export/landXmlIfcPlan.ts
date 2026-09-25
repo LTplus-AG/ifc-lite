@@ -26,6 +26,7 @@ import {
 } from '@ifc-lite/create';
 import type { FederatedModel } from '@/store';
 import { isLandXmlSchema, type LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
+import { coveredFraction, type TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
 /**
  * The viewer's parsed document IS the converter's input.
@@ -70,6 +71,11 @@ export interface LandXmlExportPlan {
    * but unverified", which the dialog states rather than leaving implied.
    */
   crsName: string | null;
+  /**
+   * Imagery draped on the selected terrain (#5942, §15.5): exported beside the
+   * IFC in an `.ifcZIP` when it came from a file, never when it came from tiles.
+   */
+  imagery: { name: string; source: 'file' | 'tiles'; crs: string; coveredFraction: number } | null;
 }
 
 function isLandXmlModel(model: { sourceSchema?: string }): boolean {
@@ -108,7 +114,7 @@ function mergeRefusals(all: LandXmlRefusal[][], refusedAlignments: readonly Refu
  */
 export function landXmlExportPlan(
   models: ReadonlyMap<string, FederatedModel>,
-  selectedModel: { sourceSchema?: string; landXmlDocument?: LandXmlTinDocument } | undefined,
+  selectedModel: { sourceSchema?: string; landXmlDocument?: LandXmlTinDocument; terrainImagery?: TerrainImageryDrape } | undefined,
   mergedScope: boolean,
 ): LandXmlExportPlan | null {
   const inScope: LandXmlTinDocument[] = [];
@@ -179,5 +185,11 @@ export function landXmlExportPlan(
     assumedUnit,
     missingCrs,
     crsName,
+    imagery: scope === 'selected' && selectedModel?.terrainImagery ? {
+      name: selectedModel.terrainImagery.sourceName,
+      source: selectedModel.terrainImagery.source,
+      crs: selectedModel.terrainImagery.imageCrs,
+      coveredFraction: coveredFraction(selectedModel.terrainImagery),
+    } : null,
   };
 }

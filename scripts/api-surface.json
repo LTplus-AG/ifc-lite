@@ -4620,6 +4620,7 @@
     "LandXmlIfcAlignmentSegment: interface",
     "LandXmlIfcCgPoint: interface",
     "LandXmlIfcCoverage: interface",
+    "LandXmlIfcImagery: interface",
     "LandXmlIfcLocation: type",
     "LandXmlIfcOptions: interface",
     "LandXmlIfcPlan: interface",
@@ -4631,6 +4632,7 @@
     "LandXmlIfcRotation: type",
     "LandXmlIfcSource: interface",
     "LandXmlIfcSurface: interface",
+    "LandXmlIfcSurfaceElement: interface",
     "LandXmlIfcUnits: interface",
     "LandXmlIfcWarning: interface",
     "LandXmlRefusal: interface",
@@ -5531,6 +5533,7 @@
     "parseGLB: function",
     "parseGLBToMeshData: function",
     "planAuthoredResourceCleanup: function",
+    "serializeEntityArgs: function",
     "stripNodePathPrefix: function",
     "tableToCsv: function"
   ],

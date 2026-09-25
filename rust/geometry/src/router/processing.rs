@@ -664,7 +664,8 @@ impl GeometryRouter {
             // (#961) always did. Bypasses the content-dedup cache — the cached
             // mesh has no UV channel, and UVs are per-face-set anyway. Falls
             // through to the plain path if the textured build fails.
-            if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
+            // A terrain TIN is a face set that only appends `Flags` (#5942).
+            if matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
                 if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
                     let proc = crate::processors::TriangulatedFaceSetProcessor::new();
                     if let Ok((mut mesh, uvs)) = proc.process_with_texture(item, decoder, map) {

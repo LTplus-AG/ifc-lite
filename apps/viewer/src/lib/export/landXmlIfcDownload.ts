@@ -13,24 +13,45 @@
  * without mounting React.
  */
 
-import { landXmlToIfc, type LandXmlIfcResult } from '@ifc-lite/create';
+import type { LandXmlIfcOptions } from '@ifc-lite/create';
 import { buildExportFilename, downloadBlob, stripExtension } from './download.js';
 import { landXmlIfcSource } from './landXmlIfcPlan.js';
+import { landXmlToIfcArchive, type AppearancePlanRunner } from './landXmlIfcImagery.js';
+import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
+import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 import type { UseTranslationResult } from '@/i18n';
 
 export interface LandXmlIfcDownloadInput {
   document: LandXmlTinDocument;
   /** The model's display name; seeds the filename and the file's provenance. */
   name: string;
+  /** Imagery draped on the terrain (#5942); written when it came from a file. */
+  imagery?: TerrainImageryDrape;
+  /** The appearance planner; the browser's worker unless a caller supplies one. */
+  planAppearance?: AppearancePlanRunner;
 }
 
 export type LandXmlIfcDownloadResult =
-  | { status: 'exported'; filename: string; surfaces: number; surveyPoints: number; alignments: number }
+  | {
+    status: 'exported'; filename: string; surfaces: number; surveyPoints: number; alignments: number;
+    imagery: { status: 'exported'; entryName: string } | { status: 'none' } | { status: 'refused'; reason: string };
+  }
   | { status: 'refused'; reason: string };
 
+/** The browser's planner: the appearance worker, one job, then released. */
+const workerPlanner: AppearancePlanRunner = async (source, request) => {
+  const planner = createAppearancePlanner();
+  try {
+    return await planner.plan(source, request);
+  } finally {
+    planner.dispose();
+  }
+};
+
 /**
- * Convert one LandXML document and download it as `.ifc`.
+ * Convert one LandXML document and download it: `.ifc`, or `.ifczip` when its
+ * draped imagery is written beside it (mapping spec §15.5).
  *
  * The refusal branch is returned rather than thrown: a source the mapping does
  * not cover is an answer, not a fault, and the caller shows its reason. The
@@ -38,27 +59,32 @@ export type LandXmlIfcDownloadResult =
  * changed under the dialog — still worth reporting truthfully rather than
  * writing an empty file.
  */
-export function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): LandXmlIfcDownloadResult {
+export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Promise<LandXmlIfcDownloadResult> {
   // The declared datum is passed through verbatim as `IfcProjectedCRS.Name`,
   // never resolved (§4.2). No `Bounds` accompany it, so the transposition
   // check does not run — see `crsName` in `landXmlIfcPlan.ts` for why, and the
   // dialog says so before the user commits.
   const datum = input.document.coordinateSystem?.horizontalDatum;
-  const result: LandXmlIfcResult = landXmlToIfc(landXmlIfcSource(input.document), {
+  const options: LandXmlIfcOptions = {
     sourceFileName: input.name,
     ...(datum ? { crs: { Name: datum, VerticalDatum: input.document.coordinateSystem?.verticalDatum } } : {}),
-  });
-  if (result.status === 'refused') {
-    return { status: 'refused', reason: result.reason };
-  }
-  const filename = buildExportFilename(stripExtension(input.name) || 'landxml', '.ifc');
-  downloadBlob(new Blob([result.content], { type: 'application/x-step' }), filename);
-  return {
-    status: 'exported',
+  };
+  const stem = stripExtension(input.name) || 'landxml';
+  const result = await landXmlToIfcArchive(
+    input.document, landXmlIfcSource(input.document), options, `${stem}.ifc`,
+    input.imagery, input.planAppearance ?? workerPlanner,
+  );
+  if (result.status === 'refused') return result;
+  const filename = buildExportFilename(stem, result.extension);
+  downloadBlob(
+    typeof result.content === 'string'
+      ? new Blob([result.content], { type: 'application/x-step' })
+      : new Blob([result.content.slice()], { type: 'application/zip' }),
     filename,
-    surfaces: result.coverage.surfaces,
-    surveyPoints: result.coverage.surveyPoints,
-    alignments: result.coverage.alignments ?? 0,
+  );
+  return {
+    status: 'exported', filename, imagery: result.imagery,
+    surfaces: result.surfaces, surveyPoints: result.surveyPoints, alignments: result.alignments,
   };
 }
 
@@ -77,9 +103,9 @@ export interface LandXmlIfcExportUi {
  * because this branch returns early from it; leaving that to the caller is how
  * the dialog would end up stuck on "Exporting...".
  */
-export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandXmlIfcExportUi): void {
+export async function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandXmlIfcExportUi): Promise<void> {
   try {
-    const result = downloadLandXmlAsIfc(input);
+    const result = await downloadLandXmlAsIfc(input);
     if (result.status === 'refused') {
       ui.setExportResult({ success: false, message: result.reason });
       return;
@@ -89,7 +115,12 @@ export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandX
       ...(result.surveyPoints > 0 ? [ui.t('exportDialog.landXml.convertPoints', { count: result.surveyPoints })] : []),
       ...(result.alignments > 0 ? [ui.t('exportDialog.landXml.convertAlignments', { count: result.alignments })] : []),
     ].join(', ');
-    ui.setExportResult({ success: true, message: ui.t('exportDialog.landXml.exported', { records }) });
+    const imagery = result.imagery.status === 'exported'
+      ? ` ${ui.t('exportDialog.landXml.imageryExported', { entry: result.imagery.entryName })}`
+      : result.imagery.status === 'refused'
+        ? ` ${ui.t('exportDialog.landXml.imageryRefused', { reason: result.imagery.reason })}`
+        : '';
+    ui.setExportResult({ success: true, message: ui.t('exportDialog.landXml.exported', { records }) + imagery });
   } catch (error) {
     ui.setExportResult({ success: false, message: error instanceof Error ? error.message : String(error) });
   } finally {

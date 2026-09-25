@@ -19,7 +19,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { advance } from '@/test/render.js';
+import { advance, waitFor } from '@/test/render.js';
 import { useProjectedLatLon } from './geo-readout.js';
 import type { AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { resolveProjection } from '@/lib/geo/reproject';
@@ -70,23 +70,6 @@ before(async () => {
   assert.ok(def, `the fixture CRS ${ANCHOR.eff.projectedCRS.name} must resolve, or this test proves nothing`);
 });
 
-/**
- * Flush React until `done()` holds, so a resolved reprojection is committed
- * before the next assertion reads it. Waits on the condition, not on a tick
- * count or a short budget: the number of promise hops inside
- * `resolveProjection` is an implementation detail, and a loaded runner can
- * stretch them arbitrarily (#5977). The deadline only turns a genuine hang into
- * a named failure instead of the runner's generic test timeout.
- */
-async function settle(done: () => boolean = () => true, what = 'the condition'): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (!done()) {
-    if (Date.now() > deadline) assert.fail(`${what} did not happen within 30 s`);
-    await advance(5);
-  }
-  await advance(5);
-}
-
 describe('the picked point\'s lat/lon never lags behind the point', () => {
   it('clears the previous coordinates while the new ones are in flight', async () => {
     const seen: Array<{ lat: number; lon: number } | null> = [];
@@ -101,7 +84,7 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe point={{ x: 0, y: 0, z: 0 }} />));
-    await settle(() => seen.at(-1) != null, 'the first lat/lon resolving');
+    await waitFor(() => seen.at(-1) != null, 'the first lat/lon never resolved');
     const first = seen.at(-1);
     assert.ok(first);
 
@@ -115,7 +98,7 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
       `the render right after the pick still showed the old point's lat/lon: ${JSON.stringify(seen)}`,
     );
 
-    await settle(() => seen.at(-1) != null, 'the new coordinates arriving');
+    await waitFor(() => seen.at(-1) != null, 'the new coordinates never arrived');
     const second = seen.at(-1);
     assert.ok(second, 'and the new coordinates must arrive');
     assert.notDeepEqual(second, first, 'a 50 km move must change the lat/lon');
@@ -133,11 +116,11 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe anchor={ANCHOR} />));
-    await settle(() => seen.at(-1) != null, 'the lat/lon resolving with an anchor');
+    await waitFor(() => seen.at(-1) != null, 'the lat/lon never resolved with an anchor');
     assert.ok(seen.at(-1));
 
     act(() => root.render(<Probe anchor={null} />));
-    await settle();
+    await advance(5);
     assert.equal(seen.at(-1), null, 'dropping the georeference must drop the readout');
   });
 });

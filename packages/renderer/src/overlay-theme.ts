@@ -27,7 +27,7 @@
  *     hex literals used. They want sRGB-DIRECT RGBA: the same 0..1 numbers
  *     you would get dividing an `#rrggbb` byte by 255, no gamma decode.
  *
- * The viewer's bridge (`useOverlayThemeSync`) is the single place that knows
+ * The viewer's bridge (`rendererOverlayTheme`) is the single place that knows
  * which of its `tokenToLinearRgba` / `tokenToRgba` helpers to call for each
  * field, so this boundary only has to be crossed once.
  */
@@ -55,9 +55,15 @@ export interface OverlayTheme {
    * never overrode.
    */
   overlayLine: Rgba;
-  /** Clash element A highlight tint. sRGB-direct RGBA. */
+  /**
+   * Clash element A highlight tint. sRGB-direct RGBA. The pair is painted
+   * through `Scene.setColorOverrides`, which bakes the colour into overlay
+   * batches, so `setOverlayTheme` repaints every installed override EQUAL to
+   * the previous theme's `clashA` in the new one (#5490). Paint the pair in
+   * exactly this value and it follows the theme.
+   */
   clashA: Rgba;
-  /** Clash element B highlight tint. sRGB-direct RGBA. */
+  /** Clash element B highlight tint. sRGB-direct RGBA. Follows the theme as `clashA` does. */
   clashB: Rgba;
   /**
    * Clash overlap box / contact-line / intersection-solid tint, used whenever

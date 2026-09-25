@@ -139,6 +139,7 @@ import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
+import { remapOverrideColors } from './scene-derived-batches.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
 import { reportableItemId } from './pick-resolve.js';
@@ -3439,9 +3440,19 @@ export class Renderer {
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
     setOverlayTheme(theme: OverlayTheme): void {
+        const previous = this.overlayTheme;
         this.overlayTheme = theme;
         this.pipeline?.selectionColorUniform.update(theme.selection);
         this.overlays.setTheme(theme);
+        // A colour override painted in the previous theme's clashA / clashB is a clash pair tint, baked
+        // into its overlay batch: repaint it in the new theme's, as clashOverlap above is (#5490).
+        const installed = this.scene.getColorOverrides();
+        const repainted = installed && remapOverrideColors(installed, [[previous.clashA, theme.clashA], [previous.clashB, theme.clashB]]);
+        const device = this.getGPUDevice();
+        if (repainted && device && this.pipeline) {
+            this.scene.setColorOverrides(repainted, device, this.pipeline);
+            this.requestRender();
+        }
     }
 
     /**

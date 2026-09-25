@@ -95,6 +95,17 @@ describe('saved section cuts (#5514)', () => {
     assert.equal(useSavedSectionCuts.getState().cuts[0]?.name, 'Keep me');
   });
 
+  it('applying a saved plane cut leaves section box mode, so the plane is the cut (#5513)', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('front');
+    const id = saveCurrentSectionCut('Front');
+    state().setSectionBox({ min: [0, 0, 0], max: [4, 3, 2] });
+    assert.ok(state().sectionPlane.box, 'in box mode');
+    applySavedSectionCut(id);
+    assert.equal(state().sectionPlane.box, undefined, 'the box is gone');
+    assert.equal(activeSectionPlane(state())?.axis, 'front');
+  });
+
   it('applying an unknown id is a no-op', () => {
     const before = state().sectionPlane;
     applySavedSectionCut('does-not-exist');

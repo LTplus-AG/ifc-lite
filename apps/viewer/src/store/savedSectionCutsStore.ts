@@ -114,7 +114,9 @@ export function applySavedSectionCut(id: string): void {
   const cut = useSavedSectionCuts.getState().cuts.find((c) => c.id === id);
   if (!cut) return;
   const current = useViewerStore.getState().sectionPlane;
-  useViewerStore.setState({ sectionPlane: { ...current, ...cut.plane, enabled: true, parked: false } });
+  // A saved cut is a plane: leaving a live section box in place would keep
+  // the box as the cut (#5513, `sectionRenderClip`), so it is dropped.
+  useViewerStore.setState({ sectionPlane: { ...current, ...cut.plane, box: undefined, enabled: true, parked: false } });
   if (useViewerStore.getState().activeTool !== 'section') {
     useViewerStore.getState().setActiveTool('section');
   }

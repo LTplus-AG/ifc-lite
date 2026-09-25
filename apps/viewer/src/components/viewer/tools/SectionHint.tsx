@@ -7,7 +7,7 @@
  * in the HUD's bottom-center region — bare ink text, no card — replacing
  * the black hint strip with its hard offset shadow. It says what the next
  * gesture is (hover/click while a face pick is armed, scrub the distance
- * while cutting, turn Cut on while off); the numbers live on the bar, not
+ * while cutting, drag a face handle in box mode, turn Cut on while off); the numbers live on the bar, not
  * here. Rendered by the `section` row's `Scene` because the text depends on
  * store state, which the table's static `hint` key cannot express.
  */
@@ -19,7 +19,10 @@ import { HudHint, HudItem } from '../../viewport-ui/hud';
 export function SectionHint() {
   const { t } = useTranslation();
   const key = useViewerStore((s) =>
-    s.sectionPickMode ? 'sectionTool.hint.pick' : s.sectionPlane.enabled ? 'sectionTool.hint.cut' : 'sectionTool.hint.off',
+    s.sectionPickMode ? 'sectionTool.hint.pick'
+      : !s.sectionPlane.enabled ? 'sectionTool.hint.off'
+        : s.sectionPlane.box ? 'sectionTool.hint.box'
+          : 'sectionTool.hint.cut',
   );
   return (
     <HudItem region="bottom-center" order={1}>

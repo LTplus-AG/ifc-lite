@@ -6,7 +6,8 @@
  * The parked-section chip (#5500, charter #5478 §6): while a cut is parked
  * — the user left the Section tool with clipping on (`sectionPlane.parked`,
  * `store/section-active.ts`) — a `HudChip` in the HUD's top-left region
- * says which cut is waiting ("Down · 1.20 m", "Face · -0.35 m"), with
+ * says which cut is waiting ("Down · 1.20 m", "Face · -0.35 m", "Box ·
+ * 10.0×4.0×8.0 m"), with
  * resume (reopen the tool on that cut) and clear (forget it). The corner
  * axis badge that used to draw over the Solo chip (#5481) is gone; this
  * chip stacks with the other status chips by order instead.
@@ -23,6 +24,7 @@ import { useTranslation } from '@/i18n';
 import { HudChip, HudItem } from '../../viewport-ui/hud';
 import { AXIS_INFO } from './sectionConstants';
 import { useSectionDistance } from './useSectionDistance';
+import { sectionBoxSize } from '@/lib/section/section-box';
 
 export function SectionParkedChip() {
   const parked = useViewerStore((s) => s.sectionPlane.parked === true && s.activeTool !== 'section');
@@ -37,9 +39,14 @@ function ParkedChipBody() {
   const distance = useSectionDistance();
 
   const axis = sectionPlane.custom ? t('sectionTool.parked.faceAxis') : t(AXIS_INFO[sectionPlane.axis].labelKey);
-  const label = distance.kind === 'percent'
-    ? t('sectionTool.parked.labelPercent', { axis, position: distance.value.toFixed(1) })
-    : t('sectionTool.parked.label', { axis, distance: distance.value.toFixed(2) });
+  const box = sectionPlane.box ? sectionBoxSize(sectionPlane.box) : null;
+  // One decimal and tight separators: the chip's lane is 13rem, and the bar
+  // carries the precise size while the tool is open.
+  const label = box
+    ? t('sectionTool.parked.labelBox', { x: box[0].toFixed(1), y: box[1].toFixed(1), z: box[2].toFixed(1) })
+    : distance.kind === 'percent'
+      ? t('sectionTool.parked.labelPercent', { axis, position: distance.value.toFixed(1) })
+      : t('sectionTool.parked.label', { axis, distance: distance.value.toFixed(2) });
 
   // Order 2: after the edit-mode chip (0) and the level-display chip (1).
   return (

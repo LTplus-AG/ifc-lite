@@ -90,8 +90,9 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          # REST, not `gh pr list` (GraphQL): cheap, and immune to a drained
-          # GraphQL quota.
+          # The reads are REST (`gh pr list` would be GraphQL). Draft <-> ready
+          # below has no REST endpoint, so those two calls are GraphQL
+          # mutations, on this workflow's own GITHUB_TOKEN quota.
           PR_JSON=$(gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main" \
             --jq '.[0] // empty | {number, draft, head: {sha: .head.sha}, stale: ([.labels[].name] | index("version-pr-stale") != null)}')
           if [ -z "${PR_JSON}" ]; then
@@ -131,31 +132,39 @@ jobs:
           fi
 
           if [ "${STATUS}" = 0 ]; then
+            if [ "${LABELLED}" = true ]; then
+              # Ours: this workflow drafted it (a hand-made draft carries no
+              # label and is left alone). Ready FIRST, label second: if the
+              # un-draft fails, the label stays and the next run retries.
+              if [ "${DRAFT}" = true ]; then
+                gh pr ready "${PR}" --repo "${REPO}"
+                echo "#${PR} is fresh against main ${MAIN_SHA}: marked ready for review."
+              fi
+              # A 404 means someone already removed the label; that is fine.
+              gh api -X DELETE "repos/${REPO}/issues/${PR}/labels/version-pr-stale" >/dev/null 2>&1 || true
+            fi
             gh api "repos/${REPO}/statuses/${HEAD_SHA}" -f state=success \
               -f context="Version Packages freshness" \
               -f description="Squashed onto main ${MAIN_SHA:0:9}: no pending changesets (#5951)" >/dev/null
-            if [ "${LABELLED}" = true ]; then
-              # Ours: this workflow drafted it. A hand-made draft is left alone.
-              gh api -X DELETE "repos/${REPO}/issues/${PR}/labels/version-pr-stale" >/dev/null
-              if [ "${DRAFT}" = true ]; then gh pr ready "${PR}" --repo "${REPO}"; fi
-              echo "#${PR} is fresh against main ${MAIN_SHA}: marked ready for review."
-            else
-              echo "#${PR} is fresh against main ${MAIN_SHA}."
-            fi
+            echo "#${PR} is fresh against main ${MAIN_SHA}."
           else
             case "${STATUS}" in
               1) WHY="Stale vs main ${MAIN_SHA:0:9}: would land pending changesets and publish nothing" ;;
               3) WHY="Conflicts with main ${MAIN_SHA:0:9}; cannot land until refreshed" ;;
               *) WHY="Late-changeset check could not judge it against main ${MAIN_SHA:0:9}" ;;
             esac
+            # The draft FIRST: it is the only part that blocks a merge, so a
+            # failure in the calls after it must not leave the PR mergeable.
+            # Then the label, which marks the draft as ours so the fresh
+            # branch above undoes only drafts this workflow made. A PR that
+            # is already a draft (by hand, or ours and already labelled) is
+            # not relabelled. Adding a label auto-creates it.
+            if [ "${DRAFT}" != true ]; then
+              gh pr ready "${PR}" --repo "${REPO}" --undo
+              gh api "repos/${REPO}/issues/${PR}/labels" -f "labels[]=version-pr-stale" >/dev/null
+            fi
             gh api "repos/${REPO}/statuses/${HEAD_SHA}" -f state=failure \
               -f context="Version Packages freshness" \
               -f description="${WHY} (#5951)" >/dev/null
-            # The label first: it is what lets the fresh branch above undo
-            # only a draft this workflow made. Adding it auto-creates it.
-            gh api "repos/${REPO}/issues/${PR}/labels" -f "labels[]=version-pr-stale" >/dev/null
-            if [ "${DRAFT}" != true ]; then
-              gh pr ready "${PR}" --repo "${REPO}" --undo
-            fi
             echo "::warning title=Version Packages PR is not mergeable as-is (#5951)::#${PR}: ${WHY}. It is a draft until the Release run for the latest main push refreshes it; this workflow then marks it ready."
           fi

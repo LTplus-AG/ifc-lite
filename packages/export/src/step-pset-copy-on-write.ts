@@ -33,6 +33,7 @@ import {
   getTypeOwnedHasPropertySetIds,
 } from './step-property-set-readers.js';
 import { isTypeClass } from './type-owned-psets.js';
+import { isOmittedFromPassOutput } from './step-omission-predicates.js';
 
 /** What `settle` reads to tell whether anything else still names a set. */
 export interface RelationIndex {
@@ -73,13 +74,17 @@ export class SharedSetDetachments {
 
   /**
    * Decide, once every edit is collected, what each touched set becomes. A
-   * relation that still relates a live element is narrowed at write time
+   * relation that still relates an element this export writes is narrowed at write time
    * (`pass.detachedRelatedObjects`) and keeps its set and members; so does a
    * type-owned set another type object or a surviving relation still names.
    * Anything left with nobody is withheld with its member atoms, as before
    * #5794; `retainSharedAtoms` still rescues an atom another set names.
    */
   settle(pass: ExportPass, ctx: PropertySetContext, index: RelationIndex): void {
+    // The export filter's own predicate: an owner that is deleted, hidden or
+    // unwritable keeps nothing, or a kept set's relation would be narrowed to
+    // nobody at write time and the set shipped as an orphan.
+    const survives = (id: number): boolean => !isOmittedFromPassOutput(pass, id);
     const withhold = (setId: number): void => {
       pass.skipPropertySetIds.add(setId);
       for (const memberId of getPropertyIdsInSet(ctx, setId)) pass.skipPropertySetIds.add(memberId);
@@ -89,7 +94,7 @@ export class SharedSetDetachments {
     for (const [relId, { setId, detached }] of this.byRel) {
       touchedSetByRel.set(relId, setId);
       const related = index.relatedByRel.get(relId) ?? [];
-      if (related.some((id) => !detached.has(id) && !pass.effective.isDeleted(id))) {
+      if (related.some((id) => !detached.has(id) && survives(id))) {
         pass.detachedRelatedObjects.set(relId, detached);
         keptByRelation.add(setId);
         continue;
@@ -103,7 +108,7 @@ export class SharedSetDetachments {
     // owner of those sets, among live type objects and live relations.
     const stillNamed = new Set(keptByRelation);
     for (const [entityId, rels] of index.relDefinesByEntity) {
-      if (pass.effective.isDeleted(entityId)) continue;
+      if (!survives(entityId)) continue;
       for (const { relId, psetId } of rels) {
         if (touchedSetByRel.has(relId) || !this.typeOwned.has(psetId)) continue;
         if (!pass.skipRelationshipIds.has(relId)) stillNamed.add(psetId);
@@ -112,7 +117,7 @@ export class SharedSetDetachments {
     for (const [type, ids] of pass.effective.byType) {
       if (!isTypeClass(type.toUpperCase())) continue;
       for (const typeId of ids) {
-        if (pass.effective.isDeleted(typeId)) continue;
+        if (!survives(typeId)) continue;
         for (const setId of getTypeOwnedHasPropertySetIds(ctx, typeId, pass.effective)) {
           if (this.typeOwned.get(setId)?.has(typeId) === false) stillNamed.add(setId);
         }

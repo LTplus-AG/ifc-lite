@@ -80,11 +80,13 @@ function liveView(store: IfcDataStore): MutablePropertyView {
 async function exportEdited(
   edit: (view: MutablePropertyView) => void,
   source = SHARED_PSET_IFC,
+  hiddenEntityIds?: Set<number>,
 ): Promise<{ text: string; store: IfcDataStore }> {
   const store = await parse(source);
   const view = liveView(store);
   edit(view);
-  const result = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true });
+  const visibility = hiddenEntityIds ? { visibleOnly: true, hiddenEntityIds } : {};
+  const result = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, ...visibility });
   const text = new TextDecoder().decode(result.content);
   return { text, store: await parse(text) };
 }
@@ -292,6 +294,38 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
       .flatMap((p) => p.properties.filter((q) => q.name === 'B1').map((q) => q.value))
       .sort();
     expect(b1).toEqual(['b1', 'second']);
+    expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+  });
+
+  it('with every other sharer hidden, visibleOnly writes no orphan of the shared set', async () => {
+    // Review finding on #6012: hidden sharers are not deleted, but the export
+    // does not write them, so they must not keep the shared set alive — the
+    // relation would be filtered to nobody and #40 shipped as an orphan
+    // carrying the hidden elements' data.
+    const { text } = await exportEdited((view) => {
+      view.setProperty(WALL_A, 'Custom_B', 'B1', 'edited', PropertyValueType.Label);
+    }, SHARED_PSET_IFC, new Set([WALL_B, WALL_C]));
+    const recs = records(text);
+    expect(recs.has(WALL_B) || recs.has(WALL_C)).toBe(false);
+    expect(recs.has(41)).toBe(false);
+    expect(recs.has(40)).toBe(false);
+    const [copy, ...extra] = customBSets(text, WALL_A);
+    expect(extra).toEqual([]);
+    expect(copy.kinds).toEqual(SOURCE_KINDS);
+    // Every IfcPropertySet in the file is related to something.
+    const relatedSets = new Set(
+      [...recs.values()].filter((r) => r.type === 'IFCRELDEFINESBYPROPERTIES').map((r) => refs(r.args).at(-1)),
+    );
+    for (const [id, rec] of recs) {
+      if (rec.type === 'IFCPROPERTYSET') expect(relatedSets.has(id), `#${id} is related`).toBe(true);
+    }
+  });
+
+  it('with one other sharer still visible, visibleOnly keeps the shared set for it', async () => {
+    const { text } = await exportEdited((view) => {
+      view.setProperty(WALL_A, 'Custom_B', 'B1', 'edited', PropertyValueType.Label);
+    }, SHARED_PSET_IFC, new Set([WALL_C]));
+    expect(refs(records(text).get(41)!.args.match(/\(([^()]*)\)\s*,\s*#40\s*$/)![1])).toEqual([WALL_B]);
     expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
   });
 

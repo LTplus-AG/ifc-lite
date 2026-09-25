@@ -150,6 +150,26 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     assert.equal(undo().length, 0);
   });
 
+  it('uniqueness counts this session\'s GlobalId edits, both ways', () => {
+    const fresh = '3FreshGuid000000000000';
+    // Wall B was just given `fresh`: it is taken now, although no parsed row has it.
+    useViewerStore.getState().setAttribute('m', 2, 'GlobalId', fresh, GUID_B);
+    let container = mount('GlobalId', GUID_A);
+    let input = openEditor(container, GUID_A);
+    type(input, fresh);
+    key(input, 'Enter');
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /already has this GlobalId/);
+    assert.equal(undo().length, 1, 'only the seeding edit is recorded');
+    cleanup();
+    // …and Wall B's old GUID is free again, although the parsed index still names it.
+    container = mount('GlobalId', GUID_A);
+    input = openEditor(container, GUID_A);
+    type(input, GUID_B);
+    key(input, 'Enter');
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    assert.equal(undo().length, 2, 'the freed GUID commits');
+  });
+
   it('judgeAttributeEdit: a valid, unused GlobalId commits trimmed', () => {
     const { judgeAttributeEdit } = editor();
     const owner = (guid: string) => (guid === GUID_B ? 2 : -1);

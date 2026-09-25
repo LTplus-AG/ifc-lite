@@ -103,7 +103,7 @@ export function ViewportOverlays({
   useEffect(() => {
     if (pointCloudAssetCount > 0 && !pointCloudPanelIntroducedRef.current) {
       pointCloudPanelIntroducedRef.current = true;
-      useViewerStore.getState().openWorkspacePanel('pointclouds');
+      useViewerStore.getState().openWorkspacePanel('pointclouds', 'programmatic');
     } else if (pointCloudAssetCount === 0) {
       pointCloudPanelIntroducedRef.current = false;
     }

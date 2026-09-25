@@ -72,7 +72,7 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
         prevActiveToolRef.current = activeTool;
         return;
       }
-      openPanelInHome('drawing');
+      openPanelInHome('drawing', 'programmatic');
     }
     prevActiveToolRef.current = activeTool;
   }, [activeTool, geometryResult, openPanelInHome, suppressNextSection2DPanelAutoOpen, setSuppressNextSection2DPanelAutoOpen]);

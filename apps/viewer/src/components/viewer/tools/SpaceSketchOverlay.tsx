@@ -47,6 +47,7 @@ import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { useTranslation } from '@/i18n';
+import type { ToolExitVia } from '@/lib/analytics-ui-events';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -802,10 +803,10 @@ export function SpaceSketchOverlay() {
 
   // Cancel: drop ghosts, restore the prior view (X-ray off, isolation and
   // spaces visibility as they were), and leave WITHOUT creating anything.
-  const closeNow = useCallback(() => {
+  const closeNow = useCallback((via?: ToolExitVia) => {
     clearGhosts();
     restoreScene({ keepSpacesVisible: false });
-    setActiveTool('select');
+    setActiveTool('select', via);
   }, [clearGhosts, restoreScene, setActiveTool]);
 
   // The single confirm: create EVERY storey's draft as IfcSpace at once. On
@@ -1339,7 +1340,7 @@ export function SpaceSketchOverlay() {
             onClick={() => { setHelpOpen((v) => !v); setOptionsOpen(false); }} title={t('spaceSketch.panel.helpTitle')}><HelpCircle className="h-4 w-4" /></button>
           <button className={iconBtn} onClick={() => setMinimized(true)}
             title={t('spaceSketch.panel.minimizeTitle')}><Minus className="h-4 w-4" /></button>
-          <button className={iconBtn} onClick={closeNow} title={t('spaceSketch.panel.closeTitle')}><X className="h-4 w-4" /></button>
+          <button className={iconBtn} onClick={() => closeNow()} title={t('spaceSketch.panel.closeTitle')}><X className="h-4 w-4" /></button>
         </div>
       </div>
 
@@ -1485,7 +1486,7 @@ export function SpaceSketchOverlay() {
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
               : 'border text-foreground hover:bg-muted'
           }`}
-          onClick={needsConfirm ? confirmCreate : closeNow}
+          onClick={needsConfirm ? confirmCreate : () => closeNow()}
           title={needsConfirm
             ? t('spaceSketch.footer.confirmTitle')
             : t('spaceSketch.footer.closeToolTitle')}>

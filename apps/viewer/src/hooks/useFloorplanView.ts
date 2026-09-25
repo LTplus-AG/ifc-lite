@@ -95,7 +95,7 @@ export function useFloorplanView() {
     // 2. Set section plane: axis=down (Y), position=calculated, enabled
     setSectionPlaneAxis('down');
     setSectionPlanePosition(Math.max(0, Math.min(100, percentage)));
-    setActiveTool('section');
+    setActiveTool('section', 'programmatic');
 
     // 3. Switch to orthographic projection
     setProjectionMode('orthographic');

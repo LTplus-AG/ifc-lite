@@ -77,10 +77,24 @@ describe('scrubUiEvent (#5618)', () => {
   });
 
   it('drops a declared property whose value is not an id', () => {
-    for (const value of ['Tower A.ifc', 'C:\\models\\x', 'two words', 'a'.repeat(65), 42, null, { id: 'x' }]) {
+    const globalIds = ['2O2Fr$t4X7Zf8NOew3FLOH', 'cUkl32yn9qRSPvBJVyWYpq', '0K7w7JA7D1HOBt0d_B8gYq'];
+    for (const value of ['Tower A.ifc', 'C:\\models\\x', 'two words', 'SampleModel', 'a'.repeat(49), ...globalIds, 42, null, { id: 'x' }]) {
       const sent = scrubUiEvent({ event: 'command_executed', properties: { command_id: value, surface: 'palette' } });
       assert.deepEqual(sent.properties, { surface: 'palette' }, String(value));
     }
+  });
+
+  it('keeps enum properties to their closed vocabulary', () => {
+    const sent = scrubUiEvent({ event: 'panel_opened', properties: { panel_id: 'loadReport', surface: 'toolbar' } });
+    assert.deepEqual(sent.properties, { panel_id: 'loadReport' });
+  });
+
+  it('strips person-property updates while keeping the SDK\'s own $ properties', () => {
+    const sent = beforeSend({
+      event: 'view_reset',
+      properties: { ...SDK_PROPS, trigger: 'a', $set: { email: 'x' }, $set_once: { name: 'y' }, $unset: ['z'] },
+    });
+    assert.deepEqual(sent?.properties, { ...SDK_PROPS, trigger: 'a' });
   });
 
   it('leaves events that are not UI interaction events untouched', () => {
@@ -92,7 +106,7 @@ describe('scrubUiEvent (#5618)', () => {
 
 describe('commandIdForAnalytics (#5618)', () => {
   it('collapses palette rows that embed a file, template or extension name to their prefix', () => {
-    assert.equal(commandIdForAnalytics('file:recent:Tower A - Hovedfil.ifc'), 'file:recent');
+    assert.equal(commandIdForAnalytics('file:recent:Sample Model.ifc'), 'file:recent');
     assert.equal(commandIdForAnalytics('auto:Client export script'), 'auto');
     assert.equal(commandIdForAnalytics('ext:acme.plugin.run'), 'ext');
   });
@@ -100,5 +114,11 @@ describe('commandIdForAnalytics (#5618)', () => {
   it('keeps fixed command ids as they are', () => {
     assert.equal(commandIdForAnalytics('vis:show'), 'vis:show');
     assert.equal(commandIdForAnalytics('tour:welcome'), 'tour:welcome');
+    assert.equal(commandIdForAnalytics('export:csv-entities'), 'export:csv-entities');
+  });
+
+  it('collapses any other id that is not a plain code id, so new dynamic rows fail closed', () => {
+    assert.equal(commandIdForAnalytics('view:Level 02 plan'), 'view');
+    assert.equal(commandIdForAnalytics('Some Row'), 'other');
   });
 });

@@ -49,6 +49,16 @@ describe('panel events (#5618)', () => {
   });
 });
 
+describe('programmatic changes are not user actions (#5618)', () => {
+  it('reports neither a panel the app opens nor a tool it switches to', () => {
+    state().showWorkspacePanel('clash', 'programmatic');
+    state().openPanelInHome('script', 'programmatic');
+    state().setActiveTool('section', 'programmatic');
+    state().setActiveTool('select', 'programmatic');
+    assert.deepEqual(captured, []);
+  });
+});
+
 describe('panel events: repeats and a collapsed sidebar (#5618)', () => {
   it('does not count a repeated open of an already-docked bottom panel', () => {
     state().openPanelInHome('script', 'shortcut');

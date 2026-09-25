@@ -8,21 +8,22 @@
 // surface (or exit route) the action itself cannot know.
 
 import { trackUiEvent } from '@/lib/analytics';
-import type { ToolExitVia, UiSurface } from '@/lib/analytics-ui-events';
+import type { PanelOpenSource, ToolChangeVia, UiSurface } from '@/lib/analytics-ui-events';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 import type { StateCreator } from 'zustand';
 import type { UISlice } from './slices/uiSlice.js';
 
-export type { ToolExitVia, UiSurface };
+export type { PanelOpenSource, ToolChangeVia, UiSurface };
 
 /**
  * `panel_opened`, plus `panel_replaced` when a side panel takes the
  * single-tenant slot from another one (`replacing`: the slot's previous
  * occupant; `properties` is the empty fallback, so it is never "replaced").
+ * A `programmatic` open is the app's, not the user's, and is not reported.
  */
-export function trackPanelOpened(panel: WorkspacePanelId, surface?: UiSurface, replacing?: WorkspacePanelId): void {
-  if (replacing === panel) return;
-  trackUiEvent('panel_opened', { panel_id: panel, surface });
+export function trackPanelOpened(panel: WorkspacePanelId, source?: PanelOpenSource, replacing?: WorkspacePanelId): void {
+  if (replacing === panel || source === 'programmatic') return;
+  trackUiEvent('panel_opened', { panel_id: panel, surface: source });
   if (replacing && replacing !== 'properties') trackUiEvent('panel_replaced', { from: replacing, to: panel });
 }
 
@@ -30,7 +31,7 @@ export function trackPanelOpened(panel: WorkspacePanelId, surface?: UiSurface, r
  * Wrap the UI slice so `setActiveTool` reports `tool_exited` for the tool being
  * left and `tool_activated` for the new one (Select is the resting state, not
  * a tool). Compared after the call, so a change the collab gate rejects emits
- * nothing. Kept out of uiSlice.ts, whose isolated tests run without the
+ * nothing; a `programmatic` change (a tour step, a drawing) emits nothing. Kept out of uiSlice.ts, whose isolated tests run without the
  * browser globals posthog-js needs at import.
  */
 export function withToolTelemetry<S extends UISlice>(
@@ -40,11 +41,11 @@ export function withToolTelemetry<S extends UISlice>(
     const slice = create(set, get, api);
     return {
       ...slice,
-      setActiveTool: (tool, via: ToolExitVia = 'switch') => {
+      setActiveTool: (tool, via: ToolChangeVia = 'switch') => {
         const from = get().activeTool;
         slice.setActiveTool(tool, via);
         const to = get().activeTool;
-        if (from === to) return;
+        if (from === to || via === 'programmatic') return;
         if (from !== 'select') trackUiEvent('tool_exited', { tool: from, via });
         if (to !== 'select') trackUiEvent('tool_activated', { tool: to });
       },

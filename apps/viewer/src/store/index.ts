@@ -41,7 +41,7 @@ import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js'
 import { createDrawingInspectorSlice, type DrawingInspectorSlice } from './slices/drawingInspectorSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelDocked, type BottomPanelId } from '@/lib/panels/bottom-panels';
-import { trackPanelOpened, withToolTelemetry, type UiSurface } from './uiTelemetry.js';
+import { trackPanelOpened, withToolTelemetry, type PanelOpenSource } from './uiTelemetry.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -197,7 +197,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>, surface?: UiSurface) => void;
+    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>, surface?: PanelOpenSource) => void;
     /**
      * Show a workspace panel docked in the sidebar, un-floating / re-docking it
      * first if it was popped out (#1200/#1201/#1208). Accepts `properties` (the
@@ -206,26 +206,26 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
      * activity bar, the Alt+N shortcuts, the command palette and the
      * floating / window hosts' re-dock action.
      */
-    showWorkspacePanel: (panel: WorkspacePanelId, surface?: UiSurface) => void;
+    showWorkspacePanel: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
     /**
      * Toggle a sidebar panel: if it is the active docked panel, close it back
      * to Information; otherwise open it. The single entry point the activity
      * bar, toolbar and command palette use so a second click always closes.
      */
-    toggleWorkspacePanel: (panel: WorkspacePanelId, surface?: UiSurface) => void;
+    toggleWorkspacePanel: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
     /**
      * Toggle a bottom-strip panel (Script / Schedule / Lists). These are
      * launched from the same sidebar rail but open in the BOTTOM panel —
      * mutually exclusive among themselves, independent of the single-tenant
      * right pane (so a side panel + a bottom panel can be open at once).
      */
-    toggleBottomPanel: (panel: BottomPanelId, surface?: UiSurface) => void;
+    toggleBottomPanel: (panel: BottomPanelId, surface?: PanelOpenSource) => void;
     /**
      * Open a panel in its home region: side panels dock in the right pane,
      * Script / Schedule / Lists open in the bottom strip. The rail and Alt+N
      * route through here so each panel lands where it belongs.
      */
-    openPanelInHome: (panel: WorkspacePanelId, surface?: UiSurface) => void;
+    openPanelInHome: (panel: WorkspacePanelId, surface?: PanelOpenSource) => void;
   };
 
 /**

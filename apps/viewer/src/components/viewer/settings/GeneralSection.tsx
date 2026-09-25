@@ -29,7 +29,7 @@ export function GeneralSection() {
   return (
     <div className="space-y-4">
       <SettingsGroup title={t('settings.general.appearanceTitle')}>
-        <SettingsRow label={t('settings.general.theme')} htmlFor="settings-theme">
+        <SettingsRow label={t('settings.general.theme')}>
           <SettingsChoice<ThemeMode>
             id="settings-theme"
             label={t('settings.general.theme')}
@@ -42,7 +42,7 @@ export function GeneralSection() {
           />
         </SettingsRow>
         {!isMobile && (
-          <SettingsRow label={t('settings.general.toolbar')} htmlFor="settings-toolbar">
+          <SettingsRow label={t('settings.general.toolbar')}>
             <SettingsChoice<ToolbarStyle>
               id="settings-toolbar"
               label={t('settings.general.toolbar')}

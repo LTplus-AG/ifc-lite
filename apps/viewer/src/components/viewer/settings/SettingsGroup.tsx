@@ -19,14 +19,17 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
 export function SettingsRow({ label, hint, htmlFor, children }: {
   label: string;
   hint?: string;
-  /** The control's id, so clicking the label focuses / toggles it. */
-  htmlFor: string;
+  /** The control's id, so clicking the label focuses / toggles it. Omit for
+   *  a `SettingsChoice`, which names itself with its own legend. */
+  htmlFor?: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div className="min-w-0">
-        <label htmlFor={htmlFor} className="text-sm">{label}</label>
+        {htmlFor
+          ? <label htmlFor={htmlFor} className="text-sm">{label}</label>
+          : <span className="text-sm" aria-hidden="true">{label}</span>}
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       <div className="shrink-0">{children}</div>
@@ -34,7 +37,8 @@ export function SettingsRow({ label, hint, htmlFor, children }: {
   );
 }
 
-/** A small exclusive choice (a radio group drawn as a segmented control). */
+/** A small exclusive choice: native radio inputs drawn as a segmented
+ *  control, so keyboard arrows and screen readers work as for any radio set. */
 export function SettingsChoice<T extends string>({ id, label, value, options, onChange }: {
   id: string;
   label: string;
@@ -43,21 +47,26 @@ export function SettingsChoice<T extends string>({ id, label, value, options, on
   onChange: (value: T) => void;
 }) {
   return (
-    <div id={id} role="radiogroup" aria-label={label} className="inline-flex rounded-md border p-0.5">
+    <fieldset id={id} className="inline-flex rounded-md border p-0.5">
+      <legend className="sr-only">{label}</legend>
       {options.map((option) => (
-        <button
+        <label
           key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          onClick={() => onChange(option.value)}
-          className={`rounded px-2.5 py-1 text-xs transition-colors ${
+          className={`cursor-pointer rounded px-2.5 py-1 text-xs transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
             value === option.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           }`}
         >
+          <input
+            type="radio"
+            name={id}
+            value={option.value}
+            checked={value === option.value}
+            onChange={() => onChange(option.value)}
+            className="sr-only"
+          />
           {option.label}
-        </button>
+        </label>
       ))}
-    </div>
+    </fieldset>
   );
 }

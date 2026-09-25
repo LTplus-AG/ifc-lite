@@ -62,8 +62,8 @@ describe('Settings dialog (#5857)', () => {
 
   it('General → Theme writes the store theme', () => {
     const dialog = mountAndOpen('general');
-    const dark = [...dialog.querySelectorAll('[role="radio"]')].find((b) => b.textContent === settingsEn['settings.general.themeDark']);
-    assert.ok(dark, 'a Dark theme choice is rendered');
+    const dark = [...dialog.querySelectorAll('label')].find((l) => l.textContent === settingsEn['settings.general.themeDark'])?.querySelector('input[type="radio"]');
+    assert.ok(dark, 'a Dark theme radio is rendered');
     click(dark);
     assert.equal(useViewerStore.getState().theme, 'dark');
   });

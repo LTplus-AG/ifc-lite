@@ -14,9 +14,10 @@
 //! - `georefMutations`: `StepExportOptions.georefMutations`, which never was a
 //!   mutation record at all.
 //!
-//! Unknown members are ignored rather than refused, so a newer producer does
-//! not break an older writer; an unknown mutation `type` is skipped and
-//! reported, exactly as `applyMutationsBatch` skips and warns.
+//! Unknown MEMBERS are ignored, so a newer producer's extra fields do not
+//! break an older writer. An unknown mutation `type` is different: it may be
+//! an edit, so the export refuses the log rather than write a file without it
+//! (`applyMutationsBatch` warns and skips; a native save must not).
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -101,7 +102,7 @@ pub enum MutationKind {
     UpdateEntityType,
     CreateEntity,
     DeleteEntity,
-    /// A type this writer does not know. Skipped and reported.
+    /// A type this writer does not know. The export refuses the log.
     #[serde(other)]
     Unknown,
 }

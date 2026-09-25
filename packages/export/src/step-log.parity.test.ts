@@ -20,7 +20,7 @@
  * of every record above the source's highest express id with `<GUID>`.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
@@ -46,7 +46,16 @@ interface Case {
 const fixturePath = fileURLToPath(
   new URL('../../../rust/export/tests/fixtures/step_log_parity_vectors.json', import.meta.url),
 );
-const fixture: { timeStamp: string; sources: Record<string, string[]>; cases: Case[] } = JSON.parse(
+interface RefusedCase {
+  name: string;
+  why: string;
+  source: string;
+  skipped: number;
+  error: string;
+  log: Case['log'];
+}
+
+const fixture: { timeStamp: string; sources: Record<string, string[]>; cases: Case[]; refusedCases: RefusedCase[] } = JSON.parse(
   readFileSync(fixturePath, 'utf8'),
 );
 
@@ -94,6 +103,35 @@ describe('mutation-log STEP export parity with the Rust writer (#5941)', () => {
       const lines = new TextDecoder().decode(result.content).split('\n');
       if (lines[lines.length - 1] === '') lines.pop();
       expect(normalise(lines, maxId)).toEqual(c.expected);
+    });
+  }
+
+  // The Rust writer refuses these logs (`step_log_refusals.rs`,
+  // `logs_the_typescript_replay_would_save_without_an_edit_are_refused`). What
+  // pins the divergence here is the TypeScript side of it: the replay writes a
+  // file that is exactly the file for the log WITHOUT the skipped record, so an
+  // edit the caller sent is missing and nothing in the file says so.
+  const exportLog = async (source: string, log: Case['log']): Promise<string> => {
+    const store = await parse(`${fixture.sources[source].join('\n')}\n`);
+    const view = new MutablePropertyView(null, 'model');
+    configure(view, store);
+    view.importMutations(JSON.stringify(log));
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', timeStamp: fixture.timeStamp });
+    return new TextDecoder().decode(result.content);
+  };
+  for (const c of fixture.refusedCases) {
+    it(`refused by the Rust writer, skipped by the replay: ${c.name}`, async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const withRecord = await exportLog(c.source, c.log);
+        const without = await exportLog(c.source, {
+          ...c.log,
+          mutations: c.log.mutations.filter((_, i) => i !== c.skipped),
+        });
+        expect(withRecord).toBe(without);
+      } finally {
+        warn.mockRestore();
+      }
     });
   }
 });

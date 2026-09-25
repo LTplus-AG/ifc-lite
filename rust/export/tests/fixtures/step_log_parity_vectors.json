@@ -3,7 +3,8 @@
   "Shared parity vectors for the Rust mutation-log STEP writer (#5941).",
   "Each case: a source model (`sources`), a mutation log exactly as MutablePropertyView.exportMutations() wrote it for the edits named in `why` (ids and timestamps normalised), and the file the TypeScript StepExporter writes after importMutations(log) into a view wired like the viewer (configureMutationView).",
   "`expected` is that file line by line, with the GlobalId of every record the export generated (express id above the source maximum) replaced by <GUID>: the one difference the two writers have by design.",
-  "Run by rust/export/tests/step_log_parity.rs and packages/export/src/step-log.parity.test.ts. Regenerate `expected` from the TypeScript exporter when its output changes on purpose; never by hand."
+  "Run by rust/export/tests/step_log_parity.rs and packages/export/src/step-log.parity.test.ts. Regenerate `expected` from the TypeScript exporter when its output changes on purpose; never by hand.",
+  "`refusedCases` are logs the Rust writer refuses where the TypeScript replay writes a file WITHOUT one record (`skipped` is that record's index): the TypeScript half pins that skip, the Rust half and the wasm contract pin the refusal (`error` is a substring of the message)."
  ],
  "timeStamp": "2020-01-01T00:00:00",
  "sources": {
@@ -1556,7 +1557,7 @@
       "psetName": "Pset_WallCommon",
       "propName": "FireRating",
       "oldValue": "2HR",
-      "newValue": 1e-7,
+      "newValue": 1e-07,
       "valueType": 1
      },
      {
@@ -2175,6 +2176,71 @@
     "ENDSEC;",
     "END-ISO-10303-21;"
    ]
+  }
+ ],
+ "refusedCases": [
+  {
+   "name": "unrecognised-mutation-type",
+   "why": "A mutation `type` this writer does not know (e.g. from a newer producer). applyMutationsBatch warns and skips it; a native save refuses rather than drop what may be an edit.",
+   "source": "walls",
+   "skipped": 0,
+   "error": "unrecognised",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "type": "SOMETHING_NEW",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 21
+     },
+     {
+      "id": "m2",
+      "type": "UPDATE_ATTRIBUTE",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 22,
+      "attributeName": "Name",
+      "newValue": "Wall B2",
+      "oldValue": null
+     }
+    ],
+    "exportedAt": 0
+   }
+  },
+  {
+   "name": "attribute-cleared-with-null",
+   "why": "setAttribute(id, name, null) records newValue: null. The live TypeScript view then cannot export at all (serialization throws) and importMutations drops the record; neither writes the edit, so the Rust writer refuses instead of dropping it. '' clears an attribute.",
+   "source": "walls",
+   "skipped": 0,
+   "error": "null newValue",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "type": "UPDATE_ATTRIBUTE",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 21,
+      "attributeName": "Name",
+      "newValue": null,
+      "oldValue": null
+     },
+     {
+      "id": "m2",
+      "type": "UPDATE_ATTRIBUTE",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 22,
+      "attributeName": "Name",
+      "newValue": "Wall B2",
+      "oldValue": null
+     }
+    ],
+    "exportedAt": 0
+   }
   }
  ]
 }

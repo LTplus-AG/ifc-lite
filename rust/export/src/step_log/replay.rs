@@ -117,16 +117,34 @@ fn supported(kind: MutationKind) -> bool {
             | MutationKind::DeleteQuantity
             | MutationKind::DeleteQuantitySet
             | MutationKind::UpdateAttribute
-            | MutationKind::Unknown
     )
 }
 
 /// `applyMutationsBatch`.
 pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> Result<Overlay, Unsupported> {
     if let Some(m) = mutations.iter().find(|m| !supported(m.kind)) {
+        return Err(Unsupported(match m.kind {
+            // `applyMutationsBatch` warns and skips a type it does not know,
+            // so the TypeScript save writes the file without that edit. A
+            // native save refuses instead: the record could be an edit a
+            // newer producer made, and dropping it is silent data loss.
+            MutationKind::Unknown => {
+                format!("a mutation of an unrecognised `type` (entity #{}) cannot be applied", m.entity_id)
+            }
+            kind => format!("mutation kind {kind:?} (entity #{}) is not supported by this writer yet", m.entity_id),
+        }));
+    }
+    if let Some(m) = mutations.iter().find(|m| {
+        m.kind == MutationKind::UpdateAttribute && m.new_value.as_ref().is_some_and(Value::is_null)
+    }) {
+        // `setAttribute(id, name, null)` leaves a value the TypeScript
+        // exporter cannot serialize (it throws), and `importMutations` drops
+        // the record. Neither writes a file carrying the edit, so neither
+        // does this one: refused, not silently skipped. `''` clears a slot.
         return Err(Unsupported(format!(
-            "mutation kind {:?} (entity #{}) is not supported by this writer yet",
-            m.kind, m.entity_id
+            "UPDATE_ATTRIBUTE {} on entity #{} has a null newValue, which has no STEP spelling; clear an attribute with an empty string",
+            m.attribute_name.as_deref().unwrap_or("?"),
+            m.entity_id
         )));
     }
     let mut o = Overlay::default();
@@ -173,9 +191,7 @@ pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> 
             },
             MutationKind::UpdateAttribute => {
                 if let (Some(attr), Some(value)) = (m.attribute_name.as_deref().filter(|a| !a.is_empty()), m.new_value.as_ref()) {
-                    if !value.is_null() {
-                        o.set_attribute(e, attr, json_to_js_string(value));
-                    }
+                    o.set_attribute(e, attr, json_to_js_string(value));
                 }
             }
             MutationKind::CreatePropertySet => {
@@ -183,7 +199,8 @@ pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> 
                     o.create_property_set(e, set, members);
                 }
             }
-            _ => o.unknown += 1,
+            // Every other kind was refused before the loop.
+            _ => {}
         }
     }
     Ok(o)

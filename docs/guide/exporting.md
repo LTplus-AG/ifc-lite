@@ -822,8 +822,10 @@ for the same edits, except the GlobalIds of the records the export generates
 Rust writer derives instead of drawing at random. The shared parity fixture
 `rust/export/tests/fixtures/step_log_parity_vectors.json` pins this from both
 sides. The log applies property and quantity edits (create, update, delete, whole-set
-deletion) and root-attribute edits; a log carrying a kind the writer does not
-apply yet is refused with an error rather than exported without it. A log does
+deletion) and root-attribute edits. A log carrying a kind the writer does not
+apply yet, a mutation `type` it does not recognise, or an attribute edit whose
+value is `null` (clear an attribute with `''`) is refused with an error rather
+than exported without that edit; `importMutations` would skip the last two. A log does
 not combine with an isolation set.
 
 ## Export Pipeline

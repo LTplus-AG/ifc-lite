@@ -60,6 +60,13 @@ export function runStepLogContracts(api, test) {
     assert.throws(() => api.exportStep(walls, '', undefined, JSON.stringify(unsupported)), /exportStep:.*not supported/);
   });
 
+  test(`refuses every shared refused case (${fixture.refusedCases.length} cases)`, () => {
+    for (const c of fixture.refusedCases) {
+      const bytes = encoder.encode(`${fixture.sources[c.source].join('\n')}\n`);
+      assert.throws(() => api.exportStep(bytes, '', undefined, JSON.stringify(c.log)), (e) => String(e.message).includes(c.error), c.name);
+    }
+  });
+
   test('the older payload shape still applies its edits', () => {
     const legacy = JSON.stringify({ attributeUpdates: [{ expressId: 21, index: 2, value: "'Legacy'" }] });
     const out = decoder.decode(api.exportStep(walls, '', undefined, legacy));

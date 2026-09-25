@@ -26,11 +26,21 @@ struct Case {
 }
 
 #[derive(Deserialize)]
+struct RefusedCase {
+    name: String,
+    source: String,
+    log: serde_json::Value,
+    error: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Fixture {
     time_stamp: String,
     sources: BTreeMap<String, Vec<String>>,
     cases: Vec<Case>,
+    #[serde(default)]
+    refused_cases: Vec<RefusedCase>,
 }
 
 fn fixture() -> Fixture {
@@ -122,4 +132,17 @@ fn a_repeated_export_is_byte_identical_including_generated_ids() {
     let a = export_step_with_log(content.as_bytes(), &opts, &log).unwrap().0;
     let b = export_step_with_log(content.as_bytes(), &opts, &log).unwrap().0;
     assert_eq!(a, b);
+}
+
+#[test]
+fn logs_the_typescript_replay_would_save_without_an_edit_are_refused() {
+    let fx = fixture();
+    assert!(!fx.refused_cases.is_empty(), "the fixture must carry refused cases");
+    for case in &fx.refused_cases {
+        let content = format!("{}\n", fx.sources[&case.source].join("\n"));
+        let log = MutationLog::from_json(&case.log.to_string()).expect("log parses");
+        let err = export_step_with_log(content.as_bytes(), &StepOptions::default(), &log)
+            .expect_err(&format!("{} is refused", case.name));
+        assert!(err.to_string().contains(&case.error), "{}: {err}", case.name);
+    }
 }

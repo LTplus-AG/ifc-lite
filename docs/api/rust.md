@@ -681,8 +681,10 @@ view wired like the viewer's, and writes the file the TypeScript `StepExporter`
 writes for it: byte-identical apart from the GlobalIds of generated records,
 which are derived from the host and the new express id. Records the log does
 not change stream from the source; memory beyond the record index grows with
-the edits. A log carrying a mutation kind the writer does not apply yet is an
-`InvalidInput` error, as is combining a log with `StepOptions::included` or
+the edits. A log carrying a mutation kind the writer does not apply yet, an
+unrecognised mutation `type`, or an `UPDATE_ATTRIBUTE` with a `null` `newValue`
+is an `InvalidInput` error (the TypeScript replay skips the latter two; a native
+save refuses rather than drop an edit), as is combining a log with `StepOptions::included` or
 with the per-edit vectors. `LogExportStats` reports the new and modified entity
 counts the header states and the warnings the TypeScript exporter would give.
 

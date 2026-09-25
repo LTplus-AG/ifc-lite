@@ -78,8 +78,6 @@ pub(crate) struct Overlay {
     /// Entities in the order their first attribute edit arrived.
     pub(crate) attribute_order: Vec<u32>,
     pub(crate) history: Vec<Touched>,
-    /// Records this writer does not know, skipped as `applyMutationsBatch` skips them.
-    pub(crate) unknown: usize,
 }
 
 impl Overlay {

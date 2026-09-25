@@ -136,11 +136,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let wanted = touched(log);
     let mut base = BaseSets::new(&src, &wanted);
     let overlay = replay(&log.mutations, &mut base).map_err(|e| invalid(format!("export_step_with_log: {}", e.0)))?;
-    let unknown = overlay.unknown;
     let mut pass = Pass::new(&src, family, overlay);
-    if unknown > 0 {
-        pass.warnings.push(format!("{unknown} mutation record(s) of an unknown type were skipped"));
-    }
     let collected = collect(&mut pass, &mut base);
     retain_shared_atoms(&mut pass);
 

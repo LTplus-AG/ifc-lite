@@ -29,6 +29,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import {
   HudPopover,
+  HudPopoverAnchor,
   HudPopoverContent,
   HudPopoverTrigger,
   HudSegmented,
@@ -128,7 +129,13 @@ export function SectionToolbar() {
   const showStoreys = !isCustom && sectionPlane.axis === 'down' && distance.kind === 'world' && distance.storeys.length > 0;
   const unit = distance.kind === 'percent' ? t('sectionTool.distance.percentUnit') : t('sectionTool.distance.unit');
 
+  // The Cap popover is anchored to the whole bar, not to its trigger: when
+  // the bar wraps in a narrow top-center lane the trigger can sit on a
+  // middle row, and a trigger-anchored popover then opens over the rows
+  // below it (#5481). Anchored to the bar it always opens under the bar.
   return (
+    <HudPopover>
+    <HudPopoverAnchor asChild>
     <HudToolbar data-tool-bar="section" data-testid="section-toolbar" className="justify-center" {...tourAnchor(TOUR_ANCHORS.sectionPanel)}>
       {/* Grouped so a wrap (the HUD caps the top-center lane, #5503) breaks
           between groups — caption + axis, flip + distance, Cap + Cut,
@@ -210,7 +217,6 @@ export function SectionToolbar() {
       </span>
       <span className={GROUP}>
       <HudDivider />
-      <HudPopover>
         <HudPopoverTrigger asChild>
           <button
             type="button"
@@ -222,10 +228,9 @@ export function SectionToolbar() {
             <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
           </button>
         </HudPopoverTrigger>
-        <HudPopoverContent align="center" className="w-64" data-testid="section-cap-popover">
+        <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover">
           <SectionCapControls />
         </HudPopoverContent>
-      </HudPopover>
       <HudToggle
         pressed={sectionPlane.enabled}
         onPressedChange={toggleSectionPlane}
@@ -250,5 +255,7 @@ export function SectionToolbar() {
       </Button>
       </span>
     </HudToolbar>
+    </HudPopoverAnchor>
+    </HudPopover>
   );
 }

@@ -3,36 +3,56 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The viewport HUD collision e2e (charter #5478; first tools on it in
- * #5503: Split, Space Sketch, Add element). For each tool state, every
- * `[data-hud-item]` the HUD placed must (a) lie inside the viewport, (b) not
- * overlap any other HUD item, and (c) not overlap the ViewCube. Layout is
+ * The viewport HUD collision e2e (#5946, charter #5478; the gate for #5481).
+ *
+ * For every viewport state below, every `[data-hud-item]` the HUD placed —
+ * plus the one HUD popover (the Section bar's Cap) — must (a) lie inside
+ * the viewport, (b) not overlap any other HUD item, (c) not overlap the
+ * ViewCube, and (d) not overlap a docked bottom panel (the Drawing panel
+ * the section hint and Cap popover used to slide under, #5481). Layout is
  * only observable with real layout, so this runs in the browser with a
- * model loaded (the tool overlays only render over a model); tools are
- * opened through the store. Section joined in #5499 and its parked chip
- * beside the Solo chip in #5500 (the #5481 collision); Measure joins once
- * #5510 puts its bar on the table.
+ * model loaded; states are driven through the store. A screenshot of each
+ * state x width x scheme is attached to the test report as evidence.
+ *
+ * States (#5946): idle, selection, section, section + Cap popover, measure,
+ * floor plan + Drawing panel, solo chip + parked section, banners, plus the
+ * tool bars #5503 put on the table (split, spaceSketch, addElement).
  *
  * A second suite below (#5975) additionally asserts the Space Sketch bar
- * renders as a SINGLE row at 1280/1600px with both side panels open (the
- * default `leftPanelCollapsed`/`rightPanelCollapsed` state, unchanged here):
- * below that width the bar used to `flex-wrap` onto two rows, which never
- * failed the collision checks above (a wrapped bar still doesn't overlap
- * anything) but read as heavy. Single-row is measured directly (every
- * visible child of the bar crosses one horizontal line), not inferred from
- * the overflow trigger being present, so a bar that collapses and STILL
- * wraps fails too.
+ * renders as a SINGLE row at 1280/1600px with both side panels open: a
+ * wrapped bar never fails the collision checks above (it overlaps nothing)
+ * but read as heavy, so single-row is measured directly.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
-const TOOLS = ['split', 'spaceSketch', 'addElement', 'section'] as const;
-/** After the tools: leave Section with a cut on (it parks) and solo the top storey — two top-left chips. */
-const PARKED_SOLO = 'parked+solo';
+
+type StoreState = Record<string, (...args: never[]) => unknown> & {
+  models: Map<string, { ifcDataStore: { entityIndex: { byType: Map<string, number[]> } } | null }>;
+};
+
+/**
+ * Each state is entered from the previous one, in the page (see the `enter`
+ * table inside the test). `mayBeEmpty`: a state that legitimately places no
+ * HUD item (nothing to collide) still runs the viewport/panel rules.
+ */
+const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: boolean }> = [
+  { name: 'idle', mayBeEmpty: true },
+  { name: 'selection', mayBeEmpty: true },
+  { name: 'split' },
+  { name: 'spaceSketch', settleMs: 4000 },
+  { name: 'addElement' },
+  { name: 'measure' },
+  { name: 'section' },
+  { name: 'section+cap' },
+  { name: 'floorplan+drawing', settleMs: 3000 },
+  { name: 'parked+solo' },
+  { name: 'banners' },
+];
 
 interface Box { name: string; left: number; top: number; right: number; bottom: number }
 
@@ -40,9 +60,31 @@ function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
+/** Every rect the collision rule applies to, plus the viewport and any docked bottom panel. */
+async function measure(page: Page): Promise<Box[]> {
+  return page.evaluate(() => {
+    const out: Box[] = [];
+    const rect = (name: string, el: Element) => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push({ name, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    };
+    document.querySelectorAll<HTMLElement>('[data-hud-region] [data-hud-item]').forEach((el, i) => {
+      rect(`${el.closest<HTMLElement>('[data-hud-region]')!.dataset.hudRegion}#${i}`, el);
+    });
+    const popover = document.querySelector('[data-testid="section-cap-popover"]');
+    if (popover) rect('cap-popover', popover);
+    const cube = document.querySelector('[data-tour="viewcube"], [aria-label="View cube"], [data-viewcube]');
+    if (cube) rect('viewcube', cube);
+    const strip = document.querySelector('[data-bottom-strip]');
+    if (strip) rect('bottom-panel', strip);
+    rect('viewport', document.querySelector('[data-viewport]')!);
+    return out;
+  });
+}
+
 for (const width of [1280, 1600, 1920]) {
   for (const scheme of ['light', 'dark'] as const) {
-    test(`HUD items never collide: ${TOOLS.join('/')} at ${width}px ${scheme}`, async ({ page }) => {
+    test(`HUD items never collide across ${STATES.length} states at ${width}px ${scheme}`, async ({ page }, testInfo) => {
       test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
       await page.emulateMedia({ colorScheme: scheme });
       await page.setViewportSize({ width, height: 1000 });
@@ -56,51 +98,65 @@ for (const width of [1280, 1600, 1920]) {
       await page.evaluate(([k, theme]) => {
         (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setTheme(theme);
       }, [STORE, scheme] as const);
+      await expect(page.locator('[data-viewport]').first()).toBeAttached({ timeout: 60000 });
 
       const failures: string[] = [];
-      for (const tool of [...TOOLS, PARKED_SOLO]) {
-        await page.evaluate(([k, t]) => {
-          const state = (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState();
-          if (t !== 'parked+solo') { state.setActiveTool(t); return; }
-          state.setActiveTool('section');
-          state.setSectionPlaneAxis('down');
-          state.setSectionPlanePosition(50);
-          state.setActiveTool('select');
-          state.setLevelDisplayMode('solo');
-        }, [STORE, tool] as const);
-        await expect(page.locator('[data-viewport]').first()).toBeAttached({ timeout: 60000 });
-        await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });
-        // Space Sketch derives rooms through wasm and then lays out its plan card.
-        await page.waitForTimeout(tool === 'spaceSketch' ? 4000 : 800);
+      for (const state of STATES) {
+        await page.evaluate(([k, name]) => {
+          const api = (globalThis as unknown as Record<string, { getState(): StoreState; setState(p: object): void }>)[k];
+          const enter: Record<string, (s: StoreState) => void> = {
+            idle: (s) => s.setActiveTool('select'),
+            selection: (s) => {
+              const model = s.models.values().next().value;
+              const wall = model?.ifcDataStore?.entityIndex.byType.get('IFCWALL')?.[0] ?? model?.ifcDataStore?.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
+              if (wall !== undefined) s.setSelectedEntityId(wall);
+            },
+            split: (s) => { s.setSelectedEntityId(null); s.setActiveTool('split'); },
+            spaceSketch: (s) => s.setActiveTool('spaceSketch'),
+            addElement: (s) => s.setActiveTool('addElement'),
+            measure: (s) => s.setActiveTool('measure'),
+            section: (s) => { s.setActiveTool('section'); s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); },
+            'section+cap': () => {},
+            'floorplan+drawing': (s) => { s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(55); s.openPanelInHome('drawing'); },
+            'parked+solo': (s) => { s.setActiveTool('select'); s.setLevelDisplayMode('solo'); },
+            banners: (s) => {
+              s.setLevelDisplayMode('stacked');
+              api.setState({ mergeLayersPendingReload: true, geometryModePendingReload: true, landXmlUnitsRefusal: { fileName: 'road.xml', retry: () => {} } });
+            },
+          };
+          enter[name](api.getState());
+        }, [STORE, state.name] as const);
+        if (state.name === 'section+cap') {
+          await page.locator('[data-tool-bar="section"] button', { hasText: 'Cap' }).click();
+          await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
+        }
+        if (!state.mayBeEmpty) {
+          await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });
+        }
+        // Space Sketch derives rooms through wasm and then lays out its plan card; the Drawing panel generates a cut.
+        await page.waitForTimeout(state.settleMs ?? 800);
 
-        const boxes: Box[] = await page.evaluate(() => {
-          const out: Box[] = [];
-          const items = document.querySelectorAll<HTMLElement>('[data-hud-region] [data-hud-item]');
-          items.forEach((el, i) => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return;
-            out.push({ name: `${el.closest<HTMLElement>('[data-hud-region]')!.dataset.hudRegion}#${i}`, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-          });
-          const cube = document.querySelector<HTMLElement>('[data-tour="viewcube"], [aria-label="View cube"], [data-viewcube]');
-          if (cube) {
-            const r = cube.getBoundingClientRect();
-            out.push({ name: 'viewcube', left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-          }
-          const vp = document.querySelector<HTMLElement>('[data-viewport]')!.getBoundingClientRect();
-          out.push({ name: 'viewport', left: vp.left, top: vp.top, right: vp.right, bottom: vp.bottom });
-          return out;
-        });
+        const boxes = await measure(page);
+        await testInfo.attach(`${state.name}-${width}-${scheme}.png`, { body: await page.screenshot(), contentType: 'image/png' });
+        if (state.name === 'section+cap') await page.keyboard.press('Escape');
+
         const viewport = boxes.find((b) => b.name === 'viewport')!;
-        const items = boxes.filter((b) => b.name !== 'viewport');
-        expect(items.length, `${tool}: the tool placed at least one HUD item`).toBeGreaterThan(0);
+        const panel = boxes.find((b) => b.name === 'bottom-panel');
+        const items = boxes.filter((b) => b.name !== 'viewport' && b.name !== 'bottom-panel');
+        if (!state.mayBeEmpty) expect(items.length, `${state.name}: the state placed at least one HUD item`).toBeGreaterThan(0);
         for (const a of items) {
           if (a.left < viewport.left || a.top < viewport.top || a.right > viewport.right || a.bottom > viewport.bottom) {
-            failures.push(`${tool}: ${a.name} leaves the viewport`);
+            failures.push(`${state.name}@${width}/${scheme}: ${a.name} leaves the viewport`);
           }
+          if (panel && overlaps(a, panel)) failures.push(`${state.name}@${width}/${scheme}: ${a.name} overlaps the docked bottom panel`);
           for (const b of items) {
             if (a === b || a.name > b.name) continue;
-            if (overlaps(a, b)) failures.push(`${tool}: ${a.name} overlaps ${b.name}`);
+            if (overlaps(a, b)) failures.push(`${state.name}@${width}/${scheme}: ${a.name} overlaps ${b.name}`);
           }
+        }
+        if (state.name === 'parked+solo') {
+          const topLeft = items.filter((b) => b.name.startsWith('top-left#'));
+          expect(topLeft.length, 'Solo chip + parked-section chip are both HUD items (#5481)').toBeGreaterThanOrEqual(2);
         }
       }
       expect(failures).toEqual([]);

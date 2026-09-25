@@ -297,6 +297,25 @@ describe('landXmlToIfc — refused profiles are named with their reason (§12.2,
     }
   });
 
+  it('does not count an unlinked sibling as a second design profile (#5930 review)', () => {
+    // The alignment lists only P. Q names the same parent but is not listed:
+    // Q is refused as unlinked, and P alone is written.
+    const source: LandXmlIfcSource = {
+      schema: 'LandXML-1.2', version: '1.2', units: METRES, surfaces: [],
+      alignments: [lineAlignment(500, 1000, { profileSourceIds: ['landxml:profile:1:1:design:P'] })],
+      profiles: [designProfile(GOOD_PVIS), designProfile(GOOD_PVIS, [], { sourceId: 'landxml:profile:1:2:design:Q', name: 'Q' })],
+    };
+    const refused = collectRefusals(source).find((refusal) => refusal.family === 'profiles');
+    expect(refused?.count).toBe(1);
+    expect(refused?.message).toMatch(/'Q': it is not linked to any alignment/);
+    expect(refused?.message).not.toMatch(/design profiles/);
+    const result = landXmlToIfc(source, { timestampMs: 0 });
+    expect(result.status).toBe('exported');
+    if (result.status !== 'exported') return;
+    expect(result.content.match(/=IFCALIGNMENTVERTICAL\(/g)).toHaveLength(1);
+    expect(result.coverage.profiles).toBe(1);
+  });
+
   it('writes the same profile once its fault is fixed — the refusals above are not a blanket', () => {
     const source: LandXmlIfcSource = {
       schema: 'LandXML-1.2', version: '1.2', units: METRES, surfaces: [], alignments: [lineAlignment()],

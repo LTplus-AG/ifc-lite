@@ -106,10 +106,6 @@ export function mapProfiles(
     const problem = profileRecordProblem(candidate);
     if (problem === null) {
       valid.push(candidate as LandXmlIfcProfile);
-      const profile = candidate as LandXmlIfcProfile;
-      if (profile.kind === 'design') {
-        designCount.set(profile.parentAlignmentSourceId, (designCount.get(profile.parentAlignmentSourceId) ?? 0) + 1);
-      }
       return;
     }
     const header = candidate as { sourceId?: unknown; name?: unknown } | null;
@@ -121,14 +117,29 @@ export function mapProfiles(
     });
   });
 
+  // A profile is linked when its alignment exists and, if that alignment
+  // lists its profiles, lists this one. Only LINKED design profiles compete
+  // for the alignment's one vertical layout: an unlinked sibling is refused
+  // on its own and must not make the linked one look ambiguous (#5930 review).
+  const alignmentOf = (profile: LandXmlIfcProfile) => records.find((record) => record.sourceId === profile.parentAlignmentSourceId);
+  const isLinked = (profile: LandXmlIfcProfile): boolean => {
+    const alignment = alignmentOf(profile);
+    const listed = alignment?.profileSourceIds ?? [];
+    return alignment !== undefined && (listed.length === 0 || listed.includes(profile.sourceId));
+  };
+  for (const profile of valid) {
+    if (profile.kind === 'design' && isLinked(profile)) {
+      designCount.set(profile.parentAlignmentSourceId, (designCount.get(profile.parentAlignmentSourceId) ?? 0) + 1);
+    }
+  }
+
   for (const profile of valid) {
     const refuse = (reason: string): void => {
       result.refused.push({ sourceId: profile.sourceId, name: profile.name || profile.sourceId, reason });
     };
-    const alignment = records.find((record) => record.sourceId === profile.parentAlignmentSourceId);
+    const alignment = alignmentOf(profile);
     // An empty `profileSourceIds` declares nothing; a non-empty one must agree.
-    const listed = alignment?.profileSourceIds ?? [];
-    if (!alignment || (listed.length > 0 && !listed.includes(profile.sourceId))) {
+    if (!alignment || !isLinked(profile)) {
       refuse('it is not linked to any alignment in the file');
       continue;
     }

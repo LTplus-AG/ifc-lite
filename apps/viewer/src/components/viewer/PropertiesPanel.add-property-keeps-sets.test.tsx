@@ -268,6 +268,20 @@ describe('Add property keeps every existing property set and property (#5672)', 
     assert.deepEqual(fileRows(extractPropertiesOnDemand(reparsed, WALL)), ['Custom_A.A1=a1-edited', 'Custom_B.B1=b1']);
   });
 
+  it('a type whose view the SDK adapter created after parsing finished still reads its own sets', async () => {
+    const { full } = await parseLikeTheLoader();
+    seedModel(full, WALL_TYPE);
+    // No store swap here: this isolates the SDK adapter's own configuration,
+    // which used to install the occurrence extractor for a type entity too.
+    assert.ok(getOrCreateMutationView(useViewerStore, MODEL_ID));
+    const container = render(<PropertiesPanel />);
+    await advance(0);
+    assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2']);
+
+    await addPropertyThroughDialog(container, 'Custom_TNew', 'X1', 'x1');
+    assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2', '90:Custom_TNew:X1']);
+  });
+
   it('a type whose view the SDK adapter created keeps its own sets when a new one is added', async () => {
     const { partial, full } = await parseLikeTheLoader();
     seedModel(partial, WALL_TYPE);

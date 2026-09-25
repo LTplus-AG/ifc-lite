@@ -24,7 +24,8 @@
  * (`setIfcDataStore`, `updateModel`, `upsertModel`, direct `setState`) and
  * every view creator (the properties panel, the SDK adapter, the zone and
  * drawing-markup helpers, …) without each having to remember. Only views
- * configured through `configureMutationView` are rebound: that is how the
+ * configured through `configureMutationView` are rebound, and only onto a
+ * store with source bytes (the partial -> full swap): that is how the
  * viewer builds every view it registers, and a view built some other way has
  * readers this module knows nothing about.
  */
@@ -45,7 +46,10 @@ function rebindMutationViewsToCurrentStores(state: BindingState): void {
     const bound = mutationViewBaseStore(view);
     if (!bound) continue;
     const current = getModelForRef(state, modelId)?.ifcDataStore;
-    if (current && current !== bound) configureMutationView(view, current);
+    // Only a store with source bytes replaces every base reader (see
+    // `configureMutationView`); rebinding to a table-backed one would leave the
+    // view half on the old store while recording it as moved.
+    if (current && current !== bound && current.source?.length > 0) configureMutationView(view, current);
   }
 }
 

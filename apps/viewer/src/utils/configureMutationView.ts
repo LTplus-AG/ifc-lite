@@ -61,8 +61,11 @@ export function mutationViewBaseStore(view: MutablePropertyView): IfcDataStore |
  * Type entities need a dedicated extraction path because their own HasPropertySets
  * are not exposed through the regular occurrence property extractor.
  *
- * Safe to call again on the same view with a newer store: every reader below is
- * replaced, so the view then reads the new store's base data (#5672).
+ * Safe to call again on the same view with a newer store that has source bytes
+ * (the loader's partial -> full swap): the property, quantity and attribute
+ * readers are all replaced, so the view then reads the new store's base data
+ * (#5672). The constructor's base property table cannot be re-pointed, so a
+ * sourceless (table-backed) store is not a valid rebind target.
  */
 export function configureMutationView(
   mutationView: MutablePropertyView,

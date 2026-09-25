@@ -248,6 +248,14 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     // "Edit rules" is offered from the results state, keeping the report.
     assert.match(text, /Edit rules/);
+    const editRules = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Edit rules');
+    assert.ok(editRules);
+    click(editRules);
+    cleanup();
+    const reopened = render(<ValidationPanel />);
+    const restoredName = reopened.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
+    assert.ok(restoredName, 'edit mode must survive the panel unmount even while a report exists (#5825)');
+    assert.strictEqual(restoredName.value, 'Wiring fixture');
   });
 
   it('the header toggle switches sources without losing either side\'s state', () => {

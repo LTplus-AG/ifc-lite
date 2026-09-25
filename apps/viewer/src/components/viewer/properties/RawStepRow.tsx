@@ -5,11 +5,13 @@
 /**
  * One row in the Raw STEP editor — a positional STEP argument with an
  * inline pen-icon editor. Mirrors the visual rhythm of the existing
- * AttributeEditorField (PropertiesPanel.tsx) but operates against
- * `bim.store.setPositionalAttribute` instead of the named-attribute path.
+ * AttributeEditorField (properties/AttributeEditorField.tsx) but operates
+ * against `bim.store.setPositionalAttribute` instead of the named-attribute
+ * path. Same commit rule (#5872): an unchanged value records nothing, and an
+ * edit settles once, so the blur after Enter / Escape cannot commit again.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { PenLine, X, Check, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -52,11 +54,12 @@ export function RawStepRow({
 }: RawStepRowProps) {
   const { t } = useTranslation();
   const setPositionalAttribute = useViewerStore((s) => s.setPositionalAttribute);
-  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Set once a commit or cancel has decided this edit (see file header).
+  const settledRef = useRef(false);
 
   const editable = enableEditing && isInlineEditableToken(displayToken);
   const display = displayToken;
@@ -72,27 +75,37 @@ export function RawStepRow({
 
   const startEdit = useCallback(() => {
     if (!editable) return;
+    settledRef.current = false;
     setDraft(display);
     setError(null);
     setEditing(true);
   }, [editable, display]);
 
   const cancelEdit = useCallback(() => {
+    settledRef.current = true;
     setEditing(false);
     setError(null);
   }, []);
 
   const saveEdit = useCallback(() => {
+    if (settledRef.current) return;
+    if (draft.trim() === display) {
+      settledRef.current = true;
+      setEditing(false);
+      setError(null);
+      return;
+    }
     const parsed = parseRawStepInput(draft);
     if ('error' in parsed) {
       setError(parsed.error);
       return;
     }
+    settledRef.current = true;
+    // setPositionalAttribute records the undo entry and bumps mutationVersion.
     setPositionalAttribute(modelId, entityId, index, parsed.value);
-    bumpMutationVersion();
     setEditing(false);
     setError(null);
-  }, [draft, modelId, entityId, index, setPositionalAttribute, bumpMutationVersion]);
+  }, [draft, display, modelId, entityId, index, setPositionalAttribute]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

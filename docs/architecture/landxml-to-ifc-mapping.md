@@ -564,6 +564,123 @@ refused profile is named with its reason in the `profiles` refusal, as alignment
 3. **Schema conformance.** `ifcopenshell.validate(express_rules=True)` reports 0 issues.
 4. **Refusals.** One test per refusal reason in §12.2 and §12.5.
 
+## 13. Cant and superelevation
+
+§11.5 refuses both by count. This section records what IFC 4.3 ADD2 offers for each, why
+both stay refused, and the mapping cant follows once its blockers clear. The refusal
+messages quote the reasons below (`landxml/cant-superelevation.ts`), and name every written
+alignment that carries either record, with its `CantStation` or `Superelevation` block count.
+
+### 13.1 What IFC 4.3 ADD2 offers
+
+| Concept | IFC 4.3 ADD2 carrier | Geometry |
+|---|---|---|
+| rail cant | `IfcAlignmentCant` (`RailHeadDistance`), nested third under `IfcAlignment` after the horizontal and vertical layouts, nesting `IfcAlignmentSegment` → `IfcAlignmentCantSegment` (`StartDistAlong`, `HorizontalLength`, `StartCantLeft`/`Right`, `EndCantLeft`/`Right`, `PredefinedType` ∈ `CONSTANTCANT`, `LINEARTRANSITION`, `HELMERTCURVE`, `BLOSSCURVE`, `COSINECURVE`, `SINECURVE`, `VIENNESEBEND`) | `IfcSegmentedReferenceCurve` whose `BaseCurve` is the vertical layout's `IfcGradientCurve`, as the alignment's `'Axis'` / `'Curve3D'` |
+| road superelevation | no layout entity: `IfcReferent` `.SUPERELEVATIONEVENT.` nested under the alignment, with `Pset_Superelevation` (`Side` ∈ `LEFT`/`RIGHT`/`BOTH`, `Superelevation` as an `IfcRatioMeasure`, `TransitionSuperelevation` ∈ `LINEAR`) | none of its own; a cross slope becomes geometry only through cross-section profiles (`IfcSectionedSolidHorizontal`, `IfcOpenCrossProfileDef`), i.e. roadway modelling |
+
+`IfcAlignmentCant` is a rail concept: its definition is "a lateral inclination profile …
+the height relative to the projection of the point along vertical alignment". There is no
+road counterpart in ADD2; `Pset_Superelevation` (in the ADD2 property set templates, applicable
+to `IfcReferent/SUPERELEVATIONEVENT`) is the recognised carrier for road superelevation events.
+
+### 13.2 Cant — refused, and why
+
+Three blockers were found. The first no longer applies since v1.2; each of the other two is
+sufficient on its own:
+
+1. **A vertical layout is required (met since v1.2 for profiled alignments).** IFC 4.3
+   permits the layout configurations horizontal; horizontal + vertical; and horizontal +
+   vertical + cant (concept template *Alignment Layout – Horizontal, Vertical and Cant*;
+   enforced by the buildingSMART validation rule ALB031). Horizontal + cant is not one of
+   them, and it cannot be: cant heights are measured from the vertical layout. §12 now writes
+   `IfcAlignmentVertical`, so a profiled alignment has one; an alignment without a profile
+   still has nothing for a cant layout to stand on.
+2. **The geometry has no independent check.** An alignment with a cant layout must be
+   represented by an `IfcSegmentedReferenceCurve` (ALB021: an `IfcGradientCurve` axis
+   requires the *absence* of a cant layout; ALS008), so cant semantics cannot be written
+   without that geometry beside a vertical layout's gradient curve. §11.6's acceptance
+   standard is that IfcOpenShell regenerates each curve segment from our semantics and gets
+   ours back. For cant it cannot: IfcOpenShell 0.8.5's `_map_alignment_cant_segment`
+   derives the segment placement from the *mean* rail height only, so a cant raising the
+   left rail and the same cant raising the right rail map to identical geometry; a cant
+   rotated about the track centre maps to an untilted axis; and a linear transition into a
+   centre-rotated cant raises `ZeroDivisionError`.
+   `tools/ifcopenshell_reference/probe_cant_mapping.py` measures all three, and
+   `ifcopenshell-conformance.test.ts` asserts them. A pinned-version bump that fixes the
+   mapping turns that test red, which is the signal to re-examine this blocker.
+3. **`RailHeadDistance` is not in the source.** LandXML's `Cant/@gauge` is "the rail to
+   rail distance" (track gauge, 1.435 m standard); IFC's `RailHeadDistance` is the distance
+   between the contact-patch centres (about 1.500 m for the same track). Copying one into
+   the other overstates every cant angle by about 4.5 %. It needs an operator-supplied value, recorded as
+   provenance like the assumed unit (§2.1), or a source that states it.
+
+### 13.3 Cant — the mapping, once unblocked
+
+Written here so the implementation follows a reviewed text, not the other way round.
+
+- **One cant layout per alignment.** `IfcAlignmentCant` nested after the horizontal and
+  vertical layouts; one `IfcAlignmentCantSegment` per consecutive pair of `CantStation`s, in
+  authored order, plus a zero-length terminating `CONSTANTCANT` segment carrying the last
+  station's cant, as for the other layouts.
+- **Distance along.** `StartDistAlong = (station − staStart) · linearScaleToMeters`.
+  Stations must strictly increase and fall within the horizontal layout's length; an
+  alignment with station equations (§11.5) has its cant refused, because a station is then
+  not a distance.
+- **Units — the trap.** `appliedCant` is in **millimetres** (or inches) by the LandXML 1.2
+  schema, not in the declared linear unit: `0.001` (or `0.0254`) converts it to metres, never
+  `linearScaleToMeters`. `gauge` *is* in the linear unit.
+- **Which rail.** `CantStation/@curvature` is the horizontal curve's direction; the outer
+  rail is raised: `cw` (right turn) raises the left rail, `ccw` the right. `adverse="true"`
+  raises the inner rail instead.
+- **Left and right heights** are rail heights relative to the vertical layout. For an applied
+  cant `D` (metres) on the raised rail, by `Cant/@rotationPoint`: `center` → raised `+D/2`,
+  other `−D/2`; `insideRail` → inner `0`, outer `+D`; `outsideRail` → outer `0`, inner `−D`;
+  `leftRail` / `rightRail` → that rail `0`, the other `±D`. A missing `rotationPoint` refuses
+  the cant: there is no default to guess.
+- **Segment type.** Equal cant at both ends → `CONSTANTCANT`. Otherwise by the starting
+  station's `transitionType`: `clothoid` → `LINEARTRANSITION` (a clothoid carries a linear cant
+  ramp), `bloss` → `BLOSSCURVE`, `cosine` → `COSINECURVE`, `sinusoid` → `SINECURVE`. Every
+  other `spiralType`, and an absent `transitionType` where the cant changes, refuses the cant
+  by name: the ramp shape is the geometry, and guessing it is guessing the track.
+- **Carried as properties, not geometry:** `equilibriumCant` and `cantDeficiency` go to
+  `Pset_AlignmentCantSegmentCommon` (`CantEquilibrium`, `CantDeficiency`) on the segment that
+  starts at that station. Speed stations and the remaining rate attributes are not assigned to
+  any property by this mapping and are named in the refusal list.
+
+Acceptance mirrors §11.6: IfcOpenShell regenerates every cant curve segment from our
+`IfcAlignmentCantSegment` and gets ours back (blocked today, §13.2 item 2); IfcOpenShell
+evaluates the `IfcSegmentedReferenceCurve` and every station lands at the authored rail
+heights; `ifcopenshell.validate` reports 0 issues; one test per refusal above.
+
+### 13.4 Superelevation — refused, and why
+
+`Pset_Superelevation` needs, at every event, a cross slope as a ratio and the side it
+applies to. LandXML's `Superelevation` gives the event *stations* (`BeginRunoutSta` — normal
+crown, `BeginRunoffSta` — half crown, `FullSuperSta`, `RunoffSta`, `StartofRunoutSta`,
+`EndofRunoutSta`), one `FullSuperelev` rate and an `AdverseSE` flag. It does not give:
+
+- the **normal-crown slope** at the runout events, which is where half the events sit;
+- the **side**, which is implicit in the horizontal curve's direction and the crown shape;
+- an **unambiguous scale** for `FullSuperelev`: the 1.2 schema declares it `slope`, "PERCENT",
+  while its own `Superelevation` documentation gives the rate as "0.05, or 5%", and producers
+  write both.
+
+Writing referents from that would invent two values in three and guess a factor of 100 in
+the third. Superelevation therefore stays refused. What would change this: a source that
+carries the crown and side explicitly, or roadway and cross-section mapping (§5), where the
+cross slope becomes geometry through cross-section profiles rather than a property on an
+event.
+
+### 13.5 Acceptance of this section
+
+1. **Precise refusals.** `cant-superelevation.test.ts`: each written alignment carrying cant
+   or superelevation is named with its record count and the IFC 4.3 reason; an alignment
+   refused whole does not have its cant named again; no `IfcAlignmentCant`,
+   `IfcSegmentedReferenceCurve` or superelevation referent is written.
+2. **Premise pinned.** `ifcopenshell-conformance.test.ts` runs `probe_cant_mapping.py` and
+   asserts the three findings of §13.2 item 2, then validates an export of an alignment
+   carrying cant: 0 issues, horizontal layout only.
+
 ## 14. Station equations and `CgPoint` referents
 
 v1.3. Up to v1.2, station equations were refused by count, and profiles on alignments that

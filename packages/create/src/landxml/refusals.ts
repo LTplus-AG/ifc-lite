@@ -17,6 +17,9 @@ import {
 } from './alignment-mapping.js';
 import { mapProfiles, type ProfileMapping, type RefusedProfile } from './profile-mapping.js';
 import { stationEquationsOf, type StationEquationMapping } from './station-equations.js';
+import {
+  CANT_REFUSAL_REASON, SUPERELEVATION_REFUSAL_REASON, cantRefusalMessage, superelevationRefusalMessage,
+} from './cant-superelevation.js';
 
 /**
  * Why each family is out of scope, in the operator's terms.
@@ -40,8 +43,8 @@ const FAMILY_REASONS: Record<LandXmlRefusedFamily, string> = {
   'non-rendered-surfaces': 'surfaces that carry no numeric, renderable triangulation (or whose every face is hidden) cannot become an IfcTriangulatedIrregularNetwork',
   'unlocated-cgpoints': 'CgPoints that carry only a point reference and no coordinates of their own have nothing to place',
   'station-equations': "an alignment's station equations are written all or none, because a dropped one would make every later station wrong; the alignment is still written, with its start station only",
-  cant: 'cant (rail superelevation) has no mapping; the alignment is written with its horizontal layout only',
-  superelevation: 'road superelevation has no mapping; the alignment is written with its horizontal layout only',
+  cant: CANT_REFUSAL_REASON,
+  superelevation: SUPERELEVATION_REFUSAL_REASON,
 };
 
 function countAcrossSurfaces(
@@ -122,7 +125,11 @@ export function collectRefusals(
           ? profileRefusalMessage(profileMapping.refused)
           : family === 'station-equations'
             ? stationEquationRefusalMessage(count, writtenAlignments, stationing)
-            : `${count} ${family.replace(/-/g, ' ')} record${count === 1 ? '' : 's'} will not be included: ${FAMILY_REASONS[family]}.`,
+            : family === 'cant'
+              ? cantRefusalMessage(writtenAlignments)
+              : family === 'superelevation'
+                ? superelevationRefusalMessage(writtenAlignments)
+                : `${count} ${family.replace(/-/g, ' ')} record${count === 1 ? '' : 's'} will not be included: ${FAMILY_REASONS[family]}.`,
     }));
 }
 

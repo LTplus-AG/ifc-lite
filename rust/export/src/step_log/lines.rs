@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Record-level text operations shared by the phases: reading a record's
-//! slots (`readStepSlots`), replacing one (`replaceStepArgument`), and the
-//! relationship-line filter the source pass applies whenever a session is
-//! active (`filterHiddenRefsFromRelationshipLine`).
+//! slots (`readStepSlots`) and replacing one (`replaceStepArgument`), under the
+//! TypeScript slot grammar.
 
 /// `replaceStepArgument`: slot `index` of the record replaced, or `None` when
 /// the record does not read as `#id=TYPE(args);` with that slot.
@@ -17,7 +16,7 @@ pub(crate) fn replace_argument(text: &str, index: usize, replacement: &str) -> O
 }
 
 /// `RECORD_PREFIX_RE`: `(end of "#id=TYPE(", argument text, ")<ws>;")`.
-fn record_parts(text: &str) -> Option<(usize, &str, &str)> {
+pub(crate) fn record_parts(text: &str) -> Option<(usize, &str, &str)> {
     let t = text.trim_end();
     let b = t.as_bytes();
     if !t.starts_with('#') || !t.ends_with(';') {
@@ -197,55 +196,4 @@ impl Grammar<'_> {
             }
         }
     }
-}
-
-/// Record types whose line the source pass filters like a relationship
-/// (`STYLE_RESCUE_TYPES`, texture maps included).
-const STYLE_RESCUE_TYPES: &[&str] = &[
-    "IFCSTYLEDITEM",
-    "IFCSTYLEDREPRESENTATION",
-    "IFCPRESENTATIONLAYERASSIGNMENT",
-    "IFCPRESENTATIONLAYERWITHSTYLE",
-    "IFCINDEXEDTRIANGLETEXTUREMAP",
-    "IFCINDEXEDPOLYGONALTEXTUREMAP",
-    "IFCTEXTUREMAP",
-];
-
-/// What the source pass does with one line when a session is active.
-pub(crate) enum Filtered {
-    Keep,
-    /// Withheld, with the warning that says so.
-    Withhold(String),
-}
-
-/// `filterHiddenRefsFromRelationshipLine` for a pass that omits nothing: the
-/// line survives unless it is a relationship (or rescued style record) whose
-/// argument list does not read, which the TypeScript filter withholds rather
-/// than risk shipping a reference it could not see.
-pub(crate) fn filter_relationship(text: &str, id: u32, upper: &str) -> Filtered {
-    let is_rel = upper.starts_with("IFCREL");
-    if !is_rel && !STYLE_RESCUE_TYPES.contains(&upper) {
-        return Filtered::Keep;
-    }
-    if read_slots(text).is_some() || !starts_with_record_id(text) {
-        return Filtered::Keep;
-    }
-    let display = upper;
-    Filtered::Withhold(if is_rel {
-        format!(
-            "Relationship #{id} ({display}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output."
-        )
-    } else {
-        format!(
-            "Entity #{id} ({display}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted)."
-        )
-    })
-}
-
-/// `/^\s*#\d+\s*=/`.
-fn starts_with_record_id(text: &str) -> bool {
-    let t = text.trim_start();
-    let Some(rest) = t.strip_prefix('#') else { return false };
-    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-    digits > 0 && rest[digits..].trim_start().starts_with('=')
 }

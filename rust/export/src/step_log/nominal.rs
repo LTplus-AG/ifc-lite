@@ -13,7 +13,7 @@
 use serde_json::Value;
 
 use super::base::pvt;
-use super::jsval::{format_step_real, js_number_to_string, js_to_number, json_number, json_to_js_string, to_step_real};
+use super::jsval::{format_step_real, js_number_to_string, js_to_number, json_number, json_to_js_string};
 use crate::generated::step_log_tables::NOMINAL_VALUE_LEAVES;
 use crate::step_text::escape;
 
@@ -94,27 +94,6 @@ fn declared_type(value: &Value, ty: u8, data_type: Option<&str>) -> Option<&'sta
     Some(name)
 }
 
-/// `serializeTypedMarker` for a value `fits_base` accepted.
-fn typed_marker(declared: &str, value: &Value) -> String {
-    let base = leaf(&declared.to_uppercase()).map(|l| l.1);
-    let inner = match base {
-        Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value)),
-        Some("INTEGER") => js_number_to_string(js_to_number(value).trunc()),
-        Some("BOOLEAN") => if value.as_bool() == Some(true) { ".T." } else { ".F." }.to_string(),
-        Some("LOGICAL") => match value.as_bool() {
-            Some(true) => ".T.".to_string(),
-            Some(false) => ".F.".to_string(),
-            None => ".U.".to_string(),
-        },
-        _ => format!("'{}'", escape(&json_to_js_string(value))),
-    };
-    let mut token = declared.to_uppercase();
-    if !token.starts_with("IFC") {
-        token = format!("IFC{token}");
-    }
-    format!("{token}({inner})")
-}
-
 /// `Math.round`: halves go toward +Infinity. Not `(v + 0.5).floor()`, which
 /// rounds 0.49999999999999994 up because the sum itself rounds.
 fn js_round(v: f64) -> f64 {
@@ -169,7 +148,7 @@ pub(crate) fn serialize_property_value(value: &Value, ty: u8) -> String {
 /// `serializeNominalValue`.
 pub(crate) fn serialize_nominal_value(value: &Value, ty: u8, data_type: Option<&str>) -> String {
     match declared_type(value, ty, data_type) {
-        Some(declared) => typed_marker(declared, value),
+        Some(declared) => super::values::typed_marker(declared, value),
         None => serialize_property_value(value, ty),
     }
 }

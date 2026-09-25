@@ -30,7 +30,9 @@
 mod attrs;
 mod base;
 mod collect;
+mod created;
 mod effective;
+mod entities;
 mod extract;
 mod generate;
 mod jsval;
@@ -41,11 +43,20 @@ mod overlay;
 mod pass;
 mod property_value;
 mod readers;
+mod record;
+mod refilter;
+mod refs;
+mod retype;
 mod replay;
 mod source;
 mod units;
+mod values;
 pub mod wire;
 mod write;
 
 pub use wire::{GeorefMutations, LogMutation, LogNewEntity, MutationKind, MutationLog};
 pub use write::{export_step_with_log, export_step_with_log_to_writer, LogExportStats, StepCounters};
+
+#[cfg(test)]
+#[path = "tables_tests.rs"]
+mod tables_tests;

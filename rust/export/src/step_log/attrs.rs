@@ -90,6 +90,27 @@ pub(crate) fn attr_names(upper: &str, schema: &str) -> &'static [&'static str] {
     }
 }
 
+/// `getAttributeNamesForSchema(type, schema)`: the schema registry's list
+/// when it declares the type, else the cross-schema one.
+pub(crate) fn schema_names(upper: &str, schema: &str) -> &'static [&'static str] {
+    let Some(row) = row(upper) else { return &[] };
+    let column = match schema {
+        "IFC2X3" => 4,
+        "IFC4" => 5,
+        "IFC4X3" => 6,
+        _ => 3,
+    };
+    let list = match row.1[column] {
+        NONE => row.1[3],
+        i => i,
+    };
+    if list == NONE {
+        &[]
+    } else {
+        NAME_LISTS[usize::from(list)]
+    }
+}
+
 fn has(mask: u64, index: usize) -> bool {
     index < 64 && mask & (1 << index) != 0
 }
@@ -305,4 +326,27 @@ pub(crate) fn apply_named(
         return (text.to_string(), rejected);
     }
     (format!("{}{}{}", &text[..=open], args.join(","), &text[close..]), rejected)
+}
+
+/// `applyPositionalMutations`: every in-range slot is rewritten, in the order
+/// the edits were queued.
+pub(crate) fn apply_positional(
+    text: &str,
+    upper: &str,
+    positionals: &[(usize, serde_json::Value)],
+    schema: &str,
+) -> Result<String, super::values::Unwritable> {
+    let Some((open, close, mut args)) = split_record(text) else { return Ok(text.to_string()) };
+    let mut changed = false;
+    for (index, value) in positionals {
+        if *index >= args.len() {
+            continue;
+        }
+        args[*index] = super::values::positional_override(upper, *index, value, &args[*index], schema)?;
+        changed = true;
+    }
+    if !changed {
+        return Ok(text.to_string());
+    }
+    Ok(format!("{}{}{}", &text[..=open], args.join(","), &text[close..]))
 }

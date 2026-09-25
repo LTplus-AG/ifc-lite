@@ -78,6 +78,17 @@ pub(crate) struct Overlay {
     /// Entities in the order their first attribute edit arrived.
     pub(crate) attribute_order: Vec<u32>,
     pub(crate) history: Vec<Touched>,
+    /// Created entities, in `newEntities` (insertion) order.
+    pub(crate) new_entities: Vec<super::wire::LogNewEntity>,
+    pub(crate) tombstones: HashSet<u32>,
+    /// Positional edits per entity, slot order as `Map.set` leaves it.
+    pub(crate) positional: HashMap<u32, Vec<(usize, Value)>>,
+    /// `(newType, predefinedType)` per retyped entity.
+    pub(crate) retypes: HashMap<u32, (String, Option<String>)>,
+    /// Retyped ids in the order their first retype arrived (`Map` order).
+    pub(crate) retype_order: Vec<u32>,
+    /// Highest id the overlay allocated or restored (`nextAllocatedId`).
+    pub(crate) next_allocated: u32,
 }
 
 impl Overlay {
@@ -86,7 +97,7 @@ impl Overlay {
         self.props.insert((e, set.to_string(), name.to_string()), m);
     }
 
-    fn drop_prop(&mut self, e: u32, set: &str, name: &str) {
+    pub(crate) fn drop_prop(&mut self, e: u32, set: &str, name: &str) {
         if self.props.remove(&(e, set.to_string(), name.to_string())).is_some() {
             if let Some(keys) = self.prop_keys.get_mut(&e) {
                 keys.retain(|(s, n)| !(s == set && n == name));

@@ -18,7 +18,9 @@ use super::attrs::schema_family;
 use super::base::BaseSets;
 use super::collect::{collect, retain_shared_atoms};
 use super::generate::generate;
-use super::lines::{filter_relationship, Filtered};
+use super::created::write_created;
+use super::ledger::Kind;
+use super::refilter::{filter_source_line, Filtered};
 use super::replay::replay;
 use super::pass::Pass;
 use super::source::Source;
@@ -118,6 +120,27 @@ fn touched(log: &MutationLog) -> HashSet<u32> {
     log.mutations.iter().map(|m| m.entity_id).collect()
 }
 
+/// One record out, through the schema converter when the export converts.
+#[allow(clippy::too_many_arguments)]
+fn write_line<W: Write>(
+    out: &mut W,
+    text: &str,
+    id: u32,
+    converting: bool,
+    from: &str,
+    to: &str,
+    slot_fill: &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
+    checks: &mut crate::schema_enum::ConversionChecks,
+) -> io::Result<()> {
+    if converting {
+        let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
+        out.write_all(converted.as_bytes())?;
+    } else {
+        out.write_all(text.as_bytes())?;
+    }
+    out.write_all(b"\n")
+}
+
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
@@ -135,24 +158,51 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let wanted = touched(log);
     let mut base = BaseSets::new(&src, &wanted);
-    let overlay = replay(&log.mutations, &mut base).map_err(|e| invalid(format!("export_step_with_log: {}", e.0)))?;
+    let overlay = replay(&log.mutations, &log.new_entities, &mut base)
+        .map_err(|e| invalid(format!("export_step_with_log: {}", e.0)))?;
     let mut pass = Pass::new(&src, family, overlay);
+    let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
     retain_shared_atoms(&mut pass);
 
     // The source lines the log rewrites, decided before the header because
-    // the header counts them.
-    let edited: Vec<u32> = pass.modified_attributes.iter().map(|(id, _)| *id).collect();
+    // the header counts them: every record with an attribute, retype or
+    // positional edit, run through the same filter the stream applies so a
+    // withheld line nominates nothing, as in the TypeScript source pass.
+    let mut edited: Vec<u32> = pass.modified_attributes.iter().map(|(id, _)| *id).collect();
+    edited.extend(pass.overlay.positional.keys().copied());
+    edited.extend(pass.overlay.retype_order.iter().copied());
+    edited.sort_unstable();
+    edited.dedup();
     for id in edited {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || pass.is_overlay_created(id) {
             continue;
         }
         let Some(line) = src.line(id).map(|l| l.into_owned()) else { continue };
-        let (text, delivery) = pass.mutate_line(id, &line);
-        pass.nominees.nominate_delivered(&mut pass.ledger, id, &delivery);
+        let (text, delivery) = pass.mutate_line(id, &line).map_err(unwritable)?;
+        let upper = pass.type_of(id).unwrap_or_default();
+        let filtered = {
+            let excluded = |r: u32| pass.is_omitted(r);
+            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+        };
+        let text = match filtered {
+            Filtered::Keep => Some(text),
+            Filtered::Rewrite(t) => Some(t),
+            Filtered::Withhold(_) => None,
+        };
+        if text.is_some() {
+            if delivery.retyped {
+                pass.ledger.nominate(id, Kind::Retype);
+            }
+            if delivery.positional {
+                pass.ledger.nominate(id, Kind::Positional);
+            }
+            pass.nominees.nominate_delivered(&mut pass.ledger, id, &delivery);
+        }
         pass.mutated_lines.insert(id, (text, delivery));
     }
-    generate(&mut pass, collected);
+    generate(&mut pass, collected).map_err(unwritable)?;
+    write_created(&mut pass).map_err(unwritable)?;
 
     let modifications = pass.new_entity_count + pass.ledger.modified_count();
     let source_header = crate::source_header::parse_source_header(content);
@@ -167,32 +217,45 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut checks = crate::schema_enum::ConversionChecks::new();
     let mut written = 0usize;
     for &id in &src.order {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) {
             continue;
         }
-        let Some(raw) = src.line(id) else { continue };
-        let text = match pass.mutated_lines.get(&id) {
-            Some((text, _)) => text.as_str(),
-            None => raw.as_ref(),
+        let owned;
+        let text: &str = match pass.mutated_lines.get(&id) {
+            Some((Some(text), _)) => text,
+            Some((None, _)) => {
+                let upper = pass.type_of(id).unwrap_or_default();
+                pass.warnings.push(format!("Relationship #{id} ({upper}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output."));
+                continue;
+            }
+            None => {
+                let Some(raw) = src.line(id) else { continue };
+                let upper = pass.type_of(id).unwrap_or_default();
+                let filtered = {
+                    let excluded = |r: u32| pass.is_omitted(r);
+                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+                };
+                owned = match filtered {
+                    Filtered::Keep => raw.into_owned(),
+                    Filtered::Rewrite(t) => t,
+                    Filtered::Withhold(w) => {
+                        pass.warnings.push(w);
+                        continue;
+                    }
+                };
+                &owned
+            }
         };
-        let upper = src.type_of(id).unwrap_or_default();
-        if let Filtered::Withhold(warning) = filter_relationship(text, id, &upper) {
-            pass.warnings.push(warning);
-            continue;
-        }
-        if converting {
-            let converted =
-                crate::schema_convert::convert_step_line(text, &source_label, &target, id, &mut slot_fill, Some(&mut checks))?;
-            out.write_all(converted.as_bytes())?;
-        } else {
-            out.write_all(text.as_bytes())?;
-        }
-        out.write_all(b"\n")?;
+        write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
         written += 1;
     }
     for line in pass.generated.iter().chain(pass.rewritten_lines.iter().map(|(_, l)| l)) {
         out.write_all(line.as_bytes())?;
         out.write_all(b"\n")?;
+        written += 1;
+    }
+    for (id, line) in &pass.created_lines {
+        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
         written += 1;
     }
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;

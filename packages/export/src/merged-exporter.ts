@@ -1231,7 +1231,7 @@ export class MergedExporter {
     }
 
     // Drop RelatedObjects members of a partially redundant IFCRELAGGREGATES or
-    // IFCRELNESTS that already have that parent in the output (#5471) — see
+    // IFCRELNESTS that already have that parent in the output (#5471, #5726) — see
     // claimDecompositionParents / applyRelParentStrip. Runs in LOCAL id
     // space, before the remap below. `null` propagates like the passes above.
     const stripped = applyRelParentStrip(entityText, localId, plan.relParentStrip);

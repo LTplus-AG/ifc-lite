@@ -155,7 +155,8 @@ function listRefs(attr: string | null): number[] {
 /**
  * Render-time counterpart of {@link claimDecompositionParents}: drop the
  * RelatedObjects members of a partially redundant IFCRELAGGREGATES or
- * IFCRELNESTS that already have a parent of that kind in the output. Reuses the same list/scalar-aware ref filter the
+ * IFCRELNESTS that already have a parent of that kind in the output.
+ * Reuses the same list/scalar-aware ref filter the
  * `visibleOnly`/deletion dangling-ref path uses. Must run in LOCAL id
  * space, before any id offset/remap — `localId` and the ids inside
  * `relParentStrip` are both local to the model being rendered.

@@ -14,48 +14,46 @@
  * entity instead: the run then reports the failure rather than a success.
  */
 
-import {
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4_EXPRESS,
-  ENTITIES_IFC4X3,
-  exactTypeName,
-  type EntityTable,
-  type IfcEntityInfo,
-} from '@ifc-lite/data';
+import { exactTypeName, type EntityTable } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation } from './types.js';
+import { allSchemaAttributeNames, schemaAttributeNames, type ModelSchema } from './schema-attribute-names.js';
 
 /**
  * The root attributes a bulk run may write: the ones the overlay stores
  * as plain strings and the exporter rewrites by name. `GlobalId` is left
  * out on purpose, since one value across a selection duplicates it.
  */
-export const BULK_WRITABLE_ATTRIBUTES: readonly string[] = ['Name', 'Description', 'ObjectType', 'Tag'];
+export const BULK_WRITABLE_ATTRIBUTES: readonly string[] = Object.freeze(['Name', 'Description', 'ObjectType', 'Tag']);
 
-let declaredAttributes: Map<string, Set<string>> | null = null;
-
-/** Class (UPPERCASE) -> every attribute it declares or inherits, in any bundled schema. */
-function attributesByClass(): Map<string, Set<string>> {
-  if (declaredAttributes) return declaredAttributes;
-  const map = new Map<string, Set<string>>();
-  const tables: ReadonlyArray<readonly IfcEntityInfo[]> = [ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3];
-  for (const table of tables) {
-    for (const entity of table) {
-      const key = entity.name.toUpperCase();
-      let attrs = map.get(key);
-      if (!attrs) map.set(key, attrs = new Set());
-      for (const attr of entity.attributes) attrs.add(attr);
-    }
-  }
-  declaredAttributes = map;
-  return map;
+/**
+ * The entity's class this session. A retype wins, as in the exporter and
+ * `effective-entities`: `setEntityType` on a created entity records the
+ * retype beside it and leaves `NewEntity.type` as authored.
+ */
+function effectiveClass(entities: EntityTable, view: MutablePropertyView, entityId: number): string {
+  return view.getEntityTypeMutation(entityId)?.newType
+    ?? view.getNewEntity(entityId)?.type
+    ?? exactTypeName(entities, entityId);
 }
 
-/** The entity's class this session: a created entity's, a retype's, else the parsed one. */
-function effectiveClass(entities: EntityTable, view: MutablePropertyView, entityId: number): string {
-  return view.getNewEntity(entityId)?.type
-    ?? view.getEntityTypeMutation(entityId)?.newType
-    ?? exactTypeName(entities, entityId);
+/**
+ * Whether the exporter can write `attribute` on a `ifcClass` record. With the
+ * model's schema known, that schema decides (the exporter resolves names in
+ * the file's own schema). Without it, every bundled schema that knows the
+ * class must declare the attribute, so no model can drop the write.
+ */
+function declares(ifcClass: string, attribute: string, schema: ModelSchema | undefined): boolean {
+  if (schema) return schemaAttributeNames(schema, ifcClass)?.includes(attribute) ?? false;
+  const layouts = allSchemaAttributeNames(ifcClass);
+  return layouts.length > 0 && layouts.every((names) => names.includes(attribute));
+}
+
+/** Why a bulk run can never write `attribute`, or `null` when it is writable. */
+export function bulkAttributeRefusal(attribute: string): string | null {
+  return BULK_WRITABLE_ATTRIBUTES.includes(attribute)
+    ? null
+    : `"${attribute}" is not an attribute a bulk edit can set (${BULK_WRITABLE_ATTRIBUTES.join(', ')})`;
 }
 
 /**
@@ -70,13 +68,13 @@ export function applyBulkAttribute(
   entityId: number,
   attribute: string,
   value: string,
+  schema?: ModelSchema,
 ): Mutation {
-  if (!BULK_WRITABLE_ATTRIBUTES.includes(attribute)) {
-    throw new Error(`"${attribute}" is not an attribute a bulk edit can set (${BULK_WRITABLE_ATTRIBUTES.join(', ')})`);
-  }
+  const refusal = bulkAttributeRefusal(attribute);
+  if (refusal) throw new Error(refusal);
   const ifcClass = effectiveClass(entities, view, entityId);
-  if (!attributesByClass().get(ifcClass.toUpperCase())?.has(attribute)) {
-    throw new Error(`${ifcClass} has no ${attribute} attribute`);
+  if (!declares(ifcClass, attribute, schema)) {
+    throw new Error(`${ifcClass} has no ${attribute} attribute${schema ? ` in ${schema}` : ''}`);
   }
   const previous = view.getAttributeMutationsForEntity(entityId).find((edit) => edit.name === attribute);
   return view.setAttribute(entityId, attribute, value, previous?.value);

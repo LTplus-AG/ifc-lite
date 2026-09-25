@@ -90,6 +90,19 @@ describe('BulkPropertyEditor — Set Attribute writes (#5867)', () => {
     assert.equal(attr(view, 1, 'Name'), 'X');
   });
 
+  it('undoing the run restores an earlier edit of the attribute, not the parsed value', async () => {
+    const view = seed([{ expressId: 1, type: 'IfcWall', name: 'Wall A' }]);
+    useViewerStore.getState().setAttribute(MODEL_ID, 1, 'Name', 'EARLIER', 'Wall A');
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await setAttribute(container, 'Name', 'X');
+
+    assert.equal(attr(view, 1, 'Name'), 'X');
+    replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+    assert.equal(attr(view, 1, 'Name'), 'EARLIER', 'the run is undone back to the earlier edit');
+    replayWorkspaceHistory(useViewerStore.getState(), 'undo');
+    assert.equal(attr(view, 1, 'Name'), 'Wall A', 'the earlier edit is its own step');
+  });
+
   it('an entity whose class lacks the attribute is reported, not counted as success', async () => {
     const view = seed([
       { expressId: 1, type: 'IfcWall', name: 'Wall A' },

@@ -13,7 +13,8 @@ import type { Mutation, PropertyValue } from './types.js';
 import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 import { compileGuardedRegex } from '@ifc-lite/regex-guard';
 import { effectiveBulkCandidates, effectiveRootAttribute } from './bulk-query-candidates.js';
-import { applyBulkAttribute } from './bulk-attribute-action.js';
+import { applyBulkAttribute, bulkAttributeRefusal } from './bulk-attribute-action.js';
+import type { ModelSchema } from './schema-attribute-names.js';
 
 /**
  * Filter operators for property values
@@ -139,6 +140,8 @@ export class BulkQueryEngine {
   private expressIdIndex: Map<number, number>;
   /** See mutation-guard.ts: consulted once by `applyAction`, opt-in. */
   private canEdit: MutationGuard | undefined;
+  /** The model's declared schema, which decides the attributes SET_ATTRIBUTE may write. */
+  private schemaVersion: ModelSchema | undefined;
 
   constructor(
     entities: EntityTable,
@@ -146,7 +149,8 @@ export class BulkQueryEngine {
     spatialHierarchy?: SpatialHierarchy | null,
     properties?: PropertyTable | null,
     strings?: { get(idx: number): string } | null,
-    canEdit?: MutationGuard
+    canEdit?: MutationGuard,
+    schemaVersion?: ModelSchema
   ) {
     this.entities = entities;
     this.mutationView = mutationView;
@@ -154,6 +158,7 @@ export class BulkQueryEngine {
     this.properties = properties || null;
     this.strings = strings || null;
     this.canEdit = canEdit;
+    this.schemaVersion = schemaVersion;
 
     // Build O(1) lookup map once instead of O(n) linear scan per query
     this.expressIdIndex = new Map<number, number>();
@@ -288,6 +293,9 @@ export class BulkQueryEngine {
    * Execute a bulk query
    */
   execute(query: BulkQuery): BulkQueryResult {
+    // An unwritable attribute is one refusal for the run, not one error per entity.
+    const refusal = query.action.type === 'SET_ATTRIBUTE' ? bulkAttributeRefusal(query.action.attribute) : null;
+    if (refusal) return { mutations: [], affectedEntityCount: 0, success: false, errors: [refusal] };
     const entityIds = this.select(query.select);
     const mutations: Mutation[] = [];
     const errors: string[] = [];
@@ -334,7 +342,7 @@ export class BulkQueryEngine {
         );
 
       case 'SET_ATTRIBUTE':
-        return applyBulkAttribute(this.entities, this.mutationView, entityId, action.attribute, action.value);
+        return applyBulkAttribute(this.entities, this.mutationView, entityId, action.attribute, action.value, this.schemaVersion);
 
       case 'SET_ENTITY_TYPE':
         return this.mutationView.setEntityType(

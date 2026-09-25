@@ -290,7 +290,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       dataStore.spatialHierarchy || null,
       dataStore.properties || null,
       dataStore.strings || null,
-      canCollabEdit
+      canCollabEdit,
+      dataStore.schemaVersion,
     );
   }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
 
@@ -851,7 +852,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.actionType')}</Label>
-                <Select value={actionType} onValueChange={(v) => setActionType(v as ActionType)}>
+                <Select value={actionType} onValueChange={(v) => { if ((v === 'SET_ATTRIBUTE') !== (actionType === 'SET_ATTRIBUTE')) setTargetProp(''); setActionType(v as ActionType); }}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>

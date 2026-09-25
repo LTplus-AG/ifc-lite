@@ -173,7 +173,16 @@ console.log(`Will update ${preview.matchedCount} entities`);
 // Apply
 const result = engine.execute(query);
 console.log(`Updated ${result.affectedEntityCount} properties`);
+
+// Root attributes: one of BULK_WRITABLE_ATTRIBUTES (Name, Description, ObjectType, Tag)
+const renamed = engine.execute({
+  select: { expressIds: [42, 43] },
+  action: { type: 'SET_ATTRIBUTE' as const, attribute: 'ObjectType', value: 'Partition' },
+});
+console.log(renamed.success ? 'Renamed' : renamed.errors);
 ```
+
+`SET_ATTRIBUTE` takes the exact EXPRESS attribute name. An entity whose class does not declare the attribute (for example `ObjectType` on a type object) is reported in `errors` rather than skipped. Pass the model's `schemaVersion` as the engine's last constructor argument to judge that against the file's own schema.
 
 ## CSV Import
 

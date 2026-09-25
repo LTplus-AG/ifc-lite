@@ -123,8 +123,10 @@ export function App({ sourceProviders }: AppProps = {}) {
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
           <OverlayThemeSync />
+          {/* Toasts mount inside `ViewportContainer` itself (#5504, charter
+              #5478 item 22), anchored to the viewport's bottom-right above
+              the status bar, rather than the whole window's here. */}
           <ViewerLayout />
-          <Toaster />
           <StaleDeploymentNotice />
           <Analytics />
         </SourceHostProvider>

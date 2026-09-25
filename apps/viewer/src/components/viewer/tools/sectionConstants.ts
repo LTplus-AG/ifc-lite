@@ -34,3 +34,20 @@ export const AXIS_INFO = {
     axisFill: 'fill-axis-x',
   },
 } as const;
+
+type PresetView = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right';
+
+/**
+ * The 3D camera preset that looks along the same cut as a cardinal section
+ * plane (#5497's "Match 3D"): the viewer's floor plan used to force this on
+ * every activation; it is now an explicit choice from the Drawing header, and
+ * this is the mapping it applies. `flipped` picks the opposite side of the
+ * plane, matching which half of the model the cut currently shows.
+ */
+export function presetViewForAxis(axis: keyof typeof AXIS_INFO, flipped: boolean): PresetView {
+  switch (axis) {
+    case 'down': return flipped ? 'bottom' : 'top';
+    case 'front': return flipped ? 'back' : 'front';
+    case 'side': return flipped ? 'left' : 'right';
+  }
+}

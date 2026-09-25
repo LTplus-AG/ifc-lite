@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Home,
   ZoomIn,
@@ -13,12 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
-import { useIfc } from '@/hooks/useIfc';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
-import { collectEffectivePhysicalEntityIds, countPhysicalObjects } from '@/lib/physical-objects';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
@@ -51,20 +49,18 @@ export function ViewportOverlays({
   hideAxis = false,
   hideScale = false,
 }: { hideViewCube?: boolean; hideAxis?: boolean; hideScale?: boolean } = {}) {
-  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
-  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
-  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const classFilter = useViewerStore((s) => s.classFilter);
-  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
-  const mutationViews = useViewerStore((s) => s.mutationViews);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
-  const { ifcDataStore, models, activeModelId } = useIfc();
   const { t } = useTranslation();
+
+  // The storey pill and the hidden/ghosted count moved into `StatusBar` for
+  // desktop (#5504); the status bar is hidden on mobile
+  // (`ViewerLayout.tsx`'s `{!isMobile && <StatusBar />}`), so mobile keeps
+  // showing both here, off the same shared derivation `StatusBar` uses.
+  const { storeyNames, objectCounts } = useViewportStatusSummary();
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -124,45 +120,6 @@ export function ViewportOverlays({
     setOnScaleChange(handleScaleChange);
     return () => setOnScaleChange(null);
   }, [setOnScaleChange]);
-
-  // Get names of selected storeys. `selectedStoreys` holds raw model-space
-  // expressIds (see HierarchyPanel's `setStoreysSelection`), which may belong
-  // to ANY federated model, not just the active one — `ifcDataStore` only
-  // tracks the active model (`modelSlice.ts`). Resolve each id through the
-  // model whose own spatial hierarchy actually contains it as a storey,
-  // falling back to the active store for legacy single-model mode.
-  const storeyNames = selectedStoreys.size > 0 && (ifcDataStore || models.size > 0)
-    ? Array.from(selectedStoreys).map((id) => {
-        const ownStore = models.size > 0
-          ? Array.from(models.values()).find(
-              (m) => m.ifcDataStore?.spatialHierarchy?.byStorey.has(id),
-            )?.ifcDataStore
-          : ifcDataStore;
-        return ownStore?.entities.getName(id) || `Storey #${id}`;
-      })
-    : null;
-
-  // Physical objects in the active model — include live creates, deletes and
-  // retypes. Keep the scan off camera-driven renders; edits bump the version.
-  const countModelId = Array.from(models.values()).find((model) => model.ifcDataStore === ifcDataStore)?.id
-    ?? activeModelId;
-  const countView = models.size > 0
-    ? (countModelId ? mutationViews.get(countModelId) : null)
-    : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
-  const physicalIds = useMemo(
-    () => ifcDataStore ? collectEffectivePhysicalEntityIds(ifcDataStore, countView) : new Set<number>(),
-    [ifcDataStore, countView, mutationVersion],
-  );
-
-  const objectCounts = useMemo(
-    () => countPhysicalObjects(physicalIds, {
-      hiddenEntities,
-      isolatedEntities,
-      classFilter,
-      ghostExceptEntities,
-    }),
-    [physicalIds, hiddenEntities, isolatedEntities, classFilter, ghostExceptEntities],
-  );
 
   // Initial rotation values (ViewCube will update itself via ref)
   const initialRotationX = -cameraRotationRef.current.elevation;
@@ -254,16 +211,19 @@ export function ViewportOverlays({
         </div>
       )}
 
-      {/* Hidden-object count. Reports what is WITHHELD, not a ratio: the
-          number a user acts on is "what am I not seeing", and "1442 of 1446
-          visible" makes them do the subtraction to find the 4 that matter.
-          Passive, so an unfiltered model carries no chrome at all.
+      {/* Hidden-object count. Desktop shows this in `StatusBar` (#5504); mobile
+          has no status bar (`ViewerLayout.tsx`'s `{!isMobile && <StatusBar
+          />}`), so it keeps its own copy here, off the same shared
+          derivation. Reports what is WITHHELD, not a ratio: the number a
+          user acts on is "what am I not seeing", and "1442 of 1446 visible"
+          makes them do the subtraction to find the 4 that matter. Passive,
+          so an unfiltered model carries no chrome at all.
 
           Styled as the bottom-left scale/axis cluster is: bare text at
           `text-xs text-foreground/80`, no pill, no border, no backdrop, no
           off-palette accent. The 3D overlays along the bottom edge are
           deliberately plain, and this sits in that row. */}
-      {(objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
+      {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
         <div
           className={cn(
             'absolute right-4 flex flex-col items-end gap-1',
@@ -273,8 +233,8 @@ export function ViewportOverlays({
         >
           <span className="text-xs text-foreground/80 tabular-nums">
             {[
-              objectCounts.hidden > 0 && `${objectCounts.hidden} hidden`,
-              objectCounts.ghosted > 0 && `${objectCounts.ghosted} ghosted`,
+              objectCounts.hidden > 0 && t('shellChrome.statusBar.hiddenCount', { count: objectCounts.hidden }),
+              objectCounts.ghosted > 0 && t('shellChrome.statusBar.ghostedCount', { count: objectCounts.ghosted }),
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -282,12 +242,11 @@ export function ViewportOverlays({
         </div>
       )}
 
-      {/* Context Info — Storey names. Top-center on mobile (URL bar steals the bottom). */}
-      {storeyNames && storeyNames.length > 0 && (
-        <div className={cn(
-          'absolute left-1/2 -translate-x-1/2 px-4 py-2 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm',
-          isMobile ? 'top-4' : basketPresentationVisible ? 'bottom-28' : 'bottom-4',
-        )}>
+      {/* Context Info — Storey names. Desktop shows this in `StatusBar`
+          (#5504); mobile keeps it here, top-center (the URL bar steals the
+          bottom). */}
+      {isMobile && storeyNames && storeyNames.length > 0 && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-4 px-4 py-2 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm">
           <div className="flex items-center gap-2 text-sm">
             <Layers className="h-4 w-4 text-primary" />
             <span className="font-medium">

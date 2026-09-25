@@ -33,13 +33,9 @@ import { useConstructionSequence } from './useConstructionSequence';
 import { useScheduleFileImport } from './useScheduleFileImport';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
 
-interface GanttPanelProps {
-  onClose?: () => void;
-}
-
 const LEFT_PANE_WIDTH = 320;
 
-export function GanttPanel({ onClose }: GanttPanelProps) {
+export function GanttPanel() {
   const { t } = useTranslation();
   const { ifcDataStore, models, loading, activeModelId } = useIfc();
   const mutationVersion = useViewerStore(s => s.mutationVersion);
@@ -269,7 +265,6 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       />
 
       <GanttToolbar
-        onClose={onClose}
         onOpenGenerate={() => setGenerateOpen(true)}
         onOpenImport={() => importFileInputRef.current?.click()}
         canGenerate={canGenerate}
@@ -312,7 +307,6 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           selectedScheduleEmpty={selectedScheduleEmpty}
           onGenerate={() => setGenerateOpen(true)}
           onImport={() => importFileInputRef.current?.click()}
-          onClose={onClose}
         />
       ) : (
         <div className="flex-1 min-h-0 flex">

@@ -5,39 +5,27 @@
 /**
  * The bottom strip: the docked bottom-region panel (Schedule / Script / Lists,
  * per `lib/panels/bottom-panels`) or a bottom-placed analysis extension, under
- * a drag-to-resize edge and a detach grip. Extracted from `ViewerLayout` so the
- * strip reads the panel table instead of a hand-written ternary per panel.
+ * a drag-to-resize edge and a header (#5498: a tab row for the bottom panels
+ * opened this session, the detach grip, maximize/restore, and Close).
+ * Extracted from `ViewerLayout` so the strip reads the panel table instead of
+ * a hand-written ternary per panel.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { Grip } from 'lucide-react';
-import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
-import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-
-const BOTTOM_PANEL_MIN_HEIGHT = 120;
-const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
-const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
-
-/** Slim grip atop a bottom-strip panel — drag to lift it into a floating window,
- *  or drag onto another screen to pop it out (#1208). */
-function BottomPanelGrip({ id }: { id: BottomPanelId }) {
-  const { t } = useTranslation();
-  const onPointerDown = usePanelDetachDrag(id);
-  // Pointer-only drag affordance — not a real button (no keyboard action);
-  // keyboard users dock / float via the sidebar rail / Alt+N (#1208).
-  return (
-    <div
-      onPointerDown={onPointerDown}
-      title={t('bottomStrip.gripTitle')}
-      className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
-    >
-      <Grip className="h-3.5 w-3.5 text-muted-foreground/50" />
-    </div>
-  );
-}
+import { usePanelControls } from '@/hooks/usePanelControls';
+import { BottomStripHeader } from './BottomStripHeader';
+import {
+  BOTTOM_STRIP_MIN_HEIGHT,
+  BOTTOM_STRIP_DEFAULT_HEIGHT,
+  BOTTOM_STRIP_MAX_RATIO,
+  loadBottomStripHeight,
+  persistBottomStripHeight,
+  loadBottomStripTabs,
+  persistBottomStripTabs,
+} from '@/lib/panels/bottom-strip-persistence';
 
 export interface BottomStripProps {
   /** The bottom panel docked in the strip, or `null` when none is. */
@@ -50,16 +38,25 @@ export interface BottomStripProps {
 }
 
 export function BottomStrip({ dockedPanel, analysisExtension, containerRef, closePanel }: BottomStripProps) {
-  // Pixel height, persisted in a ref during the drag to avoid re-renders per move.
-  const [bottomHeight, setBottomHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
+  const { openInHome } = usePanelControls();
+  // Pixel height, persisted; kept in local state during the drag to avoid
+  // writing to localStorage on every pointer move (#1208's rect debounce
+  // does the same for floating panels, but a resize-end write is simpler here).
+  const [bottomHeight, setBottomHeight] = useState(() => loadBottomStripHeight());
+  const [tabs, setTabs] = useState<BottomPanelId[]>(() => loadBottomStripTabs());
+  const [isMaximized, setIsMaximized] = useState(false);
   const isDraggingRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  // "Reset layout" (#5854) restores the default height. The epoch starts at
-  // 0 and only moves on a reset, so this never fires on mount.
+  // "Reset layout" (#5854) restores the default height (and un-maximizes,
+  // #5498). The epoch starts at 0 and only moves on a reset, so this never
+  // fires on mount.
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch);
   useEffect(() => {
-    if (layoutResetEpoch > 0) setBottomHeight(BOTTOM_PANEL_DEFAULT_HEIGHT);
+    if (layoutResetEpoch === 0) return;
+    setBottomHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
+    setIsMaximized(false);
+    persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
   }, [layoutResetEpoch]);
 
   // Cleanup drag listeners on unmount
@@ -67,24 +64,36 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
     return () => { cleanupRef.current?.(); };
   }, []);
 
+  // A panel docked by any other path (sidebar rail, Alt+N, a tour) joins the
+  // tab row too — the row is "every bottom panel opened", not just the ones
+  // clicked from within it.
+  useEffect(() => {
+    if (!dockedPanel || tabs.includes(dockedPanel)) return;
+    const next = [...tabs, dockedPanel];
+    setTabs(next);
+    persistBottomStripTabs(next);
+  }, [dockedPanel, tabs]);
+
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingRef.current = true;
 
     const startY = e.clientY;
     const startHeight = bottomHeight;
+    let latestHeight = startHeight;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
       const container = containerRef.current;
       if (!container) return;
 
-      const maxHeight = container.clientHeight * BOTTOM_PANEL_MAX_RATIO;
+      const maxHeight = container.clientHeight * BOTTOM_STRIP_MAX_RATIO;
       const delta = startY - moveEvent.clientY;
       const newHeight = Math.min(
         maxHeight,
-        Math.max(BOTTOM_PANEL_MIN_HEIGHT, startHeight + delta)
+        Math.max(BOTTOM_STRIP_MIN_HEIGHT, startHeight + delta)
       );
+      latestHeight = newHeight;
       setBottomHeight(newHeight);
     };
 
@@ -97,7 +106,10 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
       cleanupRef.current = null;
     };
 
-    const onMouseUp = () => { cleanup(); };
+    const onMouseUp = () => {
+      cleanup();
+      persistBottomStripHeight(latestHeight);
+    };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -106,19 +118,57 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
     cleanupRef.current = cleanup;
   }, [bottomHeight, containerRef]);
 
+  // Switching tabs re-docks (undoing a float / pop-out) and flips the
+  // exclusive flag — the same `openInHome` the sidebar rail / Alt+N use.
+  const handleSelectTab = useCallback((id: BottomPanelId) => {
+    if (id !== dockedPanel) openInHome(id);
+  }, [dockedPanel, openInHome]);
+
+  // Drops the tab from the row and fully closes that panel (its dock flag,
+  // any float / OS window). If it was the active tab, a neighbour takes over
+  // so closing one tab never blanks the strip while others remain open.
+  const handleCloseTab = useCallback((id: BottomPanelId) => {
+    const idx = tabs.indexOf(id);
+    if (idx === -1) return;
+    const wasActive = id === dockedPanel;
+    const next = tabs.filter((t) => t !== id);
+    setTabs(next);
+    persistBottomStripTabs(next);
+    closePanel(id);
+    if (wasActive && next.length > 0) {
+      openInHome(next[idx] ?? next[next.length - 1]);
+    }
+  }, [tabs, dockedPanel, closePanel, openInHome]);
+
+  const handleToggleMaximize = useCallback(() => setIsMaximized((m) => !m), []);
+
   if (!dockedPanel && !analysisExtension) return null;
 
   return (
-    <div data-detach-root style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
-      {/* Drag handle (resize height) */}
-      <div
-        className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
-        onMouseDown={handleResizeStart}
-      />
+    <div
+      data-detach-root
+      style={isMaximized ? undefined : { height: bottomHeight, flexShrink: 0 }}
+      className={isMaximized ? 'absolute inset-0 z-20 bg-background' : 'relative'}
+    >
+      {/* Drag handle (resize height) — hidden while maximized: restore first. */}
+      {!isMaximized && (
+        <div
+          className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
+          onMouseDown={handleResizeStart}
+        />
+      )}
       <div className="h-full w-full overflow-hidden border-t pt-1.5 flex flex-col">
-        {/* Detach grip — drag to float / pop the bottom panel onto another
-            screen (hidden for analysis extensions, which own their chrome). */}
-        {!analysisExtension && dockedPanel && <BottomPanelGrip id={dockedPanel} />}
+        {/* Hidden for analysis extensions, which own their chrome. */}
+        {!analysisExtension && dockedPanel && (
+          <BottomStripHeader
+            tabs={tabs}
+            activePanel={dockedPanel}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            isMaximized={isMaximized}
+            onToggleMaximize={handleToggleMaximize}
+          />
+        )}
         <div className="flex-1 min-h-0 overflow-hidden">
           {analysisExtension
             ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })

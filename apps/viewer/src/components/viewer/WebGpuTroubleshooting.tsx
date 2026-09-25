@@ -80,23 +80,23 @@ export function WebGpuTroubleshootingDetails({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mt-4 p-4 bg-[#1f2335] border border-[#3b4261] text-xs font-mono space-y-4">
+    <div className="mt-4 p-4 bg-muted border border-border text-xs font-mono space-y-4">
       {category === 'insecure-context' ? (
         <div>
-          <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
+          <h4 className="font-bold text-status-warn uppercase tracking-wide mb-2">
             {t('webgpuTroubleshooting.insecureOrigin.heading')}
           </h4>
-          <p className="text-[#a9b1d6]">
+          <p className="text-muted-foreground">
             {t('webgpuTroubleshooting.insecureOrigin.textStart')}{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">
+            <code className="bg-background px-1.5 py-0.5">
               {t('webgpuTroubleshooting.insecureOrigin.httpsScheme')}
             </code>{' '}
             {t('webgpuTroubleshooting.insecureOrigin.urlOr')}{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">
+            <code className="bg-background px-1.5 py-0.5">
               {t('webgpuTroubleshooting.insecureOrigin.httpLocalhost')}
             </code>
             {t('webgpuTroubleshooting.insecureOrigin.openOverHttps')}{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">
+            <code className="bg-background px-1.5 py-0.5">
               {t('webgpuTroubleshooting.insecureOrigin.localhostWord')}
             </code>{' '}
             {t('webgpuTroubleshooting.insecureOrigin.runningYourself')}
@@ -104,25 +104,25 @@ export function WebGpuTroubleshootingDetails({
         </div>
       ) : category === 'no-api' ? (
         <div>
-          <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
+          <h4 className="font-bold text-status-warn uppercase tracking-wide mb-2">
             {t('webgpuTroubleshooting.noApi.heading')}
           </h4>
-          <p className="text-[#a9b1d6] mb-2">
+          <p className="text-muted-foreground mb-2">
             {t('webgpuTroubleshooting.noApi.textStart')}{' '}
-            <code className="bg-[#16161e] px-1.5 py-0.5">
+            <code className="bg-background px-1.5 py-0.5">
               {t('webgpuTroubleshooting.noApi.navigatorGpu')}
             </code>
             {t('webgpuTroubleshooting.noApi.checkSetup')}
           </p>
-          <ul className="list-disc list-inside text-[#a9b1d6] space-y-1">
+          <ul className="list-disc list-inside text-muted-foreground space-y-1">
             <li>{t('webgpuTroubleshooting.noApi.embeddedWebview')}</li>
             <li>
               {t('webgpuTroubleshooting.noApi.enterprisePolicyStart')}{' '}
-              <code className="bg-[#16161e] px-1.5 py-0.5">
+              <code className="bg-background px-1.5 py-0.5">
                 {t('webgpuTroubleshooting.noApi.chromePolicyPath')}
               </code>{' '}
               {t('webgpuTroubleshooting.noApi.forA')}
-              <code className="bg-[#16161e] px-1.5 py-0.5">
+              <code className="bg-background px-1.5 py-0.5">
                 {t('webgpuTroubleshooting.noApi.defaultWebGpuAccess')}
               </code>{' '}
               {t('webgpuTroubleshooting.noApi.hardwareAccelRestriction')}
@@ -133,19 +133,19 @@ export function WebGpuTroubleshootingDetails({
       ) : (
         <>
           <div>
-            <h4 className="font-bold text-[#ff9e64] uppercase tracking-wide mb-2">
+            <h4 className="font-bold text-status-warn uppercase tracking-wide mb-2">
               {t('webgpuTroubleshooting.noGpu.blocklistHeading')}
             </h4>
-            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.noGpu.blocklistIntro')}</p>
-            <div className="space-y-1 text-[#7dcfff]">
+            <p className="text-muted-foreground mb-2">{t('webgpuTroubleshooting.noGpu.blocklistIntro')}</p>
+            <div className="space-y-1 text-status-info">
               <p>
-                <code className="bg-[#16161e] px-1.5 py-0.5">
+                <code className="bg-background px-1.5 py-0.5">
                   {t('webgpuTroubleshooting.noGpu.flagUnsafeWebgpu')}
                 </code>{' '}
                 {t('webgpuTroubleshooting.noGpu.enableFlagArrow')}
               </p>
               <p>
-                <code className="bg-[#16161e] px-1.5 py-0.5">
+                <code className="bg-background px-1.5 py-0.5">
                   {t('webgpuTroubleshooting.noGpu.flagIgnoreBlocklist')}
                 </code>{' '}
                 {t('webgpuTroubleshooting.noGpu.enableFlagArrow')}
@@ -154,16 +154,16 @@ export function WebGpuTroubleshootingDetails({
           </div>
 
           <div>
-            <h4 className="font-bold text-[#bb9af7] uppercase tracking-wide mb-2">
+            <h4 className="font-bold text-primary uppercase tracking-wide mb-2">
               {t('webgpuTroubleshooting.firefox.heading')}
             </h4>
-            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.firefox.intro')}</p>
-            <p className="text-[#7dcfff]">
-              <code className="bg-[#16161e] px-1.5 py-0.5">
+            <p className="text-muted-foreground mb-2">{t('webgpuTroubleshooting.firefox.intro')}</p>
+            <p className="text-status-info">
+              <code className="bg-background px-1.5 py-0.5">
                 {t('webgpuTroubleshooting.firefox.aboutConfig')}
               </code>{' '}
               →{' '}
-              <code className="bg-[#16161e] px-1.5 py-0.5">
+              <code className="bg-background px-1.5 py-0.5">
                 {t('webgpuTroubleshooting.firefox.domWebgpuEnabled')}
               </code>{' '}
               {t('webgpuTroubleshooting.firefox.arrowTrue')}
@@ -171,27 +171,27 @@ export function WebGpuTroubleshootingDetails({
           </div>
 
           <div>
-            <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide mb-2">
+            <h4 className="font-bold text-status-ok uppercase tracking-wide mb-2">
               {t('webgpuTroubleshooting.safari.heading')}
             </h4>
-            <p className="text-[#a9b1d6]">{t('webgpuTroubleshooting.safari.instructions')}</p>
+            <p className="text-muted-foreground">{t('webgpuTroubleshooting.safari.instructions')}</p>
           </div>
 
           <div>
-            <h4 className="font-bold text-[#7aa2f7] uppercase tracking-wide mb-2">
+            <h4 className="font-bold text-primary uppercase tracking-wide mb-2">
               {t('webgpuTroubleshooting.verifyStatus.heading')}
             </h4>
-            <p className="text-[#a9b1d6] mb-2">{t('webgpuTroubleshooting.verifyStatus.intro')}</p>
-            <div className="space-y-1 text-[#7dcfff]">
+            <p className="text-muted-foreground mb-2">{t('webgpuTroubleshooting.verifyStatus.intro')}</p>
+            <div className="space-y-1 text-status-info">
               <p>
                 {t('webgpuTroubleshooting.verifyStatus.chromeEdgeLabel')}{' '}
-                <code className="bg-[#16161e] px-1.5 py-0.5">
+                <code className="bg-background px-1.5 py-0.5">
                   {t('webgpuTroubleshooting.verifyStatus.chromeGpuPath')}
                 </code>
               </p>
               <p>
                 {t('webgpuTroubleshooting.verifyStatus.firefoxLabel')}{' '}
-                <code className="bg-[#16161e] px-1.5 py-0.5">
+                <code className="bg-background px-1.5 py-0.5">
                   {t('webgpuTroubleshooting.verifyStatus.aboutSupportPath')}
                 </code>
               </p>
@@ -202,7 +202,7 @@ export function WebGpuTroubleshootingDetails({
             href="https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
+            className="inline-flex items-center gap-1.5 text-primary hover:underline"
           >
             {t('webgpuTroubleshooting.fullGuideLink')}
             <ExternalLink className="h-3 w-3" />
@@ -231,15 +231,15 @@ function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason 
       ? t('webgpuTroubleshooting.restOfToolkit.introNoGpu')
       : t('webgpuTroubleshooting.restOfToolkit.introOther');
   return (
-    <div className="mt-4 pt-4 border-t border-[#3b4261] text-xs font-mono space-y-2">
-      <h4 className="font-bold text-[#9ece6a] uppercase tracking-wide">
+    <div className="mt-4 pt-4 border-t border-border text-xs font-mono space-y-2">
+      <h4 className="font-bold text-status-ok uppercase tracking-wide">
         {t('webgpuTroubleshooting.restOfToolkit.heading')}
       </h4>
-      <p className="text-[#a9b1d6]">
+      <p className="text-muted-foreground">
         {intro} {t('webgpuTroubleshooting.restOfToolkit.cpuLine')}
       </p>
-      <p className="text-[#7dcfff]">
-        <code className="bg-[#16161e] px-1.5 py-0.5">
+      <p className="text-status-info">
+        <code className="bg-background px-1.5 py-0.5">
           {t('webgpuTroubleshooting.restOfToolkit.cliCommand')}
         </code>
       </p>
@@ -248,7 +248,7 @@ function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason 
           href="https://ifclite.dev/docs/guide/cli/"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
+          className="inline-flex items-center gap-1.5 text-primary hover:underline"
         >
           {t('webgpuTroubleshooting.restOfToolkit.cliDocsLink')}
           <ExternalLink className="h-3 w-3" />
@@ -257,7 +257,7 @@ function WebGpuFallbackNotice({ category }: { category: WebGPUUnavailableReason 
           href="https://ifclite.dev/docs/guide/mcp/"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-[#7aa2f7] hover:underline"
+          className="inline-flex items-center gap-1.5 text-primary hover:underline"
         >
           {t('webgpuTroubleshooting.restOfToolkit.mcpDocsLink')}
           <ExternalLink className="h-3 w-3" />

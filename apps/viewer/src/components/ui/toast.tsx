@@ -112,12 +112,28 @@ const colorMap = {
   info: 'border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200',
 };
 
+export interface ToasterProps {
+  /**
+   * `fixed` (default) pins the stack to the browser viewport — the app
+   * shell's own mount (`App.tsx`, and the `/mcp` routes, which have no
+   * viewport panel to anchor to). `absolute` anchors it to the nearest
+   * positioned ancestor instead: the main viewer mounts one inside
+   * `ViewportContainer`'s own `relative` root (#5504, charter #5478 item
+   * 22) so toasts sit at the viewport's bottom-right, above the status bar,
+   * rather than the whole window's.
+   */
+  variant?: 'fixed' | 'absolute';
+}
+
 /**
- * Mount this once at the app root (e.g. in App.tsx). Both live regions stay
+ * Mount once per anchor (app root by default, or a `relative` viewport
+ * container — see {@link ToasterProps.variant}). Both live regions stay
  * mounted while empty so the first toast is announced; errors go to the
  * assertive `alert` region. Each region shows its newest toast on top.
+ * Mount only ONE live instance at a time: every `Toaster` reads the same
+ * module-level store, so two mounted together would render every toast twice.
  */
-export function Toaster() {
+export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
   const items = useToasts();
   const { t } = useTranslation();
 
@@ -154,7 +170,12 @@ export function Toaster() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col pointer-events-none max-w-sm">
+    <div
+      className={cn(
+        'bottom-4 right-4 z-(--z-toast) flex flex-col pointer-events-none max-w-sm',
+        variant === 'absolute' ? 'absolute' : 'fixed',
+      )}
+    >
       <div role="alert" aria-atomic="false" className="flex flex-col-reverse gap-2 pb-2 empty:pb-0">
         {items.filter((item) => item.type === 'error').map(renderItem)}
       </div>

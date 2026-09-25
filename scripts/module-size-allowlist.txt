@@ -98,11 +98,11 @@
   2182 apps/viewer/src/components/viewer/PropertiesPanel.tsx
   1729 apps/viewer/src/components/viewer/PropertyEditor.tsx
    539 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
-   425 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
+   416 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
-   670 apps/viewer/src/components/viewer/ScriptPanel.tsx
+   655 apps/viewer/src/components/viewer/ScriptPanel.tsx
    734 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
@@ -112,14 +112,13 @@
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
-   840 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
-   749 apps/viewer/src/components/viewer/tools/MeasurePanel.tsx
+   818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1509 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
-   664 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   661 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1815 apps/viewer/src/components/viewer/Viewport.tsx
   1153 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx

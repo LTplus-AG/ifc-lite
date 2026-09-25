@@ -31,7 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import type { FloatingPanelState, SnapZone } from '@/store';
-import { computeFloatingPanelStyle, type SnapBounds } from './floating-panel-geometry';
+import { computeFloatingPanelStyle, type FloatingArea, type SnapBounds } from './floating-panel-geometry';
 
 export type { SnapBounds };
 
@@ -48,6 +48,8 @@ interface FloatingPanelProps {
   zIndex: number;
   /** The viewport region edge snaps confine to; null until measured. */
   bounds: SnapBounds | null;
+  /** The window size free-floating panels are clamped into; null until measured. */
+  area: FloatingArea | null;
   children: ReactNode;
   onRect: (rect: Partial<Pick<FloatingPanelState, 'x' | 'y' | 'w' | 'h'>>) => void;
   onSnap: (snap: SnapZone) => void;
@@ -62,6 +64,7 @@ export function FloatingPanel({
   title,
   zIndex,
   bounds,
+  area,
   children,
   onRect,
   onSnap,
@@ -179,7 +182,7 @@ export function FloatingPanel({
   return (
     <div
       ref={ref}
-      style={{ ...computeFloatingPanelStyle(panel, bounds), zIndex }}
+      style={{ ...computeFloatingPanelStyle(panel, bounds, area), zIndex }}
       onMouseDown={onFocus}
       className="absolute pointer-events-auto flex flex-col rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
     >

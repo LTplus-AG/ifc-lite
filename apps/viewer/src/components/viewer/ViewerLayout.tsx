@@ -35,6 +35,7 @@ import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDial
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
+import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
@@ -255,6 +256,8 @@ export function ViewerLayout() {
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -327,7 +330,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={22}
+                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
                     minSize={10}
                     collapsible
                     collapsedSize={0}

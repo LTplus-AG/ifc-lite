@@ -34,6 +34,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { useHoverOutline } from './useHoverOutline.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
@@ -293,7 +294,7 @@ export function Viewport({
   } = useThemeState();
 
   // Hover state
-  const { hoverTooltipsEnabled, setHoverState, clearHover } = useHoverState();
+  const { setHoverState, clearHover } = useHoverState();
 
   // Context menu state
   const { openContextMenu } = useContextMenuState();
@@ -446,9 +447,7 @@ export function Viewport({
     sunTime,
   ]);
   const environmentRef = useLatestRef(environment);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [environment]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [environment]);
 
   // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
@@ -461,9 +460,7 @@ export function Viewport({
     return { enabled: true, resolution: shadowResolution, sunAngleDeg: shadowSunAngle };
   }, [cesiumActive, shadowsEnabled, shadowResolution, shadowSunAngle]);
   const sunShadowsRef = useLatestRef(sunShadows);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [sunShadows]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [sunShadows]);
 
   // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
   // instanced pass in the Types view mode, where the flat path renders the
@@ -657,7 +654,7 @@ export function Viewport({
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
   const hoverThrottleMs = 50; // Check hover every 50ms
-  const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled);
+  const { hoverPickEnabledRef: hoverTooltipsEnabledRef, hoveredIdRef, hoveredModelIndexRef } = useHoverOutline(rendererRef); // #5390
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -703,11 +700,6 @@ export function Viewport({
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
   }, [activeTool, isInitialized]);
-  useEffect(() => {
-    if (!hoverTooltipsEnabled) {
-      clearHover();
-    }
-  }, [hoverTooltipsEnabled, clearHover]);
 
   // Cleanup measurement state when tool changes + set cursor
   useEffect(() => {
@@ -1658,6 +1650,7 @@ export function Viewport({
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
+    hoveredIdRef, hoveredModelIndexRef,
     selectedModelIndexRef,
     clearColorRef,
     sectionPlaneRef,

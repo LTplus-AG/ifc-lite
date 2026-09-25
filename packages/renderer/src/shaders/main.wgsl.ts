@@ -9,9 +9,9 @@
  * highlight, glass, hue-preserving highlight roll-off, screen-space edge
  * enhancement.
  */
-import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
+import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 import { specularWgsl } from './specular.wgsl.js';
 
@@ -41,25 +41,7 @@ const TRANSLUCENT_OPACITY_SCALE = 0.7;
 const IRRADIANCE_CALIBRATION = 1.82;
 
 export const mainShaderSource = `
-        struct Uniforms {
-          viewProj: mat4x4<f32>,
-          model: mat4x4<f32>,
-          baseColor: vec4<f32>,
-          metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
-          transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
-          sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
-          clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
-          clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
-          quantParams: vec4<f32>, // local min xyz, lattice step w
-          rteViewProj: mat4x4<f32>, // appended frame; bit 16 selects it
-          drawableDeltaHigh: vec4<f32>,
-          drawableDeltaLow: vec4<f32>,
-          rteCameraHigh: vec4<f32>,
-          rteCameraLow: vec4<f32>,
-        }
-        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
+        ${meshUniformsWgsl}
         ${relativeToEyeWgsl}
         ${mainRteWgsl}
         // Shared group(1) lighting; packing matches packEnvironmentUniforms().
@@ -282,7 +264,7 @@ export const mainShaderSource = `
           // that frame; otherwise the RTE vertex precision is thrown away at
           // section/crop/derivative ingress. Instanced geometry is not yet
           // anchored, so its worldPos remains the authoritative input.
-          let fragmentPos = select(input.worldPos, input.eyePos, (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
+          let fragmentPos = clipSpacePos(input.worldPos, input.eyePos);
           // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
           // occurrence. Discard it so it neither draws nor writes depth (and the pick
           // pass applies the same discard, so it isn't pickable). vs_main writes
@@ -304,27 +286,9 @@ export const mainShaderSource = `
               if (!occOpaque) { discard; }
             }
           }
-          // Section plane clipping - discard fragments ABOVE the plane.
-          // flags.y packs two bits: bit 0 = enabled, bit 1 = flipped.
-          let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
-          if (sectionEnabled) {
-            let planeNormal = uniforms.sectionPlane.xyz;
-            let planeDistance = uniforms.sectionPlane.w;
-            let flipped = (uniforms.flags.y & 2u) == 2u;
-            let side = select(1.0, -1.0, flipped);
-            let distToPlane = (dot(fragmentPos, planeNormal) - planeDistance) * side;
-            if (distToPlane > 0.0) {
-              discard;
-            }
-          }
-          // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
-          // flags.y bit 2 = clip-box enabled.
-          if ((uniforms.flags.y & 4u) != 0u) {
-            let p = fragmentPos;
-            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
-              discard;
-            }
-          }
+          // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
+          // selection mask so an outline is cut where its surface is).
+          if (sectionClipped(fragmentPos)) { discard; }
 
           // Compute normal via derivative-based flat shading.
           //

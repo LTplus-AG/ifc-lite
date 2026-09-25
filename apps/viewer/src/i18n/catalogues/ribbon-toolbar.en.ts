@@ -93,6 +93,8 @@ export const ribbonToolbarEn = {
   'ribbon.elements.showAllTooltip': 'Show all (reset filters)',
   'ribbon.elements.hoverTips': 'Hover tips',
   'ribbon.elements.hoverTipsTooltip': 'Show entity tooltips on hover',
+  'ribbon.elements.hoverHighlight': 'Hover outline',
+  'ribbon.elements.hoverHighlightTooltip': 'Outline the entity under the cursor',
   'ribbon.elements.selectionGroup': 'Selection',
   'ribbon.elements.selectionGroupCount': 'Selection · {count}',
   'ribbon.elements.isolate': 'Isolate',

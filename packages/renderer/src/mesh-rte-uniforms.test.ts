@@ -41,9 +41,11 @@ describe('mesh RTE fragment ingress (#5049)', () => {
     assert.equal(MESH_UNIFORM_OFFSET.rteViewProj, 60);
     assert.equal(MESH_UNIFORM_OFFSET.drawableDelta, 76);
     assert.match(mainShaderSource, new RegExp(`RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u`));
-    assert.match(mainShaderSource, /let fragmentPos = select\(input\.worldPos, input\.eyePos/);
+    // The select lives in mesh-uniforms.wgsl.ts's clipSpacePos, shared with the selection mask (#5390).
+    assert.match(mainShaderSource, /return select\(worldPos, eyePos, \(uniforms\.flags\.x & RTE_DRAWABLE_FLAG\) != 0u\);/);
+    assert.match(mainShaderSource, /let fragmentPos = clipSpacePos\(input\.worldPos, input\.eyePos\);/);
     assert.match(mainShaderSource, /cross\(dpdx\(fragmentPos\), dpdy\(fragmentPos\)\)/);
-    assert.match(mainShaderSource, /let p = fragmentPos;/);
+    assert.match(mainShaderSource, /if \(sectionClipped\(fragmentPos\)\) \{ discard; \}/);
   });
 
   it('keeps individual rotation/scale linear while translating only through the RTE origin (#5049)', () => {

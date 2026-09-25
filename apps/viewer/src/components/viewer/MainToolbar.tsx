@@ -24,7 +24,6 @@ import {
   Grid3x3,
   HelpCircle,
   Loader2,
-  Info,
   Plus,
   MessageSquare,
   ClipboardCheck,
@@ -80,6 +79,7 @@ import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 import { CameraCommandMenuItems } from './toolbar/CameraCommands';
+import { HelpersMenuItems } from './toolbar/HelpersMenuItems';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 
@@ -304,7 +304,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
-  const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   // Issue #540: the merge-multilayer-walls load-time toggle lives in the
   // shared Class Visibility menu; the trigger only needs the flag for
   // its non-default-setting accent dot.
@@ -1040,16 +1039,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.orthographic')}
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {t('mainToolbar.helpers')}
-          </DropdownMenuLabel>
-          <DropdownMenuCheckboxItem
-            checked={hoverTooltipsEnabled}
-            onCheckedChange={() => toggleHoverTooltips()}
-          >
-            <Info className="h-4 w-4 mr-2" />
-            {t('mainToolbar.hoverTooltips')}
-          </DropdownMenuCheckboxItem>
+          <HelpersMenuItems />
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.toolbarLabel')}

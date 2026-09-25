@@ -142,7 +142,7 @@ import { Scene, type InstancedTemplateGPU } from './scene.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
 import { reportableItemId } from './pick-resolve.js';
-import { MathUtils, viewBasis } from './math.js';
+import { viewBasis } from './math.js';
 import type { Vec3 as Vec3Type } from './types.js';
 import { isRteAabbVisible, rteFrustum, sourceFrustumFromRte } from './rte-frustum.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -176,6 +176,8 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
+import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
+import { HoverMeshCache } from './hover-mesh-cache.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
@@ -195,7 +197,7 @@ import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRender
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
-import { colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { uploadIndividualMesh, type IndividualMeshFrame } from './individual-mesh-upload.js';
 import { PointCloudRenderer, type PointCloudAssetHandle, type ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import {
     appendPointCloudChunk as appendPointCloudChunkImpl,
@@ -209,8 +211,6 @@ import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeR
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
-const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
-let warnedEntityIdRange = false;
 
 /**
  * The reason `whenReady()` rejects when the renderer is destroyed.
@@ -261,6 +261,8 @@ export class Renderer {
     // Ambient occlusion, separation lines and eye-dome lighting (post-pass-chain.ts),
     // created on the first rendered frame.
     private postPasses: PostPassChain | null = null;
+    /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
+    private readonly hoverMeshes = new HoverMeshCache();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
     private readonly interactionEffects = new InteractionEffectsGovernor();
@@ -1346,6 +1348,11 @@ export class Renderer {
         );
     }
 
+    /** The source batch's frame for an individual copy of `meshData` (see individual-mesh-upload.ts). */
+    private individualMeshFrame(meshData: MeshData): IndividualMeshFrame {
+        return { sharedOrigin: this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.scene.isMeshQuantized(meshData) };
+    }
+
     /**
      * Create a GPU Mesh from MeshData (lazy creation for selection highlighting)
      * This is called on-demand when a mesh is selected, avoiding 2x buffer creation during streaming
@@ -1353,74 +1360,8 @@ export class Renderer {
     private createMeshFromDataUnguarded(meshData: MeshData): void {
         if (!this.device.isInitialized()) return;
 
-        const device = this.device.getDevice();
-        const vertexCount = meshData.positions.length / 3;
-        const interleavedRaw = new ArrayBuffer(vertexCount * 7 * 4);
-        const interleaved = new Float32Array(interleavedRaw);
-        const interleavedU32 = new Uint32Array(interleavedRaw);
-
-        // Build this individual mesh (selection highlight + GPU object-id picker)
-        // in the same small local frame as its source batch.
-        // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
-        // is bit-coincident with its source surface (no z-fight, no depth bias):
-        //   batch stores  s = f32(local + (origin - sharedOrigin))   [merge]
-        //   batch shader  RTE = sharedOrigin - eye + s               [draw]
-        // We retain `s` and the canonical origin separately. When there is no
-        // shared origin, retain the piece origin instead of folding it in.
-        const o = meshData.origin;
-        const so = this.scene.getSharedFrameOrigin(meshData.modelIndex, meshData);
-        const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-        const fr = Math.fround;
-        const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
-        // Quantized batches (issue #1682 phase 6) render lattice-snapped
-        // positions: the shader's quantMin + q*step is exactly the lattice
-        // node nearest the batch's stored f32 rel coordinate. Reproduce it by
-        // snapping the SAME rel coordinate here (round(s*1024)/1024 in f64
-        // yields the identical exact-f32 lattice value — see quantize.ts), so
-        // the highlight/picker mesh stays BIT-coincident with its quantized
-        // source surface, exactly as the two-step fold above achieves for the
-        // f32 path. Meshes whose batch fell back to f32 must not snap.
-        const snap = this.scene.isMeshQuantized(meshData)
-            ? (v: number) => Math.round(v * 1024) / 1024
-            : (v: number) => v;
-        const p = meshData.positions;
-        for (let i = 0; i < vertexCount; i++) {
-            const base = i * 7;
-            const posBase = i * 3;
-            interleaved[base] = so ? snap(fr(p[posBase] + dx)) : snap(p[posBase]);
-            interleaved[base + 1] = so ? snap(fr(p[posBase + 1] + dy)) : snap(p[posBase + 1]);
-            interleaved[base + 2] = so ? snap(fr(p[posBase + 2] + dz)) : snap(p[posBase + 2]);
-            const hasNormals = meshData.normals.length > 0;
-            interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
-            interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
-            interleaved[base + 5] = hasNormals ? meshData.normals[posBase + 2] : 0;
-            let encodedId = meshData.expressId >>> 0;
-            if (encodedId > MAX_ENCODED_ENTITY_ID) {
-                if (!warnedEntityIdRange) {
-                    warnedEntityIdRange = true;
-                    console.warn('[Renderer] expressId exceeds 24-bit seam-ID encoding range; seam lines may collide.');
-                }
-                encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
-            }
-            // Stamp the SAME high-byte material-colour salt as the batch path
-            // (mergeGeometry) so this individual/selection mesh computes the
-            // identical depth nudge as its source batch — otherwise the highlight
-            // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
-            // out against the salted base depth. Low 24 bits stay the picking id.
-            interleavedU32[base + 6] = packEntityLane(encodedId, colorSaltByte(meshData.color));
-        }
-
-        const vertexBuffer = device.createBuffer({
-            size: interleaved.byteLength,
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(vertexBuffer, 0, interleaved);
-
-        const indexBuffer = device.createBuffer({
-            size: meshData.indices.byteLength,
-            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-        });
-        device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
+        const { vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } = uploadIndividualMesh(
+            this.device.getDevice(), meshData, this.individualMeshFrame(meshData));
 
         // Keep the hydrated mesh in its decoded local frame.  Folding this
         // origin back into f32 vertices used to make selection/highlight the
@@ -1438,15 +1379,9 @@ export class Renderer {
             geometryItemId: reportableItemId(meshData, meshData.expressId),
             vertexBuffer,
             indexBuffer,
-            indexCount: meshData.indices.length,
-            transform: (() => {
-                const transform = MathUtils.identity();
-                transform.m[12] = so ? so[0] : ox;
-                transform.m[13] = so ? so[1] : oy;
-                transform.m[14] = so ? so[2] : oz;
-                return transform;
-            })(),
-            rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
+            indexCount,
+            transform,
+            rteOrigin,
             color: meshData.color,
             hydrated: true,
         });
@@ -2295,6 +2230,12 @@ export class Renderer {
             // valid for every main-family draw that follows.
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
+            // Selected meshes drawn this frame, for the selection-mask pass
+            // (#5390) after `pass.end()` below. Populated inside the batched
+            // branch, where the highlight draw itself happens; empty in the
+            // no-batches fallback, which does not draw selection either.
+            let selectedMeshesForMask: Mesh[] = [];
+
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
 
@@ -2902,6 +2843,7 @@ export class Renderer {
                         return true;
                     })
                     : [];
+                selectedMeshesForMask = selectedMeshes;
 
                 // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the
                 // textured sub-pass) so ghosted/x-rayed instanced occurrences blend over
@@ -3110,8 +3052,23 @@ export class Renderer {
 
             pass.end();
 
+            // Selection/hover outline input (#5390): built from the meshes the
+            // highlight-draw loop above already prepared this frame.
+            // A hidden / isolated-out entity is never outlined; the lookup is scoped to the hovered entity's own model.
+            const hoverId = options.hoveredId != null && !options.hiddenIds?.has(options.hoveredId)
+                && (!hasIsolatedFilter || options.isolatedIds!.has(options.hoveredId)) ? options.hoveredId : null;
+            const hoverModel = options.hoveredModelIndex;
+            const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
+                ? this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))
+                : (this.hoverMeshes.release(), []);
+            const selectionOutline = buildSelectionOutlineFrame({
+                uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
+                section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox,
+                selectedMeshes: selectedMeshesForMask, hoverPieces, hoveredId: hoverId, selectedModelIndex: hoverModel,
+            });
+
             // Created lazily like the sky/shadow passes; each pass inside is too.
-            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount());
+            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount(), this.pipeline.getBindGroupLayout());
             this.postPasses.encode({
                 encoder,
                 targetView: textureView,
@@ -3126,6 +3083,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
+                selectionOutline,
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
@@ -3665,6 +3623,7 @@ export class Renderer {
 
         this.postPasses?.destroy();
         this.postPasses = null;
+        this.hoverMeshes.release();
         this.skyPass?.destroy();
         this.skyPass = null;
         this.shadowPass?.destroy();

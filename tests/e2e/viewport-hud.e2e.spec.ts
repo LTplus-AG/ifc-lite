@@ -9,8 +9,8 @@
  * overlap any other HUD item, and (c) not overlap the ViewCube. Layout is
  * only observable with real layout, so this runs in the browser with a
  * model loaded (the tool overlays only render over a model); tools are
- * opened through the store. Measure and Section join once #5510/#5511 put
- * them on the table.
+ * opened through the store. Section joined in #5499; Measure joins once
+ * #5510 puts its bar on the table.
  */
 
 import { test, expect } from '@playwright/test';
@@ -19,7 +19,7 @@ import { join } from 'path';
 
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
-const TOOLS = ['split', 'spaceSketch', 'addElement'] as const;
+const TOOLS = ['split', 'spaceSketch', 'addElement', 'section'] as const;
 
 interface Box { name: string; left: number; top: number; right: number; bottom: number }
 

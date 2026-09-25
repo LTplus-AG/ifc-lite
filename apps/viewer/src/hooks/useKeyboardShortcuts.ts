@@ -72,6 +72,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore keys an input-like target consumes (inputs, <select>, ARIA widgets).
     if (isTextEntryTarget(e)) return;
+    // A key another layer already handled is not a shortcut: a Radix popover
+    // (the Section bar's Cap, #5499) dismisses itself on Escape and marks the
+    // event handled from a document-capture listener, which runs before this
+    // window listener — without this, the same Escape also closed the tool.
+    if (e.defaultPrevented) return;
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;

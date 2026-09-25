@@ -66,6 +66,7 @@ import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { FILTER_OPERATORS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
+import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -91,7 +92,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const recordMutationBatch = useViewerStore((s) => s.recordMutationBatch);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // Collab role gate, two layers deep. (1) canCollabEdit is injected into
@@ -158,10 +158,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return list;
   }, [open, models, legacyIfcDataStore, t, locale, revision]);
 
-  // Auto-select first model when dialog opens
+  // Default to the active model: Undo replays the active model's history (#5958).
   useEffect(() => {
     if (open && modelList.length > 0 && !selectedModelId) {
-      setSelectedModelId(modelList[0].id);
+      setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
   }, [open, modelList, selectedModelId]);
 
@@ -553,14 +553,17 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const failures: BulkRuntimeFailure[] = [];
 
       let processed = 0;
+      // The engine writes straight to the view: record each chunk as it lands (#5861, #5958).
+      const record = recordRun(useViewerStore.getState, selectedModelId);
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         if (executeCancelRef.current) break;
 
         const end = Math.min(i + CHUNK_SIZE, total);
+        const chunk: typeof mutations = [];
         for (let j = i; j < end; j++) {
           try {
             const mutation = queryEngine.applyAction(entityIds[j], action);
-            if (mutation) mutations.push(mutation);
+            if (mutation) chunk.push(mutation);
           } catch (error) {
             const detail = error instanceof Error ? error.message : undefined;
             errors.push(t('bulkPropertyEditor.entityError', {
@@ -571,13 +574,16 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
           }
         }
 
+        mutations.push(...chunk);
+        record(chunk);
+
         processed = end;
         setExecuteProgress({ done: end, total });
         // Yield to browser so progress bar and spinner update
         await new Promise(r => setTimeout(r, 0));
       }
 
-      const cancelled = executeCancelRef.current;
+      const cancelled = executeCancelRef.current && processed < total; // a cancel in the last yield stopped nothing (#5958)
       if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
       const result: BulkQueryResult = {
         mutations,
@@ -588,10 +594,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
-
-      // The engine wrote straight to the view: record the run (a cancelled
-      // run's applied part included) as ONE undo step (#5861).
-      if (selectedModelId) recordMutationBatch(selectedModelId, mutations);
     } catch (error) {
       console.error('Execute failed:', error);
       setExecuteResult({
@@ -606,7 +608,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, recordMutationBatch, selectedModelId, t]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, selectedModelId, t]);
 
   // Reset form
   const handleReset = useCallback(() => {

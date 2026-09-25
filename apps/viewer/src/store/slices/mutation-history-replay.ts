@@ -109,22 +109,54 @@ export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, mo
  * editor, CSV import) as ONE undo step: push them, tag them with one batch
  * id, clear the redo branch, mark the model dirty and bump `mutationVersion`,
  * all in a single store update. Returns the batch id, or null when empty.
+ *
+ * A chunked writer records each chunk as it is applied, passing the id the
+ * first chunk returned, so the run stays one undo step while an edit that
+ * lands during one of its yields keeps its place in commit order instead of
+ * sitting below the whole run (#5958). See `recordRun` in
+ * `lib/model-placement/history.ts`.
  */
-export function recordMutationBatch(set: Set, modelId: string, mutations: readonly Mutation[]): string | null {
+export function recordMutationBatch(
+  set: Set,
+  modelId: string,
+  mutations: readonly Mutation[],
+  continuing?: string,
+): string | null {
   if (mutations.length === 0) return null;
-  const batchId = newMutationBatchId();
+  const batchId = continuing ?? newMutationBatchId();
+  const owns = (container: object) => continuing !== undefined && batchOwned.get(container) === batchId;
   set((s) => {
     const undoStacks = new Map(s.undoStacks);
-    undoStacks.set(modelId, [...(undoStacks.get(modelId) ?? []), ...mutations]);
+    const stack = undoStacks.get(modelId) ?? [];
+    if (owns(stack)) (stack as Mutation[]).push(...mutations);
+    else undoStacks.set(modelId, own([...stack, ...mutations], batchId));
     const redoStacks = new Map(s.redoStacks);
     redoStacks.set(modelId, []);
+    let tags = s.mutationBatchTags;
+    if (owns(tags)) for (const m of mutations) tags.set(m.id, batchId);
+    else tags = own(withMutationBatchTags(tags, mutations.map((m) => m.id), batchId), batchId);
     return {
       undoStacks,
       redoStacks,
       dirtyModels: new Set(s.dirtyModels).add(modelId),
-      mutationBatchTags: withMutationBatchTags(s.mutationBatchTags, mutations.map((m) => m.id), batchId),
+      mutationBatchTags: tags,
       mutationVersion: s.mutationVersion + 1,
     };
   });
   return batchId;
+}
+
+/**
+ * The undo stack and tag map this module copied for a batch that later
+ * chunks may extend. A later chunk of that batch appends to them in place
+ * instead of copying the whole history again: a 100k-entity Bulk run is 200
+ * chunks, and a copy per chunk made recording quadratic. Every other writer
+ * replaces the stack or map, which ends the ownership, so this never touches
+ * a container someone else made.
+ */
+const batchOwned = new WeakMap<object, string>();
+
+function own<T extends object>(container: T, batchId: string): T {
+  batchOwned.set(container, batchId);
+  return container;
 }

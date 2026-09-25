@@ -456,6 +456,7 @@ export function useIfcLoader() {
       memoryAccounting.recordPhase({ phase: 'load-start' });
 
       setLoading(true);
+      useViewerStore.getState().setLoadingFileName(file.name); // #5849: the loading card's title
       setError(null);
       // #5175: a fresh load attempt (including the retry this very prompt
       // triggers) always supersedes whatever refusal prompted it.

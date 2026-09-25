@@ -48,6 +48,7 @@ function startLoading() {
 afterEach(() => {
   const s = store.getState();
   s.setActiveLoadCanceller(null);
+  s.setActiveStreamCanceller(null);
   s.resetViewerState();
   s.clearAllModels();
 });
@@ -84,5 +85,33 @@ describe('primary load cancel (#5849)', () => {
     assert.equal(store.getState().activeLoadCanceller, second, 'the newer load keeps its Cancel');
     releaseSecond();
     assert.equal(store.getState().activeLoadCanceller, null);
+  });
+
+  it('a retained cancel from a replaced load does nothing to the load that replaced it', () => {
+    assert.ok(installPrimaryLoadCanceller);
+    let firstSuperseded = 0;
+    installPrimaryLoadCanceller(() => { firstSuperseded += 1; });
+    const staleCancel = store.getState().activeLoadCanceller;
+    assert.ok(staleCancel);
+    startLoading();
+    installPrimaryLoadCanceller(() => {});
+    const current = store.getState().activeLoadCanceller;
+
+    staleCancel();
+
+    const after = store.getState();
+    assert.equal(firstSuperseded, 0, 'the stale cancel supersedes nothing');
+    assert.equal(after.loading, true, 'the newer load keeps loading');
+    assert.equal(after.models.size, 1, 'the newer load keeps its model record');
+    assert.equal(after.activeLoadCanceller, current, 'the newer load keeps its Cancel');
+  });
+
+  it('also stops a point-cloud stream the primary load is running', () => {
+    assert.ok(installPrimaryLoadCanceller);
+    let streamCancelled = 0;
+    store.getState().setActiveStreamCanceller(() => { streamCancelled += 1; });
+    installPrimaryLoadCanceller(() => {});
+    store.getState().activeLoadCanceller?.();
+    assert.equal(streamCancelled, 1, 'the stream is stopped, not just orphaned by the session bump');
   });
 });

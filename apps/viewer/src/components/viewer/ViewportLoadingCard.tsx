@@ -22,14 +22,12 @@ export function ViewportLoadingCard() {
   const loading = useViewerStore((s) => s.loading);
   const progress = useViewerStore(selectActiveLoadProgress);
   const cancel = useViewerStore(selectLoadCanceller);
-  // The model still loading: its record is registered before parsing begins.
-  const fileName = useViewerStore((s) => {
-    for (const model of s.models.values()) {
-      if (model.loadState !== 'complete' && model.loadState !== 'error') return model.name;
-    }
-    return null;
-  });
+  const fileName = useViewerStore((s) => s.loadingFileName);
   if (!loading) return null;
+
+  const title = fileName
+    ? t('viewportLighting.container.loadingCard.title', { name: fileName })
+    : t('viewportLighting.container.loadingCard.titleFallback');
 
   const percent = Math.round(progress?.percent ?? 0);
   return (
@@ -37,14 +35,14 @@ export function ViewportLoadingCard() {
       <div data-viewport-loading-card className="pointer-events-auto w-full max-w-sm rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
-          <p className="min-w-0 flex-1 truncate text-sm font-medium" title={fileName ?? undefined}>
-            {fileName
-              ? t('viewportLighting.container.loadingCard.title', { name: fileName })
-              : t('viewportLighting.container.loadingCard.titleFallback')}
+          <p className="min-w-0 flex-1 truncate text-sm font-medium" title={fileName ?? undefined} aria-hidden="true">
+            {title}
           </p>
         </div>
-        {/* The live region: phase and percentage are announced as they change. */}
+        {/* The live region (an <output>, the jsx-a11y ratchet's stand-in for
+            role="status"): which file, the phase and the percentage. */}
         <output aria-live="polite" className="mt-2 block truncate text-xs text-muted-foreground">
+          <span className="sr-only">{title}: </span>
           {progress?.phase ?? t('viewportLighting.container.loadingCard.titleFallback')}
           {!progress?.indeterminate && ` · ${percent}%`}
         </output>

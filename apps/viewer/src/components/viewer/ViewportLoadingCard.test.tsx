@@ -36,7 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  act(() => useViewerStore.setState({ loading: false, progress: null, geometryProgress: null, activeStreamCanceller: null, activeLoadCanceller: null }));
+  act(() => useViewerStore.setState({ loading: false, progress: null, geometryProgress: null, activeStreamCanceller: null, activeLoadCanceller: null, loadingFileName: null }));
 });
 
 function renderCard(): HTMLElement {
@@ -63,6 +63,15 @@ describe('in-viewport loading card (#5849)', () => {
     assert.ok(button, 'a Cancel button is rendered when the load can be cancelled');
     click(button);
     assert.equal(cancelled, 1);
+  });
+
+  it('names the file being loaded, including a federated add with no model record yet', () => {
+    act(() => useViewerStore.setState({ loadingFileName: 'added.ifc', models: new Map() }));
+    const container = renderCard();
+    const card = container.querySelector('[data-viewport-loading-card]');
+    assert.ok(card?.textContent?.includes('added.ifc'), `the card names the file: ${card?.textContent}`);
+    const status = container.querySelector('output');
+    assert.ok(status?.textContent?.includes('added.ifc'), `the live region announces which file: ${status?.textContent}`);
   });
 
   it('is not rendered when nothing is loading', () => {

@@ -36,6 +36,12 @@ export interface LoadingSlice {
    */
   activeLoadCanceller: (() => void) | null;
   /**
+   * The file the most recently started load is reading (#5849), primary or
+   * federated. The loading card names it; a federated add registers no model
+   * record until it finalizes, so the models map cannot say which file it is.
+   */
+  loadingFileName: string | null;
+  /**
    * #5175: set exactly when a LandXML load fails because the source declares
    * no `<Units>` (the LXML009 refusal). Lets a banner offer the user a
    * linear-unit choice and retry the same load with it — the ONLY UI path
@@ -55,6 +61,7 @@ export interface LoadingSlice {
   setError: (error: string | null) => void;
   setActiveStreamCanceller: (cancel: (() => void) | null) => void;
   setActiveLoadCanceller: (cancel: (() => void) | null) => void;
+  setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
 }
 
@@ -68,6 +75,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   error: null,
   activeStreamCanceller: null,
   activeLoadCanceller: null,
+  loadingFileName: null,
   landXmlUnitsRefusal: null,
 
   // Actions
@@ -79,6 +87,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setError: (error) => set({ error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
+  setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
 });
 
@@ -103,7 +112,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  */
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
-  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'landXmlUnitsRefusal'],
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal'],
   {
     'session-reset': () => ({
       loading: false,
@@ -112,6 +121,7 @@ export const loadingTeardown = defineSliceTeardown(
       geometryProgress: null,
       metadataProgress: null,
       error: null,
+      loadingFileName: null,
       landXmlUnitsRefusal: null,
     }),
     'model-removed': notApplicable,

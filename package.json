@@ -54,6 +54,7 @@
     "check:ifc4-express-corrections": "node scripts/generate-ifc4-express-corrections.mjs --check",
     "check:ifc4-required-slots": "node scripts/generate-ifc4-required-slots.mjs --check",
     "check:enum-reconciliation": "node scripts/generate-enum-reconciliation.mjs --check",
+    "check:step-log-tables": "node scripts/generate-step-log-tables.mjs --check",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:icon-button-adoption": "node scripts/check-icon-button-adoption.mjs",

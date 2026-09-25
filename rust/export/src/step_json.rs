@@ -9,6 +9,7 @@
 use serde::Deserialize;
 
 use crate::step::{export_step, AttrMutation, PropMutation, StepOptions};
+use crate::step_log::{export_step_with_log, MutationLog};
 
 
 #[derive(Deserialize)]
@@ -39,7 +40,17 @@ struct MutationsJson {
 }
 
 /// Export STEP from raw bytes + a JSON mutation payload (the wasm bridge form of a
-/// `MutablePropertyView` diff). `mutations_json` shape:
+/// `MutablePropertyView` diff).
+///
+/// Two payload shapes are accepted. A payload with a `mutations` array is the
+/// mutation LOG `MutablePropertyView.exportMutations()` writes (optionally with
+/// `newEntities` / `georefMutations`, see [`crate::MutationLog`]) and goes
+/// through [`crate::export_step_with_log`], the writer that applies the whole
+/// mutation vocabulary with byte parity to the TypeScript `StepExporter`
+/// (#5941). Any other object is the older pre-serialized shape below. A payload
+/// carrying both is refused: which set of edits it meant is not recoverable.
+///
+/// The older `mutations_json` shape:
 /// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
 /// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
 /// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). An empty string means "no mutations" —
@@ -56,6 +67,21 @@ pub fn export_step_json(
     included: Option<Vec<u32>>,
     mutations_json: &str,
 ) -> Result<String, String> {
+    if !mutations_json.trim().is_empty() {
+        let value: serde_json::Value =
+            serde_json::from_str(mutations_json).map_err(|e| format!("invalid mutations_json: {e}"))?;
+        if value.get("mutations").is_some() {
+            if value.get("attributeUpdates").is_some() || value.get("propertyMutations").is_some() {
+                return Err("invalid mutations_json: a mutation log (`mutations`) cannot be combined with \
+                            `attributeUpdates` / `propertyMutations`"
+                    .to_string());
+            }
+            let log: MutationLog =
+                serde_json::from_value(value).map_err(|e| format!("invalid mutations_json: {e}"))?;
+            let opts = StepOptions { schema, included, ..StepOptions::default() };
+            return export_step_with_log(content, &opts, &log).map(|(s, _)| s).map_err(|e| e.to_string());
+        }
+    }
     let muts: MutationsJson = if mutations_json.trim().is_empty() {
         MutationsJson::default()
     } else {

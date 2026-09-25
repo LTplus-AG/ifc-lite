@@ -655,6 +655,11 @@ pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedS
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
+// A `MutablePropertyView.exportMutations()` log, applied with byte parity to
+// the TypeScript `StepExporter` (#5941). `MutationLog::from_json` reads the log.
+pub use step_log::{export_step_with_log, export_step_with_log_to_writer, MutationLog,
+                   LogMutation, LogNewEntity, MutationKind, GeorefMutations,
+                   LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
 // `ExportModel` and both streaming entry points carry the model's UnitScales.
 // Attribute values are in the FILE's units, unlike the geometry exporters'
@@ -669,6 +674,17 @@ pub use model::{stream_export_model_with_options, build_export_model_with_option
                 ModelOptions, Placement};
 pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 ```
+
+`export_step_with_log` applies the mutation log a `MutablePropertyView`
+records (`exportMutations()`), replayed as `importMutations` replays it into a
+view wired like the viewer's, and writes the file the TypeScript `StepExporter`
+writes for it: byte-identical apart from the GlobalIds of generated records,
+which are derived from the host and the new express id. Records the log does
+not change stream from the source; memory beyond the record index grows with
+the edits. A log carrying a mutation kind the writer does not apply yet is an
+`InvalidInput` error, as is combining a log with `StepOptions::included` or
+with the per-edit vectors. `LogExportStats` reports the new and modified entity
+counts the header states and the warnings the TypeScript exporter would give.
 
 `export_step_with_stats` returns `StepStats`. `total` and `written` describe
 the selected entity set. The remaining counters are validity or refusal

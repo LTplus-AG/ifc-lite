@@ -34,6 +34,7 @@ import { runClassToggleShardContract } from './lib/class-toggle-shard-contract.m
 import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs';
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun, runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
+import { runStepLogContracts } from './lib/wasm-step-log-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -119,6 +120,7 @@ function test(name, fn) {
 
 runAppearanceContracts(IfcAPI, test);
 runLandXmlContracts(api, test);
+runStepLogContracts(api, test);
 
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);

@@ -6,7 +6,7 @@
 
 use super::material_units::MaterialUnitContext;
 use super::types::{EntityJob, MaterialAssociation};
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{EntityDecoder, IfcType};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ struct ResolvedLayer {
 /// Resolve an `IfcMaterialLayer`'s referenced `IfcMaterial` name.
 fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<(String, Option<String>, bool)> {
     let mat = decoder.decode_by_id(material_id).ok()?;
-    if !mat.ifc_type.as_str().eq_ignore_ascii_case("IFCMATERIAL") {
+    if !mat.ifc_type.is_subtype_of(IfcType::IfcMaterial) {
         return None;
     }
     // An unnamed IfcMaterial still proves an association and may have a Category.
@@ -86,6 +86,9 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, layer_id)| {
                     let layer = decoder.decode_by_id(layer_id).ok()?;
+                    if !layer.ifc_type.is_subtype_of(IfcType::IfcMaterialLayer) {
+                        return None;
+                    }
                     // IfcMaterialLayer: Material(0), LayerThickness(1),
                     // IsVentilated(2), Name(3), Description(4), Category(5).
                     let (material_name, material_category, material_name_present) = match layer.get_ref(0) {
@@ -159,6 +162,9 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, cid)| {
                     let constituent = decoder.decode_by_id(cid).ok()?;
+                    if !constituent.ifc_type.is_subtype_of(IfcType::IfcMaterialConstituent) {
+                        return None;
+                    }
                     let (material_name, material_category, material_name_present) = match constituent.get_ref(2) {
                         Some(mid) => material_details_of(decoder, mid)?,
                         None => (String::new(), None, false),
@@ -205,6 +211,9 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, pid)| {
                     let profile = decoder.decode_by_id(pid).ok()?;
+                    if !profile.ifc_type.is_subtype_of(IfcType::IfcMaterialProfile) {
+                        return None;
+                    }
                     let (material_name, material_category, material_name_present) = match profile.get_ref(2) {
                         Some(mid) => material_details_of(decoder, mid)?,
                         None => (String::new(), None, false),

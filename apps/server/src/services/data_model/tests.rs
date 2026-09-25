@@ -95,6 +95,28 @@ fn keeps_optional_material_absence_but_drops_unreadable_set_members_5296() {
     assert_eq!(layers.len(), 2, "an authored absent material ref remains a complete layer");
     assert_eq!(layers[1].material_id, None);
     assert!(!layers[1].material_name_present);
+
+    let wrong_members = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYERSET((#32,#33)", "IFCMATERIALLAYERSET((#32,#30)")
+        .replace("IFCMATERIALCONSTITUENTSET('ColSet',$,(#62))", "IFCMATERIALCONSTITUENTSET('ColSet',$,(#61))")
+        .replace("IFCMATERIALPROFILESET('BeamSet',$,(#72),$)", "IFCMATERIALPROFILESET('BeamSet',$,(#71),$)");
+    let dm = extract_data_model_checked(&wrong_members);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "wrong-type layer member must not complete the set");
+    assert_eq!(layers[0].member_count, 2);
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "wrong-type constituent and profile members must not be forwarded");
+
+    let offset_subtypes = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$)",
+            "IFCMATERIALLAYERWITHOFFSETS(#31,50.,.T.,'Insul',$,$,$,.AXIS1.,(0.,0.))")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,$,$,$)",
+            "IFCMATERIALPROFILEWITHOFFSETS('Flange',$,#71,$,$,$,(0.,0.))");
+    let dm = extract_data_model_checked(&offset_subtypes);
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 28).count(), 2,
+        "valid IfcMaterialLayerWithOffsets subtype must remain readable");
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 70).count(), 1,
+        "valid IfcMaterialProfileWithOffsets subtype must remain readable");
 }
 
 #[test]

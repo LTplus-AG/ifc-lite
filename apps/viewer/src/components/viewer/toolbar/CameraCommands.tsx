@@ -35,6 +35,7 @@ import {
 } from '@/icons';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import {
   buildCameraCommands,
   type CameraCommand,
@@ -110,7 +111,7 @@ export function CameraCommandMenuItems() {
                 >
                   <Icon className="h-4 w-4 mr-2" /> {t(command.labelKey)}
                   {command.shortcut && (
-                    <span className="ml-auto text-xs opacity-60">{command.shortcut}</span>
+                    <span className="ml-auto text-xs opacity-60">{shortcutLabel(command.shortcut)}</span>
                   )}
                 </DropdownMenuItem>
               );

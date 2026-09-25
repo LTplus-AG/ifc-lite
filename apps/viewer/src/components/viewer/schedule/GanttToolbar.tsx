@@ -38,6 +38,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 interface GanttToolbarProps {
   onOpenGenerate?: () => void;
@@ -337,9 +338,8 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
         </Tooltip>
       )}
 
-      {/* Undo / Redo for schedule edits. Gated on stack depth so the
-          buttons only appear when there's actually something to undo —
-          avoids a persistent greyed-out pair on clean schedules. */}
+      {/* Undo / Redo for schedule edits, shown only when a stack is non-empty
+          so a clean schedule has no persistent greyed-out pair. */}
       {(undoDepth > 0 || redoDepth > 0) && (
         <div className="flex items-center gap-1">
           <Tooltip>
@@ -354,7 +354,7 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.undoTooltip')}</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.undoTooltip', { keys: shortcutLabel('schedule.undo') })}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -368,7 +368,7 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.redoTooltip')}</TooltipContent>
+            <TooltipContent>{t('schedule.toolbar.redoTooltip', { keys: shortcutLabel('schedule.redo') })}</TooltipContent>
           </Tooltip>
         </div>
       )}

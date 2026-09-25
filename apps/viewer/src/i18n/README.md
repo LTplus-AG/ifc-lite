@@ -706,11 +706,12 @@ privacy disclosure's intro/WASM link/verification line, the app name,
 version, homepage/docs/GitHub/report-issue links, license, and the
 package-count disclosure), the What's New tab (the current-version banner,
 per-release version/viewer-badge/change-count, and the Feature/Fix/Perf
-legend), and the Shortcuts tab's own "Learn more" row. Shortcut CATEGORY
-names, DESCRIPTIONS, and key-combination glyphs (`⌘`, `Ctrl`, `⇧`) come
-from `KEYBOARD_SHORTCUTS` (`@/hooks/keyboard-shortcuts-list`) and stay out
-of the catalogue as model content, same reasoning as every other data
-table in this sweep; the `F12` key name in the privacy disclosure is
+legend), and the Shortcuts tab's own "Learn more" row. The Shortcuts tab's
+rows are generated from the keyboard command table
+(`@/lib/commands/keyboard-commands`, #5836): their category names and
+descriptions live in `commands.en.ts`, and their key glyphs are not strings
+at all but chords formatted per platform (`⌘⇧Z` on Apple, `Ctrl+Shift+Z`
+elsewhere); the `F12` key name in the privacy disclosure is
 likewise routed through `t()` without translation, the same house rule
 that keeps `GlobalId` and IFC EXPRESS names spelled exactly while still
 satisfying the ending gate. `LearnTab.tsx` (the fourth tab) has its own

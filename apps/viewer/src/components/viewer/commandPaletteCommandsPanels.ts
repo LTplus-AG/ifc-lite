@@ -95,7 +95,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => {
         useViewerStore.getState().setFlavorDialogRequested(true);
       } },
-    { id: 'sidebar:toggle', label: 'Toggle Sidebar', ...withKey('commandPalette.sidebar.toggle.label'), keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'Alt+\\',
+    { id: 'sidebar:toggle', label: 'Toggle Sidebar', ...withKey('commandPalette.sidebar.toggle.label'), keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'ui.toggleSidebar',
       action: () => { useViewerStore.getState().toggleSidebar(); } },
     { id: 'sidebar:collapse', label: 'Collapse Sidebar to Icons', ...withKey('commandPalette.sidebar.collapse.label'), keywords: 'sidebar collapse icons rail minimize', category: 'Panels', icon: ChevronsRight,
       action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
@@ -147,7 +147,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
 
   // ── Preferences ──
   c.push(
-    { id: 'pref:theme', label: 'Theme', ...withKey('commandPalette.pref.theme.label'), keywords: 'dark light mode appearance switch', category: 'Preferences', icon: Sun, shortcut: 'T',
+    { id: 'pref:theme', label: 'Theme', ...withKey('commandPalette.pref.theme.label'), keywords: 'dark light mode appearance switch', category: 'Preferences', icon: Sun, shortcut: 'ui.toggleTheme',
       action: () => { useViewerStore.getState().toggleTheme(); } },
     { id: 'pref:tooltips', label: 'Hover Tooltips', ...withKey('commandPalette.pref.tooltips.label'), keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
       action: () => { useViewerStore.getState().toggleHoverTooltips(); } },

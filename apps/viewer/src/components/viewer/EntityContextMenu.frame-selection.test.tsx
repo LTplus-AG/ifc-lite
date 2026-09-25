@@ -17,6 +17,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { setPlatform } from '@/test/platform.js';
 import { parseFixtureModel, FIXTURE_WALL_A, FIXTURE_WALL_B } from './anonymized-export/anonymized-export-fixture.test-support.js';
 
 const ID_OFFSET = 1_000_000;
@@ -105,7 +107,8 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     const container = render();
     const hints: Array<[string, string]> = [
       ['Frame selection', 'F'],
-      ['Hide', 'Del'],
+      // Every chord that hides, from the keyboard command table (#5836).
+      ['Hide', 'Del, Backspace, Space'],
       ['Set Basket', '='],
       ['Add to Basket', '+'],
       ['Remove from Basket', '−'],
@@ -121,5 +124,31 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
     const container = render();
     assert.equal(menuItem(container, 'Show all').querySelectorAll('span')[1]?.textContent, 'A');
+  });
+});
+
+describe('EntityContextMenu — Duplicate key hint follows the platform (#5836)', () => {
+  afterEach(() => {
+    setPlatform(null);
+    useViewerStore.setState({ mutationViews: new Map() });
+  });
+
+  function duplicateHint(platform: string): string | null | undefined {
+    setPlatform(platform);
+    // Duplicate needs an editable model: a mutation view makes `canEdit` true.
+    useViewerStore.getState().registerMutationView('m1', new MutablePropertyView(null, 'm1'));
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
+    const container = render();
+    const row = [...container.querySelectorAll('button')].find((b) => b.querySelector('span')?.textContent === 'Duplicate');
+    assert.ok(row, 'the Duplicate row rendered');
+    return row.querySelectorAll('span')[1]?.textContent;
+  }
+
+  it('says Ctrl+D off Apple platforms', () => {
+    assert.equal(duplicateHint('Win32'), 'Ctrl+D');
+  });
+
+  it('says ⌘D on Apple platforms', () => {
+    assert.equal(duplicateHint('MacIntel'), '⌘D');
   });
 });

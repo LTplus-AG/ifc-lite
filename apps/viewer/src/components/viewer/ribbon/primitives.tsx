@@ -14,6 +14,7 @@ import React, { forwardRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 
 /** Subtle pressed-state tint shared by ribbon toggles (loud solid fills
  *  read as alarm at ribbon scale; Office-style tint + inset ring reads
@@ -24,8 +25,8 @@ export const RIBBON_ACTIVE_CLASS =
 
 interface RibbonTooltipProps {
   label: string;
-  /** Extra tooltip line (keyboard shortcut or state hint). */
-  shortcut?: string;
+  /** Keyboard command whose keys the tooltip names (`lib/commands`). */
+  shortcut?: KeyCommandId;
   tooltip?: string;
   children: React.ReactElement;
 }
@@ -39,7 +40,7 @@ function RibbonTooltip({ label, shortcut, tooltip, children }: RibbonTooltipProp
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent>
         {tooltip ?? label}
-        {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+        {shortcut && <span className="ml-2 text-xs opacity-60">({shortcutLabel(shortcut)})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -54,8 +55,8 @@ export interface RibbonButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLB
   activeClassName?: string;
   /** Tooltip body when the visible label isn't the whole story. */
   tooltip?: string;
-  /** Keyboard shortcut shown in the tooltip. */
-  shortcut?: string;
+  /** Keyboard command whose keys the tooltip names (`lib/commands`). */
+  shortcut?: KeyCommandId;
   /** Renders a small chevron: the button opens a menu. */
   hasMenu?: boolean;
   /** Corner count badge (e.g. peers in room, basket size). */

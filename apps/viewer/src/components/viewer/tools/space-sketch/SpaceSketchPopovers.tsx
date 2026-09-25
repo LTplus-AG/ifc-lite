@@ -11,6 +11,7 @@
 import { Undo2, Redo2, Magnet } from 'lucide-react';
 import type { BoundaryMode } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import type { TranslationKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { HudSegmented } from '../../../viewport-ui/hud';
@@ -153,10 +154,10 @@ export function MorePopover(p: MorePopoverProps) {
     <div className="space-y-2 text-[11px]">
       <div className="space-y-0.5">
         <button type="button" className={MORE_ROW} onClick={p.onUndo} disabled={!p.canUndo}>
-          <Undo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.undoTitle')}
+          <Undo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.undoTitle', { keys: shortcutLabel('spaceSketch.undo') })}
         </button>
         <button type="button" className={MORE_ROW} onClick={p.onRedo} disabled={!p.canRedo}>
-          <Redo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.redoTitle')}
+          <Redo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.redoTitle', { keys: shortcutLabel('spaceSketch.redo') })}
         </button>
         <label className={cn(MORE_ROW, 'cursor-pointer justify-between')}>
           <span className="flex items-center gap-2">

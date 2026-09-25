@@ -73,11 +73,11 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
 
   // ── View ──
   c.push(
-    { id: 'view:home', label: 'Home', ...withKey('commandPalette.view.home.label'), keywords: 'isometric reset camera', category: 'View', icon: Home, shortcut: 'H',
+    { id: 'view:home', label: 'Home', ...withKey('commandPalette.view.home.label'), keywords: 'isometric reset camera', category: 'View', icon: Home, shortcut: 'camera.home',
       action: () => { goHomeFromStore(); } },
-    { id: 'view:fit', label: 'Fit All', ...withKey('commandPalette.view.fit.label'), keywords: 'zoom extents entire model', category: 'View', icon: Maximize2, shortcut: 'Z',
+    { id: 'view:fit', label: 'Fit All', ...withKey('commandPalette.view.fit.label'), keywords: 'zoom extents entire model', category: 'View', icon: Maximize2, shortcut: 'camera.fitAll',
       action: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); } },
-    { id: 'view:frame', label: 'Frame Selection', ...withKey('commandPalette.view.frame.label'), keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'F',
+    { id: 'view:frame', label: 'Frame Selection', ...withKey('commandPalette.view.frame.label'), keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'camera.frameSelection',
       action: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); } },
     { id: 'view:stacked', label: 'Level — Stacked', ...withKey('commandPalette.view.stacked.label'), keywords: 'level display mode stacked default storey storeys', category: 'View', icon: Layers3,
       action: () => { applyLevelDisplayMode('stacked'); } },
@@ -87,17 +87,17 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { applyLevelDisplayMode('solo'); } },
     { id: 'view:projection', label: 'Projection', ...withKey('commandPalette.view.projection.label'), keywords: 'perspective orthographic ortho toggle switch', category: 'View', icon: Orbit,
       action: () => { useViewerStore.getState().toggleProjectionMode(); } },
-    { id: 'view:top', label: 'Top View', ...withKey('commandPalette.view.top.label'), keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: '1',
+    { id: 'view:top', label: 'Top View', ...withKey('commandPalette.view.top.label'), keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: 'camera.viewTop',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('top'); } },
-    { id: 'view:bottom', label: 'Bottom View', ...withKey('commandPalette.view.bottom.label'), keywords: 'camera', category: 'View', icon: ArrowDown, shortcut: '2',
+    { id: 'view:bottom', label: 'Bottom View', ...withKey('commandPalette.view.bottom.label'), keywords: 'camera', category: 'View', icon: ArrowDown, shortcut: 'camera.viewBottom',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('bottom'); } },
-    { id: 'view:front', label: 'Front View', ...withKey('commandPalette.view.front.label'), keywords: 'camera elevation', category: 'View', icon: ArrowRight, shortcut: '3',
+    { id: 'view:front', label: 'Front View', ...withKey('commandPalette.view.front.label'), keywords: 'camera elevation', category: 'View', icon: ArrowRight, shortcut: 'camera.viewFront',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('front'); } },
-    { id: 'view:back', label: 'Back View', ...withKey('commandPalette.view.back.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: '4',
+    { id: 'view:back', label: 'Back View', ...withKey('commandPalette.view.back.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: 'camera.viewBack',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('back'); } },
-    { id: 'view:left', label: 'Left View', ...withKey('commandPalette.view.left.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: '5',
+    { id: 'view:left', label: 'Left View', ...withKey('commandPalette.view.left.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: 'camera.viewLeft',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('left'); } },
-    { id: 'view:right', label: 'Right View', ...withKey('commandPalette.view.right.label'), keywords: 'camera', category: 'View', icon: ArrowRight, shortcut: '6',
+    { id: 'view:right', label: 'Right View', ...withKey('commandPalette.view.right.label'), keywords: 'camera', category: 'View', icon: ArrowRight, shortcut: 'camera.viewRight',
       action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('right'); } },
     ...(p.cesiumAvailable ? [{
       id: 'view:world', label: 'Toggle 3D World Context', ...withKey('commandPalette.view.world.label'), keywords: 'cesium globe earth satellite terrain georeference basemap context site',
@@ -115,23 +115,23 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
 
   // ── Tools ──
   c.push(
-    { id: 'tool:select', label: 'Select', ...withKey('commandPalette.tool.select.label'), keywords: 'pick click pointer', category: 'Tools', icon: MousePointer2, shortcut: 'V',
+    { id: 'tool:select', label: 'Select', ...withKey('commandPalette.tool.select.label'), keywords: 'pick click pointer', category: 'Tools', icon: MousePointer2, shortcut: 'tool.select',
       action: () => { useViewerStore.getState().setActiveTool('select'); } },
-    { id: 'tool:walk', label: 'Walk', ...withKey('commandPalette.tool.walk.label'), keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding, shortcut: 'C',
+    { id: 'tool:walk', label: 'Walk', ...withKey('commandPalette.tool.walk.label'), keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding, shortcut: 'tool.walk',
       action: () => { useViewerStore.getState().setActiveTool('walk'); } },
     { id: 'model:reposition', label: 'Reposition models', ...withKey('commandPalette.tool.reposition.label'), keywords: 'move align pointcloud origin offset translate', category: 'Tools', icon: Crosshair, action: () => openRepositionModels() },
-    { id: 'tool:measure', label: 'Measure', ...withKey('commandPalette.tool.measure.label'), keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler, shortcut: 'M',
+    { id: 'tool:measure', label: 'Measure', ...withKey('commandPalette.tool.measure.label'), keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler, shortcut: 'tool.measure',
       action: () => { useViewerStore.getState().setActiveTool('measure'); } },
-    { id: 'tool:section', label: 'Section', ...withKey('commandPalette.tool.section.label'), keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'X',
+    { id: 'tool:section', label: 'Section', ...withKey('commandPalette.tool.section.label'), keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'tool.section',
       action: () => { useViewerStore.getState().setActiveTool('section'); } },
-    { id: 'tool:annotate', label: 'Annotate', ...withKey('commandPalette.tool.annotate.label'), keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote, shortcut: 'P',
+    { id: 'tool:annotate', label: 'Annotate', ...withKey('commandPalette.tool.annotate.label'), keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote, shortcut: 'tool.annotate',
       action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
     ...(p.canEditInSession ? [
       { id: 'tool:add-element', label: 'Add Element', ...withKey('commandPalette.tool.addElement.label'), keywords: 'wall slab beam column place drop new add element generic', category: 'Tools' as const, icon: Box,
         action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
-      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', ...withKey('commandPalette.tool.editMode.label'), keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools' as const, icon: PenLine, shortcut: 'E',
+      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', ...withKey('commandPalette.tool.editMode.label'), keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools' as const, icon: PenLine, shortcut: 'edit.toggleEditMode' as const,
         action: () => { useViewerStore.getState().toggleEditEnabled(); } },
-      { id: 'tool:split', label: 'Split selected entity', ...withKey('commandPalette.tool.split.label'), keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools' as const, icon: Slice, shortcut: 'K',
+      { id: 'tool:split', label: 'Split selected entity', ...withKey('commandPalette.tool.split.label'), keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools' as const, icon: Slice, shortcut: 'tool.split' as const,
         action: () => {
           const s = useViewerStore.getState();
           const sel = s.selectedEntity;
@@ -144,19 +144,19 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
 
   // ── Visibility ──
   c.push(
-    { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'Del / Space',
+    { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'visibility.hideSelection',
       action: () => {
         const s = useViewerStore.getState();
         const ids = s.selectedEntityIds.size > 0 ? Array.from(s.selectedEntityIds) : s.selectedEntityId !== null ? [s.selectedEntityId] : [];
         if (ids.length > 0) { s.hideEntities(ids); s.clearSelection(); }
       } },
-    { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'A',
+    { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'visibility.showAll',
       action: () => { resetVisibilityForHomeFromStore(); } },
-    { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: '=',
+    { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: 'basket.set',
       action: () => executeBasketSet() },
-    { id: 'vis:add-iso', label: 'Add to Basket', ...withKey('commandPalette.vis.addBasket.label'), keywords: 'basket plus selection hierarchy view', category: 'Visibility', icon: Plus, shortcut: '+',
+    { id: 'vis:add-iso', label: 'Add to Basket', ...withKey('commandPalette.vis.addBasket.label'), keywords: 'basket plus selection hierarchy view', category: 'Visibility', icon: Plus, shortcut: 'basket.add',
       action: () => executeBasketAdd() },
-    { id: 'vis:remove-iso', label: 'Remove from Basket', ...withKey('commandPalette.vis.removeBasket.label'), keywords: 'basket minus selection hierarchy view', category: 'Visibility', icon: Minus, shortcut: '−',
+    { id: 'vis:remove-iso', label: 'Remove from Basket', ...withKey('commandPalette.vis.removeBasket.label'), keywords: 'basket minus selection hierarchy view', category: 'Visibility', icon: Minus, shortcut: 'basket.remove',
       action: () => executeBasketRemove() },
     { id: 'vis:toggle-iso', label: 'Toggle Basket Visibility', ...withKey('commandPalette.vis.toggleBasket.label'), keywords: 'basket show hide', category: 'Visibility', icon: Eye,
       action: () => executeBasketToggleVisibility() },

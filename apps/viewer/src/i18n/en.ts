@@ -20,6 +20,7 @@ import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -96,6 +97,7 @@ export const en = {
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
+  ...commandsEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...chartsEn,

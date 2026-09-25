@@ -19,8 +19,8 @@ function GithubIcon({ className }: { className?: string }) {
 }
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
 import { LearnTab } from '@/components/tours/LearnTab';
+import { ShortcutsTab } from './ShortcutsTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation } from '@/i18n';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
@@ -366,68 +366,6 @@ function WhatsNewTab() {
           <Zap className="h-3 w-3 text-blue-500" /> {t('keyboardShortcuts.whatsNew.legendPerf')}
         </span>
       </div>
-    </div>
-  );
-}
-
-function ShortcutsTab() {
-  const { t } = useTranslation(); // Group shortcuts by category
-  const grouped = KEYBOARD_SHORTCUTS.reduce(
-    (acc, shortcut) => {
-      if (!acc[shortcut.category]) {
-        acc[shortcut.category] = [];
-      }
-      acc[shortcut.category].push(shortcut);
-      return acc;
-    },
-    {} as Record<string, (typeof KEYBOARD_SHORTCUTS)[number][]>
-  );
-
-  return (
-    <div className="space-y-4">
-      {/* Learn-more row: drives discovery to the marketing site and the github.io
-          docs. Sits above the shortcut groups so it's the first thing users hunting
-          for help see, without crowding the keyboard reference itself. */}
-      <div className="rounded border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{t('keyboardShortcuts.shortcuts.learnMore')}</span>
-        <a
-          href="https://ifclite.dev"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-2 underline-offset-2 hover:underline hover:text-primary transition-colors"
-        >
-          {t('keyboardShortcuts.shortcuts.homepageLink')}
-        </a>
-        <span className="mx-1.5 opacity-40">·</span>
-        <a
-          href="https://ifclite.dev/docs/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline-offset-2 hover:underline hover:text-primary transition-colors"
-        >
-          {t('keyboardShortcuts.shortcuts.docsLink')}
-        </a>
-      </div>
-      {Object.entries(grouped).map(([category, shortcuts]) => (
-        <div key={category}>
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-            {category}
-          </h3>
-          <div className="space-y-1">
-            {shortcuts.map((shortcut) => (
-              <div
-                key={shortcut.key + shortcut.description}
-                className="flex items-center justify-between py-1"
-              >
-                <span className="text-sm">{shortcut.description}</span>
-                <kbd className="px-2 py-0.5 text-xs bg-muted rounded border font-mono">
-                  {shortcut.key}
-                </kbd>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

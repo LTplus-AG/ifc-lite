@@ -123,7 +123,9 @@ function assertTranslates(ui: HTMLElement, keys: Exclude<SpaceSketchKey, PluralK
   const after = new Set<string>();
   addReadable(ui, after);
   for (const key of keys) {
-    const text = CATALOGUE[key] as string;
+    // Up to the first `{param}`: a parameterised title (`Undo ({keys})`, #5836)
+    // renders with the value filled in, so match its fixed leading text.
+    const text = (CATALOGUE[key] as string).split('{')[0];
     // `.includes` rather than an exact set match: a couple of HelpPopover
     // rows render their translated `desc` alongside a literal "— " prefix
     // text node in the same element, which `addReadable` joins together.
@@ -132,7 +134,7 @@ function assertTranslates(ui: HTMLElement, keys: Exclude<SpaceSketchKey, PluralK
       `expected "${text}" (${key}) to be visible in English before switching locale`,
     );
     assert.ok(
-      [...after].some((s) => s.includes(mark(key))),
+      [...after].some((s) => s.includes(mark(key).split('{')[0])),
       `${key}: must be translated, marked text not found`,
     );
   }

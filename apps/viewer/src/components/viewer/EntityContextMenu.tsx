@@ -39,6 +39,7 @@ import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContext
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
+import { primaryShortcutLabel, shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -373,16 +374,16 @@ export function EntityContextMenu() {
             <div className="text-xs text-muted-foreground">{entityType}</div>
           </div>
 
-          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="F" onClick={handleFrameSelection} />
-          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="Del" onClick={handleHide} />
+          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="camera.frameSelection" onClick={handleFrameSelection} />
+          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="visibility.hideSelection" onClick={handleHide} />
 
           <div className="h-px bg-border my-1" />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="=" onClick={handleSetBasket} />
-          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="+" onClick={handleAddToBasket} />
-          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="−" onClick={handleRemoveFromBasket} />
-          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="B" onClick={handleSaveBasketView} />
+          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="basket.set" onClick={handleSetBasket} />
+          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="basket.add" onClick={handleAddToBasket} />
+          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="basket.remove" onClick={handleRemoveFromBasket} />
+          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="basket.saveView" onClick={handleSaveBasketView} />
 
           <div className="h-px bg-border my-1" />
 
@@ -413,7 +414,7 @@ export function EntityContextMenu() {
       )}
 
       {!contextMenu.entityId && (
-        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="A" onClick={handleShowAll} />
+        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="visibility.showAll" onClick={handleShowAll} />
       )}
 
       <ExtensionContextItems
@@ -494,7 +495,7 @@ interface MenuItemProps {
   onClick: () => void;
   disabled?: boolean;
   /** Right-aligned keyboard hint (e.g. `'⌘D'`). */
-  shortcut?: string;
+  shortcut?: KeyCommandId;
   /** Visual tone: `default` muted icon/neutral hover, `destructive`
    *  red-toned icon and red-tinted hover (Delete entity). */
   tone?: MenuItemTone;
@@ -517,7 +518,7 @@ function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) 
         title={t('entityContextMenu.duplicateDefaultTitle')}
       >
         <CopyPlus className="h-4 w-4 text-muted-foreground" /><span>{t('entityContextMenu.duplicateLabel')}</span>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground">⌘D</span>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground">{primaryShortcutLabel('edit.duplicate')}</span>
       </button>
       <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
         <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />
@@ -573,11 +574,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'defa
     >
       <Icon className={iconClass} />
       <span className="flex-1 min-w-0">{label}</span>
-      {shortcut && (
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0">
-          {shortcut}
-        </span>
-      )}
+      {shortcut && <span className="text-[10px] font-mono text-muted-foreground shrink-0">{shortcutLabel(shortcut)}</span>}
     </button>
   );
 }

@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import {
   Play,
   Save,
@@ -28,8 +29,7 @@ import {
   Bot,
   PanelRightClose,
   PanelRightOpen,
-  Undo2,
-  Redo2,
+  Undo2, Redo2,
   Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -340,7 +340,7 @@ export function ScriptPanel() {
                 {t('scriptPanel.toolbar.runButton')}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.runTooltip')}</TooltipContent>
+            <TooltipContent>{t('scriptPanel.toolbar.runTooltip', { keys: shortcutLabel('script.run') })}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -354,7 +354,7 @@ export function ScriptPanel() {
                 <Save className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.saveTooltip')}</TooltipContent>
+            <TooltipContent>{t('scriptPanel.toolbar.saveTooltip', { keys: shortcutLabel('script.save') })}</TooltipContent>
           </Tooltip>
 
           {/* Save-as-tool — the explicit, always-visible bridge from a
@@ -390,7 +390,7 @@ export function ScriptPanel() {
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.undoTooltip')}</TooltipContent>
+            <TooltipContent>{t('scriptPanel.toolbar.undoTooltip', { keys: shortcutLabel('script.undo') })}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -405,7 +405,7 @@ export function ScriptPanel() {
                 <Redo2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.redoTooltip')}</TooltipContent>
+            <TooltipContent>{t('scriptPanel.toolbar.redoTooltip', { keys: shortcutLabel('script.redo') })}</TooltipContent>
           </Tooltip>
 
           {/* New script dropdown with templates */}
@@ -563,7 +563,7 @@ export function ScriptPanel() {
                 {/* Empty state */}
                 {!lastError && !lastResult && (
                   <div className="text-muted-foreground py-2 text-center">
-                    {t('scriptPanel.output.emptyState')}
+                    {t('scriptPanel.output.emptyState', { keys: shortcutLabel('script.run') })}
                   </div>
                 )}
               </div>

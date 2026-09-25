@@ -93,7 +93,7 @@ export function ElementsTab() {
           icon={DisplayAll}
           label={t('ribbon.elements.showAll')}
           tooltip={t('ribbon.elements.showAllTooltip')}
-          shortcut="A"
+          shortcut="visibility.showAll"
           onClick={resetVisibilityForHomeFromStore}
         />
         <RibbonLargeButton
@@ -112,7 +112,7 @@ export function ElementsTab() {
           icon={IsolateSelected}
           label={t('ribbon.elements.isolate')}
           tooltip={t('ribbon.elements.isolateTooltip')}
-          shortcut="I"
+          shortcut="basket.isolate"
           disabled={!hasSelection}
           onClick={() => executeBasketIsolate()}
         />
@@ -120,7 +120,7 @@ export function ElementsTab() {
           icon={HideSelected}
           label={t('ribbon.elements.hide')}
           tooltip={t('ribbon.elements.hideTooltip')}
-          shortcut={t('ribbon.elements.hideShortcut')}
+          shortcut="visibility.hideSelection"
           disabled={!hasSelection}
           onClick={handleHide}
         />
@@ -129,7 +129,7 @@ export function ElementsTab() {
             icon={FocusSelected}
             label={t('ribbon.elements.frame')}
             tooltip={t('ribbon.elements.frameTooltip')}
-            shortcut="F"
+            shortcut="camera.frameSelection"
             disabled={!hasSelection}
             onClick={() => cameraCallbacks.frameSelection?.()}
           />

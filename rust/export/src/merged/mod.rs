@@ -409,7 +409,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
     stats.warnings.extend(checks.warnings());
-
+    stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)
 }

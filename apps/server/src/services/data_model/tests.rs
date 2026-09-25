@@ -2259,3 +2259,46 @@ fn fixture_without_newly_covered_subtypes_is_unaffected_by_the_schema_derived_ga
         dm.relationships
     );
 }
+
+/// Issue #5475: an `IfcPropertyReferenceValue` reads as the referenced
+/// object's `Name`, else its `Identification`, else `#<id>`, the same as
+/// `resolvePropertyReferenceValue` on the browser side. The reference is
+/// slot 3 (`[Name, Description, UsageName, PropertyReference]`); reading
+/// slot 2 (`UsageName`) made every reference property read as empty.
+const REFERENCE_VALUE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000009',$,'P',$,$,$,$,$,$);
+#5=IFCMATERIAL('Oak',$,$);
+#7=IFCCLASSIFICATIONREFERENCE($,'Ss_25',$,$,$,$);
+#8=IFCCLASSIFICATIONREFERENCE($,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000009',$,'W9',$,$,$,$,$,$);
+#110=IFCPROPERTYREFERENCEVALUE('Finish',$,'finish usage',#5);
+#111=IFCPROPERTYREFERENCEVALUE('Spec',$,$,#7);
+#112=IFCPROPERTYREFERENCEVALUE('Bare',$,$,#8);
+#113=IFCPROPERTYSET('Pst0000000000000000009',$,'Pset_Ref',$,(#110,#111,#112));
+#114=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000009',$,$,$,(#28),#113);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_reference_property_reads_the_referenced_name() {
+    let dm = extract_data_model(REFERENCE_VALUE_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 113)
+        .expect("Pset_Ref must be extracted");
+    let value_of = |name: &str| {
+        pset.properties
+            .iter()
+            .find(|p| p.property_name == name)
+            .map(|p| p.property_value.clone())
+    };
+    assert_eq!(value_of("Finish").as_deref(), Some("Oak"));
+    assert_eq!(value_of("Spec").as_deref(), Some("Ss_25"));
+    assert_eq!(value_of("Bare").as_deref(), Some("#8"));
+}

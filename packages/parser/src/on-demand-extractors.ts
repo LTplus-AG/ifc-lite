@@ -106,7 +106,7 @@ export {
     resolveComplexPropertyValue,
     parsePropertyValueWithComplex,
 } from './property-value-parser.js';
-import { parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
+import { copyParsedExtras, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
 // ============================================================================
 // Property Set Extraction Helpers
@@ -157,10 +157,7 @@ export function extractPsetsFromIds(
                     type: parsed.type,
                     value: parsed.value,
                 };
-                if (parsed.values) entry.values = parsed.values;
-                if (parsed.dataType) entry.dataType = parsed.dataType;
-                if (parsed.dataTypeMixed) entry.dataTypeMixed = true;
-                if (parsed.structure) entry.structure = parsed.structure;
+                copyParsedExtras(entry, parsed);
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;

@@ -12,6 +12,7 @@
 import type { Subject } from './rule-set.js';
 import { fail, isPlainObject } from './rule-set-io-shared.js';
 import { isModelFact } from '../filter/filter-model-fact.js';
+import { isMemberPath } from '../filter/subject-read-options.js';
 
 const TEXT_KINDS = new Set(['literal', 'regex']);
 
@@ -51,8 +52,12 @@ export function parseSubject(raw: unknown, where: string): Subject {
     if (s.setNameKind !== undefined && !TEXT_KINDS.has(s.setNameKind as string)) fail(`${where}: bad "setNameKind"`);
     if (s[nameKindField] !== undefined && !TEXT_KINDS.has(s[nameKindField] as string)) fail(`${where}: bad "${nameKindField}"`);
     if (s.inherit !== undefined && s.inherit !== 'type' && s.inherit !== 'aggregation') fail(`${where}: bad "inherit"`);
+    if (s.memberPath !== undefined && (kind !== 'property' || !isMemberPath(s.memberPath))) {
+      fail(`${where}: "memberPath" must be a non-empty list of member names, on a property subject`);
+    }
     return {
       ...(s.inherit !== undefined ? { inherit: s.inherit } : {}),
+      ...(s.memberPath !== undefined ? { memberPath: s.memberPath } : {}),
       kind,
       setName: s.setName,
       ...(s.setNameKind !== undefined ? { setNameKind: s.setNameKind } : {}),

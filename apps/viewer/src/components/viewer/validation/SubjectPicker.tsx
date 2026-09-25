@@ -28,6 +28,7 @@ import type { FilterRule } from '@ifc-lite/rules';
 import { MODEL_FACTS, type ModelFact, type Subject } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 import { InheritSelect } from '../InheritSelect';
+import { MemberPathInput } from '../MemberPathInput';
 
 /** Every `Subject` kind `rule-set-io-subject.ts` accepts — `model`/
  *  `modelTag`/`elevation` are applicability-only concerns, never a
@@ -147,6 +148,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
             className="h-7 w-40 text-xs font-mono"
             onChange={(next) => onChange({ ...subject, propertyName: next, propertyNameKind: undefined })}
           />
+          <MemberPathInput value={subject.memberPath} onChange={(memberPath) => onChange({ ...subject, memberPath })} />
           <InheritSelect value={subject.inherit} offered={['aggregation']} onChange={(inherit) => onChange({ ...subject, inherit })} />
         </>
       )}

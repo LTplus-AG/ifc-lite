@@ -15,7 +15,7 @@
 
 import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
-import type { SubjectReadOptions } from './subject-read-options.js';
+import type { PropertyReadOptions, SubjectReadOptions } from './subject-read-options.js';
 import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
 
 // ── Operator enums ────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ export interface AttributeRule {
   valueKind?: TextKind;
 }
 
-export interface PropertyRule extends SubjectReadOptions {
+export interface PropertyRule extends PropertyReadOptions {
   kind: 'property';
   setName: string;
   /** How `setName` reads — a regex set name is what lets one rule reach both

@@ -141,7 +141,8 @@ out of scope, and is called out as such:
 | Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
 | Georeferencing (`IfcMapConversion`, CRS), project units, header fields | Covered: a `modelFact` rule/subject (`georef.crs`, `georef.eastings`, `units.length`, `header.author`, …) that every value operator works on, read from the element's model (#5442) |
 | List, enumerated and table values | Covered: an element rule matches ANY member / cell, as IDS does for lists and tables; a negated op (`ne`, `notContains`, `notMatches`) holds only when NO member has the value (#5475) |
-| Complex properties, `IfcPropertyReferenceValue` | Deferred — a complex property reads as its members' joined text, a reference as `#<id>` (#5475 follow-up) |
+| `IfcPropertyReferenceValue` | Covered: reads as the referenced object's `Name`, else its `Identification`, else `#<id>` (still present) (#5475) |
+| Complex properties (`IfcComplexProperty`) | Covered: `memberPath: ['Frame', 'Width']` on a property rule or subject reads one member by name, one entry per nesting level (names compare case-insensitively); without it the property reads as its members' joined text. A missing member is absent. No IDS facet can address a member, so export refuses such a rule (#5475) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
 | OR logic in requirements | Covered: an `element` requirement is a `RuleBlock` with OR-ed groups |
 | Value-to-value comparison (`WarrantyEnd > WarrantyStart`) | Covered: `compare` requirement kind (number or date) |
@@ -157,7 +158,7 @@ out of scope, and is called out as such:
 sets take a single, deliberately stricter position everywhere: a value is
 `present` iff at least one candidate, after `String(v).trim()`, is
 non-empty. An empty `IFCLABEL`, whitespace-only text, `$`,
-`IfcPropertyReferenceValue`, and complex properties are all **absent**, not
+and an `IfcPropertyReferenceValue` that references nothing are all **absent**, not
 present-with-an-empty-value. Consequence: `exists`/`isSet` fails on `""`,
 and `ne` on an absent property FAILS rather than vacuously passing — a rule
 requiring `FireRating ne '2HR'` does not pass just because `FireRating` was
@@ -203,6 +204,7 @@ other rule is refused with each reason listed:
 - `caseSensitive: false`, a non-default `tolerance`, or `severity: 'warning'`
 - `model` / `modelTag` targeting
 - storey, elevation, relating-type and parent-name conditions
+- a complex-property member (`memberPath`), which no IDS facet can address
 - a classification code/name value (the rule matches code OR name, IDS only the code)
 - a regex that uses JavaScript-only syntax
 - applicable-count bounds IDS 1.0 can't state

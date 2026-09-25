@@ -1123,15 +1123,8 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512): the
-          shared projector (single rAF loop) and SVG+DOM layers every
-          world-anchored consumer below portals into via
-          Pin/AnchoredCard/WorldLabel/PlaneOutline. `ToolOverlays` used to
-          mount its own second `SceneOverlayRoot` (back when it was the only
-          migrated consumer, #5502); now that every sibling here is on the
-          kernel too, it renders as a plain child instead of owning a
-          second projector + a second `OverlayDefs` `<defs>` competing for
-          the same filter/marker ids. */}
+      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
+          two roots until `ToolOverlays` (#5502) consolidated here). */}
       <SceneOverlayRoot>
         <AnnotationLayer />
         <CollabPresenceLayer />

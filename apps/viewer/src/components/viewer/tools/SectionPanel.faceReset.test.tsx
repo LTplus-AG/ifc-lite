@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 const s = () => useViewerStore.getState();
 const bounds = { min: [0, 0, 0] as [number, number, number], max: [4, 4, 4] as [number, number, number] };
@@ -33,7 +34,7 @@ function segment(text: string): HTMLButtonElement {
 
 /** Mount the Section tool and pick the -X face of a [0,4]^3 box. */
 function pickMinusX(): void {
-  render(<><ViewportHud /><ToolOverlays /></>);
+  render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
   act(() => {
     s().setSectionPickMode(true);
     s().setSectionPlaneFromFace([-1, 0, 0], [0, 2, 2], bounds);

@@ -13,16 +13,19 @@
  * `network.fetch:<speckle host>` and a token comes in as
  * `{{secret:NAME}}`, exactly as for `http.request`.
  *
- * Identity: each element's GlobalId is derived from the project id and the
- * element's Revit `applicationId` (its Speckle id when absent), so receiving
+ * Identity: each element's GlobalId is derived from the server origin, the
+ * project id and the element's Revit `applicationId` (its Speckle id when
+ * absent), so receiving
  * a later version of the same model REPLACES the elements an earlier
  * receive wrote instead of duplicating them. Elements that disappeared from
  * the newer version are not removed (v1; the node is not a tracked set).
+ * Replacing needs `model.delete`, checked only when there is something to
+ * replace; the new element is written before the old one is removed.
  */
 
 import { trackingGuid, type EntityRef } from '@ifc-lite/flow';
 import type { EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
-import { ANY_ITEM, ENTITY_ITEM, ENTITY_LIST, SCALAR_ITEM, forgetGlobalId, rememberGlobalId, requireCapability, resolveByGlobalId, toSdkRef, type Ctx, type FlowNodeDef } from './host.js';
+import { ANY_ITEM, ENTITY_ITEM, ENTITY_LIST, SCALAR_ITEM, rememberGlobalId, requireCapability, resolveByGlobalId, toSdkRef, type Ctx, type FlowNodeDef } from './host.js';
 import { fetchObjectGraph, resolveRoot, type SpeckleClientOptions } from './speckle/client.js';
 import { mapSpeckleGraph, PSET_INSTANCE, PSET_SOURCE, PSET_TYPE, type PlannedElement } from './speckle/mapping.js';
 import type { RefusalLog } from './speckle/refusals.js';
@@ -62,10 +65,19 @@ function write(ctx: Ctx, storey: SdkEntityRef, e: PlannedElement, GlobalId: stri
   }
 }
 
-function writeAll(ctx: Ctx, storey: SdkEntityRef, projectId: string, planned: readonly PlannedElement[], log: RefusalLog): EntityRef[] {
+/**
+ * The identity namespace of one Speckle project: the server's normalised
+ * origin AND the project id, so the same project id on two servers can
+ * never mint the same GlobalIds.
+ */
+export function identityScope(server: string, projectId: string): string {
+  return `speckle:${new URL(server).origin}/${projectId}`;
+}
+
+function writeAll(ctx: Ctx, storey: SdkEntityRef, scope: string, planned: readonly PlannedElement[], log: RefusalLog): EntityRef[] {
   const bim = ctx.host.bim;
   const entities: EntityRef[] = [];
-  const counts = { created: 0, replaced: 0 };
+  const counts = { created: 0, replaced: 0, kept: 0 };
   const keys = new Set<string>();
   bim.mutate.batch('speckle.receive', () => {
     for (const e of planned) {
@@ -73,17 +85,29 @@ function writeAll(ctx: Ctx, storey: SdkEntityRef, projectId: string, planned: re
       // each other: the second falls back to its (content-hash) Speckle id.
       const key = keys.has(e.key) ? e.speckleId : e.key;
       keys.add(key);
-      const globalId = trackingGuid(`speckle:${projectId}`, key);
+      const globalId = trackingGuid(scope, key);
       const existing = resolveByGlobalId(bim, globalId);
-      if (existing) {
-        if (!bim.store.removeEntity(existing)) throw new Error(`speckle.receive: element ${globalId} (#${existing.expressId}) from an earlier receive could not be replaced`);
-        forgetGlobalId(bim, globalId);
-      }
+      if (existing) requireCapability(ctx, 'model.delete');
+      // The new element is written FIRST, beside the old one: a write the
+      // builder rejects must leave the previous receive's element in place.
       let ref: SdkEntityRef;
       try {
         ref = write(ctx, storey, e, globalId);
       } catch (err) {
-        log.add(e.speckleType, 'write-failed', `the IFC writer rejected it (${err instanceof Error ? err.message : String(err)})`, e.speckleId);
+        const why = err instanceof Error ? err.message : String(err);
+        if (existing) {
+          counts.kept++;
+          log.add(e.speckleType, 'write-failed-kept-previous', `the IFC writer rejected the new version (${why}); the element from the earlier receive was kept`, e.speckleId);
+        } else {
+          log.add(e.speckleType, 'write-failed', `the IFC writer rejected it (${why})`, e.speckleId);
+        }
+        continue;
+      }
+      if (existing && !bim.store.removeEntity(existing)) {
+        // Roll the new element back rather than leave two under one GlobalId.
+        bim.store.removeEntity(ref);
+        counts.kept++;
+        log.add(e.speckleType, 'write-failed-kept-previous', 'the element from the earlier receive could not be removed, so it was kept and the new version not written', e.speckleId);
         continue;
       }
       rememberGlobalId(bim, globalId, ref);
@@ -96,7 +120,7 @@ function writeAll(ctx: Ctx, storey: SdkEntityRef, projectId: string, planned: re
       log.add(e.speckleType, 'non-parameter-entries', 'they carry no scalar value (compound structure layers, nested tables)', e.speckleId, e.skippedEntries);
     }
   });
-  ctx.log('info', `speckle.receive: ${counts.created} created, ${counts.replaced} replaced from an earlier receive`);
+  ctx.log('info', `speckle.receive: ${counts.created} created, ${counts.replaced} replaced from an earlier receive, ${counts.kept} earlier element(s) kept after a failed write`);
   return entities;
 }
 
@@ -117,7 +141,7 @@ async function run(ctx: Ctx, inputs: Readonly<Record<string, unknown>>, p: Reado
   const root = await resolveRoot(opts, target);
   const objects = await fetchObjectGraph(opts, target, root.objectId);
   const { planned, refusals } = mapSpeckleGraph(objects, root.objectId, { level: text(p.level) || undefined });
-  const entities = writeAll(ctx, storey, target.projectId, planned, refusals);
+  const entities = writeAll(ctx, storey, identityScope(target.server, target.projectId), planned, refusals);
   const refused = refusals.list();
   for (const r of refused) ctx.log('warn', r.message);
   return { entities, refusals: refused, objectId: root.objectId, versionId: root.versionId ?? null };
@@ -148,7 +172,7 @@ export const speckleReceiveNode: FlowNodeDef = {
     { name: 'maxBytes', kind: 'number', default: DEFAULT_MAX_BYTES, doc: 'Per-response byte cap; a response past it fails the receive.' },
     { name: 'maxObjects', kind: 'number', default: DEFAULT_MAX_OBJECTS, doc: 'Upper bound on objects fetched (display meshes are never fetched).' },
   ],
-  capabilities: ['model.create', ...PSETS.map((p) => `model.mutate:${p}`), 'network.fetch:*'],
+  capabilities: ['model.create', 'model.delete', ...PSETS.map((p) => `model.mutate:${p}`), 'network.fetch:*'],
   writes: 'model',
   requires: { network: true, backend: ['store', 'mutate'] },
   // The server is the source of truth: a cached run would never see a new version.

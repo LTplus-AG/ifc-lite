@@ -15,11 +15,12 @@ import { runFlow, trackingGuid, type FlowDocument, type FlowNode } from '@ifc-li
 import { createFakeBim, type FakeHost } from './__tests__/fake-backend.js';
 import { CORPUS_HOST, CORPUS_PROJECT, corpusObjects, speckleServer, type SpeckleServer } from './__tests__/speckle-server.js';
 import { createStandardRegistry, headlessFeatures } from './index.js';
+import { identityScope } from './speckle-receive-node.js';
 
 const registry = createStandardRegistry();
 const MODEL_URL = `https://${CORPUS_HOST}/projects/${CORPUS_PROJECT}/models/m1`;
 const APP = '0d3c1f2a-5e6b-4c7d-8e9f-a0b1c2d3e4f5-';
-const guidOf = (elementId: string) => trackingGuid(`speckle:${CORPUS_PROJECT}`, `${APP}${elementId}`);
+const guidOf = (elementId: string) => trackingGuid(identityScope(`https://${CORPUS_HOST}`, CORPUS_PROJECT), `${APP}${elementId}`);
 
 function grants(...raw: string[]) {
   const r = parseCapabilities(raw);
@@ -50,9 +51,14 @@ function receiveDoc(params: Record<string, unknown>): FlowDocument {
   };
 }
 
-async function receive(fake: FakeHost, server: SpeckleServer, params: Record<string, unknown>, hosts = [CORPUS_HOST]) {
+async function receive(fake: FakeHost, server: SpeckleServer, params: Record<string, unknown>, hosts = [CORPUS_HOST], modelGrants?: string[]) {
   return runFlow(receiveDoc(params), {
-    host: { bim: fake.bim, networkGrants: grants(...hosts.map((h) => `network.fetch:${h}`)), networkTransport: server.transport },
+    host: {
+      bim: fake.bim,
+      networkGrants: grants(...hosts.map((h) => `network.fetch:${h}`)),
+      networkTransport: server.transport,
+      grants: modelGrants ? grants(...modelGrants) : undefined,
+    },
     registry,
     features: headlessFeatures(),
   });
@@ -80,7 +86,11 @@ describe('speckle.receive (#5634)', () => {
     expect(def?.volatile).toBe(true);
     expect(def?.requires?.network).toBe(true);
     expect(def?.writes).toBe('model');
-    expect(def?.capabilities).toContain('model.create');
+    expect(def?.capabilities).toEqual([
+      'model.create', 'model.delete',
+      'model.mutate:Speckle_Source', 'model.mutate:Speckle_TypeParameters', 'model.mutate:Speckle_InstanceParameters',
+      'network.fetch:*',
+    ]);
   });
 
   it('replays the corpus: every mappable element lands in the storey with SI dimensions', async () => {
@@ -224,5 +234,44 @@ describe('speckle.receive (#5634)', () => {
     const r = await receive(fake, speckleServer(), { url: MODEL_URL, maxObjects: 5 });
     expect(laneError(r)).toMatch(/more than maxObjects \(5\)/);
     expect(fake.created).toEqual([]);
+  });
+
+  it('a re-receive whose new write is rejected keeps the earlier element, and says so (#5925 review)', async () => {
+    const fake = oneStoreyBim();
+    await receive(fake, speckleServer(), { url: MODEL_URL });
+    const before = fake.entities.filter((e) => e.type === 'IfcWall' && e.expressId >= 1000).map((e) => [e.globalId, e.expressId]);
+    expect(before).toHaveLength(2);
+    fake.failBuilders.add('addWall');
+    const r = await receive(fake, speckleServer(), { url: MODEL_URL });
+    expect(fake.entities.filter((e) => e.type === 'IfcWall' && e.expressId >= 1000).map((e) => [e.globalId, e.expressId])).toEqual(before);
+    const kept = refusalsOf(r).find((x) => x.reason === 'write-failed-kept-previous');
+    expect([kept?.speckleType, kept?.count]).toEqual(['RevitWall', 2]);
+    expect(kept?.message).toMatch(/the element from the earlier receive was kept/);
+    expect(refusalsOf(r).some((x) => x.reason === 'write-failed')).toBe(false);
+  });
+
+  it('a first receive into an empty slot writes and reports write-failed, not kept-previous', async () => {
+    const fake = oneStoreyBim();
+    fake.failBuilders.add('addBeam');
+    const r = await receive(fake, speckleServer(), { url: MODEL_URL });
+    expect(summary(refusalsOf(r)).filter((s) => s.includes('write-failed'))).toEqual(['RevitBeam write-failed 1']);
+  });
+
+  it('needs model.delete only to replace an earlier receive (#5925 review)', async () => {
+    const fake = oneStoreyBim();
+    const noDelete = ['model.read', 'model.create', 'model.mutate:Speckle_Source', 'model.mutate:Speckle_TypeParameters', 'model.mutate:Speckle_InstanceParameters'];
+    const first = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], noDelete);
+    expect(first.reports.find((x) => x.nodeId === 'rx')?.laneErrors).toBe(0);
+    expect(fake.created).toHaveLength(6);
+    const second = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], noDelete);
+    expect(laneError(second)).toMatch(/model\.delete/);
+    const third = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], [...noDelete, 'model.delete']);
+    expect(third.reports.find((x) => x.nodeId === 'rx')?.laneErrors).toBe(0);
+    expect(fake.entities.filter((e) => e.expressId >= 1000).map((e) => e.globalId)).toEqual(['300101', '300102', '300201', '300301', '300401', '300501'].map(guidOf));
+  });
+
+  it('scopes identity by server origin as well as project (#5925 review)', () => {
+    expect(identityScope('https://a.example.com', 'p1')).not.toBe(identityScope('https://b.example.com', 'p1'));
+    expect(identityScope('https://SPECKLE.example.com:443', 'p1')).toBe(identityScope('https://speckle.example.com', 'p1'));
   });
 });

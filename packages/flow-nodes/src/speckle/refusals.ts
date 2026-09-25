@@ -26,6 +26,8 @@ export type SpeckleRefusalReason =
   | 'other-level'
   /** The IFC writer rejected the mapped element. */
   | 'write-failed'
+  /** Re-receive: the new version was rejected, and the element from the earlier receive was KEPT (not replaced). */
+  | 'write-failed-kept-previous'
   /** Display meshes of written elements, which are not carried (the body is rebuilt parametrically). */
   | 'display-meshes'
   /** Property entries that are not scalar parameters (compound structure layers, nested tables). */

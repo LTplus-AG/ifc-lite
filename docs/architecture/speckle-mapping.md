@@ -76,11 +76,25 @@ Geometry details:
   (`display-meshes`).
 
 Identity: `Name` is `"<family>: <type>"`, `ObjectType` the type, and `Tag` the
-Revit element id. The GlobalId is `trackingGuid("speckle:<project>", applicationId)`,
-with the Speckle id used when there is no application id. Receiving a later
-version therefore replaces the elements an earlier receive wrote. It does not
+Revit element id. The GlobalId is
+`trackingGuid("speckle:<server origin>/<project>", applicationId)`, with the
+Speckle id used when there is no application id. The server's normalised
+origin is part of the key, so the same project id on two servers never
+collides. The target storey is not part of it. Receiving a later version
+therefore replaces the elements an earlier receive wrote; it does not
 duplicate them. Elements that vanished from the newer version are not removed
 (v1).
+
+Replacing is write-first. The new element is written beside the old one, and
+the old one is removed only once that write succeeded. If the IFC builder
+rejects the new version, the earlier element stays in the model and the
+refusal is `write-failed-kept-previous`. Replacing needs `model.delete`, which
+is checked only when an earlier element exists.
+
+Capabilities, as exact strings: `model.create`, `model.delete`,
+`model.mutate:Speckle_Source`, `model.mutate:Speckle_TypeParameters`,
+`model.mutate:Speckle_InstanceParameters`, and `network.fetch:<host>` for the
+server.
 
 ## Properties
 
@@ -95,7 +109,11 @@ Both parameter shapes the Revit connector has written are read: the current
 older `parameters[internalName]` map (`isTypeParameter` decides the set).
 Lengths, areas and volumes are converted to m, m² and m³ from either unit
 vocabulary (`mm`, `Centimeters`, `Square feet`, `m³`, …). Every other unit is
-carried as authored. A repeated display name is kept, qualified by its
+carried as authored. A dimension the mapping needs (width, thickness, `b`,
+`h`) is read only if it was actually converted as a length. A compound or
+unknown label such as `Feet and fractional inches` or `Meters and
+centimeters`, or no unit at all, refuses the element as `missing-dimension`,
+naming the unit. It is never read as metres. A repeated display name is kept, qualified by its
 internal name. Entries with no scalar value (compound structure layers) are
 counted as `non-parameter-entries`.
 
@@ -109,12 +127,13 @@ refusal is also logged as a warning.
 |---|---|
 | `unmapped-type` | The type has no v1 mapping (generic models, curtain panels, grids, topography, loose geometry, v3 `DataObject`s). |
 | `geometry` | Mapped type, but the geometry cannot be reproduced: curved/arc location, non-horizontal wall line, sloped or gapped outline, slanted or rotated column, extrusion roof. |
-| `missing-dimension` | A required height, thickness or section parameter is absent. |
+| `missing-dimension` | A required height, thickness or section parameter is absent, or its unit is not a supported length unit. |
 | `openings` | A floor or roof with voids, which a v1 extrusion would fill in. |
 | `no-units` | The element has no length unit. |
 | `other-level` | Excluded by the `level` param. |
 | `write-failed` | The IFC builder rejected the mapped parameters. |
-| `display-meshes` | Display meshes on written elements, not carried. |
+| `write-failed-kept-previous` | On a re-receive, the builder rejected the new version, so the element from the earlier receive was kept. |
+| `display-meshes` | Display meshes on written elements (under `displayValue`, `@displayValue`, `displayMesh` or `@displayMesh`), not carried. |
 | `non-parameter-entries` | Property entries with no scalar value, not carried. |
 
 ## Out of scope (v1)

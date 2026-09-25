@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { corpusObjects, type CorpusObject } from '../__tests__/speckle-server.js';
 import type { SpeckleObject } from './client.js';
 import { mapSpeckleGraph } from './mapping.js';
+import { psetRows, type SpeckleParameter } from './parameters.js';
 import { lengthScale, parameterScale } from './units.js';
 import { parseSpeckleUrl } from './url.js';
 
@@ -77,7 +78,7 @@ describe('mapping refusals', () => {
   });
 
   it('refuses a wall without a width parameter, and an element without length units', () => {
-    expect(refusalFor('300101', (o) => ({ ...o, properties: null }))).toEqual(['1 RevitWall object not written: no positive WALL_ATTR_WIDTH_PARAM (Width) parameter.']);
+    expect(refusalFor('300101', (o) => ({ ...o, properties: null }))).toEqual(['1 RevitWall object not written: no positive WALL_ATTR_WIDTH_PARAM parameter (Width).']);
     expect(refusalFor('300102', (o) => ({ ...o, units: 'none' }))).toEqual(['1 RevitWall object not written: units "none" is not a length unit.']);
   });
 
@@ -90,5 +91,43 @@ describe('mapping refusals', () => {
       return { ...o, outline: { ...outline, segments } };
     };
     expect(refusalFor('300201', gapped)).toEqual(['1 RevitFloor object not written: has an outline with a gap between segments.']);
+  });
+
+  it('refuses a dimension whose unit label is not a supported length unit, never reading it as metres (#5925 review)', () => {
+    for (const units of ['Feet and fractional inches', 'Meters and centimeters', 'Fractional inches']) {
+      const width = (o: CorpusObject) => {
+        const props = structuredClone(o.properties) as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+        props['Type Parameters'].Construction.Width.units = units;
+        return { ...o, properties: props };
+      };
+      expect(refusalFor('300101', width)).toEqual([
+        `1 RevitWall object not written: WALL_ATTR_WIDTH_PARAM has unit "${units}", which is not a supported length unit (Width).`,
+      ]);
+    }
+    const unitless = (o: CorpusObject) => {
+      const props = structuredClone(o.properties) as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+      delete props['Type Parameters'].Construction.Width.units;
+      return { ...o, properties: props };
+    };
+    expect(refusalFor('300101', unitless)).toEqual(['1 RevitWall object not written: WALL_ATTR_WIDTH_PARAM has unit "(none)", which is not a supported length unit (Width).']);
+  });
+});
+
+describe('display geometry and property rows (#5925 review)', () => {
+  it('counts display meshes under every display key the client skips', () => {
+    const ref = (id: string) => ({ speckle_type: 'reference', referencedId: id });
+    const { objects, rootId } = graphWith('300101', (o) => {
+      const { displayValue, ...rest } = o;
+      void displayValue;
+      return { ...rest, '@displayValue': [ref('a'), ref('b')], displayMesh: ref('c'), '@displayMesh': [ref('d')] } as CorpusObject;
+    });
+    const wall = mapSpeckleGraph(objects, rootId).planned.find((p) => p.key.endsWith('300101'));
+    expect(wall?.displayMeshes).toBe(4);
+  });
+
+  it('keeps parameters named after Object.prototype members as ordinary rows', () => {
+    const params: SpeckleParameter[] = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'].map((name) => ({ scope: 'instance', name, value: `v-${name}` }));
+    const rows = psetRows(params, 'instance');
+    expect(Object.entries(rows)).toEqual([['__proto__', 'v-__proto__'], ['constructor', 'v-constructor'], ['toString', 'v-toString'], ['hasOwnProperty', 'v-hasOwnProperty']]);
   });
 });

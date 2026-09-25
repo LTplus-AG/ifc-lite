@@ -373,7 +373,11 @@ secret:
 
 ```json
 {
-  "capabilities": ["model.read", "model.create", "network.fetch:app.speckle.systems", "secret.read:SPECKLE_TOKEN"],
+  "capabilities": [
+    "model.read", "model.create", "model.delete",
+    "model.mutate:Speckle_Source", "model.mutate:Speckle_TypeParameters", "model.mutate:Speckle_InstanceParameters",
+    "network.fetch:app.speckle.systems", "secret.read:SPECKLE_TOKEN"
+  ],
   "nodes": [
     { "id": "storeys", "type": "model.byType", "params": { "type": "IfcBuildingStorey" } },
     { "id": "first", "type": "core.first" },
@@ -392,6 +396,11 @@ secret:
   ]
 }
 ```
+
+Where the host enforces grants, the three `model.mutate:Speckle_*` grants
+above are needed exactly as spelled (pset grants match by name), and
+`model.delete` is checked only when a receive replaces elements an earlier
+receive wrote.
 
 Everything the mapping cannot reproduce is reported on the `refusals`
 output, by Speckle type, reason and count, and nothing is dropped silently.

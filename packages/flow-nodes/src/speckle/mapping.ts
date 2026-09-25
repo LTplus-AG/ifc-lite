@@ -89,6 +89,17 @@ function childSlots(o: Record<string, unknown>): unknown[] {
   return out;
 }
 
+/** Display geometry under every key the client skips; a bare object counts as one. */
+function displayCount(o: Record<string, unknown>): number {
+  let n = 0;
+  for (const key of DISPLAY_KEYS) {
+    const v = o[key];
+    if (Array.isArray(v)) n += v.length;
+    else if (v !== null && typeof v === 'object') n += 1;
+  }
+  return n;
+}
+
 class Refused extends Error {
   constructor(readonly reason: SpeckleRefusalReason, detail: string) {
     super(detail);
@@ -100,9 +111,9 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.leng
 const xy = (p: Vec3): [number, number] => [p[0], p[1]];
 
 function required(params: readonly SpeckleParameter[], internal: string, label: string): number {
-  const v = dimension(params, internal);
-  if (v === undefined) throw new Refused('missing-dimension', `no positive ${internal} (${label}) parameter`);
-  return v;
+  const d = dimension(params, internal);
+  if ('reason' in d) throw new Refused('missing-dimension', `${d.reason} (${label})`);
+  return d.value;
 }
 
 function line(resolve: Resolver, o: Record<string, unknown>): { start: Vec3; end: Vec3 } {
@@ -201,7 +212,7 @@ function mapElement(resolve: Resolver, o: SpeckleObject, kind: Kind, opts: Mappi
       speckleType: type,
       speckleId: o.id,
       psets: { [PSET_SOURCE]: sourcePset(o, levelName), [PSET_TYPE]: psetRows(parameters, 'type'), [PSET_INSTANCE]: psetRows(parameters, 'instance') },
-      displayMeshes: Array.isArray(o.displayValue) ? o.displayValue.length : 0,
+      displayMeshes: displayCount(o),
       skippedEntries: skipped,
     } as PlannedElement);
   } catch (err) {

@@ -79,15 +79,20 @@ function writeAll(ctx: Ctx, storey: SdkEntityRef, scope: string, planned: readon
   const entities: EntityRef[] = [];
   const counts = { created: 0, replaced: 0, kept: 0 };
   const keys = new Set<string>();
+  // Resolve every slot BEFORE writing: a missing `model.delete` grant must
+  // refuse the receive before anything is written, not halfway through
+  // (a batch groups undo; it does not roll back a throw).
+  const slots = planned.map((e) => {
+    // Two objects sharing an applicationId in one version must not replace
+    // each other: the second falls back to its (content-hash) Speckle id.
+    const key = keys.has(e.key) ? e.speckleId : e.key;
+    keys.add(key);
+    const globalId = trackingGuid(scope, key);
+    return { e, globalId, existing: resolveByGlobalId(bim, globalId) };
+  });
+  if (slots.some((s) => s.existing)) requireCapability(ctx, 'model.delete');
   bim.mutate.batch('speckle.receive', () => {
-    for (const e of planned) {
-      // Two objects sharing an applicationId in one version must not replace
-      // each other: the second falls back to its (content-hash) Speckle id.
-      const key = keys.has(e.key) ? e.speckleId : e.key;
-      keys.add(key);
-      const globalId = trackingGuid(scope, key);
-      const existing = resolveByGlobalId(bim, globalId);
-      if (existing) requireCapability(ctx, 'model.delete');
+    for (const { e, globalId, existing } of slots) {
       // The new element is written FIRST, beside the old one: a write the
       // builder rejects must leave the previous receive's element in place.
       let ref: SdkEntityRef;

@@ -15,12 +15,14 @@ import { runFlow, trackingGuid, type FlowDocument, type FlowNode } from '@ifc-li
 import { createFakeBim, type FakeHost } from './__tests__/fake-backend.js';
 import { CORPUS_HOST, CORPUS_PROJECT, corpusObjects, speckleServer, type SpeckleServer } from './__tests__/speckle-server.js';
 import { createStandardRegistry, headlessFeatures } from './index.js';
-import { identityScope } from './speckle-receive-node.js';
 
 const registry = createStandardRegistry();
 const MODEL_URL = `https://${CORPUS_HOST}/projects/${CORPUS_PROJECT}/models/m1`;
 const APP = '0d3c1f2a-5e6b-4c7d-8e9f-a0b1c2d3e4f5-';
-const guidOf = (elementId: string) => trackingGuid(identityScope(`https://${CORPUS_HOST}`, CORPUS_PROJECT), `${APP}${elementId}`);
+// Entered only through the registry (no import of the node module): the
+// documented identity scope is "speckle:<server origin>/<project>".
+const guidOn = (host: string, elementId: string) => trackingGuid(`speckle:https://${host}/${CORPUS_PROJECT}`, `${APP}${elementId}`);
+const guidOf = (elementId: string) => guidOn(CORPUS_HOST, elementId);
 
 function grants(...raw: string[]) {
   const r = parseCapabilities(raw);
@@ -263,15 +265,24 @@ describe('speckle.receive (#5634)', () => {
     const first = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], noDelete);
     expect(first.reports.find((x) => x.nodeId === 'rx')?.laneErrors).toBe(0);
     expect(fake.created).toHaveLength(6);
-    const second = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], noDelete);
+    // One NEW element ahead of the replacements: the refusal must come before it is written.
+    const beforeSecond = fake.created.length;
+    const extra = speckleServer({ extraWallFirst: true });
+    const second = await receive(fake, extra, { url: MODEL_URL }, [CORPUS_HOST], noDelete);
     expect(laneError(second)).toMatch(/model\.delete/);
+    expect(fake.created.length).toBe(beforeSecond);
     const third = await receive(fake, speckleServer(), { url: MODEL_URL }, [CORPUS_HOST], [...noDelete, 'model.delete']);
     expect(third.reports.find((x) => x.nodeId === 'rx')?.laneErrors).toBe(0);
     expect(fake.entities.filter((e) => e.expressId >= 1000).map((e) => e.globalId)).toEqual(['300101', '300102', '300201', '300301', '300401', '300501'].map(guidOf));
   });
 
-  it('scopes identity by server origin as well as project (#5925 review)', () => {
-    expect(identityScope('https://a.example.com', 'p1')).not.toBe(identityScope('https://b.example.com', 'p1'));
-    expect(identityScope('https://SPECKLE.example.com:443', 'p1')).toBe(identityScope('https://speckle.example.com', 'p1'));
+  it('scopes identity by server origin as well as project (#5925 review)', async () => {
+    const a = oneStoreyBim();
+    await receive(a, speckleServer(), { url: MODEL_URL });
+    const b = oneStoreyBim();
+    await receive(b, speckleServer(), { url: `https://OTHER.example.com:443/projects/${CORPUS_PROJECT}/models/m1` }, ['other.example.com']);
+    const ids = (f: FakeHost) => f.created.map((c) => c.params.GlobalId);
+    expect(ids(b)).toEqual(['300101', '300102', '300201', '300301', '300401', '300501'].map((id) => guidOn('other.example.com', id)));
+    expect(ids(b).some((g) => ids(a).includes(g))).toBe(false);
   });
 });

@@ -44,9 +44,17 @@ export interface SpeckleServer {
   readonly rootId: string;
 }
 
-export function speckleServer(options: { status?: number } = {}): SpeckleServer {
+export function speckleServer(options: { status?: number; extraWallFirst?: boolean } = {}): SpeckleServer {
   const objects = new Map(corpusObjects().map((o) => [o.id, o]));
   const rootId = corpusObjects()[0].id;
+  if (options.extraWallFirst) {
+    // A wall no earlier receive wrote, inlined ahead of everything else in the root.
+    const wall = corpusObjects().find((o) => o.speckle_type.endsWith('RevitWall'));
+    const root = objects.get(rootId);
+    if (!wall || !root) throw new Error('corpus has no wall or root');
+    const extra = { ...wall, id: 'extra0000000000000000000000000000', applicationId: 'extra-wall-5925' };
+    objects.set(rootId, { ...root, elements: [extra, ...(root.elements as unknown[])] });
+  }
   const requests: RecordedRequest[] = [];
   const served: string[] = [];
   const transport: FetchTransport = async (url, init) => {

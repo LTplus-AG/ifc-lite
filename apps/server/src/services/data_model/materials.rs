@@ -31,6 +31,9 @@ struct ResolvedLayer {
 /// Resolve an `IfcMaterialLayer`'s referenced `IfcMaterial` name.
 fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<(String, Option<String>, bool)> {
     let mat = decoder.decode_by_id(material_id).ok()?;
+    if !mat.ifc_type.as_str().eq_ignore_ascii_case("IFCMATERIAL") {
+        return None;
+    }
     // An unnamed IfcMaterial still proves an association and may have a Category.
     Some((mat.get_string(0).unwrap_or("").to_string(), mat.get_string(2).map(str::to_string), mat.get_string(0).is_some()))
 }
@@ -85,10 +88,10 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                     let layer = decoder.decode_by_id(layer_id).ok()?;
                     // IfcMaterialLayer: Material(0), LayerThickness(1),
                     // IsVentilated(2), Name(3), Description(4), Category(5).
-                    let (material_name, material_category, material_name_present) = layer
-                        .get_ref(0)
-                        .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None, false));
+                    let (material_name, material_category, material_name_present) = match layer.get_ref(0) {
+                        Some(mid) => material_details_of(decoder, mid)?,
+                        None => (String::new(), None, false),
+                    };
                     let thickness = layer.get_float(1).map(|t| t * unit_scale);
                     let is_ventilated = super::read_logical(&layer, 2);
                     let category = layer.get_string(5).map(|s| s.to_string());
@@ -156,10 +159,10 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, cid)| {
                     let constituent = decoder.decode_by_id(cid).ok()?;
-                    let (material_name, material_category, material_name_present) = constituent
-                        .get_ref(2)
-                        .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None, false));
+                    let (material_name, material_category, material_name_present) = match constituent.get_ref(2) {
+                        Some(mid) => material_details_of(decoder, mid)?,
+                        None => (String::new(), None, false),
+                    };
                     Some(ResolvedLayer {
                         kind: "IfcMaterialConstituentSet",
                         member_count,
@@ -202,10 +205,10 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, pid)| {
                     let profile = decoder.decode_by_id(pid).ok()?;
-                    let (material_name, material_category, material_name_present) = profile
-                        .get_ref(2)
-                        .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None, false));
+                    let (material_name, material_category, material_name_present) = match profile.get_ref(2) {
+                        Some(mid) => material_details_of(decoder, mid)?,
+                        None => (String::new(), None, false),
+                    };
                     Some(ResolvedLayer {
                         kind: "IfcMaterialProfileSet",
                         member_count,

@@ -77,6 +77,27 @@ END-ISO-10303-21;
 "#;
 
 #[test]
+fn keeps_optional_material_absence_but_drops_unreadable_set_members_5296() {
+    let malformed = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER(#999999,")
+        .replace("IFCMATERIALCONSTITUENT('Core',$,#61,", "IFCMATERIALCONSTITUENT('Core',$,#999999,")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,", "IFCMATERIALPROFILE('Flange',$,#999999,");
+    let dm = extract_data_model_checked(&malformed);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "unreadable second layer is not forwarded as an empty material");
+    assert_eq!(layers[0].member_count, 2, "client must detect the incomplete set");
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "unreadable constituent and profile members are not asserted as complete");
+
+    let air_gap = ASSOCIATIONS_IFC.replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER($,");
+    let dm = extract_data_model_checked(&air_gap);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 2, "an authored absent material ref remains a complete layer");
+    assert_eq!(layers[1].material_id, None);
+    assert!(!layers[1].material_name_present);
+}
+
+#[test]
 fn extracts_classification_material_and_document_associations() {
     let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
 

@@ -140,24 +140,30 @@ fn signed_volume(positions: &[f32], indices: &[u32]) -> f64 {
         .sum()
 }
 
-/// Directed edges without their reverse, vertices welded at 0.1 mm (the
-/// issue's measurement): 0 iff the leaf is closed and consistently wound.
+/// Undirected edges NOT used exactly once in each direction, vertices welded
+/// at 0.1 mm (the issue's measurement): the strict directed-pair rule (#3397).
+/// 0 iff the leaf is closed, consistently wound and manifold.
 fn unpaired_directed_edges(positions: &[f32], indices: &[u32]) -> usize {
     let key = |i: u32| {
         let b = i as usize * 3;
         [0, 1, 2].map(|k| (positions[b + k] as f64 * 1e4).round() as i64)
     };
-    let mut edges: HashMap<([i64; 3], [i64; 3]), i64> = HashMap::new();
+    let mut uses: HashMap<([i64; 3], [i64; 3]), (u32, u32)> = HashMap::new();
     for t in indices.chunks_exact(3) {
-        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-            let (ka, kb) = (key(a), key(b));
-            if ka != kb {
-                *edges.entry((ka, kb)).or_insert(0) += 1;
-                *edges.entry((kb, ka)).or_insert(0) -= 1;
+        let (ka, kb, kc) = (key(t[0]), key(t[1]), key(t[2]));
+        if ka == kb || kb == kc || kc == ka {
+            continue;
+        }
+        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
+            let e = uses.entry((x.min(y), x.max(y))).or_insert((0, 0));
+            if x < y {
+                e.0 += 1;
+            } else {
+                e.1 += 1;
             }
         }
     }
-    edges.values().filter(|&&c| c > 0).count()
+    uses.values().filter(|&&u| u != (1, 1)).count()
 }
 
 fn assert_frame_cut_keeps_leaf_closed(plan_deg: f64) {

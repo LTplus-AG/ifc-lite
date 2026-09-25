@@ -60,18 +60,22 @@ for (const space of spaces) {
     longName: null, category: null, occupancy: null, issues: []
   }
 
-  // Extract quantities
+  // Extract quantities by their standard Qto_SpaceBaseQuantities names, in
+  // priority order. Matching any name that CONTAINS "volume" would take an
+  // exporter's localised duplicate (e.g. ArchiCADQuantities) if it came first.
   const qsets = bim.query.quantities(space)
+  const byName = new Map<string, number>()
   for (const qset of qsets) {
     for (const q of qset.quantities) {
-      const lower = q.name.toLowerCase()
-      if (lower.includes('area') && !lower.includes('wall') && data.area === null) data.area = q.value
-      if (lower.includes('volume') && data.volume === null) data.volume = q.value
-      if (lower.includes('perimeter') && data.perimeter === null) data.perimeter = q.value
-      if (lower.includes('height') && data.height === null) data.height = q.value
+      if (typeof q.value === 'number' && !byName.has(q.name)) byName.set(q.name, q.value)
       if (q.value !== null && q.value !== 0) spaceQtyPaths.add(qset.name + '.' + q.name)
     }
   }
+  const pick = (names: string[]) => names.map(n => byName.get(n)).find(v => v !== undefined) ?? null
+  data.area = pick(['NetFloorArea', 'GrossFloorArea'])
+  data.volume = pick(['NetVolume', 'GrossVolume'])
+  data.perimeter = pick(['GrossPerimeter', 'NetPerimeter'])
+  data.height = pick(['Height', 'FinishCeilingHeight'])
 
   // Extract properties
   const psets = bim.query.properties(space)

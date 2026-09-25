@@ -113,7 +113,6 @@
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
-   406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    533 apps/viewer/src/components/viewer/ViewerLayout.tsx

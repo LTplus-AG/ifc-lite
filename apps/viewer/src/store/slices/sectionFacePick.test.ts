@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import { create } from 'zustand';
 import { QUANT_STEP } from '@ifc-lite/renderer';
 import { createSectionSlice, type SectionSlice } from './sectionSlice.js';
+import { cardinalSectionFlipped } from '../section-active.js';
 import { FACE_PICK_MAX_INSET_M, FACE_PICK_MIN_INSET_M, facePickInset } from './sectionFacePick.js';
 
 type Vec3 = [number, number, number];
@@ -99,4 +100,81 @@ describe('face-picked section plane placement (#5480)', () => {
     assert.equal(facePickInset([1e9, 0, 0]), FACE_PICK_MAX_INSET_M);
     assert.equal(facePickInset([0, 0, 0], { min: [-1e12, 0, 0], max: [Infinity, 0, 0] }), FACE_PICK_MAX_INSET_M);
   });
+});
+
+/**
+ * #5644: the default kept side of a face pick must not depend on which way the
+ * picked face points. A box solid [0, 4]^3 is picked on each of its six faces;
+ * the committed plane is evaluated with the same clip value the shader uses,
+ * with the `flipped` the store hands the renderer.
+ */
+describe('face-picked section keeps the same side for every face orientation (#5644)', () => {
+  const bounds = { min: [0, 0, 0] as Vec3, max: [4, 4, 4] as Vec3 };
+  const inside: Vec3 = [2, 2, 2];
+  const axes = [0, 1, 2] as const;
+  const faces = axes.flatMap((axis) => [1, -1].map((sign) => ({ axis, sign })));
+  const label = (axis: number, sign: number) => `${sign > 0 ? '+' : '-'}${'XYZ'[axis]}`;
+
+  /** The four corners of the box face with outward normal `sign` along `axis`. */
+  function faceCorners(axis: number, sign: number): Vec3[] {
+    const [u, v] = axes.filter((a) => a !== axis);
+    return [[0, 0], [4, 0], [0, 4], [4, 4]].map(([a, b]) => {
+      const p: Vec3 = [0, 0, 0];
+      p[axis] = sign > 0 ? 4 : 0;
+      p[u] = a;
+      p[v] = b;
+      return p;
+    });
+  }
+
+  function pickFace(axis: number, sign: number) {
+    const store = create<SectionSlice>()((...a) => createSectionSlice(...a));
+    const normal: Vec3 = [0, 0, 0];
+    normal[axis] = sign;
+    const centre: Vec3 = [2, 2, 2];
+    centre[axis] = sign > 0 ? 4 : 0;
+    store.getState().setSectionPickMode(true);
+    store.getState().setSectionPlaneFromFace(normal, centre, bounds);
+    const plane = store.getState().sectionPlane;
+    assert.ok(plane.custom, 'the pick committed a custom plane');
+    const outside: Vec3 = [centre[0] + normal[0], centre[1] + normal[1], centre[2] + normal[2]];
+    return { store, plane, custom: plane.custom, outside, faceAt: centre[axis] };
+  }
+
+  for (const { axis, sign } of faces) {
+    it(`${label(axis, sign)} face: default cuts the face away, Flip keeps it`, () => {
+      const { store, plane, custom, outside } = pickFace(axis, sign);
+      const clip = (p: Vec3, flipped: boolean) => clipValue(p, custom.normal, custom.distance, flipped);
+      for (const v of faceCorners(axis, sign)) {
+        assert.ok(clip(v, plane.flipped) > 0, `picked face vertex ${v} must be clipped by default`);
+      }
+      assert.ok(clip(inside, plane.flipped) < 0, 'the solid behind the face is kept, so the cap shows its cross-section');
+      assert.ok(clip(outside, plane.flipped) > 0, 'the camera side of the face is removed');
+
+      store.getState().flipSectionPlane();
+      const flipped = store.getState().sectionPlane.flipped;
+      for (const v of faceCorners(axis, sign)) {
+        assert.ok(clip(v, flipped) < 0, `flipped, picked face vertex ${v} is kept`);
+      }
+      assert.ok(clip(inside, flipped) > 0, 'flipped, the solid behind the face is removed');
+    });
+
+    it(`${label(axis, sign)} face: the cardinal approximation keeps the side the custom plane keeps`, () => {
+      const { store, custom, outside, faceAt } = pickFace(axis, sign);
+      for (const flip of [false, true]) {
+        if (flip) store.getState().flipSectionPlane();
+        const plane = store.getState().sectionPlane;
+        assert.equal(plane.axis, (['side', 'down', 'front'] as const)[axis]);
+        // Cardinal renderer path: +axis unit normal at the face, flip relative to it.
+        const cardinalNormal: Vec3 = [0, 0, 0];
+        cardinalNormal[axis] = 1;
+        const cardinalFlip = cardinalSectionFlipped(plane);
+        for (const probe of [inside, outside]) {
+          const customKept = clipValue(probe, custom.normal, custom.distance, plane.flipped) < 0;
+          const cardinalKept = clipValue(probe, cardinalNormal, faceAt, cardinalFlip) < 0;
+          assert.equal(cardinalKept, customKept, `probe ${probe}, flipped=${flip}`);
+        }
+      }
+    });
+  }
 });

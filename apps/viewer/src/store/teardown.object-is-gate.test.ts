@@ -31,7 +31,7 @@ function model(id: string, idOffset: number, maxExpressId: number): FederatedMod
 }
 
 describe('composeTeardown does not rewrite an untouched field as equal-but-new (#3346)', () => {
-  it('visibilitySlice: hiddenEntitiesByModel naming the removed model must not rewrite isolatedEntities / ghostExceptEntities, which name only a survivor', () => {
+  it('visibilitySlice: hiddenEntities naming the removed model must not rewrite isolatedEntities / ghostExceptEntities, which name only a survivor', () => {
     useViewerStore.setState({
       models: new Map([
         ['A', model('A', 0, 100)],
@@ -40,14 +40,12 @@ describe('composeTeardown does not rewrite an untouched field as equal-but-new (
       activeModelId: 'A',
       // Only this field names the removed model — it is what makes
       // `visibilitySlice`'s `touched` boolean true.
-      hiddenEntitiesByModel: new Map([['A', new Set([1])]]),
-      isolatedEntitiesByModel: new Map(),
+      hiddenEntities: new Set([1]),
       // Neither of these names anything inside A's range: both survive B's
       // range untouched in VALUE, but `touched` still forces both through
       // `nonEmptyOrNull`, which allocates a fresh `Set` unconditionally.
       isolatedEntities: new Set([1050]),
       ghostExceptEntities: new Set([1060]),
-      hiddenEntities: undefined,
       classFilter: null,
     });
 
@@ -57,8 +55,8 @@ describe('composeTeardown does not rewrite an untouched field as equal-but-new (
     // The field that actually moved must be in the patch, or this fixture
     // proves nothing about the mixed case.
     assert.ok(
-      'hiddenEntitiesByModel' in patch,
-      'hiddenEntitiesByModel must be rewritten: it is the field that actually named the removed model',
+      'hiddenEntities' in patch,
+      'hiddenEntities must be rewritten: it is the field that actually named the removed model',
     );
 
     assert.ok(
@@ -73,7 +71,7 @@ describe('composeTeardown does not rewrite an untouched field as equal-but-new (
     );
   });
 
-  it('visibilitySlice: hiddenEntitiesByModel naming the removed model must not rewrite classFilter, a PLAIN OBJECT ({ ids, label }) whose own ids name only a survivor', () => {
+  it('visibilitySlice: hiddenEntities naming the removed model must not rewrite classFilter, a PLAIN OBJECT ({ ids, label }) whose own ids name only a survivor', () => {
     useViewerStore.setState({
       models: new Map([
         ['A', model('A', 0, 100)],
@@ -82,11 +80,9 @@ describe('composeTeardown does not rewrite an untouched field as equal-but-new (
       activeModelId: 'A',
       // Only this field names the removed model — it is what makes
       // `visibilitySlice`'s `touched` boolean true.
-      hiddenEntitiesByModel: new Map([['A', new Set([1])]]),
-      isolatedEntitiesByModel: new Map(),
+      hiddenEntities: new Set([1]),
       isolatedEntities: null,
       ghostExceptEntities: null,
-      hiddenEntities: undefined,
       // Names only the surviving model B: `touched` still forces this through
       // `{ ids: kept, label }`, a FRESH plain object, unconditionally — even
       // though `kept`'s ids are identical to `classFilter.ids`.
@@ -97,13 +93,13 @@ describe('composeTeardown does not rewrite an untouched field as equal-but-new (
     const patch = viewerTeardown(modelRemovedScope(state, 'A'), state);
 
     assert.ok(
-      'hiddenEntitiesByModel' in patch,
-      'hiddenEntitiesByModel must be rewritten: it is the field that actually named the removed model',
+      'hiddenEntities' in patch,
+      'hiddenEntities must be rewritten: it is the field that actually named the removed model',
     );
     assert.ok(
       !('classFilter' in patch),
       'classFilter holds only a B-owned id and must not be rewritten as an equal-but-new ' +
-        '{ ids, label } object just because hiddenEntitiesByModel, a sibling field, named the removed model',
+        '{ ids, label } object just because hiddenEntities, a sibling field, named the removed model',
     );
   });
 

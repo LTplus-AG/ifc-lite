@@ -31,6 +31,7 @@ import { writeFile } from 'node:fs/promises';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { Tool } from './types.js';
 import { entityTargetSchema } from './entity-target-schema.js';
+import { entityCreate } from './entity-create.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
 import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -70,8 +71,8 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
  * was then dropped by the exporter (which only visits entities the effective
  * model holds) with no diagnostic anywhere in the round trip (#3764).
  *
- * `entity_create` is the one write tool not routed through this: it has no id
- * to check yet.
+ * `entity_create` (`./entity-create.ts`) is the one write tool not routed
+ * through this: it has no id to check yet.
  */
 function resolveWritableExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
   const expressId = resolveExpressId(m, input);
@@ -180,34 +181,6 @@ const entitySetAttribute: Tool = {
       : undefined;
     view.setAttribute(expressId, attribute, input.value as string, oldValue);
     return okResult(`Set ${input.attribute} on #${expressId}.`, { expressId, attribute: input.attribute, value: input.value });
-  },
-};
-
-const entityCreate: Tool = {
-  name: 'entity_create',
-  description: 'Create a new IFC entity with raw positional attributes. Returns the new expressId.',
-  scope: 'mutate',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string', description: 'IFC entity name, e.g. IfcWall.' },
-      attributes: {
-        type: 'array',
-        description: 'Positional STEP attributes (strings, numbers, booleans, or refs of form "#42").',
-        items: {},
-      },
-    },
-    required: ['type'],
-    additionalProperties: false,
-  },
-  handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
-    const backend = getBackend(m);
-    const editor = backend.ensureEditor();
-    const attrs = (input.attributes as unknown[] | undefined) ?? [];
-    const ref = editor.addEntity(input.type as string, attrs as Parameters<typeof editor.addEntity>[1]);
-    return okResult(`Created ${input.type} as #${ref.expressId}.`, { expressId: ref.expressId, type: input.type });
   },
 };
 

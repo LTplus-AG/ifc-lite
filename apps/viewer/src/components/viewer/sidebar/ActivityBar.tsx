@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
@@ -61,7 +62,6 @@ export function ActivityBar() {
   const setSidebarCustomizing = useViewerStore((s) => s.setSidebarCustomizing);
   const setPanelShownInSidebar = useViewerStore((s) => s.setPanelShownInSidebar);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
-  const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
   const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
 

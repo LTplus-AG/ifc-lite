@@ -10,6 +10,8 @@ export interface HudChipAction {
   onClick: () => void;
   /** Translated accessible name — required since the button is icon-only. */
   'aria-label': string;
+  /** Optional hover tooltip, when the action wants more than its accessible name. */
+  title?: string;
   icon: ReactNode;
 }
 
@@ -39,6 +41,7 @@ export function HudChip({ children, icon, resume, dismiss, className }: HudChipP
           type="button"
           onClick={resume.onClick}
           aria-label={resume['aria-label']}
+          title={resume.title}
           className="rounded-sm p-0.5 text-overlay-accent hover:bg-overlay-accent-soft"
         >
           {resume.icon}
@@ -49,6 +52,7 @@ export function HudChip({ children, icon, resume, dismiss, className }: HudChipP
           type="button"
           onClick={dismiss.onClick}
           aria-label={dismiss['aria-label']}
+          title={dismiss.title}
           className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent"
         >
           {dismiss.icon}

@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * What a visibility reset (Home / Show all) leaves in the hidden channel:
+ * What the viewer's visibility reset (`resetVisibilityForHomeFromStore`: Home
+ * and every Show all control) leaves in the hidden channel:
  * exactly the active lens's hides, all owned by the lens (#5877).
  *
  * A reset removes the user's hides, but the lens stays active and keeps its

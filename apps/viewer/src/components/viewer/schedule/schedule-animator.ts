@@ -82,7 +82,7 @@ export const DEFAULT_PALETTE: TaskPalette = {
   NOTDEFINED:   [0.70, 0.70, 0.70, 1.0], // neutral grey
   // The preparation *ghost* is a dark NEUTRAL colour at moderate alpha.
   // Now that the overlay pipeline has real src-alpha blending AND skips the
-  // glass-fresnel path (flags.x bit 1), a 0.55-alpha dark overlay composites
+  // specular term (flags.x bit 1), a 0.55-alpha dark overlay composites
   // as a clear dim silhouette on both light and dark viewport themes — you
   // see the underlying material through it but it reads as pending/ghosted.
   PREPARATION:  [0.15, 0.17, 0.22, 0.55],

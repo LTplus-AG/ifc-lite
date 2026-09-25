@@ -93,8 +93,6 @@ async function buildState() {
     isolatedEntities: null,
     ghostExceptEntities: null,
     classFilter: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
     pinboardEntities: new Set(),
     hierarchyBasketSelection: new Set(),
   } as TestState;

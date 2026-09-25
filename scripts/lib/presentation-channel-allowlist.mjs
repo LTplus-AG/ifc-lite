@@ -90,6 +90,20 @@ export const REQUIRES_ROUTING_MARKER = new Set([
  */
 export const NO_MARKER_REQUIRED = new Map([
   [
+    // The lens hidden-id sync moved here from LensPanel.tsx with #5877 (the
+    // lens runtime now outlives its panel); the gap below moved with it.
+    'apps/viewer/src/hooks/useLens.ts',
+    'KNOWN GAP, tracked on #3338, not a justification: the lens hidden-id sync writes ' +
+    'planLensHiddenSync deltas over state.lensHiddenIds, which are LENS RULE MATCHES and can ' +
+    'name a geometry-less IfcElementAssembly exactly as LensPanel.tsx rule ISOLATE can -- so this ' +
+    'hide is a silent no-op for that case. Left unrouted here deliberately: hide and show are ' +
+    'two halves of an ownership ledger (lensAppliedHiddenIds records what the lens hid so ' +
+    'teardown releases only that), and expanding one side without the other corrupts it. ' +
+    'Routing both is a behaviour change that needs its own test, not a drive-by.' +
+    ' The paired showEntities is the release half of that ledger: it must pass back exactly ' +
+    'the ids planLensHiddenSync says the lens owns, or it would unhide something the user hid.',
+  ],
+  [
     'apps/viewer/src/components/viewer/HierarchyPanel.tsx',
     "isolates ids from getNodeElements()/node.globalIds, which treeDataBuilder.ts already " +
     'resolved to geometry-bearing members at tree-build time via hasAggregatedGeometry / ' +
@@ -212,27 +226,6 @@ export const NO_MARKER_REQUIRED = new Map([
  * state `LensPanel.tsx` is in.
  */
 export const EXEMPT_ACTIONS = new Map([
-  [
-    'apps/viewer/src/components/viewer/LensPanel.tsx',
-    new Map([
-      [
-        'hideEntities',
-        'KNOWN GAP, tracked on #3338, not a justification: the lens hidden-id sync writes ' +
-        'planLensHiddenSync deltas over state.lensHiddenIds, which are LENS RULE MATCHES and can ' +
-        'name a geometry-less IfcElementAssembly exactly as the rule ISOLATE above can -- so this ' +
-        'hide is a silent no-op for that case. Left unrouted here deliberately: hide and show are ' +
-        'two halves of an ownership ledger (lensAppliedHiddenIds records what the lens hid so ' +
-        'teardown releases only that), and expanding one side without the other corrupts it. ' +
-        'Routing both is a behaviour change that needs its own test, not a drive-by.',
-      ],
-      [
-        'showEntities',
-        'The release half of the hideEntities ledger above -- it must pass back exactly the ids ' +
-        'planLensHiddenSync says the lens owns, so expanding here would release ids the lens ' +
-        'never hid and unhide something the user hid themselves.',
-      ],
-    ]),
-  ],
 ]);
 
 /** Anti-vacuity floor: fewer total call sites than this means the detection

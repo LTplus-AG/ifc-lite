@@ -153,8 +153,9 @@ export interface ClashSettings {
  *   earlier "deepest crossing-triangle vertex" probe that was a sampling
  *   artifact, converging to 0 as a mesh was retessellated instead of to the
  *   true depth (PR #2536).
- * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
- *   dimension. Reported for a hard clash whenever the narrow phase could not
+ * - `'estimate'` — an uncertified depth: the smallest overlapping dimension of
+ *   the two element AABBs, or for a box through-penetration that value capped
+ *   by the box-box minimum translation distance (see below). Reported for a hard clash whenever the narrow phase could not
  *   certify a box-box depth. That happens in four shapes, all common in real
  *   models: either element is not (confirmed) a box; surfaces that only
  *   coincide (stacked layers sharing a footprint); one solid modelled wholly

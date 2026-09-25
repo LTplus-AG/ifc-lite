@@ -35,7 +35,7 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
-import { fitAllBounds } from '@/lib/visibility/visible-bounds';
+import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -477,7 +477,7 @@ export function Viewport({
     if (!isInitialized) return;
     const scene = rendererRef.current?.getScene();
     if (!scene) return;
-    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    scene.setInstancedVisible(instancedPassDrawn({ hasTypeGeometry, typeViewMode }));
     rendererRef.current?.requestRender();
     // Depend on isInitialized so the instanced-visibility state is applied once
     // the renderer is ready, even if the view-mode inputs never change after the
@@ -1015,20 +1015,11 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
-        fitAll: () => {
-          // Zoom to fit without changing view direction, framing what is
-          // VISIBLE now (#5884). Nothing filtered: the trimmed whole scene.
-          const { typeViewMode, hasTypeGeometry } = useViewerStore.getState();
-          const target = fitAllBounds({
-            meshIds: (geometryRef.current ?? []).map((mesh) => mesh.expressId),
-            instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [],
-            instancedDrawn: !hasTypeGeometry || typeViewMode === 'model', // the scene's own gate
-            boundsOf: createRenderableBoundsLookup(),
-            visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current },
-            wholeScene: geometryBoundsRef.current,
-          });
-          camera.zoomExtent(target.min, target.max, 300);
-          calculateScale();
+        fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
+          const target = fitAllBounds({ meshIds: (geometryRef.current ?? []).map((m) => m.expressId), wholeScene: geometryBoundsRef.current,
+            instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [], instancedDrawn: instancedPassDrawn(useViewerStore.getState()),
+            boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current } });
+          camera.zoomExtent(target.min, target.max, 300); calculateScale();
         },
         home: () => {
           // Adaptive home: compact buildings get the historical SE isometric
@@ -1647,13 +1638,7 @@ export function Viewport({
     calculateScale,
   });
 
-  useSpaceMouseControls({
-    rendererRef,
-    isInitialized,
-    geometryRef,
-    selectedEntityIdRef,
-    calculateScale,
-  });
+  useSpaceMouseControls({ rendererRef, isInitialized, geometryRef, selectedEntityIdRef, calculateScale });
 
   useAnimationLoop({
     canvasRef,

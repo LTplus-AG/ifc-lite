@@ -15,7 +15,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import type { FederatedModel } from '@/store';
 import type { BoundingBox3D } from '@/utils/viewportUtils';
 import { modelHiddenEntities } from './model-hidden-entities.js';
-import { fitAllBounds, type FitAllInput } from './visible-bounds.js';
+import { fitAllBounds, instancedPassDrawn, type FitAllInput } from './visible-bounds.js';
 
 const box = (x: number): BoundingBox3D => ({ min: { x, y: 0, z: 0 }, max: { x: x + 1, y: 1, z: 1 } });
 const span = (x0: number, x1: number): BoundingBox3D => ({ min: { x: x0, y: 0, z: 0 }, max: { x: x1, y: 1, z: 1 } });
@@ -96,5 +96,11 @@ describe('fitAllBounds (#5884)', () => {
   it('falls back to the whole scene on a degenerate visible box', () => {
     const bad = new Map<number, BoundingBox3D>([[1, box(0)], [2, box(Number.NaN)]]);
     assert.deepEqual(fit({ meshIds: [1, 2], instancedIds: [], boundsOf: (id) => bad.get(id) ?? null }), WHOLE);
+  });
+
+  it('the instanced pass is hidden only in the Types view of a model with a type library', () => {
+    assert.equal(instancedPassDrawn({ hasTypeGeometry: true, typeViewMode: 'types' }), false);
+    assert.equal(instancedPassDrawn({ hasTypeGeometry: true, typeViewMode: 'model' }), true);
+    assert.equal(instancedPassDrawn({ hasTypeGeometry: false, typeViewMode: 'types' }), true);
   });
 });

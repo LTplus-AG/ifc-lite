@@ -38,6 +38,15 @@ function isSaneBounds(b: BoundingBox3D): boolean {
   return span >= 0 && span < 1e5;
 }
 
+/**
+ * Whether the GPU-instanced pass is drawn: instancing is class-0 occurrence
+ * geometry, hidden in the Types view mode when the model carries a type
+ * library. The one gate for the scene (`setInstancedVisible`) and Fit All.
+ */
+export function instancedPassDrawn(s: { hasTypeGeometry: boolean; typeViewMode: string }): boolean {
+  return !s.hasTypeGeometry || s.typeViewMode === 'model';
+}
+
 /** The overlap of two boxes, or null when they are disjoint. */
 function intersect(a: BoundingBox3D, b: BoundingBox3D): BoundingBox3D | null {
   const min = { x: Math.max(a.min.x, b.min.x), y: Math.max(a.min.y, b.min.y), z: Math.max(a.min.z, b.min.z) };

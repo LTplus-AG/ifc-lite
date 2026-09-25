@@ -193,7 +193,13 @@ enum SpecularColour {
 fn read_specular_colour(rendering: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<SpecularColour> {
     if let Some(color_id) = rendering.get_ref(6) {
         let [r, g, b, _] = read_colour_rgb(color_id, decoder)?;
-        return Some(SpecularColour::Colour([r, g, b]));
+        // A non-finite component (a malformed or overflowed STEP real) is no
+        // evidence: it would reach the tint test and the luminance fallback,
+        // where `f32::clamp` passes `NaN` through unchanged (#5582 review).
+        return [r, g, b]
+            .iter()
+            .all(|c| c.is_finite())
+            .then_some(SpecularColour::Colour([r, g, b]));
     }
     rendering
         .get_float(6)

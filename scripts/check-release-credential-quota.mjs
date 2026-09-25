@@ -41,11 +41,12 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 
 /**
  * Points one Release run can spend, per bucket, with headroom. The publish
- * path is the expensive one: changesets/action creates a tag ref AND a GitHub
- * release per published package on REST (2 x 46 npm packages), plus the PR
- * lookup and the server-bin release and its lookups: about 100. The version
- * path spends a handful of GraphQL points (the version commit and the PR
- * update).
+ * path is the expensive one: changesets/action creates a GitHub release per
+ * published package on REST (46 npm packages; the tags themselves may go
+ * through the REST API or git depending on the action's commit mode, so
+ * count them too: ~92), plus the PR lookup and the server-bin release and its
+ * lookups. The version path spends a handful of GraphQL points (the version
+ * commit and the PR update).
  */
 export const DEFAULT_FLOOR = { core: 200, graphql: 50 };
 
@@ -124,8 +125,10 @@ function sleep(s) {
 
 function main(argv) {
   const maxWaitArg = argv.indexOf('--max-wait');
-  const maxWaitS = maxWaitArg === -1 ? DEFAULT_MAX_WAIT_S : Number(argv[maxWaitArg + 1]);
-  if (!Number.isFinite(maxWaitS) || maxWaitS < 0) {
+  const raw = maxWaitArg === -1 ? String(DEFAULT_MAX_WAIT_S) : argv[maxWaitArg + 1];
+  const maxWaitS = /^\d+$/.test(raw ?? '') ? Number(raw) : NaN;
+  const unknown = maxWaitArg === -1 ? argv : argv.filter((_, i) => i !== maxWaitArg && i !== maxWaitArg + 1);
+  if (!Number.isFinite(maxWaitS) || unknown.length > 0) {
     process.stderr.write('usage: check-release-credential-quota.mjs [--max-wait <seconds>]\n');
     return 2;
   }

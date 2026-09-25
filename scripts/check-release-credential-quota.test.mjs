@@ -122,7 +122,9 @@ test('CLI: a drained bucket that is STILL drained after the wait fails (no secon
 });
 
 test('CLI: a bad --max-wait is a usage error', cli, () => {
-  const r = runCli({ core: liveBucket(4000, 1800), graphql: liveBucket(4000, 1800) }, ['--max-wait', 'soon']);
-  assert.equal(r.status, 2);
-  assert.match(r.stderr, /usage:/);
+  for (const args of [['--max-wait', 'soon'], ['--max-wait', ''], ['--max-wait=10'], ['--max-wait', '-5']]) {
+    const r = runCli({ core: liveBucket(4000, 1800), graphql: liveBucket(4000, 1800) }, args);
+    assert.equal(r.status, 2, args.join(' '));
+    assert.match(r.stderr, /usage:/);
+  }
 });

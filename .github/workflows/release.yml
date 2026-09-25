@@ -234,8 +234,11 @@ jobs:
       # 36009885836 died mid-job when agent sessions on the same account had
       # drained its GraphQL bucket. Read `GET /rate_limit` (free) HERE, before
       # anything is pushed, published or minted: wait for a reset that is near,
-      # fail with the owner and reset time otherwise. The real fix is a
-      # credential nothing else spends; see RELEASE.md, "Release credential".
+      # fail with the owner and reset time otherwise. It runs on every
+      # non-superseded run, not only release commits: an ordinary push also
+      # retries a failed publish and refreshes the version PR, both on this
+      # credential. The real fix is a credential nothing else spends; see
+      # RELEASE.md, "Release credential".
       - name: Check the release credential's API quota
         if: steps.superseded.outputs.skip != 'true'
         run: node scripts/check-release-credential-quota.mjs

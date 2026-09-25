@@ -132,7 +132,7 @@ A PAT spends its **owner's** hourly API quota (5,000 REST and 5,000 GraphQL poin
 4. Replace the **repository** secret `RELEASE_PAT` (Settings, Secrets and variables, Actions) with it. No workflow change is needed.
 5. Never log agent sessions or local tooling in with this token.
 
-The Release job's `Check the release credential's API quota` step (`scripts/check-release-credential-quota.mjs`) reads `GET /rate_limit` before the run changes anything. It waits up to 20 minutes for a reset that is near, and otherwise fails with the token owner, the drained bucket and its reset time, before anything is pushed or published.
+The Release job's `Check the release credential's API quota` step (`scripts/check-release-credential-quota.mjs`) reads `GET /rate_limit` before the run changes anything, on every Release run that is not skipped as superseded (an ordinary push also refreshes the version PR or retries a failed publish with this credential). It waits up to 20 minutes for a reset that is near, and otherwise fails with the token owner, the drained bucket and its reset time, before anything is pushed or published.
 
 ## FAQ
 

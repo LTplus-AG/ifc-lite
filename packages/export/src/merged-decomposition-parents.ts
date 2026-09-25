@@ -47,8 +47,10 @@ export class DecompositionClaims {
   readonly inverseOf: ReadonlyMap<string, string>;
   private readonly parented = new Map<string, Set<number>>();
 
-  constructor(outputSchema: IfcSchemaVersion) {
-    this.inverseOf = outputSchema === 'IFC2X3' ? IFC2X3_INVERSES : IFC4_INVERSES;
+  /** `only` narrows the claimed relationship types (the #5725 drop planner's view). */
+  constructor(outputSchema: IfcSchemaVersion, only: (relType: string) => boolean = () => true) {
+    const inverses = outputSchema === 'IFC2X3' ? IFC2X3_INVERSES : IFC4_INVERSES;
+    this.inverseOf = new Map([...inverses].filter(([relType]) => only(relType)));
   }
 
   /** The final ids that already fill `inverse` in the output. */

@@ -40,9 +40,10 @@ import {
 import {
   planEmptyContainerDrops,
   EMPTY_MODEL_VIEW,
+  isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { DecompositionClaims, claimDecompositionParents, applyRelParentStrip } from './merged-decomposition-parents.js';
+import { DecompositionClaims, claimDecompositionParents, applyRelParentStrip, type DecompositionClaimInput } from './merged-decomposition-parents.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -791,7 +792,8 @@ export class MergedExporter {
    * Plan the empty spatial containers of the whole merge (#3643), or `null` when
    * the caller did not ask for the drop. Reproduces the same spatial unification
    * {@link planModel} will, so emptiness is judged on the containers the merge
-   * actually keeps rather than on each file in isolation.
+   * actually keeps rather than on each file in isolation. It runs its own
+   * {@link claimParents} pass first (#5725, see `EmptyContainerModelView.claimParents`).
    */
   private planContainerDrops(
     options: MergeExportOptions,
@@ -799,6 +801,7 @@ export class MergedExporter {
     setup: MergeSetup,
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
+    const claims = new DecompositionClaims(options.schema || 'IFC4', isStructureRelation);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -808,14 +811,13 @@ export class MergedExporter {
       if (index > 0 && mode.compatible) {
         this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, mode.lengthFactor, sharedRemap, new Set(), setup);
       }
-      return {
-        entities,
-        source: asSourceBytes(source),
-        included: this.computeIncludedEntityIds(model, options, entities, source)?.included ?? null,
-        sharedRemap,
-        offset: setup.modelOffsets.get(model.id)!,
-        compatible: mode.compatible,
+      const visibility = this.computeIncludedEntityIds(model, options, entities, source);
+      const claimParents = () => {
+        const withheld = { sharedRemap, skipEntityIds: new Set<number>(), relParentStrip: new Map<number, Set<number>>() };
+        this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
+        return withheld;
       };
+      return { entities, source: asSourceBytes(source), included: visibility?.included ?? null, sharedRemap, offset: setup.modelOffsets.get(model.id)!, compatible: mode.compatible, claimParents };
     });
     const plan = planEmptyContainerDrops(views);
     return {
@@ -825,13 +827,13 @@ export class MergedExporter {
   }
 
   /** One decomposition parent per object and inverse (#5471, #5726): record the members this model writes, stripping ones already parented. */
-  private claimParents(model: MergeModelInput, plan: ModelMergePlan, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup): void {
+  private claimParents(model: MergeModelInput, plan: Pick<DecompositionClaimInput, 'sharedRemap' | 'skipEntityIds' | 'relParentStrip'> & Pick<ModelMergePlan, 'droppedContainerIds'>, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup, claims = setup.parentClaims): void {
     const hidden = visibility?.hiddenProductIds;
     claimDecompositionParents({
       ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
       isIncluded: id => visibility === null || visibility.included.has(id),
       isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
-    }, setup.parentClaims, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
+    }, claims, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
   }
 
   /** Fold a model's dropped containers into its plan: the container lines are

@@ -6716,6 +6716,7 @@
     "QuantityExtractor: type",
     "QuantityMutation: interface",
     "SelectionCriteria: interface",
+    "SetOverlaySnapshot: type",
     "StoreEditor: class",
     "attributeKey: function",
     "buildMatchContext: function",

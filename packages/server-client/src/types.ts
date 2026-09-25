@@ -91,6 +91,13 @@ export interface MeshData {
    * be drawn in the normal view — doing so duplicates geometry). Absent ⇒ 0.
    */
   geometry_class?: number;
+  /**
+   * IFC-authored metallic / roughness (#5582), mirroring the native
+   * `MeshData.metallic` / `.roughness`. Each is absent when the file authored
+   * no evidence for it (the renderer keeps its default finish).
+   */
+  metallic?: number;
+  roughness?: number;
 }
 
 /**

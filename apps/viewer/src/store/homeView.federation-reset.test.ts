@@ -33,6 +33,13 @@ interface Case {
 const CASES: Case[] = [
   { name: 'manual hide', activate: (o) => ({ hiddenEntities: new Set([o + 1]) }), active: (s) => s.hiddenEntities.size > 0 },
   { name: 'isolation', activate: (o) => ({ isolatedEntities: new Set([o + 2]) }), active: (s) => s.isolatedEntities !== null },
+  {
+    // A lens rule-row click records its claim beside the channel; Home must drop
+    // both, or the row still reads isolated and swallows the next click.
+    name: 'lens rule isolation',
+    activate: (o) => ({ isolatedEntities: new Set([o + 7]), lensRuleIsolation: { ruleId: 'walls', entityIds: [o + 7] } }),
+    active: (s) => s.isolatedEntities !== null || s.lensRuleIsolation !== null,
+  },
   { name: 'ghost', activate: (o) => ({ ghostExceptEntities: new Set([o + 3]) }), active: (s) => s.ghostExceptEntities !== null },
   { name: 'class filter', activate: (o) => ({ classFilter: { ids: new Set([o + 4]), label: 'IfcWall' } }), active: (s) => s.classFilter !== null },
   { name: 'storey filter', activate: (o) => ({ selectedStoreys: new Set([o + 5]) }), active: (s) => s.selectedStoreys.size > 0 },
@@ -70,7 +77,7 @@ function seedModels(count: number): number {
   useViewerStore.setState({
     ...fixtureModels(...models),
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null, classFilter: null,
-    selectedStoreys: new Set(), activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
+    selectedStoreys: new Set(), lensRuleIsolation: null, activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
     hostHiddenIfcTypes: null,
   });
   return (count - 1) * OFFSET;

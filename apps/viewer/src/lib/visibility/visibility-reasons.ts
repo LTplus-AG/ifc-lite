@@ -87,10 +87,12 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
     policy: 'cleared',
     isActive: (s) => s.isolatedEntities !== null,
     // Leaving the basket view goes with it; the basket's CONTENTS are not a
-    // visibility reason and survive (Home empties them separately).
+    // visibility reason and survive (Home empties them separately). A lens
+    // rule's claim on the channel goes too: left behind, its row would still
+    // read isolated and treat the next click as a stale release.
     clear: (store) => {
       store.getState().clearIsolation();
-      store.setState({ activeBasketViewId: null });
+      store.setState({ activeBasketViewId: null, lensRuleIsolation: null });
     },
   },
   {

@@ -7,7 +7,7 @@ import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2, Layers } from 'luc
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
-import { selectLoadCanceller } from '@/store/slices/loadingSlice';
+import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -35,7 +35,7 @@ interface CountedModel {
 export function StatusBar() {
   const { t } = useTranslation();
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
-  const progress = useViewerStore((s) => s.progress);
+  const progress = useViewerStore(selectActiveLoadProgress);
   const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);

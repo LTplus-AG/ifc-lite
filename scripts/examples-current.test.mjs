@@ -41,8 +41,8 @@ function readJson(path) {
 
 /** `@ifc-lite/<name>` -> current workspace version. */
 const workspaceVersions = new Map(
-  readdirSync(join(root, 'packages'))
-    .map((dir) => join(root, 'packages', dir, 'package.json'))
+  ['packages', 'apps']
+    .flatMap((group) => readdirSync(join(root, group)).map((dir) => join(root, group, dir, 'package.json')))
     .filter(existsSync)
     .map(readJson)
     .filter((pkg) => typeof pkg.name === 'string' && typeof pkg.version === 'string')
@@ -71,7 +71,8 @@ for (const { dir, pkg } of examples) {
       assert.ok(
         pinned === major(current) || pinned === major(current) - 1,
         `${dir} depends on ${name}@${range}, but the workspace ships ${current}: ` +
-          'move it to the latest published major (`npm view ' + name + ' version`)',
+          'move it to the latest published major (`npm view ' + name + ' version`) and refresh the lockfile. ' +
+          'If that major is not on npm yet (a failed publish), `workspace:*` is an acceptable stopgap.',
       );
     }
   });
@@ -103,6 +104,14 @@ test('changeset version leaves the examples\' registry ranges alone (#5960)', as
   const packages = await getPackages(root);
   const { config, errors } = await readConfig(root, packages);
   assert.deepEqual(errors ?? [], [], 'the changeset config should be valid');
+  // Asserted directly as well: while every example range trails the workspace
+  // by a major, changesets already skips them, so the release-plan probe
+  // below would pass without the flag.
+  assert.equal(
+    config.bumpVersionsWithWorkspaceProtocolOnly,
+    true,
+    'set bumpVersionsWithWorkspaceProtocolOnly in .changeset/config.json, or changeset version rewrites the examples\' registry ranges',
+  );
 
   // A major bump of every @ifc-lite package the examples use: the case that
   // pushed the examples' ranges past what npm had published.

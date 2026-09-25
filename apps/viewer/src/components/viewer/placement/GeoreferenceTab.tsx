@@ -56,10 +56,10 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
           </div>
 
           {c.mapAbsoluteActive && (
-            <div data-testid="cesium-placement-map-absolute-warning" role="status"
-              className="border border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] leading-snug text-amber-800 dark:text-amber-300">
+            <output data-testid="cesium-placement-map-absolute-warning"
+              className="block border border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] leading-snug text-amber-800 dark:text-amber-300">
               {t('cesiumGeo.placement.mapAbsoluteWarning')}
-            </div>
+            </output>
           )}
 
           <div className="space-y-1">

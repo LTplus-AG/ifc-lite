@@ -70,12 +70,12 @@ export function PresentationViewCard({
         )}
       </button>
 
-      <div
-        className={cn('absolute inset-x-0 bottom-0 bg-black/60 text-white px-2 py-1', !isEditing && 'pointer-events-none')}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={cn('absolute inset-x-0 bottom-0 bg-black/60 text-white px-2 py-1', !isEditing && 'pointer-events-none')}>
         {isEditing ? (
           <Input
+            // The input only mounts when the user clicks Rename, so taking focus
+            // is the response to their own action, not a focus jump on load.
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             value={editingName}
             onChange={(e) => onEditingNameChange(e.target.value)}

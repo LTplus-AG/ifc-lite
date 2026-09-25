@@ -13,7 +13,7 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { flySpeedStore } from './flySpeedStore.js';
 
@@ -41,10 +41,7 @@ export interface UseKeyboardControlsParams {
 }
 
 /** Keys that trigger continuous movement (arrow keys + WASD + shift for sprint) */
-const MOVEMENT_KEYS = new Set([
-  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
-  'w', 's', 'a', 'd', 'shift',
-]);
+const MOVEMENT_KEYS = new Set([...WALK_MOVEMENT_KEYS, 'shift']);
 
 export function useKeyboardControls(params: UseKeyboardControlsParams): void {
   const {
@@ -100,6 +97,11 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         moveLoopRunning = true;
         keyboardMove();
       }
+
+      // The camera shortcuts below are plain keys. With Ctrl/Meta/Alt held the
+      // key belongs to another binding (Ctrl+Z undo, Ctrl+F search, Alt+1
+      // panel), which must not also move the camera (#5596).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       // Preset views - set view and re-render
       const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {

@@ -49,10 +49,11 @@ import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
 import { classifyLoadError } from '@/lib/load-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -298,9 +299,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
-      const suffix = visibleOnly ? '_visible' : '';
-      downloadBlob(blob, `${baseName}${suffix}.glb`);
+      downloadBlob(blob, modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : ''));
 
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
@@ -363,8 +362,14 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     getGlobalIsolatedIds,
   ]);
 
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => setExportResult(null),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -489,7 +494,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('geometryExport.glb.cancelButton')}
           </Button>
           <Button

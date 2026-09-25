@@ -102,6 +102,37 @@ test('#5236 direct index bindings and getByType calls cannot bypass the raw-acce
   assert.equal(excessRawAccess([], hits).length, 4);
 });
 
+test('#5249 spatial containment indexes are scanned with optional and direct receivers', () => {
+  const hits = scan(`function select(store, spatialHierarchy, unrelated) {
+    store.spatialHierarchy?.byStorey.get(1);
+    store.spatialHierarchy.byBuilding.get(2);
+    spatialHierarchy.bySite.get(3);
+    spatialHierarchy.bySpace.get(4);
+    store.spatialHierarchy?.elementToStorey.get(5);
+    unrelated.byStorey.get(6);
+  }`);
+  assert.deepEqual(hits.map((hit) => hit.kind), [
+    'spatialHierarchy.byStorey', 'spatialHierarchy.byBuilding',
+    'spatialHierarchy.bySite', 'spatialHierarchy.bySpace',
+    'spatialHierarchy.elementToStorey',
+  ]);
+});
+
+test('#5249 existing spatial reads retain a temporary slot, while new reads fail', () => {
+  const old = scan('function q(store) { return store.spatialHierarchy.byStorey.get(1); }');
+  assert.deepEqual(excessRawAccess(old, old, true), []);
+  const added = scan('function q(store) { if (store.spatialHierarchy.byStorey.get(2)) use(); return store.spatialHierarchy.byStorey.get(1); }');
+  assert.equal(excessRawAccess(old, added, true).length, 1,
+    'one added read cannot reuse the old slot');
+  assert.equal(excessRawAccess(old, added).length, 1,
+    'unreviewed files also reject a new spatial read');
+  const documented = scan(`function q(store) {
+    // @raw-entity-enumeration-ok freshly parsed store with no mutation view
+    return store.spatialHierarchy.byStorey.get(1);
+  }`);
+  assert.deepEqual(excessRawAccess(old, documented, true), []);
+});
+
 test('#5236 removal shrinks the raw-access census', () => {
   const old = scan('function query(m) { for (const row of m.store.entityIndex.byType) use(row); }');
   assert.equal(old.length, 1);

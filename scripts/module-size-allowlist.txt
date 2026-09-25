@@ -69,7 +69,7 @@
    486 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1098 apps/viewer/src/components/viewer/CesiumPlacementEditor.tsx
   1720 apps/viewer/src/components/viewer/ChatPanel.tsx
-  1303 apps/viewer/src/components/viewer/ClashPanel.tsx
+  1302 apps/viewer/src/components/viewer/ClashPanel.tsx
   1053 apps/viewer/src/components/viewer/DataConnector.tsx
   1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
@@ -87,7 +87,7 @@
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    546 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1133 apps/viewer/src/components/viewer/MainToolbar.tsx
-   715 apps/viewer/src/components/viewer/measureHandlers.ts
+   713 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    572 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
@@ -112,8 +112,8 @@
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
-   867 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
-   752 apps/viewer/src/components/viewer/tools/MeasurePanel.tsx
+   840 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
+   749 apps/viewer/src/components/viewer/tools/MeasurePanel.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1509 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
@@ -186,7 +186,6 @@
    573 apps/viewer/src/utils/viewportUtils.ts
    405 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
-   495 packages/bcf/src/overlay-renderer.ts
    806 packages/bcf/src/reader.ts
    627 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts

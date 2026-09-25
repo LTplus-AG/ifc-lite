@@ -18,6 +18,7 @@ import { Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { isTextEntryElement } from '@/lib/keyboard-event';
 import { abortTour, nextStep, runStepAction, skipStep } from '@/lib/tours/controller';
 import { useTourStore } from '@/lib/tours/tour-store';
 import type { TourDefinition, TourStep } from '@/lib/tours/types';
@@ -71,8 +72,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
   // the card controls, without stealing focus from an input mid-typing.
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+    if (isTextEntryElement(document.activeElement)) return;
     cardRef.current?.focus({ preventScroll: true });
   }, [stepIndex]);
 

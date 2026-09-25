@@ -62,6 +62,7 @@ import {
 } from '@/lib/clash/federation-identity';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
+import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
@@ -465,7 +466,7 @@ export function useClash() {
   }, [releaseClashVisibility]);
 
   const run = useCallback(
-    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null): Promise<void> => {
+    async (rules: ClashRule[], tagInputs: ClashModelTagInputs | null = null, request: ClashRunRequest | null = null): Promise<void> => {
       // Captured before anything else so a call issued while this one is
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
@@ -506,6 +507,7 @@ export function useClash() {
         // see `publishClashResult`.
         if (!publishClashResult(federationIdentity, res, myEpoch)) return;
         rememberModelTagInputs(res, tagInputs);
+        rememberRunRequest(res, request);
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -535,7 +537,7 @@ export function useClash() {
    *  left to its type selector, so a rule set from before filters existed runs
    *  through here exactly as it did. Models + tag inputs: ONE `getState()` snapshot (#4215). */
   const runPresets = useCallback(
-    async (presets: ClashPreset[]): Promise<void> => {
+    async (presets: ClashPreset[], request: ClashRunRequest): Promise<void> => {
       const state = useViewerStore.getState();
       const models = evaluatorModelsFromState(state);
       const tagInputs = captureModelTagInputs(presets, state.modelTagAssignments);
@@ -561,7 +563,7 @@ export function useClash() {
         return;
       }
       if (!stillWanted(myEpoch)) return;
-      return run(resolved, tagInputs);
+      return run(resolved, tagInputs, request);
     },
     [run, mode, clearance, reportTouch, stillWanted],
   );
@@ -577,7 +579,7 @@ export function useClash() {
       useViewerStore.getState().setClashError('All rules are disabled — enable at least one in Clash settings (⚙).');
       return Promise.resolve();
     }
-    return runPresets(enabled);
+    return runPresets(enabled, { kind: 'matrix' });
   }, [runPresets, clashPresets]);
 
   /**
@@ -587,25 +589,15 @@ export function useClash() {
    * the model".
    */
   const runAll = useCallback(
-    (): Promise<void> =>
-      run([
-        {
-          id: 'all-clashes',
-          name: 'All elements',
-          a: '*',
-          mode,
-          ...(mode === 'clearance' ? { clearance } : {}),
-          ...(reportTouch ? { reportTouch: true } : {}),
-        },
-      ]),
+    (): Promise<void> => run([allElementsRule(mode, clearance, reportTouch)], null, { kind: 'all' }),
     [run, mode, clearance, reportTouch],
   );
 
   const runPreset = useCallback(
     (presetId: string): Promise<void> => {
       const preset = useViewerStore.getState().clashPresets.find((p) => p.id === presetId);
-      if (!preset) return Promise.resolve();
-      return runPresets([preset]);
+      if (!preset) { useViewerStore.getState().setClashError('That rule no longer exists — pick a rule to run, or restore it in Clash settings (⚙).'); return Promise.resolve(); }
+      return runPresets([preset], { kind: 'preset', presetId, name: preset.name });
     },
     [runPresets],
   );
@@ -654,6 +646,7 @@ export function useClash() {
       // duplicate scan tomorrow would otherwise reopen the defect on this path
       // alone, silently.
       if (!publishClashResult(federationIdentity, res, myEpoch)) return;
+      rememberRunRequest(res, { kind: 'duplicates' });
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The
       // panel renders these as its sections (see duplicate-set-sections.ts).

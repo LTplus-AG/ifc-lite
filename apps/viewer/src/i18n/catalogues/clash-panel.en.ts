@@ -53,6 +53,9 @@ export const clashPanelEn = {
   // Detection controls
   'clashPanel.detectionSectionLabel': 'Detection',
   'clashPanel.rerunTooltip': 'Re-run detection on the whole model',
+  'clashPanel.rerunTooltipMatrix': 'Re-run the enabled rule set',
+  'clashPanel.rerunTooltipPreset': 'Re-run rule "{name}"',
+  'clashPanel.rerunTooltipDuplicates': 'Re-run the duplicate scan',
   'clashPanel.rerun': 'Re-run',
   'clashPanel.tolLabelTooltip': 'Touch band (m): surface contact within this distance is ignored',
   'clashPanel.gapLabelTooltip': 'Minimum required separation (m); elements closer than this are flagged',

@@ -215,7 +215,16 @@ const mapping = {
 // Import (takes CSV string directly, not pre-parsed rows)
 const stats = connector.import(csvString, mapping);
 console.log(`Matched: ${stats.matchedRows}, Updated: ${stats.mutationsCreated}, Skipped: ${stats.unmatchedRows}`);
+
+// Async variant: yields between batches and reports each applied batch
+const asyncStats = await connector.importAsync(csvString, mapping, (progress) => {
+  console.log(`${progress.phase}: ${Math.round(progress.percent * 100)}%`);
+}, {
+  onApplied: (mutations) => console.log(`Applied ${mutations.length} writes`),
+});
 ```
+
+The importer writes straight to the view. `stats.mutations` lists every write that landed, including those applied before an error ended the import (`stats.errors`), so a host with undo history can revert them. `onApplied` lets it record that history batch by batch as the import goes.
 
 ## Viewer Integration
 

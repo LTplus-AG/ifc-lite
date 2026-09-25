@@ -123,6 +123,8 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 setOverId(null);
               }}
               onDragOver={(e) => {
+                // Only a row reorder claims the drag; a file is the window's (#5845).
+                if (!dragId) return;
                 e.preventDefault();
                 if (overId !== id) setOverId(id);
               }}

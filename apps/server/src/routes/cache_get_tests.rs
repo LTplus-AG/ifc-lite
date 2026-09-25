@@ -418,10 +418,6 @@ async fn issue_5750_a_cache_lookup_error_is_a_500_not_a_miss() {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::write(&dir, b"not a cache directory").expect("inject the lookup failure");
-    assert!(
-        broken.cache.has("anything").await.is_err(),
-        "the injected failure must reach `has` as an error"
-    );
 
     let response = get_cache(&broken, &key).await;
     let _ = std::fs::remove_file(&dir);

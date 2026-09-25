@@ -253,6 +253,7 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 5. **Filter** - Show all entities, only failed, or only passed
 6. **Navigate** - Click a failed entity to zoom to it in 3D
 7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
+8. **Re-run** - After editing the model, the header's Re-run button repeats the check with the same IDS against the same model the report describes. **Clear results** returns to the pre-run card and keeps the IDS loaded; **Unload IDS** removes both
 
 Validation runs in a Web Worker so the UI stays responsive during large runs, with an automatic fallback to in-process validation if the worker is unavailable.
 

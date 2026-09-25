@@ -622,7 +622,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // follow-up). Runs INSTEAD of the generic tooltip path while
       // pick mode is armed so the overlay stays the only signal under
       // the cursor — the tooltip would just compete visually with the
-      // violet quad. See `handleSectionPickHover` for the full
+      // accent quad. See `handleSectionPickHover` for the full
       // anti-jitter rules.
       if (tool === 'section' && !mouseState.isDragging && sectionPickModeRef.current) {
         handleSectionPickHover(e, x, y);
@@ -755,7 +755,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Section face-pick preview: cursor left the canvas, so any
       // pending dwell timer would otherwise commit a stale hover
       // when the user returns. Drop the overlay too so we don't leave
-      // a violet quad orphaned on the last-seen face after leaving.
+      // an accent quad orphaned on the last-seen face after leaving.
       if (sectionDwellTimerRef.current) {
         clearTimeout(sectionDwellTimerRef.current);
         sectionDwellTimerRef.current = null;

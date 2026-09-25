@@ -214,9 +214,9 @@ export function writeInstanceAnchor(
  *
  * TRANSPARENT instances (colour alpha < OPAQUE_ALPHA_CUTOFF — glass, IfcSpace,
  * openings) are EXCLUDED: the instanced pipeline is the opaque clone (no alpha
- * blend, depth-write on), so drawing glass here renders it opaque (and fs_main's
- * glass-fresnel tints it near-white). They render correctly via the flat
- * transparent pipeline instead — which the emit-both path still produces. Uses
+ * blend, depth-write on), so drawing glass here renders it opaque. They render
+ * correctly via the flat transparent pipeline instead — which the emit-both
+ * path still produces, and which alone carries the glass material (#5386). Uses
  * the SAME 0.99 cutoff as the flat opaque/transparent split (overlay-routing.ts).
  */
 export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedRenderTemplate[] {

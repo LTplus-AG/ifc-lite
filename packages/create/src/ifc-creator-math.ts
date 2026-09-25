@@ -128,8 +128,9 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
  *     onto the plane normal to `Axis`. The schema switches to world Y only when
  *     the normalised `Axis` is exactly `(1,0,0)`, so this tests for an Axis
  *     with no Y or Z component rather than using a tolerance: a near-X Axis
- *     must still project X, or the result flips 180 degrees. `-X` takes Y too,
- *     since the projection of X vanishes there and the schema has no answer.
+ *     must still project X, or the result flips 180 degrees. For `-X` the
+ *     projection of X vanishes and the schema has no answer; this writes
+ *     `(0,-1,0)`, the value ifc-lite's reader already used for a `$` there.
  */
 export function completePlacementAxes(
   axis: Point3D | undefined,
@@ -139,7 +140,10 @@ export function completePlacementAxes(
   if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
   if (!axis) return undefined;
   const z = vecNorm(axis);
-  const v: Point3D = z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0];
+  // Along X, world X projects to zero: +X takes world Y (the schema's rule),
+  // -X takes (0,-1,0), which is (0,0,1) x Axis as ifc-lite's own reader fills a
+  // `$` there (`build_axis2_matrix`), so nothing renders turned from before.
+  const v: Point3D = z[1] === 0 && z[2] === 0 ? [0, z[0] > 0 ? 1 : -1, 0] : [1, 0, 0];
   const d = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
   return { Axis: axis, RefDirection: vecNorm([v[0] - d * z[0], v[1] - d * z[1], v[2] - d * z[2]]) };
 }
@@ -218,12 +222,16 @@ function assertStepTypeName(typeName: string): void {
  */
 export function serializePropertyValue(prop: PropertyDef): string {
   const val = prop.NominalValue;
+  // An empty `Type` (a JSON payload that defaults an unset field to '') means
+  // "not declared", exactly like an absent one.
+  const declared = prop.Type || undefined;
   if (typeof val === 'string') {
-    const typeName = prop.Type ?? 'IfcLabel';
+    const typeName = declared ?? 'IfcLabel';
+    assertStepTypeName(typeName);
     return `${typeName.toUpperCase()}('${esc(val)}')`;
   }
   if (typeof val === 'number') {
-    const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    const typeName = declared ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
     // A declared measure type is written AS that type. This used to emit every
     // number as IFCINTEGER or IFCREAL whatever `Type` said, so a
     // `ThermalTransmittance` declared an IfcThermalTransmittanceMeasure came out

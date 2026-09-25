@@ -35,10 +35,29 @@ const ELEMENT_TYPES = [
 // Quantities we care about (case-insensitive matching)
 const QTY_KEYS = ['area', 'volume', 'length', 'width', 'height', 'netarea', 'netsidearea', 'netvolume', 'grossarea', 'grossvolume', 'perimeter']
 
+/**
+ * One figure per element for the summary table, taken from the IFC standard
+ * base-quantity names in priority order. Summing every quantity whose name
+ * merely CONTAINS "volume" added GrossVolume, NetVolume and each exporter's
+ * localised duplicates ("Brutto-Volumen der Wand", "Konditionales Volumen", …)
+ * together, overstating a wall's volume ~3x; "area" likewise added a wall's
+ * side area to its footprint area. Area priority runs side -> plan -> plain so
+ * each class lands on the area that describes it: walls on GrossSideArea,
+ * slabs and roofs on GrossArea, doors and windows on Area.
+ */
+const VOLUME_PRIORITY = ['GrossVolume', 'NetVolume']
+const AREA_PRIORITY = ['GrossSideArea', 'NetSideArea', 'GrossArea', 'NetArea', 'Area']
+
+/** Cap per type; beyond it the sums are extrapolated and labelled as such. */
+const SAMPLE_CAP = 500
+
 interface TypeTakeoff {
   type: string
   count: number
-  quantities: Record<string, { sum: number; count: number; unit: string }>
+  sampled: number
+  quantities: Record<string, { sum: number; count: number }>
+  area: { sum: number; count: number }
+  volume: { sum: number; count: number }
 }
 
 console.log('═══════════════════════════════════════')
@@ -46,93 +65,99 @@ console.log('  QUANTITY TAKEOFF')
 console.log('═══════════════════════════════════════')
 console.log('')
 
+// One query, grouped by each element's CONCRETE class. `byType` already expands
+// to subtypes, so querying `IfcWall` and `IfcWallStandardCase` separately
+// returned the same walls twice and reported them as two types.
+const elements = bim.query.byType(...ELEMENT_TYPES)
+const byClass = new Map<string, BimEntity[]>()
+for (const e of elements) {
+  const list = byClass.get(e.Type)
+  if (list) list.push(e)
+  else byClass.set(e.Type, [e])
+}
+
 const takeoffs: TypeTakeoff[] = []
-let totalElements = 0
 // Collect all unique Qto set+quantity paths for CSV export columns
 const quantityColumns = new Set<string>()
 
-for (const ifcType of ELEMENT_TYPES) {
-  const entities = bim.query.byType(ifcType)
-  if (entities.length === 0) continue
-
-  totalElements += entities.length
-  const takeoff: TypeTakeoff = { type: ifcType, count: entities.length, quantities: {} }
-
-  // Sample all entities for quantities (cap at 500 to avoid timeout)
-  const sample = entities.length > 500 ? entities.slice(0, 500) : entities
-  const isSampled = entities.length > 500
+for (const [type, entities] of byClass) {
+  const sample = entities.length > SAMPLE_CAP ? entities.slice(0, SAMPLE_CAP) : entities
+  const takeoff: TypeTakeoff = {
+    type, count: entities.length, sampled: sample.length, quantities: {},
+    area: { sum: 0, count: 0 }, volume: { sum: 0, count: 0 },
+  }
 
   for (const entity of sample) {
-    const qsets = bim.query.quantities(entity)
-    for (const qset of qsets) {
+    const byName = new Map<string, number>()
+    for (const qset of bim.query.quantities(entity)) {
       for (const q of qset.quantities) {
         if (q.value === null || q.value === 0) continue
         const lower = q.name.toLowerCase()
-        // Only aggregate quantities we care about
-        const match = QTY_KEYS.find(k => lower.includes(k))
-        if (!match) continue
-        const key = q.name
-        if (!takeoff.quantities[key]) takeoff.quantities[key] = { sum: 0, count: 0, unit: '' }
-        takeoff.quantities[key].sum += q.value
-        takeoff.quantities[key].count++
-        // Track the full path for CSV export
+        if (!QTY_KEYS.some(k => lower.includes(k))) continue
+        if (!takeoff.quantities[q.name]) takeoff.quantities[q.name] = { sum: 0, count: 0 }
+        takeoff.quantities[q.name].sum += q.value
+        takeoff.quantities[q.name].count++
+        if (!byName.has(q.name)) byName.set(q.name, q.value)
         quantityColumns.add(qset.name + '.' + q.name)
       }
     }
+    const volume = VOLUME_PRIORITY.map(n => byName.get(n)).find(v => v !== undefined)
+    if (volume !== undefined) { takeoff.volume.sum += volume; takeoff.volume.count++ }
+    const area = AREA_PRIORITY.map(n => byName.get(n)).find(v => v !== undefined)
+    if (area !== undefined) { takeoff.area.sum += area; takeoff.area.count++ }
   }
 
-  // Scale up if sampled
-  if (isSampled) {
+  // Scale up if sampled -- the report says so below rather than presenting an
+  // extrapolation as a measured total.
+  if (sample.length < entities.length) {
     const factor = entities.length / sample.length
-    for (const q of Object.values(takeoff.quantities)) {
-      q.sum = q.sum * factor
-    }
+    for (const q of Object.values(takeoff.quantities)) q.sum *= factor
+    takeoff.area.sum *= factor
+    takeoff.volume.sum *= factor
   }
 
   takeoffs.push(takeoff)
 }
 
 if (takeoffs.length === 0) {
-  console.error('No elements with quantities found')
-  throw new Error('no quantities')
-}
-
-// ── Report ──────────────────────────────────────────────────────────────
-console.log('Scanned ' + totalElements + ' elements across ' + takeoffs.length + ' types')
-console.log('')
-
-for (const t of takeoffs.sort((a, b) => b.count - a.count)) {
-  console.log('── ' + t.type + ' (' + t.count + ') ──')
-  const qEntries = Object.entries(t.quantities).sort((a, b) => b[1].sum - a[1].sum)
-  if (qEntries.length === 0) {
-    console.log('  (no quantities defined)')
-  } else {
-    for (const [name, q] of qEntries) {
-      const avg = q.sum / q.count
-      console.log('  ' + name + ': total=' + q.sum.toFixed(2) + '  avg=' + avg.toFixed(2) + '  (from ' + q.count + ' entities)')
-    }
-  }
+  console.log('No ' + ELEMENT_TYPES.join(', ') + ' elements in this model, so there is nothing to take off.')
+} else {
+  // ── Report ────────────────────────────────────────────────────────────
+  console.log('Scanned ' + elements.length + ' elements across ' + takeoffs.length + ' classes')
   console.log('')
-}
 
-// ── Summary table ───────────────────────────────────────────────────────
-console.log('── Summary ──')
-console.log('Type                       | Count |    Area    |   Volume')
-console.log('---------------------------+-------+------------+-----------')
-for (const t of takeoffs.sort((a, b) => b.count - a.count)) {
-  // Find area and volume totals
-  let area = 0
-  let volume = 0
-  for (const [name, q] of Object.entries(t.quantities)) {
-    const lower = name.toLowerCase()
-    if (lower.includes('area') && !lower.includes('net')) area += q.sum
-    if (lower.includes('volume') && !lower.includes('net')) volume += q.sum
+  for (const t of takeoffs.sort((a, b) => b.count - a.count)) {
+    const extrapolated = t.sampled < t.count ? '  [extrapolated from ' + t.sampled + ' of ' + t.count + ']' : ''
+    console.log('── ' + t.type + ' (' + t.count + ')' + extrapolated + ' ──')
+    const qEntries = Object.entries(t.quantities).sort((a, b) => b[1].sum - a[1].sum)
+    if (qEntries.length === 0) {
+      console.log('  (no quantities defined)')
+    } else {
+      for (const [name, q] of qEntries) {
+        const avg = q.sum / q.count
+        console.log('  ' + name + ': total=' + q.sum.toFixed(2) + '  avg=' + avg.toFixed(2) + '  (from ' + q.count + ' entities)')
+      }
+    }
+    console.log('')
   }
-  const typeStr = (t.type + '                           ').slice(0, 27)
-  const countStr = ('     ' + t.count).slice(-5)
-  const areaStr = area > 0 ? (area.toFixed(1) + ' m²') : '-'
-  const volStr = volume > 0 ? (volume.toFixed(2) + ' m³') : '-'
-  console.log(typeStr + '| ' + countStr + ' | ' + ('          ' + areaStr).slice(-10) + ' | ' + ('         ' + volStr).slice(-9))
+
+  // ── Summary table ─────────────────────────────────────────────────────
+  // Values are in the model's own length unit, squared and cubed. `bim` has no
+  // project-unit accessor yet, so the column headers do not claim metres.
+  console.log('── Summary (one standard base quantity per element) ──')
+  console.log('Class                      | Count |    Area    |   Volume')
+  console.log('---------------------------+-------+------------+-----------')
+  for (const t of takeoffs) {
+    const typeStr = (t.type + '                           ').slice(0, 27)
+    const countStr = ('     ' + t.count).slice(-5)
+    const areaStr = t.area.count > 0 ? t.area.sum.toFixed(1) : '-'
+    const volStr = t.volume.count > 0 ? t.volume.sum.toFixed(2) : '-'
+    const mark = t.sampled < t.count ? '  *' : ''
+    console.log(typeStr + '| ' + countStr + ' | ' + ('          ' + areaStr).slice(-10) + ' | ' + ('         ' + volStr).slice(-9) + mark)
+  }
+  if (takeoffs.some(t => t.sampled < t.count)) {
+    console.log('* extrapolated from the first ' + SAMPLE_CAP + ' elements of the class')
+  }
 }
 
 // ── Export ───────────────────────────────────────────────────────────────

@@ -9,9 +9,11 @@ import { modelCenter } from '@/lib/model-placement/scene';
 import { addTranslation, constrainTranslation, orthogonalAxis, toRenderTranslation, type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
 import { dragTranslation, type DragBasis, type ScreenVector } from '@/lib/model-placement/drag';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 const AXES = ['x', 'y', 'z'] as const;
-const COLORS = ['#ef4444', '#10b981', '#3b82f6'];
+/** The shared X/Y/Z triad (#5490), indexed like `AXES`. */
+const COLORS = AXES.map((axis) => IFC_AXIS_COLORS[axis]);
 interface Drag { start: ScreenVector; basis: DragBasis; before: Translation; constraint: MoveConstraint; ids: readonly string[]; ortho?: 'x' | 'y' | 'z' }
 
 /** Uses the existing gizmo's projection callback and camera tick subscription.

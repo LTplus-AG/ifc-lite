@@ -21,10 +21,10 @@ import { MergedExporter, type MergeExportOptions, type MergeModelInput } from '.
 
 const guid = (label: string): string => (label + '0'.repeat(22)).slice(0, 22);
 
-async function model(id: string, lines: string[]): Promise<MergeModelInput> {
+async function model(id: string, lines: string[], schema = 'IFC4'): Promise<MergeModelInput> {
   const text = [
     'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');",
-    "FILE_NAME('m.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", "FILE_SCHEMA(('IFC4'));",
+    "FILE_NAME('m.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", `FILE_SCHEMA(('${schema}'));`,
     'ENDSEC;', 'DATA;', ...lines, 'ENDSEC;', 'END-ISO-10303-21;',
   ].join('\n');
   const bytes = new TextEncoder().encode(text);
@@ -36,26 +36,27 @@ async function merge(models: MergeModelInput[], options: Partial<MergeExportOpti
   return new TextDecoder().decode(new MergedExporter(models).export({ schema: 'IFC4', ...options }).content);
 }
 
-/** Every IFCRELAGGREGATES line as `{ relating, related[] }`. */
-function aggregates(content: string): Array<{ relating: number; related: number[] }> {
-  return [...content.matchAll(/^#\d+=IFCRELAGGREGATES\('[^']*',[^,]*,[^,]*,[^,]*,#(\d+),\(([^)]*)\)\);$/gm)].map(m => ({
+/** Every `relType` line (IFCRELAGGREGATES by default) as `{ relating, related[] }`. */
+function aggregates(content: string, relType = 'IFCRELAGGREGATES'): Array<{ relating: number; related: number[] }> {
+  const re = new RegExp(`^#\\d+=${relType}\\('[^']*',[^,]*,[^,]*,[^,]*,#(\\d+),\\(([^)]*)\\)\\);$`, 'gm');
+  return [...content.matchAll(re)].map(m => ({
     relating: Number(m[1]),
     related: [...m[2].matchAll(/#(\d+)/g)].map(r => Number(r[1])),
   }));
 }
 
-/** The aggregation parents of the entity whose line starts `#id=TYPE('guid'`. */
-function parentsOf(content: string, type: string, globalId: string): number[] {
+/** The parents, through any of `relTypes`, of the entity whose line starts `#id=TYPE('guid'`. */
+function parentsOf(content: string, type: string, globalId: string, relTypes = ['IFCRELAGGREGATES']): number[] {
   const line = content.split('\n').find(l => l.includes(`=${type}('${globalId}'`));
   expect(line, `${type} ${globalId} is in the output`).toBeDefined();
   const id = Number(line!.slice(1, line!.indexOf('=')));
-  return aggregates(content).filter(r => r.related.includes(id)).map(r => r.relating);
+  return relTypes.flatMap(relType => aggregates(content, relType).filter(r => r.related.includes(id)).map(r => r.relating));
 }
 
-/** No object anywhere is a RelatedObjects member of two IfcRelAggregates. */
-function expectSingleParents(content: string): void {
+/** No object anywhere is a RelatedObjects member of two of `relTypes` (one SET [0:1] inverse). */
+function expectSingleParents(content: string, relTypes = ['IFCRELAGGREGATES']): void {
   const seen = new Map<number, number>();
-  for (const { related } of aggregates(content)) {
+  for (const { related } of relTypes.flatMap(relType => aggregates(content, relType))) {
     for (const id of related) seen.set(id, (seen.get(id) ?? 0) + 1);
   }
   expect([...seen].filter(([, n]) => n > 1)).toEqual([]);
@@ -186,5 +187,65 @@ describe('MergedExporter keeps one IfcRelAggregates parent per object (#5471)', 
     );
     expect(parentsOf(content, 'IFCBUILDING', guid('ba'))).toEqual([2]);
     expectSingleParents(content);
+  });
+});
+
+/**
+ * IfcRelNests shares the one-parent rule (#5726). In IFC2X3 it is an
+ * IfcRelDecomposes like IfcRelAggregates, so the two fill one
+ * `Decomposes : SET [0:1]` together; IFC4 moves it to its own
+ * `Nests : SET [0:1]`. Which pairs collide is the OUTPUT schema's call.
+ */
+describe('MergedExporter keeps one IfcRelNests parent per object, per output schema (#5726)', () => {
+  const proxy = (id: number, tag: string, name: string) =>
+    `#${id}=IFCBUILDINGELEMENTPROXY('${guid(tag)}',$,'${name}',$,$,$,$,$,$);`;
+  /** A aggregates the part under its unit; B nests the same part (by GlobalId) under a housing. */
+  const AGGREGATED = [
+    `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+    proxy(2, 'unit', 'Unit'), proxy(3, 'part', 'Part'),
+    `#4=IFCRELAGGREGATES('${guid('ra')}',$,$,$,#2,(#3));`,
+  ];
+  /** B nests the shared part (and, in `extra`, a part of its own) under a housing of its own. */
+  const NESTED = (extra = false) => [
+    `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+    proxy(2, 'housing', 'Housing'), proxy(3, 'part', 'Part'),
+    ...(extra ? [proxy(5, 'own', 'Own part')] : []),
+    `#4=IFCRELNESTS('${guid('rn')}',$,$,$,#2,(#3${extra ? ',#5' : ''}));`,
+  ];
+  const BOTH = ['IFCRELAGGREGATES', 'IFCRELNESTS'];
+
+  it('IFC2X3: a nest does not add a second Decomposes parent to an aggregated part', async () => {
+    const content = await merge(
+      [await model('a', AGGREGATED, 'IFC2X3'), await model('b', NESTED(), 'IFC2X3')],
+      { schema: 'IFC2X3' },
+    );
+    expect(parentsOf(content, 'IFCBUILDINGELEMENTPROXY', guid('part'), BOTH)).toEqual([2]);
+    expect(content).not.toContain(guid('rn'));
+    expectSingleParents(content, BOTH);
+  });
+
+  it('IFC4: the same merge keeps both, since Nests and Decomposes are separate inverses', async () => {
+    const content = await merge([await model('a', AGGREGATED), await model('b', NESTED())]);
+    expect(parentsOf(content, 'IFCBUILDINGELEMENTPROXY', guid('part'))).toEqual([2]);
+    expect(parentsOf(content, 'IFCBUILDINGELEMENTPROXY', guid('part'), ['IFCRELNESTS'])).toHaveLength(1);
+    expect(content).toContain(guid('rn'));
+  });
+
+  it.each(['IFC2X3', 'IFC4'] as const)('%s: a second nest of a unified part is stripped, keeping its new member', async (schema) => {
+    const nestedA = [
+      `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+      proxy(2, 'unit', 'Unit'), proxy(3, 'part', 'Part'),
+      `#4=IFCRELNESTS('${guid('na')}',$,$,$,#2,(#3));`,
+    ];
+    const content = await merge(
+      [await model('a', nestedA, schema), await model('b', NESTED(true), schema)],
+      { schema },
+    );
+    expect(parentsOf(content, 'IFCBUILDINGELEMENTPROXY', guid('part'), ['IFCRELNESTS'])).toEqual([2]);
+    // B's rel stays for its own part, under B's housing.
+    const housing = parentsOf(content, 'IFCBUILDINGELEMENTPROXY', guid('own'), ['IFCRELNESTS']);
+    expect(housing).toHaveLength(1);
+    expect(content.split('\n').find(l => l.startsWith(`#${housing[0]}=`))).toContain(guid('housing'));
+    expectSingleParents(content, schema === 'IFC2X3' ? BOTH : ['IFCRELNESTS']);
   });
 });

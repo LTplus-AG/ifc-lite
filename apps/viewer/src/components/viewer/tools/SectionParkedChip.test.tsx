@@ -22,6 +22,7 @@ import { fixtureModel } from '@/test/store-fixture.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { LevelDisplayIndicator } from '../LevelDisplayIndicator.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionParkedChip } from './SectionParkedChip.js';
 
 const s = () => useViewerStore.getState();
@@ -83,7 +84,7 @@ async function parkCut(axis: 'down' | 'front' | 'side' = 'down', position = 55):
 
 describe('parked-section chip (#5500)', () => {
   it('is absent with no parked cut, and while the Section tool is open', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     assert.equal(chip(), undefined, 'nothing parked, no chip');
     window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'down', position: 55, flipped: false }));
     await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
@@ -92,7 +93,7 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('names the parked cut in the bar\'s metres and stacks after the Solo chip by order', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><LevelDisplayIndicator /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><LevelDisplayIndicator /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('down', 55);
     // 55 % of Y in [-1, 3] is 1.2 m.
     assert.equal(chip()?.textContent?.trim(), 'Down · 1.20 m');
@@ -105,7 +106,7 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('names a face-picked cut by its signed distance along the normal', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
     act(() => s().setSectionPlaneFromFace([1, 0, 0], [-2.345, 0, 0]));
     const picked = s().sectionPlane.custom!.distance;
@@ -114,7 +115,7 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('resume reopens the Section tool on the same cut', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('front', 40);
     click(chip()!.querySelector('button[aria-label="Resume the section cut"]')!);
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -127,7 +128,7 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('clear forgets the cut: no chip, nothing enabled, and reopening the tool does not bring it back', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('down', 55);
     click(chip()!.querySelector('button[aria-label="Clear the parked cut"]')!);
     assert.equal(chip(), undefined);
@@ -140,7 +141,7 @@ describe('parked-section chip (#5500)', () => {
 
   it('falls back to the percentage while no model bounds exist', async () => {
     useViewerStore.setState({ models: new Map(), activeModelId: null });
-    render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('side', 42.25);
     assert.equal(chip()?.textContent?.trim(), 'Side · 42.3%');
   });

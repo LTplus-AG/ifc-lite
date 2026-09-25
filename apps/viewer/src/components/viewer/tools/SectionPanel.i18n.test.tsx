@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionParkedChip } from './SectionParkedChip.js';
 
 const TEST_LOCALE: Catalogue = {
@@ -104,7 +105,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const renderTool = () => render(<><ViewportHud /><SectionParkedChip /><ToolOverlays /></>);
+const renderTool = () => render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
 
 describe('mounted Section tool localization (#4785)', () => {
   it('preserves default English controls, cardinal states and clipping behavior', () => {

@@ -62,6 +62,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody.js';
 import { MainToolbar } from '../MainToolbar.js';
@@ -127,7 +128,7 @@ const render = (): HTMLElement =>
   renderNode(
     <>
       <ViewportHud />
-      <ToolOverlays />
+      <SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>
       {renderPanelBody('measurements', () => {})}
     </>,
   );

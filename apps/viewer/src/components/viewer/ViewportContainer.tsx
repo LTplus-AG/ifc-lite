@@ -27,6 +27,7 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { BasepointOverlay } from './BasepointOverlay';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -1122,13 +1123,15 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      {/* One scene-overlay kernel per viewport (#5486, #5511): the shared
-          projector (single rAF loop) and SVG+DOM layers every world-anchored
-          consumer below portals into via Pin/AnchoredCard/WorldLabel. */}
+      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
+          two roots until `ToolOverlays` (#5502) consolidated here). */}
       <SceneOverlayRoot>
         <AnnotationLayer />
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
+        <BasepointOverlay />
+        <ZoneOverlay />
+        <ToolOverlays />
       </SceneOverlayRoot>
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
@@ -1141,8 +1144,6 @@ export function ViewportContainer() {
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
       <LevelDisplayIndicator />
-      <ToolOverlays />
-      <ZoneOverlay />
       <ZoneAssignmentSyncMount />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />

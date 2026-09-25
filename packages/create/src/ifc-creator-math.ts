@@ -218,12 +218,16 @@ function assertStepTypeName(typeName: string): void {
  */
 export function serializePropertyValue(prop: PropertyDef): string {
   const val = prop.NominalValue;
+  // An empty `Type` (a JSON payload that defaults an unset field to '') means
+  // "not declared", exactly like an absent one.
+  const declared = prop.Type || undefined;
   if (typeof val === 'string') {
-    const typeName = prop.Type ?? 'IfcLabel';
+    const typeName = declared ?? 'IfcLabel';
+    assertStepTypeName(typeName);
     return `${typeName.toUpperCase()}('${esc(val)}')`;
   }
   if (typeof val === 'number') {
-    const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    const typeName = declared ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
     // A declared measure type is written AS that type. This used to emit every
     // number as IFCINTEGER or IFCREAL whatever `Type` said, so a
     // `ThermalTransmittance` declared an IfcThermalTransmittanceMeasure came out

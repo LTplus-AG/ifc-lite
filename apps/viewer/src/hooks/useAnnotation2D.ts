@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { isTextEntryElement } from '@/lib/keyboard-event';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type {
   Annotation2DTool, Point2D, TextAnnotation2D,
@@ -276,8 +277,7 @@ export function useAnnotation2D({
         if (storeRef.current.selectedAnnotation2D) setSelectedAnnotation2D(null);
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && storeRef.current.selectedAnnotation2D) {
-        const activeEl = document.activeElement;
-        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
+        if (isTextEntryElement(document.activeElement)) return;
         e.preventDefault();
         deleteSelectedAnnotation2D();
       }

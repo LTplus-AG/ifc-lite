@@ -61,7 +61,7 @@ Documentation:
   https://github.com/LTplus-AG/ifc-lite
 
 Alternatives:
-  - Docker: npx create-ifc-lite my-app --template server
+  - Another version: npm i @ifc-lite/server-bin@X.Y.Z (one whose release has binaries)
   - From source: cargo run --release -p ifc-lite-server
 `;
 

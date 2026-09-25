@@ -4,14 +4,23 @@
 
 /**
  * Main rendering shader for IFC geometry.
- * Features: linear-space diffuse lighting of sRGB-authored colours, section
- * plane clipping, selection highlight, glass fresnel, hue-preserving highlight
- * roll-off, screen-space edge enhancement.
+ * Features: linear-space lighting of sRGB-authored colours with a GGX
+ * specular term (specular.wgsl.ts), section plane clipping, selection
+ * highlight, glass, hue-preserving highlight roll-off, screen-space edge
+ * enhancement.
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+import { specularWgsl } from './specular.wgsl.js';
+
+/**
+ * Translucent surfaces draw at this fraction of their alpha, so interiors
+ * read through windows and X-Ray ghosts stay faint. A viewer choice that
+ * predates #5386, not optics.
+ */
+const TRANSLUCENT_OPACITY_SCALE = 0.7;
 
 /**
  * Converts the environment's light intensities to linear irradiance.
@@ -36,8 +45,8 @@ export const mainShaderSource = `
           viewProj: mat4x4<f32>,
           model: mat4x4<f32>,
           baseColor: vec4<f32>,
-          metallicRoughness: vec2<f32>, // x = metallic, y = roughness
-          _padding1: vec2<f32>,
+          metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
+          transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
           flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
@@ -75,7 +84,9 @@ export const mainShaderSource = `
         // constant it replaces, then ACES-tonemapped + gamma-encoded on output.
         @binding(4) @group(1) var<uniform> selectionColor: vec4<f32>;
         const IRRADIANCE_CALIBRATION: f32 = ${IRRADIANCE_CALIBRATION};
+        const TRANSLUCENT_OPACITY_SCALE: f32 = ${TRANSLUCENT_OPACITY_SCALE};
         ${colorTransferWgsl}
+        ${specularWgsl}
 
         ${mainShadowWgsl}
 
@@ -250,35 +261,6 @@ export const mainShaderSource = `
           output.eyePos = eyePos;
           output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
-        }
-
-        // PBR helper functions
-        fn fresnelSchlick(cosTheta: f32, F0: vec3<f32>) -> vec3<f32> {
-          return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-        }
-
-        fn distributionGGX(NdotH: f32, roughness: f32) -> f32 {
-          let a = roughness * roughness;
-          let a2 = a * a;
-          let NdotH2 = NdotH * NdotH;
-          let num = a2;
-          let denomBase = (NdotH2 * (a2 - 1.0) + 1.0);
-          let denom = 3.14159265 * denomBase * denomBase;
-          return num / max(denom, 0.0000001);
-        }
-
-        fn geometrySchlickGGX(NdotV: f32, roughness: f32) -> f32 {
-          let r = (roughness + 1.0);
-          let k = (r * r) / 8.0;
-          let num = NdotV;
-          let denom = NdotV * (1.0 - k) + k;
-          return num / max(denom, 0.0000001);
-        }
-
-        fn geometrySmith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
-          let ggx2 = geometrySchlickGGX(NdotV, roughness);
-          let ggx1 = geometrySchlickGGX(NdotL, roughness);
-          return ggx1 * ggx2;
         }
 
         fn encodeId24(id: u32) -> vec4<f32> {
@@ -459,10 +441,10 @@ export const mainShaderSource = `
           //   bit 1 (value 2) = isOverlay   → color-override pass; preserve
           //                                    baseColor.a (overlay pipeline has
           //                                    src-alpha blending) AND skip the
-          //                                    glass-fresnel branch so low-alpha
-          //                                    ghost tints don't pick up the
-          //                                    near-white reflection tint meant
-          //                                    for real glass materials.
+          //                                    specular term, so an override
+          //                                    paints its colour, lit, and a
+          //                                    low-alpha ghost tint does not
+          //                                    pick up glass reflections.
           // Selected via the per-draw flag (flat path) OR the per-occurrence flag
           // (instanced path — vs_instanced reads it from the instance buffer).
           let isSelected = ((uniforms.flags.x & 1u) == 1u) || ((input.instSelected & 1u) == 1u);
@@ -472,7 +454,7 @@ export const mainShaderSource = `
           //
           // We override the material albedo with selection-blue and re-light
           // it with the SAME lightTerm used for unselected surfaces, then
-          // discard the view-dependent (fresnel) term below. Two requirements
+          // skip the view-dependent (specular) term below. Two requirements
           // are in tension and this satisfies both:
           //
           //   * No base-material bleed-through. The old fresnel-glow mix left
@@ -513,44 +495,59 @@ export const mainShaderSource = `
             color = baseColor * facet;
           }
 
-          // Beautiful fresnel effect for transparent materials (glass)
-          // Skip when selected — the glass shine and desaturation wash out the
-          // blue highlight, making it appear white instead of blue.
-          // Also force alpha to 1.0 for selected objects so the highlight is
-          // fully opaque (the selection pipeline has no alpha blending).
-          // Emphasized clash overlay paints a SOLID vivid fill (force opaque) so
-          // it isn't blended down to a pale tint against the geometry beneath.
+          // Force alpha to 1.0 for selected objects so the highlight is fully
+          // opaque (the selection pipeline has no alpha blending). Emphasized
+          // clash overlay paints a SOLID vivid fill (force opaque) so it isn't
+          // blended down to a pale tint against the geometry beneath.
           var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
-          if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
-            // Calculate view direction for fresnel
-            let V = normalize(-fragmentPos);
-            let NdotV = max(dot(N, V), 0.0);
 
-            // Enhanced fresnel effect - stronger at edges (grazing angles)
-            // Using Schlick's approximation for realistic glass reflection
-            let fresnelPower = 1.5; // Higher = softer edge reflections
-            let fresnel = pow(1.0 - NdotV, fresnelPower);
-
-            // Glass reflection tint (sky/environment reflection at edges)
-            let reflectionTint = vec3<f32>(0.92, 0.96, 1.0);  // Cool sky reflection
-            let reflectionStrength = fresnel * 0.6;  // Strong edge reflections
-
-            // Mix in reflection tint at edges
-            color = mix(color, color * reflectionTint, reflectionStrength);
-
-            // Add realistic glass shine - brighter at edges where light reflects.
-            // Linear amount: 0.06 lifts a mid-tone about as much as the 0.12
-            // the pre-linear pipeline added in display space.
-            let glassShine = fresnel * 0.06;
-            color += glassShine;
-
-            // Slight desaturation at edges (glass reflects environment, not just color)
-            let edgeDesaturation = fresnel * 0.25;
-            let gray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-            color = mix(color, vec3<f32>(gray), edgeDesaturation);
-
-            // Make glass more transparent (reduce opacity by 30%)
-            finalAlpha = finalAlpha * 0.7;
+          // Specular (#5386; specular.wgsl.ts), after the diffuse above. Not
+          // on the selection highlight (it would wash the blue out) nor on a
+          // colour-override overlay. The sun lobe is scaled exactly like the
+          // diffuse sun term, and both terms like irradiance, so a preset's
+          // highlights and its diffuse light move together.
+          if (!isSelected && !isOverlay) {
+            // Glass is an authored translucent material (mesh-material.ts
+            // also gives it its smooth roughness). An X-Ray or compare fade
+            // only lowers the alpha and stays a fade. Instanced occurrences
+            // are never authored translucent: prepareInstancedRender routes
+            // those to the flat path, so the per-pass lane is ignored there.
+            let instancedPass = (uniforms.flags.x & 4u) != 0u;
+            let translucent = finalAlpha < 0.99;
+            let glass = translucent && uniforms.transmission.x > 0.5 && !instancedPass;
+            let metallic = clamp(uniforms.metallicRoughness.x, 0.0, 1.0);
+            let spec = surfaceSpecular(
+              N,
+              normalize(-input.eyePos),
+              baseColor,
+              metallic,
+              uniforms.metallicRoughness.y,
+              env.sunColor * (env.sunIntensity * sunShadow),
+            );
+            // What the lobe reflects is not there to diffuse; a metal has no
+            // diffuse at all.
+            let diffuse = color * (1.0 - spec.reflectance) * (1.0 - metallic);
+            let reflected = spec.light * (env.exposure * IRRADIANCE_CALIBRATION);
+            if (translucent) {
+              finalAlpha = finalAlpha * TRANSLUCENT_OPACITY_SCALE;
+            }
+            if (glass) {
+              // The transparent pipelines blend straight alpha:
+              // out = c * a + behind * (1 - a). A pane passes what is behind
+              // it except what its body absorbs and its surface reflects, and
+              // its reflection is not dimmed by the body's opacity, so solve
+              // for (c, a). The reflectance rising at grazing angles is what
+              // makes glass more opaque there; a bright sun glint raises the
+              // alpha further so it is not clipped to the body's opacity.
+              let body = finalAlpha;
+              let reflectance = dot(spec.reflectance, vec3<f32>(0.299, 0.587, 0.114));
+              let premultiplied = diffuse * body + reflected;
+              let peak = max(premultiplied.r, max(premultiplied.g, premultiplied.b));
+              finalAlpha = clamp(max(body + reflectance * (1.0 - body), peak), 0.0, 1.0);
+              color = premultiplied / max(finalAlpha, 0.0001);
+            } else {
+              color = diffuse + reflected;
+            }
           }
 
           // Hue-preserving highlight roll-off (color-transfer.wgsl.ts). No

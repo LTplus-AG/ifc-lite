@@ -16,6 +16,7 @@
 import { useEffect } from 'react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { isTextEntryTarget } from '@/lib/keyboard-event';
 
 export function useDuplicateShortcut() {
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
@@ -29,14 +30,7 @@ export function useDuplicateShortcut() {
 
       // Ignore when the user is typing somewhere — Ctrl+D in an
       // input usually means "delete word forward" or browser-bookmark.
-      const target = e.target as HTMLElement | null;
-      if (
-        target?.tagName === 'INPUT' ||
-        target?.tagName === 'TEXTAREA' ||
-        target?.isContentEditable
-      ) {
-        return;
-      }
+      if (isTextEntryTarget(e)) return;
 
       const state = useViewerStore.getState();
       const selectedId = state.selectedEntityId;

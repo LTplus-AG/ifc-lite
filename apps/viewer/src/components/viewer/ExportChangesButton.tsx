@@ -21,7 +21,7 @@ import { useViewerStore } from '@/store';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
-import { downloadFile } from '@/lib/export/download';
+import { buildExportFilename, downloadFile } from '@/lib/export/download';
 import {
   collectChangedModels,
   totalChangeCount,
@@ -245,7 +245,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       const date = formatDate();
       if (files.length === 1) {
         const f = files[0];
-        downloadFile(f.content, `${f.base}_${date}.${f.ext}`, f.mime);
+        downloadFile(f.content, buildExportFilename(`${f.base}_${date}`, f.ext), f.mime);
       } else {
         const zipped = await zipArtifacts(files);
         downloadFile(zipped, `ifc-lite-changes_${date}.zip`, 'application/zip');

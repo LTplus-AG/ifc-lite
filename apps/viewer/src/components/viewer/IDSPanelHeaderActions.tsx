@@ -1,0 +1,80 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The IDS panel's header actions once a document is loaded (#5816):
+ *
+ * - **Re-run** repeats the check that produced the report on screen: same IDS
+ *   document, same model. The model is the REPORT's, not the active one, so
+ *   with N models loaded a re-run cannot silently switch to another model.
+ * - **Clear results** drops the report and keeps the document, returning to
+ *   the pre-run card.
+ * - **Unload IDS** drops both.
+ *
+ * Before #5816 the only Run button disappeared once a report existed, and the
+ * single Trash button unloaded the document too, so re-checking after an edit
+ * meant reloading the `.ids` file.
+ */
+
+import { Eraser, Loader2, RotateCw, Trash2, Upload } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTranslation } from '@/i18n';
+
+interface HeaderActionProps {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}
+
+function HeaderAction({ label, onClick, disabled, children }: HeaderActionProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={label} onClick={onClick} disabled={disabled}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+interface IDSPanelHeaderActionsProps {
+  /** Model the report on screen was validated against; `null` before the first run. */
+  reportModelId: string | null;
+  loading: boolean;
+  onRerun: (modelId: string) => void;
+  onLoadNew: () => void;
+  onClearResults: () => void;
+  onUnload: () => void;
+}
+
+export function IDSPanelHeaderActions({
+  reportModelId, loading, onRerun, onLoadNew, onClearResults, onUnload,
+}: IDSPanelHeaderActionsProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {reportModelId !== null && (
+        <HeaderAction label={t('idsPanel.rerun')} onClick={() => onRerun(reportModelId)} disabled={loading}>
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+        </HeaderAction>
+      )}
+      <HeaderAction label={t('idsPanel.loadNew')} onClick={onLoadNew}>
+        <Upload className="h-3 w-3" />
+      </HeaderAction>
+      {reportModelId !== null && (
+        <HeaderAction label={t('idsPanel.clearResults')} onClick={onClearResults}>
+          <Eraser className="h-3 w-3" />
+        </HeaderAction>
+      )}
+      <HeaderAction label={t('idsPanel.unload')} onClick={onUnload}>
+        <Trash2 className="h-3 w-3" />
+      </HeaderAction>
+    </>
+  );
+}

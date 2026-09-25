@@ -366,7 +366,7 @@ it('ExportChangesButton: renders the button label and single-change tooltip in E
     });
   });
   const container = render(<ExportChangesButton />);
-  assert.ok(container.textContent?.includes('Export Changes'));
+  assert.ok(container.textContent?.includes('Export modified IFC…'));
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export IFC with 1 change applied');
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export IFC with 2 changes applied');
   assert.equal(

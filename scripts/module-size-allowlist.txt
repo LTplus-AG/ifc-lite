@@ -112,8 +112,7 @@
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    581 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
-   840 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
-   749 apps/viewer/src/components/viewer/tools/MeasurePanel.tsx
+   818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1509 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts

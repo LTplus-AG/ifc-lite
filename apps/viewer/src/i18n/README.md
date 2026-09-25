@@ -89,7 +89,7 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
-The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
+The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx` (now the HUD bar `MeasureToolbar.tsx`, `MeasureHudReadouts.tsx` and the `MeasurementsPanel.tsx` side panel, #5502),
 `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`, `MeasurementVisuals.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay

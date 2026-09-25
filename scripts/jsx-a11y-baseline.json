@@ -102,7 +102,6 @@
   "apps/viewer/src/components/viewer/TextAnnotationEditor.tsx": 2,
   "apps/viewer/src/components/viewer/TitleBlockEditor.tsx": 1,
   "apps/viewer/src/components/viewer/toolbar/ClassVisibilityMenu.tsx": 4,
-  "apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1,
   "apps/viewer/src/components/viewer/tools/SectionPanel.tsx": 1,
   "apps/viewer/src/components/viewer/tools/SplitOverlay.tsx": 1,
   "apps/viewer/src/components/viewer/validation/ValidationPanel.idsSummary.tsx": 1,

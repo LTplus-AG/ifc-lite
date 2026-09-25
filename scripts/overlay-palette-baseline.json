@@ -1,6 +1,5 @@
 {
   "hexOrRgb:apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx": 4,
-  "hexOrRgb:apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 1,
   "hexOrRgb:apps/viewer/src/components/viewer/tools/SectionPanel.tsx": 1,
   "hexOrRgb:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchCanvas.tsx": 48,
   "hexOrRgb:apps/viewer/src/components/viewer/tools/ZoneOverlay.tsx": 11,
@@ -19,8 +18,6 @@
   "zIndex:apps/viewer/src/components/viewer/MergeLayersBanner.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/GizmoOverlay.tsx": 1,
-  "zIndex:apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx": 13,
-  "zIndex:apps/viewer/src/components/viewer/tools/MeasurePanel.tsx": 3,
   "zIndex:apps/viewer/src/components/viewer/tools/SectionPanel.tsx": 2,
   "zIndex:apps/viewer/src/components/viewer/tools/SectionVisualization.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchCanvas.tsx": 1,

@@ -35,182 +35,14 @@ describe('VisibilitySlice', () => {
     });
   });
 
-  describe('multi-model visibility: hideEntityInModel', () => {
-    it('should create new set for model if not exists', () => {
-      state.hideEntityInModel('model-1', 100);
-      state.hideEntityInModel('model-1', 200);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      assert.strictEqual(hidden?.size, 2);
-    });
-
-    it('should keep models separate', () => {
-      state.hideEntityInModel('model-1', 100);
-      state.hideEntityInModel('model-2', 200);
-
-      assert.strictEqual(state.hiddenEntitiesByModel.get('model-1')?.size, 1);
-      assert.strictEqual(state.hiddenEntitiesByModel.get('model-2')?.size, 1);
-      assert.ok(state.hiddenEntitiesByModel.get('model-1')?.has(100));
-      assert.ok(state.hiddenEntitiesByModel.get('model-2')?.has(200));
-    });
-  });
-
-  describe('multi-model visibility: hideEntitiesInModel', () => {
-    it('should hide multiple entities', () => {
-      state.hideEntitiesInModel('model-1', [100, 200, 300]);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      assert.strictEqual(hidden?.size, 3);
-      assert.ok(hidden?.has(100));
-      assert.ok(hidden?.has(200));
-      assert.ok(hidden?.has(300));
-    });
-  });
-
-  describe('multi-model visibility: showEntityInModel', () => {
-    it('should show hidden entity', () => {
-      state.hideEntityInModel('model-1', 123);
-      state.showEntityInModel('model-1', 123);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      // Set should be removed when empty
-      assert.strictEqual(hidden, undefined);
-    });
-
-    it('should do nothing for non-hidden entity', () => {
-      state.showEntityInModel('model-1', 123);
-      // Should not throw, just do nothing
-      assert.strictEqual(state.hiddenEntitiesByModel.size, 0);
-    });
-
-    it('should remove model from map when all entities shown', () => {
-      state.hideEntityInModel('model-1', 100);
-      state.hideEntityInModel('model-1', 200);
-      state.showEntityInModel('model-1', 100);
-      state.showEntityInModel('model-1', 200);
-
-      assert.ok(!state.hiddenEntitiesByModel.has('model-1'));
-    });
-  });
-
-  describe('multi-model visibility: showEntitiesInModel', () => {
-    it('should show multiple entities', () => {
-      state.hideEntitiesInModel('model-1', [100, 200, 300]);
-      state.showEntitiesInModel('model-1', [100, 200]);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      assert.strictEqual(hidden?.size, 1);
-      assert.ok(hidden?.has(300));
-    });
-
-    it('drops the model key entirely once its last hidden entity is shown', () => {
-      // The singular `showEntityInModel` prunes an emptied model entry
-      // (test above); the plural must match. A lingering empty Set is a
-      // phantom entry in `hiddenEntitiesByModel` that every `.has(modelId)`
-      // consumer reads as "this model has hidden geometry" — and it feeds
-      // the basket's visible-set cache fingerprint via digestModelEntityMap.
-      state.hideEntitiesInModel('model-1', [100, 200]);
-      state.showEntitiesInModel('model-1', [100, 200]);
-
-      assert.ok(!state.hiddenEntitiesByModel.has('model-1'));
-      assert.strictEqual(state.hiddenEntitiesByModel.size, 0);
-    });
-
-    it('keeps the model key while any entity is still hidden', () => {
-      // Opposite direction of the pruning branch, so a mutation that
-      // ALWAYS deletes the key is caught too.
-      state.hideEntitiesInModel('model-1', [100, 200]);
-      state.showEntitiesInModel('model-1', [100]);
-
-      assert.ok(state.hiddenEntitiesByModel.has('model-1'));
-      assert.deepStrictEqual([...state.hiddenEntitiesByModel.get('model-1')!], [200]);
-    });
-  });
-
-  describe('multi-model visibility: toggleEntityVisibilityInModel', () => {
-    it('should hide visible entity', () => {
-      state.toggleEntityVisibilityInModel('model-1', 123);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      assert.ok(hidden?.has(123));
-    });
-
-    it('should show hidden entity', () => {
-      state.hideEntityInModel('model-1', 123);
-      state.toggleEntityVisibilityInModel('model-1', 123);
-
-      // Set should be removed when empty
-      assert.ok(!state.hiddenEntitiesByModel.has('model-1'));
-    });
-  });
-
-  describe('multi-model visibility: isEntityVisibleInModel', () => {
-    it('should return true for visible entity', () => {
-      assert.strictEqual(state.isEntityVisibleInModel('model-1', 123), true);
-    });
-
-    it('should return false for hidden entity', () => {
-      state.hideEntityInModel('model-1', 123);
-      assert.strictEqual(state.isEntityVisibleInModel('model-1', 123), false);
-    });
-
-    it('should distinguish between models', () => {
-      state.hideEntityInModel('model-1', 123);
-
-      assert.strictEqual(state.isEntityVisibleInModel('model-1', 123), false);
-      assert.strictEqual(state.isEntityVisibleInModel('model-2', 123), true);
-    });
-  });
-
-  describe('multi-model visibility: getHiddenEntitiesForModel', () => {
-    it('should return hidden entities for model', () => {
-      state.hideEntitiesInModel('model-1', [100, 200, 300]);
-
-      const hidden = state.getHiddenEntitiesForModel('model-1');
-      assert.strictEqual(hidden.size, 3);
-      assert.ok(hidden.has(100));
-      assert.ok(hidden.has(200));
-      assert.ok(hidden.has(300));
-    });
-
-    it('should return empty set for model with no hidden entities', () => {
-      const hidden = state.getHiddenEntitiesForModel('non-existent');
-      assert.strictEqual(hidden.size, 0);
-    });
-  });
-
-  describe('multi-model visibility: clearModelVisibility', () => {
-    it('should clear visibility state for model', () => {
-      state.hideEntitiesInModel('model-1', [100, 200]);
-
-      state.clearModelVisibility('model-1');
-
-      assert.ok(!state.hiddenEntitiesByModel.has('model-1'));
-      assert.ok(!state.isolatedEntitiesByModel.has('model-1'));
-    });
-
-    it('should not affect other models', () => {
-      state.hideEntitiesInModel('model-1', [100]);
-      state.hideEntitiesInModel('model-2', [200]);
-
-      state.clearModelVisibility('model-1');
-
-      assert.ok(!state.hiddenEntitiesByModel.has('model-1'));
-      assert.ok(state.hiddenEntitiesByModel.has('model-2'));
-    });
-  });
-
-  describe('multi-model visibility: showAllInAllModels', () => {
+  describe('showAllInAllModels', () => {
     it('should clear all visibility state', () => {
       // Set up some state
-      state.hideEntitiesInModel('model-1', [100, 200]);
-      state.hideEntitiesInModel('model-2', [300, 400]);
-      state.hideEntity(500); // Legacy
+      state.hideEntities([100, 200, 300, 400]);
+      state.isolateEntity(500);
 
       state.showAllInAllModels();
 
-      assert.strictEqual(state.hiddenEntitiesByModel.size, 0);
-      assert.strictEqual(state.isolatedEntitiesByModel.size, 0);
       assert.strictEqual(state.hiddenEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
     });
@@ -387,14 +219,11 @@ describe('VisibilitySlice', () => {
     });
 
     it('showAllInAllModels clears the class filter as well as the hidden/isolated sets', () => {
-      state.hideEntitiesInModel('model-1', [100, 200]);
-      state.hideEntity(500);
+      state.hideEntities([100, 200, 500]);
       state.setClassFilter([1, 2], 'IfcWall');
 
       state.showAllInAllModels();
 
-      assert.strictEqual(state.hiddenEntitiesByModel.size, 0);
-      assert.strictEqual(state.isolatedEntitiesByModel.size, 0);
       assert.strictEqual(state.hiddenEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
       assert.strictEqual(state.classFilter, null);

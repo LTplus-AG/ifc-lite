@@ -66,8 +66,8 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       id: 'cut-face',
       kind: 'canvas',
       title: 'Cut through a face',
-      body: 'Hover a wall or slab to preview the cut, then click to slice through it. If nothing previews, click Pick face in the Section panel.',
-      // The Section panel auto-restores the last mode on mount: a returning
+      body: 'Hover a wall or slab to preview the cut, then click to slice through it. If nothing previews, choose Face on the Section bar.',
+      // The Section tool auto-restores the last mode on open: a returning
       // "cardinal" user can land here with `enabled` already true. Baseline
       // it so the fallback only fires on a genuine change, not a restore.
       arm: (state, ctx) => {
@@ -84,7 +84,7 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       kind: 'action',
       anchor: TOUR_ANCHORS.sectionPanel,
       title: 'Slide the cut',
-      body: 'Expand the panel and drag the position slider, or type an exact distance. Flip swaps which side stays visible.',
+      body: 'Drag the distance on the Section bar to scrub the cut, or click it to type an exact value. Flip swaps which side stays visible.',
       arm: (state, ctx) => {
         ctx.baseline.sectionPosition = state.sectionPlane.position;
         ctx.baseline.sectionCustomDistance = state.sectionPlane.custom?.distance ?? 0;

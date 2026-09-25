@@ -7,7 +7,7 @@
  * These have zero coupling to class state — they take inputs and return outputs.
  */
 
-import { formatStepReal } from '@ifc-lite/data';
+import { firstProjAxis, formatStepReal } from '@ifc-lite/data';
 import type { Point3D, PropertyDef, QuantityDef } from './types.js';
 
 // ============================================================================
@@ -124,12 +124,11 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
  * missing one set to the value the schema implies for it when absent, so the
  * placement's geometry is unchanged:
  *   - no `Axis`: `(0,0,1)`, the `IfcAxis2Placement3D.P` default;
- *   - no `RefDirection`: `IfcFirstProjAxis(Axis, $)`, the projection of world X
- *     onto the plane normal to `Axis`. The schema switches to world Y only when
- *     the normalised `Axis` is exactly `(1,0,0)`, so this tests for an Axis
- *     with no Y or Z component rather than using a tolerance: a near-X Axis
- *     must still project X, or the result flips 180 degrees. `-X` takes Y too,
- *     since the projection of X vanishes there and the schema has no answer.
+ *   - no `RefDirection`: `firstProjAxis(Axis)`, the fill ifc-lite's renderer
+ *     reads a `$` there as (world X projected onto the plane normal to
+ *     `Axis`, per `IfcFirstProjAxis`; `(0,-1,0)` for an Axis of exactly -X,
+ *     where the schema's projection vanishes). Writing that value keeps what
+ *     is drawn identical to the `$` it replaces (#5922).
  */
 export function completePlacementAxes(
   axis: Point3D | undefined,
@@ -138,10 +137,8 @@ export function completePlacementAxes(
   if (axis && refDirection) return { Axis: axis, RefDirection: refDirection };
   if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
   if (!axis) return undefined;
-  const z = vecNorm(axis);
-  const v: Point3D = z[1] === 0 && z[2] === 0 ? [0, 1, 0] : [1, 0, 0];
-  const d = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
-  return { Axis: axis, RefDirection: vecNorm([v[0] - d * z[0], v[1] - d * z[1], v[2] - d * z[2]]) };
+  // `vecNorm` throws on a zero-length Axis: a builder must not write one.
+  return { Axis: axis, RefDirection: firstProjAxis(vecNorm(axis)) };
 }
 
 // ============================================================================

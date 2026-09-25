@@ -756,15 +756,15 @@ export function LocationMap({
 
           {/* Picked position info bar */}
           {pickedLatLon && editable && (
-            <div className="bg-purple-50/80 dark:bg-purple-950/30 border-t border-purple-200/50 dark:border-purple-800/30 px-3 py-2">
+            <div className="bg-overlay-accent-soft border-t border-overlay-accent/40 px-3 py-2">
               <div className="flex items-center gap-2 mb-1.5">
-                <MapPin className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
-                <span className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 flex-1">
+                <MapPin className="h-3 w-3 text-overlay-accent shrink-0" />
+                <span className="text-[10px] font-semibold text-foreground flex-1">
                   {t('properties.locationMap.newPosition')}
                 </span>
                 <button
                   onClick={handleClearPick}
-                  className="p-0.5 text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors"
+                  className="p-0.5 text-muted-foreground hover:text-foreground transition-colors"
                   title={t('properties.locationMap.removePinTooltip')}
                 >
                   <X className="h-3 w-3" />
@@ -773,18 +773,18 @@ export function LocationMap({
 
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono mb-2">
                 <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.latLon')}</div>
-                <div className="text-purple-700 dark:text-purple-300 text-right">
+                <div className="text-foreground text-right">
                   {formatLocaleNumber(locale, pickedLatLon.lat, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}, {formatLocaleNumber(locale, pickedLatLon.lon, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                 </div>
 
                 {projectedCoords && (
                   <>
                     <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.easting')}</div>
-                    <div className="text-purple-700 dark:text-purple-300 text-right tabular-nums">
+                    <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.easting, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                     <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.northing')}</div>
-                    <div className="text-purple-700 dark:text-purple-300 text-right tabular-nums">
+                    <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.northing, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                   </>
@@ -794,7 +794,7 @@ export function LocationMap({
                   <Mountain className="h-2.5 w-2.5" />
                   {t('properties.locationMap.elevation')}
                 </div>
-                <div className="text-purple-700 dark:text-purple-300 text-right tabular-nums">
+                <div className="text-foreground text-right tabular-nums">
                   {elevationLoading ? (
                     <Loader2 className="h-2.5 w-2.5 animate-spin inline" />
                   ) : pickedElevation !== null ? (
@@ -810,7 +810,7 @@ export function LocationMap({
                 <button
                   onClick={handleApply}
                   disabled={elevationLoading}
-                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-semibold text-white bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-semibold text-overlay-halo bg-overlay-accent hover:bg-overlay-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Check className="h-3 w-3" />
                   {pickedElevation !== null

@@ -38,7 +38,7 @@ export function useChartDatasets(scope: ChartScope, elementFields: readonly Elem
   // Only a `visible` scope pays for these subscriptions; the selector returns
   // a constant otherwise so a hide/isolate does not rebuild an `all` dataset.
   const visibility = useViewerStore(useShallow((s) => (visible
-    ? { hidden: s.hiddenEntities, isolated: s.isolatedEntities, classFilter: s.classFilter, lensHidden: s.lensHiddenIds, storeys: s.selectedStoreys, types: s.typeVisibility, hiddenByModel: s.hiddenEntitiesByModel, isolatedByModel: s.isolatedEntitiesByModel }
+    ? { hidden: s.hiddenEntities, isolated: s.isolatedEntities, classFilter: s.classFilter, lensHidden: s.lensHiddenIds, storeys: s.selectedStoreys, types: s.typeVisibility }
     : null)));
   const elements = useMemo(
     () => buildElementsDataset(scope, elementFields, { models, activeModelId, pinboardEntities, mutationViews, mutationVersion, unitDisplayOverrides }),

@@ -19,7 +19,7 @@ import type { ExtensionExporter } from '@/components/extensions/useExtensionExpo
 
 export type RightPanel =
   | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
-  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds';
+  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements';
 
 export interface CommandPaletteBuildParams {
   execute: (code: string) => void;

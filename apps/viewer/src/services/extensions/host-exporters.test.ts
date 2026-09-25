@@ -132,6 +132,8 @@ function fixture(options: {
   enabled?: boolean;
   withHandlerFile?: boolean;
   grants?: string[];
+  /** The handler path as the manifest spells it; the bundle stores it normalised. */
+  manifestHandler?: string;
 } = {}) {
   const fired: string[] = [];
   const globals: Record<string, unknown> = {};
@@ -142,7 +144,7 @@ function fixture(options: {
     files.set(HANDLER_PATH, bundleFile(options.handlerSource ?? 'function run() { return "a,b\\n1,2"; }'));
   }
 
-  const bundle: Bundle = { manifest: manifestFor('demo', HANDLER_PATH), files };
+  const bundle: Bundle = { manifest: manifestFor('demo', options.manifestHandler ?? HANDLER_PATH), files };
   const sandbox = fakeSandbox(
     (source) => { ranSource = source; },
     (name, value) => { globals[name] = value; },
@@ -261,6 +263,16 @@ describe('runExtensionExporter (#1907)', () => {
       () => runExtensionExporter(f.deps, EXPORTER_ID, 'someone-else'),
       /Extension "someone-else" does not own an enabled exporter/,
     );
+  });
+
+  // The loader accepts `./exporters/csv.js` and stores the file under the
+  // normalised `exporters/csv.js`; a raw lookup reported it missing (#5634).
+  it('resolves a ./-prefixed handler path to the normalised bundle file', async () => {
+    const f = fixture({ manifestHandler: `./${HANDLER_PATH}` });
+
+    const out = await runExtensionExporter(f.deps, EXPORTER_ID, 'demo');
+
+    assert.equal(out.data, 'a,b\n1,2');
   });
 
   it('throws when the handler file is missing from the bundle', async () => {

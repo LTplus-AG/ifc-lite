@@ -189,7 +189,11 @@ describe('writeBCF ZIP "version needed to extract" field (#3612)', () => {
 
     const archive = await JSZip.loadAsync(blob);
     const back = await archive.file(png!.name)!.async('uint8array');
-    expect(back).toEqual(snapshotData);
+    // Byte-compare natively: vitest's toEqual walks a 400k-element typed
+    // array one element at a time and blew the 5 s budget on loaded CI
+    // runners (main run 36081546967).
+    expect(back.length).toBe(snapshotData.length);
+    expect(Buffer.compare(back, snapshotData)).toBe(0);
   });
 
   it.each(['2.1', '3.0'] as const)(

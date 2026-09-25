@@ -317,7 +317,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Basket presentation state
   const pinboardEntities = useViewerStore((state) => state.pinboardEntities);
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
-  const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
+  const presentationOpen = activeWorkspacePanels.has('presentation'); // same source as the ribbon's Present button (#5508)
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
@@ -788,17 +788,17 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={basketPresentationVisible ? 'default' : 'ghost'}
+            variant={presentationOpen ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={basketPresentationVisible ? t('mainToolbar.presentationHide') : t('mainToolbar.presentationShow')}
-            aria-pressed={basketPresentationVisible}
+            aria-label={presentationOpen ? t('mainToolbar.presentationHide') : t('mainToolbar.presentationShow')}
+            aria-pressed={presentationOpen}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
               handleToggleBottomPanel('presentation'); // bottom-panel table (#5508), not the raw flag toggle
             }}
             disabled={models.size === 0 && !geometryResult}
             className={cn(
-              (basketPresentationVisible || pinboardEntities.size > 0) && 'relative',
+              (presentationOpen || pinboardEntities.size > 0) && 'relative',
             )}
           >
             <LayoutTemplate className="h-4 w-4" />

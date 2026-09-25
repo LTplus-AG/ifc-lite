@@ -29,6 +29,10 @@ function button(ui: HTMLElement, label: string): HTMLButtonElement {
   const el = [...ui.querySelectorAll('button')].find((item) => item.textContent === label || item.getAttribute('aria-label') === label);
   assert.ok(el, `button ${label}`); return el;
 }
+function moveReadout(ui: HTMLElement): string {
+  const el = ui.querySelector('output[aria-label="Move dimensions"]');
+  assert.ok(el, 'move readout'); return el.textContent ?? '';
+}
 function input(ui: HTMLElement, label: string): HTMLInputElement {
   const el = ui.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
   assert.ok(el, `input ${label}`); return el;
@@ -74,7 +78,7 @@ describe('model repositioning user interactions (#4226)', () => {
     type(input(ui, 'Delta X'), '125 mm');
     type(input(ui, 'Delta Y'), '-0.25 m');
     click(button(ui, 'Preview values'));
-    assert.match(ui.querySelector('output')!.textContent!, /ΔX 0.1250 · ΔY -0.2500/);
+    assert.match(moveReadout(ui), /ΔX 0.1250 · ΔY -0.2500/);
     assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0, 'preview is uncommitted');
     click(button(ui, 'Apply'));
     for (const id of ['ifc', 'scan']) assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, id), [0.125, -0.25, 0]);
@@ -92,9 +96,9 @@ describe('model repositioning user interactions (#4226)', () => {
     type(input(ui, 'Delta X'), '50 m');
     type(input(ui, 'Delta Z'), '10 mm');
     click(button(ui, 'Preview values'));
-    assert.match(ui.querySelector('output')!.textContent!, /ΔX 0.0000 · ΔY 0.0000 · ΔZ 0.0100/);
+    assert.match(moveReadout(ui), /ΔX 0.0000 · ΔY 0.0000 · ΔZ 0.0100/);
     press(window, 'ArrowUp');
-    assert.match(ui.querySelector('output')!.textContent!, /ΔZ 0.0110/);
+    assert.match(moveReadout(ui), /ΔZ 0.0110/);
     press(window, 'Escape');
     assert.equal(ui.querySelector('[aria-label="Reposition models"]'), null);
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);

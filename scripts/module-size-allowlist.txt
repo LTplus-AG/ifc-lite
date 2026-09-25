@@ -137,7 +137,7 @@
    453 apps/viewer/src/i18n/catalogues/properties.en.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
-   436 apps/viewer/src/lib/compare/worldPlacement.ts
+   431 apps/viewer/src/lib/compare/worldPlacement.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
    405 apps/viewer/src/lib/geo/map-webgl-support.ts
@@ -152,7 +152,7 @@
    809 apps/viewer/src/lib/llm/system-prompt.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
-   452 apps/viewer/src/lib/slab-edit.ts
+   440 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts

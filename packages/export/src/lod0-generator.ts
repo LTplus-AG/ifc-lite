@@ -13,6 +13,7 @@ import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 
 import type { EntityRef } from '@ifc-lite/parser';
+import { firstProjAxis } from '@ifc-lite/data';
 import type { Lod0Json, Lod0Element, LodInput, Vec3 } from './lod-geometry-types.js';
 import {
   aabbFromPoints,
@@ -183,7 +184,9 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
       const tVec = typeof locRef === 'number' ? (getPoint(locRef) ?? [0, 0, 0]) : [0, 0, 0];
 
       const zAxis = typeof axisRef === 'number' ? (getDirection(axisRef) ?? [0, 0, 1]) : [0, 0, 1];
-      const xAxis0 = typeof refDirRef === 'number' ? (getDirection(refDirRef) ?? [1, 0, 0]) : [1, 0, 0];
+      // A `$` (or unreadable) RefDirection takes the renderer's fill (#5922).
+      const xAxis0 = (typeof refDirRef === 'number' ? getDirection(refDirRef) : null)
+        ?? firstProjAxis(zAxis as Vec3);
       const zN = vec3Normalize(zAxis as Vec3, [0, 0, 1]);
       const xN0 = vec3Normalize(xAxis0 as Vec3, [1, 0, 0]);
       const yN = vec3Normalize(vec3Cross(zN, xN0), [0, 1, 0]);

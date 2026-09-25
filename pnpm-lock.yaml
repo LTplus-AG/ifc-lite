@@ -1414,6 +1414,9 @@ importers:
       '@ifc-lite/diff':
         specifier: workspace:^
         version: link:../diff
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export

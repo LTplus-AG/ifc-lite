@@ -267,7 +267,7 @@
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
-   451 packages/mcp/src/tools/mutate.ts
+   424 packages/mcp/src/tools/mutate.ts
    648 packages/mcp/src/tools/query.ts
    694 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts

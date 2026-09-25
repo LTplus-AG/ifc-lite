@@ -16,6 +16,7 @@ import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
+import { toast } from '@/components/ui/toast';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -46,14 +47,16 @@ export function syncTypeOverride(get: Get, modelId: string, entityId: number): v
  * first branch of both handlers; every other type has its own branch. Only a
  * whole-set record WITHOUT snapshots can fall through to here (one built by
  * hand rather than by `MutablePropertyView`), and the parameter type makes a
- * new `MutationType` with no undo / redo branch a compile error (#5965).
+ * new `MutationType` with no undo / redo branch a compile error (#5965). The
+ * user is told, so a step that changed nothing never reads as one that worked.
  */
-function warnUnreplayable(
+function reportUnreplayable(
   direction: 'undo' | 'redo',
   type: 'CREATE_PROPERTY_SET' | 'DELETE_PROPERTY_SET' | 'DELETE_QUANTITY' | 'DELETE_QUANTITY_SET',
   entityId: number,
 ): void {
   console.warn(`${direction}: ${type} on #${entityId} carries no set snapshot; the view was left unchanged`);
+  toast.error(`Could not ${direction} this change: it was recorded without the data needed to reverse it.`);
 }
 
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
@@ -193,7 +196,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     }
     syncTypeOverride(get, modelId, mutation.entityId);
   } else {
-    warnUnreplayable('undo', mutation.type, mutation.entityId);
+    reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
 }
 
@@ -300,6 +303,6 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
     }
     syncTypeOverride(get, modelId, mutation.entityId);
   } else {
-    warnUnreplayable('redo', mutation.type, mutation.entityId);
+    reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
 }

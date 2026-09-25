@@ -27,6 +27,8 @@ import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import {
   addPropertyThroughDialog, clickRowAction, exportAndReparse, fileRows, openInlineEditor, panelRows, parseStep, seedModel,
 } from '@/test/properties-panel-harness.js';
+import { latestToast } from '@/test/toasts.js';
+import { Toaster } from '@/components/ui/toast';
 import { PropertiesPanel } from './PropertiesPanel.js';
 
 const MODEL_ID = 'm1';
@@ -159,5 +161,19 @@ describe('undo / redo of a whole property set reach the panel and the export (#5
 
     await press('redo');
     assert.deepEqual(await quantityRows(), ['Qto_Custom.Volume=12']);
+  });
+
+  it('a whole-set record with no snapshot to restore tells the user instead of passing for done', async () => {
+    const { container } = await mountPanel();
+    render(<Toaster />);
+    // Hand-built, as only a caller bypassing `MutablePropertyView` could make it.
+    useViewerStore.setState((s) => ({
+      undoStacks: new Map(s.undoStacks).set(MODEL_ID, [{
+        id: 'hand-built', type: 'DELETE_PROPERTY_SET', timestamp: Date.now(), modelId: MODEL_ID, entityId: WALL, psetName: 'Custom_A',
+      }]),
+    }));
+    await press('undo');
+    assert.match(latestToast(), /Could not undo this change/);
+    assert.deepEqual(panelRows(container), PANEL_ROWS);
   });
 });

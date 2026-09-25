@@ -18,7 +18,8 @@
  * instanced shard (`typeVisibilityFilter.ts`, #5409).
  */
 
-import { unionEntityBounds, type BoundingBox3D } from '@/utils/viewportUtils';
+import type { BoundingBox3D } from '@/utils/viewportUtils';
+import { robustFitBoundsFull, type RobustFitMeshInput } from '@/components/viewer/robustFitBoundsAccumulator';
 
 export interface EffectiveVisibility {
   hidden: ReadonlySet<number>;
@@ -47,13 +48,6 @@ export function instancedPassDrawn(s: { hasTypeGeometry: boolean; typeViewMode: 
   return !s.hasTypeGeometry || s.typeViewMode === 'model';
 }
 
-/** The overlap of two boxes, or null when they are disjoint. */
-function intersect(a: BoundingBox3D, b: BoundingBox3D): BoundingBox3D | null {
-  const min = { x: Math.max(a.min.x, b.min.x), y: Math.max(a.min.y, b.min.y), z: Math.max(a.min.z, b.min.z) };
-  const max = { x: Math.min(a.max.x, b.max.x), y: Math.min(a.max.y, b.max.y), z: Math.min(a.max.z, b.max.z) };
-  return min.x <= max.x && min.y <= max.y && min.z <= max.z ? { min, max } : null;
-}
-
 export interface FitAllInput {
   /** Ids of the flat meshes currently drawn (global ids). Already filtered:
    *  a hidden model's and a toggled-off class's meshes are not in it. */
@@ -62,35 +56,34 @@ export interface FitAllInput {
   instancedIds: Iterable<number>;
   /** False in the Types view, where the instanced pass is not drawn. */
   instancedDrawn: boolean;
+  /** PLACED world bounds per id (model placement offsets applied). */
   boundsOf: (id: number) => BoundingBox3D | null | undefined;
   visibility: EffectiveVisibility;
-  /**
-   * The load-time, outlier-trimmed whole-scene box (#1107, #1394). It is not
-   * recomputed when a model is hidden, so it is never framed as is; it only
-   * clamps the visible box, so a sparse far-away tail stays trimmed.
-   */
+  /** The load-time fit box; framed only when nothing visible has bounds. */
   wholeScene: BoundingBox3D;
 }
 
 /**
- * The box Fit All frames: the union of what is drawn and visible, clamped to
- * the trimmed whole-scene box. When the two do not overlap (the user isolated
- * the trimmed-away outlier itself) the visible box is framed unclamped. With
- * nothing visible, or a degenerate union, the whole scene.
+ * The box Fit All frames: the entities that are drawn and visible, with a
+ * sparse far-away tail trimmed by the same outlier-robust fold the load-time
+ * fit uses (#1107, #1394), computed now from placed bounds, so a moved model
+ * or geometry authored after load is framed where it is. Each entity weighs
+ * the same here (the load-time fit weighs by vertex count). An isolated
+ * outlier is framed as is: one entity has no tail to trim.
  */
 export function fitAllBounds(input: FitAllInput): BoundingBox3D {
-  const visible: number[] = [];
+  const boxes: RobustFitMeshInput[] = [];
   const seen = new Set<number>();
   const take = (id: number) => {
     if (seen.has(id)) return;
     seen.add(id);
-    if (isEffectivelyVisible(id, input.visibility)) visible.push(id);
+    if (!isEffectivelyVisible(id, input.visibility)) return;
+    const b = input.boundsOf(id);
+    if (b) boxes.push({ positions: Float64Array.of(b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z) });
   };
   for (const id of input.meshIds) take(id);
   if (input.instancedDrawn) for (const id of input.instancedIds) take(id);
-  // With no flat mesh list every bound comes from `boundsOf`, the same union
-  // frameEntities uses.
-  const union = unionEntityBounds(null, visible, input.boundsOf);
-  if (!union || !isSaneBounds(union)) return input.wholeScene;
-  return intersect(union, input.wholeScene) ?? union;
+  const fit = robustFitBoundsFull(boxes);
+  const bounds = fit ? (fit.robust ?? fit.full) : null;
+  return bounds && isSaneBounds(bounds) ? bounds : input.wholeScene;
 }

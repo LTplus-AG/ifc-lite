@@ -17,18 +17,26 @@ import type { BoundingBox3D } from '@/utils/viewportUtils';
 import { modelHiddenEntities } from './model-hidden-entities.js';
 import { fitAllBounds, instancedPassDrawn, type FitAllInput } from './visible-bounds.js';
 
-const box = (x: number): BoundingBox3D => ({ min: { x, y: 0, z: 0 }, max: { x: x + 1, y: 1, z: 1 } });
-const span = (x0: number, x1: number): BoundingBox3D => ({ min: { x: x0, y: 0, z: 0 }, max: { x: x1, y: 1, z: 1 } });
-// Flat 1 and 2, instanced 3, and 4: a sparse stray element 50 km out.
-const BOXES = new Map<number, BoundingBox3D>([[1, box(0)], [2, box(1000)], [3, box(1500)], [4, box(50_000)]]);
-/** The load-time outlier-trimmed box (#1394): excludes the stray element 4. */
-const WHOLE: BoundingBox3D = { min: { x: -1, y: -1, z: -1 }, max: { x: 1600, y: 2, z: 2 } };
+const box = (x: number, y = 0): BoundingBox3D => ({ min: { x, y, z: 0 }, max: { x: x + 1, y: y + 1, z: 1 } });
+const span = (x0: number, x1: number, y1 = 1): BoundingBox3D => ({ min: { x: x0, y: 0, z: 0 }, max: { x: x1, y: y1, z: 1 } });
+
+// A building of 300 elements on a 30 x 10 grid (x 0..30, y 0..10, ids 1..300),
+// a far wing of 300 more 1 km east (ids 1001..1300, instanced), and one stray
+// element 50 km out (id 9999).
+const BOXES = new Map<number, BoundingBox3D>();
+for (let i = 0; i < 300; i++) BOXES.set(1 + i, box(i % 30, Math.floor(i / 30)));
+for (let i = 0; i < 300; i++) BOXES.set(1001 + i, box(1000 + (i % 30), Math.floor(i / 30)));
+BOXES.set(9999, box(50_000));
+const BUILDING = [...Array(300)].map((_, i) => 1 + i);
+const WING = [...Array(300)].map((_, i) => 1001 + i);
+const BUILDING_BOX = span(0, 30, 10);
+const WHOLE: BoundingBox3D = { min: { x: -7, y: -7, z: -7 }, max: { x: 7, y: 7, z: 7 } };
 const NONE = new Set<number>();
 
 function fit(over: Partial<FitAllInput>): BoundingBox3D {
   return fitAllBounds({
-    meshIds: [1, 2, 4],
-    instancedIds: [3],
+    meshIds: [...BUILDING, 9999],
+    instancedIds: WING,
     instancedDrawn: true,
     boundsOf: (id) => BOXES.get(id) ?? null,
     visibility: { hidden: NONE, isolated: null },
@@ -38,64 +46,64 @@ function fit(over: Partial<FitAllInput>): BoundingBox3D {
 }
 
 describe('fitAllBounds (#5884)', () => {
-  it('nothing filtered: the stray element stays trimmed away (#1394)', () => {
-    // Clamped to the trimmed box's edge, which is what #1394 frames.
-    assert.deepEqual(fit({}), span(0, 1600));
+  it('nothing filtered: building and wing, the stray element trimmed away (#1394)', () => {
+    assert.deepEqual(fit({}), span(0, 1030, 10));
   });
 
-  it('leaves hidden elements out (flat and instanced), trimming still applied', () => {
-    assert.deepEqual(fit({ visibility: { hidden: new Set([2, 3, 4]), isolated: null } }), box(0));
+  it('hidden elements are left out, flat and instanced, and the tail stays trimmed', () => {
+    assert.deepEqual(fit({ visibility: { hidden: new Set(WING), isolated: null } }), BUILDING_BOX);
     assert.deepEqual(
-      fit({ visibility: { hidden: new Set([2]), isolated: null } }),
-      span(0, 1600),
+      fit({ visibility: { hidden: new Set([BUILDING[0]]), isolated: null } }),
+      span(0, 1030, 10),
       'hiding one element does not bring the stray tail back',
     );
   });
 
   it('frames only the isolation (storey / class filter / isolate)', () => {
-    assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set([2]) } }), box(1000));
+    assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set(WING) } }), span(1000, 1030, 10));
   });
 
-  it('isolating the trimmed-away element itself frames it', () => {
-    assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set([4]) } }), box(50_000));
+  it('isolating the stray element itself frames it', () => {
+    assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set([9999]) } }), box(50_000));
   });
 
-  it('with N=2 models, a hidden far-away model B is not framed', () => {
-    // As in the viewer: the flat list no longer carries B's meshes, but the
-    // load-time box still spans B (it is not recomputed on a model hide).
+  it('with N=2 models, a hidden far-away model B is not framed, its instanced occurrences too', () => {
     const a = fixtureModel('a', { idOffset: 0 });
     const b = { ...fixtureModel('b', { idOffset: 1000 }), visible: false };
-    // Model B's instanced occurrence (global 1003) is still in the scene.
-    b.geometryResult = { instancedGeometryAabbs: new Map([[1003, {}]]) } as unknown as FederatedModel['geometryResult'];
+    // B's flat meshes are already dropped from the drawn list; its instanced
+    // occurrences are still in the scene.
+    b.geometryResult = {
+      instancedGeometryAabbs: new Map(WING.map((id) => [id, {}])),
+    } as unknown as FederatedModel['geometryResult'];
     const hidden = modelHiddenEntities(new Map([['a', a], ['b', b]]), new Set(), (m, id) => (m === 'b' ? id + 1000 : id));
-    const placed = new Map<number, BoundingBox3D>([[1, box(0)], [1003, box(9000)]]);
-    const bounds = fit({
-      meshIds: [1],
-      instancedIds: [1003],
-      boundsOf: (id) => placed.get(id) ?? null,
-      visibility: { hidden, isolated: null },
-      wholeScene: span(0, 9001),
-    });
-    assert.deepEqual(bounds, box(0));
+    assert.deepEqual(fit({ meshIds: BUILDING, visibility: { hidden, isolated: null } }), BUILDING_BOX);
   });
 
-  it('a hidden model with flat meshes only is not framed either (dropped from the list)', () => {
-    // Every remaining id is visible, yet the load-time box still spans B.
-    const bounds = fit({ meshIds: [1], instancedIds: [], wholeScene: span(0, 9001) });
-    assert.deepEqual(bounds, box(0));
+  it('a hidden model with flat meshes only is not framed, whatever the load-time box spans', () => {
+    assert.deepEqual(fit({ meshIds: BUILDING, instancedIds: [], wholeScene: span(0, 9001) }), BUILDING_BOX);
+  });
+
+  it('a model moved after load is framed where it now is (placed bounds, no cached box)', () => {
+    // The wing moved 500 m further east; boundsOf reports placed bounds.
+    const moved = (id: number) => {
+      const b = BOXES.get(id) ?? null;
+      if (!b || id < 1001 || id > 1300) return b;
+      return { min: { ...b.min, x: b.min.x + 500 }, max: { ...b.max, x: b.max.x + 500 } };
+    };
+    assert.deepEqual(fit({ boundsOf: moved }), span(0, 1530, 10));
   });
 
   it('Types view: the undrawn instanced occurrences are not framed', () => {
-    assert.deepEqual(fit({ instancedDrawn: false, meshIds: [1, 2] }), span(0, 1001));
+    assert.deepEqual(fit({ instancedDrawn: false }), BUILDING_BOX);
   });
 
-  it('falls back to the whole scene when nothing visible has bounds', () => {
-    assert.deepEqual(fit({ visibility: { hidden: new Set([1, 2, 3, 4]), isolated: null } }), WHOLE);
+  it('falls back to the load-time box when nothing visible has bounds', () => {
+    assert.deepEqual(fit({ visibility: { hidden: NONE, isolated: new Set([424242]) } }), WHOLE);
   });
 
-  it('falls back to the whole scene on a degenerate visible box', () => {
-    const bad = new Map<number, BoundingBox3D>([[1, box(0)], [2, box(Number.NaN)]]);
-    assert.deepEqual(fit({ meshIds: [1, 2], instancedIds: [], boundsOf: (id) => bad.get(id) ?? null }), WHOLE);
+  it('ignores a non-finite box instead of framing garbage', () => {
+    const bad = (id: number) => (id === 1 ? box(Number.NaN) : id === 2 ? box(0) : null);
+    assert.deepEqual(fit({ meshIds: [1, 2, 3], instancedIds: [], boundsOf: bad, visibility: { hidden: NONE, isolated: new Set([1, 2]) } }), box(0));
   });
 
   it('the instanced pass is hidden only in the Types view of a model with a type library', () => {

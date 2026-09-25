@@ -121,6 +121,20 @@ OIDC trusted publishing for both registries:
   OIDC token for a short-lived crates.io token.
 - `GITHUB_TOKEN`: automatically provided by GitHub Actions.
 
+### Release credential
+
+The git side of a release authenticates with `secrets.RELEASE_PAT`: changesets/action's version commit and push to `changeset-release/main`, opening and updating the Version Packages PR, its per-package tags and GitHub releases on the publish path, the `v*` tag pushes, and the server-bin GitHub release. (The root `v*` GitHub release uses `GITHUB_TOKEN`.) It cannot be `GITHUB_TOKEN` throughout: events that token creates do not start workflows, so the version PR would never get its required checks (#766) and `server-binaries.yml` would never see `release: published`.
+
+A PAT spends its **owner's** hourly API quota (5,000 REST and 5,000 GraphQL points), shared with everything else that account does. If agent sessions or scripts run `gh` as the same account, they drain it and the Release run fails mid-job (#5693). So the PAT must belong to an account that nothing else uses:
+
+1. Create a dedicated machine account (for example `ifc-lite-release-bot`) and give it **Write** access to `LTplus-AG/ifc-lite`. If the `main` ruleset restricts who may push `changeset-release/main` or create tags, allow this account too.
+2. As that account, create a fine-grained PAT with **Resource owner: LTplus-AG**, repository access **Only select repositories: ifc-lite**, and repository permissions at least those of the current `RELEASE_PAT`: **Contents: Read and write**, **Pull requests: Read and write**, and **Workflows: Read and write** (the version branch is reset onto `main`, whose history changes `.github/workflows/`; Metadata: Read is implied). Set an expiry and note the rotation date.
+3. If the organization requires approval for fine-grained PATs, approve the request (Organization settings, Personal access tokens, Pending requests). An unapproved token can still read `/rate_limit`, so the quota check below would pass and the run would fail at its first push.
+4. Replace the **repository** secret `RELEASE_PAT` (Settings, Secrets and variables, Actions) with it. No workflow change is needed.
+5. Never log agent sessions or local tooling in with this token.
+
+The Release job's `Check the release credential's API quota` step (`scripts/check-release-credential-quota.mjs`) reads `GET /rate_limit` before the run changes anything, on every Release run that is not skipped as superseded (an ordinary push also refreshes the version PR or retries a failed publish with this credential). It waits up to 20 minutes for a reset that is near, and otherwise fails with the token owner, the drained bucket and its reset time, before anything is pushed or published.
+
 ## FAQ
 
 ### Q: Do I need to update version numbers manually?
@@ -165,6 +179,13 @@ OIDC trusted publishing for both registries:
 - For a brand-new package, do the one-time manual first publish before trusted publishing can take over
 - For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
+
+### "Release credential out of API quota"
+- Something else that uses the `RELEASE_PAT` account spent its hourly quota. Nothing was pushed or published; re-run after the reset time in the error. To stop it recurring, see [Release credential](#release-credential).
+- On a release commit the publish verifier jobs still run (they are `always()`) and report every new version as missing. That follows from the stopped run, not a separate failure; the re-run publishes and they go green.
+
+### "Release credential unreadable"
+- `GET /rate_limit` failed with `RELEASE_PAT`: the secret is missing, expired or revoked. Rotate it as in [Release credential](#release-credential).
 
 ### "Release commit still carries changesets"
 - The Version Packages PR was stale when it merged or was queued. See [A Version Packages PR must be fresh when it lands](#a-version-packages-pr-must-be-fresh-when-it-lands).

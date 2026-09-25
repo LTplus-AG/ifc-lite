@@ -26,7 +26,7 @@
  */
 
 import type { NamespaceSchema } from './bridge-schema.js';
-import { coreNetworkRequest, type NetworkMethod } from './network-request.js';
+import { coreNetworkRequest, type FetchTransport, type NetworkMethod } from './network-request.js';
 import type { Capability } from '@ifc-lite/extensions';
 
 /** Request options a script may pass as the second argument to `bim.network.fetch`. */
@@ -52,7 +52,8 @@ function boundOr(value: unknown, fallback: number, min: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= min ? value : fallback;
 }
 
-export function buildNetworkNamespace(grants: readonly Capability[]): NamespaceSchema {
+/** `transport` changes how the bytes move (a host's or a test's); the grant check always runs first. */
+export function buildNetworkNamespace(grants: readonly Capability[], transport?: FetchTransport): NamespaceSchema {
   return {
     name: 'network',
     doc: 'Outbound HTTP requests, restricted to https: hosts covered by a granted network.fetch:<host> capability.',
@@ -79,6 +80,7 @@ export function buildNetworkNamespace(grants: readonly Capability[]): NamespaceS
               signal: context.hostSignal,
             },
             grants,
+            transport,
           );
         },
         returns: 'value',

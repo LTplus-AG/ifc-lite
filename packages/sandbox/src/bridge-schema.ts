@@ -37,6 +37,7 @@ import { buildStructuralNamespace } from './bridge-structural.js';
 import { buildClashNamespace } from './bridge-clash.js';
 import { buildCostNamespace } from './bridge-cost.js';
 import { buildNetworkNamespace } from './bridge-network.js';
+import type { FetchTransport } from './network-request.js';
 /** How to marshal the return value back to QuickJS */
 type ReturnType =
   | 'void'       // No return value
@@ -233,12 +234,13 @@ export function buildSchemaNamespaces(
   context: BridgeCallContext,
   hostWork: HostWorkQueue,
   networkGrants: readonly Capability[] = [],
+  networkTransport?: FetchTransport,
 ): void {
   // `NAMESPACE_SCHEMAS` carries a placeholder (empty-grant) `network` entry
   // for typegen; swap in the real, grants-aware one built fresh for this
   // sandbox — never build both (that would let a script see two `bim.network`
   // registrations, the second silently winning via `vm.setProp`).
-  const realNetwork = buildNetworkNamespace(networkGrants);
+  const realNetwork = buildNetworkNamespace(networkGrants, networkTransport);
   const schemas = NAMESPACE_SCHEMAS.map((s) => (s.name === 'network' ? realNetwork : s));
   for (const schema of schemas) {
     if (!permissions[schema.permission]) continue;

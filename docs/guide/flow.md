@@ -216,7 +216,11 @@ for (const o of result.graphOutputs) console.log(o.label, o.data);
 
 Re-running with the same `cache` recomputes only nodes whose inputs,
 params, or model revision changed. Every write node bumps the cache's write
-generation, so reads never serve a memo taken before a write.
+generation, so reads never serve a memo taken before a write. Nodes that
+reach the network are never served from the memo: `HttpRequest` always
+sends its request again, and a Script node is recomputed on every run in
+which its code called `bim.network.fetch` (a Script that makes no request
+stays memoised).
 
 ## Script nodes
 

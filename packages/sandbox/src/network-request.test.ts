@@ -175,11 +175,22 @@ describe('network-request — mechanics against a real local http server', () =>
     expect(Array.from(res.bytes ?? [])).toEqual(Array.from({ length: 100 }, (_, i) => i));
   });
 
-  it('answers 304 Not Modified as a response, not as a refused redirect (#5634)', async () => {
+  it('answers 304 Not Modified as a response when the caller opts in (#5634)', async () => {
     const url = new URL(`${baseUrl}/not-modified`);
-    const res = await executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 1024, headers: { 'If-None-Match': '"v1"' } });
+    const res = await executeUngatedRequest(url, {
+      method: 'GET', timeoutMs: 2000, maxBytes: 1024, headers: { 'If-None-Match': '"v1"' }, allowNotModified: true,
+    });
     expect(res.status).toBe(304);
     expect(res.headers.etag).toBe('"v1"');
+  });
+
+  it('keeps refusing a 304 for callers that did not opt in, as every 3xx was before (#5935 review)', async () => {
+    // http.request and bim.network.fetch callers that handled the refusal
+    // must not silently get an empty success instead.
+    const url = new URL(`${baseUrl}/not-modified`);
+    await expect(
+      executeUngatedRequest(url, { method: 'GET', timeoutMs: 2000, maxBytes: 1024, headers: { 'If-None-Match': '"v1"' } }),
+    ).rejects.toThrow(NetworkDeniedError);
   });
 
   it('times out a request that never responds', async () => {

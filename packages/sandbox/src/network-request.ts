@@ -55,6 +55,12 @@ export interface NetworkRequestInit {
    * cap applies identically. Defaults to `'text'`.
    */
   readonly responseType?: 'text' | 'bytes';
+  /**
+   * Return a `304 Not Modified` as a response instead of refusing it with
+   * every other 3xx. Opt-in: a conditional request (`If-None-Match`) asks for
+   * it, and existing callers keep the refusal they already handle (#5935 review).
+   */
+  readonly allowNotModified?: boolean;
 }
 
 export interface NetworkResponse {
@@ -245,7 +251,7 @@ export async function executeUngatedRequest(
   // to read a header a browser will not hand over.
   // 304 Not Modified is a conditional-request answer (If-None-Match), not a
   // redirect: it has no `Location` and nothing to follow.
-  if (response.status >= 300 && response.status < 400 && response.status !== 304) {
+  if (response.status >= 300 && response.status < 400 && !(response.status === 304 && init.allowNotModified)) {
     throw new NetworkDeniedError(`network.fetch refused: server responded with a redirect (${response.status}); redirects are not followed`);
   }
   if (response.type === 'opaqueredirect') {

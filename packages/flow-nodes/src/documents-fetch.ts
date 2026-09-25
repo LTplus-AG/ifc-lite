@@ -57,6 +57,7 @@ export function gatedFetch(ctx: Ctx, options: GatedFetchOptions): FetchLike {
           maxBytes: options.maxBytes,
           signal: ctx.signal,
           responseType: 'bytes',
+          allowNotModified: true,
         },
         ctx.host.networkGrants ?? [],
         ctx.host.networkTransport,

@@ -476,8 +476,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       setImportStats(stats);
       setImportProgress(null);
       setImportDirty(false);
-      // The connector writes the view directly: record the import as ONE undo step (#5861, #5604).
-      useViewerStore.getState().recordMutationBatch(selectedModelId, stats.mutations);
+      useViewerStore.getState().recordMutationBatch(selectedModelId, stats.mutations); // the connector writes the view directly: ONE undo step (#5861, #5604)
       if (stats.errors.length > 0) {
         setError(stats.errors.join('\n'));
       }

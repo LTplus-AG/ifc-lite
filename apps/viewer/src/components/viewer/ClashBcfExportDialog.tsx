@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/useClash';
 import type { ClashSeverity } from '@ifc-lite/clash';
 
@@ -105,17 +106,12 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
     }
   }, [config, exportBcf, preview.topics]);
 
+  // The snapshot loop drives the live renderer (camera + isolation), and there's
+  // no UI to resume into if the dialog vanishes mid-export.
+  const handleOpenChange = useExportDialogOpenGuard({ busy: exporting, setOpen });
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        // Don't let Esc / backdrop close the dialog mid-export: the snapshot loop
-        // is driving the live renderer (camera + isolation), and there's no UI to
-        // resume into if the dialog vanishes. Mirrors the IDS export dialog.
-        if (exporting) return;
-        setOpen(v);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
@@ -240,7 +236,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
               {t('clashTools.bcfExport.capturingSnapshotsProgress', { done: progress.done, total: progress.total })}
             </span>
           )}
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={exporting}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={exporting}>
             {t('clashTools.bcfExport.cancelButton')}
           </Button>
           <Button onClick={() => void handleExport()} disabled={!canExport}>

@@ -40,6 +40,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import type { TranslationKey } from '@/i18n';
 
 interface KmzExportDialogProps {
@@ -180,8 +181,14 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
     }
   }, [selectedModel, selectedModelId, georefMutations, altitudeMode, t]);
 
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => setExportResult(null),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -279,7 +286,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('geometryExport.kmz.cancelButton')}
           </Button>
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>

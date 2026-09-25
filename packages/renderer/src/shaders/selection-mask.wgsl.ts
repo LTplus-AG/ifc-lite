@@ -18,6 +18,11 @@
  * single-sample regardless of the scene's MSAA sample count, with no
  * resolve step of their own.
  *
+ * Every output first drops fragments the section plane or clip box cuts
+ * away (`sectionClipped`, shared with `fs_main`), so an outline never traces
+ * geometry the section tool removed. That reads the mesh uniform at group 0
+ * and the `worldPos` / `eyePos` varyings `vs_main` already emits.
+ *
  * Three outputs, at most one per pipeline:
  *  - `fs_mask_selected_visible` / `fs_mask_hover_visible`: pass only where
  *    this fragment is at least as close as the stored scene depth
@@ -26,6 +31,7 @@
  *  - `fs_mask_selected_all`: always passes (drawn "through occluders").
  */
 import { depthTextureWgsl } from './depth-reconstruct.wgsl.js';
+import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
 
 /**
  * Bind-group index of the scene depth texture in the mask pipeline layout:
@@ -36,7 +42,19 @@ export const SELECTION_MASK_DEPTH_GROUP = 1;
 
 export function selectionMaskFragmentSource(multisampled: boolean): string {
   return `
+        ${meshUniformsWgsl}
         ${depthTextureWgsl(0, multisampled, SELECTION_MASK_DEPTH_GROUP)}
+
+        // The subset of vs_main's VertexOutput the mask reads (locations match).
+        struct MaskInput {
+          @builtin(position) fragPos: vec4<f32>,
+          @location(0) worldPos: vec3<f32>,
+          @location(6) eyePos: vec3<f32>,
+        }
+
+        fn isCut(input: MaskInput) -> bool {
+          return sectionClipped(clipSpacePos(input.worldPos, input.eyePos));
+        }
 
         fn isVisible(fragPos: vec4<f32>) -> bool {
           let ip = vec2<i32>(fragPos.xy);
@@ -44,19 +62,20 @@ export function selectionMaskFragmentSource(multisampled: boolean): string {
         }
 
         @fragment
-        fn fs_mask_selected_visible(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
-          if (!isVisible(fragPos)) { discard; }
+        fn fs_mask_selected_visible(input: MaskInput) -> @location(0) vec4<f32> {
+          if (isCut(input) || !isVisible(input.fragPos)) { discard; }
           return vec4<f32>(1.0, 0.0, 0.0, 0.0);
         }
 
         @fragment
-        fn fs_mask_hover_visible(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
-          if (!isVisible(fragPos)) { discard; }
+        fn fs_mask_hover_visible(input: MaskInput) -> @location(0) vec4<f32> {
+          if (isCut(input) || !isVisible(input.fragPos)) { discard; }
           return vec4<f32>(0.0, 1.0, 0.0, 0.0);
         }
 
         @fragment
-        fn fs_mask_selected_all(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
+        fn fs_mask_selected_all(input: MaskInput) -> @location(0) vec4<f32> {
+          if (isCut(input)) { discard; }
           return vec4<f32>(1.0, 0.0, 0.0, 0.0);
         }
 `;

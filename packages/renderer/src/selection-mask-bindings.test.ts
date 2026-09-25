@@ -33,3 +33,37 @@ describe('selection-mask bind groups (#5390)', () => {
     });
   }
 });
+
+/**
+ * #5390 review: the mask fragments must drop what the section plane / clip
+ * box cut away, through the SAME test `fs_main` uses, reading varyings at
+ * the locations `vs_main` really emits them.
+ */
+describe('selection mask honours the section plane and clip box (#5390)', () => {
+  const vertexOutput = /struct VertexOutput \{([\s\S]*?)\n\s*\}/.exec(mainShaderSource)?.[1] ?? '';
+  const locationOf = (name: string, src: string) => new RegExp(`@location\\((\\d+)\\) ${name}: vec3<f32>`).exec(src)?.[1];
+
+  it('fs_main clips through the shared sectionClipped()', () => {
+    const fsMain = mainShaderSource.slice(mainShaderSource.indexOf('fn fs_main('));
+    assert.match(fsMain, /if \(sectionClipped\(fragmentPos\)\) \{ discard; \}/);
+  });
+
+  for (const multisampled of [false, true]) {
+    const src = selectionMaskFragmentSource(multisampled);
+    it(`every mask entry point discards cut fragments (${multisampled ? 'MSAA' : 'single-sample'})`, () => {
+      for (const entry of ['fs_mask_selected_visible', 'fs_mask_hover_visible', 'fs_mask_selected_all']) {
+        const body = new RegExp(`fn ${entry}\\(input: MaskInput\\)[^{]*\\{([^}]*)\\}`).exec(src)?.[1] ?? '';
+        assert.match(body, /isCut\(input\)/, `${entry} must test the section/clip cut`);
+      }
+      assert.match(src, /fn isCut\(input: MaskInput\) -> bool \{\s*return sectionClipped\(clipSpacePos\(input\.worldPos, input\.eyePos\)\);/);
+    });
+
+    it(`reads worldPos / eyePos at vs_main's output locations (${multisampled ? 'MSAA' : 'single-sample'})`, () => {
+      for (const name of ['worldPos', 'eyePos']) {
+        const emitted = locationOf(name, vertexOutput);
+        assert.ok(emitted, `vs_main emits ${name}`);
+        assert.equal(locationOf(name, src), emitted, `${name} location must match VertexOutput`);
+      }
+    });
+  }
+});

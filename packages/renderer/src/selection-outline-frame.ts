@@ -15,21 +15,21 @@
  * order — so no re-pack is needed here.
  *
  * The hovered mesh usually has no uniform buffer yet (it is not
- * necessarily selected), so this packs a MINIMAL one: just the
- * view-projection, model transform and RTE drawable origin, the three
- * fields that affect vertex POSITION. The mask's fragment shader
- * (`shaders/selection-mask.wgsl.ts`) ignores every other uniform field, so
- * nothing else needs to be correct.
+ * necessarily selected), so this packs the fields the mask pipeline reads:
+ * view-projection, model transform and RTE drawable origin (vertex
+ * position), plus the section plane, clip box and their `flags.y` bits
+ * (the mask fragments clip exactly like `fs_main`). It returns the packed
+ * floats, not a GPU buffer: `SelectionMaskPass` writes them into the one
+ * hover uniform buffer it owns, so hovering allocates nothing per frame.
  */
 
-import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { packClipBox } from './clip-box.js';
+import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET, packRteFragmentSpace } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
-import type { SelectableMesh } from './selection-mask-pass.js';
-import type { Mesh } from './types.js';
+import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
+import type { ClipBox, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
-  device: GPUDevice;
-  meshBindGroupLayout: GPUBindGroupLayout;
   uniformBufferSize: number;
   viewProj: Float32Array | number[];
   relativeToEyeFrame: RelativeToEyeFrame;
@@ -39,6 +39,10 @@ export interface SelectionOutlineSource {
   allMeshes: readonly Mesh[];
   hoveredId: number | null | undefined;
   selectedModelIndex: number | undefined;
+  /** This frame's resolved section plane (the one every mesh draw packs). */
+  section: Parameters<typeof packRteFragmentSpace>[1];
+  sectionFlipped: boolean | undefined;
+  clipBox: ClipBox | null | undefined;
 }
 
 /**
@@ -55,31 +59,30 @@ function toSelectable(mesh: Mesh): SelectableMesh | null {
   return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup };
 }
 
-/** Packs a minimal uniform buffer (viewProj + transform + RTE origin) for a mesh that may not have one yet. */
-function packMinimalUniforms(source: SelectionOutlineSource, mesh: Mesh): SelectableMesh {
+/**
+ * Packs the mask pipeline's mesh uniform for a mesh that may not have one
+ * yet. Exported for unit testing; section / clip data go through the same
+ * `packClipBox` + `packRteFragmentSpace` pair `index.ts`'s mesh loop uses.
+ */
+export function packHoverUniforms(source: SelectionOutlineSource, mesh: Mesh): Float32Array {
   const scratch = new Float32Array(source.uniformBufferSize / 4);
   scratch.set(source.viewProj, 0);
   scratch.set(mesh.transform.m, 16);
   source.relativeToEyeFrame.packUniforms(scratch, MESH_UNIFORM_OFFSET.rteViewProj);
   const origin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
   source.relativeToEyeFrame.packDrawableOrigin(origin, scratch, MESH_UNIFORM_OFFSET.drawableDelta);
-  new Uint32Array(scratch.buffer, MESH_FLAGS_BYTE_OFFSET, 1)[0] = MESH_FLAG_RTE_DRAWABLE;
-
-  const uniformBuffer = source.device.createBuffer({
-    size: source.uniformBufferSize,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-  source.device.queue.writeBuffer(uniformBuffer, 0, scratch);
-  const bindGroup = source.device.createBindGroup({
-    layout: source.meshBindGroupLayout,
-    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-  });
-  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup };
+  const clipBit = packClipBox(source.clipBox, scratch, MESH_UNIFORM_OFFSET.clipBoxMin);
+  packRteFragmentSpace(source.relativeToEyeFrame, source.section, source.clipBox, scratch);
+  const flags = new Uint32Array(scratch.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
+  flags[0] = MESH_FLAG_RTE_DRAWABLE;
+  // flags.y: bit 0 = section enabled, bit 1 = flipped, bit 2 = clip box (as index.ts packs it).
+  flags[1] = (source.section?.enabled ? 1 : 0) | (source.sectionFlipped ? 2 : 0) | clipBit;
+  return scratch;
 }
 
 export interface SelectionOutlineFrameResult {
   selected: SelectableMesh[];
-  hovered: SelectableMesh | null;
+  hovered: HoveredMesh | null;
 }
 
 export function buildSelectionOutlineFrame(source: SelectionOutlineSource): SelectionOutlineFrameResult {
@@ -89,7 +92,7 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
     if (s) selected.push(s);
   }
 
-  let hovered: SelectableMesh | null = null;
+  let hovered: HoveredMesh | null = null;
   if (source.hoveredId != null) {
     const hoveredId = source.hoveredId;
     const already = source.selectedMeshes.find((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
@@ -97,7 +100,7 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
       hovered = toSelectable(already);
     } else {
       const found = source.allMeshes.find((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
-      if (found) hovered = packMinimalUniforms(source, found);
+      if (found) hovered = { vertexBuffer: found.vertexBuffer, indexBuffer: found.indexBuffer, indexCount: found.indexCount, uniforms: packHoverUniforms(source, found) };
     }
   }
 

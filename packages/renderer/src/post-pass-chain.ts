@@ -25,14 +25,14 @@ import { AoPass } from './ao-pass.js';
 import type { WebGPUDevice } from './device.js';
 import { EdgePass } from './edge-pass.js';
 import { EdlPass, type EdlPassOptions } from './edl-pass.js';
-import { SelectionMaskPass, type SelectableMesh } from './selection-mask-pass.js';
+import { SelectionMaskPass, type HoveredMesh, type SelectableMesh } from './selection-mask-pass.js';
 import type { Mat4 } from './types.js';
 import { livePostEffects, type ResolvedVisualEnhancement } from './visual-enhancement.js';
 
 /** What to draw into the selection/hover outline this frame; absent draws nothing (#5390). */
 export interface SelectionOutlineFrame {
   selected: readonly SelectableMesh[];
-  hovered: SelectableMesh | null;
+  hovered: HoveredMesh | null;
 }
 
 export interface PostPassFrame {

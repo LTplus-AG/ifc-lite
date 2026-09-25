@@ -106,6 +106,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             value={value}
             aria-label={attrName}
             aria-invalid={error !== null}
+            aria-describedby={error ? `attr-err-${entityId}-${attrName}` : undefined}
             onChange={(e) => { setValue(e.target.value); setError(null); }}
             onKeyDown={handleKeyDown}
             onBlur={save}
@@ -120,7 +121,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             <Check className="h-3 w-3 text-emerald-500" />
           </Button>
         </div>
-        {error && <span role="alert" className="text-xs text-red-600 dark:text-red-400">{t(error)}</span>}
+        {error && <span id={`attr-err-${entityId}-${attrName}`} role="alert" className="text-xs text-red-600 dark:text-red-400">{t(error)}</span>}
       </div>
     );
   }

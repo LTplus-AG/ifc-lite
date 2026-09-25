@@ -137,7 +137,9 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     const input = openEditor(container, GUID_A);
     type(input, 'not-a-guid');
     key(input, 'Enter');
-    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /22 characters/);
+    const alert = container.querySelector('[role="alert"]');
+    assert.match(alert?.textContent ?? '', /22 characters/);
+    assert.ok(alert?.id && input.getAttribute('aria-describedby') === alert.id, 'the field references its message');
     assert.equal(undo().length, 0);
   });
 

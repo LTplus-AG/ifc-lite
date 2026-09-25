@@ -133,7 +133,7 @@ export function PropertyEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const initialValue = formatValue(currentValue);
   const initialType = detectValueType(currentValue, currentType);
-  const isUnchanged = value === initialValue && valueType === initialType;
+  const isUnchanged = valueType === initialType && (value === initialValue || parseValue(value, valueType) === currentValue); // '1.50' is 1.5
 
   // Focus input when entering edit mode
   useEffect(() => {

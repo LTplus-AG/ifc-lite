@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
 import { PropertyEditor } from './PropertyEditor.js';
 
 const MODEL_ID = 'model-a';
@@ -49,6 +50,18 @@ const undo = () => useViewerStore.getState().undoStacks.get(MODEL_ID) ?? [];
 
 describe('property-value editor commits only real changes (#5872)', () => {
   afterEach(() => cleanup());
+
+  it('Enter on an equal Real written differently (1.50 for 1.5) records nothing', async () => {
+    seed();
+    const container = render(<PropertyEditor modelId={MODEL_ID} entityId={42} psetName="Pset_WallCommon" propName="ThermalTransmittance" currentValue={1.5} currentType={PropertyValueType.Real} />);
+    const input = await open(container);
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+    act(() => { setter.call(input, '1.50'); input.dispatchEvent(new window.Event('input', { bubbles: true })); });
+    await advance(0);
+    act(() => { input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    await advance(0);
+    assert.equal(undo().length, 0, 'no undo entry for an equal parsed value');
+  });
 
   it('Enter on an unchanged value records nothing and keeps redo', async () => {
     seed();

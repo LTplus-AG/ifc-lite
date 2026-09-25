@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! One parent per object and single-valued decomposition inverse across a
-//! merge: the Rust twin of `claimDecompositionParents` in
-//! `packages/export/src/merged-decomposition-parents.ts` (#5471 / #5727 for
+//! merge: the Rust twin of `claimInverses` in
+//! `packages/export/src/merged-inverse-claims.ts` (#5471 / #5727 for
 //! `IfcRelAggregates`, #5726 / #5802 for `IfcRelNests`).
 //!
 //! `IfcObjectDefinition.Decomposes` is `SET [0:1]` (and, from IFC4, so is

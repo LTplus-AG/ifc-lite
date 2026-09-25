@@ -6,13 +6,15 @@
 /**
  * "Does the release credential have the API quota this Release run needs?" (#5693)
  *
- * release.yml authenticates changesets/action, the version-PR update and
- * `gh release create` with `secrets.RELEASE_PAT`. A PAT spends its OWNER's
+ * release.yml authenticates changesets/action (version commit, version PR,
+ * per-package tags and releases) and the server-bin `gh release create` with
+ * `secrets.RELEASE_PAT`. A PAT spends its OWNER's
  * quota: 5,000 REST points and 5,000 GraphQL points an hour, shared with
  * everything else that account does. When the PAT belongs to an account that
  * agent sessions also drive `gh` with, those sessions drain it, and Release
  * run 36009885836 died mid-job ("API rate limit already exceeded for user ID
- * 78563314") after `pnpm run version` had already run. On the publish path
+ * 78563314") after `pnpm run version` had already run (a GraphQL call of
+ * changesets/action). On the publish path
  * the same failure lands between `changeset publish` and the GitHub releases.
  *
  * The root fix is a credential that nothing else spends: a PAT of a dedicated
@@ -39,12 +41,13 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 
 /**
  * Points one Release run can spend, per bucket, with headroom. The publish
- * path is the expensive one: changesets/action creates one GitHub release per
- * published package (46 npm packages) on REST, plus the root and server-bin
- * releases and their lookups; the version path updates the version PR with a
- * single GraphQL mutation.
+ * path is the expensive one: changesets/action creates a tag ref AND a GitHub
+ * release per published package on REST (2 x 46 npm packages), plus the PR
+ * lookup and the server-bin release and its lookups: about 100. The version
+ * path spends a handful of GraphQL points (the version commit and the PR
+ * update).
  */
-export const DEFAULT_FLOOR = { core: 150, graphql: 50 };
+export const DEFAULT_FLOOR = { core: 200, graphql: 50 };
 
 /** How long a run may wait for a bucket to reset before it fails instead. */
 export const DEFAULT_MAX_WAIT_S = 20 * 60;
@@ -91,6 +94,19 @@ function readResources() {
   return JSON.parse(gh(['api', 'rate_limit'])).resources;
 }
 
+/** `readResources()`, or `null` after reporting the fail-closed error. */
+function tryReadResources() {
+  try {
+    return readResources();
+  } catch (err) {
+    process.stderr.write(
+      `::error title=Release credential unreadable (#5693)::GET /rate_limit failed with the release credential (${String(err.message).split('\n')[0]}). ` +
+        'The token is missing, expired or revoked; rotate RELEASE_PAT (see RELEASE.md, "Release credential").\n'
+    );
+    return null;
+  }
+}
+
 /** The token owner's login, for the diagnosis. Costs one REST point, so only asked with points left. */
 function owner(resources) {
   if (!(resources?.core?.remaining > 0)) return 'the RELEASE_PAT owner';
@@ -113,16 +129,8 @@ function main(argv) {
     process.stderr.write('usage: check-release-credential-quota.mjs [--max-wait <seconds>]\n');
     return 2;
   }
-  let resources;
-  try {
-    resources = readResources();
-  } catch (err) {
-    process.stderr.write(
-      `::error title=Release credential unreadable (#5693)::GET /rate_limit failed with the release credential (${String(err.message).split('\n')[0]}). ` +
-        'The token is missing, expired or revoked; rotate RELEASE_PAT (see RELEASE.md, "Release credential").\n'
-    );
-    return 2;
-  }
+  let resources = tryReadResources();
+  if (resources === null) return 2;
   let result = quotaVerdict(resources, { nowS: Date.now() / 1000, maxWaitS });
   if (result.verdict === 'wait') {
     process.stdout.write(
@@ -130,7 +138,8 @@ function main(argv) {
         `Waiting ${Math.ceil(result.waitS)} s for the reset. The quota belongs to ${owner(resources)} and is shared with everything else that account does; a dedicated release credential removes this wait (RELEASE.md, "Release credential").\n`
     );
     sleep(result.waitS);
-    resources = readResources();
+    resources = tryReadResources();
+    if (resources === null) return 2;
     // After one reset a second wait is not a wait for the reset any more:
     // something is still draining the account.
     result = quotaVerdict(resources, { nowS: Date.now() / 1000, maxWaitS: 0 });

@@ -52,6 +52,12 @@ test('the floor is inclusive: exactly the floor passes, one below does not', () 
   assert.equal(quotaVerdict(below, { nowS: NOW }).verdict, 'fail');
 });
 
+test('a reset already in the past waits only the rollover second', () => {
+  const r = quotaVerdict({ core: bucket(0, -60), graphql: bucket(4000) }, { nowS: NOW });
+  assert.equal(r.verdict, 'wait');
+  assert.equal(r.waitS, 5);
+});
+
 test('a missing bucket is empty, not full (fail closed)', () => {
   assert.equal(quotaVerdict({ core: bucket(4000) }, { nowS: NOW }).verdict, 'fail');
   assert.equal(quotaVerdict(undefined, { nowS: NOW }).verdict, 'fail');
@@ -77,28 +83,46 @@ function runCli(rateLimit, args = []) {
   }
 }
 
+// The stub `gh` is a POSIX shell script; CI is Linux.
+const cli = { skip: process.platform === 'win32' && 'stub gh is a POSIX shell script' };
+
 const liveBucket = (remaining, resetIn) => ({ limit: 5000, remaining, used: 5000 - remaining, reset: Math.floor(Date.now() / 1000) + resetIn });
 
-test('CLI: a healthy credential exits 0', () => {
+test('CLI: a healthy credential exits 0', cli, () => {
   const r = runCli({ core: liveBucket(4000, 1800), graphql: liveBucket(4000, 1800) });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /release credential quota ok: core 4000\/5000, graphql 4000\/5000/);
 });
 
-test('CLI: a drained account fails before the run mutates anything, naming the owner', () => {
+test('CLI: a drained account fails before the run mutates anything, naming the owner', cli, () => {
   const r = runCli({ core: liveBucket(4000, 3000), graphql: liveBucket(0, 3000) });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /::error title=Release credential out of API quota \(#5693\)::graphql: 0 left/);
   assert.match(r.stderr, /belongs to release-bot/);
 });
 
-test('CLI: an unreadable credential fails closed with status 2', () => {
+test('CLI: an unreadable credential fails closed with status 2', cli, () => {
   const r = runCli(null);
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Release credential unreadable/);
 });
 
-test('CLI: --max-wait 0 turns a short wait into a failure', () => {
+test('CLI: --max-wait 0 turns a short wait into a failure', cli, () => {
   const r = runCli({ core: liveBucket(1, 30), graphql: liveBucket(4000, 1800) }, ['--max-wait', '0']);
   assert.equal(r.status, 1);
+});
+
+test('CLI: a drained bucket that is STILL drained after the wait fails (no second wait)', cli, () => {
+  // The reset is in the past, so the first verdict waits 5 s; the stub still
+  // reports the bucket empty after it, and the re-read must fail, not wait again.
+  const r = runCli({ core: liveBucket(0, -60), graphql: liveBucket(4000, 1800) }, ['--max-wait', '10']);
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stdout, /::warning title=Release credential quota low \(#5693\)::core: 0 left/);
+  assert.match(r.stderr, /::error title=Release credential out of API quota/);
+});
+
+test('CLI: a bad --max-wait is a usage error', cli, () => {
+  const r = runCli({ core: liveBucket(4000, 1800), graphql: liveBucket(4000, 1800) }, ['--max-wait', 'soon']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /usage:/);
 });

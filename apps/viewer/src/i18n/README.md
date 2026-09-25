@@ -439,8 +439,8 @@ geometry-merge setting's reload banner), not the same feature under a new
 name.
 
 The Annotate tool catalogue (#4918 slice: annotations, `annotations.en.ts`)
-covers the canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer
-that projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
+covers the canvas-overlay pin (the shared `Pin` scene primitive, registered on
+the projector by `AnnotationLayer.tsx` — #5511), the read/edit
 popover for an existing pin (`AnnotationPopover.tsx`), and the inline
 commit-or-cancel input shown while dropping a fresh pin
 (`AnnotationDropInput.tsx`), including the relative-time phrasing

@@ -27,6 +27,7 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -1122,9 +1123,14 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      <AnnotationLayer />
-      <CollabPresenceLayer />
-      {bcfOverlayVisible && <BCFOverlay />}
+      {/* One scene-overlay kernel per viewport (#5486, #5511): the shared
+          projector (single rAF loop) and SVG+DOM layers every world-anchored
+          consumer below portals into via Pin/AnchoredCard/WorldLabel. */}
+      <SceneOverlayRoot>
+        <AnnotationLayer />
+        <CollabPresenceLayer />
+        {bcfOverlayVisible && <BCFOverlay />}
+      </SceneOverlayRoot>
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the

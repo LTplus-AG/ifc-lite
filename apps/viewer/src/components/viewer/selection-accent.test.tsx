@@ -13,6 +13,11 @@
  * `index.css`, compiled by the Tailwind v4 plugin chain), the theme is
  * published by the real `OverlayThemeSync`, and the colour each one actually
  * resolves to is compared with what the GPU gets, per theme.
+ *
+ * Annotation pins moved onto the shared `Pin` scene primitive (#5511) — a
+ * selected/draft pin no longer draws a separate ring, it fills in the same
+ * `overlay-accent` token every other "being manipulated" primitive uses, so
+ * the pin cases below assert the projected `Pin`'s fill directly.
  */
 
 import '@/test/setup-dom.js';
@@ -29,7 +34,8 @@ import { OverlayThemeSync } from '@/components/viewport-ui/OverlayThemeSync';
 import { OVERLAY_PALETTES, OVERLAY_TOKENS, overlayCssVar, tokenToLinearRgba } from '@/lib/viewport-ui/overlay-theme';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { RectSelectionOverlay } from './RectSelectionOverlay';
-import { AnnotationPin } from './annotations/AnnotationPin';
+import { Pin } from '@/components/viewport-ui/scene';
+import { renderScene } from '@/components/viewport-ui/scene/test/scene-test-support';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '../..');
@@ -39,7 +45,7 @@ let sheet: HTMLStyleElement | null = null;
 before(async () => {
   // Tailwind scans the component sources for the classes they use, exactly as
   // the Vite build does, so a class the components stop using drops out here too.
-  const input = `@import "./index.css";\n@source "./components/viewer/RectSelectionOverlay.tsx";\n@source "./components/viewer/annotations/AnnotationPin.tsx";\n`;
+  const input = `@import "./index.css";\n@source "./components/viewer/RectSelectionOverlay.tsx";\n@source "./components/viewport-ui/scene/primitives/Pin.tsx";\n`;
   const result = await postcss([tailwindcss()]).process(input, { from: join(SRC, 'selection-accent.probe.css'), to: undefined });
   // happy-dom drops every rule inside `@layer`, so unwrap the layers in place.
   // Tailwind emits them in cascade order (theme, base, components,
@@ -90,26 +96,28 @@ describe('one selection accent across GPU and DOM (#5491)', () => {
       assert.deepEqual(asLinear(stroke), gpuSelection(theme));
     });
 
-    it(`${theme}: a selected annotation pin rings in the GPU selection colour`, () => {
+    it(`${theme}: a selected annotation pin fills in the GPU selection colour`, () => {
       mountTheme(theme);
-      const ui = render(<AnnotationPin index={1} selected />);
-      const ring = ui.querySelector('button > span:last-child');
-      assert.ok(ring, 'selection ring rendered');
-      const ringColour = getComputedStyle(ring).getPropertyValue('--tw-ring-color');
-      assert.deepEqual(asLinear(ringColour), gpuSelection(theme));
+      const { container, flush } = renderScene(<Pin worldPoint={{ x: 0, y: 0, z: 0 }} active />);
+      flush();
+      const path = container.querySelector('[data-scene-primitive="pin"] path');
+      assert.ok(path, 'pin rendered');
+      const fill = getComputedStyle(path).fill;
+      assert.deepEqual(asLinear(fill), gpuSelection(theme));
     });
   }
 
   it('a committed pin is ink and the draft pin is the accent, never amber', () => {
     mountTheme('light');
-    const ui = render(
+    const { container, flush } = renderScene(
       <>
-        <AnnotationPin index={1} />
-        <AnnotationPin index={2} variant="draft" />
+        <Pin worldPoint={{ x: 0, y: 0, z: 0 }} />
+        <Pin worldPoint={{ x: 10, y: 10, z: 0 }} active />
       </>,
     );
-    const [idle, draft] = [...ui.querySelectorAll('button > span:first-child')].map(
-      (dot) => getComputedStyle(dot).backgroundColor.trim(),
+    flush();
+    const [idle, draft] = [...container.querySelectorAll('[data-scene-primitive="pin"] path')].map(
+      (path) => getComputedStyle(path).fill.trim(),
     );
     assert.equal(idle, OVERLAY_PALETTES.light['overlay-ink']);
     assert.equal(draft, OVERLAY_PALETTES.light['overlay-accent']);

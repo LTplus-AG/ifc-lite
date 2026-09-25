@@ -12,8 +12,7 @@
  * catalogue — not a hardcoded literal — drives the text) or, for the
  * handful of files whose translated text only ever appears behind a real
  * network round trip (`FederationSetupControls`'s match-review dialog),
- * a `requestAnimationFrame` loop (`PeerPresenceLayer`), or a heavy sibling
- * panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
+ * or a heavy sibling panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
  * assertion against the catalogue instead — the sweep's own bar for a
  * "truly trivial" file ("make sure every converted file has SOME test
  * coverage asserting its key(s) resolve").
@@ -288,9 +287,10 @@ it('TextAnnotationEditor: renders the placeholder and hint in English and transl
 });
 
 // ---- presence/PeerPresenceLayer -------------------------------------------
-// Cursor pills only enter the DOM via a `requestAnimationFrame` tick against
-// live `collabPeers` awareness data — not worth faking an animation-frame
-// loop just to read its three labels back.
+// `PeerPresenceLayer.test.tsx` covers the component itself on the shared
+// scene-overlay kernel's stub-driven projector (#5511); this is just the
+// lightweight catalogue-resolution guard every trivial file in this sweep
+// gets, so a locale regression is caught even without the fuller test.
 
 it('PeerPresenceLayer: the cursor-pill catalogue values resolve (#4918)', () => {
   assert.equal(resolve('peerPresenceLayer.cursorsAriaLabel'), 'Collaborator cursors');

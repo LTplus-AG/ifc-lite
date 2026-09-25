@@ -1774,3 +1774,62 @@ describe('the textured draw path passes authored alpha and material to packMeshM
         assert.equal(row![1], Math.fround(0.2), 'roughness override reaches the uniform');
     });
 });
+
+/**
+ * #5746: the derivative edge darkening in `main.wgsl.ts` read flags.z (enabled)
+ * and flags.w (intensity x 1000) off every mesh uniform. It is gone, the edge
+ * pass (#5385) is the one edge source, and the two lanes stay in the struct
+ * only for layout. `edgeContrast` is still accepted, so a caller passing it
+ * must not put anything back into those lanes on any draw path.
+ */
+describe('mesh uniforms leave the freed edge lanes zero (#5746)', () => {
+    const FLAGS = MESH_UNIFORM_OFFSET.flags;
+
+    /** flags as u32 for every write that landed on one of `buffers`. */
+    function flagsWrittenTo(h: Harness, buffers: Set<unknown>): Uint32Array[] {
+        return h.stats.writes
+            .filter((w) => buffers.has(w.buffer) && w.floats.length >= FLAGS + 4)
+            .map((w) => new Uint32Array(w.floats.buffer, w.floats.byteOffset + FLAGS * 4, 4));
+    }
+
+    it('batched, selected-individual and textured draws write 0 to flags.z and flags.w with edgeContrast on', () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        scene.appendToBatches([texturedTriangle(9)], device, h.renderer['pipeline'] as never, false);
+        const textured = scene.getTexturedMeshes();
+        assert.strictEqual(textured.length, 1);
+
+        h.stats.writes.length = 0;
+        // Post passes stay off (the stub GPU has no textures for them); the
+        // mesh uniforms are what the old edge block read.
+        h.render({
+            selectedId: 1,
+            visualEnhancement: {
+                enabled: true,
+                edgeContrast: { enabled: true, intensity: 3 },
+                contactShading: { quality: 'off' },
+                separationLines: { enabled: false },
+            },
+        });
+
+        const selected = scene.getMeshes().filter((m) => m.hydrated && m.expressId === 1);
+        assert.strictEqual(selected.length, 1, 'selection hydrates an individual mesh');
+        const buffers = new Set<unknown>([
+            grey.uniformBuffer, red.uniformBuffer, textured[0].uniformBuffer, selected[0].uniformBuffer,
+        ]);
+        const flags = flagsWrittenTo(h, buffers);
+        assert.ok(flags.length >= 4, `expected a uniform write per draw, got ${flags.length}`);
+        // Positive control: the lanes are read at the right offset, because
+        // the selected mesh's flags.x carries its selection bit.
+        assert.ok(
+            flagsWrittenTo(h, new Set([selected[0].uniformBuffer])).some((f) => (f[0] & 1) === 1),
+            'selected mesh uniform carries flags.x bit 0',
+        );
+        for (const f of flags) {
+            assert.strictEqual(f[2], 0, 'flags.z (was edgeEnabled) must stay 0');
+            assert.strictEqual(f[3], 0, 'flags.w (was edgeIntensityMilli) must stay 0');
+        }
+    });
+});

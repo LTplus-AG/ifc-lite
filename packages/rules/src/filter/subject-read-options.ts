@@ -34,7 +34,30 @@ export interface SubjectReadOptions {
   inherit?: 'type' | 'aggregation';
 }
 
+/** Read options only a `property` rule or subject takes. */
+export interface PropertyReadOptions extends SubjectReadOptions {
+  /**
+   * The member of an `IfcComplexProperty` to read, by `Name`, one entry per
+   * nesting level: `['Width']`, or `['Frame', 'Width']` for a member of a
+   * nested complex property (#5475). Names compare case-insensitively, like
+   * property names. A property that is not complex, or has no such member,
+   * reads as absent. Absent: a complex property reads as its members'
+   * joined text.
+   */
+  memberPath?: string[];
+}
+
 /** Whether `rule` has to be matched through the subject reader. */
-export function readsThroughSubject(rule: SubjectReadOptions): boolean {
-  return rule.valueUnit !== undefined || rule.inherit !== undefined;
+export function readsThroughSubject(rule: PropertyReadOptions): boolean {
+  return rule.valueUnit !== undefined || rule.inherit !== undefined || rule.memberPath !== undefined;
+}
+
+/** A `memberPath` a rule or subject may carry: a non-empty list of non-empty names. */
+export function isMemberPath(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every((s) => typeof s === 'string' && s.length > 0);
+}
+
+/** How a `memberPath` reads in a label: ` › Frame › Width`, or `''` without one. */
+export function memberPathLabel(memberPath: readonly string[] | undefined): string {
+  return (memberPath ?? []).map((name) => ` › ${name}`).join('');
 }

@@ -183,6 +183,9 @@ function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
     }
     case 'property':
     case 'quantity': {
+      if (rule.kind === 'property' && rule.memberPath) {
+        return { reason: 'a complex-property member (memberPath) has no IDS facet' };
+      }
       const isQuantity = rule.kind === 'quantity';
       const setName = nameConstraint(rule.setName, rule.setNameKind);
       const baseName = isQuantity

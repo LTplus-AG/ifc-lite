@@ -4,8 +4,9 @@
 
 /**
  * `property` and `quantity` subjects for `readSubject`: the values, the
- * unit each is recorded in (#5300), its SI factor (#5225), and the
- * `inherit` option (#5433). Split out of `read-subject.ts` for size.
+ * unit each is recorded in (#5300), its SI factor (#5225), the
+ * `inherit` option (#5433), and a property's complex-property
+ * `memberPath` (#5475). Split out of `read-subject.ts` for size.
  *
  * `inherit` (`SubjectReadOptions`):
  * - absent: the element's own values; a property also reads its type's
@@ -25,6 +26,7 @@ import {
   extractTypeQuantitiesOnDemand,
   mergeInheritedPropertySets,
   mergeInheritedQuantitySets,
+  type ExtractedProperty,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
@@ -55,6 +57,20 @@ function inheritedTypePsets(store: IfcDataStore, expressId: number) {
   return (store.properties?.getForEntity?.(typeIds[0]) ?? []) as ReturnType<typeof extractPropertiesOnDemand>;
 }
 
+/**
+ * The members of `property` that `memberPath` names, one level per entry
+ * (#5475): only an `IfcComplexProperty` has members, so any other property,
+ * or a name no member has, yields none. No `memberPath`: the property itself.
+ */
+function complexMembers(property: ExtractedProperty, memberPath: readonly string[] | undefined): ExtractedProperty[] {
+  let level = [property];
+  for (const name of memberPath ?? []) {
+    const wanted = name.toLowerCase();
+    level = level.flatMap((p) => (p.members ?? []).filter((m) => m.name.toLowerCase() === wanted));
+  }
+  return level;
+}
+
 function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, store: IfcDataStore, expressId: number): MeasureValue {
   const merged = mergeInheritedPropertySets(extractPropertiesOnDemand(store, expressId), inheritedTypePsets(store, expressId));
   const values: string[] = [];
@@ -63,8 +79,8 @@ function readProperty(subject: Extract<MeasureSubject, { kind: 'property' }>, st
   const displayValues: string[] = [];
   for (const set of merged) {
     if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
-    for (const p of set.properties) {
-      if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
+    const named = set.properties.filter((p) => nameMatches(subject.propertyName, p.name, subject.propertyNameKind));
+    for (const p of named.flatMap((property) => complexMembers(property, subject.memberPath))) {
       // Every candidate of a list, enumerated or table value (#5475); they
       // share the property's unit.
       const unit = p.unit ?? projectUnitSymbol(store, p.dataType);

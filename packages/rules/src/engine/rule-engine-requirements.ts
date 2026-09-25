@@ -44,6 +44,7 @@ import type { FilterGroup } from '../filter/filter-groups.js';
 import type { FilteredElement } from '../filter/filter-evaluate.js';
 import { readSubject, type ReadSubjectContext, type SubjectValue } from '../filter/read-subject.js';
 import { toSiValues } from '../filter/subject-match.js';
+import { memberPathLabel } from '../filter/subject-read-options.js';
 import {
   matchStringAnyNone,
   numericOpMatches,
@@ -86,7 +87,7 @@ function actualOf(subject: SubjectValue): string {
 
 function subjectLabel(rule: FilterRule): string {
   switch (rule.kind) {
-    case 'property': return `${rule.setName}.${rule.propertyName}`;
+    case 'property': return `${rule.setName}.${rule.propertyName}${memberPathLabel(rule.memberPath)}`;
     case 'quantity': return `${rule.setName}.${rule.quantityName}`;
     case 'attribute': return rule.name;
     case 'name': return 'Name';
@@ -277,7 +278,7 @@ type CheckItem = ElementRule | BetweenPair;
 function subjectKey(rule: FilterRule): string | null {
   switch (rule.kind) {
     case 'quantity': return `quantity:${rule.setName}:${rule.quantityName}`;
-    case 'property': return `property:${rule.setName}:${rule.propertyName}`;
+    case 'property': return `property:${rule.setName}:${rule.propertyName}:${JSON.stringify(rule.memberPath ?? [])}`;
     case 'attribute': return `attribute:${rule.name}`;
     default: return null;
   }

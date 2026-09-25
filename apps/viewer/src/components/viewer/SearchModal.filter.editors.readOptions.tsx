@@ -5,7 +5,8 @@
 /**
  * The read options of a `property` / `quantity` chip (`SubjectReadOptions`
  * in `@ifc-lite/rules`): whether its number is in SI units (#5225), and
- * where a missing value may be inherited from (#5433). Shared
+ * where a missing value may be inherited from (#5433), and for a property
+ * the complex-property member it reads (#5475). Shared
  * by both editors, and kept out of `SearchModal.filter.editors.tsx` for size.
  */
 
@@ -13,6 +14,7 @@ import { useTranslation } from '@/i18n';
 import type { FilterRule } from '@ifc-lite/rules';
 import { cn } from '@/lib/utils';
 import { InheritSelect } from './InheritSelect';
+import { MemberPathInput } from './MemberPathInput';
 
 type MeasureRule = Extract<FilterRule, { kind: 'property' | 'quantity' }>;
 
@@ -21,6 +23,9 @@ export function ReadOptionControls({ rule, onChange }: { rule: MeasureRule; onCh
   const si = rule.valueUnit === 'si';
   return (
     <>
+      {rule.kind === 'property' && (
+        <MemberPathInput value={rule.memberPath} onChange={(memberPath) => onChange({ ...rule, memberPath })} />
+      )}
       <InheritSelect
         value={rule.inherit}
         offered={rule.kind === 'quantity' ? ['type', 'aggregation'] : ['aggregation']}

@@ -15,6 +15,7 @@
 
 import { isModelTagOp } from './model-tag.js';
 import { isModelFact } from './filter-model-fact.js';
+import { isMemberPath } from './subject-read-options.js';
 import type { ClassificationOp, FilterRule, StringOp, ValueOp } from './filter-rules.js';
 
 const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
@@ -80,11 +81,13 @@ export function isFilterRule(value: unknown): value is FilterRule {
   );
 }
 
-/** `SubjectReadOptions` fields, when present, must hold a value the engine knows. */
+/** `SubjectReadOptions` fields, when present, must hold a value the engine
+ *  knows; `memberPath` only on a `property` rule. */
 function validReadOptions(value: object): boolean {
-  const r = value as { valueUnit?: unknown; inherit?: unknown };
+  const r = value as { kind?: unknown; valueUnit?: unknown; inherit?: unknown; memberPath?: unknown };
   return (r.valueUnit === undefined || r.valueUnit === 'si')
-    && (r.inherit === undefined || r.inherit === 'type' || r.inherit === 'aggregation');
+    && (r.inherit === undefined || r.inherit === 'type' || r.inherit === 'aggregation')
+    && (r.memberPath === undefined || (r.kind === 'property' && isMemberPath(r.memberPath)));
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

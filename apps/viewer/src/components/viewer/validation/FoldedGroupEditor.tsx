@@ -211,6 +211,6 @@ function BetweenChipRow({
 
 function subjectLabel(rule: Extract<FoldedRule, { kind: 'between' }>['min']): string {
   if (rule.kind === 'quantity') return `${rule.setName}.${rule.quantityName}`;
-  if (rule.kind === 'property') return `${rule.setName}.${rule.propertyName}`;
+  if (rule.kind === 'property') return `${rule.setName}.${rule.propertyName}${(rule.memberPath ?? []).map((m) => ` › ${m}`).join('')}`;
   return rule.name;
 }

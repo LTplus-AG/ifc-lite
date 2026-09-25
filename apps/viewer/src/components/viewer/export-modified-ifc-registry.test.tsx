@@ -22,7 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { buildExportCommands } from './commandPaletteExports';
-import { usePaletteExportRunner } from './usePaletteExportRunner';
+import { useExportRunner } from './useExportRunner';
 
 function model(): FederatedModel {
   return {
@@ -68,9 +68,9 @@ function menuRow(): HTMLElement | null {
 
 const reviewOpen = () => document.body.querySelector('[role="dialog"]') !== null;
 
-let runner: ReturnType<typeof usePaletteExportRunner> | null = null;
+let runner: ReturnType<typeof useExportRunner> | null = null;
 function RunnerHarness() {
-  runner = usePaletteExportRunner();
+  runner = useExportRunner();
   return runner.dialog;
 }
 

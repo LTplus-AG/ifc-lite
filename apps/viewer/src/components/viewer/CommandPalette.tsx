@@ -21,7 +21,7 @@ import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
-import { usePaletteExportRunner } from './usePaletteExportRunner';
+import { useExportRunner } from './useExportRunner';
 import {
   type Command,
   type Category,
@@ -105,7 +105,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   const { t } = useTranslation();
-  const { runExport, dialog: exportDialog, extensionExporters } = usePaletteExportRunner();
+  const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({

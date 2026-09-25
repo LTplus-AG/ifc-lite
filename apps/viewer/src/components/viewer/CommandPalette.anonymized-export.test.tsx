@@ -6,7 +6,7 @@
  * Command Palette's `export:anonymized` entry (#2934): opens the anonymized
  * export dialog and closes the palette. Since #5601 the palette's Export rows
  * come from the toolbar registry and open its dialogs through their own
- * trigger (`usePaletteExportRunner.tsx`), so the row no longer sets
+ * trigger (`useExportRunner.tsx`), so the row no longer sets
  * `anonymizedExportRequested`; that flag is the entity context menu's.
  */
 

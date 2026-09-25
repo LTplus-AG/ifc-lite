@@ -3,20 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The command palette's export dispatch (#5601). The palette's Export rows
+ * Export dispatch for the surfaces that close before an export's dialog opens:
+ * the command palette (#5601) and the mobile overflow menu (#5842). Their rows
  * are built from `toolbar/export-commands.ts` (`commandPaletteExports.ts`),
  * and this hook runs them through the SAME handlers and dialogs the classic
  * toolbar and the ribbon use — `useExportCommands` for the one-click and CSV
  * exports, the registry's own `Dialog` component for everything with
- * options — so the palette has no export implementation of its own.
+ * options — so neither surface has an export implementation of its own.
  *
  * Dialog formats own their open state behind a `trigger` element (see
  * `ExportDialogComponent`), exactly as `ClassicExportRow` and
- * `RibbonExportGroup` mount them. The palette closes as soon as a row runs,
- * so it cannot host that trigger itself: `CommandPalette` renders `dialog`
- * (outside its own `Dialog`, so it outlives the palette closing) and the
- * trigger is a hidden button that clicks itself once on mount — the same
- * `DialogTrigger` path a toolbar click takes, with no second way in.
+ * `RibbonExportGroup` mount them. A palette or menu closes as soon as a row
+ * runs, so it cannot host that trigger itself: the surface renders `dialog`
+ * outside its own popup (so it outlives the popup closing) and the trigger is
+ * a hidden button that clicks itself once on mount — the same `DialogTrigger`
+ * path a toolbar click takes, with no second way in.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,10 +27,10 @@ import type { CsvExportType, ExportCommandId, ExportDialogComponent } from './to
 import { useExportCommands } from './toolbar/useExportCommands';
 
 /**
- * One palette export row's request: CSV names its table, an extension exporter
+ * One export row's request: CSV names its table, an extension exporter
  * its `<extensionId>:<exporterId>` key, every other format is just its id.
  */
-export type PaletteExportRequest =
+export type ExportRequest =
   | { id: 'csv'; table: CsvExportType }
   | { id: 'extension'; key: string }
   | { id: Exclude<ExportCommandId, 'csv'> };
@@ -64,7 +65,7 @@ function AutoOpenTrigger({ ref, ...props }: React.ComponentProps<'button'>) {
   );
 }
 
-export function usePaletteExportRunner() {
+export function useExportRunner() {
   const { t } = useTranslation();
   const {
     ifcDataStore, commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
@@ -72,7 +73,7 @@ export function usePaletteExportRunner() {
   // `nonce` remounts the dialog so a repeat request opens it again.
   const [requested, setRequested] = useState<{ Dialog: ExportDialogComponent; nonce: number } | null>(null);
 
-  const runExport = useCallback((request: PaletteExportRequest) => {
+  const runExport = useCallback((request: ExportRequest) => {
     if (request.id === 'extension') {
       if (extensionExportRunning) toast.info(t('commandPalette.export.unavailable'));
       else void runExtensionExporter(request.key);

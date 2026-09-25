@@ -14,16 +14,13 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
-import type { BimContext } from '@ifc-lite/sdk';
-import { BimReactContext } from '@/sdk/BimProvider';
-import { render, cleanup, click, advance, press } from '@/test/render';
+import { render, cleanup, click, advance } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { GLBExportDialog } from './GLBExportDialog';
-import { MobileToolbar } from './MobileToolbar';
 import { useExportCommands } from './toolbar/useExportCommands';
 
 /** A second copy of a file, named the way a room recipient's copy is (#4444). */
@@ -83,15 +80,6 @@ describe('every model export is filed under the model name (#5833)', () => {
     render(<GLBExportDialog />);
     click(button('Export GLB')); await advance(1);
     click(button('Export')); await advance(20);
-    assert.deepEqual(downloadedNames(), ['Haus -2.glb']);
-  });
-
-  it('mobile GLB is named like the dialog, not model.glb', async () => {
-    mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', () => new Uint8Array([1]));
-    render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
-    press(document.querySelector('[aria-haspopup="menu"]')!, 'ArrowDown'); await advance(10);
-    const action = [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Export GLB');
-    assert.ok(action); click(action); await advance(25);
     assert.deepEqual(downloadedNames(), ['Haus -2.glb']);
   });
 

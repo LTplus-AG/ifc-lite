@@ -135,10 +135,7 @@ export const shellChromeEn = {
   'shellChrome.mobileToolbar.frameSelection': 'Frame Selection',
   'shellChrome.mobileToolbar.perspective': 'Perspective',
   'shellChrome.mobileToolbar.orthographic': 'Orthographic',
-  'shellChrome.mobileToolbar.exportGlb': 'Export GLB',
-  'shellChrome.mobileToolbar.exportGlbSuccess': 'Exported GLB ({size} KB)',
-  'shellChrome.mobileToolbar.exportGlbFailed': 'Export failed: {message}',
-  'shellChrome.mobileToolbar.unknownError': 'Unknown error',
+  'shellChrome.mobileToolbar.export': 'Export',
   'shellChrome.mobileToolbar.lightMode': 'Light Mode',
   'shellChrome.mobileToolbar.darkMode': 'Dark Mode',
 } as const satisfies Record<string, TranslationValue>;

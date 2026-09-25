@@ -382,15 +382,18 @@ impl GeometryRouter {
                     continue; // symbolic annotation item, never meshed (#5389)
                 }
                 // A textured face set keeps its UV channel (#1781) and, like
-                // any raw item, rebases in its own frame (#5698).
-                if let Some(map) = texture_index.and_then(|index| index.get(&item.id)) {
+                // any raw item, rebases in its own frame (#5698). A failed
+                // textured build falls through to the untextured paths.
+                let texture = texture_index
+                    .and_then(|index| index.get(&item.id))
+                    .filter(|_| item.ifc_type == IfcType::IfcTriangulatedFaceSet);
+                if let Some(map) = texture {
                     let offset = self.element_frame_rtc(element, decoder)?;
                     if self.add_textured_face_set(&item, decoder, map, offset, &mut sub_meshes) {
                         continue;
                     }
-                } else if let Some(mesh) =
-                    self.process_raw_item_for_element(&item, element, decoder)?
-                {
+                }
+                if let Some(mesh) = self.process_raw_item_for_element(&item, element, decoder)? {
                     if !mesh.is_empty() {
                         sub_meshes.add(item.id, mesh);
                     }
@@ -759,7 +762,20 @@ impl GeometryRouter {
         // (Macroscope review). Draining exactly ONCE here, around every
         // path, keeps the flag scoped to the item that actually set it,
         // regardless of which branch below produced (or skipped) new work.
-        let result = self.process_representation_item_body(item, decoder);
+        self.process_representation_item_in_frame(item, decoder, self.rtc_offset)
+    }
+
+    /// [`Self::process_representation_item`] with the model RTC offset
+    /// expressed in the item's own frame (`offset_meters`, #5698), so an
+    /// element-frame rebase shares the content-dedup cache and direct-solid
+    /// instancing of the model-frame path.
+    fn process_representation_item_in_frame(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        offset_meters: (f64, f64, f64),
+    ) -> Result<Mesh> {
+        let result = self.process_representation_item_body(item, decoder, offset_meters);
         if crate::processors::take_curve_capped() {
             self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
         }
@@ -775,7 +791,7 @@ impl GeometryRouter {
     /// placement produces `M(p) - rtc` for rotated/scaled elements as well.
     /// `None` when the item is not a raw-coordinate item beyond the RTC
     /// threshold; the ordinary item path then handles it.
-    fn process_raw_item_for_element(
+    pub(in crate::router) fn process_raw_item_for_element(
         &self,
         item: &DecodedEntity,
         element: &DecodedEntity,
@@ -788,20 +804,16 @@ impl GeometryRouter {
         {
             return Ok(None);
         }
-        // Any processor for this type — built-in or a registered override.
-        let Some(processor) = self.processors.get(&item.ifc_type, self.schema) else {
+        if self.processors.get(&item.ifc_type, self.schema).is_none() {
             return Ok(None);
-        };
+        }
         let Some(offset) = self.element_frame_rtc(element, decoder)? else {
             return Ok(None);
         };
-        // A declined object-frame rebase must stay on this element-aware
-        // path: the generic direct-item path only knows world-space RTC.
-        let mesh = self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset);
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        mesh.map(Some)
+        // The ordinary item path, in the element's frame: it keeps content
+        // dedup and direct-solid instancing (keyed by the offset), and a
+        // declined rebase is decided in the right frame too (#5684).
+        self.process_representation_item_in_frame(item, decoder, offset).map(Some)
     }
 
     /// The model RTC offset expressed in `element`'s object frame (metres):
@@ -932,6 +944,7 @@ impl GeometryRouter {
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
         // MappedItem has its own instancing cache (the source representation is
         // already shared), so it never enters the structural-hash path. It also
@@ -943,7 +956,7 @@ impl GeometryRouter {
         // `None` ⇒ dedup disabled (no hash overhead). On a hit, clone the cached
         // item mesh and stamp its STORED rep_identity (no per-occurrence re-hash);
         // meshing is skipped entirely.
-        let dedup_key = self.item_dedup_key(item, decoder);
+        let dedup_key = self.item_dedup_key_in_frame(item, decoder, offset_meters);
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache
                 .meshes
@@ -974,7 +987,7 @@ impl GeometryRouter {
         // `process_representation_item` wrapper around this whole function,
         // not here — see its doc comment for why (mapped items bypass this
         // uncached path entirely).
-        let mesh = self.process_representation_item_uncached(item, decoder)?;
+        let mesh = self.process_representation_item_uncached(item, decoder, offset_meters)?;
 
         // If this call's processor recorded anything new, decide whether THIS
         // router keeps it: the item-dedup cache's `diagnostic_claimed` set
@@ -1068,13 +1081,14 @@ impl GeometryRouter {
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        offset_meters: (f64, f64, f64),
     ) -> Result<Mesh> {
         // Raw-coordinate items rebase in the model frame here; element
         // walkers take `process_raw_item_for_element` first for their own
         // items, so this frame matters for mapped and opening items.
         if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
             let mesh =
-                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, self.rtc_offset)?;
+                self.process_item_in_rtc_frame(processor.as_ref(), item, decoder, offset_meters)?;
 
             // Deduplicate by hash - buildings with repeated floors have identical geometry
             if !mesh.positions.is_empty() {

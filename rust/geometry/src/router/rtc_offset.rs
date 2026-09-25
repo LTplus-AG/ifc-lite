@@ -237,7 +237,10 @@ impl GeometryRouter {
                 match item.ifc_type {
                     // ── Brep path ──
                     // IfcFacetedBrep attr 0 = Outer (IfcClosedShell)
-                    IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
+                    IfcType::IfcFacetedBrep
+                    | IfcType::IfcFacetedBrepWithVoids
+                    | IfcType::IfcAdvancedBrep
+                    | IfcType::IfcAdvancedBrepWithVoids => {
                         if let Some(pt) = self.brep_first_vertex(&item, decoder) {
                             return Some(pt);
                         }

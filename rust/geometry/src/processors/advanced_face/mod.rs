@@ -33,9 +33,7 @@ pub(super) use surfaces::process_bspline_face;
 pub(crate) use bspline_budget::take_curve_capped;
 
 use revolution::process_surface_of_revolution_face;
-use surfaces::{
-    process_bspline_face_rebased, process_cylindrical_face, process_planar_face_rebased,
-};
+use surfaces::{process_cylindrical_face, process_planar_face_rebased};
 
 fn apply_same_sense(
     face: &DecodedEntity,
@@ -91,10 +89,10 @@ pub(super) fn process_advanced_face(
     let result = if surface_type == "IFCPLANE" {
         process_planar_face_rebased(face, decoder, quality, rtc_file_units)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
-        process_bspline_face_rebased(&surface, decoder, None, quality, rtc)
+        process_bspline_face(&surface, decoder, None, quality, rtc)
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
         let weights = parse_rational_weights(&surface);
-        process_bspline_face_rebased(&surface, decoder, weights.as_deref(), quality, rtc)
+        process_bspline_face(&surface, decoder, weights.as_deref(), quality, rtc)
     } else if surface_type == "IFCCYLINDRICALSURFACE" {
         process_cylindrical_face(face, &surface, decoder, quality, rtc)
     } else if surface_type == "IFCSURFACEOFREVOLUTION" {

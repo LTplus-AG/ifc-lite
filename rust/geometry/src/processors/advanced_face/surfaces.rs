@@ -91,20 +91,11 @@ fn triangulate_planar_indices(
     }
 }
 
-/// Process a B-spline surface face.
-/// When `weights` is `Some`, rational (NURBS) evaluation is used.
+/// Process a B-spline surface face. When `weights` is `Some`, rational
+/// (NURBS) evaluation is used. The control net is shifted by `rtc` (file
+/// units) before evaluation, so f32 narrowing happens after a national-grid
+/// offset is gone (#5698); `(0, 0, 0)` is the historical output.
 pub(crate) fn process_bspline_face(
-    bspline: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    weights: Option<&[Vec<f64>]>,
-    quality: TessellationQuality,
-) -> Result<(Vec<f32>, Vec<u32>)> {
-    process_bspline_face_rebased(bspline, decoder, weights, quality, (0.0, 0.0, 0.0))
-}
-
-/// [`process_bspline_face`] in a frame shifted by `rtc`, so f32 narrowing
-/// happens after the national-grid offset is gone (#5698).
-pub(super) fn process_bspline_face_rebased(
     bspline: &DecodedEntity,
     decoder: &mut EntityDecoder,
     weights: Option<&[Vec<f64>]>,

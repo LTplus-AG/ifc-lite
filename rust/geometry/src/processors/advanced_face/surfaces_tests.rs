@@ -65,7 +65,13 @@ fn moderate_degree_with_real_knots_completes_fast() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     assert!(result.is_ok(), "a well-formed degree-40 surface must tessellate: {result:?}");
@@ -119,9 +125,14 @@ fn legitimate_bspline_surface_still_tessellates() {
     let content = small_surface_content(2, 2);
     let mut decoder = EntityDecoder::new(&content);
     let bspline = decoder.decode_by_id(10).unwrap();
-    let (positions, indices) =
-        process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium)
-            .expect("degree-2 3x3 control grid must tessellate");
+    let (positions, indices) = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    )
+    .expect("degree-2 3x3 control grid must tessellate");
     assert!(!positions.is_empty() && !indices.is_empty());
 }
 
@@ -142,7 +153,13 @@ fn pathological_degree_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(10).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("a degree past MAX_BSPLINE_DEGREE must be a typed failure");
@@ -197,7 +214,13 @@ fn pathological_sample_work_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Highest,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("an oversized sample-work estimate must be a typed failure");
@@ -240,7 +263,13 @@ fn pathological_ragged_row_count_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Highest,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("a many-row, thin-column grid must be a typed failure too");

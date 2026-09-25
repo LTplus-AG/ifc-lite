@@ -25,6 +25,15 @@ impl GeometryRouter {
             IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork
             | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
+            // First control point: a B-spline surface lies in its net's hull,
+            // so the net's magnitude is the surface's (#5698). Rebase probe
+            // only; RTC detection deliberately abstains on these (#1526).
+            IfcType::IfcBSplineSurfaceWithKnots
+            | IfcType::IfcRationalBSplineSurfaceWithKnots => {
+                let rows = item.get(2)?.as_list()?;
+                let point_id = rows.first()?.as_list()?.first()?.as_entity_ref()?;
+                decoder.get_cartesian_point_fast(point_id)
+            }
             IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
                 let shells = item.get(0)?.as_list()?;
                 let shell_id = shells.first()?.as_entity_ref()?;

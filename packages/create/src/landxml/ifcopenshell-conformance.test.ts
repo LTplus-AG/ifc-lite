@@ -178,10 +178,11 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
       /(IFCPOLYNOMIALCURVE\(#\d+,\(0\.,1\.\),\([^,]+,[^,]+,)(-?)([^)]+\))/g,
       (_all, head: string, minus: string, tail: string) => `${head}${minus ? '' : '-'}${tail}`,
     );
+    // One export, before and after: two exports under different names always
+    // differ (the name seeds GlobalIds), so comparing those could never fail.
+    const clean = readFileSync(writeConverted(alignmentSource(), 'vertical-corrupt'), 'utf8');
+    expect(corrupt(clean), 'the fault was actually injected').not.toBe(clean);
     const path = writeConverted(alignmentSource(), 'vertical-corrupt', corrupt);
-    expect(readFileSync(path, 'utf8'), 'the fault was actually injected').not.toBe(
-      readFileSync(writeConverted(alignmentSource(), 'vertical-clean'), 'utf8'),
-    );
     const [code, stdout] = run(VERTICAL_SCRIPT, [path, ALIGNMENT_FIXTURE]);
     expect(code, stdout).toBe(1);
     expect(stdout).toMatch(/IfcPolynomialCurve parameters .* != IfcOpenShell/);

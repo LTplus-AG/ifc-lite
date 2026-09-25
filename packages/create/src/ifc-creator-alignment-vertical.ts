@@ -55,8 +55,29 @@ function transitionCode(segment: VerticalSegment, next: VerticalSegment): string
     ? '.CONTSAMEGRADIENTSAMECURVATURE.' : '.CONTSAMEGRADIENT.';
 }
 
-/** IfcOpenShell's `_polynomial_length`: closed-form arc length of `A + Bx + Cx²` over `[0, L]`. */
-function polynomialLength(B: number, C: number, L: number): number {
+/**
+ * Arc length of `A + Bx + Cx²` over `[0, L]`.
+ *
+ * IfcOpenShell's `_polynomial_length` closed form, where it is well
+ * conditioned. Its terms grow like `1/C` and cancel, so as `C·L` shrinks the
+ * result loses digits (1e-9 relative by `C·L = 1e-7`) and at `C ≈ 1e-19`
+ * returns 0 for an 80 m curve (#5930 review). Below `|C·L| = 1e-5` — where the
+ * closed form is still good to ~1e-11 — the nearly constant integrand
+ * `sqrt(1 + (B + 2Cx)²)` is integrated by Simpson's rule instead, exact to
+ * rounding for so gentle a curve.
+ */
+export function polynomialLength(B: number, C: number, L: number): number {
+  if (Math.abs(C * L) < 1e-5) {
+    const steps = 64;
+    const h = L / steps;
+    let sum = 0;
+    for (let i = 0; i <= steps; i += 1) {
+      const weight = i === 0 || i === steps ? 1 : i % 2 === 1 ? 4 : 2;
+      const slope = B + 2 * C * i * h;
+      sum += weight * Math.sqrt(1 + slope * slope);
+    }
+    return (sum * h) / 3;
+  }
   const a = 4 * C * C;
   const b = 4 * B * C;
   const c = B * B + 1;
@@ -141,6 +162,22 @@ function layoutOf(params: AlignmentVerticalParams): VerticalSegment[] {
   if (params.Segments.length === 0) {
     throw new Error('addAlignment: Vertical.Segments is empty — a vertical layout needs at least one segment');
   }
+  // As `emitAlignment` does for the horizontal: a gap would be a mid-curve
+  // `.DISCONTINUOUS.`, which `IfcCompositeCurve.CurveContinuous` forbids for an
+  // open curve (exactly one, the last).
+  params.Segments.slice(1).forEach((next, index) => {
+    const previous = params.Segments[index];
+    const end = evaluateVertical(previous, previous.horizontalLength);
+    const distGap = Math.abs(previous.startDistAlong + previous.horizontalLength - next.startDistAlong);
+    const heightGap = Math.abs(end.height - next.startHeight);
+    if (distGap > ALIGNMENT_POSITION_TOLERANCE_M || heightGap > ALIGNMENT_POSITION_TOLERANCE_M) {
+      throw new Error(
+        `addAlignment: vertical segment ${index + 2} starts ${distGap.toFixed(3)} m along and `
+        + `${heightGap.toFixed(3)} m in height from where segment ${index + 1} ends; `
+        + 'an open IfcGradientCurve may be discontinuous only at its last segment',
+      );
+    }
+  });
   return [...params.Segments, terminator(params.Segments[params.Segments.length - 1])];
 }
 

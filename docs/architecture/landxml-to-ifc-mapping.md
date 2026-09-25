@@ -520,7 +520,8 @@ and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
   refused: its radius has no single unit. LandXML defines no sign for a `CircCurve` radius, but some
   producers (3D-Win) sign it with the same convention, negative for a crest; the magnitude is
   used, and a negative radius on a sag is refused as contradictory.
-- A `ParaCurve` between two equal grades is a straight grade; the grade is written and no
+- A `ParaCurve` between two equal grades (equal to within 1e-9, since grades computed from PVIs on
+  one straight line differ by rounding) is a straight grade; the grade is written and no
   curve segment is, since there is no curvature to carry.
 
 ### 12.5 Self-check before writing

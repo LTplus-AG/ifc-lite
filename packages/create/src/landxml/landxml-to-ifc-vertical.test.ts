@@ -20,6 +20,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { landXmlGlobalId, landXmlToIfc } from './landxml-to-ifc.js';
 import { collectRefusals } from './refusals.js';
+import { IfcCreator } from '../ifc-creator.js';
+import { polynomialLength } from '../ifc-creator-alignment-vertical.js';
+import type { HorizontalSegment } from './alignment-mapping.js';
+import type { VerticalSegment } from './profile-geometry.js';
 import type { LandXmlIfcAlignment, LandXmlIfcSource, LandXmlIfcUnits } from './source-types.js';
 
 const FIXTURE = JSON.parse(readFileSync(
@@ -330,3 +334,51 @@ describe('landXmlToIfc — refused profiles are named with their reason (§12.2,
     expect(circle.d).toBeCloseTo(200 - 2000 * Math.tan(Math.abs(t2 - t1) / 2) * Math.cos(t1), 9);
   });
 });
+
+// --- #5930 review ---
+
+describe('vertical layout robustness (#5930 review)', () => {
+  const straight: HorizontalSegment = {
+    sourceId: 'h', type: 'LINE', start: [0, 0], direction: 0, startRadius: 0, endRadius: 0, length: 300,
+    end: [300, 0], endDirection: 0, startCurvature: 0, endCurvature: 0,
+  };
+  const grade = (d: number, L: number, h: number, g: number): VerticalSegment => ({
+    sourceId: `v${d}`, type: 'CONSTANTGRADIENT', startDistAlong: d, horizontalLength: L, startHeight: h,
+    startGradient: g, endGradient: g, radiusOfCurvature: null,
+  });
+  const addWith = (segments: VerticalSegment[]) => new IfcCreator({ Schema: 'IFC4X3', Name: 'v', LengthUnit: 'METRE' })
+    .terrain().addAlignment({ Name: 'V', StartStation: 0, Segments: [straight], Vertical: { Segments: segments } });
+
+  it('refuses a mid-layout gap through the creator API, as the horizontal emitter does', () => {
+    expect(() => addWith([grade(0, 100, 10, 0.01), grade(100.5, 100, 11, 0.01)]))
+      .toThrow(/vertical segment 2 starts 0\.500 m along and 0\.000 m in height from where segment 1 ends/);
+    expect(() => addWith([grade(0, 100, 10, 0.01), grade(100, 100, 11.2, 0.01)]))
+      .toThrow(/vertical segment 2 starts 0\.000 m along and 0\.200 m in height/);
+    expect(() => addWith([grade(0, 100, 10, 0.01), grade(100, 100, 11, 0.02)])).not.toThrow();
+  });
+
+  it('writes a "curve" between grades equal up to rounding as the straight grade', () => {
+    // Grades (20.2 − 20.1)/100 and (20.3 − 20.2)/100 differ by 3.5e-17.
+    const source: LandXmlIfcSource = {
+      schema: 'LandXML-1.2', version: '1.2', units: METRES, surfaces: [], alignments: [lineAlignment(500, 0)],
+      profiles: [designProfile([[0, 20.1], [100, 20.2], [200, 20.3]], [{ at: 1, kind: 'parabolic', length: 80 }])],
+    };
+    const content = exported(source);
+    const segments = verticalLayouts(parseStep(content)).get('P')!;
+    expect(segments.map((s) => s.type)).toEqual(['CONSTANTGRADIENT', 'CONSTANTGRADIENT', 'CONSTANTGRADIENT']);
+    expect(content).not.toContain('IFCPOLYNOMIALCURVE(');
+  });
+
+  it('measures a near-linear parabola at its true length, not 0', () => {
+    const g = (20.2 - 20.1) / 100;
+    const C = ((20.3 - 20.2) / 100 - g) / (2 * 80);
+    expect(C).not.toBe(0);
+    expect(polynomialLength(g, C, 80)).toBeCloseTo(80 * Math.sqrt(1 + g * g), 9);
+    // And the closed form is still used where it is well conditioned.
+    const B = 0.02;
+    const K = -0.0001875;
+    const exact = (u: number) => (u * Math.sqrt(1 + u * u) + Math.asinh(u)) / 2;
+    expect(polynomialLength(B, K, 80)).toBeCloseTo((exact(B + 2 * K * 80) - exact(B)) / (2 * K), 9);
+  });
+});
+

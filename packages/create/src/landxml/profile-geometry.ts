@@ -87,6 +87,13 @@ function positive(value: number | null, scale: number, what: string): number {
 }
 
 /**
+ * A grade change at or below this is no change: two grades computed from PVIs
+ * on one straight line differ by rounding (3.5e-17 for 0.001, #5930 review),
+ * and a "curve" between them has no representable curvature.
+ */
+const GRADE_EPSILON = 1e-9;
+
+/**
  * The segments that round off one PVI, in order — none for an equal-grade
  * parabola, whose curve is the grade itself (§12.4).
  */
@@ -95,7 +102,8 @@ export function curveSegments(
   units: { linearScaleToMeters: number; elevationScaleToMeters: number }, label: string,
 ): VerticalSegment[] {
   const scale = units.linearScaleToMeters;
-  const delta = gradeOut - gradeIn;
+  const rawDelta = gradeOut - gradeIn;
+  const delta = Math.abs(rawDelta) <= GRADE_EPSILON ? 0 : rawDelta;
   const { distAlong: d, height: h } = pvi;
   switch (curve.kind) {
     case 'parabolic': {

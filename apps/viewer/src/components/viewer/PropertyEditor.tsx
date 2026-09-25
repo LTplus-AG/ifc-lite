@@ -468,9 +468,10 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
       normalizedModelId = '__legacy__';
     }
 
-    addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, effectivePsetName, [
+    const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, effectivePsetName, [
       { name: effectivePropName, value: parsedValue, type: valueType },
     ]);
+    if (!added.ok) return toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName: effectivePsetName, typeName: inheritedFrom?.typeName ?? '', names: added.uncopyable.join(', ') }));
 
     bumpMutationVersion();
 

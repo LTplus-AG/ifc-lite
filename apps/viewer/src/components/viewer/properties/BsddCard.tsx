@@ -211,9 +211,10 @@ export function BsddCard({
       } else {
         // Route Pset_* / other through property creation, with the correct
         // bSDD-derived value type so the inline editor shows the right control.
-        addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName, [
+        const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName, [
           { name: prop.name, value: defaultValue(prop.dataType), type: toPropertyValueType(prop.dataType) },
         ]);
+        if (!added.ok) return void toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName, typeName: inheritedFrom?.typeName ?? '', names: added.uncopyable.join(', ') }));
       }
 
       bumpMutationVersion();
@@ -294,8 +295,9 @@ export function BsddCard({
           }
         }
       } else {
-        addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName,
+        const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName,
           toAdd.map((p) => ({ name: p.name, value: defaultValue(p.dataType), type: toPropertyValueType(p.dataType) })));
+        if (!added.ok) return void toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName, typeName: inheritedFrom?.typeName ?? '', names: added.uncopyable.join(', ') }));
       }
 
       bumpMutationVersion();

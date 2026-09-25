@@ -12,11 +12,13 @@
  * ones, and a tool that lets an occurrence set replace the type's set of
  * the same name would show the set losing every inherited property (#5672
  * symptom b). The type's set is left untouched; the element gets a copy of
- * its current values, each with its own value type, IFC data type and unit.
+ * its current values, each with its value type and IFC data type. A set
+ * holding a property that cannot be copied faithfully is refused instead.
  *
  * The override is written property by property through the store's
  * `setProperty`, which mirrors each write to collab peers (`createPropertySet`
- * is not mirrored), and tagged as one batch: one Ctrl+Z removes it.
+ * is not mirrored), and tagged as one batch: one Ctrl+Z removes it. So is
+ * a multi-property add to a set the element already carries.
  */
 
 import type { PropertyValue } from '@ifc-lite/mutations';
@@ -50,33 +52,48 @@ export function isInheritedOnly(target: Pick<AddToSetTarget, 'inheritedFrom'>, p
   return target.inheritedFrom?.psetNames.includes(psetName) ?? false;
 }
 
-export function addToPropertySet(state: ViewerState, target: AddToSetTarget, psetName: string, added: readonly AddedProperty[]): void {
+/** What the add did: written, or refused because a carried property cannot be copied faithfully. */
+export type AddToSetResult = { ok: true } | { ok: false; uncopyable: string[] };
+
+/**
+ * A type property the override cannot reproduce: the exporter writes every
+ * overlay property as a single value and resolves only project length units,
+ * so a multi-valued property (enumerated, list, bounded, table, reference,
+ * complex) or one with its own unit would land on the element as a different
+ * value. Copying it wrong is data loss, not a carry-forward.
+ */
+function uncopyable(p: Property): boolean {
+  return p.structure !== undefined || p.values !== undefined || p.unit !== undefined;
+}
+
+export function addToPropertySet(state: ViewerState, target: AddToSetTarget, psetName: string, added: readonly AddedProperty[]): AddToSetResult {
   const { modelId, entityId, inheritedFrom } = target;
   const inheritedOnly = isInheritedOnly(target, psetName);
-  if (target.existingPsets.includes(psetName) && !inheritedOnly) {
-    for (const p of added) state.setProperty(modelId, entityId, psetName, p.name, p.value, p.type);
-    return;
-  }
-  if (!inheritedOnly || !inheritedFrom) {
+  if (!inheritedOnly && !target.existingPsets.includes(psetName)) {
     state.createPropertySet(modelId, entityId, psetName, [...added]);
-    return;
+    return { ok: true };
   }
   // Every same-name set the type carries (HasPropertySets and a relationship
   // can both supply one), first occurrence of a property name winning.
   const addedNames = new Set(added.map((p) => p.name));
   const carried = new Map<string, Property>();
-  for (const pset of state.mutationViews.get(modelId)?.getForEntity(inheritedFrom.typeId) ?? []) {
-    if (pset.name !== psetName) continue;
-    for (const p of pset.properties) if (!addedNames.has(p.name) && !carried.has(p.name)) carried.set(p.name, p);
+  if (inheritedOnly && inheritedFrom) {
+    for (const pset of state.mutationViews.get(modelId)?.getForEntity(inheritedFrom.typeId) ?? []) {
+      if (pset.name !== psetName) continue;
+      for (const p of pset.properties) if (!addedNames.has(p.name) && !carried.has(p.name)) carried.set(p.name, p);
+    }
+    const refused = [...carried.values()].filter(uncopyable).map((p) => p.name);
+    if (refused.length > 0) return { ok: false, uncopyable: refused };
   }
   const ids: string[] = [];
   for (const p of carried.values()) {
-    const m = state.setProperty(modelId, entityId, psetName, p.name, p.value, p.type, p.dataType, p.unit);
+    const m = state.setProperty(modelId, entityId, psetName, p.name, p.value, p.type, p.dataType);
     if (m) ids.push(m.id);
   }
   for (const p of added) {
     const m = state.setProperty(modelId, entityId, psetName, p.name, p.value, p.type);
     if (m) ids.push(m.id);
   }
-  state.tagMutationBatch(ids, newMutationBatchId());
+  if (ids.length > 1) state.tagMutationBatch(ids, newMutationBatchId());
+  return { ok: true };
 }

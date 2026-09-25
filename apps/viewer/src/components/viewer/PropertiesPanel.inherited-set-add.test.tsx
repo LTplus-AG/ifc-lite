@@ -200,6 +200,25 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     const set = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getForEntity(10).find((p) => p.name === 'Custom_S');
     assert.deepEqual(set?.properties.map((p) => p.name).sort(), ['S1', 'S2']);
   });
+
+  it('refuses, with nothing written, a set holding a property it cannot copy exactly', async () => {
+    const withEnum = MODEL
+      .replace(`#90= IFCWALLTYPE('${guid('WTYP')}',$,'WT',$,$,(#91),$,$,$,.STANDARD.);`,
+        `#90= IFCWALLTYPE('${guid('WTYP')}',$,'WT',$,$,(#91,#97),$,$,$,.STANDARD.);\n#96= IFCPROPERTYENUMERATEDVALUE('TE',$,(IFCLABEL('A'),IFCLABEL('B')),$);\n#97= IFCPROPERTYSET('${guid('PSE')}',$,'Custom_E',$,(#96));`);
+    const full = await parseStep(withEnum);
+    seedModel(MODEL_ID, ID_OFFSET, full, WALL);
+    const container = render(<PropertiesPanel />);
+    await advance(0);
+    assert.ok(panelRows(container).includes('90:Custom_E:TE'), 'fixture sanity: the type carries the enumerated set');
+    const result = addToPropertySet(useViewerStore.getState(), {
+      modelId: MODEL_ID, entityId: WALL, existingPsets: ['Custom_A', 'Custom_B', 'Custom_T', 'Custom_E'],
+      inheritedFrom: { typeId: WALL_TYPE, typeName: 'WT', psetNames: ['Custom_T', 'Custom_E'] },
+    }, 'Custom_E', [{ name: 'X', value: 'x', type: PropertyValueType.Label }]);
+    assert.deepEqual(result, { ok: false, uncopyable: ['TE'] });
+    const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    assert.equal(view.getForEntity(WALL).some((p) => p.name === 'Custom_E'), false, 'nothing is written on the wall');
+    assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, 0);
+  });
 });
 
 const DOOR_STYLE_MODEL = `ISO-10303-21;

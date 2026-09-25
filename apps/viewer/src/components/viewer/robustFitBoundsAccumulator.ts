@@ -7,10 +7,10 @@
  * same computation.
  *
  * `robustFitBoundsFull` is the original full-rescan algorithm (issue #1394):
- * every call walks every vertex of every mesh passed in. Kept here — and
- * exported — purely as the reference implementation that the incremental
- * accumulator is checked against in tests; production code no longer calls
- * it directly on the streaming hot path.
+ * every call walks every vertex of every mesh passed in. It is the reference
+ * the incremental accumulator is checked against in tests, and Fit All runs
+ * it at click time over the visible entities' boxes (#5884); the streaming
+ * hot path uses the accumulator.
  *
  * `createRobustFitBoundsAccumulator` produces the same `{ full, robust }`
  * result but does so incrementally: it remembers which mesh indices of a
@@ -53,8 +53,9 @@ export interface RobustFitMeshInput {
 
 const isProxy = (m: RobustFitMeshInput) => m.ifcType === 'IfcBuildingElementProxy';
 
-/** `streaming`: the mesh set is still growing (#5633), see detachedClusters.ts. */
-export interface RobustFitOptions { streaming?: boolean }
+/** `streaming`: the mesh set is still growing (#5633), see detachedClusters.ts.
+ *  `quiet`: no log line for a trim (Fit All runs this on every press). */
+export interface RobustFitOptions { streaming?: boolean; quiet?: boolean }
 
 const ROBUST_KEEP_MASS = 0.995;
 const ROBUST_SHRINK_GUARD = 0.66;
@@ -165,7 +166,7 @@ function foldRobustBounds(
   // Tail isn't inflating the box → no override (compact models unaffected).
   if (!(robustMaxSize < fullMaxSize * ROBUST_SHRINK_GUARD)) return { full, robust: null };
 
-  console.log(
+  if (!opts.quiet) console.log(
     `[GeomStream] outlier-robust camera fit: dropped ${count - kept} far mesh(es) from framing, ` +
     `extent ${Math.round(fullMaxSize)} → ${Math.round(robustMaxSize)} units`,
   );

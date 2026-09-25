@@ -1,0 +1,137 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Version Packages PR freshness
+
+# ISSUE #5951: the #5647 late-changeset gate in test.yml only BLOCKS on
+# `merge_group`, and merges on this repo do not go through the queue (the
+# `main` ruleset gives the maintainer `bypass_mode: always`; zero merge_group
+# runs since 2026-09-23). The Version Packages PR's own `pull_request` verdict
+# was computed against an older merge ref and is not re-run when `main` moves,
+# so a stale Version Packages PR looks green and, squashed onto the new `main`,
+# lands a release commit that still carries a changeset and publishes nothing.
+#
+# This workflow re-asks the #5647 question whenever either side of that merge
+# moves, independent of the queue: squash the open `changeset-release/main`
+# PR onto the CURRENT `main` tip, and run the same
+# scripts/check-release-late-changesets.mjs against it.
+#
+# THE SIGNAL IS DRAFT STATE, because it is the one merge block an admin
+# bypass does not skip: GitHub refuses to merge a draft PR at all, while a
+# failing status or check is exactly what `bypass_mode: always` and
+# `gh pr merge --admin` walk past. A stale PR is converted to draft; the
+# refresh (Release run for the new `main`, a PAT push to
+# changeset-release/main) triggers this workflow again, which finds it fresh
+# and marks it ready. A `Version Packages freshness` commit status on the PR
+# head carries the reason, so `gh pr checks` says why it is a draft.
+#
+# RACES. Every move of `main` or of the PR branch starts a run, and the
+# concurrency group below keeps only the newest. Each run also re-reads both
+# tips just before acting and does nothing if either moved since it evaluated:
+# the run for that newer move acts instead. So the last word always belongs to
+# an evaluation of the current pair.
+on:
+  push:
+    # `changeset-release/main` is pushed by the Release run with RELEASE_PAT,
+    # which (unlike GITHUB_TOKEN) does trigger workflows: that push is the
+    # refresh this workflow must see to un-draft the PR.
+    branches: [main, changeset-release/main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Draft <-> ready.
+  pull-requests: write
+  # The explanatory commit status on the PR head.
+  statuses: write
+
+concurrency:
+  # One group for BOTH branches: the verdict is about the pair, and only an
+  # evaluation of the newest pair may act.
+  group: version-packages-pr-freshness
+  cancel-in-progress: true
+
+jobs:
+  freshness:
+    name: Version Packages PR freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The CURRENT main tip, not the event's commit: on a push to
+          # changeset-release/main the event commit is the PR head.
+          ref: main
+          lfs: false
+          persist-credentials: false
+          # The squash below needs the merge base of main and the PR branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Squash the Version Packages PR onto main and judge it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # REST, not `gh pr list` (GraphQL): cheap, and immune to a drained
+          # GraphQL quota.
+          PR_JSON=$(gh api "repos/${REPO}/pulls?state=open&head=${OWNER}:changeset-release/main" --jq '.[0] // empty')
+          if [ -z "${PR_JSON}" ]; then
+            echo "No open Version Packages PR; nothing to judge."
+            exit 0
+          fi
+          PR=$(jq -r .number <<<"${PR_JSON}")
+          HEAD_SHA=$(jq -r .head.sha <<<"${PR_JSON}")
+          DRAFT=$(jq -r .draft <<<"${PR_JSON}")
+          MAIN_SHA=$(git rev-parse HEAD)
+          echo "Version Packages PR #${PR}: head ${HEAD_SHA} (draft=${DRAFT}), main ${MAIN_SHA}"
+
+          git fetch --no-tags origin "${HEAD_SHA}"
+          # `--squash` leaves exactly the tree a squash merge would land, with
+          # HEAD still at the main tip, so `--base HEAD` spans the whole push.
+          # A conflict cannot be judged: fail closed (status 2).
+          if git -c user.name=ci -c user.email=ci@invalid merge --squash --no-commit FETCH_HEAD; then
+            set +e
+            node scripts/check-release-late-changesets.mjs --context merge --base "${MAIN_SHA}"
+            STATUS=$?
+            set -e
+          else
+            echo "::error title=Version Packages PR does not merge::#${PR} conflicts with main ${MAIN_SHA}; it cannot land until the Release run refreshes it."
+            STATUS=2
+          fi
+          echo "verdict status=${STATUS}"
+
+          # Act only if neither tip moved while this ran; a newer run owns
+          # the newer pair (see RACES above).
+          NOW_MAIN=$(gh api "repos/${REPO}/commits/main" --jq .sha)
+          NOW_HEAD=$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)
+          if [ "${NOW_MAIN}" != "${MAIN_SHA}" ] || [ "${NOW_HEAD}" != "${HEAD_SHA}" ]; then
+            echo "::notice title=Superseded::main is at ${NOW_MAIN} and #${PR} at ${NOW_HEAD}; the run for that move judges it."
+            exit 0
+          fi
+
+          if [ "${STATUS}" = 0 ]; then
+            gh api "repos/${REPO}/statuses/${HEAD_SHA}" -f state=success \
+              -f context="Version Packages freshness" \
+              -f description="Squashed onto main ${MAIN_SHA:0:9}: no pending changesets (#5951)" >/dev/null
+            if [ "${DRAFT}" = true ]; then
+              gh pr ready "${PR}" --repo "${REPO}"
+              echo "#${PR} is fresh against main ${MAIN_SHA}: marked ready for review."
+            else
+              echo "#${PR} is fresh against main ${MAIN_SHA}."
+            fi
+          else
+            gh api "repos/${REPO}/statuses/${HEAD_SHA}" -f state=failure \
+              -f context="Version Packages freshness" \
+              -f description="Stale vs main ${MAIN_SHA:0:9}: would land pending changesets and publish nothing. Wait for the Release refresh (#5951)" >/dev/null
+            if [ "${DRAFT}" != true ]; then
+              gh pr ready "${PR}" --repo "${REPO}" --undo
+            fi
+            echo "::warning title=Version Packages PR is stale (#5951)::#${PR} squashed onto main ${MAIN_SHA} still carries pending changesets (or does not merge), so landing it would publish nothing. It is a draft until the Release run for the latest main push refreshes it; this workflow then marks it ready."
+          fi

@@ -37,7 +37,6 @@ export function SectionOverlay() {
   const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
   const drawingPanelVisible = useViewerStore((s) => s.drawing2DPanelVisible);
   const clearDrawing = useViewerStore((s) => s.clearDrawing2D);
-  const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(true);
   const isCustom = sectionPlane.custom !== undefined;
 
@@ -347,10 +346,12 @@ export function SectionOverlay() {
 
       {/* Bottom strip: instruction hint + clip toggle (#5391). z-[45] keeps it
           above the 2D Section panel (z-40, docked bottom-left), which used to
-          hide the hint's left half. It sits above the Presentation dock's pill
-          (bottom-4) and steps over the expanded dock, as the Measure hint does;
-          the toggle used to share the pill's anchor and was hidden behind it. */}
-      <div className={`pointer-events-none absolute ${basketPresentationVisible ? 'bottom-32' : 'bottom-16'} left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2`}>
+          hide the hint's left half. Used to also step over the Presentation
+          dock's floating pill at `bottom-4`; that pill is gone (#5508: it is
+          the `presentation` bottom panel now, a separate docked region rather
+          than an overlay sharing this strip's space), so this always sits at
+          the same offset. */}
+      <div className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2">
         <div
           data-section-hint
           className="whitespace-nowrap bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150"

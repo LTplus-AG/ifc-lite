@@ -108,6 +108,9 @@ export const shellChromeEn = {
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },
   'shellChrome.statusBar.hiddenCount': '{count} hidden',
   'shellChrome.statusBar.ghostedCount': '{count} ghosted',
+  // Presentation entry point (#5508) — opens the `presentation` bottom panel.
+  'shellChrome.statusBar.presentationLabel': 'Present',
+  'shellChrome.statusBar.presentationTooltip': 'Presentation (views: {views}, entities: {entities})',
   'shellChrome.statusBar.fpsUnit': 'FPS',
   'shellChrome.statusBar.webgpuChecking': 'Checking...',
   'shellChrome.statusBar.webgpuLabel': 'WebGPU',

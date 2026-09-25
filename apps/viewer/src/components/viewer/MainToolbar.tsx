@@ -318,7 +318,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const pinboardEntities = useViewerStore((state) => state.pinboardEntities);
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
   const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
-  const toggleBasketPresentationVisible = useViewerStore((state) => state.toggleBasketPresentationVisible);
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
@@ -795,7 +794,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-pressed={basketPresentationVisible}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleBasketPresentationVisible();
+              handleToggleBottomPanel('presentation'); // bottom-panel table (#5508), not the raw flag toggle
             }}
             disabled={models.size === 0 && !geometryResult}
             className={cn(

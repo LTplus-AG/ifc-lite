@@ -12,6 +12,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
+import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
@@ -372,6 +373,8 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
+        <StatusBarPresentationButton />
+        <Separator orientation="vertical" className="h-3.5" />
         <FlavorIndicator onClick={() => setFlavorDialogOpen(true)} />
 
         <Separator orientation="vertical" className="h-3.5" />

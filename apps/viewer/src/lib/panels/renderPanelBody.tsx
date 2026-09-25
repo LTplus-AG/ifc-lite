@@ -53,6 +53,8 @@ const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((
 // Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
 // (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
 const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
+// Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
+const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
 
 const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
@@ -71,6 +73,10 @@ function FlowPanelBody() {
 
 function DrawingPanelBody() {
   return <ChunkErrorBoundary label="Drawing panel"><Suspense fallback={null}><DrawingPanel /></Suspense></ChunkErrorBoundary>;
+}
+
+function PresentationPanelBody() {
+  return <ChunkErrorBoundary label="Presentation panel"><Suspense fallback={null}><PresentationPanel /></Suspense></ChunkErrorBoundary>;
 }
 
 function ChartsPanelBody() {
@@ -115,8 +121,8 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
  * panel" handler (re-dock to Information, remove the float, or re-dock the
  * window). The Information panel ignores it — it is the always-on fallback —
  * and so do the bottom-strip panels (Script / Schedule / Lists / Charts /
- * Document / Flow / Drawing), whose own close row #5498 retired in favour of
- * the strip header's single Close.
+ * Document / Flow / Drawing / Presentation), whose own close row #5498
+ * retired in favour of the strip header's single Close.
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
@@ -145,6 +151,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'cost': return <CostPanel onClose={onClose} />;
     case 'environment': return <EnvironmentPanel onClose={onClose} />;
     case 'drawing': return <DrawingPanelBody />;
+    case 'presentation': return <PresentationPanelBody />;
     case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
     case 'placement': return <PlacementPanel onClose={onClose} />;

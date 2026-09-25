@@ -49,7 +49,6 @@ export function ViewportOverlays({
   hideAxis = false,
   hideScale = false,
 }: { hideViewCube?: boolean; hideAxis?: boolean; hideScale?: boolean } = {}) {
-  const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
@@ -225,10 +224,7 @@ export function ViewportOverlays({
           deliberately plain, and this sits in that row. */}
       {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
         <div
-          className={cn(
-            'absolute right-4 flex flex-col items-end gap-1',
-            basketPresentationVisible ? 'bottom-28' : 'bottom-4',
-          )}
+          className="absolute right-4 bottom-4 flex flex-col items-end gap-1"
           role="status"
         >
           <span className="text-xs text-foreground/80 tabular-nums">

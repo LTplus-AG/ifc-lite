@@ -28,6 +28,7 @@ import {
   sectionAxisRange,
   storeyCutElevation,
   worldToPercent,
+  type AxisBounds,
   type AxisRange,
   type SectionStorey,
 } from '@/lib/section/section-distance';
@@ -49,6 +50,8 @@ export interface SectionDistance {
   storeys: readonly SectionStorey[];
   /** The cardinal range in world units, when known. */
   range: AxisRange | null;
+  /** The placed model bounds the cut resolves against, when known — the section box's "fit to model" (#5513). */
+  bounds: AxisBounds | null;
   /** Cut through `storey` (a plan cut, `down` axis). */
   cutAtStorey: (storey: SectionStorey) => void;
 }
@@ -89,6 +92,7 @@ export function useSectionDistance(): SectionDistance {
     if (r) setSectionPlanePosition(worldToPercent(storeyCutElevation(storey), r));
   }, [placed, setSectionPlaneAxis, setSectionPlanePosition]);
 
+  const bounds = placed?.shiftedBounds ?? null;
   const custom = sectionPlane.custom;
   const onChangeWorld = useCallback((next: number) => {
     if (range) setSectionPlanePosition(worldToPercent(next, range));
@@ -97,7 +101,7 @@ export function useSectionDistance(): SectionDistance {
   if (custom) {
     return {
       kind: 'custom', value: custom.distance, onChange: setSectionCustomDistance,
-      step: 0.05, min: -Infinity, max: Infinity, snaps: [], storeys, range, cutAtStorey,
+      step: 0.05, min: -Infinity, max: Infinity, snaps: [], storeys, range, bounds, cutAtStorey,
     };
   }
   if (range) {
@@ -105,11 +109,11 @@ export function useSectionDistance(): SectionDistance {
       kind: 'world', value: percentToWorld(sectionPlane.position, range), onChange: onChangeWorld,
       step: 0.1, min: range.min, max: range.max,
       snaps: sectionPlane.axis === 'down' ? storeys.map(storeyCutElevation) : [],
-      storeys, range, cutAtStorey,
+      storeys, range, bounds, cutAtStorey,
     };
   }
   return {
     kind: 'percent', value: sectionPlane.position, onChange: setSectionPlanePosition,
-    step: 1, min: 0, max: 100, snaps: [], storeys, range, cutAtStorey,
+    step: 1, min: 0, max: 100, snaps: [], storeys, range, bounds, cutAtStorey,
   };
 }

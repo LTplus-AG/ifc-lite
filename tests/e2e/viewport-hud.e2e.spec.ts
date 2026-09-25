@@ -14,7 +14,8 @@
  * model loaded; states are driven through the store. A screenshot of each
  * state x width x scheme is attached to the test report as evidence.
  *
- * States (#5946): idle, selection, section, section + Cap popover, measure,
+ * States (#5946): idle, selection, section, section + Cap popover, section
+ * box (#5513: the bar's Box segment, its size readout and Fit), measure,
  * floor plan + Drawing panel, solo chip + parked section, banners, plus the
  * tool bars #5503 put on the table (split, spaceSketch, addElement).
  *
@@ -49,6 +50,7 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'measure' },
   { name: 'section' },
   { name: 'section+cap' },
+  { name: 'section+box' },
   { name: 'floorplan+drawing', settleMs: 3000 },
   { name: 'parked+solo' },
   { name: 'banners' },
@@ -117,6 +119,7 @@ for (const width of [1280, 1600, 1920]) {
             measure: (s) => s.setActiveTool('measure'),
             section: (s) => { s.setActiveTool('section'); s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); },
             'section+cap': () => {},
+            'section+box': () => {},
             'floorplan+drawing': (s) => { s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(55); s.openPanelInHome('drawing'); },
             'parked+solo': (s) => { s.setActiveTool('select'); s.setLevelDisplayMode('solo'); },
             banners: (s) => {
@@ -129,6 +132,11 @@ for (const width of [1280, 1600, 1920]) {
         if (state.name === 'section+cap') {
           await page.locator('[data-tool-bar="section"] button', { hasText: 'Cap' }).click();
           await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
+        }
+        if (state.name === 'section+box') {
+          // Through the bar, not the store: the segment fits the box to the model and the bar re-lays out.
+          await page.locator('[data-tool-bar="section"] [role="radio"]', { hasText: 'Box' }).click();
+          await expect(page.locator('[data-testid="section-box-size"]')).toBeVisible({ timeout: 10000 });
         }
         if (!state.mayBeEmpty) {
           await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });

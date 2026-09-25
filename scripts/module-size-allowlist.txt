@@ -113,11 +113,10 @@
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
-   406 apps/viewer/src/components/viewer/useAnimationLoop.ts
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
    533 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1789 apps/viewer/src/components/viewer/Viewport.tsx
+  1776 apps/viewer/src/components/viewer/Viewport.tsx
   1108 apps/viewer/src/components/viewer/ViewportContainer.tsx
    508 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -174,11 +173,11 @@
   2779 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
-   574 apps/viewer/src/store/slices/sectionSlice.ts
+   498 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    412 apps/viewer/src/store/slices/uiSlice.ts
    415 apps/viewer/src/store/teardown.ts
-   696 apps/viewer/src/store/types.ts
+   688 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    405 apps/viewer/vite.config.ts

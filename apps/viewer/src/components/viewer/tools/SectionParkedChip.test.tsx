@@ -114,6 +114,20 @@ describe('parked-section chip (#5500)', () => {
     assert.equal(chip()?.textContent?.trim(), `Face · ${picked.toFixed(2)} m`);
   });
 
+  it('names a parked section box by its size, and resume brings the box back (#5513)', async () => {
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
+    act(() => s().setSectionBox({ min: [0, -1, 0], max: [10, 3, 8] }));
+    await act(async () => { s().setActiveTool('select'); await new Promise((r) => setTimeout(r, 0)); });
+    assert.equal(chip()?.textContent?.trim(), 'Box · 10.0×4.0×8.0 m');
+    click(chip()!.querySelector('button[aria-label="Resume the section cut"]')!);
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    assert.equal(s().activeTool, 'section');
+    assert.equal(s().sectionPlane.enabled, true);
+    assert.deepEqual(s().sectionPlane.box, { min: [0, -1, 0], max: [10, 3, 8] }, 'the box mode restore keeps the box');
+    assert.equal(s().sectionPickMode, false, 'a resumed box does not arm the face pick');
+  });
+
   it('resume reopens the Section tool on the same cut', async () => {
     render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('front', 40);

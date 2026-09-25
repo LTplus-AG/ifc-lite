@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #5391: the Section tool's bottom strip must paint above its neighbours.
+ * #5391: the Section tool's bottom hint strip must paint above its neighbours.
  *
  * The hint used to sit at z-30 under the 2D Section panel (z-40, docked
- * bottom-left), so at 1600 px its left half was hidden ("…E TO PREVIEW"), and
- * the Clip toggle shared the Presentation dock pill's `bottom-4` anchor and was
- * hidden behind it outright. Paint order is only observable with real layout,
- * so this runs in the browser, with a model loaded (the tool overlays only
- * render over a model). The tool and the panel are opened through the store.
+ * bottom-left), so at 1600 px its left half was hidden ("…E TO PREVIEW").
+ * Paint order is only observable with real layout, so this runs in the
+ * browser, with a model loaded (the tool overlays only render over a model).
+ * The tool and the panel are opened through the store. The Clip toggle that
+ * shared this strip is the Section bar's Cut toggle since #5499 (a HUD item,
+ * covered by `viewport-hud.e2e.spec.ts`); the strip itself becomes a `HudHint`
+ * in #5500, which retires this spec.
  */
 
 import { test, expect } from '@playwright/test';
@@ -20,7 +22,7 @@ import { join } from 'path';
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
-test('#5391: section hint and clip toggle are not covered by the 2D panel or the Presentation pill', async ({ page }) => {
+test('#5391: the section hint is not covered by the 2D panel or the Presentation pill', async ({ page }) => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
@@ -37,15 +39,13 @@ test('#5391: section hint and clip toggle are not covered by the 2D panel or the
   }, STORE);
 
   const hint = page.locator('[data-section-hint]');
-  const toggle = page.locator('[data-section-clip-toggle]');
   await expect(hint).toBeVisible({ timeout: 60000 });
-  await expect(toggle).toBeVisible();
   await page.waitForTimeout(500);
 
   // The hint is click-through by design, which also hides it from hit
   // testing; re-enable pointer events so elementFromPoint reports paint order.
   const covered = await page.evaluate(() => {
-    const targets = [...document.querySelectorAll<HTMLElement>('[data-section-hint], [data-section-clip-toggle]')];
+    const targets = [...document.querySelectorAll<HTMLElement>('[data-section-hint]')];
     for (const el of targets) { el.style.pointerEvents = 'auto'; el.parentElement!.style.pointerEvents = 'auto'; }
     const out: string[] = [];
     for (const el of targets) {

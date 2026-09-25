@@ -7,9 +7,9 @@ import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand } from '@ifc-lite/parser';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
-import { checkClassificationFacet } from '@ifc-lite/ids';
+import { checkClassificationFacet, checkMaterialFacet } from '@ifc-lite/ids';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -25,6 +25,15 @@ const parseResult: ServerParseResult = {
     total_triangles: 0,
   },
 };
+
+function materialTestHierarchy(projectId: number): DataModel['spatialHierarchy'] {
+  return {
+    nodes: [{ entity_id: projectId, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT',
+      name: 'P', children_ids: [], element_ids: [] }],
+    project_id: projectId, element_to_storey: new Map(), element_to_building: new Map(),
+    element_to_site: new Map(), element_to_space: new Map(),
+  };
+}
 
 describe('convertServerDataModel', () => {
   it('preserves IFC4.3 facility-part hierarchies from server spatial data', () => {
@@ -739,4 +748,174 @@ it('server hydration preserves one-hop IfcSpatialZone storey membership (#4775)'
   assert.deepEqual(hierarchy.bySpace.get(3), [4]);
   assert.equal(hierarchy.elementToStorey.get(3), 2);
   assert.equal(hierarchy.getContainingSpace(4), 3);
+});
+
+it('forwards server material values with own-before-type precedence and distinct associations (#5296)', () => {
+  const model: DataModel = {
+    entities: ServerEntityIndex.fromRows([
+      { entity_id: 1000, type_name: 'IFCPROJECT', has_geometry: false },
+      { entity_id: 1, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 2, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 3, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 4, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 5, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 6, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 7, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 8, type_name: 'IFCWALL', has_geometry: true },
+      { entity_id: 100, type_name: 'IFCWALLTYPE', has_geometry: false },
+    ]),
+    propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
+    relationships: [
+      { rel_type: 'IFCRELDEFINESBYTYPE', relating_id: 100, related_id: 1, rel_id: 10 },
+      { rel_type: 'IFCRELDEFINESBYTYPE', relating_id: 100, related_id: 2, rel_id: 11 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 300, related_id: 100, rel_id: 30 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 310, related_id: 2, rel_id: 31 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 320, related_id: 3, rel_id: 32 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 321, related_id: 3, rel_id: 33 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 330, related_id: 4, rel_id: 34 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 340, related_id: 5, rel_id: 35 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 350, related_id: 6, rel_id: 36 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 360, related_id: 7, rel_id: 37 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 370, related_id: 8, rel_id: 38 },
+    ],
+    materials: [
+      { element_id: 100, association_id: 30, member_count: 1, definition_id: 300, kind: 'IfcMaterialLayerSet',
+        set_name: 'WallSet', layer_index: 0, material_name: 'Concrete', material_name_present: true, member_name: 'Core',
+        category: 'load-bearing', material_category: 'Mineral', thickness: 0.2 },
+      { element_id: 2, association_id: 31, member_count: 1, definition_id: 310, kind: 'IfcMaterial',
+        layer_index: 0, material_name: 'Brick', material_name_present: true, material_category: 'Masonry' },
+      { element_id: 3, association_id: 32, member_count: 1, definition_id: 320, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Steel', material_category: 'Metal' },
+      { element_id: 3, association_id: 33, member_count: 1, definition_id: 321, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Timber', material_name_present: true, material_category: 'Wood' },
+      // Old rows have no kind/identity. Their relationship still proves a
+      // material, but no value can safely be asserted from the partial wire.
+      { element_id: 4, layer_index: 0, material_name: 'Old-wire value' },
+      { element_id: 5, association_id: 35, member_count: 2, definition_id: 340, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Named member', material_name_present: true },
+      { element_id: 5, association_id: 35, member_count: 2, definition_id: 340, kind: 'IfcMaterialList',
+        layer_index: 1, material_name: '', material_name_present: false, material_id: 341 },
+      // One of two members never arrived. The known name must not authorize
+      // a mismatch because the missing member could satisfy the constraint.
+      { element_id: 6, association_id: 36, member_count: 2, definition_id: 350, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: 'Known only', material_name_present: true },
+      { element_id: 7, association_id: 37, member_count: 1, definition_id: 360, kind: 'IfcMaterial',
+        layer_index: 0, material_name: '', material_name_present: false },
+      { element_id: 8, association_id: 38, member_count: 1, definition_id: 370, kind: 'IfcMaterialList',
+        layer_index: 0, material_name: '' },
+    ],
+    spatialHierarchy: materialTestHierarchy(1000),
+  };
+  const store = convertServerDataModel(model, parseResult, { size: 1 }, []);
+  const values = (id: number) => createDataAccessor(store).getMaterials(id).map((m) => m.name);
+
+  assert.deepEqual(values(1), ['WallSet', 'Concrete', 'Core', 'Mineral']);
+  assert.deepEqual(values(2), ['Brick', 'Masonry']);
+  assert.deepEqual(values(3), ['Steel', 'Metal', 'Timber', 'Wood']);
+  assert.deepEqual(extractAllMaterialsOnDemand(store, 4), [{ type: 'Material', unresolved: true }]);
+  const unknown = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unknown member' } };
+  assert.deepEqual(values(5), ['Named member', 'Material #341']);
+  assert.equal(checkMaterialFacet(unknown, 5, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet({ ...unknown, value: { ...unknown.value, value: 'Named member' } }, 5, createDataAccessor(store)).passed, true);
+  assert.equal(checkMaterialFacet(unknown, 6, createDataAccessor(store)).failure?.type, 'MATERIAL_UNRESOLVED');
+  assert.equal(checkMaterialFacet({ type: 'material' }, 7, createDataAccessor(store)).passed, true);
+  assert.equal(checkMaterialFacet(unknown, 7, createDataAccessor(store)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet(unknown, 8, createDataAccessor(store)).failure?.type, 'MATERIAL_UNRESOLVED');
+  assert.equal(store.resolvedMaterials?.get(100)?.get(300)?.type, 'MaterialLayerSet');
+});
+
+it('matches raw and server blank, missing, and air-gap material semantics (#5296)', async () => {
+  const ifc = `ISO-10303-21;
+HEADER; FILE_SCHEMA(('IFC4')); ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W',$,$,$,$,$,$);
+#27=IFCWALL('Wall00000000000000002',$,'Blank',$,$,$,$,$,$);
+#26=IFCWALL('Wall00000000000000003',$,'Direct Blank',$,$,$,$,$,$);
+#25=IFCWALL('Wall00000000000000004',$,'Layer Blank',$,$,$,$,$,$);
+#24=IFCWALL('Wall00000000000000005',$,'Air Gap',$,$,$,$,$,$);
+#86=IFCMATERIAL($,$,$);
+#87=IFCMATERIAL('',$,$);
+#84=IFCMATERIALLIST((#86));
+#88=IFCMATERIALLIST((#87));
+#91=IFCMATERIALLAYER(#87,0.2,.F.,'',$,'',$);
+#92=IFCMATERIALLAYERSET((#91),'',$);
+#94=IFCMATERIALLAYER($,0.1,.F.,$,$,$,$);
+#95=IFCMATERIALLAYERSET((#94),$,$);
+#85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#28),#84);
+#89=IFCRELASSOCIATESMATERIAL('Mat0000000000000000007',$,$,$,(#27),#88);
+#90=IFCRELASSOCIATESMATERIAL('Mat0000000000000000008',$,$,$,(#26),#87);
+#93=IFCRELASSOCIATESMATERIAL('Mat0000000000000000009',$,$,$,(#25),#92);
+#96=IFCRELASSOCIATESMATERIAL('Mat0000000000000000010',$,$,$,(#24),#95);
+ENDSEC;
+END-ISO-10303-21;`;
+  const source = new TextEncoder().encode(ifc);
+  const raw = await new IfcParser().parseColumnar(source.buffer, { disableWorkerScan: true });
+  const model: DataModel = {
+    entities: ServerEntityIndex.fromRows([
+      { entity_id: 1, type_name: 'IFCPROJECT', has_geometry: false },
+      { entity_id: 28, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 27, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 26, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 25, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 24, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 84, type_name: 'IFCMATERIALLIST', has_geometry: false },
+      { entity_id: 86, type_name: 'IFCMATERIAL', has_geometry: false },
+      { entity_id: 87, type_name: 'IFCMATERIAL', has_geometry: false },
+      { entity_id: 88, type_name: 'IFCMATERIALLIST', has_geometry: false },
+      { entity_id: 91, type_name: 'IFCMATERIALLAYER', has_geometry: false },
+      { entity_id: 92, type_name: 'IFCMATERIALLAYERSET', has_geometry: false },
+      { entity_id: 94, type_name: 'IFCMATERIALLAYER', has_geometry: false },
+      { entity_id: 95, type_name: 'IFCMATERIALLAYERSET', has_geometry: false },
+    ]),
+    propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
+    relationships: [
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 84, related_id: 28, rel_id: 85 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 88, related_id: 27, rel_id: 89 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 87, related_id: 26, rel_id: 90 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 92, related_id: 25, rel_id: 93 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 95, related_id: 24, rel_id: 96 },
+    ],
+    materials: [
+      { element_id: 28, association_id: 85, definition_id: 84, member_count: 1,
+        kind: 'IfcMaterialList', layer_index: 0, material_name: '', material_name_present: false, material_id: 86 },
+      { element_id: 27, association_id: 89, definition_id: 88, member_count: 1,
+        kind: 'IfcMaterialList', layer_index: 0, material_name: '', material_name_present: true, material_id: 87 },
+      { element_id: 26, association_id: 90, definition_id: 87, member_count: 1,
+        kind: 'IfcMaterial', layer_index: 0, material_name: '', material_name_present: true, material_id: 87 },
+      { element_id: 25, association_id: 93, definition_id: 92, member_count: 1,
+        kind: 'IfcMaterialLayerSet', set_name: '', layer_index: 0, material_name: '',
+        material_name_present: true, material_id: 87, member_name: '', category: '', thickness: 0.2,
+        is_ventilated: false },
+      { element_id: 24, association_id: 96, definition_id: 95, member_count: 1,
+        kind: 'IfcMaterialLayerSet', layer_index: 0, material_name: '',
+        material_name_present: false, thickness: 0.1, is_ventilated: false },
+    ],
+    spatialHierarchy: materialTestHierarchy(1),
+  };
+  const server = convertServerDataModel(model, parseResult, { size: source.length }, []);
+  const names = (store: typeof raw) => createDataAccessor(store).getMaterials(28).map((m) => m.name);
+  assert.deepEqual(names(raw), ['Material #86']);
+  assert.deepEqual(names(server), names(raw));
+  assert.deepEqual(extractAllMaterialsOnDemand(raw, 27), extractAllMaterialsOnDemand(server, 27));
+  assert.equal(extractAllMaterialsOnDemand(server, 27)[0]?.materials?.[0]?.name, '');
+  assert.equal(extractAllMaterialsOnDemand(raw, 26)[0]?.name, '');
+  assert.equal(extractAllMaterialsOnDemand(server, 26)[0]?.name, '');
+  const rawLayer = extractAllMaterialsOnDemand(raw, 25)[0];
+  const serverLayer = extractAllMaterialsOnDemand(server, 25)[0];
+  assert.equal(rawLayer?.name, '');
+  assert.equal(serverLayer?.name, rawLayer?.name);
+  assert.equal(rawLayer?.layers?.[0]?.materialName, '');
+  assert.equal(serverLayer?.layers?.[0]?.materialName, rawLayer?.layers?.[0]?.materialName);
+  assert.equal(serverLayer?.layers?.[0]?.name, rawLayer?.layers?.[0]?.name);
+  assert.equal(extractAllMaterialsOnDemand(raw, 24)[0]?.layers?.[0]?.materialName, undefined);
+  assert.equal(extractAllMaterialsOnDemand(server, 24)[0]?.layers?.[0]?.materialName, undefined);
+  const absentName = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unrelated' } };
+  assert.equal(checkMaterialFacet({ type: 'material' }, 24, createDataAccessor(raw)).passed, true);
+  assert.equal(checkMaterialFacet({ type: 'material' }, 24, createDataAccessor(server)).passed, true);
+  assert.equal(checkMaterialFacet(absentName, 24, createDataAccessor(raw)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet(absentName, 24, createDataAccessor(server)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  const facet = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Material #86' } };
+  assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(raw)).passed, true);
+  assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(server)).passed, true);
 });

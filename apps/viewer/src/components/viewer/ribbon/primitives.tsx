@@ -18,7 +18,7 @@ import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label'
 
 /** Subtle pressed-state tint shared by ribbon toggles (loud solid fills
  *  read as alarm at ribbon scale; Office-style tint + inset ring reads
- *  as "latched"). Per-tool accents (amber annotate, purple edit) pass
+ *  as "latched"). Per-tool accents (amber annotate, accent edit) pass
  *  their own class instead. */
 export const RIBBON_ACTIVE_CLASS =
   'bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40';

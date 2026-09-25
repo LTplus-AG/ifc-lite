@@ -238,7 +238,7 @@ bim.create.addIfcPropertySet(h, stairId, {
   ],
 });
 bim.create.addIfcElementQuantity(h, stairId, {
-  Name: 'Qto_StairBaseQuantities',
+  Name: 'Example_StairQuantities', // not Qto_*: buildingSMART's only stair set targets IfcStairFlight
   Quantities: [
     { Name: 'Length', Value: numRisers * treadL, Kind: 'IfcQuantityLength' },
     { Name: 'GrossVolume', Value: numRisers * treadL * stairW * riserH * 0.5, Kind: 'IfcQuantityVolume' },

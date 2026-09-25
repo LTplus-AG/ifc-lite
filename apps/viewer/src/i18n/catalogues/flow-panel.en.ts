@@ -23,7 +23,6 @@ export const flowPanelEn = {
   'flowPanel.run': 'Run',
   'flowPanel.running': 'Running…',
   'flowPanel.runHint': 'Run the graph; every write lands in the change set as one undo step',
-  'flowPanel.close': 'Close',
   'flowPanel.emptyCanvas': 'Add nodes from the palette, connect their ports, and run. Click an edge and press Delete to cut it, or drag either end onto another port to re-route it.',
 
   'flowPanel.examples.open': 'Examples…',

@@ -180,7 +180,7 @@ export function RawStepCard({
   // "Arg N" for entities the generated registry doesn't know.
   const attributeNames = useMemo(() => getAttributeNames(currentType) ?? [], [currentType]);
 
-  // Per-row mutation indicator — drives the purple dot.
+  // Per-row mutation indicator — drives the accent dot.
   const mutatedIndices = useMemo(() => {
     if (!overlayMap) return new Set<number>();
     return new Set(overlayMap.keys());
@@ -278,7 +278,7 @@ export function RawStepCard({
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/40">
         <div className="flex items-center gap-2 min-w-0">
-          <FileBox className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+          <FileBox className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
           <span
             className="font-mono text-[11px] font-semibold tracking-wide text-zinc-700 dark:text-zinc-200 truncate"
             title={`${currentType} #${currentId}`}

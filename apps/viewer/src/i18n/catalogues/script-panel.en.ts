@@ -25,7 +25,6 @@ export const scriptPanelEn = {
   'scriptPanel.header.deleteMenuItem': 'Delete',
   'scriptPanel.header.hideAiChat': 'Hide AI Chat',
   'scriptPanel.header.showAiChat': 'Show AI Chat',
-  'scriptPanel.header.closeAriaLabel': 'Close',
 
   // Post-authoring "install as tool" banner
   'scriptPanel.toolReady.title': 'This script is ready',

@@ -19,7 +19,6 @@ import {
   Calendar,
   CalendarPlus,
   Plus,
-  X,
   Trash2,
   Undo2,
   Redo2,
@@ -42,7 +41,6 @@ import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 interface GanttToolbarProps {
-  onClose?: () => void;
   onOpenGenerate?: () => void;
   /** Opens the file picker to import an MS Project (MSPDI) / Gantt CSV file. */
   onOpenImport?: () => void;
@@ -71,7 +69,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> 
 const ALL_SCHEDULES_SENTINEL = '__all__';
 const localizedCount = (locale: string, count: number) => ({ count, formattedCount: formatLocaleNumber(locale, count) });
 
-export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
+export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
   const { t, locale } = useTranslation();
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
@@ -340,9 +338,8 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
         </Tooltip>
       )}
 
-      {/* Undo / Redo for schedule edits. Gated on stack depth so the
-          buttons only appear when there's actually something to undo —
-          avoids a persistent greyed-out pair on clean schedules. */}
+      {/* Undo / Redo for schedule edits, shown only when a stack is non-empty
+          so a clean schedule has no persistent greyed-out pair. */}
       {(undoDepth > 0 || redoDepth > 0) && (
         <div className="flex items-center gap-1">
           <Tooltip>
@@ -408,12 +405,6 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
         animationEnabled={animationEnabled}
         onToggleAnimation={() => setAnimationEnabled(!animationEnabled)}
       />
-
-      {onClose && (
-        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t('schedule.toolbar.closeGanttPanel')}>
-          <X className="h-4 w-4" />
-        </Button>
-      )}
 
       {hasData && !hasDates && (
         <span className="text-xs text-amber-500 whitespace-nowrap" title={t('schedule.toolbar.noDatesTitle')}>

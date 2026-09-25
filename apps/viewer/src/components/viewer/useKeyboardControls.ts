@@ -13,7 +13,7 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { flySpeedStore } from './flySpeedStore.js';
 
@@ -41,10 +41,7 @@ export interface UseKeyboardControlsParams {
 }
 
 /** Keys that trigger continuous movement (arrow keys + WASD + shift for sprint) */
-const MOVEMENT_KEYS = new Set([
-  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
-  'w', 's', 'a', 'd', 'shift',
-]);
+const MOVEMENT_KEYS = new Set([...WALK_MOVEMENT_KEYS, 'shift']);
 
 export function useKeyboardControls(params: UseKeyboardControlsParams): void {
   const {
@@ -101,6 +98,11 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         keyboardMove();
       }
 
+      // The camera shortcuts below are plain keys. With Ctrl/Meta/Alt held the
+      // key belongs to another binding (Ctrl+Z undo, Ctrl+F search, Alt+1
+      // panel), which must not also move the camera (#5596).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       // Preset views - set view and re-render
       const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {
         // Match the viewcube: when the Cesium world-context basemap is rendering,
@@ -149,8 +151,8 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
           if (bounds) camera.frameBounds(bounds.min, bounds.max, 300);
           calculateScale();
         } else {
-          camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-          calculateScale();
+          // Nothing selected: Fit All, framing what is visible (#5884).
+          state.cameraCallbacks.fitAll?.();
         }
       }
 
@@ -159,10 +161,10 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         goHomeFromStore();
       }
 
-      // Fit all / Zoom extents (Z)
+      // Fit all / Zoom extents (Z): the one Fit All, which frames what is
+      // visible rather than the load-time bounds (#5884).
       if (e.key === 'z' || e.key === 'Z') {
-        camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-        calculateScale();
+        useViewerStore.getState().cameraCallbacks.fitAll?.();
       }
     };
 

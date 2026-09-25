@@ -76,10 +76,9 @@ const SORT_LABEL_KEY: Record<ClashSortBy, TranslationKey> = {
   severity: 'clashPanel.sort.severity', depth: 'clashPanel.sort.depth', distance: 'clashPanel.sort.distance',
 };
 
-/** Distinct colours for the two sides of a pair so each is identifiable when
- *  stepping through (#1277). The 3D view highlights both via the selection
- *  channel; these dots label which row is which side. */
-const SIDE_COLOR = ['#7dcfff', '#bb9af7'] as const;
+/** Side A / B dots: the `clash-a` / `clash-b` tokens the 3D view tints the
+ *  focused pair with (#1277, #5490), so each row reads as its element. */
+const SIDE_DOT_CLASS = ['bg-clash-a', 'bg-clash-b'] as const;
 
 /** Review-status presentation (#1468). Colours are orthogonal to severity: green
  *  = done, teal = accepted, muted = still open (the attention default). */
@@ -609,13 +608,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (vp) addViewpoint(topic.guid, vp);
-      setBcfPanelVisible(true);
+      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
     } catch (err) {
       console.error('[clash] BCF topic creation failed', err);
     } finally {
       setCreatingTopic(false);
     }
-  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible]);
+  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
 
   /** Switch the focus mode and immediately re-apply it to the selected clash so
    *  the change is visible without re-clicking the row (#1275). */
@@ -676,7 +675,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       title={`${el.tag} · ${el.name ?? el.key}`}
       className="flex w-full items-center gap-2 py-1 pl-7 pr-3 text-left hover:bg-muted/50"
     >
-      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: SIDE_COLOR[side] }} />
+      <span data-clash-side={side === 0 ? 'a' : 'b'} className={cn('h-2 w-2 rounded-full shrink-0', SIDE_DOT_CLASS[side])} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11px] text-foreground">{el.tag}</div>
         <div className="truncate text-[10px] text-muted-foreground">{el.name ?? shortName(el.key)}</div>
@@ -692,7 +691,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     <div className="h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0">
       {/* Header */}
       <div className="flex items-center gap-2 p-3 border-b border-border">
-        <Crosshair className="h-4 w-4 text-[#f7768e] shrink-0" />
+        <Crosshair className="h-4 w-4 text-clash-overlap shrink-0" />
         <span className="text-sm font-semibold tracking-tight min-w-0">{t('clashPanel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           <Button

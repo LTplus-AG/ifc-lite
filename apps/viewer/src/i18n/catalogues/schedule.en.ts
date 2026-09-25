@@ -54,7 +54,6 @@ export const scheduleEn = {
     one: 'Discard {formattedCount} pending schedule task',
     other: 'Discard {formattedCount} pending schedule tasks',
   },
-  'schedule.toolbar.closeGanttPanel': 'Close Gantt panel',
   'schedule.toolbar.noDates': 'No dates',
   'schedule.toolbar.noDatesTitle': 'No real dates — using synthetic range',
   'schedule.toolbar.scaleHour': 'Hour',
@@ -163,7 +162,6 @@ export const scheduleEn = {
   'schedule.generateDialog.notAvailableForModel': 'Not available for this model',
 
   // ── Empty state (GanttEmptyState.tsx) ───────────────────────────────
-  'schedule.emptyState.closeAriaLabel': 'Close',
   'schedule.emptyState.loadModelTitle': 'Load a model with IfcTasks',
   'schedule.emptyState.loadModelMessage':
     'Open an IFC file containing {task} or {schedule} entities to see the construction schedule here.',

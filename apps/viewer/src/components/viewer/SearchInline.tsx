@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
+import { isTextEntryTarget } from '@/lib/keyboard-event';
 import { useTranslation } from '@/i18n';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
@@ -45,16 +46,11 @@ import {
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
 
-/** True when an editable surface has focus and should swallow `/` / `n` keystrokes. */
-function isEditableFocused(): boolean {
-  const el = document.activeElement;
-  if (!el) return false;
-  const tag = el.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if ((el as HTMLElement).isContentEditable) return true;
+/** True when the key lands on a surface that should swallow `/` / `n` keystrokes. */
+function isEditableFocused(e: globalThis.KeyboardEvent): boolean {
+  if (isTextEntryTarget(e)) return true;
   // CodeMirror 6 editor — its content host wears `.cm-content`.
-  if (el.closest?.('.cm-editor')) return true;
-  return false;
+  return e.target instanceof Element && e.target.closest('.cm-editor') !== null;
 }
 
 export function SearchInline() {
@@ -321,7 +317,7 @@ export function SearchInline() {
       }
 
       // `/` only when no other input is focused — vim-style search summon.
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableFocused()) {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableFocused(e)) {
         e.preventDefault();
         inputRef.current?.focus();
         setSearchOpen(true);
@@ -337,7 +333,7 @@ export function SearchInline() {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Don't swallow `n` / `N` when the user is typing elsewhere.
-      if (isEditableFocused()) return;
+      if (isEditableFocused(e)) return;
       if (e.key === 'n') {
         e.preventDefault();
         stepVimCycle(1);

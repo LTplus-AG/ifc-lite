@@ -56,3 +56,46 @@ describe('SDK viewer section (#4910)', () => {
     assert.equal(useViewerStore.getState().sectionPlane.enabled, false);
   });
 });
+
+/**
+ * #5644: a face-picked plane's `flipped` is relative to its own normal, so the
+ * SDK must map it to the cardinal frame it reports. A pick on the -X face of a
+ * box keeps the solid (x > face), which in the +X cardinal frame is flipped.
+ */
+describe('SDK getSection() after a face pick (#5644)', () => {
+  const bounds = { min: [0, 0, 0] as [number, number, number], max: [4, 4, 4] as [number, number, number] };
+  for (const sign of [1, -1]) {
+    it(`${sign > 0 ? '+' : '-'}X face: reports the kept side in the cardinal frame, and Flip inverts it`, () => {
+      const s = useViewerStore.getState();
+      s.setActiveTool('section');
+      s.setSectionPickMode(true);
+      s.setSectionPlaneFromFace([sign, 0, 0], [sign > 0 ? 4 : 0, 2, 2], bounds);
+      const picked = viewer.getSection();
+      assert.ok(picked, 'the picked cut is on screen');
+      assert.equal(picked.axis, 'x');
+      assert.equal(picked.flipped, sign < 0, 'the default keeps the solid behind the picked face');
+
+      useViewerStore.getState().flipSectionPlane();
+      assert.equal(viewer.getSection()?.flipped, sign > 0, 'Flip keeps the other side');
+    });
+  }
+});
+
+describe('SDK setSection() without `flipped` after a face pick (#5644 follow-up)', () => {
+  it('falls back to the side on screen, not the raw custom-frame flag', () => {
+    const s = useViewerStore.getState();
+    s.setActiveTool('section');
+    // A -X face at x = 0: the default keeps the solid at x > 0, which is the
+    // flipped side in the +X cardinal frame (custom-frame `flipped` is false).
+    s.setSectionPlaneFromFace([-1, 0, 0], [0, 1, 1], { min: [0, 0, 0], max: [4, 4, 4] });
+    const reported = viewer.getSection();
+    assert.equal(reported?.flipped, true);
+    // `flipped` is required by the type, but untyped callers (sandbox scripts,
+    // JSON over the bridge) omit it and hit the adapter's fallback.
+    const untyped: unknown = { axis: 'x', position: reported!.position, enabled: true };
+    viewer.setSection(untyped as Parameters<typeof viewer.setSection>[0]);
+    const after = useViewerStore.getState().sectionPlane;
+    assert.equal(after.custom, undefined);
+    assert.equal(after.flipped, true);
+  });
+});

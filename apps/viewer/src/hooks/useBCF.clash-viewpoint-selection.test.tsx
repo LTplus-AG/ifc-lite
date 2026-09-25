@@ -532,7 +532,6 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
         ]) as unknown as ViewerState['models'],
         ifcDataStore: null,
         hiddenEntities: new Set([CLASH_A_ID]),
-        hiddenEntitiesByModel: new Map([['visible-revision', new Set([CLASH_A_ID])]]),
       });
     });
     const capturedModelIds: string[][] = [];

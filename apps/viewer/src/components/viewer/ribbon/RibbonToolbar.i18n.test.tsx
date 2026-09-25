@@ -96,6 +96,9 @@ function showTab(container: HTMLElement, tab: RibbonTabId): void {
 
 beforeEach(() => {
   window.localStorage.clear();
+  // The switch notice only renders for a visitor who used the viewer before
+  // the ribbon (#5840); mark this browser as one so its strings are covered.
+  window.localStorage.setItem('ifc-lite:ribbon-notice-audience', 'returning');
   setLocale('en');
   act(() => useViewerStore.setState({
     ribbonTab: 'home',

@@ -30,6 +30,7 @@
  * Split tool stays armed.
  */
 
+import { firstProjAxis } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -127,7 +128,8 @@ function resolveSolidPositionXform(
   const zlen = Math.hypot(rawZ[0], rawZ[1], rawZ[2]);
   if (zlen < 1e-9) return IDENTITY_XFORM2D;
   const z: [number, number, number] = [rawZ[0] / zlen, rawZ[1] / zlen, rawZ[2] / zlen];
-  const refX = readDirection(dataStore, view, editor, asExpressIdRef(attrs[2])) ?? [1, 0, 0];
+  // A `$` RefDirection takes the renderer's fill, not world X as-is (#5922).
+  const refX = readDirection(dataStore, view, editor, asExpressIdRef(attrs[2])) ?? firstProjAxis(z);
 
   // Orthonormalise X against the unit Z (Gram-Schmidt), then Y = Z × X.
   const dot = refX[0] * z[0] + refX[1] * z[1] + refX[2] * z[2];

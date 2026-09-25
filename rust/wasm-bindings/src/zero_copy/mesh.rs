@@ -385,11 +385,8 @@ impl MeshDataJs {
         self.shading_color = shading;
     }
 
-    /// Attach the IFC-authored metallic/roughness pair (#5582). Call after
-    /// `new`. `MeshData` carries no finish, so [`MeshDataJs::from_mesh_data`]
-    /// leaves both `None`; the wasm batch stamps them from the prepass
-    /// finishes installed by `setStyleFinishes`, keyed by the mesh's
-    /// `geometry_item_id`.
+    /// Attach the IFC-authored metallic/roughness (#5582); the wasm batch stamps it
+    /// from `setStyleFinishes` by `geometry_item_id` (`MeshData` carries none).
     pub fn set_material(&mut self, metallic: Option<f32>, roughness: Option<f32>) {
         self.metallic = metallic;
         self.roughness = roughness;

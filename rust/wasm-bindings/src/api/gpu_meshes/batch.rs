@@ -6,6 +6,7 @@ use super::batch_partition::{
     encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
     take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
 };
+use super::partitioned_batch::PartitionedBatch;
 use super::style_finishes::mesh_js_with_finish;
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
@@ -944,41 +945,6 @@ impl IfcAPI {
             shard,
             instanced_occurrences,
         }
-    }
-}
-
-/// Result of [`IfcAPI::process_geometry_batch_partitioned`]: the flat
-/// MeshCollection (transparent + type geometry) and the instanced IFNS shard
-/// (opaque ordinary occurrences) from ONE produce_batch. Take-once accessors so
-/// the JS side moves each out without a clone.
-#[wasm_bindgen]
-pub struct PartitionedBatch {
-    meshes: Option<MeshCollection>,
-    shard: Vec<u8>,
-    instanced_occurrences: usize,
-}
-
-#[wasm_bindgen]
-impl PartitionedBatch {
-    /// The flat MeshCollection (transparent glass + type-product geometry).
-    /// Moves out — call once.
-    #[wasm_bindgen(js_name = takeMeshes)]
-    pub fn take_meshes(&mut self) -> Option<MeshCollection> {
-        self.meshes.take()
-    }
-
-    /// The instanced IFNS shard bytes (opaque ordinary occurrences). Moves out.
-    #[wasm_bindgen(js_name = takeShard)]
-    pub fn take_shard(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.shard)
-    }
-
-    /// Number of occurrences routed into the instanced shard this batch. The viewer
-    /// folds this into its total mesh count so the count reflects ALL rendered
-    /// geometry (flat + instanced), not just the flat MeshCollection.
-    #[wasm_bindgen(getter, js_name = instancedOccurrences)]
-    pub fn instanced_occurrences(&self) -> usize {
-        self.instanced_occurrences
     }
 }
 

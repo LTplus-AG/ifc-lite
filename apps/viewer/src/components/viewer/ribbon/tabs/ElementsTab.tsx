@@ -81,7 +81,7 @@ export function ElementsTab() {
           label={t('ribbon.elements.showAll')}
           tooltip={t('ribbon.elements.showAllTooltip')}
           shortcut="A"
-          onClick={resetVisibilityForHomeFromStore}
+          onClick={() => resetVisibilityForHomeFromStore('show_all')}
         />
         <RibbonLargeButton
           icon={ElementTooltips}

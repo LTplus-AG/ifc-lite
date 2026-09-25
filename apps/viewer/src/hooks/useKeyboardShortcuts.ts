@@ -111,7 +111,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       const shortcutPanel = workspacePanelForShortcutCode(e.code);
       if (shortcutPanel) {
         e.preventDefault();
-        useViewerStore.getState().openPanelInHome(shortcutPanel);
+        useViewerStore.getState().openPanelInHome(shortcutPanel, 'shortcut');
         return;
       }
       // Alt+\\ — toggle the sidebar (expand ⇄ collapse to icons; the rail stays).
@@ -205,7 +205,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // it stays mutually exclusive with Script/Schedule/Lists/etc.)
     if (key === 'd' && !ctrl && !shift) {
       e.preventDefault();
-      useViewerStore.getState().toggleBottomPanel('presentation');
+      useViewerStore.getState().toggleBottomPanel('presentation', 'shortcut');
     }
 
     // B Save current basket as presentation view with thumbnail
@@ -232,7 +232,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     }
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
-      resetVisibilityForHomeFromStore();
+      resetVisibilityForHomeFromStore('a');
     }
 
     // Split tool — Esc exits Split and returns to Select. We catch
@@ -242,7 +242,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       e.preventDefault();
       const state = useViewerStore.getState();
       state.clearSplitHover();
-      state.setActiveTool('select');
+      state.setActiveTool('select', 'esc');
       return;
     }
 
@@ -379,7 +379,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
 
       if (activeTool !== 'select') {
-        setActiveTool('select');
+        setActiveTool('select', 'esc');
       } else {
         useViewerStore.getState().clearEntitySelection();
       }

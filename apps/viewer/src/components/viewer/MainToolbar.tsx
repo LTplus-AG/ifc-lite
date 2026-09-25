@@ -286,7 +286,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     handleToggleAnalysisExtension,
     rightAnalysisExtensions,
     bottomAnalysisExtensions,
-  } = useWorkspacePanelControls();
+  } = useWorkspacePanelControls('classic');
 
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
@@ -342,7 +342,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
 
   const handleIsolate = useCallback(() => {
@@ -502,7 +502,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 <Button
                   variant={collabPanelVisible ? 'secondary' : 'ghost'}
                   size="icon-sm"
-                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
                   className="relative"
                   aria-label={t('mainToolbar.room')}
                   aria-pressed={collabPanelVisible}
@@ -591,7 +591,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'classic')}
           >
             <Layers className="h-4 w-4 mr-2" />
             {t('mainToolbar.layerStack')}
@@ -600,7 +600,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               time (#2508): the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('zones')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'classic')}
           >
             <Box className="h-4 w-4 mr-2" />
             {t('mainToolbar.locationZones')}
@@ -610,7 +610,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               classic's only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('loadReport')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'classic')}
           >
             <FileWarning className="h-4 w-4 mr-2" />
             {t('mainToolbar.loadReport')}
@@ -619,7 +619,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               first time — the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('cost')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'classic')}
           >
             <Coins className="h-4 w-4 mr-2" />
             {t('mainToolbar.cost')}
@@ -627,7 +627,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {collabEnabled && (
             <DropdownMenuCheckboxItem
               checked={activeWorkspacePanels.has('collab')}
-              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
             >
               <Users className="h-4 w-4 mr-2" />
               {t('mainToolbar.collaborationRoom')}
@@ -952,7 +952,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              useViewerStore.getState().toggleWorkspacePanel('environment');
+              useViewerStore.getState().toggleWorkspacePanel('environment', 'classic');
             }}
             className={cn(
               (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')

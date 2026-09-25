@@ -130,7 +130,7 @@ export function usePanelControls(): PanelControls {
       useViewerStore.getState().setLeftPanelCollapsed(false);
       return;
     }
-    useViewerStore.getState().openPanelInHome(id);
+    useViewerStore.getState().openPanelInHome(id, 'rail');
   }, []);
 
   const toggle = useCallback((id: WorkspacePanelId) => {
@@ -146,8 +146,8 @@ export function usePanelControls(): PanelControls {
       useViewerStore.getState().setSidebarSecondaryPanel(null);
       return;
     }
-    if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id);
-    else useViewerStore.getState().toggleWorkspacePanel(id);
+    if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id, 'rail');
+    else useViewerStore.getState().toggleWorkspacePanel(id, 'rail');
   }, []);
 
   const floatPanel = useCallback((id: WorkspacePanelId) => {

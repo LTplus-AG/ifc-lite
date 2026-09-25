@@ -174,7 +174,7 @@ export function CesiumPlacementGizmo({
   // an edit session starts (the "Move georef" toolbar/ribbon toggle), the
   // same auto-open `RepositionRuntimeHost` does for the Local tab.
   useEffect(() => {
-    if (editMode) useViewerStore.getState().openPanelInHome('placement');
+    if (editMode) useViewerStore.getState().openPanelInHome('placement', 'programmatic');
   }, [editMode]);
 
   const anchorWorld = useMemo((): WorldPoint => {

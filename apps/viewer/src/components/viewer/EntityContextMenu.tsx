@@ -165,7 +165,7 @@ export function EntityContextMenu() {
   }, [contextMenu.entityId, closeContextMenu]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
     closeContextMenu();
   }, [closeContextMenu]);
 

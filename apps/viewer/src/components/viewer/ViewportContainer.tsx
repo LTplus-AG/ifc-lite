@@ -57,7 +57,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
-import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
@@ -446,12 +446,7 @@ export function ViewportContainer() {
     const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
-      // Tell the user *why* — common case is a Recap project / SketchUp
-      // file dropped because they assumed our viewer would understand it.
-      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
-      if (explained) {
-        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
-      }
+      reportFileOpenRejected(allDropped);
       return;
     }
 
@@ -486,13 +481,8 @@ export function ViewportContainer() {
     // live handle, so these models are not refreshable.
     const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
-    if (supportedFiles.length === 0) {
-      e.target.value = '';
-      return;
-    }
-
-    void prepareAndRoute(supportedFiles);
-
+    if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+    else reportFileOpenRejected(modelFiles);
     // Reset input so same file can be selected again
     e.target.value = '';
   }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
@@ -512,7 +502,10 @@ export function ViewportContainer() {
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
     const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-    if (supported.length === 0) return;
+    if (supported.length === 0) {
+      reportFileOpenRejected(opened.map((o) => o.file));
+      return;
+    }
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));

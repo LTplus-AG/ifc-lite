@@ -156,7 +156,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
-  setActiveTool: (tool: string) => void;
+  setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
   /** Collapse the Space Sketch panel to a reopen pill (or restore it). */
   setSpaceSketchMinimized: (minimized: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;

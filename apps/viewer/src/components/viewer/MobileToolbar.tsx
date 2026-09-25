@@ -49,6 +49,7 @@ import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
@@ -88,7 +89,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     if (supportedFiles.length === 1) {
@@ -105,7 +106,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     loadFilesSequentially(supportedFiles);
@@ -117,7 +118,7 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
 
   const handleHome = useCallback(() => {

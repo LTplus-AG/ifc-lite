@@ -10,9 +10,9 @@
  * reader, IDS facet or downstream tool recognises. They now create, in the
  * model's mutation overlay:
  *
- * - IfcClassification (reused by Name if this session already made one) ->
+ * - IfcClassification (reused if this session already made an identical one) ->
  *   IfcClassificationReference -> IfcRelAssociatesClassification;
- * - IfcMaterial (reused by Name likewise) -> IfcRelAssociatesMaterial.
+ * - IfcMaterial (reused likewise) -> IfcRelAssociatesMaterial.
  *
  * Attribute layouts follow the model's schema (IFC2X3 vs IFC4/IFC4X3), the
  * whole add is ONE undo step, and the STEP exporter writes the entities like
@@ -59,10 +59,11 @@ function resolveTarget(modelId: string): Target | AssociationResult {
   return { storeModelId, store, view, editor, ifc2x3: store.schemaVersion === 'IFC2X3' };
 }
 
-/** A session-created entity of `type` whose attribute `slot` equals `name`. */
-function sessionEntityNamed(view: MutablePropertyView, type: string, slot: number, name: string): number | null {
+/** A live session-created entity of `type` whose attributes equal `attrs` exactly. */
+function sessionEntityMatching(view: MutablePropertyView, type: string, attrs: IfcAttributeValue[]): number | null {
+  const key = JSON.stringify(attrs);
   for (const e of view.getNewEntitiesOfType(type)) {
-    if (!view.isDeleted(e.expressId) && e.attributes[slot] === name) return e.expressId;
+    if (!view.isDeleted(e.expressId) && JSON.stringify(e.attributes) === key) return e.expressId;
   }
   return null;
 }
@@ -92,8 +93,8 @@ export function addClassificationAssociation(modelId: string, entityId: number, 
   if (!('editor' in target)) return target;
   return createAsOneStep(target, (add, ownerHistory) => {
     // IfcClassification.Name is slot 3 in every schema; Source and Edition are mandatory in IFC2X3.
-    const classification = sessionEntityNamed(target.view, 'IFCCLASSIFICATION', 3, system)
-      ?? add('IfcClassification', target.ifc2x3 ? [system, '', null, system] : [null, null, null, system, null, null, null]);
+    const attrs: IfcAttributeValue[] = target.ifc2x3 ? [system, '', null, system] : [null, null, null, system, null, null, null];
+    const classification = sessionEntityMatching(target.view, 'IFCCLASSIFICATION', attrs) ?? add('IfcClassification', attrs);
     // Location, ItemReference|Identification, Name, ReferencedSource (+ Description, Sort in IFC4+).
     const reference = add('IfcClassificationReference', target.ifc2x3
       ? [null, identification, name, `#${classification}`]
@@ -112,12 +113,14 @@ export function addMaterialAssociation(modelId: string, entityId: number, input:
   // One material association per element: a second IfcRelAssociatesMaterial
   // would leave two competing materials, which no reader resolves the same way.
   const baseId = target.view.resolveBaseEntityId(entityId) ?? entityId;
-  if (extractAllMaterialsOnDemand(target.store, baseId).length > 0 || overlayMaterials(target.view, entityId, target.store.schemaVersion).length > 0) {
+  if (extractAllMaterialsOnDemand(target.store, baseId).length > 0 || overlayMaterials(target.view, [entityId, baseId], target.store.schemaVersion).length > 0) {
     return { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' };
   }
   return createAsOneStep(target, (add, ownerHistory) => {
-    const material = sessionEntityNamed(target.view, 'IFCMATERIAL', 0, name)
-      ?? add('IfcMaterial', target.ifc2x3 ? [name] : [name, description, category]);
+    // Reused only when Name, Description and Category all match: a same-named
+    // material with another category is a different material.
+    const attrs: IfcAttributeValue[] = target.ifc2x3 ? [name] : [name, description, category];
+    const material = sessionEntityMatching(target.view, 'IFCMATERIAL', attrs) ?? add('IfcMaterial', attrs);
     add('IfcRelAssociatesMaterial', [generateIfcGuid(), ownerHistory, null, null, [`#${entityId}`], `#${material}`]);
   });
 }

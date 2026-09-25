@@ -28,13 +28,17 @@ const text = (value: IfcAttributeValue | undefined): string | undefined =>
   typeof value === 'string' && value !== '' ? value : undefined;
 const isIfc2x3 = (schema: string | undefined) => schema?.toUpperCase() === 'IFC2X3';
 
-/** Live overlay rels of `relType` whose RelatedObjects include `entityId`, with the entity each relates. */
-function overlayTargets(view: MutablePropertyView, relType: string, entityId: number): NewEntity[] {
+/**
+ * Live overlay rels of `relType` whose RelatedObjects include any of
+ * `entityIds` (an element and the base it aliases, like the source readers
+ * see), with the entity each relates.
+ */
+function overlayTargets(view: MutablePropertyView, relType: string, entityIds: readonly number[]): NewEntity[] {
   const targets: NewEntity[] = [];
   for (const rel of view.getNewEntitiesOfType(relType)) {
     if (view.isDeleted(rel.expressId)) continue;
     const related = rel.attributes[RELATED_OBJECTS];
-    if (!Array.isArray(related) || !related.some((r) => refId(r) === entityId)) continue;
+    if (!Array.isArray(related) || !related.some((r) => entityIds.includes(refId(r) ?? -1))) continue;
     const target = refId(rel.attributes[RELATING]);
     const entity = target === null ? null : view.getNewEntity(target);
     if (entity && !view.isDeleted(entity.expressId)) targets.push(entity);
@@ -42,10 +46,10 @@ function overlayTargets(view: MutablePropertyView, relType: string, entityId: nu
   return targets;
 }
 
-/** Classifications the session associated with `entityId`, as the panel renders them. */
-export function overlayClassifications(view: MutablePropertyView | null | undefined, entityId: number, schema: string | undefined): ClassificationInfo[] {
+/** Classifications the session associated with any of `entityIds`, as the panel renders them. */
+export function overlayClassifications(view: MutablePropertyView | null | undefined, entityIds: readonly number[], schema: string | undefined): ClassificationInfo[] {
   if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESCLASSIFICATION', entityId).map((reference) => {
+  return overlayTargets(view, 'IFCRELASSOCIATESCLASSIFICATION', entityIds).map((reference) => {
     const source = refId(reference.attributes[3]);
     const classification = source === null ? null : view.getNewEntity(source);
     return {
@@ -59,10 +63,10 @@ export function overlayClassifications(view: MutablePropertyView | null | undefi
   });
 }
 
-/** Materials the session associated with `entityId`, as the panel renders them. */
-export function overlayMaterials(view: MutablePropertyView | null | undefined, entityId: number, schema: string | undefined): MaterialInfo[] {
+/** Materials the session associated with any of `entityIds`, as the panel renders them. */
+export function overlayMaterials(view: MutablePropertyView | null | undefined, entityIds: readonly number[], schema: string | undefined): MaterialInfo[] {
   if (!view) return [];
-  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityId).map((material) => ({
+  return overlayTargets(view, 'IFCRELASSOCIATESMATERIAL', entityIds).map((material) => ({
     type: 'Material' as const,
     name: text(material.attributes[0]),
     description: isIfc2x3(schema) ? undefined : text(material.attributes[1]),

@@ -50,6 +50,7 @@ END-ISO-10303-21;
 const IFC4 = step('IFC4', `#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
 #10=IFCWALL('0Wall00000000000000010',$,'Wall A',$,$,$,$,$,$);
 #11=IFCWALL('0Wall00000000000000011',$,'Wall B',$,$,$,$,$,$);
+#12=IFCWALL('0Wall00000000000000012',$,'Wall C',$,$,$,$,$,$);
 #20=IFCMATERIAL('Concrete',$,$);
 #21=IFCRELASSOCIATESMATERIAL('0Rel000000000000000021',$,$,$,(#11),#20);`);
 
@@ -116,7 +117,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(read[0].identification, 'Ss_25');
       assert.equal(read[0].name, 'Walls');
       // …and the Properties panel sees it before any export.
-      assert.deepEqual(api().overlayClassifications(view(), 10, 'IFC4').map((c) => [c.system, c.identification, c.name]), [['Uniclass', 'Ss_25', 'Walls']]);
+      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4').map((c) => [c.system, c.identification, c.name]), [['Uniclass', 'Ss_25', 'Walls']]);
     });
 
     it('one undo removes every entity the add created; redo brings them back', () => {
@@ -124,9 +125,9 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(view().getNewEntities().length, 3);
       useViewerStore.getState().undo('m');
       assert.equal(view().getNewEntities().filter((e) => !view().isDeleted(e.expressId)).length, 0);
-      assert.deepEqual(api().overlayClassifications(view(), 10, 'IFC4'), []);
+      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4'), []);
       useViewerStore.getState().redo('m');
-      assert.equal(api().overlayClassifications(view(), 10, 'IFC4').length, 1);
+      assert.equal(api().overlayClassifications(view(), [10], 'IFC4').length, 1);
     });
 
     it('a second code in the same system reuses its IfcClassification', () => {
@@ -142,7 +143,22 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.doesNotMatch(text, /Material \[/, 'no look-alike property set');
       const read = extractAllMaterialsOnDemand(reparsed, 10);
       assert.deepEqual(read.map((m) => [m.type, m.name, m.category]), [['Material', 'Steel', 'Metal']]);
-      assert.deepEqual(api().overlayMaterials(view(), 10, 'IFC4').map((m) => m.name), ['Steel']);
+      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4').map((m) => m.name), ['Steel']);
+    });
+
+    it('a same-named material with another category is a new IfcMaterial, not the first one reused', () => {
+      api().addMaterialAssociation('m', 10, { name: 'Steel', category: 'Metal' });
+      api().addMaterialAssociation('m', 12, { name: 'Steel', category: 'Wood' });
+      assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 2);
+      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Wood']);
+    });
+
+    it('an element sees the session associations of the base it aliases', () => {
+      api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' });
+      api().addMaterialAssociation('m', 10, { name: 'Steel' });
+      // A duplicate (say #99) resolving to base #10 reads [99, 10], as the panel passes it.
+      assert.equal(api().overlayClassifications(view(), [99, 10], 'IFC4').length, 1);
+      assert.equal(api().overlayMaterials(view(), [99, 10], 'IFC4').length, 1);
     });
 
     it('refuses a second material association on an element that already has one', () => {

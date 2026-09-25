@@ -659,7 +659,7 @@ export function PropertiesPanel() {
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
     return [...extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId),
-      ...overlayClassifications(view, selectedEntity.expressId, dataStore.schemaVersion)]; // session-created (#5876)
+      ...overlayClassifications(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion)]; // session-created (#5876)
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract materials for the selected entity from the IFC data store —
@@ -671,7 +671,7 @@ export function PropertiesPanel() {
     if (!dataStore) return [];
     const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
     return [...extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId),
-      ...overlayMaterials(view, selectedEntity.expressId, dataStore.schemaVersion)]; // session-created (#5876)
+      ...overlayMaterials(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion)]; // session-created (#5876)
   }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Property sets attached to the selected entity's material(s) via

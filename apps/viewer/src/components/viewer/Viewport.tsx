@@ -450,9 +450,7 @@ export function Viewport({
     sunTime,
   ]);
   const environmentRef = useLatestRef(environment);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [environment]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [environment]);
 
   // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
@@ -638,7 +636,9 @@ export function Viewport({
   // (#5390) want it; each consumer below reads its own enabled flag to
   // decide what to DO with the pick result.
   const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled || hoverHighlightEnabled);
-  const hoveredIdRef = useLatestRef(hoverHighlightEnabled ? hoverState.entityId : null);
+  const hoveredOutlineId = hoverHighlightEnabled ? hoverState.entityId : null;
+  const hoveredIdRef = useLatestRef(hoveredOutlineId);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [hoveredOutlineId]); // idle view redraws only on request (#5390)
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);

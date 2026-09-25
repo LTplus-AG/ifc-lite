@@ -14,8 +14,11 @@
  * command buffers submitted in the same `queue.submit` call, in submission
  * order — so no re-pack is needed here.
  *
- * The hovered mesh usually has no uniform buffer yet (it is not
- * necessarily selected), so this packs the fields the mask pipeline reads:
+ * A hovered entity that is not selected has no individual mesh on a batched
+ * model, so the caller supplies GPU copies of ALL its pieces
+ * (`hover-mesh-cache.ts`); a selected one reuses its selection meshes. Either
+ * way every piece is outlined, not just the first. For the copies this packs
+ * the fields the mask pipeline reads:
  * view-projection, model transform and RTE drawable origin (vertex
  * position), plus the section plane, clip box and their `flags.y` bits
  * (the mask fragments clip exactly like `fs_main`). It returns the packed
@@ -26,6 +29,7 @@
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET, packRteFragmentSpace } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
+import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
 import type { ClipBox, Mesh } from './types.js';
 
@@ -35,8 +39,8 @@ export interface SelectionOutlineSource {
   relativeToEyeFrame: RelativeToEyeFrame;
   /** Meshes the highlight-draw loop already prepared this frame (may be empty). */
   selectedMeshes: readonly Mesh[];
-  /** All meshes drawn this frame, searched for the hovered id if it is not already selected. */
-  allMeshes: readonly Mesh[];
+  /** GPU copies of the hovered entity's pieces, used when it is not among `selectedMeshes`. */
+  hoverPieces: readonly IndividualMeshGpu[];
   hoveredId: number | null | undefined;
   selectedModelIndex: number | undefined;
   /** This frame's resolved section plane (the one every mesh draw packs). */
@@ -64,7 +68,7 @@ function toSelectable(mesh: Mesh): SelectableMesh | null {
  * yet. Exported for unit testing; section / clip data go through the same
  * `packClipBox` + `packRteFragmentSpace` pair `index.ts`'s mesh loop uses.
  */
-export function packHoverUniforms(source: SelectionOutlineSource, mesh: Mesh): Float32Array {
+export function packHoverUniforms(source: SelectionOutlineSource, mesh: Pick<Mesh, 'transform' | 'rteOrigin'>): Float32Array {
   const scratch = new Float32Array(source.uniformBufferSize / 4);
   scratch.set(source.viewProj, 0);
   scratch.set(mesh.transform.m, 16);
@@ -82,7 +86,8 @@ export function packHoverUniforms(source: SelectionOutlineSource, mesh: Mesh): F
 
 export interface SelectionOutlineFrameResult {
   selected: SelectableMesh[];
-  hovered: HoveredMesh | null;
+  /** Every piece of the hovered entity (empty when nothing is hovered). */
+  hovered: HoveredMesh[];
 }
 
 export function buildSelectionOutlineFrame(source: SelectionOutlineSource): SelectionOutlineFrameResult {
@@ -92,15 +97,19 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
     if (s) selected.push(s);
   }
 
-  let hovered: HoveredMesh | null = null;
+  const hovered: HoveredMesh[] = [];
   if (source.hoveredId != null) {
     const hoveredId = source.hoveredId;
-    const already = source.selectedMeshes.find((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
-    if (already) {
-      hovered = toSelectable(already);
+    const already = source.selectedMeshes.filter((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
+    if (already.length > 0) {
+      for (const mesh of already) {
+        const s = toSelectable(mesh);
+        if (s) hovered.push(s);
+      }
     } else {
-      const found = source.allMeshes.find((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
-      if (found) hovered = { vertexBuffer: found.vertexBuffer, indexBuffer: found.indexBuffer, indexCount: found.indexCount, uniforms: packHoverUniforms(source, found) };
+      for (const piece of source.hoverPieces) {
+        hovered.push({ vertexBuffer: piece.vertexBuffer, indexBuffer: piece.indexBuffer, indexCount: piece.indexCount, uniforms: packHoverUniforms(source, piece) });
+      }
     }
   }
 

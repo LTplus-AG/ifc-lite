@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
-import { matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
+import { buildSelectionOutlineFrame, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
 import type { Mesh } from './types.js';
 
 /**
@@ -47,7 +47,7 @@ describe('packHoverUniforms carries the section / clip state (#5390)', () => {
     viewProj: new Float32Array(16),
     relativeToEyeFrame: new RelativeToEyeFrame(),
     selectedMeshes: [],
-    allMeshes: [],
+    hoverPieces: [],
     hoveredId: 42,
     selectedModelIndex: undefined,
     section: undefined,
@@ -72,3 +72,36 @@ describe('packHoverUniforms carries the section / clip state (#5390)', () => {
     assert.equal(flagsY(u), 0b100);
   });
 });
+
+/**
+ * Bugbot review of #5390: the hover outline looked only among hydrated scene
+ * meshes (none exist for an unselected entity on a batched model) and kept
+ * just the first piece. Every piece must be outlined, from the hover copies
+ * or from the selection meshes when the hovered entity is selected.
+ */
+describe('buildSelectionOutlineFrame hovers every piece (#5390)', () => {
+  const base = (over: Partial<SelectionOutlineSource>): SelectionOutlineSource => ({
+    uniformBufferSize: 512, viewProj: new Float32Array(16), relativeToEyeFrame: new RelativeToEyeFrame(),
+    selectedMeshes: [], hoverPieces: [], hoveredId: 42, selectedModelIndex: undefined,
+    section: undefined, sectionFlipped: undefined, clipBox: undefined, ...over,
+  });
+  const piece = () => ({ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, transform: { m: new Float32Array(16) }, rteOrigin: [0, 0, 0] as [number, number, number] });
+
+  it('draws every hover copy of an unselected entity, each with packed uniforms', () => {
+    const { hovered } = buildSelectionOutlineFrame(base({ hoverPieces: [piece(), piece(), piece()] }));
+    assert.equal(hovered.length, 3);
+    assert.ok(hovered.every((h) => h.uniforms instanceof Float32Array && h.bindGroup === undefined));
+  });
+
+  it('reuses every selection mesh of a hovered entity that is also selected', () => {
+    const selectedPiece = (): Mesh => ({ ...mesh(42), bindGroup: {} as GPUBindGroup });
+    const { hovered } = buildSelectionOutlineFrame(base({ selectedMeshes: [selectedPiece(), selectedPiece()], hoverPieces: [piece()] }));
+    assert.equal(hovered.length, 2, 'both selected pieces, not the unrelated hover copy');
+    assert.ok(hovered.every((h) => h.bindGroup !== undefined));
+  });
+
+  it('hovers nothing when nothing is hovered', () => {
+    assert.deepEqual(buildSelectionOutlineFrame(base({ hoveredId: null, hoverPieces: [piece()] })).hovered, []);
+  });
+});
+

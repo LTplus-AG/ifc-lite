@@ -32,7 +32,7 @@ import { livePostEffects, type ResolvedVisualEnhancement } from './visual-enhanc
 /** What to draw into the selection/hover outline this frame; absent draws nothing (#5390). */
 export interface SelectionOutlineFrame {
   selected: readonly SelectableMesh[];
-  hovered: HoveredMesh | null;
+  hovered: readonly HoveredMesh[];
 }
 
 export interface PostPassFrame {

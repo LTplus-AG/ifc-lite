@@ -50,8 +50,9 @@ function fakeDevice() {
   return { device, encoder, stats };
 }
 
-function frame(encoder: GPUCommandEncoder, hovered: HoveredMesh | null, size = 64): SelectionMaskFrame {
-  return { encoder, width: size, height: size, depthView: {} as GPUTextureView, selected: [], hovered };
+function frame(encoder: GPUCommandEncoder, hovered: HoveredMesh | readonly HoveredMesh[] | null, size = 64): SelectionMaskFrame {
+  const list = hovered === null ? [] : Array.isArray(hovered) ? hovered : [hovered as HoveredMesh];
+  return { encoder, width: size, height: size, depthView: {} as GPUTextureView, selected: [], hovered: list };
 }
 
 const hoverMesh = (): HoveredMesh => ({
@@ -98,6 +99,16 @@ describe('SelectionMaskPass GPU resources (#5390)', () => {
       assert.ok(ops.slice(1).every((op) => op === 'load'), `${(view as { label?: string }).label}: later passes must load, got ${ops}`);
     }
     assert.deepEqual([...byView.values()].map((ops) => ops.length).sort(), [1, 2], 'visible gets selected + hover, all gets selected');
+  });
+
+  it('outlines every hovered piece, each with its own reused uniform buffer', () => {
+    const { device, encoder, stats } = fakeDevice();
+    const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
+    for (let i = 0; i < 3; i++) pass.encode(frame(encoder, [hoverMesh(), hoverMesh(), hoverMesh()]));
+    assert.equal(stats.buffers.length, 3, 'one buffer per piece, allocated once and reused across frames');
+    assert.equal(stats.writes, 9, 'every piece is written every frame');
+    pass.destroy();
+    assert.ok(stats.buffers.every((b) => b.destroyed));
   });
 });
 

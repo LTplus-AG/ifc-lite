@@ -7,8 +7,8 @@
 # LandXML → IFC mapping specification (v1, proposed)
 
 Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented; v1.2 (vertical
-profiles, §12) implemented**.
-Version 1.2, 2026-09-24.
+profiles, §12) implemented; v1.3 (station equations, §14) implemented**.
+Version 1.3, 2026-09-25.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
@@ -425,10 +425,9 @@ The converted file declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, not the bare `IFC4X3
 
 ### 11.5 Still refused
 
-Vertical profiles (`IfcAlignmentVertical`; mapped since v1.2, §12), cant, superelevation, station equations,
-cross sections and roadways. Each is named with its count, as in §5. `IfcReferent` for
-`CgPoint` (§9.3) stays deferred: v1.1 writes a station referent for the alignment start
-only.
+Cant, superelevation, cross sections and roadways. Each is named with its count, as in §5.
+Vertical profiles are mapped since v1.2 (§12) and station equations since v1.3 (§14), which
+also re-argues `IfcReferent` for `CgPoint` (§9.3, §14.3).
 
 ### 11.6 Acceptance
 
@@ -474,8 +473,10 @@ curve IfcOpenShell's `get_basis_curve` returns for the same structure.
   not v1.2).
 - A sampled profile (`ProfSurf`, a ground line along the alignment) is a survey, not a
   design layout, and is refused.
-- A profile on an alignment with station equations is refused: its stations do not map
-  linearly to distance along, and station equations are not mapped (§11.5).
+- On an alignment with station equations, a profile's stations are read through them
+  (§14.5). A profile is refused when a PVI station falls in an equation's gap or is displayed
+  at more than one place along the alignment, or when the alignment's equations are
+  themselves refused (§14.2).
 
 ### 12.3 Segment types
 
@@ -502,7 +503,8 @@ and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
 
 ### 12.4 Conventions
 
-- **Distance along** is `(station − staStart) × linearScaleToMeters`; heights are
+- **Distance along** is `(station − staStart) × linearScaleToMeters` on an alignment without
+  station equations, and the station's one place along the alignment otherwise (§14.5); heights are
   `elevation × elevationScaleToMeters`. Gradients are computed from the converted values, so
   a file whose elevation unit differs from its linear unit still gets dimensionless ratios.
 - **Lengths.** A `ParaCurve` / `UnsymParaCurve` length is horizontal. A `CircCurve` is fixed
@@ -544,8 +546,9 @@ is that both tangents extended meet at the authored PVI.
 
 ### 12.6 Still refused
 
-Sampled (`ProfSurf`) profiles, second and later design profiles of one alignment, profiles on
-alignments with station equations, cant, superelevation, cross sections and roadways. Each
+Sampled (`ProfSurf`) profiles, second and later design profiles of one alignment, profiles
+whose stations cannot be placed through their alignment's station equations (§14.5), cant,
+superelevation, cross sections and roadways. Each
 refused profile is named with its reason in the `profiles` refusal, as alignments are in
 §11.
 
@@ -560,3 +563,147 @@ refused profile is named with its reason in the `profiles` refusal, as alignment
    equal the heights the fixture generator computes on its own from the LandXML definition.
 3. **Schema conformance.** `ifcopenshell.validate(express_rules=True)` reports 0 issues.
 4. **Refusals.** One test per refusal reason in §12.2 and §12.5.
+
+## 14. Station equations and `CgPoint` referents
+
+v1.3. Up to v1.2, station equations were refused by count, and profiles on alignments that
+carry them were refused (§12.2). This section maps both, and answers the question §9.3 left
+open: whether a `CgPoint` should become an `IfcReferent` now that alignments exist (§9.3
+asked for that to be re-argued rather than inherited). §13 is left free for cant.
+
+### 14.1 Station equations — what is written
+
+A LandXML `StaEquation` says: at this point on the alignment, the displayed station
+jumps. `staInternal` is where, measured in the alignment's own continuous stationing
+(`staStart` plus the distance along); `staAhead` is the station from there on;
+`staBack`, when authored, is the station arriving there; `staIncrement` says whether
+stationing increases or decreases after it.
+
+IFC 4.3 carries exactly this on an `IfcReferent`, through `Pset_Stationing` (the
+template as IfcOpenShell 0.8.5 ships it, `util/schema/Pset_IFC4X3.ifc`):
+
+| `Pset_Stationing` property | Type | IFC 4.3 definition (abridged) |
+|---|---|---|
+| `Station` | `IfcLengthMeasure` | the station value at this location |
+| `IncomingStation` | `IfcLengthMeasure` | the station of the incoming segment that ends here; "needs to be set if the intention is to specify a station equation" |
+| `HasIncreasingStation` | `IfcBoolean` | whether subsequently nested referents have greater (`true`, or absent) or lower (`false`) stations |
+
+For every **written** alignment (§11), each of its station equations becomes:
+
+| LandXML | IFC4X3 |
+|---|---|
+| `StaEquation` | `IfcReferent`, `PredefinedType = .STATION.`, `Name` = the ahead station as `k+mmm.mmm` |
+| distance `(staInternal − staStart)` | `IfcLinearPlacement` → `IfcAxis2PlacementLinear` → `IfcPointByDistanceExpression(DistanceAlong, BasisCurve = the alignment's IfcCompositeCurve)`, with the evaluated point and tangent as its `CartesianPosition`, exactly as the start referent (§11.1) and IfcOpenShell's `add_stationing_referent` write it |
+| `staAhead` | `Pset_Stationing.Station` |
+| `staBack` | `Pset_Stationing.IncomingStation` — when not authored, the station the running stationing reaches there (below) |
+| `staIncrement` | `Pset_Stationing.HasIncreasingStation` (`decreasing` → `false`, `increasing` → `true`); omitted when not authored |
+
+All values are scaled to metres by the declared linear unit, like every other length.
+`IncomingStation` is always written, because the property template says a station
+equation is *defined* by its presence. Where `staBack` is absent it is derived the way
+`rust/landxml`'s `station_mapping` derives the back station: the previous displayed
+station (`staStart`, or the previous equation's `staAhead`) plus the distance since it,
+times the previous direction (`−1` after a `decreasing` equation). That is the one place
+a derived number enters the file, derived by the same rule the viewer already uses to
+display stations.
+
+**Nesting.** The equation referents join the start referent in the alignment's single
+referent `IfcRelNests`, **ordered by distance along**, start referent first. IfcOpenShell's
+`add_stationing_referent` sorts the nest by `Station` instead; for increasing stationing
+with forward jumps the two orders agree, but for a backward jump (`staAhead < staBack`) or
+decreasing stationing they do not, and it is the order along the alignment that
+`HasIncreasingStation` ("subsequently nested referents") is defined against. No
+`IfcRelPositions` is written for an equation referent: it positions no product. The
+start referent's `IfcRelPositions` to the alignment is unchanged.
+
+**GlobalIds** derive from the equation's own source id
+(`landxml:alignment:1:station-equation:1`), §4.3.
+
+### 14.2 Station equations — what is refused
+
+An alignment's station equations are written **all or none**. They are refused — by
+name, in the `station-equations` refusal family, with the reason — when any one of them:
+
+- is not a station-equation record with a finite `staInternal` and `staAhead` (and, where
+  present, a finite `staBack` and an `increasing`/`decreasing` `staIncrement`);
+- lies at or before the alignment's start, or beyond its end, by more than the §11.4
+  tolerance;
+- is not strictly after the previous equation (the `LXMLA207` rule `rust/landxml` applies).
+
+All-or-none because stationing is cumulative: dropping one equation would make every
+station after it wrong while the file looks complete — the argument §11.2 makes for
+refusing an alignment whole. The alignment itself is still written; its geometry does not
+depend on its stationing, and with its equations refused it is exactly what v1.1 wrote,
+with its start station only, which the refusal states.
+
+### 14.3 `CgPoint` referents — re-argued, **still `IfcAnnotation` / `.SURVEY.`**
+
+§9.3 deferred `IfcReferent` for `CgPoint` pending alignments, and asked that the
+decision be re-argued when they landed. They have (§11). Re-argued, the decision stands:
+a `CgPoint` is written as `IfcAnnotation` / `.SURVEY.` only, and **not** additionally as
+an `IfcReferent`. What §9.3 was waiting for is available; what is still missing is in the
+source, not in the mapping:
+
+1. **A `CgPoint` carries no alignment and no station.** LandXML gives it a name, code,
+   description and coordinates — nothing that ties it to an alignment. An `IfcReferent` is
+   a position *along* an alignment (`IfcLinearPlacement` on its basis curve, nested in its
+   referent nest). Producing one would mean choosing an alignment (ambiguous in any file
+   with more than one) and projecting the point onto it: a station, an offset and an
+   alignment membership the source never authored. §1 rules that out: this mapping
+   derives, it does not infer.
+2. **The points an alignment does reference are not referents.** An alignment's `pntRef`s
+   name construction points — segment starts and ends, arc centres, spiral PIs. Starts and
+   ends are already the `IfcAlignmentHorizontalSegment` boundaries; centres and PIs are
+   not on the alignment at all.
+3. **Writing both would double every survey point.** One source record would become two
+   IFC products; every consumer counting survey points (and `ifc-lite diff`) would see
+   two, against §4.3's one-identity-per-source-record rule.
+4. **An unplaced referent adds nothing.** An `IfcReferent` with a local placement and no
+   alignment is schema-valid, but it says nothing `IfcAnnotation`/`.SURVEY.` does not, and
+   it would give up the comparison with the independent control (§8.2).
+
+The records that *do* map to `IfcReferent` are the ones LandXML places along an
+alignment: the start station (§11.1) and station equations (§14.1). Revisit when a
+source construct binds a point to a station on a named alignment (a producer's
+kilometre-post feature, say); `.REFERENCEMARKER.` or `.KILOPOINT.` would then be the
+natural `PredefinedType`.
+
+### 14.5 Profiles on an alignment with station equations
+
+With station equations, station and distance along no longer differ by a constant, so a
+profile's stations (§12) must be read through them. LandXML does not say in so many words
+whether a `PVI` station is internal (continuous) or displayed; this mapping reads it as the
+**displayed** station, the value a designer reads off the stationed alignment, and the one
+`rust/landxml`'s `distances_for_station` resolves when the viewer probes a station. Each
+authored station is placed where the stationing written in §14.1 displays it:
+
+- exactly one place along the alignment: that distance is the vertex's `StartDistAlong`;
+- **none** — the station falls in a forward jump's gap: the profile is refused, naming the
+  PVI and the station;
+- **more than one** — displayed twice after a backward jump, or by a change of direction:
+  the profile is refused, naming the PVI and every distance, because choosing one would be a
+  guess.
+
+A profile on an alignment whose equations are refused (§14.2) is refused too: without the
+stationing there is nothing to read its stations against. A vertical curve's lengths are
+horizontal lengths (§12.4), not station differences, so a curve is laid out in distance
+along around its placed PVI whether or not an equation falls inside it.
+
+### 14.4 Acceptance
+
+1. **Independent read-back.** IfcOpenShell reads every referent back from the file:
+   the nest must hold the start referent, then the equations in authored order;
+   `Pset_Stationing` must carry the authored `Station`, `IncomingStation` and
+   `HasIncreasingStation`; and IfcOpenShell's geometry kernel evaluates each referent's
+   `DistanceAlong` on our curve, which must land on the point the fixture generator
+   computed for that equation independently of the TypeScript — as must the referent's
+   `CartesianPosition` (`tools/ifcopenshell_reference/check_referents.py`).
+2. **Schema conformance.** `ifcopenshell.validate(express_rules=True)` reports 0 issues on
+   the alignment fixture with its station equations (§11.6 item 3).
+3. **Refusals.** One test per §14.2 reason, and a test that equations on a written
+   alignment are no longer counted as refused.
+4. **Profiles through station equations (§14.5).** The fixture's profiled alignment
+   carries a station equation and its profile is authored in displayed stations; IfcOpenShell
+   must evaluate the written gradient curve to the heights the generator computed along the
+   alignment (`check_vertical.py`), and the gap and double-display cases are refused by
+   name.

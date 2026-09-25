@@ -18,19 +18,23 @@
  *   (#5351). Our parser treats the two identifiers alike, so parse(write(x))
  *   could never see it.
  *
- * Two external checks, both from `tools/ifcopenshell_reference/`:
+ * Four external checks, all from `tools/ifcopenshell_reference/`:
  * - `validate_export.py` — `ifcopenshell.validate(express_rules=True)`;
  * - `check_alignment.py` — IfcOpenShell regenerates every `IfcCurveSegment`
  *   from our `IfcAlignmentHorizontalSegment` through its own mapping and must
  *   get ours back, then evaluates our curve and must land every segment
  *   boundary on the point the fixture AUTHORED. The fixture comes from
  *   `make_alignment_fixture.py`, which integrates the geometry independently of
- *   our TypeScript.
+ *   our TypeScript;
  * - `check_vertical.py` — the same for the vertical layout (§12): IfcOpenShell
  *   regenerates every gradient-curve segment from our
  *   `IfcAlignmentVerticalSegment` and must get ours back, agrees with every
  *   transition code, and evaluates our `IfcGradientCurve` to the heights the
- *   fixture generator computed from each LandXML profile definition.
+ *   fixture generator computed from each LandXML profile definition;
+ * - `check_referents.py` — IfcOpenShell reads the stationing referents back
+ *   (start station and station equations, §14): their `Pset_Stationing`
+ *   values, their order in the referent nest, and the point its kernel
+ *   evaluates at each `DistanceAlong`, against the same generator's points.
  *
  * Requires `ifcopenshell` (pinned in `tools/ifcopenshell_reference/
  * requirements.lock`, plus `pytest`); set `IFCOPENSHELL_PYTHON` or have it on
@@ -50,6 +54,7 @@ import type { LandXmlIfcAlignment, LandXmlIfcSource } from './source-types.js';
 const TOOL_DIR = resolve(__dirname, '../../../../tools/ifcopenshell_reference');
 const VALIDATE_SCRIPT = resolve(TOOL_DIR, 'validate_export.py');
 const ALIGNMENT_SCRIPT = resolve(TOOL_DIR, 'check_alignment.py');
+const REFERENT_SCRIPT = resolve(TOOL_DIR, 'check_referents.py');
 const ALIGNMENT_FIXTURE = resolve(TOOL_DIR, 'alignment_fixture.json');
 const VERTICAL_SCRIPT = resolve(TOOL_DIR, 'check_vertical.py');
 const PYTHON = process.env.IFCOPENSHELL_PYTHON || 'python3';
@@ -205,5 +210,27 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     const [code, stdout] = run(ALIGNMENT_SCRIPT, [writeConverted(partial, 'alignment-partial'), ALIGNMENT_FIXTURE]);
     expect(code, stdout).toBe(1);
     expect(stdout).toMatch(/authored alignment '.+' is not in the file/);
+  }, TIMEOUT_MS);
+
+  it('writes station-equation referents IfcOpenShell reads back at their authored stations and points (§14)', () => {
+    // 3 start referents + 4 station equations in the fixture. The expected
+    // points are integrated by make_alignment_fixture.py, not by our mapping.
+    const [code, stdout] = run(REFERENT_SCRIPT, [writeConverted(alignmentSource(), 'referents'), ALIGNMENT_FIXTURE]);
+    expect(stdout, stdout).toContain('7 referent(s) checked, 0 problems');
+    expect(code).toBe(0);
+  }, TIMEOUT_MS);
+
+  it('has teeth: a station-equation referent placed at the wrong distance is caught', () => {
+    // Shift every non-zero DistanceAlong by 1 km: the start referents (0.)
+    // stay put, every equation referent moves along the curve.
+    const shift = (step: string): string => step.replace(
+      /IFCPOINTBYDISTANCEEXPRESSION\(IFCLENGTHMEASURE\(([1-9]\d*\.\d*)\)/g,
+      (_all, value: string) => `IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(${Number(value) + 1000}.)`,
+    );
+    const path = writeConverted(alignmentSource(), 'referents-shifted', shift);
+    const [code, stdout] = run(REFERENT_SCRIPT, [path, ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/A-Left referent 2 \(station equation 1\): DistanceAlong 1200(\.0)? != authored 200/);
+    expect(stdout).toMatch(/is \d+\.\d+ from the authored/);
   }, TIMEOUT_MS);
 });

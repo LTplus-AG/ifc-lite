@@ -252,9 +252,9 @@ const REFUSALS: Array<[string, Partial<LandXmlIfcSource>, RegExp]> = [
   ['two design profiles on one alignment', {
     profiles: [designProfile(GOOD_PVIS), designProfile(GOOD_PVIS, [], { sourceId: 'landxml:profile:1:2:design:Q', name: 'Q' })],
   }, /'P': its alignment 'L' has 2 design profiles.*'Q': its alignment 'L' has 2 design profiles/],
-  ['an alignment with station equations', {
+  ['an alignment whose station equations are refused (§14.5)', {
     alignments: [lineAlignment(500, 1000, { stationEquations: [{}] })], profiles: [designProfile(GOOD_PVIS)],
-  }, /station equations, so its stations do not map linearly/],
+  }, /its alignment 'L' has station equations that are not written, so its stations cannot be placed/],
   ['a profile on a refused alignment', {
     alignments: [{ ...lineAlignment(), segments: [] }], profiles: [designProfile(GOOD_PVIS)],
   }, /its alignment 'L' is not written/],

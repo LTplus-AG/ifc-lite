@@ -17,6 +17,10 @@ import {
 } from './profile-geometry.js';
 import { profileRecordProblem, type LandXmlIfcProfile } from './profile-record.js';
 import type { LandXmlIfcAlignment, LandXmlIfcUnits } from './source-types.js';
+import { distancesForStation, type StationEquationMapping } from './station-equations.js';
+
+/** A PVI's authored station → distance along, or a refusal (§12.2, §14.5). */
+type DistanceOf = (station: number, label: string) => number;
 
 /** A design profile mapped onto a written alignment. */
 export interface MappedProfile {
@@ -38,7 +42,7 @@ export interface ProfileMapping {
 }
 
 function mapDesignProfile(
-  profile: LandXmlIfcProfile, alignment: LandXmlIfcAlignment, horizontalLength: number, units: LandXmlIfcUnits,
+  profile: LandXmlIfcProfile, distanceOf: DistanceOf, horizontalLength: number, units: LandXmlIfcUnits,
 ): VerticalSegment[] {
   if (profile.pvis.length < 2) refuseProfile('it has fewer than two PVIs, so it has no grade');
   const vertices: ProfileVertex[] = profile.pvis.map((pvi, index) => {
@@ -47,7 +51,7 @@ function mapDesignProfile(
     }
     return {
       sourceId: pvi.sourceId,
-      distAlong: (pvi.station - alignment.staStart) * units.linearScaleToMeters,
+      distAlong: distanceOf(pvi.station, `its PVI ${index + 1}`),
       height: pvi.elevation * units.elevationScaleToMeters,
     };
   });
@@ -95,6 +99,7 @@ function mapDesignProfile(
 export function mapProfiles(
   profiles: readonly unknown[] | undefined, alignments: readonly unknown[] | undefined,
   alignmentMapping: AlignmentMapping, units: LandXmlIfcUnits | null,
+  stationing: ReadonlyMap<string, StationEquationMapping> = new Map(),
 ): ProfileMapping {
   const result: ProfileMapping = { mapped: [], refused: [] };
   const records = (alignments ?? []).filter(isAlignmentRecord);
@@ -158,17 +163,18 @@ export function mapProfiles(
       refuse(`its alignment '${alignmentName}' has ${designs} design profiles, and IFC nests one vertical layout under an alignment; choosing one would be a guess`);
       continue;
     }
-    if ((alignment.stationEquations?.length ?? 0) > 0) {
-      refuse(`its alignment '${alignmentName}' has station equations, so its stations do not map linearly to distance along`);
+    const horizontalLength = mapped.segments.reduce((total, segment) => total + segment.length, 0);
+    const distanceOf = profileDistances(alignment, mapped.startStation, horizontalLength, units, stationing);
+    if (typeof distanceOf === 'string') {
+      refuse(distanceOf);
       continue;
     }
-    const horizontalLength = mapped.segments.reduce((total, segment) => total + segment.length, 0);
     try {
       result.mapped.push({
         sourceId: profile.sourceId,
         name: profile.name,
         alignmentSourceId: alignment.sourceId,
-        segments: mapDesignProfile(profile, alignment, horizontalLength, units),
+        segments: mapDesignProfile(profile, distanceOf, horizontalLength, units),
       });
     } catch (error) {
       if (!(error instanceof ProfileRefusal)) throw error;
@@ -176,4 +182,42 @@ export function mapProfiles(
     }
   }
   return result;
+}
+
+/**
+ * How a profile's stations become distances along its alignment (§14.5).
+ *
+ * Without station equations, linearly from the start station. With written
+ * ones, through the displayed stationing they define: a PVI station must occur
+ * at exactly one place along the alignment, and one in a forward jump's gap or
+ * displayed twice after a backward jump is refused by name, never guessed. When
+ * the alignment's equations were themselves refused (§14.2) there is no
+ * stationing to read the profile against, so it is refused as a whole.
+ */
+function profileDistances(
+  alignment: LandXmlIfcAlignment, startStation: number, length: number, units: LandXmlIfcUnits,
+  stationing: ReadonlyMap<string, StationEquationMapping>,
+): DistanceOf | string {
+  const scale = units.linearScaleToMeters;
+  if ((alignment.stationEquations?.length ?? 0) === 0) {
+    return (station) => station * scale - startStation;
+  }
+  const alignmentName = alignment.name || alignment.sourceId;
+  const mapping = stationing.get(alignment.sourceId);
+  if (!mapping || mapping.refusal !== null) {
+    return `its alignment '${alignmentName}' has station equations that are not written, so its stations cannot be placed along it`;
+  }
+  return (station, label) => {
+    const places = distancesForStation(station * scale, startStation, mapping.equations, length);
+    if (places.length === 0) {
+      refuseProfile(`${label} is at station ${station}, which falls in a station-equation gap of '${alignmentName}'`);
+    }
+    if (places.length > 1) {
+      refuseProfile(
+        `${label} is at station ${station}, which '${alignmentName}' displays at ${places.length} places `
+        + `(${places.map((place) => `${place.toFixed(3)} m`).join(', ')}); choosing one would be a guess`,
+      );
+    }
+    return places[0];
+  };
 }

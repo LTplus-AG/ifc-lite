@@ -32,7 +32,10 @@ Usage:
     python3 check_vertical.py <file.ifc> <alignment_fixture.json>
 
 The fixture's `authoredVertical` is {"<alignment name>": {"staStart": s,
-"heights": [[station, height], ...]}}, in metres.
+"heights": [[station, height], ...]}}, in metres. `station` is the INTERNAL
+(continuous) station, `staStart` + distance along, so it stays a distance even
+on an alignment with station equations, whose profile the generator authors
+in displayed stations (mapping spec §14.5).
 """
 
 from __future__ import annotations

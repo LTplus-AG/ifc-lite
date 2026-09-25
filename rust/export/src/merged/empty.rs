@@ -3,7 +3,8 @@
 //! IfcOpenShell/BlenderBIM's "Merge Projects" recipe that container *matching*
 //! ([`super::spatial`]) leaves behind (issue #3643).
 //!
-//! An `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` is empty when
+//! An `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` (or an IFC4X3
+//! facility or facility part) is empty when
 //! it contains no surviving element (`IfcRelContainedInSpatialStructure`),
 //! directly aggregates no surviving non-spatial object, and transitively
 //! aggregates no non-empty spatial child. `IfcProject` is never a candidate.
@@ -34,10 +35,27 @@ use super::{MergedModel, MergedOptions};
 mod claims;
 use claims::StructureClaims;
 
-/// Spatial container types that are dropped when they end up empty. `IfcProject`
-/// is deliberately absent: it is the file's root, never a candidate.
-const CONTAINER_TYPES: [&str; 4] =
-    ["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE"];
+/// Spatial container types that are dropped when they end up empty: every
+/// instantiable `IfcSpatialStructureElement`, including the IFC4X3 facilities
+/// and facility parts (#5937). `IfcProject` is deliberately absent: it is the
+/// file's root, never a candidate. Twin of `CONTAINER_TYPES` in
+/// `packages/export/src/merged-empty-containers.ts`.
+const CONTAINER_TYPES: [&str; 14] = [
+    "IFCSITE",
+    "IFCBUILDING",
+    "IFCBUILDINGSTOREY",
+    "IFCSPACE",
+    "IFCFACILITY",
+    "IFCBRIDGE",
+    "IFCMARINEFACILITY",
+    "IFCRAILWAY",
+    "IFCROAD",
+    "IFCBRIDGEPART",
+    "IFCFACILITYPARTCOMMON",
+    "IFCMARINEPART",
+    "IFCRAILWAYPART",
+    "IFCROADPART",
+];
 
 /// A container in the MERGED model: the (model index, express id) of the first
 /// instance, so every input's copy of a unified container maps to one node.

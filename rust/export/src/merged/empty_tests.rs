@@ -57,6 +57,28 @@ fn drops_only_the_storey_that_holds_nothing() {
     assert_eq!(dropped.per_model[0], HashSet::from([5]));
 }
 
+/// IFC4X3 facilities and facility parts are containers too (#5937): an empty
+/// road part is dropped, and a populated one keeps its road.
+#[test]
+fn drops_an_empty_ifc4x3_facility_part_and_keeps_a_populated_one() {
+    let road = file(concat!(
+        "#1=IFCPROJECT('p0',$,'P',$,$,$,$,$,$);\n",
+        "#2=IFCSITE('s0',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n",
+        "#3=IFCROAD('rd',$,'Road',$,$,$,$,$,$,$);\n",
+        "#4=IFCROADPART('p1',$,'Carriageway',$,$,$,$,$,$,$,$);\n",
+        "#5=IFCROADPART('p2',$,'Shoulder',$,$,$,$,$,$,$,$);\n",
+        "#6=IFCBRIDGE('br',$,'Bridge',$,$,$,$,$,$,$);\n",
+        "#7=IFCPAVEMENT('pv',$,'Pavement',$,$,$,$,$,$);\n",
+        "#8=IFCRELAGGREGATES('r0',$,$,$,#1,(#2));\n",
+        "#9=IFCRELAGGREGATES('r1',$,$,$,#2,(#3,#6));\n",
+        "#10=IFCRELAGGREGATES('r2',$,$,$,#3,(#4,#5));\n",
+        "#11=IFCRELCONTAINEDINSPATIALSTRUCTURE('r3',$,$,$,(#7),#4);\n",
+    ));
+    let dropped = plan(&[&road]);
+    assert_eq!(dropped.per_model[0], HashSet::from([5, 6]), "the empty road part and the empty bridge go");
+    assert_eq!(dropped.count, 2);
+}
+
 #[test]
 fn keeps_ancestors_of_a_populated_container() {
     // Site and Building hold no element directly — only a storey that does — so

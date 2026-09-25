@@ -265,10 +265,11 @@ pub async fn get_cached_geometry(
         }
         _ => {
             tracing::debug!(hash = %hash, "Cached geometry not found");
-            Err(ApiError::NotFound(format!(
-                "Cache entry not found for hash: {}",
-                hash
-            )))
+            // Caller-supplied and unvalidated: logged, not echoed (as in
+            // `check_cache` above).
+            Err(ApiError::NotFound(
+                "No cached geometry for this hash".to_owned(),
+            ))
         }
     }
 }

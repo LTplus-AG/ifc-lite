@@ -276,6 +276,21 @@ async fn get_cached_geometry_returns_full_payload_when_both_present() {
     assert_eq!(body, b"the-parquet-bytes");
 }
 
+/// MISS: the 404 body does not reflect the caller-supplied hash (#5750
+/// review, the sibling of `check_cache_returns_404_when_uncached`).
+#[tokio::test]
+async fn get_cached_geometry_404_does_not_echo_the_hash() {
+    let state = test_state("geometry-miss-no-echo").await;
+    let response = get(&state, "/api/v1/cache/geometry/nosuchgeometryhash").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchgeometryhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
+}
+
 /// Partial state: parquet present, metadata absent -> 404 (not a 200 with a
 /// missing header, not a 500).
 #[tokio::test]

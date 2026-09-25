@@ -676,7 +676,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
               entityId: pickResult.expressId,
               screenX: e.clientX,
               screenY: e.clientY,
-              worldXYZ: pickResult.worldXYZ,
+              worldXYZ: pickResult.worldXYZ, modelIndex: pickResult.modelIndex,
             });
           } else {
             clearHover();

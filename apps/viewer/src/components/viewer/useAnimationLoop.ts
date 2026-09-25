@@ -49,6 +49,8 @@ export interface UseAnimationLoopParams {
   selectedEntityIdRef: MutableRefObject<number | null>;
   /** Hovered entity id for the pre-highlight outline (#5390), or null. */
   hoveredIdRef: MutableRefObject<number | null>;
+  /** Model of the hovered entity (federation); absent = any model. */
+  hoveredModelIndexRef?: MutableRefObject<number | undefined>;
   selectedModelIndexRef: MutableRefObject<number | undefined>;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
@@ -97,6 +99,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
     hoveredIdRef,
+    hoveredModelIndexRef,
     selectedModelIndexRef,
     clearColorRef,
     visualEnhancementRef,
@@ -265,7 +268,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             ghostExceptIds: ghostExceptEntitiesRef.current,
             selectedId: selection.selectedId,
             selectedIds: selection.selectedIds,
-            hoveredId: hoveredIdRef.current ?? undefined,
+            hoveredId: hoveredIdRef.current ?? undefined, hoveredModelIndex: hoveredModelIndexRef?.current,
             emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
             selectedModelIndex: selectedModelIndexRef.current,
             clearColor: clearColorRef.current,

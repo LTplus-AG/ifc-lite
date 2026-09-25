@@ -291,6 +291,8 @@ export interface HoverState {
    * synthetic entity has no surface property to display.
    */
   worldXYZ?: { x: number; y: number; z: number };
+  /** Model of the picked entity (federation), for the hover outline (#5390). */
+  modelIndex?: number;
 }
 
 export interface ContextMenuState {

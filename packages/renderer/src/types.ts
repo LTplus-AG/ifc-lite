@@ -269,6 +269,7 @@ export interface RenderOptions {
    * through occluders (visible portion only). `null`/absent draws nothing.
    */
   hoveredId?: number | null;
+  hoveredModelIndex?: number; // model of `hoveredId` (federation); absent = any model
   /**
    * Render the active colour overrides almost full-bright so they POP like a
    * highlight rather than reading as normal lit materials. Used while a clash is

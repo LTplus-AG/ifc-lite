@@ -14,6 +14,13 @@ import { isBottomPanel, type BottomPanelId } from './bottom-panels';
 
 const TABS_STORAGE_KEY = 'ifc-lite:bottom-strip-tabs-v1';
 const HEIGHT_STORAGE_KEY = 'ifc-lite:bottom-strip-height-v1';
+const ORIENTATION_STORAGE_KEY = 'ifc-lite:bottom-strip-orientation-v1';
+
+/** Where the strip docks: below the viewport (default) or beside it — the
+ *  side-by-side 2D/3D layout preset (#5515). Persisted regardless of which
+ *  panel is active when the user picks it; `ViewerLayout` decides whether
+ *  the CURRENT panel (only `drawing`) actually honours it. */
+export type BottomStripOrientation = 'bottom' | 'side';
 
 export const BOTTOM_STRIP_MIN_HEIGHT = 120;
 export const BOTTOM_STRIP_DEFAULT_HEIGHT = 300;
@@ -71,5 +78,24 @@ export function persistBottomStripHeight(height: number): void {
     window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
   } catch (error) {
     console.warn('[bottom-strip] failed to persist height:', error);
+  }
+}
+
+export function loadBottomStripOrientation(): BottomStripOrientation {
+  if (typeof window === 'undefined') return 'bottom';
+  try {
+    return window.localStorage.getItem(ORIENTATION_STORAGE_KEY) === 'side' ? 'side' : 'bottom';
+  } catch (error) {
+    console.warn('[bottom-strip] ignoring malformed persisted orientation:', error);
+    return 'bottom';
+  }
+}
+
+export function persistBottomStripOrientation(orientation: BottomStripOrientation): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ORIENTATION_STORAGE_KEY, orientation);
+  } catch (error) {
+    console.warn('[bottom-strip] failed to persist orientation:', error);
   }
 }

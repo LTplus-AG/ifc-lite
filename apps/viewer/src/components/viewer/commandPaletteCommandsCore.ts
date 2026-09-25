@@ -29,6 +29,7 @@ import { openRepositionModels } from '@/lib/model-placement/commands';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
   executeBasketSet, executeBasketAdd, executeBasketRemove, executeBasketToggleVisibility,
   executeBasketSaveView, executeBasketClear,
@@ -145,11 +146,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   // ── Visibility ──
   c.push(
     { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'Del / Space',
-      action: () => {
-        const s = useViewerStore.getState();
-        const ids = s.selectedEntityIds.size > 0 ? Array.from(s.selectedEntityIds) : s.selectedEntityId !== null ? [s.selectedEntityId] : [];
-        if (ids.length > 0) { s.hideEntities(ids); s.clearSelection(); }
-      } },
+      action: () => { hideSelectionFromStore(); } },
     { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'A',
       action: () => { resetVisibilityForHomeFromStore(); } },
     { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: '=',

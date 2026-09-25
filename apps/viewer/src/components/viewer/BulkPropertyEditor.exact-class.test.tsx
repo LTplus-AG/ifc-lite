@@ -20,7 +20,9 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { BulkPropertyEditor } from './BulkPropertyEditor.js';
-import { classTargetEnums } from './bulk-property-editor-options.js';
+// A namespace import: with the fix reverted `classTargetEnums` is absent, and
+// the helper test must fail on an assertion rather than on a missing export.
+import * as options from './bulk-property-editor-options.js';
 
 const PSET = 'Pset_Test';
 const PROP = 'Foo';
@@ -124,6 +126,9 @@ describe('Bulk editor class targets are exact classes (#5864)', () => {
   });
 
   it('classTargetEnums matches by schema inheritance, not by name', () => {
+    const { classTargetEnums } = options as Partial<typeof options>;
+    assert.equal(typeof classTargetEnums, 'function', 'bulk-property-editor-options exports classTargetEnums (#5864)');
+    if (!classTargetEnums) return;
     const present = new Map([[1, 'IfcWall'], [2, 'IfcWallStandardCase'], [3, 'IfcCurtainWall'], [4, 'IfcWallType'], [5, 'IfcFurniture']]);
     assert.deepEqual(classTargetEnums('IfcWall', present), [1, 2]);
     assert.deepEqual(classTargetEnums('IfcCurtainWall', present), [3]);

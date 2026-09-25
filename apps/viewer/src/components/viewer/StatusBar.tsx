@@ -267,10 +267,8 @@ export function StatusBar() {
         ) : (
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
-        {/* Cancel button — visible while a load has published a canceller:
-            a primary model load (hooks/primaryLoadCanceller.ts, #5849) or a
-            point-cloud stream (LAS/LAZ/PLY/PCD/E57). The in-viewport
-            loading card reads the same selector. */}
+        {/* Cancel: shown while a model load (#5849) or point-cloud stream
+            has published a canceller; the loading card uses the same selector. */}
         {activeStreamCanceller && (
           <button
             type="button"

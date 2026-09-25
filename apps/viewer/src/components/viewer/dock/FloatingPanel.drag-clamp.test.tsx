@@ -67,6 +67,7 @@ describe('FloatingPanel header drag (#5957)', () => {
     moveTo(300, 420);
     act(() => { window.dispatchEvent(new window.MouseEvent('mouseup')); });
     const last = rects[rects.length - 1];
-    assert.ok(typeof last.y === 'number' && last.y > AREA.top, `y ${String(last.y)} follows the pointer down`);
+    // happy-dom has no layout, so the drag starts from y = 0; 120px down is y = 120.
+    assert.equal(last.y, 120, 'y follows the pointer delta below the toolbar');
   });
 });

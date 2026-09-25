@@ -12,6 +12,11 @@ import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getViewerStoreApi } from '@/store';
+import {
+  BOTTOM_STRIP_DEFAULT_HEIGHT,
+  loadBottomStripHeight,
+  persistBottomStripHeight,
+} from '@/lib/panels/bottom-strip-persistence';
 
 // Dynamic: the revert oracle deletes this module, and a static import would
 // fail the whole file instead of letting the assertions go red.
@@ -43,17 +48,23 @@ describe('resetLayout (#5854)', () => {
   });
 });
 
-describe('resetLayout on mobile (#5957)', () => {
-  it('does not pop the hierarchy sheet open', () => {
-    assert.ok(resetLayout, 'store/layoutReset must export resetLayout');
+describe('resetLayout follow-ups (#5957)', () => {
+  it('does not pop the hierarchy sheet open on mobile', () => {
     const store = getViewerStoreApi();
     store.getState().setIsMobile(true);
     store.getState().setLeftPanelCollapsed(true);
     try {
-      resetLayout(store);
+      resetLayout!(store);
       assert.equal(store.getState().leftPanelCollapsed, true, 'on mobile an expanded left panel is a sheet over the model');
     } finally {
       store.getState().setIsMobile(false);
+      store.getState().setLeftPanelCollapsed(false);
     }
+  });
+
+  it('resets the persisted bottom-strip height even when no strip is mounted', () => {
+    persistBottomStripHeight(420);
+    resetLayout!(getViewerStoreApi());
+    assert.equal(loadBottomStripHeight(), BOTTOM_STRIP_DEFAULT_HEIGHT, 'the next strip mount starts at the default height');
   });
 });

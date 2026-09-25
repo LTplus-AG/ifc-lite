@@ -37,6 +37,7 @@ on:
       - 'packages/create/**'
       - 'packages/data/**'
       - 'packages/diff/**'
+      - 'packages/documents-api/**'
       - 'packages/drawing-2d/**'
       - 'packages/encoding/**'
       - 'packages/export/**'

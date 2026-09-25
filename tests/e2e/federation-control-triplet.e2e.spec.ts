@@ -328,7 +328,12 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   assertCanonicalCorrespondences(controls, 'XYZ renderer after the user placement', renderedXyz.points.map(renderToCanonical));
   // The tiny control scan is intentionally only five points. Increase the
   // visible point-size through its real viewport control before asking PNG
-  // density to distinguish that isolated scan from an empty canvas.
+  // density to distinguish that isolated scan from an empty canvas. Those
+  // controls live in the Point Clouds side panel (#5507), and Reposition just
+  // docked the Placement panel in its place (#5505): bring it back the way a
+  // user would, from the activity bar.
+  const pointCloudsPanel = page.getByRole('button', { name: 'Point Clouds', exact: true });
+  if ((await pointCloudsPanel.getAttribute('aria-pressed')) !== 'true') await pointCloudsPanel.click();
   await page.locator('input[type="range"]').first().fill('20');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudPointSize)).toBe(20);
   // EDL intentionally amplifies continuous scan depth. Disable it through

@@ -84,10 +84,6 @@ export type {
 } from './overlay.js';
 export { computeMarkerPositions } from './overlay.js';
 
-// 3D Overlay DOM Renderer (browser-only, framework-agnostic)
-export type { BCFOverlayRendererOptions } from './overlay-renderer.js';
-export { BCFOverlayRenderer } from './overlay-renderer.js';
-
 // IDS → BCF reporter
 export type {
   IDSReportInput,

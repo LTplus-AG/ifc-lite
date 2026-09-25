@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2, Layers } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
+import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
@@ -41,6 +42,11 @@ export function StatusBar() {
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const webgpu = useWebGPU();
+  // The storey pill and the hidden/ghosted count moved here from
+  // `ViewportOverlays` (#5504, charter #5478 item 22); mobile keeps its own
+  // copy since it has no status bar (`ViewerLayout.tsx`'s
+  // `{!isMobile && <StatusBar />}`).
+  const { storeyNames, objectCounts } = useViewportStatusSummary();
 
   const [fps, setFps] = useState(60);
   const [memory, setMemory] = useState(0);
@@ -271,6 +277,39 @@ export function StatusBar() {
           >
             {t('shellChrome.statusBar.cancelButton')}
           </button>
+        )}
+
+        {/* Storey pill — moved from `ViewportOverlays` (#5504). Passive, so a
+            model with no storey selection carries no extra chrome. */}
+        {storeyNames && storeyNames.length > 0 && (
+          <>
+            <Separator orientation="vertical" className="h-3.5" />
+            <div className="flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 text-primary" />
+              <span className="font-medium text-foreground">
+                {storeyNames.length === 1
+                  ? storeyNames[0]
+                  : t('viewportLighting.overlays.storeyCount', { count: storeyNames.length })}
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Hidden/ghosted count — moved from `ViewportOverlays` (#5504).
+            Reports what is WITHHELD, not a ratio: see that component's
+            history for why. */}
+        {(objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
+          <>
+            <Separator orientation="vertical" className="h-3.5" />
+            <span className="tabular-nums">
+              {[
+                objectCounts.hidden > 0 && t('shellChrome.statusBar.hiddenCount', { count: objectCounts.hidden }),
+                objectCounts.ghosted > 0 && t('shellChrome.statusBar.ghostedCount', { count: objectCounts.ghosted }),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </>
         )}
       </div>
 

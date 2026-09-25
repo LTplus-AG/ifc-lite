@@ -426,7 +426,7 @@ describe('GenerateAdvancedPanel localization (#4918)', () => {
 describe('GanttEmptyState localization (#4918)', () => {
   it('translates the "load a model" and helper-text states', () => {
     const container = render(
-      <GanttEmptyState loading={false} hasModel={false} canGenerate onImport={() => {}} onClose={() => {}} />,
+      <GanttEmptyState loading={false} hasModel={false} canGenerate onImport={() => {}} />,
     );
     const english = visibleStrings(container);
     assert.ok(english.has('Load a model with IfcTasks'));
@@ -622,7 +622,7 @@ describe('GanttToolbar localization (#4918)', () => {
       scheduleUndoStack: [{} as unknown as never],
       scheduleRedoStack: [{} as unknown as never],
     });
-    const container = render(<GanttToolbar onClose={() => {}} onOpenGenerate={() => {}} onOpenImport={() => {}} canGenerate />);
+    const container = render(<GanttToolbar onOpenGenerate={() => {}} onOpenImport={() => {}} canGenerate />);
     const english = visibleStrings(container);
     assert.ok(english.has('Jump to start'));
     assert.ok(english.has('Week')); // default ganttTimeScale

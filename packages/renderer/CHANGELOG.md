@@ -1,5 +1,38 @@
 # @ifc-lite/renderer
 
+## 5.0.0
+
+### Major Changes
+
+- [#5637](https://github.com/LTplus-AG/ifc-lite/pull/5637) [`34750d2`](https://github.com/LTplus-AG/ifc-lite/commit/34750d20244f4151baf0b6d0b017513745914434) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.setOverlayTheme(theme: OverlayTheme)` replaces every hardcoded overlay colour with one call the app makes on theme change: the selection highlight (was the WGSL constant `vec3<f32>(0.3, 0.6, 1.0)`), the section-plane preview accent (was per-axis Material colours plus a custom violet `#9C6BDE`), every overlay line channel and the section-cut outline, and the clash pair / overlap tints. The GPU uniforms it drives are written only on this call, never per frame.
+  
+  `Renderer.setOverlayLineColor` is removed (superseded by `setOverlayTheme`'s `overlayLine` field) — a breaking change for any consumer calling it directly; migrate to `renderer.setOverlayTheme({ ...DEFAULT_OVERLAY_THEME, overlayLine: yourColor })` (also exported: `OverlayTheme`, `DEFAULT_OVERLAY_THEME`). `RenderPipeline` gains `updateSelectionColor`.
+
+### Minor Changes
+
+- [#5798](https://github.com/LTplus-AG/ifc-lite/pull/5798) [`e7a658d`](https://github.com/LTplus-AG/ifc-lite/commit/e7a658d3f5f7041ec87c43688165d8684817025a) Thanks [@louistrue](https://github.com/louistrue)! - `setClashOverlapBox`, `setClashContactLines` and `setClashIntersectionSolid` accept an optional `color` ([#5490](https://github.com/LTplus-AG/ifc-lite/issues/5490)). Omit it and the overlap marks are drawn in the overlay theme's `clashOverlap`, and are recoloured in place by a later `setOverlayTheme` call, so a theme switch while a clash is focused no longer leaves the previous theme's tint on screen. An explicit `color` behaves exactly as before. `DEFAULT_OVERLAY_THEME`'s clash tints are now the viewer's light-theme clash tokens rather than the retired amber / cyan / magenta; nothing in the renderer read those fields before this change.
+
+- [#5632](https://github.com/LTplus-AG/ifc-lite/pull/5632) [`7b1473c`](https://github.com/LTplus-AG/ifc-lite/commit/7b1473c316fc7c8f490ecd798cac80af9529d950) Thanks [@louistrue](https://github.com/louistrue)! - Replace the separation-line post pass with a real edge pass ([#5385](https://github.com/LTplus-AG/ifc-lite/issues/5385)). The old pass fired only on an entity-id change, read a fixed 1-3 px tap of raw (non-linear, reverse-Z) depth, and thresholded that as a hard boolean; storey joints on a flush facade flickered into dashed lines because the per-pixel slope crossed the threshold, not the geometry, and a wall's own corners or a roof ridge got no line at all since nothing there changes entity id.
+  
+  `RenderOptions.visualEnhancement.separationLines` keeps its name and now drives the edge pass. It shares the ambient-occlusion pass's depth reconstruction (`depth-reconstruct.ts`/`.wgsl.ts`, [#5384](https://github.com/LTplus-AG/ifc-lite/issues/5384)) to rebuild view-space position and normals, then votes an edge at each of 4 (`low`) or 8 (`high`, + diagonals) tap directions on three cues: an entity-id change, a normal crease past 25 degrees, and a depth silhouette measured in linear view-space units (not raw device depth). The average vote across directions is a coverage estimate, so a line antialiases instead of dashing on/off.
+  
+  - `radius` (tap distance in pixels) is now clamped to 1-3, was 1-2, so `high` quality has room to space its 8 taps.
+  - `quality`, `intensity` and `enabled` are unchanged.
+  - The in-shader derivative edge darkening in `main.wgsl.ts` (the `flags.z` block) is left in place: it is a separate, per-fragment effect gated by `edgeContrast`, and this PR keeps that file's changes to zero to stay out of the way of the concurrent specular work there. Follow-up: retire it once the edge pass is confirmed to supersede it visually.
+
+- [#5623](https://github.com/LTplus-AG/ifc-lite/pull/5623) [`40a58c9`](https://github.com/LTplus-AG/ifc-lite/commit/40a58c99afb968c02b8507ff1b5c394e4d107c50) Thanks [@louistrue](https://github.com/louistrue)! - The geometry shader now has a default specular term ([#5386](https://github.com/LTplus-AG/ifc-lite/issues/5386)): a GGX/Smith/Schlick-Fresnel lobe for the sun plus a split-sum environment reflection along the reflection vector, using the `metallicRoughness` uniform the renderer already wrote but the shader never read. Diffuse is weighted down by `(1 - Fresnel) * (1 - metallic)` so a highlight never adds energy on top of full diffuse.
+  
+  This replaces the old fake glass branch (a fixed tint mix, a flat `glassShine` term, edge desaturation, and a flat 0.7 alpha multiply applied to every translucent material regardless of its actual finish). Glass is now derived from the AUTHORED alpha a mesh was drawn with — not any display fade (X-Ray, compare) applied on top — so a faded opaque wall stays a dielectric and only real translucent geometry reflects as glass, with a roughness low enough to show a sky reflection and a sun glint.
+  
+  `mesh-material.ts`'s `packMeshMaterial` is the single writer of the mesh uniform's material row across every draw path (flat, batched, textured, instanced template), replacing repeated `mesh.material?.roughness ?? 0.6` literals. The default opaque roughness moved from 0.6 to 0.9 (`DEFAULT_MATERIAL_ROUGHNESS`): at 0.6 the new specular term's highlight washed a whitish film over sunlit coloured roofs; at 0.9 it is a faint, broad sheen that leaves a plain white/grey wall visually unchanged (pinned in `mesh-material.test.ts` and verified with pixel samples before/after this change: a sampled FZK-Haus wall moved by at most 1/255 per channel).
+  
+  No IFC-authored specular (`IfcSurfaceStyleRendering`'s `SpecularColour`/`SpecularHighlight`/`ReflectanceMethod`) is extracted yet — every draw uses this default unless its `Mesh.material` already supplies metallic/roughness. That extraction is filed separately as [#5582](https://github.com/LTplus-AG/ifc-lite/issues/5582).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/geometry@7.5.2
+
 ## 4.2.0
 
 ### Minor Changes

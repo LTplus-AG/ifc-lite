@@ -28,7 +28,6 @@ beforeEach(() => {
     loading: false,
     hiddenEntities: new Set<number>(),
     lensHiddenIds: new Set<number>(),
-    hiddenEntitiesByModel: new Map(),
     hostHiddenIfcTypes: null,
   } as never);
 });

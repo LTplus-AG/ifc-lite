@@ -6,8 +6,6 @@
 
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
-
-// Import slices
 import { createLoadingSlice, type LoadingSlice } from './slices/loadingSlice.js';
 import { createSelectionSlice, type SelectionSlice } from './slices/selectionSlice.js';
 import { createVisibilitySlice, type VisibilitySlice } from './slices/visibilitySlice.js';
@@ -16,6 +14,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 import { registerSectionVisibility } from './section-active.js';
+import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -487,6 +486,7 @@ export function getViewerStoreApi() {
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);
   registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
+  registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
   reconcileInitialStoreSync(store);
   return store;
 }

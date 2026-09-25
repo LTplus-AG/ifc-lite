@@ -68,7 +68,6 @@ interface SectionWriterState extends SectionVisibilityState {
   setSectionPlaneEnabled: (enabled: boolean) => void;
   flipSectionPlane: () => void;
   setActiveTool: (tool: string) => void;
-  setSuppressNextSection2DPanelAutoOpen: (suppress: boolean) => void;
 }
 
 /**
@@ -93,8 +92,6 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
   const state = getState();
   if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // parked until the tool opens
   if (getState().activeTool !== 'section') {
-    // A programmatic cut is not the user opening the tool: don't pop the 2D panel.
-    state.setSuppressNextSection2DPanelAutoOpen(true);
     state.setActiveTool('section');
   }
 }

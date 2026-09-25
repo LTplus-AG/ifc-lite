@@ -20,6 +20,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { countEffectiveEntityTypes } from '@ifc-lite/data';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
@@ -54,7 +55,7 @@ export function computeModelStats(
   if (!dataStore?.spatialHierarchy) {
     return { storeys: 0, elementsWithGeometry: 0 };
   }
-  const storeys = dataStore.spatialHierarchy.byStorey.size;
+  const storeys = countEffectiveEntityTypes(dataStore, geometry.mutationView).get('IFCBUILDINGSTOREY') ?? 0;
   const meshedIds = new Set<number>();
   for (const globalId of collectMeshedIds(geometryResult)) {
     const localId = geometry.toLocalId(globalId);

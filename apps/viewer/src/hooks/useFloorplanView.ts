@@ -4,7 +4,13 @@
 
 /**
  * Hook for automatic floorplan views per storey.
- * Activates section plane + orthographic top-down view at storey elevation.
+ *
+ * Activates a plan-cut section plane at the storey's elevation and opens the
+ * Drawing panel docked so the cut is visible immediately (#5497). It used to
+ * also force the 3D viewport into orthographic top-down; that stopped being
+ * automatic — the Drawing header's "Match 3D" button applies it on request
+ * instead, so switching storeys no longer yanks the 3D camera out from under
+ * a user who was mid-orbit.
  */
 
 import { useCallback, useMemo } from 'react';
@@ -23,8 +29,7 @@ export function useFloorplanView() {
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
-  const setProjectionMode = useViewerStore((s) => s.setProjectionMode);
+  const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
 
   // Collect all available storeys sorted by elevation (descending)
   const availableStoreys = useMemo((): StoreyInfo[] => {
@@ -97,12 +102,10 @@ export function useFloorplanView() {
     setSectionPlanePosition(Math.max(0, Math.min(100, percentage)));
     setActiveTool('section');
 
-    // 3. Switch to orthographic projection
-    setProjectionMode('orthographic');
-
-    // 4. Set camera to top-down view
-    cameraCallbacks.setPresetView?.('top');
-  }, [models, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, setProjectionMode, cameraCallbacks]);
+    // 3. Show the cut: dock the Drawing panel (no forced 3D camera change —
+    // "Match 3D" in its header does that on request, #5497).
+    openPanelInHome('drawing');
+  }, [models, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome]);
 
   return { availableStoreys, activateFloorplan };
 }

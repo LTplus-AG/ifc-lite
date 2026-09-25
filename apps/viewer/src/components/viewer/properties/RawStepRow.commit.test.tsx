@@ -30,6 +30,7 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCWALL('0Wall00000000000000001',$,'Wall A',$,$,$,$,$,$);
+#2=IFCWALL('0Wall00000000000000002',$,'Wall B',$,$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -57,11 +58,12 @@ async function seed(): Promise<void> {
   });
 }
 
-function openEditor(): HTMLInputElement {
-  const container = render(
-    <RawStepRow modelId="m" entityId={1} index={2} name="Name" displayToken={TOKEN} isMutated={false} enableEditing />,
+let container: HTMLElement;
+function openEditor(index = 2, name = 'Name', token = TOKEN): HTMLInputElement {
+  container = render(
+    <RawStepRow modelId="m" entityId={1} index={index} name={name} displayToken={token} isMutated={false} enableEditing />,
   );
-  const value = [...container.querySelectorAll('button')].find((b) => b.textContent === TOKEN);
+  const value = [...container.querySelectorAll('button')].find((b) => b.textContent === token);
   assert.ok(value, 'the argument value renders');
   click(value!);
   const input = container.querySelector('input');
@@ -108,5 +110,20 @@ describe('Raw STEP row commits only real changes (#5872)', () => {
     key(input, 'Enter');
     blur(input);
     assert.equal(undo().length, 1);
+  });
+
+  it('a GlobalId written through the raw row gets the attribute editor\'s rule (invalid and duplicate)', () => {
+    const guid = "'0Wall00000000000000001'";
+    let input = openEditor(0, 'GlobalId', guid);
+    type(input, "'not-a-guid'");
+    key(input, 'Enter');
+    assert.match(container.textContent ?? '', /22 characters/);
+    assert.equal(undo().length, 0);
+    cleanup();
+    input = openEditor(0, 'GlobalId', guid);
+    type(input, "'0Wall00000000000000002'");
+    key(input, 'Enter');
+    assert.match(container.textContent ?? '', /already has this GlobalId/);
+    assert.equal(undo().length, 0);
   });
 });

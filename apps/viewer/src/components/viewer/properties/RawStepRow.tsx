@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
 import { useTranslation } from '@/i18n';
+import { globalIdProblem, modelGlobalIdOwner } from './global-id-check';
 
 /** Match a bare `#N` STEP entity reference. */
 const REF_TOKEN_RE = /^#(\d+)$/;
@@ -100,12 +101,18 @@ export function RawStepRow({
       setError(parsed.error);
       return;
     }
+    // GlobalId is writable here too; it gets the attribute editor's rule.
+    const guidProblem = name === 'GlobalId' ? globalIdProblem(parsed.value, entityId, modelGlobalIdOwner(modelId)) : null;
+    if (guidProblem) {
+      setError(t(guidProblem));
+      return;
+    }
     settledRef.current = true;
     // setPositionalAttribute records the undo entry and bumps mutationVersion.
     setPositionalAttribute(modelId, entityId, index, parsed.value);
     setEditing(false);
     setError(null);
-  }, [draft, display, modelId, entityId, index, setPositionalAttribute]);
+  }, [draft, display, name, modelId, entityId, index, setPositionalAttribute, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

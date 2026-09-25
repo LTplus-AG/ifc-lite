@@ -19,9 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
-
-/** IFC GlobalId: 22 characters of the IFC base64 alphabet (IfcGloballyUniqueId). */
-const IFC_GUID = /^[0-9A-Za-z_$]{22}$/;
+import { globalIdProblem, modelGlobalIdOwner } from './global-id-check';
 
 export type AttributeEditVerdict =
   | { kind: 'unchanged' }
@@ -43,11 +41,8 @@ export function judgeAttributeEdit(
   const value = attrName === 'GlobalId' ? input.trim() : input;
   if (value === currentValue) return { kind: 'unchanged' };
   if (attrName === 'GlobalId') {
-    if (!IFC_GUID.test(value)) return { kind: 'invalid', messageKey: 'properties.panel.attributeEditor.invalidGlobalId' };
-    const owner = globalIdOwner(value);
-    if (owner > 0 && owner !== entityId) {
-      return { kind: 'invalid', messageKey: 'properties.panel.attributeEditor.duplicateGlobalId' };
-    }
+    const problem = globalIdProblem(value, entityId, globalIdOwner);
+    if (problem) return { kind: 'invalid', messageKey: problem };
   }
   return { kind: 'commit', value };
 }
@@ -75,10 +70,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
   const save = useCallback(() => {
     if (settledRef.current) return;
     const storeModelId = modelId === 'legacy' ? '__legacy__' : modelId;
-    const entities = useViewerStore.getState().models.get(modelId)?.ifcDataStore?.entities
-      ?? useViewerStore.getState().ifcDataStore?.entities;
-    const verdict = judgeAttributeEdit(attrName, value, currentValue, entityId,
-      (guid) => entities?.getExpressIdByGlobalId?.(guid) ?? -1);
+    const verdict = judgeAttributeEdit(attrName, value, currentValue, entityId, modelGlobalIdOwner(modelId));
     if (verdict.kind === 'invalid') {
       setError(verdict.messageKey);
       return;

@@ -82,6 +82,8 @@ view.clear();
 
 > **Note:** Undo/redo is handled by the viewer's store (mutationSlice), not directly on MutablePropertyView. In the viewer, use Ctrl+Z / Ctrl+Shift+Z.
 
+Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
+
 ### Enumerating the live entity set
 
 The parsed store's type index describes the file as loaded. After a session
@@ -295,7 +297,7 @@ On submit, the dialog calls `bim.store.addColumn`, selects the newly-added colum
 |-------|-------------|
 | Modified entities | Count of entities with property changes |
 | Dirty models | Models with unsaved mutations |
-| Undo stack | Per-model undo history (covers properties, quantities, attributes, positional args, entity create/delete) |
+| Undo stack | Per-model undo history (covers properties, whole property and quantity sets, quantities, attributes, positional args, entity create/delete) |
 | Redo stack | Per-model redo history |
 | Change sets | Named groups of mutations for export |
 | Store editors | Per-model `StoreEditor` cache (created lazily on first store-level edit) |

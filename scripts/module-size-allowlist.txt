@@ -271,7 +271,7 @@
    530 packages/merge/src/three-way.ts
    493 packages/mutations/src/bulk-query-engine.ts
    558 packages/mutations/src/csv-connector.ts
-  1914 packages/mutations/src/mutable-property-view.ts
+  1879 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
    858 packages/parser/src/columnar-parser.ts
    467 packages/parser/src/compact-entity-index.ts

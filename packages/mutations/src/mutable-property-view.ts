@@ -140,50 +140,6 @@ export class MutablePropertyView extends MutableOverlayState {
     return this.nextAllocatedId + 1;
   }
 
-  private setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation): void {
-    this.propertyMutations.set(key, mutation);
-    let bucket = this.propertyKeysByEntity.get(entityId);
-    if (!bucket) {
-      bucket = new Set();
-      this.propertyKeysByEntity.set(entityId, bucket);
-    }
-    bucket.add(key);
-  }
-
-  private deletePropertyMutation(entityId: number, key: string): boolean {
-    const removed = this.propertyMutations.delete(key);
-    if (removed) {
-      const bucket = this.propertyKeysByEntity.get(entityId);
-      if (bucket) {
-        bucket.delete(key);
-        if (bucket.size === 0) this.propertyKeysByEntity.delete(entityId);
-      }
-    }
-    return removed;
-  }
-
-  private setQuantityMutation(entityId: number, key: string, mutation: QuantityMutation): void {
-    this.quantityMutations.set(key, mutation);
-    let bucket = this.quantityKeysByEntity.get(entityId);
-    if (!bucket) {
-      bucket = new Set();
-      this.quantityKeysByEntity.set(entityId, bucket);
-    }
-    bucket.add(key);
-  }
-
-  private deleteQuantityMutation(entityId: number, key: string): boolean {
-    const removed = this.quantityMutations.delete(key);
-    if (removed) {
-      const bucket = this.quantityKeysByEntity.get(entityId);
-      if (bucket) {
-        bucket.delete(key);
-        if (bucket.size === 0) this.quantityKeysByEntity.delete(entityId);
-      }
-    }
-    return removed;
-  }
-
   private setAttributeMutation(entityId: number, key: string, mutation: AttributeMutation): void {
     this.attributeMutations.set(key, mutation);
     let bucket = this.attributeKeysByEntity.get(entityId);
@@ -624,6 +580,7 @@ export class MutablePropertyView extends MutableOverlayState {
     psetName: string,
     properties: Array<{ name: string; value: PropertyValue; type?: PropertyValueType; unit?: string }>
   ): Mutation {
+    const before = this.captureSetOverlay('property', entityId, psetName);
     let entityPsets = this.newPsets.get(entityId);
     if (!entityPsets) {
       entityPsets = new Map();
@@ -663,6 +620,7 @@ export class MutablePropertyView extends MutableOverlayState {
       psetName,
       newValue: properties as unknown as PropertyValue,
     };
+    this.stampSetOverlay(mutation, before);
 
     this.mutationHistory.push(mutation);
     return mutation;
@@ -672,6 +630,7 @@ export class MutablePropertyView extends MutableOverlayState {
    * Delete an entire property set
    */
   deletePropertySet(entityId: number, psetName: string): Mutation {
+    const before = this.captureSetOverlay('property', entityId, psetName);
     // Also remove from new psets if it was created in this session
     const entityPsets = this.newPsets.get(entityId);
     const inSessionPset = entityPsets?.get(psetName);
@@ -724,6 +683,7 @@ export class MutablePropertyView extends MutableOverlayState {
       entityId,
       psetName,
     };
+    this.stampSetOverlay(mutation, before);
 
     this.mutationHistory.push(mutation);
     return mutation;
@@ -817,6 +777,7 @@ export class MutablePropertyView extends MutableOverlayState {
     qsetName: string,
     quantities: Array<{ name: string; value: number; quantityType: QuantityType; unit?: string }>
   ): Mutation {
+    const before = this.captureSetOverlay('quantity', entityId, qsetName);
     let entityQsets = this.newQsets.get(entityId);
     if (!entityQsets) {
       entityQsets = new Map();
@@ -855,6 +816,7 @@ export class MutablePropertyView extends MutableOverlayState {
       psetName: qsetName,
       newValue: quantities as unknown as PropertyValue,
     };
+    this.stampSetOverlay(mutation, before);
 
     this.mutationHistory.push(mutation);
     return mutation;
@@ -954,13 +916,17 @@ export class MutablePropertyView extends MutableOverlayState {
     quantName: string,
     skipHistory: boolean = false,
   ): Mutation | null {
+    const before = this.captureSetOverlay('quantity', entityId, qsetName);
     return deleteQuantityMember({
       modelId: this.modelId, entityId, qsetName, quantName,
       baseQsets: this.getBaseQuantitiesForEntity(entityId), entityQsets: this.newQsets.get(entityId),
       setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation),
       deleteMutation: key => { this.deleteQuantityMutation(entityId, key); },
       deleteEntityQsets: () => { this.newQsets.delete(entityId); },
-      pushHistory: mutation => { if (!skipHistory) this.mutationHistory.push(mutation); },
+      pushHistory: mutation => {
+        this.stampSetOverlay(mutation, before);
+        if (!skipHistory) this.mutationHistory.push(mutation);
+      },
       mutationId: generateMutationId, key: () => quantityKey(entityId, qsetName, quantName),
     });
   }
@@ -977,13 +943,15 @@ export class MutablePropertyView extends MutableOverlayState {
    * property saying the volume could not be computed.
    */
   deleteQuantitySet(entityId: number, qsetName: string): Mutation {
+    const before = this.captureSetOverlay('quantity', entityId, qsetName);
     return deleteQuantitySetOverlay({
       modelId: this.modelId, entityId, qsetName, baseQsets: this.getBaseQuantitiesForEntity(entityId),
       entityQsets: this.newQsets.get(entityId), deleteEntityQsets: () => { this.newQsets.delete(entityId); },
       deleteMutation: name => { this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, name)); },
       maskSet: () => { this.deletedQsets.add(`${entityId}:${qsetName}`); },
       setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }),
-      mutationId: generateMutationId, pushHistory: mutation => { this.mutationHistory.push(mutation); },
+      mutationId: generateMutationId,
+      pushHistory: mutation => { this.stampSetOverlay(mutation, before); this.mutationHistory.push(mutation); },
     });
   }
 

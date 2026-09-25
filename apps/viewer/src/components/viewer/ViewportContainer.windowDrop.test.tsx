@@ -142,7 +142,15 @@ describe('window-level file drop (#5845)', () => {
     const drop = drag(chrome, 'drop', fileTransfer(file));
     assert.equal(drop.defaultPrevented, false, 'the window leaves it alone');
     assert.equal(latestToast(), before, 'nothing is routed');
-    act(() => { img.dispatchEvent(new window.Event('dragend', { bubbles: true })); });
+
+    // No dragend (the source unmounted): the window drop itself cleared the
+    // flag, so the next OS file drop is handled.
+    const next = new File(['x'], 'from-the-os.blend');
+    drag(chrome, 'dragenter', fileTransfer(next));
+    drag(chrome, 'dragover', fileTransfer(next));
+    const osDrop = drag(chrome, 'drop', fileTransfer(next));
+    assert.equal(osDrop.defaultPrevented, true, 'a later OS drop is not navigated to');
+    assert.match(latestToast(), /from-the-os\.blend/, 'and is routed');
   });
 
   it('a drag a component cancelled in dragstart does not disable later file drops', async () => {

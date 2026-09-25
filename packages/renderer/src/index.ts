@@ -3121,9 +3121,8 @@ export class Renderer {
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
             const selectionOutline = buildSelectionOutlineFrame({
-                device, meshBindGroupLayout: this.pipeline.getBindGroupLayout(),
-                uniformBufferSize: this.pipeline.getUniformBufferSize(),
-                viewProj, relativeToEyeFrame,
+                uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
+                section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox,
                 selectedMeshes: selectedMeshesForMask, allMeshes: this.scene.getMeshes(),
                 hoveredId: options.hoveredId, selectedModelIndex,
             });

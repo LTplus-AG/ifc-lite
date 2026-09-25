@@ -100,6 +100,9 @@ function model(id: string, idOffset: number, store: IfcDataStore, meshes: MeshDa
   };
 }
 
+/** The shared store's presets; one case deletes a preset and must hand them back. */
+const INITIAL_PRESETS = useViewerStore.getState().clashPresets;
+
 let root: Root | null = null;
 let container: HTMLElement | null = null;
 
@@ -151,7 +154,7 @@ afterEach(async () => {
   if (current) await act(async () => current.unmount());
   container?.remove();
   container = null;
-  useViewerStore.setState({ models: new Map(), activeModelId: null, clashResult: null, clashGroups: null, clashError: null, clashRunning: false });
+  useViewerStore.setState({ models: new Map(), activeModelId: null, clashResult: null, clashGroups: null, clashError: null, clashRunning: false, clashPresets: INITIAL_PRESETS });
 });
 
 for (const modelCount of [1, 2] as const) {
@@ -186,6 +189,18 @@ for (const modelCount of [1, 2] as const) {
       await clickAndSettle(reRun);
       assert.notEqual(useViewerStore.getState().clashResult, first, 'Re-run published a fresh result');
       assert.deepEqual(ruleIds(), [preset.id], 'Re-run repeated the preset, not "Detect all"');
+    });
+
+    it('reports a deleted preset instead of a silent no-op Re-run', async () => {
+      await seed(modelCount);
+      const preset = useViewerStore.getState().clashPresets.find((p) => p.enabled);
+      assert.ok(preset);
+      await clickAndSettle(buttonByText(preset.name));
+      const first = useViewerStore.getState().clashResult;
+      useViewerStore.setState({ clashPresets: useViewerStore.getState().clashPresets.filter((p) => p.id !== preset.id) });
+      await clickAndSettle(buttonByText('Re-run'));
+      assert.equal(useViewerStore.getState().clashResult, first, 'nothing ran');
+      assert.match(String(useViewerStore.getState().clashError), /no longer exists/);
     });
 
     it('repeats the enabled rule set after a rule-set run', async () => {

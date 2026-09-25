@@ -596,7 +596,7 @@ export function useClash() {
   const runPreset = useCallback(
     (presetId: string): Promise<void> => {
       const preset = useViewerStore.getState().clashPresets.find((p) => p.id === presetId);
-      if (!preset) return Promise.resolve();
+      if (!preset) { useViewerStore.getState().setClashError('That rule no longer exists — pick a rule to run, or restore it in Clash settings (⚙).'); return Promise.resolve(); }
       return runPresets([preset], { kind: 'preset', presetId, name: preset.name });
     },
     [runPresets],

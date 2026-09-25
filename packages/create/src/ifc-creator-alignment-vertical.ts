@@ -166,7 +166,7 @@ export function emitVerticalLayout(
 ): { verticalId: number; segmentIds: number[] } {
   const verticalId = ctx.emit(
     'IFCALIGNMENTVERTICAL',
-    `'${params.GlobalId ?? guid('vertical')}',${ctx.ownerRef},${params.Name ? `'${esc(params.Name)}'` : '$'},$,$,$,$`,
+    `'${params.GlobalId ?? guid('vertical')}',${ctx.ownerRef},${params.Name !== undefined ? `'${esc(params.Name)}'` : '$'},$,$,$,$`,
   );
   const segmentIds = layoutOf(params).map((segment, index) => {
     const design = ctx.emit(

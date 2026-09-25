@@ -14,6 +14,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { addToPropertySet, type InheritedSets } from '@/lib/properties/add-to-property-set';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
@@ -74,6 +75,8 @@ export interface BsddCardProps {
   existingQuants?: Set<string>;
   /** Names of entity-level attributes that already have values */
   existingAttributes?: Set<string>;
+  /** Sets the entity only inherits from its type (#5966). */
+  inheritedFrom?: InheritedSets | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +92,7 @@ export function BsddCard({
   existingQsets = [],
   existingQuants = new Set<string>(),
   existingAttributes = new Set<string>(),
+  inheritedFrom,
 }: BsddCardProps) {
   const { t, locale } = useTranslation();
   const [classInfo, setClassInfo] = useState<BsddClassInfo | null>(null);
@@ -99,8 +103,6 @@ export function BsddCard({
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
 
-  const setProperty = useViewerStore((s) => s.setProperty);
-  const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const setQuantity = useViewerStore((s) => s.setQuantity);
   const createQuantitySet = useViewerStore((s) => s.createQuantitySet);
   const storeSetAttribute = useViewerStore((s) => s.setAttribute);
@@ -209,24 +211,9 @@ export function BsddCard({
       } else {
         // Route Pset_* / other through property creation, with the correct
         // bSDD-derived value type so the inline editor shows the right control.
-        const valueType = toPropertyValueType(prop.dataType);
-        const value = defaultValue(prop.dataType);
-        const psetExists = existingPsets.includes(psetName);
-
-        if (!psetExists) {
-          createPropertySet(normalizedModelId, entityId, psetName, [
-            { name: prop.name, value, type: valueType },
-          ]);
-        } else {
-          setProperty(
-            normalizedModelId,
-            entityId,
-            psetName,
-            prop.name,
-            value,
-            valueType,
-          );
-        }
+        addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName, [
+          { name: prop.name, value: defaultValue(prop.dataType), type: toPropertyValueType(prop.dataType) },
+        ]);
       }
 
       bumpMutationVersion();
@@ -245,7 +232,7 @@ export function BsddCard({
         toast.success(t('properties.bsdd.addedSingle', { name: prop.name }));
       }
     },
-    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
+    [modelId, entityId, existingPsets, inheritedFrom, existingQsets, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
   );
 
   const handleAddAllInPset = useCallback(
@@ -307,31 +294,8 @@ export function BsddCard({
           }
         }
       } else {
-        const psetExists = existingPsets.includes(psetName);
-
-        if (!psetExists) {
-          createPropertySet(
-            normalizedModelId,
-            entityId,
-            psetName,
-            toAdd.map((p) => ({
-              name: p.name,
-              value: defaultValue(p.dataType),
-              type: toPropertyValueType(p.dataType),
-            })),
-          );
-        } else {
-          for (const p of toAdd) {
-            setProperty(
-              normalizedModelId,
-              entityId,
-              psetName,
-              p.name,
-              defaultValue(p.dataType),
-              toPropertyValueType(p.dataType),
-            );
-          }
-        }
+        addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, psetName,
+          toAdd.map((p) => ({ name: p.name, value: defaultValue(p.dataType), type: toPropertyValueType(p.dataType) })));
       }
 
       bumpMutationVersion();
@@ -349,7 +313,7 @@ export function BsddCard({
       }
       toast.success(t(isEditableProps ? 'properties.bsdd.addedManyWithFollowUp' : 'properties.bsdd.addedMany', { ...localeCount(locale, toAdd.length), pset: psetName }));
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
+    [modelId, entityId, existingPsets, inheritedFrom, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus, locale],
   );
 
   // The deliberate "take me to what I just added" action behind the card's

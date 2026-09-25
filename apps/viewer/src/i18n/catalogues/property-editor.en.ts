@@ -50,6 +50,7 @@ export const propertyEditorEn = {
   'propertyEditor.property.trigger': 'Add property',
   'propertyEditor.property.title': 'Add Property',
   'propertyEditor.property.description': 'Add a property to this {entityType} element.',
+  'propertyEditor.property.inheritedOverride': '{psetName} is inherited from {typeName}. Adding here creates {psetName} on this element, keeping the type\'s properties; the type itself is unchanged.',
   'propertyEditor.property.available': {
     one: '{schema} schema: {count} standard property set available',
     other: '{schema} schema: {count} standard property sets available',

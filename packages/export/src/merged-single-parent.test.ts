@@ -306,6 +306,32 @@ describe('MergedExporter dropEmptyContainers after the one-parent pass (#5725)',
     expectSingleParents(content);
   });
 
+  it('IFC2X3: a nest under a dropped container does not make the planner withhold a written aggregation', async () => {
+    // In IFC2X3 IfcRelNests and IfcRelAggregates share `Decomposes`. A's
+    // House is NESTED under Site A, which holds nothing through a structure
+    // rel, so Site A is dropped and its nest goes with it. B's `Site B ->
+    // House` aggregation is then House's only parent. A planner that also
+    // claimed parents through the nest withheld B's edge, dropped Site B as
+    // empty, and left House with no parent at all (WR41).
+    const nestedA = [
+      `#1=IFCPROJECT('${guid('pa')}',$,'A',$,$,$,$,$,$);`,
+      `#2=IFCSITE('${guid('sa')}',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);`,
+      `#3=IFCBUILDING('${guid('ba')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+      `#4=IFCRELAGGREGATES('${guid('ra1')}',$,$,$,#1,(#2));`,
+      `#5=IFCRELNESTS('${guid('rn')}',$,$,$,#2,(#3));`,
+      `#6=IFCBUILDINGELEMENTPROXY('${guid('px')}',$,'P',$,$,$,$,$,$);`,
+      `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rc')}',$,$,$,(#6),#3);`,
+    ];
+    const content = await merge([await model('a', nestedA, 'IFC2X3'), await model('b', siteB(), 'IFC2X3')], {
+      ...options, mergeBuildings: 'by-name', schema: 'IFC2X3',
+    });
+    expect(content).not.toContain(guid('sa'));
+    expect(content).toContain(guid('sb'));
+    expect(content).toContain(guid('rb2'));
+    expectNoOrphanedContainers(content);
+    expectSingleParents(content, ['IFCRELAGGREGATES', 'IFCRELNESTS']);
+  });
+
   it('drops it too when the narrowed rel keeps only an empty sibling', async () => {
     // Same rel, but the Annex holds nothing. With the unified Building
     // stripped, Site B's only written child is the empty Annex, so both go.

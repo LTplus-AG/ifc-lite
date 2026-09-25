@@ -16,6 +16,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { useSavedSectionCuts, saveCurrentSectionCut } from '@/store/savedSectionCutsStore';
 import { DrawingSectionCutMenu } from './DrawingSectionCutMenu.js';
+import { answerDialog, mountDialogHost } from '@/test/dialogs.js';
 
 const s = () => useViewerStore.getState();
 
@@ -77,31 +78,25 @@ describe('DrawingSectionCutMenu (#5514)', () => {
     assert.equal(useSavedSectionCuts.getState().cuts.length, 0);
   });
 
-  it('"Save current cut as..." names the live cut via the menu\'s own prompt', () => {
-    const originalPrompt = window.prompt;
-    window.prompt = () => 'From the menu';
-    try {
-      render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
-      openMenu();
-      click([...document.body.querySelectorAll('div')].find((el) => el.textContent === 'Save current cut as…')!);
-      assert.equal(useSavedSectionCuts.getState().cuts.map((c) => c.name).includes('From the menu'), true);
-    } finally {
-      window.prompt = originalPrompt;
-    }
+  it('"Save current cut as..." names the live cut via the menu\'s own prompt', async () => {
+    mountDialogHost();
+    render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
+    openMenu();
+    click([...document.body.querySelectorAll('div')].find((el) => el.textContent === 'Save current cut as…')!);
+    await answerDialog('From the menu');
+    assert.equal(useSavedSectionCuts.getState().cuts.map((c) => c.name).includes('From the menu'), true);
   });
 
-  it('renames a saved cut via its row\'s prompt', () => {
+  it('renames a saved cut via its row\'s prompt, pre-filled with its current name', async () => {
     const id = saveCurrentSectionCut('Before');
-    const originalPrompt = window.prompt;
-    window.prompt = () => 'After';
-    try {
-      render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
-      openMenu();
-      const row = rows().find((r) => r.textContent?.includes('Before'))!;
-      click(row.querySelector('button[title="Rename saved cut"]')!);
-      assert.equal(useSavedSectionCuts.getState().cuts.find((c) => c.id === id)?.name, 'After');
-    } finally {
-      window.prompt = originalPrompt;
-    }
+    mountDialogHost();
+    render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
+    openMenu();
+    const row = rows().find((r) => r.textContent?.includes('Before'))!;
+    click(row.querySelector('button[title="Rename saved cut"]')!);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(document.querySelector<HTMLInputElement>('[data-dialog-host] input')?.value, 'Before');
+    await answerDialog('After');
+    assert.equal(useSavedSectionCuts.getState().cuts.find((c) => c.id === id)?.name, 'After');
   });
 });

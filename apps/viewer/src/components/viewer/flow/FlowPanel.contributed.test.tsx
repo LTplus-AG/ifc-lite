@@ -27,6 +27,7 @@ import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { FlowPanel } from './FlowPanel.js';
+import { answerDialog, mountDialogHost } from '@/test/dialogs.js';
 
 class MemoryStorage {
   readonly store = new Map<string, string>();
@@ -171,15 +172,11 @@ describe('FlowPanel — extension-contributed graphs (#5431 review)', () => {
     const container = await mount(host);
     selectGraph(container, host.graphs[0].doc.id);
 
-    const prompt = window.prompt;
-    window.prompt = () => null;
-    try {
-      const newButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'New');
-      assert.ok(newButton);
-      act(() => { newButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-    } finally {
-      window.prompt = prompt;
-    }
+    mountDialogHost();
+    const newButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'New');
+    assert.ok(newButton);
+    act(() => { newButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+    await answerDialog(null);
 
     assert.equal(useViewerStore.getState().flowDoc?.id, host.graphs[0].doc.id);
     assert.ok(!buttonLabels(container).includes('Save'));

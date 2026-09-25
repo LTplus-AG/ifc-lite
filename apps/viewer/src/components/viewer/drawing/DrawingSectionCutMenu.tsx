@@ -30,6 +30,7 @@ import {
   saveCurrentSectionCut,
   useSavedSectionCuts,
 } from '@/store/savedSectionCutsStore';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 
 export interface DrawingSectionCutMenuProps {
   /** The live cut's label, exactly as the header already formats it. */
@@ -41,13 +42,13 @@ export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) 
   const cuts = useSavedSectionCuts((s) => s.cuts);
   const activeCutId = useSavedSectionCuts((s) => s.activeCutId);
 
-  const handleSaveCurrent = () => {
-    const name = window.prompt(t('section2d.savedCuts.savePrompt'), '')?.trim();
+  const handleSaveCurrent = async () => {
+    const name = (await promptDialog({ title: t('section2d.savedCuts.savePrompt') }))?.trim();
     if (name) saveCurrentSectionCut(name);
   };
 
-  const handleRename = (id: string, currentName: string) => {
-    const name = window.prompt(t('section2d.savedCuts.renamePrompt'), currentName)?.trim();
+  const handleRename = async (id: string, currentName: string) => {
+    const name = (await promptDialog({ title: t('section2d.savedCuts.renamePrompt'), defaultValue: currentName }))?.trim();
     if (name) renameSavedSectionCut(id, name);
   };
 

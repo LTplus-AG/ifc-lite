@@ -45,6 +45,7 @@ import {
 } from '@/store/basket/basketCommands';
 import { getSmartBasketInputFromStore, isBasketIsolationActiveFromStore } from '@/store/basketVisibleSet';
 import { PresentationViewCard } from './PresentationViewCard';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 
 export function PresentationPanel() {
   const { t } = useTranslation();
@@ -181,14 +182,11 @@ export function PresentationPanel() {
     }
   }, [activateSavedView, basketViews, playingAll, toTransitionMs, wait]);
 
-  const setViewTransitionDuration = useCallback((viewId: string, currentTransitionMs: number | null) => {
+  const setViewTransitionDuration = useCallback(async (viewId: string, currentTransitionMs: number | null) => {
     const defaultSeconds = currentTransitionMs && currentTransitionMs > 0
       ? (currentTransitionMs / 1000).toFixed(1)
       : '';
-    const input = window.prompt(
-      'Transition duration in seconds (optional). Leave empty for default smooth transition.',
-      defaultSeconds,
-    );
+    const input = await promptDialog({ title: t('presentationPanel.transitionPrompt'), defaultValue: defaultSeconds });
     if (input === null) return;
 
     const trimmed = input.trim();
@@ -200,7 +198,7 @@ export function PresentationPanel() {
     const seconds = Number(trimmed);
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     setBasketViewTransitionMs(viewId, Math.round(seconds * 1000));
-  }, [setBasketViewTransitionMs]);
+  }, [setBasketViewTransitionMs, t]);
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">

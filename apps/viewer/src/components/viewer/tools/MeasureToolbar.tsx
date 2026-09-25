@@ -20,6 +20,7 @@ import { HudItem, HudSegmented, HudToolbar, type HudSegmentedOption } from '../.
 import { HudDivider, HudToggle } from '../../viewport-ui/hud/HudToggle';
 import { ANGLE_KIND_LABELS, MEASURE_MODE_LABELS } from './measure-modes/readouts';
 import type { AngleKind, MeasureMode } from '@/store/types';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 /** The Measurements panel counts as open when docked, floating or popped out. */
 function selectMeasurementsPanelOpen(s: {
@@ -70,8 +71,8 @@ export function MeasureToolbar() {
     title: t(hintKey),
   }));
 
-  const handleClear = useCallback(() => {
-    if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+  const handleClear = useCallback(async () => {
+    if (await confirmDialog({ title: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
   }, [clearMeasurements, t]);
 
   return (

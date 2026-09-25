@@ -7,6 +7,7 @@ import type React from 'react';
 import { posthog } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -358,6 +359,7 @@ function useDrawingExport({
   isPinned = false,
   cachedSheetTransformRef,
 }: UseDrawingExportParams): UseDrawingExportResult {
+  const { t } = useTranslation();
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
   // id), not in `ifcDataStore`, and in a federation the georef frame is the
@@ -1154,8 +1156,7 @@ function useDrawingExport({
             raster_capped: fit.capped,
           });
         } catch (err) {
-          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
-          alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+          toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { reason: err.message }) : t('section2d.export.pdfFailedUnknown'));
         }
       })();
       return;
@@ -1175,8 +1176,7 @@ function useDrawingExport({
     try {
       layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
     } catch (err) {
-      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
-      alert(err instanceof Error ? err.message : 'Could not export PDF: invalid scale.');
+      toast.error(err instanceof Error ? err.message : t('section2d.export.pdfInvalidScale'));
       return;
     }
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
@@ -1265,12 +1265,11 @@ function useDrawingExport({
         // only guards the scale/layout arithmetic). A failed chunk load —
         // the most likely failure here — used to surface as an unhandled
         // promise rejection with no user feedback at all. Match the
-        // synchronous path's alert() rather than fail silently.
-        // eslint-disable-next-line no-alert -- matches the synchronous scale-validation alert above.
-        alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+        // synchronous path's error toast rather than fail silently.
+        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { reason: err.message }) : t('section2d.export.pdfFailedUnknown'));
       }
     })();
-  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG]);
+  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
 
   // Print handler
   const handlePrint = useCallback(() => {
@@ -1281,7 +1280,7 @@ function useDrawingExport({
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) {
-      alert('Please allow popups to print');
+      toast.error(t('section2d.export.popupBlocked'));
       return;
     }
 
@@ -1338,7 +1337,7 @@ function useDrawingExport({
       </html>
     `);
     printWindow.document.close();
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
+  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
 
   return {
     formatDistance,

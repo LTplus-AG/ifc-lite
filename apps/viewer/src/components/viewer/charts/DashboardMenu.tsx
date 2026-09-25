@@ -16,6 +16,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { DASHBOARD_FILE_SUFFIX, exportDashboard, importDashboard } from '@/lib/charts/persistence';
 import { freshId } from '@/lib/charts/presets';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 
 export interface DashboardMenuProps {
   dashboard: DashboardSpec | null;
@@ -28,9 +29,9 @@ export function DashboardMenu({ dashboard, onUpsert, onDelete, onActivate }: Das
   const { t } = useTranslation();
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  const rename = (): void => {
+  const rename = async (): Promise<void> => {
     if (!dashboard) return;
-    const name = window.prompt('Dashboard name', dashboard.name)?.trim();
+    const name = (await promptDialog({ title: t('dashboardMenu.namePrompt'), defaultValue: dashboard.name }))?.trim();
     if (name && name !== dashboard.name) onUpsert({ ...dashboard, name });
   };
   const duplicate = (): void => {

@@ -29,10 +29,10 @@ import { FlavorImportPreview } from './FlavorImportPreview';
 import { flavorFailure, flavorSwitchPartial } from './flavor-dialog-feedback';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleNumber, useTranslation } from '@/i18n';
 import { captureClashConfig } from './flavor-dialog-capture';
 import { localizedFlavorName } from './localized-flavor-metadata';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface FlavorDialogProps {
   open: boolean;
@@ -124,7 +124,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmDelete', { id }))) return;
+    if (!(await confirmDialog({ title: t('extensionsFlavors.flavorDialog.confirmDelete', { id }), destructive: true }))) return;
     setBusy(true);
     try {
       await host.flavors.delete(id);
@@ -286,7 +286,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleReset = async () => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmReset'))) return;
+    if (!(await confirmDialog({ title: t('extensionsFlavors.flavorDialog.confirmReset'), destructive: true }))) return;
     setBusy(true);
     try {
       await host.flavors.resetToDefaults();

@@ -21,6 +21,7 @@ import type { Measurement } from '@/store/types.js';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts.js';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel.js';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud.js';
+import { answerDialog, mountDialogHost } from '@/test/dialogs.js';
 
 function ShortcutsHost() {
   useKeyboardShortcuts();
@@ -36,8 +37,6 @@ function press(key: string, init: KeyboardEventInit = {}): void {
   });
 }
 
-const originalConfirm = window.confirm;
-
 beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'measure',
@@ -52,7 +51,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.confirm = originalConfirm;
 });
 
 describe('Measure tool keyboard shortcuts do not clear measurements (#5598)', () => {
@@ -86,19 +84,19 @@ describe('Measure bar "Clear all" asks before clearing (#5598)', () => {
   /** The bar portals into the HUD host (#5502), so both mount together. */
   const renderBar = () => render(<><ViewportHud /><MeasureOverlay /></>);
 
-  it('keeps the measurements when the confirm is declined', () => {
-    const asked: string[] = [];
-    window.confirm = (message?: string) => { asked.push(message ?? ''); return false; };
+  it('keeps the measurements when the confirm is declined', async () => {
+    mountDialogHost();
     const container = renderBar();
     click(clearAllButton(container));
-    assert.deepEqual(asked, ['Clear every measurement? This cannot be undone.']);
+    assert.equal(await answerDialog(false), 'Clear every measurement? This cannot be undone.');
     assert.deepEqual(useViewerStore.getState().measurements, [MEASUREMENT]);
   });
 
-  it('clears the measurements when the confirm is accepted', () => {
-    window.confirm = () => true;
+  it('clears the measurements when the confirm is accepted', async () => {
+    mountDialogHost();
     const container = renderBar();
     click(clearAllButton(container));
+    await answerDialog(true);
     assert.deepEqual(useViewerStore.getState().measurements, []);
   });
 });

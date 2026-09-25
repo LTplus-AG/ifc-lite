@@ -18,10 +18,10 @@
  * not re-render on a locale switch, fails here by name.
  *
  * Deliberately not driven into every state: toast messages
- * (`toast.success('...')`/`toast.error('...')`) and `confirm()` prompts
- * are real translated calls in the source (see the catalogue keys ending
- * `...Toast`/`...Confirm`) but are not DOM text this renderer-focused
- * oracle can observe without mocking `toast`/`window.confirm` per call
+ * (`toast.success('...')`/`toast.error('...')`) and `confirmDialog()`
+ * questions are real translated calls in the source (see the catalogue keys
+ * ending `...Toast`/`...Confirm`) but are not DOM text this renderer-focused
+ * oracle can observe without mocking `toast`/opening each dialog per call
  * site across six components; they are intentionally left out of
  * `STATIC_KEYS`' coverage rather than faked into a false pass.
  */

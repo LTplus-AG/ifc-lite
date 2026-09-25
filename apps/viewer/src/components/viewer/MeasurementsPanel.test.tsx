@@ -16,6 +16,7 @@ import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
 import type { MeasurePoint } from '@/store/types.js';
 import { MeasurementsPanel } from './MeasurementsPanel.js';
+import { answerDialog, mountDialogHost } from '@/test/dialogs.js';
 
 function mp(x: number, y: number, z: number): MeasurePoint {
   return { x, y, z, screenX: x, screenY: y };
@@ -26,8 +27,6 @@ const START = mp(0, 0, 0);
 const END = mp(3, 3, -4);
 const M1 = { id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) };
 const M2 = { id: 'm2', start: START, end: mp(2, 0, 0), distance: 2 };
-
-const originalConfirm = window.confirm;
 
 beforeEach(() => {
   useViewerStore.setState({
@@ -50,7 +49,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.confirm = originalConfirm;
 });
 
 function tab(container: HTMLElement, label: string): Element {
@@ -103,17 +101,17 @@ describe('Measurements panel (#5502)', () => {
     );
   });
 
-  it('Clear all asks first and clears every kind when accepted', () => {
+  it('Clear all asks first and clears every kind when accepted', async () => {
     useViewerStore.setState({ measurements: [M1] });
-    const asked: string[] = [];
-    window.confirm = (m?: string) => { asked.push(m ?? ''); return asked.length > 1; };
+    mountDialogHost();
     const container = render(<MeasurementsPanel />);
     const clear = container.querySelector('button[title="Clear all"]');
     assert.ok(clear);
     click(clear);
+    assert.equal(await answerDialog(false), 'Clear every measurement? This cannot be undone.');
     assert.equal(useViewerStore.getState().measurements.length, 1, 'declined: nothing cleared');
     click(clear);
-    assert.deepEqual(asked, ['Clear every measurement? This cannot be undone.', 'Clear every measurement? This cannot be undone.']);
+    assert.equal(await answerDialog(true), 'Clear every measurement? This cannot be undone.');
     assert.equal(useViewerStore.getState().measurements.length, 0);
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 0);
     assert.equal(container.querySelector('button[title="Clear all"]'), null, 'nothing left to clear');

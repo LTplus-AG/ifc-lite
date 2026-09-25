@@ -59,18 +59,20 @@ import {
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
+import { toast } from '@/components/ui/toast';
 import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
 /** The preview's placement-cache ref, as this file passes it in. */
 type CacheRef = { current: CachedSheetTransform | null };
 
-// happy-dom has no `window.alert` — the production error path calls it on
-// failure, which would otherwise throw `ReferenceError: alert is not
-// defined` inside the fire-and-forget async IIFE and hang this test's
-// `addImageCalled` promise forever with no visible cause.
-(globalThis as unknown as { alert: (msg?: string) => void }).alert = (msg) => {
+// The export's failure path reports through `toast.error` from inside a
+// fire-and-forget async IIFE; echo it so a failure that hangs the completion
+// promise below shows its cause.
+const reportError = toast.error;
+toast.error = (message: string) => {
   // eslint-disable-next-line no-console -- test-only diagnostic for a swallowed export error
-  console.error('[handleExportPDF alert]', msg);
+  console.error('[handleExportPDF error]', message);
+  reportError(message);
 };
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console -- test-only diagnostic

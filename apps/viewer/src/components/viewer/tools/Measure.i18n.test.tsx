@@ -221,8 +221,9 @@ afterEach(() => {
 /** Static-key keys this suite's render states cannot show, each for a stated
  *  reason. */
 const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
-  // The "Clear all" confirm text goes to window.confirm, not the DOM
-  // (#5598); hooks/useKeyboardShortcuts.measure-clear.test.tsx asserts it.
+  // The "Clear all" confirm text shows only in the confirm dialog once the
+  // button is pressed (#5598, #5813); hooks/useKeyboardShortcuts.measure-clear
+  // .test.tsx asserts it.
   'measure.clearAllConfirm',
   // No fixture in this file records a CLOSED polyline (`closed: true`) — the
   // completed-polyline fixtures used throughout are all open runs, so the

@@ -33,16 +33,15 @@ import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
 import { PrivacyPanel } from './PrivacyPanel';
-import type { ExtensionInstallSummary } from '@/services/extensions/host';
-import { ExtensionInstallError } from '@/services/extensions/host';
+import { ExtensionInstallError, type ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
 import { HelpHint } from './HelpHint';
-import { useTranslation } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleNumber, useTranslation } from '@/i18n';
 import { formatExtensionDate } from './localized-date';
 import { localizedFlavorName } from './localized-flavor-metadata';
 import { useActiveFlavor } from './use-active-flavor';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 interface ExtensionsPanelProps {
   onClose?: () => void;
 }
@@ -410,8 +409,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     />
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}
-                      onClick={() => {
-                        if (!confirm(t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }))) return;
+                      onClick={async () => {
+                        if (!(await confirmDialog({ title: t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }), destructive: true }))) return;
                         host.uninstall(record.id).catch((err) => {
                           toast.error(t('extensionsFlavors.extensionsPanel.toast.operationFailed', {
                             operation: t('extensionsFlavors.extensionsPanel.operation.uninstall'),

@@ -66,6 +66,7 @@ export const miscPanelsAEn = {
   'presentationPanel.setTransitionTitle': 'Set transition duration',
   'presentationPanel.deleteViewTitle': 'Delete view',
   'presentationPanel.scrollRightTitle': 'Scroll right',
+  'presentationPanel.transitionPrompt': 'Transition duration in seconds (optional). Leave empty for default smooth transition.',
 
   // DeviationPanel
   'deviationPanel.sectionLabel': 'Deviation (BIM ↔ scan)',

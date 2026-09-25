@@ -111,4 +111,6 @@ export const mainToolbarEn = {
   'mainToolbar.themeTooltip': 'Toggle theme (Shift+click for secret mode)',
   'mainToolbar.infoAriaLabel': 'Info and keyboard shortcuts',
   'mainToolbar.infoTooltip': 'Info (?)',
+  // useFileCommands.tsx — adding an IFCX overlay to a non-IFCX model
+  'mainToolbar.ifcxOverlayOnIfc4': 'IFCX overlay files cannot be added to IFC4 models. Please load IFCX files separately.',
 } as const satisfies Record<string, TranslationValue>;

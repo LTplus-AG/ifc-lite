@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { MeasurementList } from './tools/MeasurementList';
 import { MeasurePointReadout } from './tools/MeasurePointReadout';
 import { MeasureQuantities } from './tools/MeasureQuantities';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 type PanelTab = 'list' | 'point' | 'quantities';
 
@@ -59,8 +60,8 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={() => {
-              if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+            onClick={async () => {
+              if (await confirmDialog({ title: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
             }}
             title={t('measure.clearAll')}
           >

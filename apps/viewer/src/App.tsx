@@ -18,6 +18,7 @@ import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { SourceHostProvider } from './services/sources/SourceHostProvider';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
+import { DialogHost } from './components/ui/confirm-dialog';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
 import { OverlayThemeSync } from './components/viewport-ui/OverlayThemeSync';
@@ -127,6 +128,8 @@ export function App({ sourceProviders }: AppProps = {}) {
               #5478 item 22), anchored to the viewport's bottom-right above
               the status bar, rather than the whole window's here. */}
           <ViewerLayout />
+          {/* The one host for confirmDialog/promptDialog (#5813). */}
+          <DialogHost />
           <StaleDeploymentNotice />
           <Analytics />
         </SourceHostProvider>

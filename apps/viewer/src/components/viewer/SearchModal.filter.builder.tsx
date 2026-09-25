@@ -43,6 +43,7 @@ import { FilterGroupEditor, type FilterGroupEditorModel, type FilterGroupEditorS
 import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
 import { readSelector } from '@/lib/search/selector-to-rules';
 import { useTranslation } from '@/i18n';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 
 export function SearchModalFilterBuilder() {
   const { t } = useTranslation();
@@ -156,10 +157,9 @@ export function SearchModalFilterBuilder() {
 
   // ── Preset handlers ─────────────────────────────────────────────────
 
-  const handleSavePreset = useCallback(() => {
+  const handleSavePreset = useCallback(async () => {
     if (totalRules === 0) return;
-    // eslint-disable-next-line no-alert
-    const name = window.prompt(t('searchModal.filterBuilder.saveFilterPrompt'), '');
+    const name = await promptDialog({ title: t('searchModal.filterBuilder.saveFilterPrompt') });
     if (!name) return;
     const result = saveFilter(name, filter.groups);
     setSavedPresets(result.presets);

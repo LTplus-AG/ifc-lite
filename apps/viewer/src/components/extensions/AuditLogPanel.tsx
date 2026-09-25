@@ -34,6 +34,7 @@ import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
 import { formatExtensionDate } from './localized-date';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 /** Maps each event kind to its catalogue key — same data-table pattern
  *  `shared-commands.en.ts`'s export/camera registries use: the record
@@ -110,8 +111,8 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
     toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 
-  const handleClear = () => {
-    if (!confirm(t('extensionsPanels.auditLogPanel.clearConfirm'))) return;
+  const handleClear = async () => {
+    if (!(await confirmDialog({ title: t('extensionsPanels.auditLogPanel.clearConfirm'), destructive: true }))) return;
     host.audit.clear();
     // Wipe the IDB mirror too — otherwise reload resurrects what the
     // user just asked to forget.

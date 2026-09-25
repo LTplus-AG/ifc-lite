@@ -1191,6 +1191,12 @@ jobs:
         run: node scripts/check-icon-button-adoption.mjs
       - name: Check icon-button adoption gate's own tests
         run: node --test scripts/check-icon-button-adoption.test.mjs
+      # The viewer never calls native alert/confirm/prompt (#5813): they block
+      # the frame loop and cannot be answered from a test. Zero tolerance.
+      - name: Check for native browser dialogs
+        run: node scripts/check-native-dialogs.mjs
+      - name: Check native-dialog gate's own tests
+        run: node --test scripts/check-native-dialogs.test.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the

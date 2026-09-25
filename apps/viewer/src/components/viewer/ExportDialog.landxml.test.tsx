@@ -136,6 +136,28 @@ function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
   return { filename, bytes };
 }
 
+/**
+ * The LandXML conversion runs asynchronously since #5942 (it may call the
+ * appearance planner to write draped imagery), so its download lands after
+ * the click returns. Keep the seams patched until it has.
+ */
+async function captureAsyncDownload(run: () => void): Promise<{ filename: string }> {
+  const originalCreate = URL.createObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  let filename = '';
+  URL.createObjectURL = (() => 'blob:landxml-test') as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
+  try {
+    run();
+    for (let tick = 0; tick < 50 && !filename; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  } finally {
+    URL.createObjectURL = originalCreate;
+    HTMLAnchorElement.prototype.click = originalClick;
+  }
+  return { filename };
+}
+
 describe('ExportDialog LandXML source-format export (#5175)', () => {
   function sourceButton(): HTMLButtonElement | undefined {
     return [...document.querySelectorAll('button')]
@@ -232,7 +254,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     return model;
   }
 
-  it('records one completed IFC download with the initiating surface (#5844)', () => {
+  it('records one completed IFC download with the initiating surface (#5844)', async () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
@@ -244,7 +266,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
         render(<ExportDialog surface={surface} />);
         openDialog();
-        const { filename } = captureDownload(() => click(exportButton()));
+        const { filename } = await captureAsyncDownload(() => click(exportButton()));
         assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
         assert.deepEqual(completions[index], { format: 'ifc', surface });
         assert.equal(completions.length, index + 1, 'one completion per IFC file');

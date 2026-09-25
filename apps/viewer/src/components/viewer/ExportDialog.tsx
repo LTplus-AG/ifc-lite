@@ -305,7 +305,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
     if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      const outcome = landXmlIfcExportOutcome({ document: selectedModel.landXmlDocument, name: selectedModel.name }, t);
+      const outcome = await landXmlIfcExportOutcome({ document: selectedModel.landXmlDocument, name: selectedModel.name,
+        imagery: 'terrainImagery' in selectedModel ? selectedModel.terrainImagery : undefined }, t); // #5942 §15.5
       if (outcome.success) {
         trackExportCompleted({ format: 'ifc', surface });
       }

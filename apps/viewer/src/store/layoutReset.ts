@@ -17,8 +17,9 @@
 
 import { getViewerStoreApi } from './index.js';
 
-/** The hierarchy pane's initial size (`ViewerLayout`), and what a reset
- *  returns it to. */
+/** The hierarchy pane's initial size in percent (`ViewerLayout`), and what a
+ *  reset returns it to. The imperative `resize()` reads a bare number as
+ *  pixels, so the reset passes it as a `%` string. */
 export const LEFT_PANEL_DEFAULT_SIZE = 22;
 
 export function resetLayout(store = getViewerStoreApi()): void {

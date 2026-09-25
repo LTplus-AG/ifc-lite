@@ -257,7 +257,7 @@ export function ViewerLayout() {
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
-  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(LEFT_PANEL_DEFAULT_SIZE); }, [layoutResetEpoch]);
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 

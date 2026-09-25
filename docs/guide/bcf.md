@@ -229,11 +229,24 @@ Clash review status (`open` / `resolved` / `accepted`, tracked with an optional 
 
 ## 3D Overlay Markers
 
-For rendering BCF topics as markers in a 3D view, the package provides viewer-agnostic marker positioning plus a DOM renderer:
+For rendering BCF topics as markers in a 3D view, the package provides viewer-agnostic marker positioning. `computeMarkerPositions` turns topics into world-space (Y-up) markers — a pin position, an optional connector anchor on the referenced component, and the topic's title, status and priority — and leaves drawing them to your renderer:
 
 ```typescript
-import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
+import { computeMarkerPositions, type BCFTopic, type OverlayBBox } from '@ifc-lite/bcf';
+
+declare const topics: BCFTopic[];
+declare function boundsForGuid(ifcGuid: string): OverlayBBox | null;
+
+const markers = computeMarkerPositions(topics, boundsForGuid, {
+  statusFilter: ['Open', 'In Progress'],
+});
+for (const marker of markers) {
+  // Project marker.position (and marker.connectorAnchor, when present) to
+  // screen space with your own camera, then draw a pin coloured by marker.status.
+}
 ```
+
+The package no longer ships a DOM renderer for these markers. The IFClite viewer draws them as `Pin` / `AnchoredCard` primitives on its shared scene-overlay projector; any other host renders them from `computeMarkerPositions`' output.
 
 ## BCF Servers (BCF API)
 

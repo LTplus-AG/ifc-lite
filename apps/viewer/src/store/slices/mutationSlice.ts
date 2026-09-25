@@ -53,11 +53,11 @@ import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 
 export type { AuthoredElement };
-import { createCostUndoMutations, mirrorCreateEntityRedo, mirrorSourceEntityRestore, type CostUndoMethods } from './mutation-cost-undo.js';
-import { stashAndPruneEntityMesh, restoreStashedEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
+import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
+import { stashAndPruneEntityMesh, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { pruneMutationHistory } from './mutation-history-prune.js';
-import { invalidateHistoryPatch, isTargetTombstoned } from './mutation-redo-remote-guard.js';
+import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
@@ -82,8 +82,9 @@ import {
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { replayAppearanceHistory } from '@/lib/appearance/history.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { syncTypeOverride } from './mutation-history-apply.js';
+import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -399,6 +400,12 @@ export interface MutationSlice extends CostUndoMethods {
   ) => string | null;
   /** Tag already-recorded mutations as one undo batch (SDK `bim.mutate.batch`). */
   tagMutationBatch: (mutationIds: readonly string[], batchId: string) => void;
+  /**
+   * Record mutations a bulk writer already applied to the model's view
+   * (Bulk editor, CSV import) as ONE undo step: one batch id, redo cleared,
+   * model marked dirty, one store update. Returns the batch id (null if empty); pass it back for a later chunk.
+   */
+  recordMutationBatch: (modelId: string, mutations: readonly Mutation[], batchId?: string) => string | null;
   /**
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
@@ -749,20 +756,6 @@ function generateChangeSetId(): string {
   return `cs_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Push the overlay's effective class for an entity into the model's
- * EntityTable as an additive display override, so a UI retype reflects
- * immediately in the inspector, hover, and the (mutationVersion-rebuilt)
- * hierarchy tree. Reads the current overlay, so it also clears the override
- * on undo (removeTypeMutation → null) and re-applies it on redo.
- */
-function syncTypeOverride(get: () => ViewerState, modelId: string, entityId: number): void {
-  const view = get().mutationViews.get(modelId);
-  const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
-  const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
-  dataStore?.entities?.setTypeOverride?.(entityId, newType);
-}
-
 function getOrCreateStoreEditor(
   get: () => ViewerState,
   // Editors are cached in-place on the (non-reactive) `storeEditors`
@@ -1095,12 +1088,6 @@ function readNewEntityGuid(editor: StoreEditor, expressId: number): string | nul
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
 }
 
-/** Decode the `@N` form used to encode positional indices into Mutation.attributeName. */
-function positionalIndex(attributeName: string | undefined): number | null {
-  if (!attributeName || attributeName[0] !== '@') return null;
-  const n = Number(attributeName.slice(1));
-  return Number.isFinite(n) && n >= 0 && Number.isInteger(n) ? n : null;
-}
 
 export const createMutationSlice: StateCreator<
   ViewerState,
@@ -1579,6 +1566,8 @@ export const createMutationSlice: StateCreator<
     get().tagMutationBatch(ids, batchId);
     return batchId;
   },
+
+  recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),
 
   tagMutationBatch: (mutationIds, batchId) => {
     if (mutationIds.length === 0) return;
@@ -2552,395 +2541,9 @@ export const createMutationSlice: StateCreator<
   },
 
   // Undo/Redo
-  undo: (modelId) => {
-    if (replayAppearanceHistory(api, modelId, 'undo')) return;
-    const state = get();
-    const undoStack = state.undoStacks.get(modelId) || [];
-    if (undoStack.length === 0) return;
+  undo: (modelId) => replayHistory(get, set, api, modelId, 'undo'),
 
-    const mutation = undoStack[undoStack.length - 1];
-    // Batch awareness (see mutation-batch-tags.ts): capture the batchId, undo
-    // this one mutation, then tail-recurse while the next top shares it.
-    const batchId = state.mutationBatchTags.get(mutation.id);
-
-    if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
-      const parts = mutation.attributeName.split('.');
-      const entity = parts[1] as 'projectedCRS' | 'mapConversion';
-      const field = parts[2];
-      set((s) => {
-        const newGeorefMuts = new Map(s.georefMutations);
-        const modelMuts = { ...newGeorefMuts.get(modelId) };
-        const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
-        if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
-          entityMuts[field] = mutation.oldValue;
-        } else {
-          delete entityMuts[field];
-        }
-        if (Object.keys(entityMuts).length === 0) {
-          delete modelMuts[entity];
-        } else {
-          modelMuts[entity] = entityMuts as typeof modelMuts[typeof entity];
-        }
-        if (Object.keys(modelMuts).length === 0) {
-          newGeorefMuts.delete(modelId);
-        } else {
-          newGeorefMuts.set(modelId, modelMuts);
-        }
-
-        const newUndoStacks = new Map(s.undoStacks);
-        newUndoStacks.set(modelId, undoStack.slice(0, -1));
-        const newRedoStacks = new Map(s.redoStacks);
-        const redoStack = newRedoStacks.get(modelId) || [];
-        newRedoStacks.set(modelId, [...redoStack, mutation]);
-
-        return {
-          georefMutations: newGeorefMuts,
-          undoStacks: newUndoStacks,
-          redoStacks: newRedoStacks,
-          mutationVersion: s.mutationVersion + 1,
-        };
-      });
-      return;
-    }
-
-    const view = state.mutationViews.get(modelId);
-    if (!view) return;
-
-    // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
-    if (isTargetTombstoned(view, mutation)) {
-      set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-    } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
-      // Decide by mutation TYPE, not by `oldValue === null`: a property can have
-      // a null (unset) value yet still have existed before the edit (an unset
-      // Boolean). Undoing a CREATE removes the property; undoing an UPDATE
-      // restores its prior value — which may legitimately be null/unset (#1107).
-      if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName && mutation.propName) {
-        view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      } else if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
-        view.setProperty(
-          mutation.entityId,
-          mutation.psetName,
-          mutation.propName,
-          mutation.oldValue,
-          mutation.valueType,
-          undefined,
-          true // skipHistory
-        );
-      }
-    } else if (mutation.type === 'DELETE_PROPERTY') {
-      if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
-        view.setProperty(
-          mutation.entityId,
-          mutation.psetName,
-          mutation.propName,
-          mutation.oldValue,
-          mutation.valueType,
-          undefined,
-          true // skipHistory
-        );
-      }
-    } else if (mutation.type === 'CREATE_QUANTITY') {
-      // Undo creation: remove the quantity mutation
-      view.removeQuantityMutation(mutation.entityId, mutation.psetName!, mutation.propName);
-    } else if (mutation.type === 'UPDATE_QUANTITY') {
-      if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined && mutation.oldValue !== null) {
-        view.setQuantity(
-          mutation.entityId,
-          mutation.psetName,
-          mutation.propName,
-          Number(mutation.oldValue),
-          undefined,
-          undefined,
-          true // skipHistory
-        );
-      }
-    } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
-      if (mutation.attributeName) {
-        if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
-          view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.oldValue), undefined, true);
-        } else {
-          view.removeAttributeMutation(mutation.entityId, mutation.attributeName);
-        }
-      }
-    } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
-      // Positional attrs encode their index in `@N` since the existing
-      // Mutation shape has no dedicated field for it.
-      const index = positionalIndex(mutation.attributeName);
-      if (index !== null) {
-        if (mutation.oldValue === null || mutation.oldValue === undefined) {
-          view.removePositionalMutation(mutation.entityId, index);
-        } else {
-          view.setPositionalAttribute(mutation.entityId, index, mutation.oldValue as IfcAttributeValue, true);
-        }
-      }
-      // If this mutation carried a mesh translation (gizmo / numeric
-      // move), reverse it so the rendered mesh follows the undo.
-      const meshMove = get().mutationMeshTranslations.get(mutation.id);
-      if (meshMove) {
-        get().setPendingMeshTranslations(
-          new Map([[meshMove.globalId, [
-            -meshMove.rendererDelta[0],
-            -meshMove.rendererDelta[1],
-            -meshMove.rendererDelta[2],
-          ]]]),
-        );
-      }
-    } else if (mutation.type === 'CREATE_ENTITY') {
-      // Undo of a create: stash the NewEntity payload so a subsequent redo
-      // can restore it. Without this, redo finds an empty stash and becomes
-      // a no-op for the create-then-undo-then-redo path.
-      const overlay = view.getNewEntity(mutation.entityId);
-      if (overlay) {
-        set((s) => {
-          const next = new Map(s.removedNewEntities);
-          next.set(`${modelId}:${mutation.entityId}`, overlay);
-          return { removedNewEntities: next };
-        });
-      }
-      syncAuthoredTreeEntry(get(), modelId, mutation.entityId, overlay, false);
-      // The view's `deleteEntity` returns false if it's already gone, which
-      // is fine for redo to re-establish.
-      view.deleteEntity(mutation.entityId);
-      get().mirrorEntityRemove(modelId, mutation.entityId);
-      // Also remove the created mesh from the scene + geometryResult (#4925).
-      stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
-    } else if (mutation.type === 'DELETE_ENTITY') {
-      // Restore a source tombstone or replay an overlay-only entity.
-      const stashKey = `${modelId}:${mutation.entityId}`;
-      const stashed = get().removedNewEntities.get(stashKey);
-      if (stashed) {
-        view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
-        syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
-      } else {
-        view.restoreFromTombstone(mutation.entityId);
-        mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
-      }
-      // Re-insert the mesh removeEntity stashed when it pruned geometryResult (#4925).
-      restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
-      // Also un-hide — covers the (no-mesh) fallback path in removeEntity.
-      const cross = get() as unknown as {
-        toGlobalId?: (modelId: string, expressId: number) => number;
-        showEntity?: (id: number) => void;
-      };
-      if (cross.toGlobalId && cross.showEntity) {
-        const globalId = cross.toGlobalId(modelId, mutation.entityId);
-        cross.showEntity(globalId);
-      }
-    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
-      // `oldValue` is the class right before this retype: restore it when an
-      // earlier retype is still on the stack, otherwise drop the intent to
-      // revert the entity to its original class entirely.
-      const prevType = mutation.oldValue;
-      if (prevType != null && prevType !== '') {
-        view.setEntityType(mutation.entityId, String(prevType), undefined, undefined, true);
-      } else {
-        view.removeTypeMutation(mutation.entityId);
-      }
-      syncTypeOverride(get, modelId, mutation.entityId);
-    }
-
-    set((s) => {
-      const newUndoStacks = new Map(s.undoStacks);
-      newUndoStacks.set(modelId, undoStack.slice(0, -1));
-
-      const newRedoStacks = new Map(s.redoStacks);
-      const redoStack = newRedoStacks.get(modelId) || [];
-      newRedoStacks.set(modelId, [...redoStack, mutation]);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    });
-
-    if (batchId !== undefined) {
-      const nextStack = get().undoStacks.get(modelId) || [];
-      if (nextStack.length > 0) {
-        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
-        if (nextBatchId === batchId) {
-          get().undo(modelId);
-        }
-      }
-    }
-  },
-
-  redo: (modelId) => {
-    if (replayAppearanceHistory(api, modelId, 'redo')) return;
-    const state = get();
-    const redoStack = state.redoStacks.get(modelId) || [];
-    if (redoStack.length === 0) return;
-
-    const mutation = redoStack[redoStack.length - 1];
-    const batchId = state.mutationBatchTags.get(mutation.id);
-
-    if (mutation.type === 'UPDATE_ATTRIBUTE' && mutation.attributeName?.startsWith('georef.')) {
-      const parts = mutation.attributeName.split('.');
-      const entity = parts[1] as 'projectedCRS' | 'mapConversion';
-      const field = parts[2];
-      set((s) => {
-        const newGeorefMuts = new Map(s.georefMutations);
-        const modelMuts = { ...newGeorefMuts.get(modelId) };
-        const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
-        if (mutation.newValue !== undefined && mutation.newValue !== null) {
-          entityMuts[field] = mutation.newValue;
-        } else {
-          delete entityMuts[field];
-        }
-        if (Object.keys(entityMuts).length === 0) {
-          delete modelMuts[entity];
-        } else {
-          modelMuts[entity] = entityMuts as typeof modelMuts[typeof entity];
-        }
-        if (Object.keys(modelMuts).length === 0) {
-          newGeorefMuts.delete(modelId);
-        } else {
-          newGeorefMuts.set(modelId, modelMuts);
-        }
-
-        const newRedoStacks = new Map(s.redoStacks);
-        newRedoStacks.set(modelId, redoStack.slice(0, -1));
-        const newUndoStacks = new Map(s.undoStacks);
-        const undoStack = newUndoStacks.get(modelId) || [];
-        newUndoStacks.set(modelId, [...undoStack, mutation]);
-
-        return {
-          georefMutations: newGeorefMuts,
-          undoStacks: newUndoStacks,
-          redoStacks: newRedoStacks,
-          mutationVersion: s.mutationVersion + 1,
-        };
-      });
-      return;
-    }
-
-    const view = state.mutationViews.get(modelId);
-    if (!view) return;
-
-    // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
-    if (isTargetTombstoned(view, mutation)) {
-      set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-    } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
-      if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
-        view.setProperty(
-          mutation.entityId,
-          mutation.psetName,
-          mutation.propName,
-          mutation.newValue,
-          mutation.valueType,
-          undefined,
-          true // skipHistory
-        );
-      }
-    } else if (mutation.type === 'DELETE_PROPERTY') {
-      if (mutation.psetName && mutation.propName) {
-        view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      }
-    } else if (mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY') {
-      if (mutation.psetName && mutation.propName && mutation.newValue !== undefined) {
-        view.setQuantity(
-          mutation.entityId,
-          mutation.psetName,
-          mutation.propName,
-          Number(mutation.newValue),
-          undefined,
-          undefined,
-          true // skipHistory
-        );
-      }
-    } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
-      if (mutation.attributeName && mutation.newValue !== undefined) {
-        view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
-      }
-    } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
-      const index = positionalIndex(mutation.attributeName);
-      if (index !== null && mutation.newValue !== undefined) {
-        view.setPositionalAttribute(mutation.entityId, index, mutation.newValue as IfcAttributeValue, true);
-      }
-      // Replay the mesh translation forward so the rendered mesh
-      // follows the redo — mirror of the undo reversal above.
-      const meshMove = get().mutationMeshTranslations.get(mutation.id);
-      if (meshMove) {
-        get().setPendingMeshTranslations(
-          new Map([[meshMove.globalId, meshMove.rendererDelta]]),
-        );
-      }
-    } else if (mutation.type === 'CREATE_ENTITY') {
-      const stashKey = `${modelId}:${mutation.entityId}`;
-      const stashed = get().removedNewEntities.get(stashKey);
-      if (stashed) {
-        view.restoreNewEntity(stashed);
-        mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
-        syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
-      } else {
-        // Source-buffer entities have no stash; the editor's deleteEntity
-        // call simply re-tombstoned them — which is exactly what we want
-        // here? No — for CREATE_ENTITY redo we want the entity to come back.
-        // Source-entity creates are not a real path; CREATE_ENTITY in this
-        // codebase only ever fires for overlay-added entities. Nothing to
-        // do if the stash is empty (means the redo is unreachable).
-      }
-      // Bring the mesh back too, inverse of the undo handler's stash (#4925).
-      restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
-    } else if (mutation.type === 'DELETE_ENTITY') {
-      // Redo of a delete: tombstone again. For overlay-only entities we
-      // first stash the NewEntity (it'll be re-fetched for the next undo).
-      const overlay = view.getNewEntity(mutation.entityId);
-      if (overlay) {
-        set((s) => {
-          const next = new Map(s.removedNewEntities);
-          next.set(`${modelId}:${mutation.entityId}`, overlay);
-          return { removedNewEntities: next };
-        });
-      }
-      syncAuthoredTreeEntry(get(), modelId, mutation.entityId, overlay, false);
-      view.deleteEntity(mutation.entityId);
-      get().mirrorEntityRemove(modelId, mutation.entityId);
-      // Drop the mesh back out, inverse of the undo handler's restore (#4925).
-      stashAndPruneEntityMesh(get, set, modelId, mutation.entityId);
-      // Re-hide the mesh — symmetric with the menu's delete handler
-      // and with the undo path above.
-      const cross = get() as unknown as {
-        toGlobalId?: (modelId: string, expressId: number) => number;
-        hideEntity?: (id: number) => void;
-      };
-      if (cross.toGlobalId && cross.hideEntity) {
-        const globalId = cross.toGlobalId(modelId, mutation.entityId);
-        cross.hideEntity(globalId);
-      }
-    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
-      const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
-      if (newType) {
-        view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
-      }
-      syncTypeOverride(get, modelId, mutation.entityId);
-    }
-
-    set((s) => {
-      const newRedoStacks = new Map(s.redoStacks);
-      newRedoStacks.set(modelId, redoStack.slice(0, -1));
-
-      const newUndoStacks = new Map(s.undoStacks);
-      const undoStack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...undoStack, mutation]);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    });
-
-    if (batchId !== undefined) {
-      const nextStack = get().redoStacks.get(modelId) || [];
-      if (nextStack.length > 0) {
-        const nextBatchId = get().mutationBatchTags.get(nextStack[nextStack.length - 1].id);
-        if (nextBatchId === batchId) {
-          get().redo(modelId);
-        }
-      }
-    }
-  },
+  redo: (modelId) => replayHistory(get, set, api, modelId, 'redo'),
 
   canUndo: (modelId) => {
     const stack = get().undoStacks.get(modelId);

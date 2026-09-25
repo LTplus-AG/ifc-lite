@@ -165,6 +165,7 @@ import {
     packRteCameraOrigin,
     packRteFragmentSpace,
 } from './mesh-rte-uniforms.js';
+import { packMeshMaterial } from './mesh-material.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
@@ -2006,9 +2007,7 @@ export class Renderer {
                     meshBuf[34] = mesh.color[2];
                     // Selected meshes always keep their own alpha so highlights stay opaque
                     meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
-                    meshBuf[36] = mesh.material?.metallic ?? 0.0;
-                    meshBuf[37] = mesh.material?.roughness ?? 0.6;
-                    meshBuf[38] = 0; meshBuf[39] = 0;
+                    packMeshMaterial(meshBuf, mesh.color[3], mesh.material);
 
                     // Section plane data (offset 40-43)
                     if (sectionPlaneData) {
@@ -2511,11 +2510,9 @@ export class Renderer {
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
                 tpl[24] = 0; tpl[25] = 0; tpl[26] = 1; tpl[27] = 0;
                 tpl[28] = 0; tpl[29] = 0; tpl[30] = 0; tpl[31] = 1;
-                // Color placeholder — overwritten per batch
-                // tpl[32..35] set per batch
-                tpl[36] = 0.0; // metallic
-                tpl[37] = 0.6; // roughness
-                tpl[38] = 0; tpl[39] = 0; // padding
+                // Colour + material row (tpl[32..39]) are patched per draw; the
+                // instanced passes keep this opaque default.
+                packMeshMaterial(tpl);
                 if (sectionPlaneData) {
                     tpl[40] = sectionPlaneData.normal[0];
                     tpl[41] = sectionPlaneData.normal[1];
@@ -2549,11 +2546,13 @@ export class Renderer {
                 const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
                     if (!batch.bindGroup || !batch.uniformBuffer) return;
 
-                    // Patch only the per-batch color (4 floats at offset 32)
+                    // Patch the per-batch colour, and the material its AUTHORED
+                    // alpha implies: an X-Ray fade is not glass (#5386).
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
+                    packMeshMaterial(tpl, batch.color[3]);
 
                     // Per-batch local frame: the batch's vertices are stored
                     // RELATIVE to batch.origin (f32-small), so set the model
@@ -2747,6 +2746,16 @@ export class Renderer {
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
                         tpl[35] = txAlpha;
+                        // Same authored-alpha + material contract as the flat/batched
+                        // paths (mesh-material.ts) — a call with neither argument
+                        // silently gave every textured metal or translucent mesh the
+                        // opaque dielectric default (#5623 review). The pipeline
+                        // itself is still opaque/depth-write only (no blend state,
+                        // see `txAlpha` above), so a translucent authored alpha still
+                        // never actually blends here — only the glass/roughness
+                        // CHOICE in the shader follows the same rule as everywhere
+                        // else, for the same reason `tm.material` does.
+                        packMeshMaterial(tpl, tm.color[3], tm.material);
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);
@@ -2823,7 +2832,7 @@ export class Renderer {
                 // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
                 // (the overlay pipeline now has src-alpha blending so low-alpha ghost
                 // tints composite correctly against the opaque pass) AND skip the
-                // glass-fresnel branch (which is meant for real glass materials and
+                // specular term (glass reflections are meant for real glass and
                 // would whiten low-alpha colour overrides at grazing angles).
                 const overrideBatches = this.scene.getOverrideBatches();
                 if (overrideBatches.length > 0) {
@@ -2940,9 +2949,7 @@ export class Renderer {
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                         tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
-                        tpl[36] = mesh.material?.metallic ?? 0.0;
-                        tpl[37] = mesh.material?.roughness ?? 0.6;
-                        tpl[38] = 0; tpl[39] = 0;
+                        packMeshMaterial(tpl, mesh.color[3], mesh.material);
                         if (sectionPlaneData) {
                             tpl[40] = sectionPlaneData.normal[0];
                             tpl[41] = sectionPlaneData.normal[1];
@@ -3002,9 +3009,7 @@ export class Renderer {
                     tpl.set(mesh.transform.m, 16);
                     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
-                    tpl[36] = mesh.material?.metallic ?? 0.0;
-                    tpl[37] = mesh.material?.roughness ?? 0.6;
-                    tpl[38] = 0; tpl[39] = 0;
+                    packMeshMaterial(tpl, mesh.color[3], mesh.material);
                     if (sectionPlaneData) {
                         tpl[40] = sectionPlaneData.normal[0];
                         tpl[41] = sectionPlaneData.normal[1];
@@ -3459,11 +3464,13 @@ export class Renderer {
     /**
      * Show (or clear) the clash-overlap box: the wireframe AABB of a focused
      * clash, drawn in `color` so the overlap region reads as a distinct third
-     * colour next to the two glowing clash elements (#1277). Pass `null` to
-     * clear. `min`/`max` are world-space corners (clash works in world frame).
+     * colour next to the two glowing clash elements (#1277). Omit `color` to
+     * draw it in the overlay theme's `clashOverlap` and keep following it
+     * across `setOverlayTheme` calls (#5490). Pass `null` to clear.
+     * `min`/`max` are world-space corners (clash works in world frame).
      */
     setClashOverlapBox(
-        box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
+        box: { min: [number, number, number]; max: [number, number, number]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashOverlapBox(box);
     }
@@ -3472,11 +3479,13 @@ export class Renderer {
      * Draw the focused clash's CONTACT geometry as 3D line segments — the real
      * shared-face polygon outlines / intersection lines, not the AABB box.
      * `vertices` is a flat line-list (x,y,z per endpoint, 2 endpoints per
-     * segment) in world frame. Pass `null` to clear. Shares the clash-box line
-     * buffer, so only one of this / setClashOverlapBox is shown at a time.
+     * segment) in world frame. Omit `color` to follow the overlay theme's
+     * `clashOverlap`, as for `setClashOverlapBox`. Pass `null` to clear. Shares
+     * the clash-box line buffer, so only one of this / setClashOverlapBox is
+     * shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }
@@ -3488,10 +3497,11 @@ export class Renderer {
      * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
      * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
      * which one is current for a given clash (solid when the kernel resolved
-     * one, box/lines as the fallback when it didn't).
+     * one, box/lines as the fallback when it didn't). Omit `color` to follow
+     * the overlay theme's `clashOverlap`, as for `setClashOverlapBox`.
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }

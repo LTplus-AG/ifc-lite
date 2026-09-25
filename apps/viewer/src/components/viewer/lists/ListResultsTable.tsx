@@ -79,8 +79,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
   const models = useViewerStore((s) => s.models);
   const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -105,7 +103,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     });
   }, [
     result.rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
-    selectedStoreys, typeVisibility, hiddenEntitiesByModel, isolatedEntitiesByModel, models,
+    selectedStoreys, typeVisibility, models,
     activeBasketViewId, geometryResult,
   ]);
 

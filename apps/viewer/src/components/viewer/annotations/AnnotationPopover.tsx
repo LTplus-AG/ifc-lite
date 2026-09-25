@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { HudSurface } from '@/components/viewport-ui/hud';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
@@ -151,29 +152,26 @@ export function AnnotationPopover({
   const overHardLimit = draft.length > MAX_NOTE_LEN;
 
   return (
-    <div
+    <HudSurface
       ref={containerRef}
       role="dialog"
       aria-label={t('annotations.popover.ariaLabel')}
       style={{ left, top, width: POPOVER_WIDTH }}
       className={cn(
-        'absolute z-[60] pointer-events-auto',
-        'rounded-md border border-amber-300/60 dark:border-amber-700/40',
-        'bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md',
-        'shadow-[0_8px_32px_rgba(0,0,0,0.18)]',
-        'overflow-hidden',
+        // The shared viewport card (#5491): no bespoke hue, border or shadow.
+        'absolute z-[60] overflow-hidden',
         'animate-in fade-in-0 zoom-in-95 duration-150',
       )}
     >
-      {/* Header — entity context + close. Amber accent strip on the
-          left signals this is an annotation surface. */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-amber-50/40 dark:bg-amber-950/20">
+      {/* Header — entity context + close. The ink dot echoes the pin this
+          popover belongs to. */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" aria-hidden />
-          <span className="font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300 truncate">
+          <span className="h-2 w-2 rounded-full bg-overlay-ink shrink-0" aria-hidden />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-popover-foreground truncate">
             {entityType ? entityType : t('annotations.popover.headerFallbackLabel')}
             {annotation.entityExpressId !== null && (
-              <span className="ml-1 text-zinc-400 dark:text-zinc-500">
+              <span className="ml-1 text-muted-foreground">
                 #{annotation.entityExpressId}
               </span>
             )}
@@ -202,12 +200,12 @@ export function AnnotationPopover({
               maxLength={MAX_NOTE_LEN + 100}
               className={cn(
                 'w-full resize-none font-mono text-[11px] leading-relaxed',
-                'bg-zinc-50 dark:bg-zinc-900/60 text-zinc-800 dark:text-zinc-200',
-                'border border-zinc-200 dark:border-zinc-800 rounded-sm',
+                'bg-background/60 text-popover-foreground',
+                'border border-border rounded-sm',
                 'px-2 py-1.5 outline-none focus:ring-1',
                 overHardLimit
                   ? 'focus:ring-red-400 border-red-300 dark:border-red-700/60'
-                  : 'focus:ring-amber-400/50 focus:border-amber-300/60',
+                  : 'focus:ring-overlay-accent/50 focus:border-overlay-accent',
               )}
               spellCheck
               autoCorrect="on"
@@ -223,7 +221,7 @@ export function AnnotationPopover({
                     overHardLimit
                       ? 'text-red-500'
                       : overSoftLimit
-                        ? 'text-amber-600 dark:text-amber-400'
+                        ? 'text-status-warn'
                         : 'text-zinc-400',
                   )}
                 >
@@ -242,7 +240,7 @@ export function AnnotationPopover({
               </Button>
               <Button
                 size="sm"
-                className="h-7 px-2 text-[11px] bg-amber-500 hover:bg-amber-500/90 text-white"
+                className="h-7 px-2 text-[11px] border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
                 onClick={handleSave}
                 disabled={overHardLimit}
               >
@@ -289,6 +287,6 @@ export function AnnotationPopover({
           </>
         )}
       </div>
-    </div>
+    </HudSurface>
   );
 }

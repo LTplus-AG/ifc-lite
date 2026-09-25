@@ -19,7 +19,6 @@ import {
   Calendar,
   CalendarPlus,
   Plus,
-  X,
   Trash2,
   Undo2,
   Redo2,
@@ -41,7 +40,6 @@ import { AnimationSettingsPopover } from './AnimationSettingsPopover';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 
 interface GanttToolbarProps {
-  onClose?: () => void;
   onOpenGenerate?: () => void;
   /** Opens the file picker to import an MS Project (MSPDI) / Gantt CSV file. */
   onOpenImport?: () => void;
@@ -70,7 +68,7 @@ const SCALE_OPTIONS: Array<{ value: GanttTimeScale; labelKey: TranslationKey }> 
 const ALL_SCHEDULES_SENTINEL = '__all__';
 const localizedCount = (locale: string, count: number) => ({ count, formattedCount: formatLocaleNumber(locale, count) });
 
-export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
+export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: GanttToolbarProps) {
   const { t, locale } = useTranslation();
   const scheduleData = useViewerStore(s => s.scheduleData);
   const scheduleRange = useViewerStore(s => s.scheduleRange);
@@ -357,12 +355,6 @@ export function GanttToolbar({ onClose, onOpenGenerate, onOpenImport, canGenerat
         animationEnabled={animationEnabled}
         onToggleAnimation={() => setAnimationEnabled(!animationEnabled)}
       />
-
-      {onClose && (
-        <IconButton label={t('schedule.toolbar.closeGanttPanel')} size="icon-sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </IconButton>
-      )}
 
       {hasData && !hasDates && (
         <span className="text-xs text-amber-500 whitespace-nowrap" title={t('schedule.toolbar.noDatesTitle')}>

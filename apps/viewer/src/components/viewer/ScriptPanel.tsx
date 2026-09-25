@@ -64,11 +64,7 @@ import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { LogEntry } from '@/store/slices/scriptSlice';
 import { useScriptState, formatLogArgs } from './scriptPanelState';
 
-interface ScriptPanelProps {
-  onClose?: () => void;
-}
-
-export function ScriptPanel({ onClose }: ScriptPanelProps) {
+export function ScriptPanel() {
   const { t } = useTranslation();
   const {
     editorContent,
@@ -272,16 +268,6 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           >
             <Bot className="h-3.5 w-3.5" />
           </IconButton>
-
-          {onClose && (
-            <IconButton
-              label={t('scriptPanel.header.closeAriaLabel')}
-              size="icon-xs"
-              onClick={onClose}
-            >
-              <X className="h-3.5 w-3.5" />
-            </IconButton>
-          )}
         </div>
 
         {/* Post-authoring "install as tool" banner — surfaces right

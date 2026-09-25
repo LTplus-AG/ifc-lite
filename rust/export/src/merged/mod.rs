@@ -23,12 +23,12 @@
 //! (kept as its own project, never mis-scaled) and [`MergedStats::unit_rescale_required`]
 //! is set so the caller can gate that case to the JS path.
 
-mod aggregates;
 mod empty;
 mod guid;
 mod header;
 mod line_edit;
 mod plan;
+mod single_parents;
 mod spatial;
 mod units;
 mod warnings;
@@ -231,7 +231,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
-    let mut parents = aggregates::AggregationParents::default(); // one Decomposes parent (#5727)
+    let mut parents = single_parents::ParentClaims::new(crate::schema_convert::targets_ifc2x3(&schema)); // one parent per inverse (#5727, #5802)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
@@ -323,7 +323,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 Some(g) => replace_global_id(&remapped, g),
                 None => remapped,
             };
-            let mut final_text = if converting {
+            let final_text = if converting {
                 // Pass the GLOBAL id (offset applied): a schema downgrade with no
                 // target type falls back to IFCPROXY with a `placeholder_guid(id)`
                 // GlobalId, so two models sharing a source-local id must not seed the
@@ -367,10 +367,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 after_guid
             };
 
-            if index.type_of.get(&id).is_some_and(|t| t == "IFCRELAGGREGATES") {
-                let Some(text) = parents.claim(final_text, !is_first && compatible) else { continue };
-                final_text = text;
-            }
+            let ty = index.type_of.get(&id).map_or("", String::as_str);
+            let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
 
             if let Some(local_guid) = plan.local_guids.get(&id) {
                 let mut emitted = read_leading_guid(&final_text)

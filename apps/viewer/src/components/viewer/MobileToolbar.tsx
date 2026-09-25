@@ -45,7 +45,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
-import { downloadBlob } from '@/lib/export/download';
+import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
@@ -134,7 +134,7 @@ export function MobileToolbar() {
     try {
       const glb = await exportPlacedModelGlb(geometryResult);
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      downloadBlob(blob, 'model.glb');
+      downloadBlob(blob, modelExportFilename(activeModelName(useViewerStore.getState()), 'glb'));
       toast.success(t('shellChrome.mobileToolbar.exportGlbSuccess', { size: (blob.size / 1024).toFixed(0) }));
     } catch (err) {
       toast.error(
@@ -180,6 +180,7 @@ export function MobileToolbar() {
           fileInputRef.current?.click();
         }}
         disabled={loading}
+        aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -196,6 +197,7 @@ export function MobileToolbar() {
           className="h-9 w-9 flex-shrink-0 text-[#9ece6a]"
           onClick={() => addModelInputRef.current?.click()}
           disabled={loading}
+          aria-label={t('shellChrome.mobileToolbar.addModelAriaLabel')}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -271,7 +273,12 @@ export function MobileToolbar() {
       {/* Overflow menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="h-9 w-9 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-9 w-9 flex-shrink-0"
+            aria-label={t('shellChrome.mobileToolbar.moreActionsAriaLabel')}
+          >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

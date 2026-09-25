@@ -33,12 +33,21 @@
  * profile length, profile origin) so each drag frame is a coarse but
  * recoverable step. Future polish: a batched-mutation primitive that
  * folds the four into one undo entry.
+ *
+ * Re-render wake (#5510): same swap as `GizmoOverlay` — `useProjectorTick`
+ * subscribes to the scene kernel's one shared `SceneProjector` loop instead
+ * of running a private `requestAnimationFrame` poll of the camera pose
+ * (`useCameraTickSubscription`). The handles' screen position is still
+ * computed in the render body via `cameraCallbacks.projectToScreen`, not
+ * the projector's anchor system — the drag math below unprojects the
+ * cursor through `unprojectToFloor` directly, with no dependency on a
+ * projected screen point at all.
  */
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
@@ -50,7 +59,6 @@ type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
 const HANDLE_RADIUS = 7;
-const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
@@ -102,12 +110,11 @@ export function WallEndpointOverlay() {
   const activeTool = useViewerStore((s) => s.activeTool);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
   const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
   const resizeWall = useViewerStore((s) => s.resizeWall);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
-  // Subscribed for the re-render alone, same idiom as `useCameraTickSubscription`
+  // Subscribed for the re-render alone, same idiom as `useProjectorTick`
   // below: `startWorld`/`endWorld`/`startScreen`/`endScreen` are computed fresh
   // in the render body on every render, not memoized, so nothing here reads
   // the value. What was missing (Macroscope review on #4953) is a REASON to
@@ -148,8 +155,8 @@ export function WallEndpointOverlay() {
     };
     // mutationVersion forces re-resolution after any edit so handles
     // track live. Camera moves don't change endpoints — the
-    // `useCameraTickSubscription` below re-renders the host so the
-    // JSX projection refreshes without re-running this memo.
+    // `useProjectorTick` below re-renders the host so the JSX
+    // projection refreshes without re-running this memo.
   }, [
     editEnabled,
     activeTool,
@@ -159,10 +166,10 @@ export function WallEndpointOverlay() {
     mutationVersion,
   ]);
 
-  // Camera-tick subscription — wakes the overlay on real viewpoint
-  // motion so the projection stays aligned. Skipped when the overlay
-  // isn't visible.
-  void useCameraTickSubscription(getViewpoint, endpoints !== null);
+  // Shared-projector wake (#5510) — re-renders the overlay on real
+  // viewpoint motion so the projection stays aligned. Skipped when the
+  // overlay isn't visible.
+  void useProjectorTick(endpoints !== null);
 
   if (!endpoints || !projectToScreen) return null;
   const project = projectToScreen as Project;
@@ -247,7 +254,7 @@ export function WallEndpointOverlay() {
         y1={startScreen.y}
         x2={endScreen.x}
         y2={endScreen.y}
-        stroke={HANDLE_COLOR}
+        className="stroke-overlay-accent"
         strokeWidth={1.5}
         strokeDasharray="4 4"
         opacity={0.5}
@@ -274,8 +281,7 @@ export function WallEndpointOverlay() {
             cx={screen.x}
             cy={screen.y}
             r={HANDLE_RADIUS}
-            fill="#fff"
-            stroke={HANDLE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2.5}
             pointerEvents="none"
           />

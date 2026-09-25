@@ -13,7 +13,7 @@ import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
 import {
   executeBasketIsolate,
   executeBasketSet,
@@ -51,7 +51,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
-  const toggleBasketPresentationVisible = useViewerStore((s) => s.toggleBasketPresentationVisible);
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
 
   // Measure tool specific actions
@@ -71,10 +70,13 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const finishRadius = useViewerStore((s) => s.finishRadius);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Ignore if typing in an input or textarea
-    if (isTextEntryTarget(e)) {
-      return;
-    }
+    // Ignore keys an input-like target consumes (inputs, <select>, ARIA widgets).
+    if (isTextEntryTarget(e)) return;
+    // A key another layer already handled is not a shortcut: a Radix popover
+    // (the Section bar's Cap, #5499) dismisses itself on Escape and marks the
+    // event handled from a document-capture listener, which runs before this
+    // window listener — without this, the same Escape also closed the tool.
+    if (e.defaultPrevented) return;
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
@@ -83,6 +85,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // events) — see lib/keyboard-event.ts. No shortcut below could match one.
     const key = eventKey(e);
     if (key === null) return;
+    // Walk owns W/A/S/D + arrows (any modifier): A must not Show all, D not toggle the dock.
+    if (activeTool === 'walk' && WALK_MOVEMENT_KEYS.has(key)) return;
 
     // Workspace moves interleave with active-model authoring history.
     if (key === 'z' && ctrl) {
@@ -210,10 +214,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       executeBasketRemove();
     }
 
-    // D Toggle basket presentation dock
+    // D Toggle the Presentation bottom panel (#5508: bottom-panel table, so
+    // it stays mutually exclusive with Script/Schedule/Lists/etc.)
     if (key === 'd' && !ctrl && !shift) {
       e.preventDefault();
-      toggleBasketPresentationVisible();
+      useViewerStore.getState().toggleBottomPanel('presentation');
     }
 
     // B Save current basket as presentation view with thumbnail
@@ -410,7 +415,6 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     setActiveTool,
     hideEntities,
     toggleTheme,
-    toggleBasketPresentationVisible,
     activeMeasurement,
     cancelMeasurement,
     toggleSnap,

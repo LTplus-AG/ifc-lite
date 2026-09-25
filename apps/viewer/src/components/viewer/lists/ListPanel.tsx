@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { X, Table2, Settings2 } from 'lucide-react';
+import { Table2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
@@ -31,13 +31,9 @@ import { ListLibrary } from './ListLibrary';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatLocaleCount } from './formatLocaleCount';
 
-interface ListPanelProps {
-  onClose?: () => void;
-}
-
 type PanelView = 'library' | 'builder' | 'results';
 
-export function ListPanel({ onClose }: ListPanelProps) {
+export function ListPanel() {
   const { t, locale } = useTranslation();
   const [view, setView] = useState<PanelView>('library');
   const [editingList, setEditingList] = useState<ListDefinition | null>(null);
@@ -220,11 +216,6 @@ export function ListPanel({ onClose }: ListPanelProps) {
             <Button variant="ghost" size="sm" onClick={() => setView('library')} className="text-xs h-7">
               {t('lists.panel.cancel')}
             </Button>
-          )}
-          {onClose && (
-            <IconButton label={t('lists.panel.close')} size="icon-sm" onClick={onClose}>
-              <X className="h-3.5 w-3.5" />
-            </IconButton>
           )}
         </div>
       </div>

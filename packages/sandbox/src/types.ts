@@ -7,6 +7,7 @@
  */
 
 import type { Capability } from '@ifc-lite/extensions';
+import type { FetchTransport } from './network-request.js';
 
 /** Permission configuration — controls which SDK APIs are accessible */
 export interface SandboxPermissions {
@@ -56,9 +57,11 @@ export interface SandboxConfig {
    * `bim.network.fetch` on every call (not just once at sandbox creation)
    * so the allow-list is always the real, current grant set — the
    * `network` permission flag above only gates whether the namespace
-   * exists at all.
+   * exists at all. `transport` replaces `fetch` for those requests (a host's
+   * own transport, or a test's); it changes how bytes move, never whether a
+   * request is allowed.
    */
-  network?: { grants: readonly Capability[] };
+  network?: { grants: readonly Capability[]; transport?: FetchTransport };
 }
 
 /** Result of script execution */

@@ -17,7 +17,7 @@ import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
-import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState, Material } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -105,6 +105,15 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
+  /**
+   * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
+   * this today — `MeshData` (the WASM extraction boundary) carries no
+   * metallic/roughness fields, and IFC-authored specular is not extracted yet
+   * (#5582) — so `packMeshMaterial` falls back to its defaults for every
+   * textured draw. The field exists so a textured mesh has the SAME optional
+   * hook `Mesh` does, ready for #5582 without a second API.
+   */
+  material?: Material;
   /**
    * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
    * renderer must reconstruct `world = origin + position`.

@@ -15,6 +15,7 @@ import { getPanelDef } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { FloatingPanel, type SnapBounds } from './FloatingPanel';
+import type { FloatingArea } from './floating-panel-geometry';
 
 const FLOAT_Z_BASE = 30;
 
@@ -63,7 +64,31 @@ export function FloatingPanelHost() {
     };
   }, [hasSnapped]);
 
-  if (floatingPanels.length === 0) return null;
+  // The window free panels are clamped into (#5854), tracked only while a
+  // panel floats so the empty state stays listener-free. Its `top` is the
+  // viewport region's top, i.e. the toolbar bottom, so a clamped panel's title
+  // bar never lands under the z-50 toolbar (#5957).
+  const hasPanels = floatingPanels.length > 0;
+  const [area, setArea] = useState<FloatingArea | null>(null);
+  useLayoutEffect(() => {
+    if (!hasPanels) return;
+    const el = document.querySelector(SNAP_BOUNDS_SELECTOR) as HTMLElement | null;
+    const measure = () => setArea({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      top: Math.max(0, el?.getBoundingClientRect().top ?? 0),
+    });
+    measure();
+    const ro = el ? new ResizeObserver(measure) : null;
+    ro?.observe(el as HTMLElement);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [hasPanels]);
+
+  if (!hasPanels) return null;
 
   return (
     // Fixed viewport overlay: FloatingPanelState.x/y are documented as viewport
@@ -80,6 +105,7 @@ export function FloatingPanelHost() {
             title={def?.title ?? panel.id}
             zIndex={FLOAT_Z_BASE + i}
             bounds={snapBounds}
+            area={area}
             onRect={(rect) => setFloatingPanelRect(panel.id, rect)}
             onSnap={(snap) => snapFloatingPanel(panel.id, snap)}
             onFocus={() => bringFloatingPanelToFront(panel.id)}

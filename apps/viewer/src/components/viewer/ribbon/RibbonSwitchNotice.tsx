@@ -10,6 +10,10 @@
  *
  * It also stays out of the way while a walkthrough is running - the tour
  * spotlight owns the screen at that point.
+ *
+ * "The toolbar changed" only means something to someone who saw the old
+ * one, so a first-time visitor never gets it (#5840): the first-run card is
+ * the one message on their first screen. See `isReturningVisitor`.
  */
 
 import { useMemo, useState } from 'react';
@@ -20,9 +24,36 @@ import { dismissNotice, isNoticeDismissed, isTourCompleted } from '@/lib/tours/s
 import { useTourStore } from '@/lib/tours/tour-store';
 import { useViewerStore } from '@/store';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
+import { getRecentFiles } from '@/lib/recent-files';
 import { useTranslation } from '@/i18n';
 
 const NOTICE_ID = 'ribbon-default';
+
+/** Whether this browser was already using the viewer when it first rendered
+ *  the ribbon: `returning` or `new`, decided once and then remembered. */
+export const RIBBON_NOTICE_AUDIENCE_KEY = 'ifc-lite:ribbon-notice-audience';
+
+/**
+ * True for a visitor who used the viewer before the ribbon became the
+ * default. The evidence is recent-file history that already exists the first
+ * time the ribbon renders here; the verdict is stored at that moment, so a
+ * brand-new visitor who then opens files does not turn into a "returning"
+ * one on the next visit and get told about a toolbar they never saw.
+ */
+function isReturningVisitor(): boolean {
+  try {
+    const stored = localStorage.getItem(RIBBON_NOTICE_AUDIENCE_KEY);
+    if (stored !== null) return stored === 'returning';
+    const returning = getRecentFiles().length > 0;
+    localStorage.setItem(RIBBON_NOTICE_AUDIENCE_KEY, returning ? 'returning' : 'new');
+    return returning;
+  } catch (err) {
+    // Locked storage: no history can be read, so this is indistinguishable
+    // from a first visit and the notice stays hidden.
+    console.warn('[toolbar-style] could not read visit history; hiding the switch notice', err);
+    return false;
+  }
+}
 
 /** True once the user has explicitly chosen a toolbar style on this browser. */
 function hasExplicitToolbarChoice(): boolean {
@@ -46,7 +77,7 @@ export function RibbonSwitchNotice() {
   const isMobile = useViewerStore((s) => s.isMobile);
   const tourStatus = useTourStore((s) => s.status);
   const [dismissed, setDismissed] = useState(
-    () => isNoticeDismissed(NOTICE_ID) || hasExplicitToolbarChoice(),
+    () => isNoticeDismissed(NOTICE_ID) || hasExplicitToolbarChoice() || !isReturningVisitor(),
   );
   // Re-read only when a tour ends, so finishing the ribbon tour retires the
   // notice without re-reading localStorage on every ribbon render.

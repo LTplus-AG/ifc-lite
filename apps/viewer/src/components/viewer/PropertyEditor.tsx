@@ -76,6 +76,7 @@ import {
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { hasActiveTranslation } from '@/i18n/registry';
 import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
+import { addToPropertySet, isInheritedOnly, type InheritedSets } from '@/lib/properties/add-to-property-set';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
 // Data-enrichment actions (Property / Quantity / Classification / Material)
@@ -220,10 +221,10 @@ export function PropertyEditor({
         <IconButton
           label={t('propertyEditor.inline.editProperty')}
           tooltipSide="left"
-          className="h-5 w-5 shrink-0 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+          className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
           onClick={() => setIsEditing(true)}
         >
-          <PenLine className="h-3 w-3 text-purple-500" />
+          <PenLine className="h-3 w-3 text-overlay-accent" />
         </IconButton>
       </div>
     );
@@ -231,7 +232,7 @@ export function PropertyEditor({
 
   // Editing view: inline input with type selector and action buttons
   return (
-    <div className="flex flex-col gap-2 p-2 -mx-2 bg-purple-50/50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded">
+    <div className="flex flex-col gap-2 p-2 -mx-2 bg-overlay-accent-soft border border-overlay-accent/40 rounded">
       {/* Value input */}
       <div className="flex items-center gap-2">
         {valueType === PropertyValueType.Boolean || valueType === PropertyValueType.Logical ? (
@@ -253,7 +254,7 @@ export function PropertyEditor({
                   }}
                   className={`px-2 py-0.5 text-xs rounded border transition-colors ${
                     active
-                      ? 'bg-purple-600 text-white border-purple-600'
+                      ? 'bg-overlay-accent text-overlay-halo border-overlay-accent'
                       : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                   } ${v === '' ? 'italic' : ''}`}
                 >
@@ -369,14 +370,14 @@ interface NewPropertyDialogProps {
   entityType: string;
   existingPsets: string[];
   schemaVersion?: string;
+  /** Sets the element only inherits from its type (#5966). */
+  inheritedFrom?: InheritedSets | null;
 }
 
 /** Schema-aware dialog for adding new properties: filters available property
  *  sets by IFC entity type and suggests correctly-typed IFC4 properties. */
-export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion }: NewPropertyDialogProps) {
+export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion, inheritedFrom }: NewPropertyDialogProps) {
   const { t, locale } = useTranslation();
-  const setProperty = useViewerStore((s) => s.setProperty);
-  const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [open, setOpen] = useState(false);
@@ -444,16 +445,10 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
       normalizedModelId = '__legacy__';
     }
 
-    // Check if pset exists on entity already
-    const psetExists = existingPsets.includes(effectivePsetName);
-
-    if (!psetExists) {
-      createPropertySet(normalizedModelId, entityId, effectivePsetName, [
-        { name: effectivePropName, value: parsedValue, type: valueType },
-      ]);
-    } else {
-      setProperty(normalizedModelId, entityId, effectivePsetName, effectivePropName, parsedValue, valueType);
-    }
+    const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, effectivePsetName, [
+      { name: effectivePropName, value: parsedValue, type: valueType },
+    ]);
+    if (!added.ok) return toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName: effectivePsetName, typeName: inheritedFrom?.typeName ?? '', names: added.uncopyable.join(', ') }));
 
     bumpMutationVersion();
 
@@ -466,7 +461,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
     setValueType(PropertyValueType.String);
     setIsCustomPset(false);
     setOpen(false);
-  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, setProperty, createPropertySet, bumpMutationVersion, t]);
+  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, inheritedFrom, bumpMutationVersion, t]);
 
   const resetForm = useCallback(() => {
     setPsetName('');
@@ -580,6 +575,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   )}
                 </SelectContent>
               </Select>
+            )}
+            {inheritedFrom && isInheritedOnly({ inheritedFrom }, effectivePsetName) && (
+              <p className="text-[11px] text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
             )}
           </div>
 
@@ -1444,13 +1442,14 @@ interface EditToolbarProps {
   existingPsets: string[];
   existingQtos?: string[];
   schemaVersion?: string;
+  inheritedFrom?: InheritedSets | null;
 }
 
 /**
  * Edit mode toolbar with dropdown for adding properties, classifications, materials, and quantities.
  * Schema-aware: filters available property/quantity sets based on entity type.
  */
-export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion }: EditToolbarProps) {
+export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion, inheritedFrom }: EditToolbarProps) {
   // Reassign is only meaningful for occurrence building elements — not type
   // entities, spaces, or materials.
   const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
@@ -1471,6 +1470,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
               entityType={entityType}
               existingPsets={existingPsets}
               schemaVersion={schemaVersion}
+              inheritedFrom={inheritedFrom}
             />
             <AddQuantityDialog
               modelId={modelId}

@@ -152,7 +152,12 @@ impl ProfileProcessor {
                 })
                 .map(|e| e == "T" || e == "TRUE")
                 .unwrap_or(true);
-            let span = crate::analytic::composite_parent_parameter_span(&parent_curve, decoder)?;
+            // The analytic reader is stricter than the sampler (it rejects,
+            // e.g., a negative radius the sampler still draws). A parent it
+            // cannot read has no known span; it must not fail the solid.
+            let span = crate::analytic::composite_parent_parameter_span(&parent_curve, decoder)
+                .ok()
+                .flatten();
             spans_known &= span.is_some();
             parts.push((parent_curve, same_sense, span.unwrap_or(0.0)));
         }

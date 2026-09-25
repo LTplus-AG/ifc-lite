@@ -110,7 +110,7 @@ export function RawStepRow({
   return (
     <div
       className={`group grid grid-cols-[28px_minmax(80px,140px)_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5 text-sm border-b border-zinc-200/60 dark:border-zinc-800/60 ${
-        isMutated ? 'bg-purple-50/40 dark:bg-purple-950/15' : ''
+        isMutated ? 'bg-overlay-accent/5' : ''
       }`}
     >
       {/* Positional index — displayed 1-based to match the buildingSMART
@@ -152,7 +152,7 @@ export function RawStepRow({
             className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-white dark:bg-zinc-900 border outline-none focus:ring-1 ${
               error
                 ? 'border-red-400 dark:border-red-500 focus:ring-red-400'
-                : 'border-purple-300 dark:border-purple-700 focus:ring-purple-400'
+                : 'border-overlay-accent/40 focus:ring-overlay-accent'
             }`}
             spellCheck={false}
             autoCapitalize="off"
@@ -203,7 +203,7 @@ export function RawStepRow({
             <TooltipTrigger asChild>
               <span
                 aria-label={t('properties.rawStepRow.overlayOverrideAriaLabel')}
-                className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500 dark:bg-purple-400"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-overlay-accent"
               />
             </TooltipTrigger>
             <TooltipContent side="left">{t('properties.rawStepRow.overlayOverrideTooltip')}</TooltipContent>
@@ -237,7 +237,7 @@ export function RawStepRow({
             onClick={startEdit}
             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
           >
-            <PenLine className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+            <PenLine className="h-3.5 w-3.5 text-overlay-accent" />
           </IconButton>
         ) : (
           <span className="h-6 w-6" aria-hidden />

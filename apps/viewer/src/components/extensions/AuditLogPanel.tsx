@@ -65,7 +65,7 @@ const KIND_TONES: Record<AuditEventKind, string> = {
   activate: 'text-muted-foreground',
   deactivate: 'text-muted-foreground',
   mutation_summary: 'text-sky-600 dark:text-sky-400',
-  network_fetch: 'text-purple-600 dark:text-purple-400',
+  network_fetch: 'text-cyan-600 dark:text-cyan-400',
   unhealthy: 'text-amber-600 dark:text-amber-400',
   killed: 'text-rose-600 dark:text-rose-400',
 };

@@ -11,11 +11,11 @@
  * may not gain one (a new file is allowed none), and a file that loses one
  * must lower its row here so the slack is not spent by the next regression.
  *
- * The files still listed belong to other charters that are rebuilding them
- * (#5478: the drawing panel, Measure, Section, the viewport HUD and the
- * presentation dock; #5610: the two desktop toolbars; #5817: the shortcuts
+ * The files still listed belong to other charters' surfaces (#5478: the
+ * drawing, measure, section, placement and presentation panels and the
+ * viewport HUD; #5610: the two desktop toolbars; #5817: the shortcuts
  * dialog), plus text-glyph buttons that already carry an `aria-label`.
- * Their migration lands with those rebuilds.
+ * The follow-up under #5811 migrates them.
  */
 
 import { describe, it } from 'node:test';
@@ -27,24 +27,29 @@ import { fileURLToPath } from 'node:url';
 const COMPONENTS = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const BASELINE: Record<string, number> = {
-  'viewer/BasketPresentationDock.tsx': 12,
+  'viewer/BulkPropertyEditor.tsx': 1,
   'viewer/DrawingSettingsPanel.tsx': 1,
   'viewer/GeometryAxisRow.tsx': 2,
   'viewer/GeometryEditCard.tsx': 3,
   'viewer/KeyboardShortcutsDialog.tsx': 1,
   'viewer/MainToolbar.tsx': 21,
+  'viewer/MeasurementsPanel.tsx': 2,
   'viewer/MobileToolbar.tsx': 7,
   'viewer/PointCloudPanel.tsx': 1,
   'viewer/SheetSetupPanel.tsx': 2,
   'viewer/ViewportOverlays.tsx': 3,
   'viewer/chat/ExecutableCodeBlock.tsx': 1,
   'viewer/drawing/DrawingExportMenu.tsx': 1,
-  'viewer/drawing/DrawingPanel.tsx': 1,
+  'viewer/drawing/DrawingPanel.tsx': 2,
   'viewer/drawing/DrawingToolbar.tsx': 1,
+  'viewer/placement/PlacementPanel.tsx': 1,
+  'viewer/presentation/PresentationPanel.tsx': 9,
+  'viewer/presentation/PresentationViewCard.tsx': 3,
   'viewer/ribbon/RibbonToolbar.tsx': 2,
-  'viewer/tools/MeasurePanel.tsx': 8,
   'viewer/tools/MeasurePointReadout.tsx': 2,
-  'viewer/tools/SectionPanel.tsx': 4,
+  'viewer/tools/MeasureToolbar.tsx': 2,
+  'viewer/tools/MeasurementList.tsx': 6,
+  'viewer/tools/SectionToolbar.tsx': 1,
 };
 
 function* sourceFiles(dir: string): Generator<string> {

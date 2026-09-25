@@ -1,5 +1,15 @@
 # @ifc-lite/ids
 
+## 3.0.3
+
+### Patch Changes
+
+- [#5589](https://github.com/LTplus-AG/ifc-lite/pull/5589) [`a2e5d2d`](https://github.com/LTplus-AG/ifc-lite/commit/a2e5d2d9aa578efeb6d3becdc94335650b89f67d) Thanks [@louistrue](https://github.com/louistrue)! - IDS external-reference classifications ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): an authored typed value (e.g. an `IfcIdentifier` whose text is `[#22](https://github.com/LTplus-AG/ifc-lite/issues/22)` or `$`) is read as its text instead of being re-parsed as a reference or unset token.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/codegen@1.18.1
+
 ## 3.0.2
 
 ### Patch Changes

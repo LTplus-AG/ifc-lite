@@ -12,8 +12,7 @@
  * catalogue — not a hardcoded literal — drives the text) or, for the
  * handful of files whose translated text only ever appears behind a real
  * network round trip (`FederationSetupControls`'s match-review dialog),
- * a `requestAnimationFrame` loop (`PeerPresenceLayer`), or a heavy sibling
- * panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
+ * or a heavy sibling panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
  * assertion against the catalogue instead — the sweep's own bar for a
  * "truly trivial" file ("make sure every converted file has SOME test
  * coverage asserting its key(s) resolve").
@@ -38,6 +37,7 @@ import { GeometryModeBanner } from './GeometryModeBanner';
 import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -190,7 +190,9 @@ it('GeometryModeBanner: renders the fast-mode banner in English and translates i
       geometryReloadReason: 'mode',
     });
   });
-  const container = render(<GeometryModeBanner />);
+  // `GeometryModeBanner` portals into `ViewportHud`'s top-center region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const container = render(<><ViewportHud /><GeometryModeBanner /></>);
   assert.ok(container.textContent?.includes('Fast geometry enabled'));
   assert.ok(container.textContent?.includes('Reload model to apply the new setting.'));
   const reloadButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Reload'));
@@ -239,13 +241,15 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
 
 it('LevelDisplayIndicator: renders the exploded/solo labels in English and translates them (#4918)', () => {
   act(() => useViewerStore.setState({ levelDisplayMode: 'exploded', explodedGap: 2 }));
-  const exploded = render(<LevelDisplayIndicator />);
+  // `LevelDisplayIndicator` portals into `ViewportHud`'s top-left region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const exploded = render(<><ViewportHud /><LevelDisplayIndicator /></>);
   assert.ok(exploded.textContent?.includes('Exploded · 2 m gap'));
 
   registerLocale('leveldisplayindicator-de', { 'levelDisplayIndicator.storeyFallback': 'Geschoss' });
   act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm1', expressId: 1 } }));
   act(() => setLocale('leveldisplayindicator-de'));
-  const solo = render(<LevelDisplayIndicator />);
+  const solo = render(<><ViewportHud /><LevelDisplayIndicator /></>);
   // No matching storey is loaded, so `soloName` falls through to the
   // translated fallback.
   assert.ok(solo.textContent?.includes('Solo · Geschoss'));
@@ -283,9 +287,10 @@ it('TextAnnotationEditor: renders the placeholder and hint in English and transl
 });
 
 // ---- presence/PeerPresenceLayer -------------------------------------------
-// Cursor pills only enter the DOM via a `requestAnimationFrame` tick against
-// live `collabPeers` awareness data — not worth faking an animation-frame
-// loop just to read its three labels back.
+// `PeerPresenceLayer.test.tsx` covers the component itself on the shared
+// scene-overlay kernel's stub-driven projector (#5511); this is just the
+// lightweight catalogue-resolution guard every trivial file in this sweep
+// gets, so a locale regression is caught even without the fuller test.
 
 it('PeerPresenceLayer: the cursor-pill catalogue values resolve (#4918)', () => {
   assert.equal(resolve('peerPresenceLayer.cursorsAriaLabel'), 'Collaborator cursors');

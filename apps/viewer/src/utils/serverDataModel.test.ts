@@ -824,7 +824,7 @@ it('forwards server material values with own-before-type precedence and distinct
   assert.equal(store.resolvedMaterials?.get(100)?.get(300)?.type, 'MaterialLayerSet');
 });
 
-it('matches raw and server material-list fallbacks for an unnamed IfcMaterial (#5296)', async () => {
+it('matches raw and server blank, missing, and air-gap material semantics (#5296)', async () => {
   const ifc = `ISO-10303-21;
 HEADER; FILE_SCHEMA(('IFC4')); ENDSEC;
 DATA;
@@ -833,16 +833,20 @@ DATA;
 #27=IFCWALL('Wall00000000000000002',$,'Blank',$,$,$,$,$,$);
 #26=IFCWALL('Wall00000000000000003',$,'Direct Blank',$,$,$,$,$,$);
 #25=IFCWALL('Wall00000000000000004',$,'Layer Blank',$,$,$,$,$,$);
+#24=IFCWALL('Wall00000000000000005',$,'Air Gap',$,$,$,$,$,$);
 #86=IFCMATERIAL($,$,$);
 #87=IFCMATERIAL('',$,$);
 #84=IFCMATERIALLIST((#86));
 #88=IFCMATERIALLIST((#87));
 #91=IFCMATERIALLAYER(#87,0.2,.F.,'',$,'',$);
 #92=IFCMATERIALLAYERSET((#91),'',$);
+#94=IFCMATERIALLAYER($,0.1,.F.,$,$,$,$);
+#95=IFCMATERIALLAYERSET((#94),$,$);
 #85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#28),#84);
 #89=IFCRELASSOCIATESMATERIAL('Mat0000000000000000007',$,$,$,(#27),#88);
 #90=IFCRELASSOCIATESMATERIAL('Mat0000000000000000008',$,$,$,(#26),#87);
 #93=IFCRELASSOCIATESMATERIAL('Mat0000000000000000009',$,$,$,(#25),#92);
+#96=IFCRELASSOCIATESMATERIAL('Mat0000000000000000010',$,$,$,(#24),#95);
 ENDSEC;
 END-ISO-10303-21;`;
   const source = new TextEncoder().encode(ifc);
@@ -854,12 +858,15 @@ END-ISO-10303-21;`;
       { entity_id: 27, type_name: 'IFCWALL', has_geometry: false },
       { entity_id: 26, type_name: 'IFCWALL', has_geometry: false },
       { entity_id: 25, type_name: 'IFCWALL', has_geometry: false },
+      { entity_id: 24, type_name: 'IFCWALL', has_geometry: false },
       { entity_id: 84, type_name: 'IFCMATERIALLIST', has_geometry: false },
       { entity_id: 86, type_name: 'IFCMATERIAL', has_geometry: false },
       { entity_id: 87, type_name: 'IFCMATERIAL', has_geometry: false },
       { entity_id: 88, type_name: 'IFCMATERIALLIST', has_geometry: false },
       { entity_id: 91, type_name: 'IFCMATERIALLAYER', has_geometry: false },
       { entity_id: 92, type_name: 'IFCMATERIALLAYERSET', has_geometry: false },
+      { entity_id: 94, type_name: 'IFCMATERIALLAYER', has_geometry: false },
+      { entity_id: 95, type_name: 'IFCMATERIALLAYERSET', has_geometry: false },
     ]),
     propertySets: new Map(), quantitySets: new Map(), classifications: [], documents: [],
     relationships: [
@@ -867,6 +874,7 @@ END-ISO-10303-21;`;
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 88, related_id: 27, rel_id: 89 },
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 87, related_id: 26, rel_id: 90 },
       { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 92, related_id: 25, rel_id: 93 },
+      { rel_type: 'IFCRELASSOCIATESMATERIAL', relating_id: 95, related_id: 24, rel_id: 96 },
     ],
     materials: [
       { element_id: 28, association_id: 85, definition_id: 84, member_count: 1,
@@ -879,6 +887,9 @@ END-ISO-10303-21;`;
         kind: 'IfcMaterialLayerSet', set_name: '', layer_index: 0, material_name: '',
         material_name_present: true, material_id: 87, member_name: '', category: '', thickness: 0.2,
         is_ventilated: false },
+      { element_id: 24, association_id: 96, definition_id: 95, member_count: 1,
+        kind: 'IfcMaterialLayerSet', layer_index: 0, material_name: '',
+        material_name_present: false, thickness: 0.1, is_ventilated: false },
     ],
     spatialHierarchy: materialTestHierarchy(1),
   };
@@ -897,6 +908,13 @@ END-ISO-10303-21;`;
   assert.equal(rawLayer?.layers?.[0]?.materialName, '');
   assert.equal(serverLayer?.layers?.[0]?.materialName, rawLayer?.layers?.[0]?.materialName);
   assert.equal(serverLayer?.layers?.[0]?.name, rawLayer?.layers?.[0]?.name);
+  assert.equal(extractAllMaterialsOnDemand(raw, 24)[0]?.layers?.[0]?.materialName, undefined);
+  assert.equal(extractAllMaterialsOnDemand(server, 24)[0]?.layers?.[0]?.materialName, undefined);
+  const absentName = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Unrelated' } };
+  assert.equal(checkMaterialFacet({ type: 'material' }, 24, createDataAccessor(raw)).passed, true);
+  assert.equal(checkMaterialFacet({ type: 'material' }, 24, createDataAccessor(server)).passed, true);
+  assert.equal(checkMaterialFacet(absentName, 24, createDataAccessor(raw)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
+  assert.equal(checkMaterialFacet(absentName, 24, createDataAccessor(server)).failure?.type, 'MATERIAL_VALUE_MISMATCH');
   const facet = { type: 'material' as const, value: { type: 'simpleValue' as const, value: 'Material #86' } };
   assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(raw)).passed, true);
   assert.equal(checkMaterialFacet(facet, 28, createDataAccessor(server)).passed, true);

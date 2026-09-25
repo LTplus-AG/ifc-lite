@@ -45,9 +45,10 @@ export function SectionOverlay() {
     setActiveTool('select');
   }, [setActiveTool]);
 
+  // From a face-picked plane, its own axis keeps the side on screen (#5644).
   const handleAxisChange = useCallback((axis: 'down' | 'front' | 'side') => {
-    setSectionPlaneAxis(axis);
-  }, [setSectionPlaneAxis]);
+    resetSectionToAxis(useViewerStore.getState, axis);
+  }, []);
 
   // Toggle the "next click picks a face" arming. The actual click is
   // intercepted in `selectionHandlers.ts`, which calls

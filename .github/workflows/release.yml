@@ -640,7 +640,10 @@ jobs:
       # fires when the run was skipped as superseded or an earlier step
       # failed. An unset status (the step never ran) is not '0' and fails too.
       - name: Fail a release commit that published nothing
-        if: ${{ !cancelled() && steps.late-changesets.outputs.status != '0' }}
+        # `outcome != 'skipped'`: when an earlier step failed, the check never
+        # ran and the job is already red for the real reason; a second
+        # "could not evaluate" error would only point operators the wrong way.
+        if: ${{ !cancelled() && steps.late-changesets.outcome != 'skipped' && steps.late-changesets.outputs.status != '0' }}
         run: |
           if [ "${STATUS}" = "1" ]; then
             echo "::error title=Release commit still carries changesets (#5647)::This push (up to ${GITHUB_SHA}) bumps workspace versions but its tip still carries pending changesets, so nothing was published. Merge the refreshed Version Packages PR on its own to publish; see the 'Check for changesets a release commit left pending' step for the list, and RELEASE.md."

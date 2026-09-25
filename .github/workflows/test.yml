@@ -162,7 +162,15 @@ jobs:
       # merge_group the CURRENT main tip, fetched here (entries ahead of this
       # one are not on main yet and may land with it); on push, the commit
       # main moved from; on a PR, the merge ref's parent. A failing entry is
-      # kicked from the queue; on a PR or push it only reports.
+      # kicked from the queue, and a failing PR cannot be queued (the
+      # aggregate is required).
+      #
+      # On PUSH the commit has already landed, so the check ANNOTATES and
+      # does not fail the step: every lane `needs: changes`, so failing here
+      # would skip build, tests and parity for exactly the push that got past
+      # the queue, hiding any real breakage it carries. The `::error::`
+      # annotation still shows, and Release's own late-changeset step fails
+      # that push's Release run.
       #
       # It runs HERE, in `changes`, because this job feeds the required
       # `Build + WASM + Rust + Node` aggregate on every event and fails first.
@@ -185,7 +193,12 @@ jobs:
             *)
               BASE=HEAD~1; CONTEXT=merge ;;
           esac
-          node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}"
+          if [ "${EVENT}" = push ]; then
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}" \
+              || echo "Late-changeset gate reported on push (annotation above); not failing 'changes' so the lanes still run."
+          else
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}"
+          fi
       # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
       # step is skipped on every other event and costs nothing there; on an
       # `edited` it is one check-runs read. `noop=true` requires BOTH a

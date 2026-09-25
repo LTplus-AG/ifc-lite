@@ -9,6 +9,7 @@
 
 mod affinity_chunks;
 mod batch;
+mod partitioned_batch;
 mod batch_from_source;
 mod batch_partition;
 mod instancing;

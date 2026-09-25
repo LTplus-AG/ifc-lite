@@ -215,6 +215,7 @@ export interface DataStoreTransport {
   onDemandQuantityMap: Array<[number, number[]]>;
   onDemandClassificationMap: Array<[number, number[]]>;
   onDemandMaterialMap: Array<[number, number[]]>;
+  resolvedMaterials?: Array<[number, Array<[number, import('./material-resolver.js').MaterialInfo]>]>;
   onDemandDocumentMap: Array<[number, number[]]>;
 
   memory?: ParserMemorySnapshot;
@@ -390,6 +391,9 @@ export function toTransport(
     onDemandMaterialMap: store.onDemandMaterialMap
       ? [...store.onDemandMaterialMap.entries()]
       : [],
+    resolvedMaterials: store.resolvedMaterials
+      ? [...store.resolvedMaterials].map(([owner, defs]) => [owner, [...defs]])
+      : undefined,
     onDemandDocumentMap: store.onDemandDocumentMap
       ? [...store.onDemandDocumentMap.entries()].map(([k, v]) => [k, [...v]])
       : [],
@@ -459,6 +463,9 @@ export function fromTransport(
     onDemandQuantityMap,
     onDemandClassificationMap: new Map(payload.onDemandClassificationMap.map(([k, v]) => [k, [...v]])),
     onDemandMaterialMap: new Map(payload.onDemandMaterialMap),
+    resolvedMaterials: payload.resolvedMaterials
+      ? new Map(payload.resolvedMaterials.map(([owner, defs]) => [owner, new Map(defs)]))
+      : undefined,
     onDemandDocumentMap: new Map(payload.onDemandDocumentMap.map(([k, v]) => [k, [...v]])),
   });
   if (payload.georeferencing !== undefined) {

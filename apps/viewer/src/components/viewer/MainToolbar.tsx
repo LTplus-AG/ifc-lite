@@ -317,7 +317,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Basket presentation state
   const pinboardEntities = useViewerStore((state) => state.pinboardEntities);
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
-  const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
+  // Active state from the bottom-panel table, the same signal the ribbon's
+  // Present button reads (#5508); the table maps `presentation` onto the dock flag.
+  const basketPresentationVisible = activeWorkspacePanels.has('presentation');
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);

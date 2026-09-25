@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Palette, PencilRuler, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
@@ -49,7 +49,8 @@ export type WorkspacePanelId =
   | 'environment'
   | 'drawing'
   | 'pointclouds'
-  | 'measurements';
+  | 'measurements'
+  | 'placement';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -150,6 +151,14 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // 'pointclouds' (#1869 precedent). APPENDED so the frozen Alt+1..0 mapping
   // stays intact (no Alt shortcut).
   { id: 'measurements', title: 'Measurements', short: 'Measure', Icon: Ruler, group: 'inspect', region: 'side' },
+  // Local reposition + georeference editing (#5505): replaces the floating
+  // `RepositionPanel` (`absolute top-32 right-4`) and the floating
+  // `CesiumPlacementEditor` card with one docked panel, Local / Georeference
+  // tabs. Flag-free like 'zones'/'loadReport'/'cost'/'pointclouds' above
+  // (#1869 precedent) — driven by `repositionOpen` / `cesiumPlacementEditMode`,
+  // no dedicated visibility boolean. APPENDED so the frozen Alt+1..0 mapping
+  // stays intact (no Alt shortcut). The gizmos stay scene overlays.
+  { id: 'placement', title: 'Placement', short: 'Placement', Icon: Move3d, group: 'author', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

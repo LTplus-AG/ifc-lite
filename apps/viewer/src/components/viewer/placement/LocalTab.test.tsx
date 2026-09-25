@@ -16,13 +16,14 @@ import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { emptyPlacementState, displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
 import { HomeTab } from '../ribbon/tabs/HomeTab';
+import { LocalTab } from './LocalTab';
 
 function WithPlacementSync({ renderer }: { renderer: Renderer }) {
   useModelPlacementSync({ current: renderer }, true, new Map([['ifc', 0], ['scan', 1]]), null);
-  return <ToolOverlays />;
+  return <><ToolOverlays /><LocalTab /></>;
 }
 
-function WithShortcuts() { useKeyboardShortcuts(); return <ToolOverlays />; }
+function WithShortcuts() { useKeyboardShortcuts(); return <><ToolOverlays /><LocalTab /></>; }
 
 function button(ui: HTMLElement, label: string): HTMLButtonElement {
   const el = [...ui.querySelectorAll('button')].find((item) => item.textContent === label || item.getAttribute('aria-label') === label);
@@ -32,10 +33,20 @@ function input(ui: HTMLElement, label: string): HTMLInputElement {
   const el = ui.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
   assert.ok(el, `input ${label}`); return el;
 }
-function select(ui: HTMLElement, label: string, value: string) {
-  const el = ui.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`);
-  assert.ok(el);
-  act(() => { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); });
+/** Drives the real `ui/select` (Radix) trigger/listbox, the way a user
+ * does: open the trigger, click the option with the given visible text. The
+ * listbox renders in a portal, so options are looked up from `document`,
+ * not the local render container. */
+function selectOption(ui: HTMLElement, triggerLabel: string, optionText: string) {
+  const trigger = ui.querySelector(`[aria-label="${triggerLabel}"]`);
+  assert.ok(trigger, `select trigger ${triggerLabel}`);
+  click(trigger);
+  const option = [...document.querySelectorAll('[role="option"]')].find((o) => o.textContent?.trim() === optionText);
+  assert.ok(option, `option ${optionText}`);
+  click(option);
+}
+function toggle(el: Element | null | undefined): void {
+  assert.ok(el, 'switch element'); click(el!);
 }
 
 describe('model repositioning user interactions (#4226)', () => {
@@ -47,7 +58,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   for (const tool of ['measure', 'section', 'walk'] as const) it(`opens repositioning from ${tool}`, () => {
     useViewerStore.getState().setActiveTool(tool);
-    const ui = render(<><HomeTab /><ToolOverlays /></>);
+    const ui = render(<><HomeTab /><ToolOverlays /><LocalTab /></>);
     click(button(ui, 'Reposition models and pointclouds'));
     assert.ok(ui.querySelector('[aria-label="Reposition models"]'));
     assert.equal(useViewerStore.getState().activeTool, 'select');
@@ -56,11 +67,10 @@ describe('model repositioning user interactions (#4226)', () => {
   });
 
   it('opens from the ribbon and moves a cloud without requiring an IFC data store', () => {
-    const ui = render(<><HomeTab /><ToolOverlays /></>);
+    const ui = render(<><HomeTab /><ToolOverlays /><LocalTab /></>);
     click(button(ui, 'Reposition models and pointclouds'));
     assert.ok(ui.querySelector('[aria-label="Reposition models"]'));
-    const checkboxes = ui.querySelectorAll<HTMLInputElement>('fieldset input[type="checkbox"]');
-    click(checkboxes[1]); // move IFC and cloud as a group
+    toggle(ui.querySelector('fieldset [role="switch"][aria-label="scan"]')); // move IFC and cloud as a group
     type(input(ui, 'Delta X'), '125 mm');
     type(input(ui, 'Delta Y'), '-0.25 m');
     click(button(ui, 'Preview values'));
@@ -77,8 +87,8 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('honours constraints, supports keyboard nudges and cancels the preview', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
-    select(ui, 'Movement constraint', 'z');
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
+    selectOption(ui, 'Movement constraint', 'Z');
     type(input(ui, 'Delta X'), '50 m');
     type(input(ui, 'Delta Z'), '10 mm');
     click(button(ui, 'Preview values'));
@@ -95,22 +105,22 @@ describe('model repositioning user interactions (#4226)', () => {
       useViewerStore.getState().openReposition(['scan']);
       useViewerStore.getState().setMoveAnchor('source', { modelId: 'scan', point: [10, 20, 30], kind: 'point' });
     });
-    const ui = render(<ToolOverlays />);
-    select(ui, 'Coordinate input mode', 'absolute');
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
+    selectOption(ui, 'Coordinate input mode', 'Set source point X / Y / Z');
     assert.equal(input(ui, 'Source X').value, '10');
     type(input(ui, 'Source X'), '10.001');
     click(button(ui, 'Preview values'));
     const delta = displayedTranslation(useViewerStore.getState().modelPlacement, 'scan');
     assert.ok(Math.abs(delta[0] - 0.001) < 1e-10);
     assert.equal(delta[1], 0); assert.equal(delta[2], 0);
-    select(ui, 'Coordinate input mode', 'delta');
+    selectOption(ui, 'Coordinate input mode', 'Move by ΔX / ΔY / ΔZ');
     assert.ok(Math.abs(Number(input(ui, 'Delta X').value) - 0.001) < 1e-10);
   });
 
   it('accepts a signed unit distance along a constrained axis', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
-    select(ui, 'Movement constraint', 'y');
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
+    selectOption(ui, 'Movement constraint', 'Y');
     type(input(ui, 'Move distance'), '-125 mm');
     click(button(ui, 'Preview distance'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, -0.125, 0]);
@@ -193,7 +203,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('leaves Enter activation to a focused Cancel button or disclosure', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     for (const target of [button(ui, 'Cancel repositioning'), ui.querySelector('summary')!]) {
       const key = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
@@ -239,7 +249,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   for (const locked of [false, true]) it(`closes a removed moving model and can reposition a survivor (locked=${locked})`, () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     if (locked) click(button(ui, 'Lock scan'));
     act(() => useViewerStore.getState().removeModel('scan'));
@@ -251,7 +261,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('cancels with Escape while a coordinate input has focus', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     press(input(ui, 'Delta X'), 'Escape');
     assert.equal(ui.querySelector('[aria-label="Reposition models"]'), null);
@@ -260,7 +270,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('rejects a move while the model is locked and permits it after unlocking', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     click(button(ui, 'Lock scan'));
     type(input(ui, 'Delta X'), '2'); click(button(ui, 'Preview values'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /Unlock/);
@@ -272,7 +282,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('rejects malformed input visibly and leaves the existing preview intact', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '3garbage');
     click(button(ui, 'Preview values'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /Enter a number/);
@@ -281,7 +291,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('rotates the selected model about a shown pivot, and undoes with the moves (#4869)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     // A non-zero angle and an off-origin pivot: 0°, or a pivot at the origin,
     // would pass whether or not the value reached the placement.
     type(input(ui, 'Rotation angle in degrees'), '30');
@@ -303,7 +313,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('applies a heading on top of an unapplied move instead of discarding it (#4873)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [5, 0, 0]);
     type(input(ui, 'Rotation angle in degrees'), '30');
@@ -329,7 +339,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('carries the shown pivot with a move that is still only previewed (#4873)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Rotation angle in degrees'), '30');
     type(input(ui, 'Rotation pivot X'), '10');
     type(input(ui, 'Rotation pivot Y'), '4');
@@ -345,7 +355,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('reports a bad rotation angle instead of storing one (#4869)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Rotation angle in degrees'), '30rad');
     click(button(ui, 'Apply rotation'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /degrees/i);
@@ -354,7 +364,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('refuses a cleared pivot field instead of turning about zero (#4873)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Rotation angle in degrees'), '30');
     type(input(ui, 'Rotation pivot X'), '10');
     type(input(ui, 'Rotation pivot Y'), '');
@@ -370,7 +380,7 @@ describe('model repositioning user interactions (#4226)', () => {
       useViewerStore.setState({ models });
       useViewerStore.getState().openReposition(['ifc']);
     });
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     // Instanced occurrences rotate through the renderer's own transforms now
     // (#4890), so a model with no flat meshes at all is no longer refused.
     assert.ok(ui.querySelector('input[aria-label="Rotation angle in degrees"]'), 'rotation control offered for instanced-only geometry');
@@ -385,7 +395,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('keeps the shown pivot on the model when the model is moved after rotating (#4869)', () => {
     act(() => useViewerStore.getState().openReposition(['ifc']));
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Rotation angle in degrees'), '30');
     type(input(ui, 'Rotation pivot X'), '10');
     type(input(ui, 'Rotation pivot Y'), '4');
@@ -404,7 +414,7 @@ describe('model repositioning user interactions (#4226)', () => {
       useViewerStore.setState({ models });
       useViewerStore.getState().openReposition(['scan']);
     });
-    const ui = render(<ToolOverlays />);
+    const ui = render(<><ToolOverlays /><LocalTab /></>);
     // A boolean, not the element: asserting an HTMLElement equals null makes
     // node build a diff of the whole DOM node and run the runner out of memory.
     assert.equal(ui.querySelector('input[aria-label="Rotation angle in degrees"]') === null, true);
@@ -413,7 +423,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('cancels placement when a different tool is selected', () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
-    const ui = render(<><HomeTab /><ToolOverlays /></>);
+    const ui = render(<><HomeTab /><ToolOverlays /><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     click(button(ui, 'Select'));
     // Selecting the same tool does not cancel; selecting another one does.

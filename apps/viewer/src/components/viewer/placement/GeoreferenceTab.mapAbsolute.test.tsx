@@ -3,15 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Scenario test for `CesiumPlacementEditor`'s map-absolute UI guard
+ * Scenario test for `GeoreferenceTab`'s map-absolute UI guard
  * (issue #2526's guard, #2534 review finding).
  *
  * Deep review of #2534 (2026-08-10, louistrue) — blocking issue on
- * CesiumPlacementEditor.tsx:507-530: "On a map-absolute file the placement
+ * the former CesiumPlacementEditor.tsx:507-530 (now GeoreferenceTab.tsx): "On a map-absolute file the placement
  * gizmo becomes a silent no-op inside the 10km window ... Disclosed only in
  * a source comment; no UI guard, no test." Also: "the cesium-placement.test.
  * ts cases exercise the new helper functions directly, not the component
- * that decides what to pass them" and "CesiumPlacementEditor.tsx — both
+ * that decides what to pass them" and "CesiumPlacementEditor.tsx (now GeoreferenceTab.tsx) — both
  * `...ForGeometry` swaps ... are untested."
  *
  * This file mounts the REAL component (not the pure helpers) with a
@@ -32,7 +32,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
 import { useViewerStore } from '@/store';
-import { CesiumPlacementEditor } from './CesiumPlacementEditor.js';
+import { GeoreferenceTab } from './GeoreferenceTab.js';
 
 const projectedCRS: ProjectedCRS = { id: 2, name: 'EPSG:25833', mapUnitScale: 1 };
 
@@ -74,7 +74,7 @@ async function mount(props: {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <CesiumPlacementEditor
+      <GeoreferenceTab
         modelId="m0"
         mapConversion={props.mapConversion}
         baseMapConversion={props.baseMapConversion}
@@ -90,7 +90,7 @@ async function mount(props: {
 const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
 
-describe('CesiumPlacementEditor — map-absolute UI guard (#2534 review)', () => {
+describe('GeoreferenceTab — map-absolute UI guard (#2534 review)', () => {
   it('shows the map-absolute warning banner for a map-absolute file', async () => {
     useViewerStore.setState({
       cesiumPlacementEditMode: true,

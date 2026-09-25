@@ -3,14 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `RepositionPanel`'s own chrome reads the i18n catalogue (#4918 slice,
+ * The `placement` panel's Local tab (#5505: moved verbatim out of the
+ * floating `RepositionPanel`) reads the i18n catalogue (#4918 slice,
  * `reposition-panel.en.ts`, prefix `repositionPanel.*`): the header,
  * moving/reference model pickers, framing shortcuts, point-picking
  * prompts, constraint/input-mode controls, the move-dimensions readout,
  * and the apply/undo/redo/reset actions. `RotationControls.tsx`,
  * `PlacementGizmo.tsx`, `PlacementFiles.tsx`, and
  * `StaleMeasurementBadge.tsx` share the same catalogue and prefix; this
- * file covers the panel's own default-visible chrome plus the
+ * file covers the tab's own default-visible chrome plus the
  * lock-toggle and mode-switch states that only a real interaction
  * reveals, the sibling files' own dedicated coverage is not repeated here.
  *
@@ -32,7 +33,8 @@ import type { TranslationParameters, TranslationValue, PluralTranslation } from 
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { RepositionPanel } from './RepositionPanel';
+import { ToolOverlays } from '../ToolOverlays';
+import { LocalTab } from './LocalTab';
 
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(([key]) => key.startsWith('repositionPanel.')),
@@ -50,7 +52,7 @@ function markValue(value: TranslationValue): TranslationValue {
 
 const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)]));
 const BASELINE_LOCALE = 'en';
-const PSEUDO_LOCALE = 'reposition-panel-pseudo';
+const PSEUDO_LOCALE = 'local-tab-pseudo';
 
 function readableStrings(root: ParentNode): Set<string> {
   const out = new Set<string>();
@@ -116,26 +118,40 @@ beforeEach(() => {
   useViewerStore.setState({
     models: new Map([['a', federatedModel('a', 'Alpha.ifc')], ['b', federatedModel('b', 'Beta.ifc')]]),
     modelPlacement: emptyPlacementState(),
+    repositionOpen: false,
     repositionNudge: 0.001,
     snapEnabled: true,
+    activeTool: 'select',
     cameraCallbacks: {},
   });
+  // A reposition session is what shows the Local tab's full form — the
+  // floating RepositionPanel used to render this unconditionally, but the
+  // docked tab shows an empty/start state until a session is open (#5505).
+  useViewerStore.getState().openReposition(['a']);
 });
 
 afterEach(() => {
   cleanup();
   setLocale(BASELINE_LOCALE);
   useViewerStore.setState({
-    models: new Map(), modelPlacement: emptyPlacementState(), repositionNudge: 0.001,
+    models: new Map(), modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001,
     snapEnabled: true, cameraCallbacks: {},
   });
 });
 
-describe('RepositionPanel localization (#4918)', () => {
-  it('translates the panel header, model pickers, framing shortcuts, and the idle prompt', async () => {
-    const container = render(<RepositionPanel />);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
+describe('LocalTab localization (#4918, #5505)', () => {
+  it('translates the model pickers, framing shortcuts, and the idle prompt', async () => {
+    const container = render(<><ToolOverlays /><LocalTab /></>);
+    // The `ui/select` (Radix) coordinate-input-mode dropdown portals its item
+    // list to `document.body` and only mounts it while open — open it once
+    // and leave it open so its two item labels are in the scanned DOM both
+    // before and after the locale switch (`domAfterPseudo` only changes the
+    // locale, not the open state).
+    const modeTrigger = container.querySelector('[aria-label="Coordinate input mode"]');
+    assert.ok(modeTrigger, 'expected the coordinate-input-mode select trigger');
+    click(modeTrigger!);
+    const englishDom = readableStrings(document.body);
+    const afterDom = domAfterPseudo(document.body);
     assertAllTranslate(
       [
         { key: 'repositionPanel.title' },
@@ -144,7 +160,6 @@ describe('RepositionPanel localization (#4918)', () => {
         { key: 'repositionPanel.subtitle' },
         { key: 'repositionPanel.movingModelsLegend' },
         { key: 'repositionPanel.referenceModelLabel' },
-        { key: 'repositionPanel.chooseReferenceOption' },
         { key: 'repositionPanel.frameMovingButton' },
         { key: 'repositionPanel.frameReferenceButton' },
         { key: 'repositionPanel.frameBothButton' },
@@ -178,11 +193,26 @@ describe('RepositionPanel localization (#4918)', () => {
     );
   });
 
-  it('translates the lock toggle action and status once a model is selected', async () => {
-    const container = render(<RepositionPanel />);
-    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
-    assert.ok(checkbox, 'expected a moving-model checkbox');
-    click(checkbox);
+  it('translates the reference-model placeholder when no candidate reference model is loaded', async () => {
+    // A single moving model leaves no candidate reference, so the Select
+    // trigger shows the untranslated placeholder instead of a model name.
+    useViewerStore.setState({
+      models: new Map([['a', federatedModel('a', 'Alpha.ifc')]]),
+      modelPlacement: emptyPlacementState(),
+      repositionOpen: false,
+      activeTool: 'select',
+    });
+    useViewerStore.getState().openReposition(['a']);
+    const container = render(<><ToolOverlays /><LocalTab /></>);
+    const englishDom = readableStrings(container);
+    const afterDom = domAfterPseudo(container);
+    assertAllTranslate([{ key: 'repositionPanel.chooseReferenceOption' }], englishDom, afterDom);
+  });
+
+  it('translates the lock toggle action and status for the moving model', async () => {
+    // `beforeEach` already opened a session moving model 'a' — the lock
+    // action/status render for any moving model, no interaction required.
+    const container = render(<><ToolOverlays /><LocalTab /></>);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(

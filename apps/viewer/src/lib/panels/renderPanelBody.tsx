@@ -32,6 +32,7 @@ import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
 import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
 import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
+import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
@@ -146,5 +147,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'drawing': return <DrawingPanelBody />;
     case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
+    case 'placement': return <PlacementPanel onClose={onClose} />;
   }
 }

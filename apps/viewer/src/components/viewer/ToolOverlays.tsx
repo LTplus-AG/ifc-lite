@@ -22,7 +22,7 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
-import { RepositionPanel } from './reposition/RepositionPanel';
+import { RepositionRuntimeHost } from './reposition/RepositionRuntimeHost';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -40,7 +40,7 @@ function ToolOverlaysBody(): ReactNode {
   useEffect(() => {
     if (repositionOpen && activeTool !== 'select') useViewerStore.getState().closeReposition();
   }, [repositionOpen, activeTool]);
-  if (repositionOpen && activeTool === 'select') return <RepositionPanel />;
+  if (repositionOpen && activeTool === 'select') return <RepositionRuntimeHost />;
 
   const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
   return (

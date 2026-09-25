@@ -18,30 +18,16 @@
  */
 
 import type { BCFMarker3D, BCFOverlayProjection } from './overlay.js';
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const MARKER_CLASS = 'bcf-overlay-marker';
-const CONNECTOR_CLASS = 'bcf-overlay-connector';
-const ACTIVE_CLASS = 'bcf-overlay-active';
-const TOOLTIP_CLASS = 'bcf-overlay-tooltip';
-
-/** Pin and connector colors keyed by BCF topic status */
-const STATUS_COLORS: Record<string, string> = {
-  open: '#f7768e',
-  'in progress': '#e0af68',
-  resolved: '#9ece6a',
-  closed: '#565f89',
-};
-
-const STATUS_ICONS: Record<string, string> = {
-  open: '●',
-  'in progress': '◐',
-  resolved: '✓',
-  closed: '○',
-};
+import {
+  ACTIVE_CLASS,
+  CONNECTOR_CLASS,
+  MARKER_CLASS,
+  OVERLAY_STYLES,
+  STATUS_COLORS,
+  STATUS_ICONS,
+  THEME,
+  TOOLTIP_CLASS,
+} from './overlay-renderer-styles.js';
 
 // ============================================================================
 // Overlay Renderer
@@ -263,7 +249,9 @@ export class BCFOverlayRenderer {
         conn.setAttribute('y1', String(markerY));
         conn.setAttribute('x2', String(anchorScreen.x));
         conn.setAttribute('y2', String(anchorScreen.y));
-        conn.setAttribute('stroke', color);
+        // A custom property, not an inline `stroke`, so a page stylesheet that
+        // restyles `.bcf-overlay-connector { stroke: ... }` still wins.
+        conn.style.setProperty('--bcf-connector-color', color);
         conn.setAttribute('stroke-width', '1.5');
         conn.setAttribute('stroke-dasharray', '3 2');
         conn.setAttribute('stroke-opacity', String((opacity * 0.5).toFixed(2)));
@@ -352,7 +340,7 @@ export class BCFOverlayRenderer {
   }
 
   private getStatusColor(status: string): string {
-    return STATUS_COLORS[status.toLowerCase()] ?? '#7aa2f7';
+    return STATUS_COLORS[status.toLowerCase()] ?? THEME.ink;
   }
 
   private escapeHtml(text: string): string {
@@ -372,124 +360,7 @@ export class BCFOverlayRenderer {
     BCFOverlayRenderer.stylesInjected = true;
 
     const style = document.createElement('style');
-    style.textContent = `
-      /* BCF 3D Overlay Markers */
-
-      .${MARKER_CLASS} {
-        position: absolute;
-        left: 0;
-        top: 0;
-        pointer-events: auto;
-        cursor: pointer;
-        will-change: transform, opacity;
-        z-index: 21;
-        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
-        transform-origin: center bottom;
-      }
-
-      .bcf-marker-pin {
-        width: 28px;
-        height: 28px;
-        border-radius: 50% 50% 50% 0;
-        background: var(--marker-color, #7aa2f7);
-        transform: rotate(-45deg);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid rgba(255,255,255,0.9);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-      }
-
-      .${MARKER_CLASS}:hover .bcf-marker-pin {
-        transform: rotate(-45deg) scale(1.2);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-      }
-
-      .${ACTIVE_CLASS} .bcf-marker-pin {
-        transform: rotate(-45deg) scale(1.25);
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--marker-color, #7aa2f7) 35%, transparent), 0 4px 16px rgba(0,0,0,0.4);
-        animation: bcf-pulse 1.8s ease-in-out infinite;
-      }
-
-      .bcf-marker-index {
-        transform: rotate(45deg);
-        font-size: 11px;
-        font-weight: 700;
-        color: white;
-        font-family: ui-monospace, monospace;
-        line-height: 1;
-        user-select: none;
-      }
-
-      /* Tooltip */
-      .${TOOLTIP_CLASS} {
-        position: absolute;
-        bottom: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: #1a1b26;
-        color: #a9b1d6;
-        border: 1px solid #3b4261;
-        padding: 8px 12px;
-        min-width: 160px;
-        max-width: 260px;
-        font-family: ui-monospace, monospace;
-        font-size: 11px;
-        line-height: 1.4;
-        white-space: nowrap;
-        z-index: 100;
-        pointer-events: none;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-      }
-
-      .${TOOLTIP_CLASS}::after {
-        content: '';
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        border: 5px solid transparent;
-        border-top-color: #3b4261;
-      }
-
-      .bcf-tooltip-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .bcf-tooltip-status {
-        font-size: 10px;
-        flex-shrink: 0;
-      }
-
-      .bcf-tooltip-title {
-        font-weight: 600;
-        color: #c0caf5;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .bcf-tooltip-meta {
-        margin-top: 3px;
-        font-size: 10px;
-        color: #565f89;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-
-      /* Connector lines */
-      .${CONNECTOR_CLASS} {
-        pointer-events: none;
-      }
-
-      /* Pulse animation for active marker */
-      @keyframes bcf-pulse {
-        0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--marker-color, #7aa2f7) 35%, transparent), 0 4px 16px rgba(0,0,0,0.4); }
-        50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--marker-color, #7aa2f7) 10%, transparent), 0 4px 16px rgba(0,0,0,0.4); }
-      }
-    `;
+    style.textContent = OVERLAY_STYLES;
     document.head.appendChild(style);
   }
 }

@@ -717,6 +717,9 @@ importers:
         specifier: ^3.10.2
         version: 3.10.2
     devDependencies:
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

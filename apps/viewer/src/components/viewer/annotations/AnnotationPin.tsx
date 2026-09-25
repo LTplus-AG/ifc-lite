@@ -9,6 +9,11 @@
  * so it stays comfortable on touch and doesn't fight pointer events
  * on the surrounding canvas. The pin sits in the canvas overlay layer
  * (`AnnotationLayer`) which positions it absolutely each frame.
+ *
+ * Colour (#5491): a committed pin is a passive mark, so it is *ink*; the
+ * draft pin (the note being written right now) and the selection ring are the
+ * one *accent* the renderer also uses for selected meshes. The glyph and the
+ * dot's outline are the *halo*, which contrasts with both in every theme.
  */
 
 import { forwardRef } from 'react';
@@ -18,7 +23,7 @@ import { useTranslation } from '@/i18n';
 export interface AnnotationPinProps {
   /** Index in the rendered list — 1-based. Shown inside the dot when ≤ 9. */
   index: number;
-  /** Highlights the dot with the emerald ring used for selection across the viewer. */
+  /** Rings the dot in the selection accent (`overlay-accent`), the viewer's one selected colour. */
   selected?: boolean;
   /** Tooltip preview when the user hovers (author + first ~40 chars of note). */
   preview?: string;
@@ -26,7 +31,7 @@ export interface AnnotationPinProps {
   onClick?: () => void;
   /** Called when the dot is right-clicked — used by the layer for "delete via menu". */
   onContextMenu?: (e: React.MouseEvent) => void;
-  /** Visual variant. `draft` is a slightly washed-out pin used while the note input is open. */
+  /** Visual variant. `draft` is the accent pin shown while the note input is open. */
   variant?: 'idle' | 'draft';
 }
 
@@ -53,41 +58,37 @@ export const AnnotationPin = forwardRef<HTMLButtonElement, AnnotationPinProps>(
           // 24×24 invisible hit-target around a 14px dot — touch comfort
           // without bloating the visual.
           'group relative inline-flex h-6 w-6 items-center justify-center',
-          // Keyboard focus ring uses the same emerald accent as selection.
+          // Keyboard focus ring uses the same accent as selection.
           'cursor-pointer outline-none rounded-full',
-          'focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+          'focus-visible:ring-2 focus-visible:ring-overlay-accent focus-visible:ring-offset-1 focus-visible:ring-offset-background',
         )}
       >
         <span
           aria-hidden
           className={cn(
-            // Inner dot: 14px disc, amber accent, white glyph centered.
-            // Drop shadow grounds it against the rendered scene; without
-            // it the pin floats and reads as a UI bug.
+            // Inner dot: 14px disc, ink (accent while drafting), halo
+            // glyph and outline. The outline separates the dot from the
+            // rendered scene; without it the pin floats and reads as a UI bug.
             'flex h-3.5 w-3.5 items-center justify-center rounded-full',
-            'text-[8px] font-mono font-bold leading-none text-white tabular-nums',
-            'shadow-[0_1px_4px_rgba(0,0,0,0.35),0_0_0_1px_rgba(0,0,0,0.15)]',
+            'text-[8px] font-mono font-bold leading-none text-overlay-halo tabular-nums',
+            'ring-1 ring-overlay-halo shadow-sm',
+            variant === 'draft' ? 'bg-overlay-accent' : 'bg-overlay-ink',
             'transition-transform duration-150 ease-out',
             'group-hover:scale-[1.18]',
             // Idle pulse on first paint — drawn from the layer's
             // animation-delay so a freshly committed pin announces
             // itself once and then settles.
             variant === 'idle' && 'annotation-pin-idle',
-            variant === 'draft' && 'opacity-70',
           )}
-          style={{
-            backgroundColor: variant === 'draft' ? '#fbbf24' : '#f59e0b',
-          }}
         >
           {glyph}
         </span>
         {selected && (
           <span
             aria-hidden
-            // Selection ring — emerald, matches the existing
-            // "constructive" accent (Raw STEP nav, duplicate path).
-            // Sits one pixel outside the dot via `ring-offset`.
-            className="pointer-events-none absolute inset-[5px] rounded-full ring-2 ring-emerald-500 ring-offset-1 ring-offset-transparent"
+            // Selection ring — the selection accent. Sits one pixel
+            // outside the dot via `ring-offset`.
+            className="pointer-events-none absolute inset-[5px] rounded-full ring-2 ring-overlay-accent ring-offset-1 ring-offset-transparent"
           />
         )}
       </button>

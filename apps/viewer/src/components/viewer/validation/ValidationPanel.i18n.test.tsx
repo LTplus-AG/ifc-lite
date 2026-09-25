@@ -142,6 +142,9 @@ function reportFixture(): ValidationReport {
 }
 
 function resetReport(): void {
+  // Each locale fixture starts a new validation flow. A draft now survives
+  // unmounts (#5825), so explicitly discard it between these scenarios.
+  useViewerStore.getState().clearValidationRuleSetDraft();
   useViewerStore.setState({ idsValidationReport: null, validationSource: null });
   setValidationSourceChoice(null);
 }
@@ -218,6 +221,7 @@ async function mountAll(): Promise<Set<string>> {
   collect();
   cleanup();
 
+  resetReport();
   useViewerStore.setState({ idsValidationReport: reportFixture(), validationSource: 'rules' });
   const resultsHost = render(<ValidationPanel />);
   // Set-level rows live inside the card's Collapsible content — expand it so

@@ -27,6 +27,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { pendingCustomTilesets, resetCesiumStub, stubViewers } from '@/test/cesium-stub.js';
 import { cleanup, render } from '@/test/render.js';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { CesiumOverlay } from './CesiumOverlay.js';
 
 const TILESET_URL = 'https://data.example.org/3dtiles/tileset.json';
@@ -61,9 +62,17 @@ function seedStore(url: string | null): void {
   } as never);
 }
 
+/**
+ * `CesiumOverlay`'s status/warning chips are now `HudItem`s (#5504), portaled
+ * into `ViewportHud`'s top-left region — mount the HUD host alongside the
+ * overlay so `container.querySelector` can see them.
+ */
 function mount(): HTMLElement {
   return render(
-    <CesiumOverlay mapConversion={MAP_CONVERSION} projectedCRS={PROJECTED_CRS} />,
+    <>
+      <ViewportHud />
+      <CesiumOverlay mapConversion={MAP_CONVERSION} projectedCRS={PROJECTED_CRS} />
+    </>,
   );
 }
 

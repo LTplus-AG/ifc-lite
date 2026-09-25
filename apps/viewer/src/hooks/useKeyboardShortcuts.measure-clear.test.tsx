@@ -20,6 +20,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { Measurement } from '@/store/types.js';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts.js';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel.js';
+import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud.js';
 
 function ShortcutsHost() {
   useKeyboardShortcuts();
@@ -75,17 +76,20 @@ describe('Measure tool keyboard shortcuts do not clear measurements (#5598)', ()
   });
 });
 
-describe('Measure panel "Clear all" asks before clearing (#5598)', () => {
+describe('Measure bar "Clear all" asks before clearing (#5598)', () => {
   function clearAllButton(container: HTMLElement): Element {
     const button = container.querySelector('button[title="Clear all"]');
-    assert.ok(button, 'measure panel has no "Clear all" button');
+    assert.ok(button, 'measure bar has no "Clear all" button');
     return button;
   }
+
+  /** The bar portals into the HUD host (#5502), so both mount together. */
+  const renderBar = () => render(<><ViewportHud /><MeasureOverlay /></>);
 
   it('keeps the measurements when the confirm is declined', () => {
     const asked: string[] = [];
     window.confirm = (message?: string) => { asked.push(message ?? ''); return false; };
-    const container = render(<MeasureOverlay />);
+    const container = renderBar();
     click(clearAllButton(container));
     assert.deepEqual(asked, ['Clear every measurement? This cannot be undone.']);
     assert.deepEqual(useViewerStore.getState().measurements, [MEASUREMENT]);
@@ -93,7 +97,7 @@ describe('Measure panel "Clear all" asks before clearing (#5598)', () => {
 
   it('clears the measurements when the confirm is accepted', () => {
     window.confirm = () => true;
-    const container = render(<MeasureOverlay />);
+    const container = renderBar();
     click(clearAllButton(container));
     assert.deepEqual(useViewerStore.getState().measurements, []);
   });

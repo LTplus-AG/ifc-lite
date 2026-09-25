@@ -19,21 +19,23 @@ import type { Hover, SplitTarget, Intent, IntentTone } from './types';
 import { useTranslation } from '@/i18n';
 
 const EPS = 1e-6;
-const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a855f7', '#ef4444'];
+// Data palette: per-room identity only. No purple — that was edit mode's hue, now retired (#5489).
+const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a16207', '#ef4444'];
 
+// Status tokens (#5483): draw = ok, cut = accent, remove = danger.
 const INTENT_TEXT_CLASS: Record<IntentTone, string> = {
   move: 'text-foreground',
-  draw: 'text-emerald-600 dark:text-emerald-400',
-  cut: 'text-blue-600 dark:text-blue-400',
-  remove: 'text-red-600 dark:text-red-400',
+  draw: 'text-status-ok',
+  cut: 'text-overlay-accent',
+  remove: 'text-status-danger',
   pan: 'text-muted-foreground',
 };
 const INTENT_DOT_CLASS: Record<IntentTone, string> = {
-  move: 'bg-zinc-400',
-  draw: 'bg-emerald-500',
-  cut: 'bg-blue-500',
-  remove: 'bg-red-500',
-  pan: 'bg-zinc-400',
+  move: 'bg-muted-foreground',
+  draw: 'bg-status-ok',
+  cut: 'bg-overlay-accent',
+  remove: 'bg-status-danger',
+  pan: 'bg-muted-foreground',
 };
 
 interface GridLine { x1: number; y1: number; x2: number; y2: number }
@@ -90,13 +92,15 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
       {/* Live action preview — tells you what the next click will do, colour-keyed
           to the on-canvas cues (green draw · blue cut · red remove/merge). */}
       {intent && (
-        <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-md border bg-background/85 px-2 py-1 text-[11px] font-semibold shadow-sm backdrop-blur">
+        <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5 rounded-md border border-border bg-popover/[.94] px-2 py-1 text-[11px] font-medium shadow-sm backdrop-blur-md">
           <span className={`h-1.5 w-1.5 rounded-full ${INTENT_DOT_CLASS[intent.tone]}`} />
           <span className={INTENT_TEXT_CLASS[intent.tone]}>{intent.text}</span>
         </div>
       )}
-      <svg ref={svgRef} width={width} height={height} style={{ cursor }}
-        className="rounded border bg-muted/20 touch-none"
+      <svg ref={svgRef} width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ cursor }}
+        // Nominal size through the viewBox; `max-w-full h-auto` lets the HUD
+        // lane shrink it without breaking the canvas-px maths (#5503).
+        className="rounded border bg-muted/20 touch-none max-w-full h-auto"
         // Suppress the browser's native HTML5 drag: without this, pressing a
         // vertex/edge and moving starts a native element drag that the viewer's
         // file-drop zone catches ("Drop to federate"), hijacking the edit drag.

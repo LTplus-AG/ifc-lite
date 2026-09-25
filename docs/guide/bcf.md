@@ -229,23 +229,24 @@ Clash review status (`open` / `resolved` / `accepted`, tracked with an optional 
 
 ## 3D Overlay Markers
 
-For rendering BCF topics as markers in a 3D view, the package provides viewer-agnostic marker positioning plus a DOM renderer:
+For rendering BCF topics as markers in a 3D view, the package provides viewer-agnostic marker positioning. `computeMarkerPositions` turns topics into world-space (Y-up) markers — a pin position, an optional connector anchor on the referenced component, and the topic's title, status and priority — and leaves drawing them to your renderer:
 
 ```typescript
-import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
+import { computeMarkerPositions, type BCFTopic, type OverlayBBox } from '@ifc-lite/bcf';
+
+declare const topics: BCFTopic[];
+declare function boundsForGuid(ifcGuid: string): OverlayBBox | null;
+
+const markers = computeMarkerPositions(topics, boundsForGuid, {
+  statusFilter: ['Open', 'In Progress'],
+});
+for (const marker of markers) {
+  // Project marker.position (and marker.connectorAnchor, when present) to
+  // screen space with your own camera, then draw a pin coloured by marker.status.
+}
 ```
 
-The renderer takes its colours from CSS custom properties on the host page, so it follows a light or dark theme without configuration:
-
-| Property | Used for | Fallback |
-| --- | --- | --- |
-| `--color-popover`, `--color-popover-foreground`, `--color-muted-foreground`, `--color-border` | Tooltip surface, text, meta line, border | `#ffffff`, `#1f2335`, `#5a6aa4`, `#c4c8da` |
-| `--overlay-status-danger` / `-warn` / `-ok` | Pins for Open / In Progress / Resolved | `#f52a65` / `#8c6c3e` / `#587539` |
-| `--overlay-ink-muted`, `--overlay-ink` | Closed pins; pins with any other status | `#5a6aa4`, `#1f2335` |
-| `--overlay-halo` | Pin outline and index | `#ffffff` |
-| `--overlay-accent` | Ring around the active marker | `#2e7de9` |
-
-Define the tooltip properties as a set: the fallbacks form one light palette, so a page that sets none of them still gets dark text on a white card.
+The package no longer ships a DOM renderer for these markers. The IFClite viewer draws them as `Pin` / `AnchoredCard` primitives on its shared scene-overlay projector; any other host renders them from `computeMarkerPositions`' output.
 
 ## BCF Servers (BCF API)
 

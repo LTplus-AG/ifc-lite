@@ -11,7 +11,7 @@
  * one short menu and drops the +/- zoom steps (wheel and pinch still zoom).
  */
 
-import { Box, BoxSelect, Cloud, Eye, FileText, Hexagon, Layers, Maximize2, MoreHorizontal, MousePointer2, Palette, Pin, PinOff, Ruler, ScanLine, Shapes, Tag, Trash2, Type, ZoomIn, ZoomOut } from 'lucide-react';
+import { Box, BoxSelect, Cloud, Eye, FileText, Hexagon, Layers, Maximize2, MoreHorizontal, MousePointer2, Palette, Pin, PinOff, Printer, Ruler, ScanLine, Shapes, Tag, Trash2, Type, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -43,7 +43,7 @@ export interface DrawingToolbarProps {
   onSelectTool: (tool: Annotation2DTool) => void;
   hasMarkup: boolean;
   onClearMarkup: () => void;
-  display: { symbolic: boolean; ifcAnnotations: boolean; projection: boolean; overlay3D: boolean };
+  display: { symbolic: boolean; ifcAnnotations: boolean; projection: boolean; overlay3D: boolean; printPreview: boolean };
   /** IFC annotations overlay only on plan (Down) cuts. */
   ifcAnnotationsAvailable: boolean;
   /** Construction projection is not available on a custom (face-picked) plane. */
@@ -52,6 +52,7 @@ export interface DrawingToolbarProps {
   onToggleIfcAnnotations: () => void;
   onToggleProjection: () => void;
   onToggleOverlay3D: () => void;
+  onTogglePrintPreview: () => void;
   openDrawer: DrawingDrawer | null;
   /** Per drawer: its feature is active (preset applied, sheet on, underlays loaded, scan shown). */
   drawerActivity: Record<DrawingDrawer, boolean>;
@@ -104,6 +105,11 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
         <ToggleChip
           icon={Eye} label={t('section2d.display.overlay3d')} tip={t('section2d.overlay.toggleTitle')}
           on={p.display.overlay3D} showLabel={showLabels} onToggle={p.onToggleOverlay3D}
+        />
+        <ToggleChip
+          icon={Printer} label={t('section2d.display.printPreview')}
+          tip={p.display.printPreview ? t('section2d.printPreview.hideTitle') : t('section2d.printPreview.showTitle')}
+          on={p.display.printPreview} showLabel={showLabels} onToggle={p.onTogglePrintPreview}
         />
       </div>
 

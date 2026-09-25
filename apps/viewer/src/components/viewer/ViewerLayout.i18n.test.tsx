@@ -20,18 +20,12 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import type { BimContext } from '@ifc-lite/sdk';
-import { createBimContext } from '@ifc-lite/sdk';
-import { BimReactContext } from '@/sdk/BimProvider.js';
-import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
-import { ExtensionHostService } from '@/services/extensions/host.js';
-import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup } from '@/test/render.js';
+import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import { ViewerLayout } from './ViewerLayout.js';
 
 // Guarded dynamic import (#4918 revert-oracle): a plain static import would
 // fail the whole FILE's load if this catalogue is reverted/deleted (zero
@@ -63,42 +57,6 @@ function makeModel(): FederatedModel {
     idOffset: 0,
     maxExpressId: 0,
   };
-}
-
-/** Same stub-host seam `StatusBar.i18n.test.tsx` / `FlavorDialog.unapplied-
- *  toast.test.tsx` use: `ViewerLayout` always mounts `FlavorDialog`, which
- *  calls `useExtensionHost()` unconditionally regardless of its own `open`
- *  prop. */
-class StubExtensionHost extends ExtensionHostService {
-  constructor() {
-    super({
-      sdk: createBimContext({
-        transport: {
-          send: () => Promise.reject(new Error('SDK transport is not exercised by this test')),
-          subscribe: () => () => {},
-          close: () => {},
-        },
-      }),
-    });
-  }
-}
-
-/** Same minimal seams `CommandPalette.i18n.test.tsx` / `sources-chrome.i18n
- *  .test.tsx` use: `ViewerLayout` mounts `CommandPalette` (needs a
- *  `<BimProvider>` ancestor for `useSandbox()`), `HierarchyPanel` (needs a
- *  `<SourceHostProvider>` ancestor), and `FlavorDialog` (needs an
- *  `<ExtensionHostProvider>` ancestor) — regardless of any of the three
- *  panels' own open/visible state. */
-function renderLayout(): HTMLElement {
-  return render(
-    <BimReactContext.Provider value={{} as BimContext}>
-      <ExtensionHostContext.Provider value={new StubExtensionHost()}>
-        <SourceHostProvider>
-          <ViewerLayout />
-        </SourceHostProvider>
-      </ExtensionHostContext.Provider>
-    </BimReactContext.Provider>,
-  );
 }
 
 type ShellChromeKey = keyof typeof ShellChromeEnType;
@@ -144,7 +102,7 @@ afterEach(() => {
 describe('ViewerLayout localization (#4918)', () => {
   it('translates the safe-mode banner', () => {
     setSearch('?safe=1');
-    renderLayout();
+    renderViewerLayout();
     const english = bodyText();
     assert.ok(
       english.includes('Safe mode: extensions and the active flavor are not loaded for this session.'),
@@ -173,7 +131,7 @@ describe('ViewerLayout localization (#4918)', () => {
       rightPanelCollapsed: true,
       models: new Map([['m1', makeModel()]]),
     });
-    const container = renderLayout();
+    const container = renderViewerLayout();
     Object.defineProperty(window, 'innerWidth', { value: originalInnerWidth, configurable: true });
     const hierarchyBtn = [...container.querySelectorAll('button')].find(
       (b) => b.getAttribute('aria-label') === 'Open Hierarchy',

@@ -6,7 +6,7 @@
  * Types for IFC mutation tracking
  */
 
-import type { PropertyValueType, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
+import type { PropertyValueType, PropertySet, QuantitySet, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
 /**
  * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
@@ -44,14 +44,10 @@ type _IfcAttributeValueMirrorInSync = AssertTrue<
   MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
 >;
 
-/**
- * Property value types supported by mutations
- */
+/** Property value types supported by mutations */
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
 
-/**
- * Types of mutations that can be applied to IFC data
- */
+/** Types of mutations that can be applied to IFC data */
 export type MutationType =
   | 'CREATE_PROPERTY'
   | 'UPDATE_PROPERTY'
@@ -116,7 +112,43 @@ export interface Mutation {
    * USERDEFINED + ObjectType (mirrors IfcOpenShell's reassign_class).
    */
   predefinedType?: string | null;
+
+  /**
+   * The touched set's overlay state right before and right after a whole-set
+   * edit (`CREATE_PROPERTY_SET`, `DELETE_PROPERTY_SET`, whole-set
+   * `CREATE_QUANTITY`, `DELETE_QUANTITY_SET`, `DELETE_QUANTITY`). These edits
+   * rewrite several overlay rows at once and carry no per-row old value, so
+   * undo restores `before` and redo restores `after` via
+   * `MutablePropertyView.restoreSetOverlay` (#5965).
+   */
+  setOverlay?: { before: SetOverlaySnapshot; after: SetOverlaySnapshot };
 }
+
+/**
+ * Every overlay row one property or quantity set owns on one entity, captured
+ * verbatim. Base (file) data is immutable and not part of it.
+ */
+export type SetOverlaySnapshot = {
+  entityId: number;
+  setName: string;
+  /** Whether a base set of this name is masked by a whole-set deletion. */
+  masked: boolean;
+} & (
+  | {
+    kind: 'property';
+    /** Per-property overlay rows under this set, keyed by `propertyKey`. */
+    entries: Array<[key: string, mutation: PropertyMutation]>;
+    /** The in-session set of this name, if one exists. */
+    created: PropertySet | null;
+  }
+  | {
+    kind: 'quantity';
+    /** Per-quantity overlay rows under this set, keyed by `quantityKey`. */
+    entries: Array<[key: string, mutation: QuantityMutation]>;
+    /** The in-session set of this name, if one exists. */
+    created: QuantitySet | null;
+  }
+);
 
 /**
  * A collection of related mutations

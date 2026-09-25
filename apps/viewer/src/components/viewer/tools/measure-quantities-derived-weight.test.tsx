@@ -28,7 +28,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store/index.js';
-import { ToolOverlays } from '../ToolOverlays.js';
+import { renderPanelBody } from '@/lib/panels/renderPanelBody.js';
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
@@ -43,13 +43,17 @@ function renderNode(node: ReactNode): HTMLElement {
   return container;
 }
 
-const render = (): HTMLElement => renderNode(<ToolOverlays />);
+/**
+ * The QTY readout lives in the `measurements` side panel since #5502, reached
+ * through `renderPanelBody` — the one id → body map every sidebar host uses.
+ */
+const render = (): HTMLElement => renderNode(renderPanelBody('measurements', () => {}));
 
 function openSection(container: HTMLElement, label: string): void {
-  const button = [...container.querySelectorAll('button')].find(
+  const button = [...container.querySelectorAll('[role="tab"]')].find(
     (b) => b.textContent?.trim() === label,
   );
-  assert.ok(button, `no section button labelled "${label}" on the measure panel`);
+  assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });

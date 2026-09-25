@@ -52,7 +52,7 @@ import { checkCommand } from './commands/check.js';
 import { flowCommand } from './commands/flow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readPackageVersion } from '@ifc-lite/data';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import { buildHelp, buildCommandHelp } from './help.js';
 
 // package.json sits one level above both `src/` and `dist/`.

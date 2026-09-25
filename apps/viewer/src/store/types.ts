@@ -220,9 +220,12 @@ import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
- * `normal` + `distance` directly and ignores `axis` / `position`. The
- * cardinal `axis` / `position` / `flipped` fields are still kept in sync
- * (nearest-cardinal for axis, percentage along it for position) so any
+ * `normal` + `distance` directly and ignores `axis` / `position`, and
+ * `SectionPlane.flipped` is relative to `normal`, not to the cardinal axis
+ * (#5644): the shader's `side` multiplies `dot(p, normal) - distance`. The
+ * cardinal `axis` / `position` fields are still kept in sync
+ * (nearest-cardinal for axis, percentage along it for position; read the
+ * matching flip through `cardinalSectionFlipped`) so any
  * downstream reader that pre-dates custom planes (drawings export, BCF
  * snapshots, view controls) still gets a sensible projection rather than
  * crashing or emitting empty data.
@@ -244,6 +247,14 @@ export interface CustomSectionPlane {
   /** Second in-plane axis, deterministic from `normal`. */
   bitangent: [number, number, number];
 }
+
+/** An axis-aligned world-space section box (#5513): the renderer's `ClipBox` without its flag. */
+export interface SectionBox {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+/** One of the six faces of a `SectionBox`, named by corner and axis. */
+export type SectionBoxFace = 'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ';
 
 export interface SectionPlane {
   axis: SectionPlaneAxis;
@@ -270,6 +281,8 @@ export interface SectionPlane {
    * `CustomSectionPlane`).
    */
   custom?: CustomSectionPlane;
+  /** Box mode (#5513): the cut is this box, not a plane; exclusive with `custom`. */
+  box?: SectionBox;
 }
 
 // ============================================================================
@@ -380,6 +393,8 @@ export interface CameraCallbacks {
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
   frameSelection?: (durationMs?: number) => void;
+  /** The world AABB `frameSelection` would frame (same id resolution), or `null` with nothing framable. */
+  selectionBounds?: () => { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /**
    * Resolve ids to what the 3D renderer can actually highlight, expanding a
    * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its

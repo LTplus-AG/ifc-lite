@@ -27,6 +27,15 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Derived swept-disk metrics (#5754)
+
+The length/bend calculations run only when an analytic description is
+requested or serialized, outside normal mesh production. Verdict: default mesh
+output is byte-identical (same ordered mesh hash on both revisions); a
+default-load probe cannot measure this code's cost, and timing on a contested
+host was unresolved. Measure opt-in analytic extraction on representative
+swept-disk models separately from ordinary mesh loading.
+
 ## Opt-in swept-disk source descriptions (#5559)
 
 The analytic reader runs only when called explicitly; normal mesh loading does
@@ -43,6 +52,22 @@ Verdict: no mesh-output regression on this ordinary load, and no reliable
 performance claim from the contested host. The opt-in extraction's own cost
 needs a caller-level measurement on representative swept-disk models if it
 becomes a frequent operation; the default pipeline cannot measure that cost.
+
+## Raw-world RTC before f32 narrowing (#5698)
+
+Every built-in raw-coordinate processor now removes the model RTC offset in
+f64 through `process_in_rtc_frame`, and element walkers express that offset in
+the item frame. Interleaved native probes on a loaded host showed no stable
+timing change on AC20-FZK-Haus, ISSUE_129, ISSUE_098 or Holter: run-to-run
+spread exceeded any base-versus-branch difference. Only the output of
+`860_solid_stratum` changed across the fetched corpus: its national-grid TIN
+now keeps its surveyed vertices instead of a 0.5 m f32 grid. The rebase costs
+one extra first-vertex probe per raw-coordinate item on models with an RTC
+offset; the f64 coordinate parse runs only for items that are actually rebased.
+Measure A/B on a shared host by process CPU time and minima, not wall medians:
+wall medians swung 10-20% between identical binaries under load.
+Element-frame rebasing must go through the cached item path, keyed by its
+offset: a bespoke path silently drops content dedup and instancing.
 
 ## LV95 site-local vertices and RTC frames (#5684)
 

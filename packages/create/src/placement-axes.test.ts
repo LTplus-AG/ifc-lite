@@ -83,6 +83,12 @@ describe('completePlacementAxes (#5469)', () => {
     expectClose(ref, expected);
     expect(ref[1]).toBeLessThan(0);
   });
+
+  it('writes the renderer fill for an Axis within 1e-6 of X, so the explicit value draws as the `$` did (#5922)', () => {
+    // Inside `build_axis2_matrix`'s projection tolerance the renderer reads
+    // `$` as (0,0,1) x Axis, about (0,+1,0) here, not the schema's projection.
+    expectClose(completePlacementAxes([1, 1e-7, 0], undefined)?.RefDirection, [-1e-7, 1, 0]);
+  });
 });
 
 describe('IfcCreator writes IfcAxis2Placement3D Axis and RefDirection both or neither (#5469)', () => {

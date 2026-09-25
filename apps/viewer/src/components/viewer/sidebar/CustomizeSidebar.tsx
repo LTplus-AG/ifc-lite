@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resetLayout } from '@/store/layoutReset';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -31,7 +32,6 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const setShown = useViewerStore((s) => s.setPanelShownInSidebar);
-  const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
   const hidden = new Set(hiddenIds);
   const ref = useRef<HTMLDivElement>(null);

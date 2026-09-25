@@ -10,7 +10,7 @@
  * close-all shortcut.
  *
  * Resets: the sidebar (mode, width, order, hidden panels, split), every
- * floating panel, the hierarchy pane (expanded, default width) and the
+ * floating panel, the hierarchy pane (expanded on desktop, default width) and the
  * bottom strip's height. The last two live in components; they follow
  * `layoutResetEpoch`.
  */
@@ -26,6 +26,9 @@ export function resetLayout(store = getViewerStoreApi()): void {
   const state = store.getState();
   state.resetSidebarLayout();
   state.resetDockLayout();
-  state.setLeftPanelCollapsed(false);
+  // The hierarchy pane is expanded by default on desktop only. On mobile a
+  // non-collapsed left panel is the hierarchy SHEET, so expanding it would pop
+  // a sheet over the model instead of restoring a layout (#5957).
+  if (!state.isMobile) state.setLeftPanelCollapsed(false);
   state.bumpLayoutResetEpoch();
 }

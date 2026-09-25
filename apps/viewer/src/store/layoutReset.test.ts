@@ -42,3 +42,18 @@ describe('resetLayout (#5854)', () => {
     assert.equal(after.layoutResetEpoch, epochBefore + 1, 'component-held layout is told to reset');
   });
 });
+
+describe('resetLayout on mobile (#5957)', () => {
+  it('does not pop the hierarchy sheet open', () => {
+    assert.ok(resetLayout, 'store/layoutReset must export resetLayout');
+    const store = getViewerStoreApi();
+    store.getState().setIsMobile(true);
+    store.getState().setLeftPanelCollapsed(true);
+    try {
+      resetLayout(store);
+      assert.equal(store.getState().leftPanelCollapsed, true, 'on mobile an expanded left panel is a sheet over the model');
+    } finally {
+      store.getState().setIsMobile(false);
+    }
+  });
+});

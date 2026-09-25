@@ -154,6 +154,7 @@ describe('ValidationPanel wiring (#5138)', () => {
       const fileInput = first.querySelector('input[type="file"]');
       assert.ok(fileInput);
       await selectFile(fileInput as HTMLInputElement, ruleSetFile());
+      await waitFor(() => first.querySelector('input[aria-label="Rule set name"]') !== null);
       const nameInput = first.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
       assert.ok(nameInput);
       typeInput(nameInput, 'Unsaved draft');
@@ -164,7 +165,10 @@ describe('ValidationPanel wiring (#5138)', () => {
       const restoredName = reopened.querySelector('input[aria-label="Rule set name"]') as HTMLInputElement | null;
       assert.ok(restoredName, 'the editor must reopen rather than the empty-state entry');
       assert.strictEqual(restoredName.value, 'Unsaved draft');
-      assert.match(reopened.textContent ?? '', /Fire rating set/);
+      assert.deepStrictEqual(
+        [...reopened.querySelectorAll<HTMLInputElement>('input[aria-label="Rule name"]')].map((input) => input.value),
+        ['Fire rating set', 'Unique name'],
+      );
 
       const close = reopened.querySelector('button[aria-label="Data validation"]');
       assert.ok(close);

@@ -59,6 +59,20 @@ DATA;
 #42=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(157.0796326795),$,$,$,#39);
 #43=IFCAXIS2PLACEMENTLINEAR(#42,$,$);
 #44=IFCSECTIONEDSOLIDHORIZONTAL(#39,(#4,#4),(#41,#43));
+#50=IFCDISTANCEEXPRESSION(0.,3.,0.,0.,.T.);
+#51=IFCDISTANCEEXPRESSION(20.,3.,0.,0.,.T.);
+#52=IFCCARTESIANPOINT((0.,0.,0.));
+#53=IFCCARTESIANPOINT((0.,20.,0.));
+#54=IFCPOLYLINE((#52,#53));
+#55=IFCSECTIONEDSOLIDHORIZONTAL(#54,(#4,#4),(#50,#51));
+#60=IFCCARTESIANPOINT((0.,0.));
+#61=IFCCARTESIANPOINT((0.,20.));
+#62=IFCPOLYLINE((#60,#61));
+#63=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(0.),$,$,$,#62);
+#64=IFCAXIS2PLACEMENTLINEAR(#63,$,$);
+#65=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(20.),$,$,$,#62);
+#66=IFCAXIS2PLACEMENTLINEAR(#65,$,$);
+#67=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#64,#66));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -125,4 +139,26 @@ fn lofts_along_gradient_curve_following_arc_and_grade() {
     close(b.max[1], 100.0, "y max");
     close(b.min[2], 49.75, "z min at start");
     close(b.max[2], 51.82, "z max at end");
+}
+
+#[test]
+fn ifc4x1_distance_expression_keeps_right_positive_offset() {
+    // The sign convention is keyed off the position entity actually parsed,
+    // not the schema string: an IFC4x1 IfcDistanceExpression keeps
+    // "positive OffsetLateral = right of travel". Travel +Y → right is +X.
+    let b = bbox(55);
+    close(b.min[0], 2.0, "x min");
+    close(b.max[0], 4.0, "x max");
+}
+
+#[test]
+fn flat_polyline_arc_length_equals_horizontal_station() {
+    // DistanceAlong on a polyline directrix is 3D arc length; on a 2D (flat)
+    // polyline in an IFC4x3 file that equals the horizontal station, so the
+    // 20 m position lands exactly at the polyline's end.
+    let b = bbox(67);
+    close(b.min[1], 0.0, "start y");
+    close(b.max[1], 20.0, "end y");
+    close(b.min[2], -0.25, "z min (profile centred on z = 0)");
+    close(b.max[2], 0.25, "z max");
 }

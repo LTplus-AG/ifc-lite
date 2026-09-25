@@ -249,9 +249,9 @@ mod cartesian_position_tests {
     /// An `IfcLinearPlacement` whose curve IS sampleable (a straight
     /// polyline; sampling would put the origin at (5, 0, 0)) but that also
     /// carries an authored `CartesianPosition` at (10, 20, 30). The authored
-    /// position wins: the sampler still reads gradient curves through their
-    /// base curve only (no vertical profile), so the exporter's pre-baked
-    /// answer is the more trustworthy of the two whenever it exists.
+    /// position wins: it is exact by construction, whereas the sampler is
+    /// bounded by its sampling density, so the exporter's pre-baked answer
+    /// stays the more trustworthy of the two whenever it exists.
     const AUTHORED_IFC: &str = "ISO-10303-21;\nHEADER;\n\
 FILE_DESCRIPTION((''),'2;1');\n\
 FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
@@ -285,6 +285,33 @@ ENDSEC;\nEND-ISO-10303-21;\n";
             m[(1, 3)],
             m[(2, 3)],
         );
+    }
+
+    /// Same precedence on an `IfcGradientCurve` basis, now that the sampler
+    /// evaluates its vertical profile (#5327): computed (5, 0, 50.5) on a
+    /// +10 % grade from 50 m, authored (10, 20, 30) still wins.
+    #[test]
+    fn authored_position_wins_over_gradient_curve_elevation() {
+        let gradient = AUTHORED_IFC.replace(
+            "#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#3);",
+            "#20=IFCCARTESIANPOINT((0.,50.));\n#21=IFCDIRECTION((1.,0.1));\n#22=IFCAXIS2PLACEMENT2D(#20,#21);\n\
+#23=IFCDIRECTION((1.,0.));\n#24=IFCVECTOR(#23,1.);\n#25=IFCLINE(#20,#24);\n\
+#26=IFCCURVESEGMENT(.CONTINUOUS.,#22,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(100.),#25);\n\
+#27=IFCGRADIENTCURVE((#26),.F.,#3,$);\n\
+#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#27);",
+        );
+        for (content, want) in [(gradient.clone(), (10.0, 20.0, 30.0)),
+            (gradient.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);"), (5.0, 0.0, 50.5))] {
+            let mut decoder = EntityDecoder::new(&content);
+            let placement = decoder.decode_by_id(8).expect("decode #8");
+            let m = GeometryRouter::new()
+                .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
+                .expect("resolve linear placement")
+                .transform;
+            let got = (m[(0, 3)], m[(1, 3)], m[(2, 3)]);
+            assert!((got.0 - want.0).abs() < 1e-6 && (got.1 - want.1).abs() < 1e-6 && (got.2 - want.2).abs() < 1e-6,
+                "expected {want:?}, got {got:?}");
+        }
     }
 
     /// With no authored position (`$`), the sampler still resolves the

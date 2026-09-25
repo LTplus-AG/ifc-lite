@@ -85,6 +85,8 @@ export const ribbonToolbarEn = {
   'ribbon.view.followWorkTooltip': 'Open the Elements tab on selection and Author in edit mode, then hand the tab back',
   'ribbon.view.classicBar': 'Classic bar',
   'ribbon.view.classicBarTooltip': 'Switch back to the classic single-strip toolbar (remembered on this browser)',
+  'ribbon.view.settings': 'Settings',
+  'ribbon.view.settingsTooltip': 'Theme, toolbar, tooltips, navigation devices and other preferences',
 
   'ribbon.elements.elementsGroup': 'Elements',
   'ribbon.elements.search': 'Search',

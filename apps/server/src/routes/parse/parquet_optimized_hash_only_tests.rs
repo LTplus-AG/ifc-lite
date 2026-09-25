@@ -47,7 +47,7 @@ async fn read_response(response: axum::response::Response) -> (StatusCode, Strin
 }
 
 /// The shape guard. The hash is concatenated into a cache key, so a value
-/// that is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v7`
+/// that is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v8`
 /// would address another request's data-model slot through the optimized
 /// reader. Anything but 64 lowercase hex characters is a `400`, not a lookup.
 #[tokio::test]
@@ -59,7 +59,7 @@ async fn optimized_probe_rejects_non_digest_with_400() {
         // Right alphabet, wrong length.
         "abc123",
         // A well-formed digest with a namespace suffix glued on.
-        &format!("{real}-default-datamodel-v7"),
+        &format!("{real}-default-datamodel-v8"),
         // Uppercase: `DiskCache::generate_key` only ever emits lowercase.
         &real.to_uppercase(),
     ] {

@@ -2,7 +2,6 @@
   "empty": {
     "aria-allowed-attr": 1,
     "landmark-one-main": 1,
-    "meta-viewport": 1,
     "page-has-heading-one": 1,
     "region": 1
   },
@@ -10,7 +9,6 @@
     "aria-allowed-attr": 1,
     "aria-prohibited-attr": 1,
     "landmark-one-main": 1,
-    "meta-viewport": 1,
     "page-has-heading-one": 1,
     "region": 1
   }

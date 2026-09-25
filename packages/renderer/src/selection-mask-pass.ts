@@ -152,9 +152,15 @@ export class SelectionMaskPass {
     const targets = this.ensureTargets(frame.width, frame.height);
     const depthGroup = this.ensureDepthBindGroup(frame.depthView);
 
+    // The selected-visible and hover passes share `visibleView` (channels r
+    // and g): only the FIRST pass into a target may clear it, or the hover
+    // pass wipes the selection's visible mask (#5390, seen in a real frame).
+    const cleared = new Set<GPUTextureView>();
     const draw = (view: GPUTextureView, pipeline: GPURenderPipeline, meshes: readonly SelectableMesh[]) => {
+      const loadOp: GPULoadOp = cleared.has(view) ? 'load' : 'clear';
+      cleared.add(view);
       const pass = frame.encoder.beginRenderPass({
-        colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+        colorAttachments: [{ view, loadOp, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
       pass.setPipeline(pipeline);
       pass.setBindGroup(SELECTION_MASK_DEPTH_GROUP, depthGroup);

@@ -21,14 +21,17 @@ import type { WebGPUDevice } from './device.js';
 (globalThis as Record<string, unknown>).GPUBufferUsage ??= { UNIFORM: 64, COPY_DST: 8 };
 
 function fakeDevice() {
-  const stats = { buffers: [] as { size: number; destroyed: boolean }[], bindGroups: 0, writes: 0, textures: 0 };
+  const stats = {
+    buffers: [] as { size: number; destroyed: boolean }[], bindGroups: 0, writes: 0, textures: 0,
+    passes: [] as { view: unknown; loadOp: string }[],
+  };
   const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, end() {} };
   const gpu = {
     createBindGroupLayout: () => ({}),
     createPipelineLayout: () => ({}),
     createShaderModule: () => ({}),
     createRenderPipeline: () => ({}),
-    createTexture: () => { stats.textures++; return { createView: () => ({}), destroy() {} }; },
+    createTexture: (desc: { label?: string }) => { stats.textures++; return { createView: () => ({ label: desc.label }), destroy() {} }; },
     createBuffer: (desc: { size: number }) => {
       const b = { size: desc.size, destroyed: false, destroy() { b.destroyed = true; } };
       stats.buffers.push(b);
@@ -38,7 +41,12 @@ function fakeDevice() {
     queue: { writeBuffer: () => { stats.writes++; } },
   };
   const device = { getDevice: () => gpu } as unknown as WebGPUDevice;
-  const encoder = { beginRenderPass: () => pass } as unknown as GPUCommandEncoder;
+  const encoder = {
+    beginRenderPass: (d: { colorAttachments: { view: unknown; loadOp: string }[] }) => {
+      stats.passes.push({ view: d.colorAttachments[0]!.view, loadOp: d.colorAttachments[0]!.loadOp });
+      return pass;
+    },
+  } as unknown as GPUCommandEncoder;
   return { device, encoder, stats };
 }
 
@@ -77,4 +85,19 @@ describe('SelectionMaskPass GPU resources (#5390)', () => {
     pass.encode(frame(encoder, { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, bindGroup: {} as GPUBindGroup }));
     assert.equal(stats.buffers.length, 0);
   });
+
+  it('clears each mask target once per frame, so hover does not wipe the selection', () => {
+    const { device, encoder, stats } = fakeDevice();
+    const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
+    const selected = [{ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, bindGroup: {} as GPUBindGroup }];
+    pass.encode({ ...frame(encoder, hoverMesh()), selected });
+    const byView = new Map<unknown, string[]>();
+    for (const p of stats.passes) byView.set(p.view, [...(byView.get(p.view) ?? []), p.loadOp]);
+    for (const [view, ops] of byView) {
+      assert.equal(ops[0], 'clear', `${(view as { label?: string }).label}: first pass clears`);
+      assert.ok(ops.slice(1).every((op) => op === 'load'), `${(view as { label?: string }).label}: later passes must load, got ${ops}`);
+    }
+    assert.deepEqual([...byView.values()].map((ops) => ops.length).sort(), [1, 2], 'visible gets selected + hover, all gets selected');
+  });
 });
+

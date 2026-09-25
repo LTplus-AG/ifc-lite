@@ -21,6 +21,26 @@ export const SELECTION_HIDDEN_ALPHA = 0.35;
 /** Hover is a thin pre-highlight, well below the selection's own alpha. */
 export const HOVER_VISIBLE_ALPHA = 0.5;
 
+/**
+ * Outline ring half-width in device pixels, measured from the mask boundary
+ * to either side: a pixel within this distance of a differing mask pixel is
+ * fully covered, and coverage fades to 0 over the next pixel (antialiasing).
+ */
+export const OUTLINE_WIDTH_PX = 1.5;
+
+/** Search radius (px) for the nearest differing mask pixel; >= OUTLINE_WIDTH_PX + 0.5. */
+export const OUTLINE_SEARCH_RADIUS = 2;
+
+/**
+ * Ring coverage for a pixel whose nearest differing mask pixel is `distance`
+ * away (Infinity when none is within `OUTLINE_SEARCH_RADIUS`). Mirrors
+ * `boundaryCoverage` in `shaders/edges.wgsl.ts`, which interpolates these
+ * same constants.
+ */
+export function outlineCoverage(distance: number): number {
+  return Math.min(1, Math.max(0, OUTLINE_WIDTH_PX + 0.5 - distance));
+}
+
 /** Float offsets of the `OutlineParams` struct in `shaders/edges.wgsl.ts`. */
 export const OUTLINE_UNIFORM_LAYOUT = {
   viewport: 0,

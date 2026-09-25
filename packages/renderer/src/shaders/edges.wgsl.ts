@@ -22,7 +22,7 @@
  * this generalises it to all three cues and both new tests).
  */
 import { EDGE_CREASE_COS, EDGE_MAX_DARKEN, EDGE_SILHOUETTE_REL_THRESHOLD } from '../edge-params.js';
-import { SELECTION_HIDDEN_ALPHA } from '../outline-params.js';
+import { OUTLINE_SEARCH_RADIUS, OUTLINE_WIDTH_PX, SELECTION_HIDDEN_ALPHA } from '../outline-params.js';
 import { depthReconstructWgsl, depthTextureWgsl } from './depth-reconstruct.wgsl.js';
 
 export function edgeShaderSource(multisampled: boolean): string {
@@ -168,11 +168,14 @@ export function edgeShaderSource(multisampled: boolean): string {
  * separate draws with different blend states (this one is a normal
  * alpha-over composite; the geometry pass above is darken-only).
  *
- * Coverage at each of 4 neighbour taps, same idea as `fs_edges`'s id test:
- * `abs(neighbour - center)` summed and averaged is 1 exactly on the mask's
- * boundary and fades over the tap radius, so the line antialiases instead
- * of being a hard 1px stairstep. No depth/normal reconstruction needed —
- * unlike geometry edges, a mask boundary is unambiguous on its own.
+ * Coverage is a ring around the mask boundary: the distance to the nearest
+ * mask pixel that differs from this one, searched within
+ * `OUTLINE_SEARCH_RADIUS`, mapped through `outlineCoverage`
+ * (`outline-params.ts`): full within `OUTLINE_WIDTH_PX` of the boundary on
+ * either side, fading over the next pixel. (Averaging 4 neighbour taps
+ * instead gives a straight edge only 1/4 coverage, a 1 px line too faint to
+ * see.) No depth/normal reconstruction needed: a mask boundary is
+ * unambiguous on its own.
  */
 export function outlineFragmentSource(): string {
   return `
@@ -208,16 +211,23 @@ export function outlineFragmentSource(): string {
           return textureLoad(tex, clamp(ip, vec2<i32>(0), dims - 1), 0);
         }
 
-        // Fraction of the 4 cardinal neighbours whose channel differs from
-        // the centre: 0 inside/outside the region, ~1 exactly astride its
-        // boundary — a coverage estimate, not a hard edge test.
+        const OUTLINE_SEARCH_RADIUS: i32 = ${OUTLINE_SEARCH_RADIUS};
+        const OUTLINE_WIDTH_PX: f32 = ${OUTLINE_WIDTH_PX.toFixed(3)};
+
+        // Ring coverage astride the mask boundary (outline-params.ts's
+        // outlineCoverage): distance to the nearest pixel whose channel
+        // differs from this one, full within OUTLINE_WIDTH_PX, 0 one pixel on.
         fn boundaryCoverage(tex: texture_2d<f32>, channel: u32, p: vec2<i32>, dims: vec2<i32>) -> f32 {
-          let center = loadClamped(tex, p, dims)[channel];
-          let n1 = loadClamped(tex, p + vec2<i32>(1, 0), dims)[channel];
-          let n2 = loadClamped(tex, p + vec2<i32>(-1, 0), dims)[channel];
-          let n3 = loadClamped(tex, p + vec2<i32>(0, 1), dims)[channel];
-          let n4 = loadClamped(tex, p + vec2<i32>(0, -1), dims)[channel];
-          return (abs(n1 - center) + abs(n2 - center) + abs(n3 - center) + abs(n4 - center)) * 0.25;
+          let center = loadClamped(tex, p, dims)[channel] > 0.5;
+          var nearest = 1e4;
+          for (var dy = -OUTLINE_SEARCH_RADIUS; dy <= OUTLINE_SEARCH_RADIUS; dy = dy + 1) {
+            for (var dx = -OUTLINE_SEARCH_RADIUS; dx <= OUTLINE_SEARCH_RADIUS; dx = dx + 1) {
+              if ((loadClamped(tex, p + vec2<i32>(dx, dy), dims)[channel] > 0.5) != center) {
+                nearest = min(nearest, length(vec2<f32>(f32(dx), f32(dy))));
+              }
+            }
+          }
+          return clamp(OUTLINE_WIDTH_PX + 0.5 - nearest, 0.0, 1.0);
         }
 
         @fragment

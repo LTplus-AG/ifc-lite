@@ -266,6 +266,11 @@ pub(super) fn extract_materials(
                     let layers = resolved_by_scale
                         .entry(scale.to_bits())
                         .or_insert_with(|| resolve_material(&mut decoder, material_id, scale));
+                    if units.has_mixed_type_scales(element_id)
+                        && layers.iter().any(|layer| layer.thickness.is_some())
+                    {
+                        return Vec::new();
+                    }
                     layers
                         .iter()
                         .map(move |layer| MaterialAssociation {

@@ -13,7 +13,8 @@ pub(super) struct MaterialUnitContext {
     project_scales: HashMap<u32, f64>,
     containment: HashMap<u32, u32>,
     aggregation: HashMap<u32, u32>,
-    type_objects: HashMap<u32, u32>,
+    type_objects: HashMap<u32, Vec<u32>>,
+    mixed_type_scales: HashSet<u32>,
 }
 
 impl MaterialUnitContext {
@@ -34,6 +35,7 @@ impl MaterialUnitContext {
             containment: HashMap::new(),
             aggregation: HashMap::new(),
             type_objects: HashMap::new(),
+            mixed_type_scales: HashSet::new(),
         };
         // The ordinary single-project file uses the caller's scale directly.
         if project_ids.len() <= 1 {
@@ -66,10 +68,27 @@ impl MaterialUnitContext {
                 context
                     .type_objects
                     .entry(rel.relating_id)
-                    .or_insert(rel.related_id);
+                    .or_default()
+                    .push(rel.related_id);
             }
         }
+        // A type used by occurrences in different unit contexts has no
+        // single valid layer thickness. Keep its association unresolved until
+        // the wire can carry per-occurrence resolved material definitions.
+        context.mixed_type_scales = context
+            .type_objects
+            .iter()
+            .filter_map(|(&type_id, objects)| {
+                let mut scales = objects.iter().map(|&id| context.scale_for(id).to_bits());
+                let first = scales.next()?;
+                scales.any(|scale| scale != first).then_some(type_id)
+            })
+            .collect();
         context
+    }
+
+    pub(super) fn has_mixed_type_scales(&self, entity_id: u32) -> bool {
+        self.mixed_type_scales.contains(&entity_id)
     }
 
     pub(super) fn scale_for(&self, entity_id: u32) -> f64 {
@@ -91,7 +110,11 @@ impl MaterialUnitContext {
                 .containment
                 .get(&current)
                 .or_else(|| self.aggregation.get(&current))
-                .or_else(|| self.type_objects.get(&current));
+                .or_else(|| {
+                    self.type_objects
+                        .get(&current)
+                        .and_then(|objects| objects.first())
+                });
             let Some(&next_id) = next else {
                 return self.default_scale;
             };

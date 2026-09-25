@@ -2335,10 +2335,12 @@ DATA;
 #110=IFCBUILDINGSTOREY('Stor0000000000000000002',$,'B',$,$,$,$,$,$);
 #11=IFCWALL('Wall0000000000000000001',$,'MetreWall',$,$,$,$,$,$);
 #111=IFCWALL('Wall0000000000000000002',$,'MilliWall',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000003',$,'SharedTypeMetreWall',$,$,$,$,$,$);
+#112=IFCWALL('Wall0000000000000000004',$,'SharedTypeMilliWall',$,$,$,$,$,$);
 #20=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#10));
 #120=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#101,(#110));
-#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#11),#10);
-#121=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#111),#110);
+#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#11,#12),#10);
+#121=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#111,#112),#110);
 #30=IFCMATERIAL('Core',$,$);
 #31=IFCMATERIALLAYER(#30,0.2,.F.,$,$,$,$);
 #32=IFCMATERIALLAYERSET((#31),'First',$);
@@ -2347,6 +2349,12 @@ DATA;
 #131=IFCMATERIALLAYER(#130,300.,.F.,$,$,$,$);
 #132=IFCMATERIALLAYERSET((#131),'Second',$);
 #133=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#111),#132);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'Shared',$,$,$,$,$,$,.NOTDEFINED.);
+#201=IFCRELDEFINESBYTYPE('Def0000000000000000001',$,$,$,(#12,#112),#200);
+#202=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#200),#132);
+#210=IFCWALLTYPE('Type00000000000000001B',$,'SameUnit',$,$,$,$,$,$,.NOTDEFINED.);
+#211=IFCRELDEFINESBYTYPE('Def0000000000000000002',$,$,$,(#11,#12),#210);
+#212=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#210),#32);
 ENDSEC;
 END-ISO-10303-21;"#;
 
@@ -2358,6 +2366,17 @@ fn material_layer_thickness_uses_owning_project_units_5296() {
     assert!((first.thickness.unwrap() - 0.2).abs() < 1e-9);
     assert!((second.thickness.unwrap() - 0.3).abs() < 1e-9,
         "the later project's 300 mm layer must not use the first project's metre scale");
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 12));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 112));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELASSOCIATESMATERIAL"
+        && r.related_id == 200 && r.relating_id == 132));
+    assert!(dm.materials.iter().all(|m| m.element_id != 200),
+        "a type shared across projects with different units must remain unresolved");
+    let same_unit_type = dm.materials.iter().find(|m| m.element_id == 210)
+        .expect("same-unit shared type stays resolved");
+    assert!((same_unit_type.thickness.unwrap() - 0.2).abs() < 1e-9);
 
     // The manual cross-runtime oracle supplies MergedExporter output from two
     // catalogued real IFC fixtures. Keep the synthetic test runnable in CI

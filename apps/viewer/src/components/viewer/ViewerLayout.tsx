@@ -56,6 +56,7 @@ import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
+import { useThemeDocumentClass } from './useThemeDocumentClass';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -192,8 +193,6 @@ export function ViewerLayout() {
     };
   }, [shortcutsDialog]);
 
-  // Initialize theme on mount
-  const theme = useViewerStore((s) => s.theme);
   // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
   const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
@@ -273,12 +272,7 @@ export function ViewerLayout() {
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();
 
-  // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('colorful', theme === 'colorful');
-  }, [theme]);
-
+  useThemeDocumentClass();
 
   const safeMode = isSafeMode();
 

@@ -120,9 +120,25 @@ describe('IconButton', () => {
     assert.ok(document.querySelector('[role="tooltip"]'), 'its own provider still opens the tooltip');
   });
 
-  it('requires a label at the type level', () => {
-    // @ts-expect-error `label` is required: an icon-only button without a name is the defect.
-    const element = <IconButton><Plus /></IconButton>;
-    assert.ok(element);
+  it('falls back to the label when `tooltip` is empty', async () => {
+    const host = render(<IconButton label="Undo" tooltip=""><Plus /></IconButton>);
+    const button = host.querySelector('button')!;
+    await act(async () => {
+      button.focus();
+    });
+    assert.equal(document.querySelector('[role="tooltip"]')?.textContent, 'Undo');
+    assert.equal(button.getAttribute('aria-describedby'), null);
   });
 });
+
+/**
+ * `label` is required. That is a compile-time guarantee, so it is checked at
+ * compile time, not by a runtime assertion (constructing JSX always succeeds):
+ * `pnpm typecheck` runs this file through `scripts/typecheck-tests.mjs`, and
+ * the directive below becomes an "unused @ts-expect-error" error the moment
+ * `label` turns optional.
+ */
+export function labelIsRequired(): unknown {
+  // @ts-expect-error `label` is required: an icon-only button without a name is the defect.
+  return <IconButton><Plus /></IconButton>;
+}

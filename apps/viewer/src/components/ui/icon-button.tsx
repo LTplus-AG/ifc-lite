@@ -60,7 +60,7 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
             {description && <span id={descriptionId} hidden>{description}</span>}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side={tooltipSide}>{tooltip ?? label}</TooltipContent>
+        <TooltipContent side={tooltipSide}>{tooltip || label}</TooltipContent>
       </Tooltip>
     );
     return hasProvider ? button : <TooltipProvider>{button}</TooltipProvider>;

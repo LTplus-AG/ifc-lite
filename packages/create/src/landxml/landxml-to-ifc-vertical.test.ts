@@ -86,6 +86,9 @@ function verticalLayouts(step: Step): Map<string, Design[]> {
         g0: Number(fields[5]), g1: Number(fields[6]), R: fields[7] === '$' ? null : Number(fields[7]),
       };
     });
+    // Keyed by name for readable tests; two layouts sharing a name must not
+    // silently overwrite each other and hide one from the height checks.
+    if (layouts.has(name)) throw new Error(`two vertical layouts are named '${name}'`);
     layouts.set(name, segments);
   }
   return layouts;

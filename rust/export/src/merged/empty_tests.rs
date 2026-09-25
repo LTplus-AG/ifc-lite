@@ -25,7 +25,7 @@ fn plan(models: &[&str]) -> DropPlan {
     );
     let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
     let modes = crate::merged::units::resolve_model_modes(&inputs, opts.unit_reconciliation, 1.0);
-    plan_drops(&inputs, &opts, &lookup, &modes).expect("flag is set")
+    plan_drops(&inputs, &opts, &lookup, &modes, 1.0, "IFC4").expect("flag is set")
 }
 
 fn file(entities: &str) -> String {
@@ -77,6 +77,30 @@ fn drops_an_empty_ifc4x3_facility_part_and_keeps_a_populated_one() {
     let dropped = plan(&[&road]);
     assert_eq!(dropped.per_model[0], HashSet::from([5, 6]), "the empty road part and the empty bridge go");
     assert_eq!(dropped.count, 2);
+}
+
+/// #5937: a later storey (another name and elevation, so it does not unify)
+/// whose only element repeats the first model's contained wall by GlobalId. The
+/// emit loop withholds that containment (#5923), so the storey holds nothing
+/// and is dropped; the plan sees it only by resolving the wall's GlobalId.
+#[test]
+fn drops_a_storey_whose_only_element_unifies_by_globalid() {
+    let later = file(concat!(
+        "#1=IFCPROJECT('p1',$,'P',$,$,$,$,$,$);\n",
+        "#2=IFCSITE('s1',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n",
+        "#3=IFCBUILDING('b1',$,'Building',$,$,$,$,$,$,$,$,$);\n",
+        "#4=IFCBUILDINGSTOREY('l9',$,'Mezzanine',$,$,$,$,$,$,7000.);\n",
+        "#6=IFCWALL('0aBcDeFgHiJkLmNoPqRsT1',$,'Wall',$,$,$,$,$,$);\n",
+        "#7=IFCRELAGGREGATES('q0',$,$,$,#1,(#2));\n",
+        "#8=IFCRELAGGREGATES('q1',$,$,$,#2,(#3));\n",
+        "#9=IFCRELAGGREGATES('q2',$,$,$,#3,(#4));\n",
+        "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('q3',$,$,$,(#6),#4);\n",
+    ));
+    // The first model's wall carries a real (22-character) GlobalId to unify on.
+    let first = one_populated_storey().replace("IFCWALL('w0'", "IFCWALL('0aBcDeFgHiJkLmNoPqRsT1'");
+    let dropped = plan(&[&first, &later]);
+    assert!(dropped.per_model[1].contains(&4), "the later storey holds only a unified wall");
+    assert_eq!(dropped.per_model[0], HashSet::from([5]));
 }
 
 #[test]

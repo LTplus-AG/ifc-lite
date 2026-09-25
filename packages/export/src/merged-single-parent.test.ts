@@ -464,6 +464,34 @@ describe('MergedExporter dropEmptyContainers after GlobalId-only unification (#5
     expectSingleParents(content);
   });
 
+  it('drops a later storey whose only element unifies with the primary\'s by GlobalId (containment, #5923)', async () => {
+    // B's storey does not unify (another name), and its one wall is A's by
+    // GlobalId. A already contains that wall, so B's containment is withheld
+    // and B's storey holds nothing.
+    const a = [
+      ...primary,
+      `#8=IFCBUILDINGSTOREY('${guid('la')}',$,'Level A',$,$,$,$,$,.ELEMENT.,0.);`,
+      `#9=IFCRELAGGREGATES('${guid('ra3')}',$,$,$,#3,(#8));`,
+      `#10=IFCWALL('${guid('wall')}',$,'W',$,$,$,$,$,$);`,
+      `#11=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rca')}',$,$,$,(#10),#8);`,
+    ];
+    const b = [
+      `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
+      `#2=IFCBUILDING('${guid('ba')}',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);`,
+      `#3=IFCBUILDINGSTOREY('${guid('lb')}',$,'Level B',$,$,$,$,$,.ELEMENT.,3.);`,
+      `#4=IFCRELAGGREGATES('${guid('rb1')}',$,$,$,#1,(#2));`,
+      `#5=IFCRELAGGREGATES('${guid('rb2')}',$,$,$,#2,(#3));`,
+      `#6=IFCWALL('${guid('wall')}',$,'W',$,$,$,$,$,$);`,
+      `#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('rcb')}',$,$,$,(#6),#3);`,
+    ];
+    const content = await merge([await model('a', a), await model('b', b)], { ...byName, mergeStoreys: 'by-name' });
+    expect(content).toContain(guid('la'));
+    expect(content).not.toContain(guid('lb'));
+    expect(content).not.toContain(guid('rcb'));
+    expectNoOrphanedContainers(content);
+    expectSingleParents(content);
+  });
+
   it('IFC4X3: drops an empty facility part, and a later Site over a Road unified by GlobalId', async () => {
     const road = (tag: string, site: string, siteName: string, part: boolean) => [
       `#1=IFCPROJECT('${guid(`p${tag}`)}',$,'${tag}',$,$,$,$,$,$);`,

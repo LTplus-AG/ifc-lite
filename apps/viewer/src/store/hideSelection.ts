@@ -15,6 +15,10 @@
  *  - the selection is then cleared on both channels, so a hidden entity is
  *    never what Properties shows or what the next key acts on.
  *
+ * Not a Hide-selection surface, so deliberately not routed here: the model
+ * tree's per-node eye toggle (`HierarchyPanel.handleVisibilityToggle`) hides or
+ * shows one tree node's elements, whatever is selected.
+ *
  * P2 (#5611) will change what "hidden" is stored as; this module is the call
  * site it updates.
  */

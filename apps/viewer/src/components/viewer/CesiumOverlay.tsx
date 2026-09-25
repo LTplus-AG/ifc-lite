@@ -455,11 +455,7 @@ export function CesiumOverlay({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="absolute inset-0 z-0"
-        style={{ pointerEvents: 'none' }}
-      />
+      <div ref={containerRef} className="absolute inset-0 z-0" style={{ pointerEvents: 'none' }} />
       {(status === 'loading' || (status === 'error' && error) || basemapWarning) && (
         // Top-left HudChips (#5504, charter #5478 item 22), stacked below the
         // level-display and edit-mode chips — one HudItem so all three share

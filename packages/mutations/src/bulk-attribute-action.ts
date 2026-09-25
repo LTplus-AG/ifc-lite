@@ -38,13 +38,16 @@ function effectiveClass(entities: EntityTable, view: MutablePropertyView, entity
 }
 
 /**
- * Whether the exporter can write `attribute` on a `ifcClass` record. With the
- * model's schema known, that schema decides (the exporter resolves names in
- * the file's own schema). Without it, every bundled schema that knows the
- * class must declare the attribute, so no model can drop the write.
+ * Whether the exporter can write `attribute` on a `ifcClass` record. Mirrors
+ * its lookup (`attrIndex`): the model's own schema decides when it knows the
+ * class; otherwise every bundled schema that knows the class must declare the
+ * attribute, so no model can drop the write. A class no bundled table knows
+ * (the IFC4X3 stratum aliases, #860) is refused: a false refusal is reported,
+ * a false acceptance would be lost silently.
  */
 function declares(ifcClass: string, attribute: string, schema: ModelSchema | undefined): boolean {
-  if (schema) return schemaAttributeNames(schema, ifcClass)?.includes(attribute) ?? false;
+  const own = schema ? schemaAttributeNames(schema, ifcClass) : undefined;
+  if (own) return own.includes(attribute);
   const layouts = allSchemaAttributeNames(ifcClass);
   return layouts.length > 0 && layouts.every((names) => names.includes(attribute));
 }
@@ -74,7 +77,9 @@ export function applyBulkAttribute(
   if (refusal) throw new Error(refusal);
   const ifcClass = effectiveClass(entities, view, entityId);
   if (!declares(ifcClass, attribute, schema)) {
-    throw new Error(`${ifcClass} has no ${attribute} attribute${schema ? ` in ${schema}` : ''}`);
+    throw new Error(allSchemaAttributeNames(ifcClass).length === 0
+      ? `${ifcClass} is not a class in the bundled IFC schemas, so ${attribute} cannot be checked`
+      : `${ifcClass} has no ${attribute} attribute${schema ? ` in ${schema}` : ''}`);
   }
   const previous = view.getAttributeMutationsForEntity(entityId).find((edit) => edit.name === attribute);
   return view.setAttribute(entityId, attribute, value, previous?.value);

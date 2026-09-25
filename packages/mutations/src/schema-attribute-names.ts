@@ -8,10 +8,10 @@
  * class layouts from (created-entity reads, bulk attribute writes).
  */
 
-import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, type IfcEntityInfo, type IfcStoreBase } from '@ifc-lite/data';
 
 /** The schemas a loaded model can declare (`IfcDataStore.schemaVersion`). */
-export type ModelSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
+export type ModelSchema = IfcStoreBase['schemaVersion'];
 
 /** Newest first. IFC5 models are laid out as IFC4X3 (see the exporter's retype map). */
 const TABLES: ReadonlyArray<readonly [ModelSchema, readonly IfcEntityInfo[]]> = [

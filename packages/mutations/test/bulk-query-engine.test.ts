@@ -684,6 +684,13 @@ describe('BulkQueryEngine SET_ATTRIBUTE (#5867)', () => {
     expect(makeEngine({ 1: 'IfcMaterial' }).engine.execute(setAttr('Description', [1])).success).toBe(false);
   });
 
+  it("falls back to every schema when the model's own does not know the class, and refuses an unknown class", () => {
+    // IfcGeotechnicalStratum is IFC4X3-only: an IFC4 model's table lacks it, like the exporter's fallback.
+    expect(makeEngine({ 1: 'IfcGeotechnicalStratum' }, 'IFC4').engine.execute(setAttr('Name', [1])).success).toBe(true);
+    expect(makeEngine({ 1: 'IfcSolidStratum' }, 'IFC4').engine.execute(setAttr('Name', [1])).errors)
+      .toEqual(['Entity 1: IfcSolidStratum is not a class in the bundled IFC schemas, so Name cannot be checked']);
+  });
+
   it('judges a created entity by its retype, not its authored class', () => {
     const { engine, view } = makeEngine({});
     const wall = view.createEntity('IfcWall', []).expressId;

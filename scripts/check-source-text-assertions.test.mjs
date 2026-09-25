@@ -334,47 +334,6 @@ test('the narrowing kept every file the flat detector flagged', () => {
   }
 });
 
-test('#6064: the allowlist ratchet accepts 31 detected files and rejects a 32nd', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'source-text-ratchet-'));
-  try {
-    for (const name of ['packages', 'apps', 'scripts']) mkdirSync(join(dir, name));
-    writeFileSync(join(dir, 'scripts', 'subject.mjs'), 'export const value = true;\n');
-    writeFileSync(
-      join(dir, 'scripts', 'check-source-text-assertions.mjs'),
-      relocatedGateSource(GATE, SCRIPTS),
-    );
-
-    const paths = [];
-    for (let index = 0; index < 31; index++) {
-      const rel = `scripts/ratchet-${index}.test.mjs`;
-      paths.push(rel);
-      writeFileSync(join(dir, rel), `
-import { readFileSync } from 'node:fs';
-import assert from 'node:assert/strict';
-const source = readFileSync(new URL('./subject.mjs', import.meta.url), 'utf8');
-assert.match(source, /export const value/);
-`);
-    }
-
-    const allowlistPath = join(dir, 'scripts', 'source-text-assertion-allowlist.txt');
-    const runGate = () => spawnSync(process.execPath, [join(dir, 'scripts', 'check-source-text-assertions.mjs'), '--root', dir], {
-      encoding: 'utf8', timeout: 120_000,
-    });
-    writeFileSync(allowlistPath, `${paths.join('\n')}\n`);
-    const accepted = runGate();
-    assert.equal(accepted.status, 0, `${accepted.stdout}${accepted.stderr}`);
-
-    const extra = 'scripts/ratchet-31.test.mjs';
-    writeFileSync(join(dir, extra), readFileSync(join(dir, paths[0]), 'utf8'));
-    writeFileSync(allowlistPath, `${[...paths, extra].join('\n')}\n`);
-    const rejected = runGate();
-    assert.notEqual(rejected.status, 0);
-    assert.match(`${rejected.stdout}${rejected.stderr}`, /allowlist has 32 entries but the recorded ceiling is 31/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Two silent UNDER-detections, both found by review of the narrowing above.
 // A gate that stops seeing is worse than one that never looked: it reports

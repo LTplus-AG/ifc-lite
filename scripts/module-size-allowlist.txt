@@ -114,7 +114,7 @@
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    916 apps/viewer/src/components/viewer/useMouseControls.ts
-   533 apps/viewer/src/components/viewer/ViewerLayout.tsx
+   512 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1776 apps/viewer/src/components/viewer/Viewport.tsx
   1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx

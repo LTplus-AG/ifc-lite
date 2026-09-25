@@ -171,7 +171,7 @@ export function writeAlignments(
     const profile = profiles.find((candidate) => candidate.alignmentSourceId === alignment.sourceId);
     terrain.addAlignment({
       ...(profile ? {
-        Vertical: { Name: profile.name || undefined, GlobalId: landXmlGlobalId(profile.sourceId), Segments: profile.segments },
+        Vertical: { Name: profile.name, GlobalId: landXmlGlobalId(profile.sourceId), Segments: profile.segments },
       } : {}),
       Name: alignment.name,
       GlobalId: landXmlGlobalId(alignment.sourceId),

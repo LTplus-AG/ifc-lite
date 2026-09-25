@@ -19,6 +19,7 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { advance, waitFor } from '@/test/render.js';
 import { useProjectedLatLon } from './geo-readout.js';
 import type { AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 
@@ -52,20 +53,18 @@ after(() => {
 });
 
 /**
- * Flush pending promise jobs inside `act` until `done()` holds, so a resolved
- * reprojection is committed before the next assertion reads it. Polled rather
- * than a fixed number of ticks: `resolveProjection` loads its definition
- * lazily, so the number of microtask hops is an implementation detail.
+ * Wait until the hook has committed a resolved lat/lon. Waits on the result
+ * itself, not a tick budget: `resolveProjection` lazily loads the bundled EPSG
+ * index, which takes as long as the machine takes. The old helper gave up after
+ * ~250 ms and let the next assertion fail, so the test failed whenever the
+ * runner was busy (#5977). `waitFor`'s deadline is only a safety net; if the
+ * CRS never resolves it fails here with `why`.
  */
-async function settle(done: () => boolean = () => true): Promise<void> {
-  for (let i = 0; i < 50 && !done(); i++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 5));
-    });
-  }
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 5));
-  });
+async function resolved(
+  seen: ReadonlyArray<{ lat: number; lon: number } | null>,
+  why: string,
+): Promise<void> {
+  await waitFor(() => seen.at(-1) != null, why);
 }
 
 describe('the picked point\'s lat/lon never lags behind the point', () => {
@@ -82,7 +81,7 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe point={{ x: 0, y: 0, z: 0 }} />));
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
+    await resolved(seen, 'the fixture CRS must actually resolve, or this test proves nothing');
     const first = seen.at(-1);
     assert.ok(first, 'the fixture CRS must actually resolve, or this test proves nothing');
 
@@ -96,10 +95,10 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
       `the render right after the pick still showed the old point's lat/lon: ${JSON.stringify(seen)}`,
     );
 
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
+    await resolved(seen, 'the new point\'s lat/lon never arrived');
     const second = seen.at(-1);
     assert.ok(second, 'and the new coordinates must arrive');
-    assert.notDeepEqual(second, first, 'a 50 km move must change the lat/lon');
+    assert.notDeepEqual(second, first, 'a 20 km move must change the lat/lon');
   });
 
   it('is null with no anchor, and stays null once the anchor goes away', async () => {
@@ -114,11 +113,13 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe anchor={ANCHOR} />));
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
+    await resolved(seen, 'the lat/lon never resolved with an anchor');
     assert.ok(seen.at(-1), 'resolved with an anchor');
 
     act(() => root.render(<Probe anchor={null} />));
-    await settle();
+    // Clearing is synchronous (the effect runs inside `act`); the extra turn is
+    // for anything still in flight that might write a stale value back.
+    await advance(5);
     assert.equal(seen.at(-1), null, 'dropping the georeference must drop the readout');
   });
 });

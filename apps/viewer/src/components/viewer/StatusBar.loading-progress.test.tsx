@@ -10,6 +10,8 @@
  */
 
 import '@/test/setup-dom.js';
+// StatusBar's FlavorIndicator reads the flavour store from IndexedDB.
+import 'fake-indexeddb/auto';
 // `__APP_VERSION__` is a vite `define`; StatusBar's footer needs a stand-in.
 (globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
 import { afterEach, beforeEach, describe, it } from 'node:test';

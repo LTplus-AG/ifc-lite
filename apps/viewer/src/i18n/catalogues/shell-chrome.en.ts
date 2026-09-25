@@ -120,6 +120,9 @@ export const shellChromeEn = {
   'shellChrome.statusBar.ifcliteLinkLabel': 'ifclite.dev →',
 
   // MobileToolbar.tsx
+  'shellChrome.mobileToolbar.openFileAriaLabel': 'Open file',
+  'shellChrome.mobileToolbar.addModelAriaLabel': 'Add model',
+  'shellChrome.mobileToolbar.moreActionsAriaLabel': 'More actions',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
   'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',

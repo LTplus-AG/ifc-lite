@@ -15,10 +15,13 @@ import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { render, cleanup, press } from '@/test/render.js';
+import { useViewerStore } from '@/store';
 import { useKeyboardControls } from './useKeyboardControls.js';
 
 function Harness(props: { cameraCalls: string[] }) {
   const record = (name: string) => () => { props.cameraCalls.push(name); };
+  // Z is the one Fit All (#5884), registered by Viewport as a camera callback.
+  useViewerStore.getState().setCameraCallbacks({ fitAll: record('fitAll') });
   const rendererRef = useRef<Renderer | null>({
     getCamera: () => ({
       frameBounds: record('frameBounds'),
@@ -54,14 +57,17 @@ function Harness(props: { cameraCalls: string[] }) {
 }
 
 describe('useKeyboardControls — camera shortcuts ignore modifier chords (#5596)', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    useViewerStore.getState().setCameraCallbacks({});
+  });
 
   it('plain Z and 1 still move the camera (control)', () => {
     const cameraCalls: string[] = [];
     render(<Harness cameraCalls={cameraCalls} />);
     press(window, 'z');
     press(window, '1');
-    assert.deepEqual(cameraCalls, ['zoomExtent', 'setPresetView']);
+    assert.deepEqual(cameraCalls, ['fitAll', 'setPresetView']);
   });
 
   it('Ctrl+Z, Meta+Z, Ctrl+F and Alt+1 do not change the camera', () => {

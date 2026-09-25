@@ -35,6 +35,7 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
+import { visibleBounds } from '@/lib/visibility/visible-bounds';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -1015,8 +1016,16 @@ export function Viewport({
           calculateScale();
         },
         fitAll: () => {
-          // Zoom to fit without changing view direction
-          camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
+          // Zoom to fit without changing view direction, framing what is
+          // VISIBLE now (#5884): hidden, isolated-away and hidden-model
+          // geometry is left out. Nothing visible: the whole scene.
+          const ids = new Set<number>((geometryRef.current ?? []).map((mesh) => mesh.expressId));
+          for (const id of rendererRef.current?.getScene().getInstancedEntityIds() ?? []) ids.add(id);
+          const target = visibleBounds(ids, createRenderableBoundsLookup(), {
+            hidden: hiddenEntitiesRef.current,
+            isolated: isolatedEntitiesRef.current,
+          }) ?? geometryBoundsRef.current;
+          camera.zoomExtent(target.min, target.max, 300);
           calculateScale();
         },
         home: () => {
@@ -1639,7 +1648,6 @@ export function Viewport({
   useSpaceMouseControls({
     rendererRef,
     isInitialized,
-    geometryBoundsRef,
     geometryRef,
     selectedEntityIdRef,
     calculateScale,

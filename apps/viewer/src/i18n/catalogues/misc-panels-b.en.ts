@@ -265,6 +265,9 @@ export const miscPanelsBEn = {
   'bottomStrip.maximize': 'Maximize',
   'bottomStrip.restore': 'Restore',
   'bottomStrip.close': 'Close',
+  // Side-by-side 2D/3D layout preset (#5515) — Drawing-only toggle.
+  'bottomStrip.dockBeside': 'Dock beside 3D view',
+  'bottomStrip.dockBelow': 'Dock below 3D view',
 
   // ---- SaveMarkupToModelButton.tsx -------------------------------------------
   'saveMarkupToModelButton.menuItemLabel': 'Save Markup to Model',

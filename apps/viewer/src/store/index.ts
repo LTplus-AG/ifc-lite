@@ -25,6 +25,7 @@ import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSli
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
+import { createValidationDraftSlice, type ValidationDraftSlice } from './slices/validationDraftSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
@@ -156,6 +157,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SheetSlice &
   BCFSlice &
   IDSSlice &
+  ValidationDraftSlice &
   ListSlice &
   ChartSlice &
   FlowSlice &
@@ -253,6 +255,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSheetSlice(...args),
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
+  ...createValidationDraftSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
   ...createFlowSlice(...args),

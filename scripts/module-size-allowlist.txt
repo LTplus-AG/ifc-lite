@@ -71,7 +71,7 @@
   1720 apps/viewer/src/components/viewer/ChatPanel.tsx
   1302 apps/viewer/src/components/viewer/ClashPanel.tsx
   1053 apps/viewer/src/components/viewer/DataConnector.tsx
-  1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
+  1733 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    423 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
@@ -170,7 +170,7 @@
    992 apps/viewer/src/store/slices/clashSlice.ts
   1312 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
-   874 apps/viewer/src/store/slices/drawing2DSlice.ts
+   882 apps/viewer/src/store/slices/drawing2DSlice.ts
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
@@ -187,7 +187,6 @@
    573 apps/viewer/src/utils/viewportUtils.ts
    405 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
-   495 packages/bcf/src/overlay-renderer.ts
    806 packages/bcf/src/reader.ts
    627 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
@@ -268,7 +267,7 @@
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
-   451 packages/mcp/src/tools/mutate.ts
+   424 packages/mcp/src/tools/mutate.ts
    648 packages/mcp/src/tools/query.ts
    694 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts

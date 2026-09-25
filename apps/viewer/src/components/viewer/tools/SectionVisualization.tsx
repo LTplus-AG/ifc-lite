@@ -7,7 +7,7 @@
  *
  * In addition to the cardinal-axis corner badge (existing), this also
  * renders the 3D drag gizmo for face-picked custom planes (issue #243):
- * a violet dot at the live plane anchor (`pickedAt` projected onto the
+ * an accent dot at the live plane anchor (`pickedAt` projected onto the
  * current plane via `customPlaneCenter`) plus an arrow along the picked
  * normal that the user can click + drag to slide the cut plane
  * perpendicular to its surface. Anchoring to the projected center —
@@ -17,6 +17,13 @@
  * slides to the new distance. The drag math projects the cursor delta
  * onto the screen-projected normal and converts pixels-per-meter via
  * the camera's point-projection of `center + normal * 1m`.
+ *
+ * Colour (#5488, charter #5478): the section plane is the thing being
+ * manipulated, so the badge, gizmo and pick preview all draw in the one
+ * interaction accent (`overlay-accent` / `overlay-accent-soft`) for every
+ * axis and for face-picked planes alike, matching the GPU plane quad that
+ * `Renderer.setOverlayTheme` tints with the same token. Axis identity is
+ * carried only by a small axis-token dot on the badge.
  */
 
 import { useEffect, useState } from 'react';
@@ -35,57 +42,45 @@ interface SectionPlaneVisualizationProps {
 // Section plane visual indicator component
 export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisualizationProps) {
   const { t } = useTranslation();
-  // Get the axis color
-  const axisColors = {
-    down: '#03A9F4',  // Light blue for horizontal cuts
-    front: '#4CAF50', // Green for front cuts
-    side: '#FF9800',  // Orange for side cuts
-  };
-
-  // Custom plane (face-pick) — paints violet to match the renderer's
-  // gizmo quad so the user reads "this is a non-cardinal cut".
-  const CUSTOM_COLOR = '#9C6BDE';
   const customPlane = useViewerStore((s) => s.sectionPlane.custom);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   // Live face-pick hover preview (issue #243 follow-up). Only set
   // while pick mode is armed AND the cursor has dwelled ~200ms over a
-  // surface. Drives the violet quad + arrow that telegraph "this is
+  // surface. Drives the accent quad + arrow that telegraph "this is
   // where I'll cut if you click here" before the user commits.
   const sectionPickPreview = useViewerStore((s) => s.sectionPickPreview);
   const isCustom = customPlane !== undefined;
-
-  const color = isCustom ? CUSTOM_COLOR : axisColors[axis];
 
   return (
     <svg
       className="absolute inset-0 pointer-events-none z-20"
       style={{ overflow: 'visible', pointerEvents: 'none' }}
     >
-      <defs>
-        <filter id="section-glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-          <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
-        {/* Animated dash pattern */}
-        <pattern id="section-pattern" patternUnits="userSpaceOnUse" width="10" height="10">
-          <line x1="0" y1="0" x2="10" y2="10" stroke={color} strokeWidth="1" strokeOpacity="0.5"/>
-        </pattern>
-      </defs>
-
-      {/* Axis indicator in corner */}
-      <g transform="translate(24, 24)">
-        <circle cx="20" cy="20" r="18" fill={color} fillOpacity={enabled ? 0.2 : 0.1} stroke={color} strokeWidth={enabled ? 3 : 2} filter="url(#section-glow)"/>
+      {/* Axis indicator in corner. Accent ring for every axis; the label is
+          ink because the accent is a graphics token (3:1), not a text one. */}
+      <g transform="translate(24, 24)" data-section-badge>
+        <circle
+          cx="20" cy="20" r="18"
+          className="fill-overlay-accent-soft stroke-overlay-accent"
+          strokeWidth={enabled ? 2 : 1.5}
+          strokeOpacity={enabled ? 1 : 0.6}
+        />
+        {!isCustom && (
+          <circle
+            data-section-axis-dot={axis}
+            cx="33" cy="7" r="4"
+            className={`${AXIS_INFO[axis].axisFill} stroke-overlay-halo`}
+            strokeWidth="1.5"
+          />
+        )}
         <text
           x="20"
           y="20"
           textAnchor="middle"
           dominantBaseline="central"
-          fill={color}
+          className="fill-overlay-ink"
           fontFamily="monospace"
           fontSize="11"
           fontWeight="bold"
@@ -98,7 +93,7 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
             x="20"
             y="32"
             textAnchor="middle"
-            fill={color}
+            className="fill-overlay-ink"
             fontFamily="monospace"
             fontSize="7"
             fontWeight="bold"
@@ -110,7 +105,6 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
 
       {enabled && customPlane && (
         <SectionPlaneDragGizmo
-          color={CUSTOM_COLOR}
           customPlane={customPlane}
           setDistance={setSectionCustomDistance}
           onDragStart={() => { if (pointCloudAssetCount > 0) setPreviewStride(4); }}
@@ -121,7 +115,6 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
       {/* Face-pick hover preview — purely visual, click-through. */}
       {sectionPickPreview && (
         <SectionPickPreviewOverlay
-          color={CUSTOM_COLOR}
           preview={sectionPickPreview}
         />
       )}
@@ -130,7 +123,7 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
 }
 
 /**
- * Translucent violet quad + tiny normal arrow painted on the surface
+ * Translucent accent quad + tiny normal arrow painted on the surface
  * the user is hovering while section pick mode is armed (issue #243
  * follow-up). Purely a hint — does not commit a section plane;
  * `selectionHandlers.ts` does that on click.
@@ -148,10 +141,9 @@ export function SectionPlaneVisualization({ axis, enabled }: SectionPlaneVisuali
  * 'auto'` (e.g. the drag gizmo's circle) co-exist in the same tree.
  */
 function SectionPickPreviewOverlay(props: {
-  color: string;
   preview: NonNullable<ReturnType<typeof useViewerStore.getState>['sectionPickPreview']>;
 }) {
-  const { color, preview } = props;
+  const { preview } = props;
   // Project the four quad corners + the arrow tip every animation
   // frame so the overlay tracks camera orbit/pan without any extra
   // store subscription. Cheap (5 mat-mul per frame).
@@ -239,22 +231,19 @@ function SectionPickPreviewOverlay(props: {
   const tipY = foot.y + (ady / aLen) * ARROW_PX;
 
   return (
-    <g style={{ pointerEvents: 'none' }} aria-hidden>
-      {/* Translucent violet quad — the "you'll cut here" hint. */}
+    <g style={{ pointerEvents: 'none' }} aria-hidden data-section-pick-preview>
+      {/* Translucent accent quad — the "you'll cut here" hint. */}
       <polygon
         points={quad.map((p) => `${p.x},${p.y}`).join(' ')}
-        fill={color}
-        fillOpacity="0.28"
-        stroke={color}
+        className="fill-overlay-accent-soft stroke-overlay-accent"
         strokeWidth="1.5"
-        strokeOpacity="0.7"
       />
       {/* Tiny normal arrow — shaft. */}
       <line
         x1={foot.x} y1={foot.y}
         x2={tipX}   y2={tipY}
-        stroke={color} strokeWidth="2" strokeLinecap="round"
-        opacity="0.9"
+        className="stroke-overlay-accent"
+        strokeWidth="2" strokeLinecap="round"
       />
       {/* Arrowhead — small triangle perpendicular to the shaft. */}
       <polygon
@@ -267,7 +256,7 @@ function SectionPickPreviewOverlay(props: {
           const bx = baseX - nxp * 4, by = baseY - nyp * 4;
           return `${tipX},${tipY} ${ax},${ay} ${bx},${by}`;
         })()}
-        fill={color} opacity="0.95"
+        className="fill-overlay-accent"
       />
     </g>
   );

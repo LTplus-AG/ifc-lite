@@ -142,7 +142,7 @@ export function RepositionPanel() {
 
   return <>
     <PlacementGizmo disabled={role !== null} onError={setError} />
-    {projected && <div aria-hidden className="absolute pointer-events-none z-40 border-2 border-teal-500 rounded-full w-3 h-3"
+    {projected && <div aria-hidden className="absolute pointer-events-none z-40 border-2 border-overlay-accent rounded-full w-3 h-3"
       style={{ left: projected.x - 6, top: projected.y - 6 }} />}
     <section aria-label={t('repositionPanel.title')} className="absolute top-32 right-4 z-40 w-80 max-h-[calc(100%-9rem)] overflow-auto border bg-white dark:bg-zinc-950 shadow-lg p-3 space-y-3 text-xs"
       onPointerDown={(event) => event.stopPropagation()}>

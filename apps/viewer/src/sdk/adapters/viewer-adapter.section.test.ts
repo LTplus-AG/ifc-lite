@@ -56,3 +56,27 @@ describe('SDK viewer section (#4910)', () => {
     assert.equal(useViewerStore.getState().sectionPlane.enabled, false);
   });
 });
+
+/**
+ * #5644: a face-picked plane's `flipped` is relative to its own normal, so the
+ * SDK must map it to the cardinal frame it reports. A pick on the -X face of a
+ * box keeps the solid (x > face), which in the +X cardinal frame is flipped.
+ */
+describe('SDK getSection() after a face pick (#5644)', () => {
+  const bounds = { min: [0, 0, 0] as [number, number, number], max: [4, 4, 4] as [number, number, number] };
+  for (const sign of [1, -1]) {
+    it(`${sign > 0 ? '+' : '-'}X face: reports the kept side in the cardinal frame, and Flip inverts it`, () => {
+      const s = useViewerStore.getState();
+      s.setActiveTool('section');
+      s.setSectionPickMode(true);
+      s.setSectionPlaneFromFace([sign, 0, 0], [sign > 0 ? 4 : 0, 2, 2], bounds);
+      const picked = viewer.getSection();
+      assert.ok(picked, 'the picked cut is on screen');
+      assert.equal(picked.axis, 'x');
+      assert.equal(picked.flipped, sign < 0, 'the default keeps the solid behind the picked face');
+
+      useViewerStore.getState().flipSectionPlane();
+      assert.equal(viewer.getSection()?.flipped, sign > 0, 'Flip keeps the other side');
+    });
+  }
+});

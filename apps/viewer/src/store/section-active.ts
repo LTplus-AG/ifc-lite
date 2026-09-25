@@ -36,6 +36,19 @@ export function activeSectionPlane(state: SectionVisibilityState): SectionPlane 
   return state.activeTool === 'section' && state.sectionPlane.enabled ? state.sectionPlane : null;
 }
 
+/**
+ * `flipped` for a reader that approximates the cut by its cardinal `axis` /
+ * `position` (BCF viewpoints, SDK `getSection()`), where the flip is relative
+ * to the +axis normal. A face-picked plane's `flipped` is relative to its own
+ * `custom.normal` (that is how the renderer applies it), so a normal that
+ * points down the negative axis inverts it (#5644).
+ */
+export function cardinalSectionFlipped(plane: Pick<SectionPlane, 'axis' | 'flipped' | 'custom'>): boolean {
+  if (!plane.custom) return plane.flipped;
+  const along = plane.custom.normal[plane.axis === 'side' ? 0 : plane.axis === 'down' ? 1 : 2];
+  return plane.flipped !== (along < 0);
+}
+
 /** The patch that restores the invariant for `state`, or `null` when it already holds. */
 export function sectionVisibilityPatch(state: SectionVisibilityState): { sectionPlane: SectionPlane } | null {
   const plane = state.sectionPlane;

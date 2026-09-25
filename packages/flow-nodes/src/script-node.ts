@@ -18,44 +18,75 @@
  * no `bcf`, `ids`, `spatial`); that difference is documented, not papered
  * over. Sandbox permissions are derived from the graph's grants: mutation
  * is only enabled when a `model.mutate` grant exists.
+ *
+ * A lane whose code made a network request calls `ctx.markVolatile()`, so
+ * the scheduler does not memoise that run: rerunning the graph fetches
+ * again instead of replaying a stale response. A script that never calls
+ * `bim.network.fetch` stays memoisable even in a graph holding a grant.
  */
 
-import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
+import { createSandbox, type FetchTransport, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { Capability } from '@ifc-lite/extensions';
 import { ANY_ITEM, ANY_LIST, requireCapability, type Ctx, type FlowNodeDef } from './host.js';
 
 /**
- * One sandbox per (BimContext, permission set), kept for the lifetime of
- * the context: QuickJS module init is the expensive part, and a graph with
- * several Script nodes (or a re-run) must not pay it per lane. Created here
- * rather than through `bim.sandbox` because that path dynamically imports
- * `@ifc-lite/sandbox` relative to the SDK package, which a pnpm-isolated
- * install cannot resolve headlessly.
+ * A cached sandbox plus the number of network requests it has sent — the
+ * count is read before and after an evaluation to tell whether that
+ * evaluation reached the network. Evaluations on one sandbox are serialized,
+ * so a run queued ahead of ours can only inflate the difference (a result
+ * not memoised that could have been), never hide a request of ours.
  */
-const sandboxes = new WeakMap<BimContext, Map<string, Promise<Sandbox>>>();
+interface SandboxEntry {
+  readonly sandbox: Promise<Sandbox>;
+  requests: number;
+}
+
+/**
+ * One sandbox per (BimContext, transport, permission set), kept for the
+ * lifetime of the context: QuickJS module init is the expensive part, and a
+ * graph with several Script nodes (or a re-run) must not pay it per lane.
+ * Created here rather than through `bim.sandbox` because that path
+ * dynamically imports `@ifc-lite/sandbox` relative to the SDK package, which
+ * a pnpm-isolated install cannot resolve headlessly.
+ */
+const sandboxes = new WeakMap<BimContext, Map<FetchTransport | undefined, Map<string, SandboxEntry>>>();
 
 function sandboxFor(
-  bim: BimContext, permissions: Record<string, boolean>, timeoutMs: number, networkGrants: readonly Capability[],
-): Promise<Sandbox> {
+  bim: BimContext, permissions: Record<string, boolean>, timeoutMs: number, networkGrants: readonly Capability[], transport: FetchTransport | undefined,
+): SandboxEntry {
   const key = JSON.stringify({ permissions, timeoutMs, networkGrants });
   let perContext = sandboxes.get(bim);
   if (!perContext) {
     perContext = new Map();
     sandboxes.set(bim, perContext);
   }
-  let pending = perContext.get(key);
-  if (!pending) {
+  let perTransport = perContext.get(transport);
+  if (!perTransport) {
+    perTransport = new Map();
+    perContext.set(transport, perTransport);
+  }
+  const cache = perTransport;
+  let entry = cache.get(key);
+  if (!entry) {
+    const counting: FetchTransport = (url, init) => {
+      created.requests += 1;
+      return transport ? transport(url, init) : fetch(url, init);
+    };
     // A rejected creation (a wasm load failure, a transient resource limit)
     // must not be cached: every later lane would await the same rejection for
     // the lifetime of the context, turning one hiccup into a dead node.
-    pending = createSandbox(bim, { permissions, limits: { timeoutMs }, network: { grants: networkGrants } }).catch((err) => {
-      if (perContext!.get(key) === pending) perContext!.delete(key);
+    const sandbox = createSandbox(bim, {
+      permissions, limits: { timeoutMs }, network: { grants: networkGrants, transport: counting },
+    }).catch((err) => {
+      if (cache.get(key) === created) cache.delete(key);
       throw err;
     });
-    perContext.set(key, pending);
+    const created: SandboxEntry = { sandbox, requests: 0 };
+    entry = created;
+    cache.set(key, entry);
   }
-  return pending;
+  return entry;
 }
 
 /** Evaluate `params.code` with `inputs` in scope and return its last expression. */
@@ -91,12 +122,21 @@ async function evaluate(ctx: Ctx, inputs: Readonly<Record<string, unknown>>, par
   // `inputs` in scope, and the last expression as the value (`eval` returns
   // its program's completion value, which a function body would not).
   const code = `(function (inputs) { return eval(${JSON.stringify(String(params.code ?? ''))}); })(${injected})`;
-  const sandbox = await sandboxFor(ctx.host.bim, permissions, Number(params.timeoutMs) || 30_000, networkGrants);
-  // Plain JavaScript by contract: skipping the TypeScript strip avoids
-  // initialising esbuild-wasm, which only works in the browser. It is also
-  // what keeps the wrapper above honest — the source reaches `eval`
-  // verbatim, not as something a transpiler rewrote.
-  const result = await sandbox.eval(code, { typescript: false });
+  const entry = sandboxFor(ctx.host.bim, permissions, Number(params.timeoutMs) || 30_000, networkGrants, ctx.host.networkTransport);
+  const sandbox = await entry.sandbox;
+  const requestsBefore = entry.requests;
+  let result: Awaited<ReturnType<Sandbox['eval']>>;
+  try {
+    // Plain JavaScript by contract: skipping the TypeScript strip avoids
+    // initialising esbuild-wasm, which only works in the browser. It is also
+    // what keeps the wrapper above honest — the source reaches `eval`
+    // verbatim, not as something a transpiler rewrote.
+    result = await sandbox.eval(code, { typescript: false });
+  } finally {
+    // In `finally`: a lane that fetched and then threw yields null under
+    // lifting, and that null must not be memoised either.
+    if (entry.requests !== requestsBefore) ctx.markVolatile?.();
+  }
   for (const entry of result.logs) {
     const level = entry.level === 'error' ? 'error' : entry.level === 'warn' ? 'warn' : 'info';
     ctx.log(level, entry.args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));

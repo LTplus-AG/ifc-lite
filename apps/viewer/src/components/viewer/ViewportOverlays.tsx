@@ -28,6 +28,7 @@ import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
 // zero-net addition since this already lives inside the same viewport panel.
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
+import { EditModeHudChip } from './EditModeHudChip';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -187,10 +188,6 @@ export function ViewportOverlays({
     goHomeFromStore();
   }, []);
 
-  const handleFitAll = useCallback(() => {
-    cameraCallbacks.fitAll?.();
-  }, [cameraCallbacks]);
-
   const handleZoomIn = useCallback(() => {
     cameraCallbacks.zoomIn?.();
   }, [cameraCallbacks]);
@@ -214,9 +211,10 @@ export function ViewportOverlays({
 
   return (
     <>
-      {/* HUD kernel (#5485), no consumers migrated onto it yet; mounted
-          first so its regions exist before anything below portals in. */}
+      {/* HUD kernel (#5485); mounted first so its regions exist before
+          anything below portals in. */}
       <ViewportHud />
+      <EditModeHudChip />
       <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list

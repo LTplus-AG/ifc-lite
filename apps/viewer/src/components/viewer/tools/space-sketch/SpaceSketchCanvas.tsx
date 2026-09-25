@@ -19,7 +19,8 @@ import type { Hover, SplitTarget, Intent, IntentTone } from './types';
 import { useTranslation } from '@/i18n';
 
 const EPS = 1e-6;
-const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a855f7', '#ef4444'];
+// Data palette: per-room identity only. No purple — that was edit mode's hue, now retired (#5489).
+const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a16207', '#ef4444'];
 
 const INTENT_TEXT_CLASS: Record<IntentTone, string> = {
   move: 'text-foreground',

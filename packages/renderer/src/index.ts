@@ -3054,9 +3054,11 @@ export class Renderer {
 
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
-            const hoverId = options.hoveredId;
+            // A hidden / isolated-out entity is never outlined; the hover id carries no model, so look it up in any.
+            const hoverId = options.hoveredId != null && !options.hiddenIds?.has(options.hoveredId)
+                && (!hasIsolatedFilter || options.isolatedIds!.has(options.hoveredId)) ? options.hoveredId : null;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, selectedModelIndex))
-                ? this.hoverMeshes.resolve(device, hoverId, selectedModelIndex, () => this.scene.getMeshDataPieces(hoverId, selectedModelIndex), (m) => this.individualMeshFrame(m))
+                ? this.hoverMeshes.resolve(device, hoverId, undefined, () => this.scene.getMeshDataPieces(hoverId), (m) => this.individualMeshFrame(m))
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,

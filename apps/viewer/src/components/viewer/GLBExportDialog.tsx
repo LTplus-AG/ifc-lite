@@ -49,7 +49,7 @@ import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
 import { classifyLoadError } from '@/lib/load-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { useTranslation } from '@/i18n';
@@ -303,9 +303,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
-      const suffix = visibleOnly ? '_visible' : '';
-      downloadBlob(blob, `${baseName}${suffix}.glb`);
+      downloadBlob(blob, modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : ''));
 
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });

@@ -45,7 +45,7 @@ export const shellChromeEn = {
 
   // CustomizeSidebar.tsx
   'shellChrome.customizeSidebar.ariaLabel': 'Customize sidebar panels',
-  'shellChrome.customizeSidebar.resetTitle': 'Reset to default order + show all',
+  'shellChrome.customizeSidebar.resetTitle': 'Reset layout: sidebar order and panels, floating panels, panes',
   'shellChrome.customizeSidebar.resetLabel': 'Reset',
   'shellChrome.customizeSidebar.moveUp': 'Move {title} up',
   'shellChrome.customizeSidebar.moveDown': 'Move {title} down',

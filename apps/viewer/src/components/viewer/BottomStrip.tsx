@@ -49,11 +49,13 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   const cleanupRef = useRef<(() => void) | null>(null);
 
   // "Reset layout" (#5854) restores the default height (and un-maximizes,
-  // #5498). The epoch starts at 0 and only moves on a reset, so this never
-  // fires on mount.
+  // #5498). Only a reset made while the strip is mounted counts: the epoch
+  // stays non-zero after the first reset, so comparing against 0 re-ran the
+  // reset on every later mount and threw away the persisted height (#5957).
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch);
+  const mountEpochRef = useRef(layoutResetEpoch);
   useEffect(() => {
-    if (layoutResetEpoch === 0) return;
+    if (layoutResetEpoch === mountEpochRef.current) return;
     setBottomHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
     setIsMaximized(false);
     persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);

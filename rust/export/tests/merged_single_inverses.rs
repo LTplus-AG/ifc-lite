@@ -110,3 +110,85 @@ fn ifc2x3_never_folds_into_an_override_or_across_rel_types() {
         assert_eq!(warnings.iter().filter(|w| w.contains("lost that relationship")).count(), 1, "{owner}: {warnings:?}");
     }
 }
+
+/// How many written `rel_type` lines name `id` in argument `claimed`.
+fn naming(out: &str, rel_type: &str, claimed: usize, id: u32) -> usize {
+    let target = format!("#{id}");
+    out.lines()
+        .filter(|l| l.contains(&format!("={rel_type}(")))
+        .filter(|l| {
+            let args = &l[l.find('(').unwrap() + 1..l.rfind(')').unwrap()];
+            let mut depth = 0;
+            let mut slots = vec![String::new()];
+            for c in args.chars() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    ',' if depth == 0 => {
+                        slots.push(String::new());
+                        continue;
+                    }
+                    _ => {}
+                }
+                slots.last_mut().unwrap().push(c);
+            }
+            slots[claimed].trim_matches(['(', ')']).split(',').any(|r| r.trim() == target)
+        })
+        .count()
+}
+
+/// #5923: each model states `rel` (`{a}` = the shared entity #10, `{b}` = its own
+/// partner #11) about an entity both share by GlobalId. The merged file names
+/// the shared entity on the claimed side (argument `claimed`) once.
+fn one_rel_for_the_shared_entity(schema: &str, file_schema: &str, rel_type: &str, rel: &str, claimed: usize) {
+    let model_of = |tag: &str| {
+        model(file_schema, &[
+            format!("#1=IFCPROJECT('{}',$,'P',$,$,$,$,$,$);", guid(&format!("p{tag}"))),
+            format!("#10=IFCBUILDINGELEMENTPROXY('{}',$,'shared',$,$,$,$,$,$);", guid("shared")),
+            format!("#11=IFCBUILDINGELEMENTPROXY('{}',$,'own',$,$,$,$,$,$);", guid(&format!("own{tag}"))),
+            format!("#20={rel_type}('{}',$,$,$,{});", guid(&format!("r{tag}")), rel),
+        ])
+    };
+    let (out, _) = merge(schema, &[model_of("a"), model_of("b")]);
+    assert_eq!(naming(&out, rel_type, claimed, id_of(&out, "shared")), 1, "{schema} {rel_type}:\n{out}");
+}
+
+#[test]
+fn a_shared_element_keeps_one_containment_void_fill_and_type() {
+    for (schema, file_schema) in [("IFC2X3", "IFC2X3"), ("IFC4", "IFC4"), ("IFC4X3", "IFC4X3_ADD2")] {
+        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELCONTAINEDINSPATIALSTRUCTURE", "(#10),#11", 4);
+        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELVOIDSELEMENT", "#11,#10", 5);
+        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELFILLSELEMENT", "#11,#10", 5);
+        // The object side: IFC2X3 IfcObject.WR1, IFC4 IsTypedBy.
+        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELDEFINESBYTYPE", "(#10),#11", 4);
+        // The type side: IFC2X3 ObjectTypeOf, IFC4 Types (the later object is folded in).
+        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELDEFINESBYTYPE", "(#11),#10", 5);
+    }
+    one_rel_for_the_shared_entity("IFC4X3", "IFC4X3_ADD2", "IFCRELADHERESTOELEMENT", "#11,(#10)", 5);
+    one_rel_for_the_shared_entity("IFC4", "IFC4", "IFCRELDECLARES", "#11,(#10)", 5);
+}
+
+/// A type's later objects join the type's first `IfcRelDefinesByType`, so no
+/// object loses its type (#5923).
+#[test]
+fn a_later_model_s_new_object_joins_the_shared_type_s_first_rel() {
+    for (schema, file_schema) in [("IFC2X3", "IFC2X3"), ("IFC4", "IFC4")] {
+        let model_of = |tag: &str, objects: &[&str]| {
+            let mut lines = vec![
+                format!("#1=IFCPROJECT('{}',$,'P',$,$,$,$,$,$);", guid(&format!("p{tag}"))),
+                format!("#5=IFCBUILDINGELEMENTPROXYTYPE('{}',$,'T',$,$,$,$,$,$,.NOTDEFINED.);", guid("type")),
+            ];
+            let refs: Vec<String> = objects.iter().enumerate().map(|(i, o)| {
+                lines.push(format!("#{}=IFCBUILDINGELEMENTPROXY('{}',$,'{o}',$,$,$,$,$,$);", 10 + i, guid(o)));
+                format!("#{}", 10 + i)
+            }).collect();
+            lines.push(format!("#20=IFCRELDEFINESBYTYPE('{}',$,$,$,({}),#5);", guid(&format!("r{tag}")), refs.join(",")));
+            model(file_schema, &lines)
+        };
+        let (out, _) = merge(schema, &[model_of("a", &["wall"]), model_of("b", &["wall", "door"])]);
+        let (wall, door) = (id_of(&out, "wall"), id_of(&out, "door"));
+        assert_eq!(naming(&out, "IFCRELDEFINESBYTYPE", 5, id_of(&out, "type")), 1, "{schema}:\n{out}");
+        assert_eq!(naming(&out, "IFCRELDEFINESBYTYPE", 4, wall), 1, "{schema}");
+        assert_eq!(naming(&out, "IFCRELDEFINESBYTYPE", 4, door), 1, "{schema}: the door keeps its type");
+    }
+}

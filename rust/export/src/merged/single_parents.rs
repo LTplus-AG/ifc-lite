@@ -51,24 +51,73 @@ struct Rule {
     one_partner: bool,
 }
 
-const DECOMPOSES: Rule = Rule { inverse: "Decomposes", claimed: 5, partner: 4, one_partner: false };
-const NESTS: Rule = Rule { inverse: "Nests", claimed: 5, partner: 4, one_partner: false };
+const fn rule(inverse: &'static str, claimed: usize, partner: usize) -> Rule {
+    Rule { inverse, claimed, partner, one_partner: false }
+}
+
 /// IFC2X3 `IfcPropertySetDefinition.PropertyDefinitionOf : SET [0:1]` (#5774);
 /// IFC4 relaxes it to `DefinesOccurrence : SET [0:?]`.
-const PROPERTY_DEFINITION_OF: Rule = Rule { inverse: "PropertyDefinitionOf", claimed: 5, partner: 4, one_partner: false };
+const PROPERTY_DEFINITION_OF: Rule = rule("PropertyDefinitionOf", 5, 4);
 /// `IfcRelOverridesProperties.WR1`: `SIZEOF(RelatedObjects) = 1`.
 const PROPERTY_OVERRIDE_OF: Rule = Rule { one_partner: true, ..PROPERTY_DEFINITION_OF };
 
-/// The single-valued inverses `rel_type` (uppercase) fills, in the OUTPUT
-/// schema, which decides (#5726): in IFC2X3 `IfcRelAggregates` and
-/// `IfcRelNests` are both `IfcRelDecomposes` and share `Decomposes : SET [0:1]`;
-/// IFC4 and later split `Nests : SET [0:1] OF IfcRelNests` off `Decomposes`.
-fn rules_of(rel_type: &str, ifc2x3: bool) -> &'static [Rule] {
-    match (rel_type, ifc2x3) {
-        ("IFCRELAGGREGATES", _) | ("IFCRELNESTS", true) => std::slice::from_ref(&DECOMPOSES),
-        ("IFCRELNESTS", false) => std::slice::from_ref(&NESTS),
-        ("IFCRELDEFINESBYPROPERTIES", true) => std::slice::from_ref(&PROPERTY_DEFINITION_OF),
-        ("IFCRELOVERRIDESPROPERTIES", true) => std::slice::from_ref(&PROPERTY_OVERRIDE_OF),
+/// The single-valued inverses `rel_type` (uppercase) fills in the OUTPUT
+/// schema (`schema_convert::canon`), list-side rules first: a fold only takes
+/// members a list rule has not already stripped. Mirrors `inverseRules` in
+/// `merged-inverse-claims.ts` row for row; that file's test pins the rows to
+/// the EXPRESS schemas. In IFC2X3 `IfcRelAggregates` and `IfcRelNests` share
+/// `Decomposes` (#5726), a type has one `IfcRelDefinesByType` (`ObjectTypeOf`)
+/// and `IfcObject.WR1` (a WHERE rule) allows an object one; IFC4 splits off
+/// `Nests`, names the typing inverses `IsTypedBy`/`Types`, and relaxes the
+/// property-set side to `SET [0:?]`.
+fn rules_of(rel_type: &str, schema: &str) -> &'static [Rule] {
+    const CONTAINED: &[Rule] = &[rule("ContainedInStructure", 4, 5)];
+    const VOIDS: &[Rule] = &[rule("VoidsElements", 5, 4)];
+    const FILLS: &[Rule] = &[rule("FillsVoids", 5, 4)];
+    const PROJECTS: &[Rule] = &[rule("ProjectsElements", 5, 4)];
+    const COVERS_SPACES: &[Rule] = &[rule("CoversSpaces", 5, 4)];
+    const FLOW_CONTROL: &[Rule] = &[rule("AssignedToFlowElement", 4, 5), rule("HasControlElements", 5, 4)];
+    const PORTS: &[Rule] = &[rule("ConnectedTo", 4, 5), rule("ConnectedFrom", 5, 4)];
+    const SERVICES: &[Rule] = &[rule("ServicesBuildings", 4, 5)];
+    const PORT_TO_ELEMENT: &[Rule] = &[rule("ContainedIn", 4, 5)];
+    const STRUCTURAL_ACTIVITY: &[Rule] = &[rule("AssignedToStructuralItem", 5, 4)];
+    const DECOMPOSES: &[Rule] = &[rule("Decomposes", 5, 4)];
+    const NESTS: &[Rule] = &[rule("Nests", 5, 4)];
+    const TYPED_2X3: &[Rule] = &[rule("IsDefinedBy", 4, 5), rule("ObjectTypeOf", 5, 4)];
+    const TYPED: &[Rule] = &[rule("IsTypedBy", 4, 5), rule("Types", 5, 4)];
+    const COVERS: &[Rule] = &[rule("Covers", 5, 4)];
+    const COVERS_ELEMENTS: &[Rule] = &[rule("CoversElements", 5, 4)];
+    const GROUPED: &[Rule] = &[rule("IsGroupedBy", 6, 4)];
+    const TIME_FOR_TASK: &[Rule] = &[rule("ScheduleTimeControlAssigned", 7, 6)];
+    const DECLARED: &[Rule] = &[rule("IsDeclaredBy", 4, 5)];
+    const CONTEXT: &[Rule] = &[rule("HasContext", 5, 4)];
+    const ADHERES: &[Rule] = &[rule("AdheresToElement", 5, 4)];
+    let ifc2x3 = schema == "IFC2X3";
+    match rel_type {
+        "IFCRELCONTAINEDINSPATIALSTRUCTURE" => CONTAINED,
+        "IFCRELVOIDSELEMENT" => VOIDS,
+        "IFCRELFILLSELEMENT" => FILLS,
+        "IFCRELPROJECTSELEMENT" => PROJECTS,
+        "IFCRELCOVERSSPACES" => COVERS_SPACES,
+        "IFCRELFLOWCONTROLELEMENTS" => FLOW_CONTROL,
+        "IFCRELCONNECTSPORTS" => PORTS,
+        "IFCRELSERVICESBUILDINGS" => SERVICES,
+        "IFCRELCONNECTSPORTTOELEMENT" => PORT_TO_ELEMENT,
+        "IFCRELCONNECTSSTRUCTURALACTIVITY" => STRUCTURAL_ACTIVITY,
+        "IFCRELAGGREGATES" => DECOMPOSES,
+        "IFCRELNESTS" if ifc2x3 => DECOMPOSES,
+        "IFCRELNESTS" => NESTS,
+        "IFCRELDEFINESBYTYPE" if ifc2x3 => TYPED_2X3,
+        "IFCRELDEFINESBYTYPE" => TYPED,
+        "IFCRELCOVERSBLDGELEMENTS" if ifc2x3 => COVERS,
+        "IFCRELCOVERSBLDGELEMENTS" => COVERS_ELEMENTS,
+        "IFCRELDEFINESBYPROPERTIES" if ifc2x3 => std::slice::from_ref(&PROPERTY_DEFINITION_OF),
+        "IFCRELOVERRIDESPROPERTIES" if ifc2x3 => std::slice::from_ref(&PROPERTY_OVERRIDE_OF),
+        "IFCRELASSIGNSTOGROUP" if ifc2x3 => GROUPED,
+        "IFCRELASSIGNSTASKS" if ifc2x3 => TIME_FOR_TASK,
+        "IFCRELDEFINESBYOBJECT" if !ifc2x3 => DECLARED,
+        "IFCRELDECLARES" if !ifc2x3 => CONTEXT,
+        "IFCRELADHERESTOELEMENT" if schema == "IFC4X3" || schema == "IFC5" => ADHERES,
         _ => &[],
     }
 }
@@ -105,7 +154,8 @@ fn rel_id(line: &str) -> Option<u32> {
 /// Which final ids already fill each single-valued inverse of the output
 /// schema. One instance per merge.
 pub(super) struct ParentClaims {
-    ifc2x3: bool,
+    /// The output schema, canonical (`IFC2X3`, `IFC4`, `IFC4X3`, `IFC5`).
+    schema: &'static str,
     /// Claimed through a list side (RelatedObjects): the ids alone.
     claimed: HashMap<&'static str, HashSet<u32>>,
     /// Claimed through a single side (RelatingPropertyDefinition): the rel that owns each.
@@ -117,8 +167,15 @@ pub(super) struct ParentClaims {
 }
 
 impl ParentClaims {
+    /// Test shorthand: IFC2X3 or IFC4 output.
+    #[cfg(test)]
     pub(super) fn new(ifc2x3: bool) -> Self {
-        Self { ifc2x3, claimed: HashMap::new(), owners: HashMap::new(), folds: HashMap::new(), unfolded: Vec::new() }
+        Self::for_schema(if ifc2x3 { "IFC2X3" } else { "IFC4" })
+    }
+
+    /// The claims of a merge written as `schema` (any spelling `canon` reads).
+    pub(super) fn for_schema(schema: &str) -> Self {
+        Self { schema: crate::schema_convert::canon(schema), claimed: HashMap::new(), owners: HashMap::new(), folds: HashMap::new(), unfolded: Vec::new() }
     }
 
     /// Decide how to write one final line of type `rel_type`, recording what it
@@ -132,7 +189,7 @@ impl ParentClaims {
     /// where no fold is possible (another rel type, a one-partner rel) the
     /// first rel wins and the loss is reported.
     pub(super) fn claim(&mut self, rel_type: &str, line: String, dedupe: bool) -> Option<String> {
-        let rules = rules_of(rel_type, self.ifc2x3);
+        let rules = rules_of(rel_type, self.schema);
         if rules.is_empty() {
             return Some(line);
         }
@@ -173,6 +230,13 @@ impl ParentClaims {
                         owner.partners.extend(fresh.iter().copied());
                         let fold = self.folds.entry(owner.rel).or_insert_with(|| (owner.partner, Vec::new()));
                         fold.1.extend(fresh);
+                        // Folded, its surviving members are now written: record their list claims.
+                        for list_rule in rules {
+                            if let Some(Side::List(members)) = read_side(&line, list_rule.claimed) {
+                                let claimed = self.claimed.entry(list_rule.inverse).or_default();
+                                claimed.extend(members.into_iter().filter(|m| !strip.contains(m)));
+                            }
+                        }
                     } else if !fresh.is_empty() {
                         self.unfolded.push((rel, fresh.len()));
                     }

@@ -14,7 +14,6 @@
   "zIndex:apps/viewer/src/components/viewer/bcf/BCFOverlay.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/GizmoOverlay.tsx": 1,
-  "zIndex:apps/viewer/src/components/viewer/tools/SectionVisualization.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchCanvas.tsx": 1,
   "zIndex:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchPopovers.tsx": 2,
   "zIndex:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchReopenPill.tsx": 1,

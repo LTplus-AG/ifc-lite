@@ -106,6 +106,8 @@ export const shellChromeEn = {
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },
+  'shellChrome.statusBar.hiddenCount': '{count} hidden',
+  'shellChrome.statusBar.ghostedCount': '{count} ghosted',
   'shellChrome.statusBar.fpsUnit': 'FPS',
   'shellChrome.statusBar.webgpuChecking': 'Checking...',
   'shellChrome.statusBar.webgpuLabel': 'WebGPU',

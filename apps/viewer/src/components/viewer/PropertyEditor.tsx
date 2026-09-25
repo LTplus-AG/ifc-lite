@@ -24,6 +24,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,7 +44,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { ComboInput } from '@/components/ui/combo-input';
 import { toast } from '@/components/ui/toast';
@@ -214,19 +214,14 @@ export function PropertyEditor({
         >
           {displayValue}
         </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
-              onClick={() => setIsEditing(true)}
-            >
-              <PenLine className="h-3 w-3 text-overlay-accent" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">{t('propertyEditor.inline.editProperty')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('propertyEditor.inline.editProperty')}
+          tooltipSide="left"
+          className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
+          onClick={() => setIsEditing(true)}
+        >
+          <PenLine className="h-3 w-3 text-overlay-accent" />
+        </IconButton>
       </div>
     );
   }
@@ -281,45 +276,27 @@ export function PropertyEditor({
         )}
 
         {/* Action buttons */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
-              onClick={handleSave}
-            >
-              <Check className="h-3.5 w-3.5 text-green-600" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              onClick={handleCancel}
-            >
-              <X className="h-3.5 w-3.5 text-zinc-500" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('propertyEditor.inline.cancel')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5 text-red-500" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('propertyEditor.inline.delete')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}
+          className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
+          onClick={handleSave}
+        >
+          <Check className="h-3.5 w-3.5 text-green-600" />
+        </IconButton>
+        <IconButton
+          label={t('propertyEditor.inline.cancel')}
+          className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          onClick={handleCancel}
+        >
+          <X className="h-3.5 w-3.5 text-zinc-500" />
+        </IconButton>
+        <IconButton
+          label={t('propertyEditor.inline.delete')}
+          className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
+          onClick={handleDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+        </IconButton>
       </div>
 
       {/* Type selector - always visible */}
@@ -495,9 +472,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.property.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.property.trigger')} className={EDIT_TOOL_CLS}>
           <Plus className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -756,9 +733,9 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
       if (!o) { setSystem(''); setCustomSystem(''); setIdentification(''); setName(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.classification.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.classification.trigger')} className={EDIT_TOOL_CLS}>
           <Tag className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -898,9 +875,9 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
       if (!o) { setMaterialName(''); setCategory(''); setDescription(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
           <Layers className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -1077,9 +1054,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.quantity.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.quantity.trigger')} className={EDIT_TOOL_CLS}>
           <Ruler className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -1559,34 +1536,22 @@ export function UndoRedoButtons({ modelId }: UndoRedoButtonsProps) {
 
   return (
     <div className="flex items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleUndo}
-            disabled={!canUndo(normalizedModelId)}
-          >
-            <Undo className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('propertyEditor.history.undo')}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleRedo}
-            disabled={!canRedo(normalizedModelId)}
-          >
-            <Redo className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('propertyEditor.history.redo')}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('propertyEditor.history.undo')}
+        className="h-7 w-7"
+        onClick={handleUndo}
+        disabled={!canUndo(normalizedModelId)}
+      >
+        <Undo className="h-4 w-4" />
+      </IconButton>
+      <IconButton
+        label={t('propertyEditor.history.redo')}
+        className="h-7 w-7"
+        onClick={handleRedo}
+        disabled={!canRedo(normalizedModelId)}
+      >
+        <Redo className="h-4 w-4" />
+      </IconButton>
     </div>
   );
 }

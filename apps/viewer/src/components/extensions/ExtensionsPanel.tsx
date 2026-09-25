@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Switch } from '@/components/ui/switch';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
@@ -223,14 +224,12 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             {t('extensionsFlavors.extensionsPanel.importButton')}
           </Button>
           {onClose && (
-            <Button
-              size="icon"
-              variant="ghost"
+            <IconButton
+              label={t('extensionsFlavors.extensionsPanel.closeAriaLabel')}
               onClick={onClose}
-              aria-label={t('extensionsFlavors.extensionsPanel.closeAriaLabel')}
             >
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
         <input
@@ -377,24 +376,20 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
+                    <IconButton
+                      label={t('extensionsFlavors.extensionsPanel.row.forkAriaLabel', { id: record.id })}
+                      tooltip={t('extensionsFlavors.extensionsPanel.row.forkTitle')}
                       onClick={() => handleFork(record.id)}
-                      aria-label={t('extensionsFlavors.extensionsPanel.row.forkAriaLabel', { id: record.id })}
-                      title={t('extensionsFlavors.extensionsPanel.row.forkTitle')}
                     >
                       <GitFork className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
+                    </IconButton>
+                    <IconButton
+                      label={t('extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', { id: record.id })}
                       disabled={isRunning(record.id)}
                       onClick={() => runTests(record.id)}
-                      aria-label={t('extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', { id: record.id })}
                     >
                       <Beaker className={`h-3.5 w-3.5 ${isRunning(record.id) ? 'animate-pulse' : ''}`} />
-                    </Button>
+                    </IconButton>
                     <Switch
                       checked={record.enabled}
                       onCheckedChange={(checked) => {
@@ -413,9 +408,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                           : t('extensionsFlavors.extensionsPanel.row.enableAriaLabel')
                       }
                     />
-                    <Button
-                      size="icon"
-                      variant="ghost"
+                    <IconButton
+                      label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}
                       onClick={() => {
                         if (!confirm(t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }))) return;
                         host.uninstall(record.id).catch((err) => {
@@ -425,10 +419,9 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                           }));
                         });
                       }}
-                      aria-label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </IconButton>
                   </div>
                 </div>
                 {record.grantedCapabilities.length > 0 && (

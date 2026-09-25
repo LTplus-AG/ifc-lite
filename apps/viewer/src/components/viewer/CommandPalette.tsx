@@ -19,6 +19,8 @@ import type { CommandContribution } from '@ifc-lite/extensions';
 import { getRecentFiles, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import { trackUiEvent } from '@/lib/analytics';
+import { commandIdForAnalytics } from '@/lib/analytics-ui-events';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
 import { usePaletteExportRunner } from './usePaletteExportRunner';
@@ -39,7 +41,7 @@ import {
  *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
 function activateRightPanel(panel: RightPanel) {
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleWorkspacePanel(panel);
+  useViewerStore.getState().toggleWorkspacePanel(panel, 'palette');
 }
 
 /** Category header text, browse mode (#4918 slice 3). Exhaustive by type: a
@@ -63,7 +65,7 @@ const CATEGORY_LABEL_KEY: Record<Category, TranslationKey> = {
  *  flips that used to live here knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
 function activateBottomPanel(panel: BottomPanelId) {
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleBottomPanel(panel);
+  useViewerStore.getState().toggleBottomPanel(panel, 'palette');
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   const { t } = useTranslation();
-  const { runExport, dialog: exportDialog } = usePaletteExportRunner();
+  const { runExport, dialog: exportDialog, extensionExporters } = usePaletteExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
@@ -119,7 +121,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     activateRightPanel,
     activateBottomPanel,
     runExport,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport]);
+    extensionExporters,
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters]);
 
 
   // ── Search: score, filter, sort ──
@@ -185,6 +188,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
+    trackUiEvent('command_executed', { command_id: commandIdForAnalytics(cmd.id), surface: 'palette' });
     // File-dialog actions must run while user activation is still live; deferring
     // them to a frame later voids it and Chrome silently ignores the dialog.
     if (cmd.immediate) {

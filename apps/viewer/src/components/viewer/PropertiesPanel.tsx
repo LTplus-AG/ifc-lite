@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
 import { ModelBadge } from './ModelBadge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -1353,8 +1353,8 @@ export function PropertiesPanel() {
             <code className="flex-1 text-[10px] bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
               {entityGlobalId}
             </code>
-            <Button
-              variant="ghost"
+            <IconButton
+              label={t('properties.panel.copyGlobalIdLabel')}
               size="icon-xs"
               className={`h-6 w-6 rounded-none border-l transition-all duration-200 ${
                 copied
@@ -1368,7 +1368,7 @@ export function PropertiesPanel() {
               ) : (
                 <Copy className="h-3 w-3 text-zinc-600 dark:text-zinc-400" />
               )}
-            </Button>
+            </IconButton>
           </div>
         )}
 

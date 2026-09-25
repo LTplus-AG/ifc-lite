@@ -55,6 +55,7 @@ import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
+import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
@@ -119,6 +120,7 @@ export const en = {
   ...settingsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...propertiesPanelEn,
   ...attributeEditorEn,
   ...landXmlEn,
   ...structuralPropertiesEn,

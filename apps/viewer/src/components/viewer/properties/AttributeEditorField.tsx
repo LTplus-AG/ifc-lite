@@ -15,8 +15,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Check, PenLine } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { globalIdProblem, modelGlobalIdOwner } from './global-id-check';
@@ -112,14 +111,13 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
             onBlur={save}
             className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent aria-[invalid=true]:border-red-500"
           />
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('properties.panel.saveAttributeLabel', { attrName })}
             className="h-5 w-5 p-0 shrink-0 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
             onClick={save}
           >
             <Check className="h-3 w-3 text-emerald-500" />
-          </Button>
+          </IconButton>
         </div>
         {error && <span id={`attr-err-${entityId}-${attrName}`} role="alert" className="text-xs text-red-600 dark:text-red-400">{t(error)}</span>}
       </div>
@@ -136,19 +134,14 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
       >
         {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
       </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
-            onClick={begin}
-          >
-            <PenLine className="h-3 w-3 text-overlay-accent" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('properties.panel.attributeEditor.editTooltip')}
+        tooltipSide="left"
+        className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
+        onClick={begin}
+      >
+        <PenLine className="h-3 w-3 text-overlay-accent" />
+      </IconButton>
     </div>
   );
 }

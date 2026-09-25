@@ -53,7 +53,7 @@ describe('resetVisibilityForHomeFromStore drops the intersection-solid presentat
     seedResolvedSolidPresentation();
     assert.equal(useViewerStore.getState().clashSolidStatus, 'solid', 'setup sanity: a solid must be showing before Home reset');
 
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
 
     const s = useViewerStore.getState();
     assert.equal(s.clashSolidStatus, 'none', 'Home / "Show all" reset must drop the intersection-solid presentation');
@@ -69,7 +69,7 @@ describe('resetVisibilityForHomeFromStore drops the intersection-solid presentat
     useViewerStore.setState({ clashSelectedId: 'clash-old', clashSolidStatus: 'computing', clashSolidMesh: null });
     const seqBefore = useViewerStore.getState().clashSolidRequestSeq;
 
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
 
     const seqAfter = useViewerStore.getState().clashSolidRequestSeq;
     assert.notEqual(

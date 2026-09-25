@@ -4,6 +4,7 @@
 
 import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
+import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
 import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
@@ -45,7 +46,8 @@ export const beforeSend = <
   // an injected extension / user script throwing on our `window` is not ours to
   // fix (#4939). Lives in its own module for the same reason as the other two.
   if (shouldSuppressForeignScriptNoise(event)) return null;
-  return scrubEvent(event);
+  // UI interaction events (#5618) keep only their declared id properties.
+  return scrubEvent(scrubUiEvent(event));
 };
 
 // PostHog's own `DOMExceptionCoercer` (posthog-js -> @posthog/core) does
@@ -160,3 +162,13 @@ const noopAnalytics: AnalyticsClient = {
 };
 
 export const posthog: AnalyticsClient = client ?? noopAnalytics;
+
+/**
+ * The one entry point for UI interaction events (#5618). The event name and
+ * its property keys are checked against `UiEventProperties` at compile time,
+ * so a typo'd name or an undeclared property fails typecheck; `scrubUiEvent`
+ * enforces the same contract again before the event leaves the browser.
+ */
+export function trackUiEvent<E extends UiEventName>(event: E, properties: UiEventProperties[E]): void {
+  posthog.capture(event, properties);
+}

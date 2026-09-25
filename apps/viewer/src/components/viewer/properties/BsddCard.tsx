@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { addToPropertySet, type InheritedSets } from '@/lib/properties/add-to-property-set';
 import { useViewerStore } from '@/store';
@@ -434,22 +434,16 @@ export function BsddCard({
                 {formatLocaleNumber(locale, props.length)}
               </span>
               {addableCount > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddAllInPset(psetName, props);
-                      }}
-                    >
-                      <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}</TooltipContent>
-                </Tooltip>
+                <IconButton
+                  label={t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}
+                  className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddAllInPset(psetName, props);
+                  }}
+                >
+                  <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
+                </IconButton>
               )}
               {allAlreadyExist && (
                 <Check className="h-3 w-3 text-emerald-500 shrink-0" />
@@ -494,19 +488,13 @@ export function BsddCard({
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                       ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
-                              onClick={() => handleAddProperty(psetName, prop)}
-                            >
-                              <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('properties.bsdd.addToElementTooltip')}</TooltipContent>
-                        </Tooltip>
+                        <IconButton
+                          label={t('properties.bsdd.addToElementTooltip')}
+                          className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
+                          onClick={() => handleAddProperty(psetName, prop)}
+                        >
+                          <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
+                        </IconButton>
                       )}
                     </div>
                   );

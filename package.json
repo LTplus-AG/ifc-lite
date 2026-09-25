@@ -54,6 +54,7 @@
     "check:enum-reconciliation": "node scripts/generate-enum-reconciliation.mjs --check",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
+    "check:icon-button-adoption": "node scripts/check-icon-button-adoption.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
     "check:collab-placement-sweep": "node scripts/check-collab-placement-sweep.mjs",
     "check:collab-room-model-target": "node scripts/check-collab-room-model-target.mjs",

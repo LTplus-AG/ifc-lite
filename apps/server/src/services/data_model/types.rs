@@ -183,6 +183,9 @@ pub struct MaterialAssociation {
     pub layer_index: u32,
     /// Material name (`IfcMaterial.Name`).
     pub material_name: String,
+    /// True when `IfcMaterial.Name` is an authored string, including an empty
+    /// string. False for a missing/STEP null name.
+    pub material_name_present: bool,
     /// Referenced IfcMaterial express id, including unnamed list members.
     pub material_id: Option<u32>,
     /// Name of the layer, constituent, or profile member.

@@ -30,37 +30,41 @@ export function resolvedServerMaterials(rows: readonly MaterialAssociation[]): M
           r.member_count !== first.member_count)) continue;
       const ordered = [...rows].sort((a, b) => a.layer_index - b.layer_index);
       if (first.member_count !== ordered.length || ordered.some((r, index) => r.layer_index !== index)) continue;
-      if (first.kind === 'IfcMaterialList' && ordered.some((r) => !r.material_name && r.material_id === undefined)) continue;
-      const value = (s?: string): string | undefined => s || undefined;
+      // A nonempty name proves presence even in older payloads. An empty
+      // name without the presence bit could mean authored '' or STEP null.
+      if (ordered.some((r) => r.material_name_present === undefined && r.material_name === '')) continue;
+      const hasMaterialName = (r: MaterialAssociation): boolean => r.material_name_present ?? r.material_name !== '';
+      if (first.kind === 'IfcMaterialList' && ordered.some((r) => !hasMaterialName(r) && r.material_id === undefined)) continue;
       let info: MaterialInfo;
       switch (first.kind) {
         case 'IfcMaterial':
-          info = { type: 'Material', name: value(first.material_name), category: value(first.material_category ?? first.category) };
+          info = { type: 'Material', name: hasMaterialName(first) ? first.material_name : undefined,
+            category: first.material_category ?? first.category };
           break;
         case 'IfcMaterialList':
           info = { type: 'MaterialList', materials: ordered.map((r) => ({
-            name: r.material_name || `Material #${r.material_id}`,
-            category: value(r.material_category),
+            name: hasMaterialName(r) ? r.material_name : `Material #${r.material_id}`,
+            ...(r.material_category ? { category: r.material_category } : {}),
           })) };
           break;
         case 'IfcMaterialLayerSet':
-          info = { type: 'MaterialLayerSet', name: value(first.set_name), layers: ordered.map((r) => ({
-            materialName: value(r.material_name), name: value(r.member_name),
-            materialCategory: value(r.material_category), category: value(r.category),
+          info = { type: 'MaterialLayerSet', name: first.set_name, layers: ordered.map((r) => ({
+            materialName: hasMaterialName(r) ? r.material_name : undefined, name: r.member_name,
+            materialCategory: r.material_category, category: r.category,
             thickness: r.thickness, isVentilated: r.is_ventilated,
           })) };
           break;
         case 'IfcMaterialConstituentSet':
-          info = { type: 'MaterialConstituentSet', name: value(first.set_name), constituents: ordered.map((r) => ({
-            materialName: value(r.material_name), name: value(r.member_name),
-            materialCategory: value(r.material_category), category: value(r.category),
+          info = { type: 'MaterialConstituentSet', name: first.set_name, constituents: ordered.map((r) => ({
+            materialName: hasMaterialName(r) ? r.material_name : undefined, name: r.member_name,
+            materialCategory: r.material_category, category: r.category,
             fraction: r.fraction,
           })) };
           break;
         case 'IfcMaterialProfileSet':
-          info = { type: 'MaterialProfileSet', name: value(first.set_name), profiles: ordered.map((r) => ({
-            materialName: value(r.material_name), name: value(r.member_name),
-            materialCategory: value(r.material_category), category: value(r.category),
+          info = { type: 'MaterialProfileSet', name: first.set_name, profiles: ordered.map((r) => ({
+            materialName: hasMaterialName(r) ? r.material_name : undefined, name: r.member_name,
+            materialCategory: r.material_category, category: r.category,
           })) };
           break;
         default:

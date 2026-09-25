@@ -97,7 +97,9 @@ The decoded data model's `materials` rows identify each
 name (`IfcMaterial`, `IfcMaterialLayerSet`, `IfcMaterialProfileSet`,
 `IfcMaterialConstituentSet`, or `IfcMaterialList`). Member names and categories
 are separate from the referenced `IfcMaterial` name and category; `material_id`
-also identifies an unnamed list member. `member_count` lets consumers reject
+also identifies an unnamed list member. `material_name_present` distinguishes a
+missing `IfcMaterial.Name` from an authored empty string, preserving the source
+parser's list-member fallback. `member_count` lets consumers reject
 incomplete association groups. These fields are absent in older server
 payloads. A client validating material values should treat such partial rows as
 unresolved rather than as proof of a mismatch.

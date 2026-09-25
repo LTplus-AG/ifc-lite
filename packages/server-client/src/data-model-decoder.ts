@@ -298,6 +298,8 @@ export interface MaterialAssociation {
   /** 0-based member index within its set or list (0 for a single material). */
   layer_index: number;
   material_name: string;
+  /** Whether IfcMaterial.Name was present, including an authored empty string. */
+  material_name_present?: boolean;
   material_id?: number;
   member_name?: string;
   material_category?: string;

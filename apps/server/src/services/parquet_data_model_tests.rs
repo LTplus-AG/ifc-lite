@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::services::data_model::{DataModel, MaterialAssociation, Property, PropertySet};
-use arrow::array::{Array, Float64Array};
+use arrow::array::{Array, BooleanArray, Float64Array};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 fn read_section(section: &[u8]) -> RecordBatch {
@@ -58,7 +58,7 @@ fn empty_data_model() -> DataModel {
 /// executes the new `serialize_*_table` paths that the extraction tests don't.
 #[test]
 fn serializes_and_reads_back_association_tables() {
-    let dm = DataModel {
+    let mut dm = DataModel {
         entities: vec![],
         property_sets: vec![],
         quantity_sets: vec![],
@@ -83,6 +83,7 @@ fn serializes_and_reads_back_association_tables() {
                 set_name: Some("WallSet".into()),
                 layer_index: 0,
                 material_name: "Concrete".into(),
+                material_name_present: true,
                 material_id: Some(30),
                 thickness: Some(0.2),
                 is_ventilated: Some(false),
@@ -100,6 +101,7 @@ fn serializes_and_reads_back_association_tables() {
                 set_name: Some("WallSet".into()),
                 layer_index: 1,
                 material_name: "Insulation".into(),
+                material_name_present: true,
                 material_id: Some(31),
                 thickness: None,
                 is_ventilated: None,
@@ -123,6 +125,25 @@ fn serializes_and_reads_back_association_tables() {
         },
     };
 
+    let mut absent_name = dm.materials[1].clone();
+    absent_name.element_id = 8;
+    absent_name.association_id = 36;
+    absent_name.definition_id = 37;
+    absent_name.member_count = 1;
+    absent_name.kind = "IfcMaterialList".into();
+    absent_name.layer_index = 0;
+    absent_name.material_name = String::new();
+    absent_name.material_name_present = false;
+    absent_name.material_id = Some(86);
+    dm.materials.push(absent_name.clone());
+    let mut authored_blank = absent_name;
+    authored_blank.element_id = 9;
+    authored_blank.association_id = 38;
+    authored_blank.definition_id = 39;
+    authored_blank.material_id = Some(87);
+    authored_blank.material_name_present = true;
+    dm.materials.push(authored_blank);
+
     let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
     let sections = split_sections(&payload);
     // Regenerate server-client's cross-language decoder fixture by running
@@ -137,7 +158,12 @@ fn serializes_and_reads_back_association_tables() {
     assert_eq!(classifications.num_rows(), 1);
 
     let materials = read_section(&sections[6]);
-    assert_eq!(materials.num_rows(), 2);
+    assert_eq!(materials.num_rows(), 4);
+    let name_presence = materials.column_by_name("material_name_present").unwrap().as_any()
+        .downcast_ref::<BooleanArray>().unwrap();
+    assert!(name_presence.value(0));
+    assert!(!name_presence.value(2));
+    assert!(name_presence.value(3));
     let kinds = materials.column_by_name("kind").unwrap().as_any()
         .downcast_ref::<StringArray>().unwrap();
     assert_eq!(kinds.value(0), "IfcMaterialLayerSet");

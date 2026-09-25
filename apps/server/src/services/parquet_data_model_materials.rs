@@ -22,6 +22,7 @@ pub(super) fn serialize_materials_table(
     let mut set_names: Vec<Option<String>> = Vec::with_capacity(count);
     let mut layer_indices = Vec::with_capacity(count);
     let mut material_names = Vec::with_capacity(count);
+    let mut material_name_presence = Vec::with_capacity(count);
     let mut material_ids: Vec<Option<u32>> = Vec::with_capacity(count);
     let mut member_names: Vec<Option<String>> = Vec::with_capacity(count);
     let mut material_categories: Vec<Option<String>> = Vec::with_capacity(count);
@@ -39,6 +40,7 @@ pub(super) fn serialize_materials_table(
         set_names.push(row.set_name.clone());
         layer_indices.push(row.layer_index);
         material_names.push(row.material_name.clone());
+        material_name_presence.push(row.material_name_present);
         material_ids.push(row.material_id);
         member_names.push(row.member_name.clone());
         material_categories.push(row.material_category.clone());
@@ -53,6 +55,7 @@ pub(super) fn serialize_materials_table(
         Field::new("set_name", DataType::Utf8, true),
         Field::new("layer_index", DataType::UInt32, false),
         Field::new("material_name", DataType::Utf8, false),
+        Field::new("material_name_present", DataType::Boolean, false),
         Field::new("material_id", DataType::UInt32, true),
         Field::new("thickness", DataType::Float64, true),
         Field::new("is_ventilated", DataType::Boolean, true),
@@ -73,6 +76,7 @@ pub(super) fn serialize_materials_table(
             Arc::new(StringArray::from(set_names)),
             Arc::new(UInt32Array::from(layer_indices)),
             Arc::new(StringArray::from(material_names)),
+            Arc::new(BooleanArray::from(material_name_presence)),
             Arc::new(UInt32Array::from(material_ids)),
             Arc::new(Float64Array::from(thicknesses)),
             Arc::new(BooleanArray::from(ventilated)),

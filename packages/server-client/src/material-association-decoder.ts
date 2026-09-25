@@ -16,6 +16,7 @@ export function decodeMaterialAssociations(t: MaterialTable): MaterialAssociatio
   const setNames = t.getChild('set_name')?.toArray() as (string | null)[];
   const layerIndices = t.getChild('layer_index')?.toArray() as Uint32Array;
   const materialNames = t.getChild('material_name')?.toArray() as (string | null)[];
+  const materialNamePresence = t.getChild('material_name_present');
   const materialIdsChild = t.getChild('material_id');
   const associationIds = t.getChild('association_id')?.toArray() as Uint32Array | undefined;
   const definitionIds = t.getChild('definition_id')?.toArray() as Uint32Array | undefined;
@@ -35,16 +36,17 @@ export function decodeMaterialAssociations(t: MaterialTable): MaterialAssociatio
       definition_id: definitionIds?.[i],
       member_count: memberCounts?.[i],
       kind: kinds?.[i] ?? undefined,
-      set_name: setNames?.[i] || undefined,
+      set_name: setNames?.[i] ?? undefined,
       layer_index: layerIndices[i],
       material_name: materialNames?.[i] ?? '',
+      material_name_present: materialNamePresence?.get(i) as boolean | undefined,
       material_id: (materialIdsChild?.get(i) as number | null | undefined) ?? undefined,
-      member_name: memberNames?.[i] || undefined,
-      material_category: materialCategories?.[i] || undefined,
+      member_name: memberNames?.[i] ?? undefined,
+      material_category: materialCategories?.[i] ?? undefined,
       fraction: fractions?.[i] ?? undefined,
       thickness: thicknesses?.[i] ?? undefined,
       is_ventilated: vent === null || vent === undefined ? undefined : Boolean(vent),
-      category: categories?.[i] || undefined,
+      category: categories?.[i] ?? undefined,
     });
   }
   return materials;

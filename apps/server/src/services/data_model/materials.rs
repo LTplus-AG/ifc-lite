@@ -18,6 +18,7 @@ struct ResolvedLayer {
     set_name: Option<String>,
     layer_index: u32,
     material_name: String,
+    material_name_present: bool,
     material_id: Option<u32>,
     member_name: Option<String>,
     material_category: Option<String>,
@@ -28,10 +29,10 @@ struct ResolvedLayer {
 }
 
 /// Resolve an `IfcMaterialLayer`'s referenced `IfcMaterial` name.
-fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<(String, Option<String>)> {
+fn material_details_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<(String, Option<String>, bool)> {
     let mat = decoder.decode_by_id(material_id).ok()?;
     // An unnamed IfcMaterial still proves an association and may have a Category.
-    Some((mat.get_string(0).unwrap_or("").to_string(), mat.get_string(2).map(str::to_string)))
+    Some((mat.get_string(0).unwrap_or("").to_string(), mat.get_string(2).map(str::to_string), mat.get_string(0).is_some()))
 }
 
 /// Resolve a `RelatingMaterial` into a flat list of layers. Handles
@@ -52,6 +53,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 set_name: None,
                 layer_index: 0,
                 material_name: entity.get_string(0).unwrap_or("").to_string(),
+                material_name_present: entity.get_string(0).is_some(),
                 material_id: Some(id),
                 member_name: None,
                 material_category: entity.get_string(2).map(str::to_string),
@@ -83,10 +85,10 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                     let layer = decoder.decode_by_id(layer_id).ok()?;
                     // IfcMaterialLayer: Material(0), LayerThickness(1),
                     // IsVentilated(2), Name(3), Description(4), Category(5).
-                    let (material_name, material_category) = layer
+                    let (material_name, material_category, material_name_present) = layer
                         .get_ref(0)
                         .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None));
+                        .unwrap_or_else(|| (String::new(), None, false));
                     let thickness = layer.get_float(1).map(|t| t * unit_scale);
                     let is_ventilated = super::read_logical(&layer, 2);
                     let category = layer.get_string(5).map(|s| s.to_string());
@@ -96,6 +98,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                         set_name: set_name.clone(),
                         layer_index: i as u32,
                         material_name,
+                        material_name_present,
                         material_id: layer.get_ref(0),
                         member_name: layer.get_string(3).map(str::to_string),
                         material_category,
@@ -118,13 +121,14 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .copied()
                 .enumerate()
                 .filter_map(|(i, mid)| {
-                    let (material_name, material_category) = material_details_of(decoder, mid)?;
+                    let (material_name, material_category, material_name_present) = material_details_of(decoder, mid)?;
                     Some(ResolvedLayer {
                         kind: "IfcMaterialList",
                         member_count,
                         set_name: None,
                         layer_index: i as u32,
                         material_name,
+                        material_name_present,
                         material_id: Some(mid),
                         member_name: None,
                         material_category,
@@ -152,16 +156,17 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, cid)| {
                     let constituent = decoder.decode_by_id(cid).ok()?;
-                    let (material_name, material_category) = constituent
+                    let (material_name, material_category, material_name_present) = constituent
                         .get_ref(2)
                         .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None));
+                        .unwrap_or_else(|| (String::new(), None, false));
                     Some(ResolvedLayer {
                         kind: "IfcMaterialConstituentSet",
                         member_count,
                         set_name: set_name.clone(),
                         layer_index: i as u32,
                         material_name,
+                        material_name_present,
                         material_id: constituent.get_ref(2),
                         member_name: constituent.get_string(0).map(str::to_string),
                         material_category,
@@ -197,16 +202,17 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .enumerate()
                 .filter_map(|(i, pid)| {
                     let profile = decoder.decode_by_id(pid).ok()?;
-                    let (material_name, material_category) = profile
+                    let (material_name, material_category, material_name_present) = profile
                         .get_ref(2)
                         .and_then(|mid| material_details_of(decoder, mid))
-                        .unwrap_or_else(|| (String::new(), None));
+                        .unwrap_or_else(|| (String::new(), None, false));
                     Some(ResolvedLayer {
                         kind: "IfcMaterialProfileSet",
                         member_count,
                         set_name: set_name.clone(),
                         layer_index: i as u32,
                         material_name,
+                        material_name_present,
                         material_id: profile.get_ref(2),
                         member_name: profile.get_string(0).map(str::to_string),
                         material_category,
@@ -271,6 +277,7 @@ pub(super) fn extract_materials(
                             set_name: layer.set_name.clone(),
                             layer_index: layer.layer_index,
                             material_name: layer.material_name.clone(),
+                            material_name_present: layer.material_name_present,
                             material_id: layer.material_id,
                             member_name: layer.member_name.clone(),
                             material_category: layer.material_category.clone(),

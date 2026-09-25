@@ -519,11 +519,12 @@ describe('decodeDataModel — nullable numeric columns (RED: null decodes as 0 -
     const model = await decodeDataModel(buildDataModelBuffer({
       materialsBytes: readFixture('materials-complete.parquet'),
     }));
-    expect(model.materials).toHaveLength(2);
+    expect(model.materials).toHaveLength(4);
     expect(model.materials[0]).toMatchObject({
       element_id: 7, association_id: 35, definition_id: 34,
       member_count: 2, kind: 'IfcMaterialLayerSet', set_name: 'WallSet',
       layer_index: 0, material_name: 'Concrete', material_id: 30,
+      material_name_present: true,
       member_name: 'Core', material_category: 'Mineral', fraction: 0.5,
       thickness: 0.2, is_ventilated: false,
     });
@@ -536,6 +537,10 @@ describe('decodeDataModel — nullable numeric columns (RED: null decodes as 0 -
     expect(model.materials[1].material_category).toBeUndefined();
     expect(model.materials[1].fraction).toBeUndefined();
     expect(model.materials[1].thickness).toBeUndefined();
+    expect(model.materials[2]).toMatchObject({ kind: 'IfcMaterialList', material_name: '',
+      material_name_present: false, material_id: 86 });
+    expect(model.materials[3]).toMatchObject({ kind: 'IfcMaterialList', material_name: '',
+      material_name_present: true, material_id: 87 });
   });
 });
 

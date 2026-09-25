@@ -12,12 +12,13 @@
  * viewer to its empty, idle state: no half-loaded model, no spinner and no
  * error, because the user chose this.
  *
- * The canceller is published through the store's `activeStreamCanceller`,
- * the slot point-cloud streams already use, so the status-bar Cancel and the
- * in-viewport loading card drive the same function. The slot has to live in
- * the store: every component calling `useIfc()` owns its own loader instance
- * and session counter, and only the instance that started the load can
- * supersede it.
+ * The canceller is published through the store's `activeLoadCanceller`,
+ * which the status-bar Cancel and the in-viewport loading card both read
+ * (`selectLoadCanceller`). The slot has to live in the store: every component
+ * calling `useIfc()` owns its own loader instance and session counter, and
+ * only the instance that started the load can supersede it. It is not
+ * `activeStreamCanceller`: GPU device-loss recovery cancels that slot, and a
+ * model load must survive a device loss.
  */
 
 import { getViewerStoreApi } from '@/store';
@@ -30,7 +31,7 @@ import { getViewerStoreApi } from '@/store';
 export function installPrimaryLoadCanceller(supersede: () => void): () => void {
   const store = getViewerStoreApi();
   const release = () => {
-    if (store.getState().activeStreamCanceller === cancel) store.getState().setActiveStreamCanceller(null);
+    if (store.getState().activeLoadCanceller === cancel) store.getState().setActiveLoadCanceller(null);
   };
   const cancel = () => {
     supersede();
@@ -41,6 +42,6 @@ export function installPrimaryLoadCanceller(supersede: () => void): () => void {
     state.clearAllModels();
     state.clearLayerStack();
   };
-  store.getState().setActiveStreamCanceller(cancel);
+  store.getState().setActiveLoadCanceller(cancel);
   return release;
 }

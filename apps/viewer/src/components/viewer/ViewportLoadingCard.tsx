@@ -14,14 +14,14 @@
 import { Loader2, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
+import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { Progress } from '@/components/ui/progress';
 
 export function ViewportLoadingCard() {
   const { t } = useTranslation();
   const loading = useViewerStore((s) => s.loading);
   const progress = useViewerStore(selectActiveLoadProgress);
-  const cancel = useViewerStore((s) => s.activeStreamCanceller);
+  const cancel = useViewerStore(selectLoadCanceller);
   // The model still loading: its record is registered before parsing begins.
   const fileName = useViewerStore((s) => {
     for (const model of s.models.values()) {

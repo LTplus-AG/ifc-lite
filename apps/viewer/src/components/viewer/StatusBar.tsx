@@ -7,6 +7,7 @@ import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-reac
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -37,7 +38,7 @@ export function StatusBar() {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
-  const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
+  const activeStreamCanceller = useViewerStore(selectLoadCanceller);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const webgpu = useWebGPU();
@@ -262,7 +263,7 @@ export function StatusBar() {
         {/* Cancel button — visible while a load has published a canceller:
             a primary model load (hooks/primaryLoadCanceller.ts, #5849) or a
             point-cloud stream (LAS/LAZ/PLY/PCD/E57). The in-viewport
-            loading card calls the same canceller. */}
+            loading card reads the same selector. */}
         {activeStreamCanceller && (
           <button
             type="button"

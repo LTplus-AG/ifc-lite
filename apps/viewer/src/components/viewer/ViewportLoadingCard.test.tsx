@@ -30,12 +30,13 @@ beforeEach(() => {
     metadataProgress: null,
     geometryProgress: { phase: 'Processing geometry', percent: 42 },
     activeStreamCanceller: null,
+    activeLoadCanceller: null,
   }));
 });
 
 afterEach(() => {
   cleanup();
-  act(() => useViewerStore.setState({ loading: false, progress: null, geometryProgress: null, activeStreamCanceller: null }));
+  act(() => useViewerStore.setState({ loading: false, progress: null, geometryProgress: null, activeStreamCanceller: null, activeLoadCanceller: null }));
 });
 
 function renderCard(): HTMLElement {
@@ -54,9 +55,9 @@ describe('in-viewport loading card (#5849)', () => {
     assert.ok(text.includes('42%'), `shows the percentage: ${text}`);
   });
 
-  it('Cancel calls the load\'s canceller', () => {
+  it('Cancel calls the model load\'s canceller', () => {
     let cancelled = 0;
-    act(() => useViewerStore.setState({ activeStreamCanceller: () => { cancelled += 1; } }));
+    act(() => useViewerStore.setState({ activeLoadCanceller: () => { cancelled += 1; } }));
     const container = renderCard();
     const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Cancel');
     assert.ok(button, 'a Cancel button is rendered when the load can be cancelled');

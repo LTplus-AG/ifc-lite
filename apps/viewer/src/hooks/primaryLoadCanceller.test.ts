@@ -47,7 +47,7 @@ function startLoading() {
 
 afterEach(() => {
   const s = store.getState();
-  s.setActiveStreamCanceller(null);
+  s.setActiveLoadCanceller(null);
   s.resetViewerState();
   s.clearAllModels();
 });
@@ -59,8 +59,11 @@ describe('primary load cancel (#5849)', () => {
     let superseded = 0;
     installPrimaryLoadCanceller(() => { superseded += 1; });
 
-    const cancel = store.getState().activeStreamCanceller;
+    const cancel = store.getState().activeLoadCanceller;
     assert.ok(cancel, 'a primary load publishes a canceller');
+    // Not the point-cloud slot: device-loss recovery cancels that one, and a
+    // model load has to survive a device loss.
+    assert.equal(store.getState().activeStreamCanceller, null);
     cancel();
 
     const after = store.getState();
@@ -69,17 +72,17 @@ describe('primary load cancel (#5849)', () => {
     assert.equal(after.progress, null);
     assert.equal(after.error, null, 'a user cancel is not an error');
     assert.equal(after.models.size, 0, 'the half-loaded model is gone');
-    assert.equal(after.activeStreamCanceller, null, 'the Cancel control goes away');
+    assert.equal(after.activeLoadCanceller, null, 'the Cancel control goes away');
   });
 
   it('release clears only its own canceller, never a newer load\'s', () => {
     assert.ok(installPrimaryLoadCanceller);
     const releaseFirst = installPrimaryLoadCanceller(() => {});
     const releaseSecond = installPrimaryLoadCanceller(() => {});
-    const second = store.getState().activeStreamCanceller;
+    const second = store.getState().activeLoadCanceller;
     releaseFirst();
-    assert.equal(store.getState().activeStreamCanceller, second, 'the newer load keeps its Cancel');
+    assert.equal(store.getState().activeLoadCanceller, second, 'the newer load keeps its Cancel');
     releaseSecond();
-    assert.equal(store.getState().activeStreamCanceller, null);
+    assert.equal(store.getState().activeLoadCanceller, null);
   });
 });

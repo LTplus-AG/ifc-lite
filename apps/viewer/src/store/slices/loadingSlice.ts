@@ -27,6 +27,15 @@ export interface LoadingSlice {
    */
   activeStreamCanceller: (() => void) | null;
   /**
+   * Cancel for the primary model load in flight (#5849), published by
+   * `hooks/primaryLoadCanceller.ts`. A slot of its own, NOT
+   * `activeStreamCanceller`: GPU device-loss recovery cancels whatever is in
+   * that slot (a scan must not publish a handle into a torn-down renderer),
+   * and a model load must survive a device loss. UI reads either slot through
+   * `selectLoadCanceller`.
+   */
+  activeLoadCanceller: (() => void) | null;
+  /**
    * #5175: set exactly when a LandXML load fails because the source declares
    * no `<Units>` (the LXML009 refusal). Lets a banner offer the user a
    * linear-unit choice and retry the same load with it — the ONLY UI path
@@ -45,6 +54,7 @@ export interface LoadingSlice {
   setMetadataProgress: (progress: { phase: string; percent: number; indeterminate?: boolean } | null) => void;
   setError: (error: string | null) => void;
   setActiveStreamCanceller: (cancel: (() => void) | null) => void;
+  setActiveLoadCanceller: (cancel: (() => void) | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
 }
 
@@ -57,6 +67,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   metadataProgress: null,
   error: null,
   activeStreamCanceller: null,
+  activeLoadCanceller: null,
   landXmlUnitsRefusal: null,
 
   // Actions
@@ -67,6 +78,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
   setError: (error) => set({ error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
+  setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
 });
 
@@ -79,7 +91,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  *
  * `error` is THIS slice's field, not `chatSlice`'s — that one is `chatError`.
  *
- * `activeStreamCanceller` is deliberately absent from `owns`: no teardown path
+ * `activeStreamCanceller` and `activeLoadCanceller` are deliberately absent
+ * from `owns`: no teardown path
  * resets it today. It is a live cancellation hook owned by the loader hook
  * that registered it, and dropping it here would silently orphan an in-flight
  * stream's only stop button.
@@ -116,4 +129,9 @@ type LoadProgressFields = Pick<LoadingSlice, 'progress' | 'geometryProgress' | '
  */
 export function selectActiveLoadProgress(state: LoadProgressFields): LoadingSlice['progress'] {
   return state.geometryProgress ?? state.metadataProgress ?? state.progress;
+}
+
+/** The Cancel the load UI offers: the model load's, else a point-cloud stream's. */
+export function selectLoadCanceller(state: Pick<LoadingSlice, 'activeLoadCanceller' | 'activeStreamCanceller'>): (() => void) | null {
+  return state.activeLoadCanceller ?? state.activeStreamCanceller;
 }

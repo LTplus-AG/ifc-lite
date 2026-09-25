@@ -435,6 +435,24 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     }
   });
 
+  it('leaves a primary model load running: recovery re-uploads it, it is not cancelled (#5849)', async () => {
+    const h = makeSource();
+    let cancelled = 0;
+    const cancelModelLoad = () => { cancelled += 1; };
+    useViewerStore.setState({ activeLoadCanceller: cancelModelLoad });
+    h.source.recoverDevice = async () => ({ ok: true, omissions: [] });
+    const unsubscribe = subscribeViewportHealth(h.source);
+    try {
+      h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'unknown' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      assert.equal(cancelled, 0, 'a device loss must not cancel the model load');
+      assert.strictEqual(useViewerStore.getState().activeLoadCanceller, cancelModelLoad);
+    } finally {
+      unsubscribe();
+      useViewerStore.setState({ activeLoadCanceller: null });
+    }
+  });
+
   it('invalidates deviation results when recovery omits point clouds (#4885)', async () => {
     const h = makeSource();
     h.source.recoverDevice = async () => ({ ok: true, omissions: ['point-clouds'] });

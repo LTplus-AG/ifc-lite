@@ -34,6 +34,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { useHoverOutline } from './useHoverOutline.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
@@ -293,7 +294,7 @@ export function Viewport({
   } = useThemeState();
 
   // Hover state
-  const { hoverTooltipsEnabled, hoverHighlightEnabled, hoverState, setHoverState, clearHover } = useHoverState();
+  const { setHoverState, clearHover } = useHoverState();
 
   // Context menu state
   const { openContextMenu } = useContextMenuState();
@@ -653,14 +654,7 @@ export function Viewport({
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
   const hoverThrottleMs = 50; // Check hover every 50ms
-  // The pick itself runs whenever EITHER tooltips or the highlight outline
-  // (#5390) want it; each consumer below reads its own enabled flag to
-  // decide what to DO with the pick result.
-  const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled || hoverHighlightEnabled);
-  const hoveredOutlineId = hoverHighlightEnabled ? hoverState.entityId : null;
-  const hoveredIdRef = useLatestRef(hoveredOutlineId);
-  const hoveredModelIndexRef = useLatestRef(hoverState.modelIndex);
-  useEffect(() => { rendererRef.current?.requestRender(); }, [hoveredOutlineId, hoverState.modelIndex]); // idle view redraws only on request (#5390)
+  const { hoverPickEnabledRef: hoverTooltipsEnabledRef, hoveredIdRef, hoveredModelIndexRef } = useHoverOutline(rendererRef); // #5390
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -706,13 +700,6 @@ export function Viewport({
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
   }, [activeTool, isInitialized]);
-  useEffect(() => {
-    // Only clear when NEITHER consumer wants hover state (#5390): the
-    // highlight outline keeps it live even with tooltips off.
-    if (!hoverTooltipsEnabled && !hoverHighlightEnabled) {
-      clearHover();
-    }
-  }, [hoverTooltipsEnabled, hoverHighlightEnabled, clearHover]);
 
   // Cleanup measurement state when tool changes + set cursor
   useEffect(() => {

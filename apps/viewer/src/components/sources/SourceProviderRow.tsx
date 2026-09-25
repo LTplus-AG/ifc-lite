@@ -9,6 +9,7 @@ import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/prefer
 import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Cloud, Loader2, LogIn, LogOut, Settings } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { resolveLiveMessage } from '@/i18n/live-message';
@@ -184,15 +185,13 @@ export function SourceProviderRow({
           </Button>
         )}
 
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })}
           className="h-7 w-7"
-          aria-label={t('sources.sourceProviderRow.settingsAria', { title: manifest.title })}
           onClick={onOpenSettings}
         >
           <Settings className="h-3.5 w-3.5" aria-hidden />
-        </Button>
+        </IconButton>
         <Button
           variant={canBrowse ? 'ghost' : 'outline'}
           size="sm"

@@ -72,7 +72,7 @@ function readable(): Set<string> {
 function openDialog(): void {
   render(<ClashSettingsDialog />);
   const trigger = [...document.body.querySelectorAll('button')].find(
-    (b) => b.getAttribute('title') === CATALOGUE['clashTools.settings.title'],
+    (b) => b.getAttribute('aria-label') === CATALOGUE['clashTools.settings.title'],
   );
   assert.ok(trigger, 'settings trigger button not found');
   click(trigger!);

@@ -188,4 +188,5 @@ export const zonesPanelEn = {
   'zonesPanel.roomPanel.copyLinkFailed': 'Could not copy the invite link. Check the connection and clipboard access, then try again.',
   'zonesPanel.roomPanel.revokeLinkFailed': 'Could not revoke the share link. Links you already shared still work.',
   'zonesPanel.roomPanel.removePeerFailed': 'Could not remove {name} from the room. Try again.',
+  'zonesPanel.header.closeLabel': 'Close location zones',
 } as const satisfies Record<string, TranslationValue>;

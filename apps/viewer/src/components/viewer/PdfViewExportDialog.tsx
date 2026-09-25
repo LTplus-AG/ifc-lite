@@ -33,7 +33,7 @@
  * view it claims to be is its own defect.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
@@ -207,12 +208,6 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     }
   }, [camera, drawnMeshes, scaleFactor, showScaleStamp]);
 
-  // Reset the transient bits every time the dialog opens so a previous run's
-  // progress text cannot be read as this run's.
-  useEffect(() => {
-    if (open) setPhase(null);
-  }, [open]);
-
   const oversize = preview?.oversize ?? false;
   const canExport =
     !isExporting && camera !== null && drawnMeshes.length > 0 && scaleFactor !== null && !oversize;
@@ -281,8 +276,12 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
     : t('sheetsPdf.pdfView.displayedScaleUnavailable');
 
+  // Reset the transient bits every time the dialog opens so a previous run's
+  // progress text cannot be read as this run's.
+  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen, onOpen: () => setPhase(null) });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -381,7 +380,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('sheetsPdf.pdfView.cancelButton')}
           </Button>
           <Button onClick={() => { void handleExport(); }} disabled={!canExport}>

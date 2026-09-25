@@ -3,13 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * DOM-billboard overlay for annotation pins.
+ * Scene-kernel overlay for annotation pins (#5511, charter #5478).
  *
- * Sits on top of the WebGPU canvas and re-projects every pin's world
- * position to screen space each frame via the camera callbacks.
- * Uses a single rAF loop driven by camera/canvas events (we listen
- * to a per-frame tick exposed by the camera) so the loop pauses when
- * nothing's moving — the runtime cost when idle is zero.
+ * Each pin is a `Pin` primitive registered with the shared `SceneProjector`
+ * (`components/viewport-ui/scene`) — the projector's one rAF loop keeps it
+ * glued to its world point; this component no longer runs its own
+ * `requestAnimationFrame` + `projectToScreen` loop (that loop, and the
+ * bespoke DOM-billboard `AnnotationPin` button it drove, are gone; see
+ * `Pin.tsx`).
+ *
+ * The popover and drop-input still need a raw screen anchor point (they
+ * edge-clamp against the canvas, which `AnchoredCard`'s fixed offset
+ * doesn't do), so `useScreenAnchor` below drives ONE extra hidden anchor per
+ * surface through the same shared projector via `useWorldAnchor` directly —
+ * still one loop, just a second registration rather than a bespoke primitive.
  *
  * Key invariants:
  *   • The layer is `pointer-events: none` by default. Each pin and
@@ -23,22 +30,14 @@
  *     localStorage write — this layer never touches storage directly.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { useTranslation } from '@/i18n';
 import type { AnnotationPosition } from '@/store/slices/annotationsSlice';
-import { AnnotationPin } from './AnnotationPin';
+import { Pin, useWorldAnchor, type Vec3, type ScreenPoint } from '@/components/viewport-ui/scene';
 import { AnnotationPopover } from './AnnotationPopover';
 import { AnnotationDropInput } from './AnnotationDropInput';
-
-interface ProjectedPin {
-  id: string;
-  index: number;
-  /** Screen-space position relative to the canvas. Null when behind the camera. */
-  screen: { x: number; y: number } | null;
-  preview: string;
-}
 
 function makePreview(note: string, emptyNoteLabel: string, maxLen = 60): string {
   const trimmed = note.trim();
@@ -47,11 +46,19 @@ function makePreview(note: string, emptyNoteLabel: string, maxLen = 60): string 
 }
 
 /**
- * Pins live in the canvas's coordinate space. The wrapping <div>
- * matches the canvas's bounding rect; pins are positioned absolutely
- * within it. We mirror the canvas geometry via a ResizeObserver +
- * a per-frame projection tick.
+ * Registers `worldPoint` on the shared projector via a hidden anchor and
+ * mirrors its screen position into React state — for the popover/drop-input,
+ * which need a plain `{x, y}` number pair (not a DOM-transform ref) to
+ * edge-clamp against the canvas.
  */
+function useScreenAnchor(worldPoint: Vec3 | null): { hiddenRef: React.RefObject<HTMLDivElement | null>; screen: ScreenPoint | null } {
+  const [screen, setScreen] = useState<ScreenPoint | null>(null);
+  const { ref } = useWorldAnchor<HTMLDivElement>(() => worldPoint, {
+    onProject: (projection) => setScreen(projection.screen),
+  });
+  return { hiddenRef: ref, screen };
+}
+
 export function AnnotationLayer() {
   const { t } = useTranslation();
   const annotations = useViewerStore((s) => s.annotations);
@@ -62,10 +69,10 @@ export function AnnotationLayer() {
   const removeAnnotation = useViewerStore((s) => s.removeAnnotation);
   const commitDraft = useViewerStore((s) => s.commitDraft);
   const cancelDraft = useViewerStore((s) => s.cancelDraft);
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const { ifcDataStore, models } = useIfc();
 
-  // Track canvas geometry so the overlay sits exactly on top.
+  // Canvas geometry, for the popover/drop-input's edge clamp — DOM geometry
+  // tracking, not a per-frame projection loop.
   const containerRef = useRef<HTMLDivElement>(null);
   const [bounds, setBounds] = useState<{ width: number; height: number } | null>(null);
 
@@ -115,70 +122,11 @@ export function AnnotationLayer() {
   // changes but the entries are equal.
   const annotationList = useMemo(() => Array.from(annotations.values()), [annotations]);
 
-  // Per-frame projection tick. We don't have a global "camera moved"
-  // event, so a rAF loop is the cheapest way to keep pins glued to
-  // the world. The loop is mostly idle — projection is < 10 µs per
-  // pin and the typical scene has < 20 pins.
-  const [projectedPins, setProjectedPins] = useState<ProjectedPin[]>([]);
-  const [draftScreen, setDraftScreen] = useState<{ x: number; y: number } | null>(null);
-
   const emptyNoteLabel = t('annotations.layer.emptyNotePreview');
 
-  useEffect(() => {
-    const project = cameraCallbacks.projectToScreen;
-    if (!project) {
-      setProjectedPins([]);
-      setDraftScreen(null);
-      return;
-    }
-
-    let raf: number | null = null;
-    let lastSerialized = '';
-
-    const tick = () => {
-      const next: ProjectedPin[] = annotationList.map((ann, i) => ({
-        id: ann.id,
-        index: i + 1,
-        screen: project(ann.position),
-        preview: makePreview(ann.note, emptyNoteLabel),
-      }));
-
-      // Cheap deep-eq check: serialize the screen positions. Skip the
-      // setState when nothing moved, otherwise we re-render every
-      // frame even when the camera is still.
-      const serialized = next.map((p) => `${p.id}:${p.screen?.x ?? 'x'}:${p.screen?.y ?? 'y'}`).join(',');
-      if (serialized !== lastSerialized) {
-        lastSerialized = serialized;
-        setProjectedPins(next);
-      }
-
-      const draftPos = useViewerStore.getState().draft?.position ?? null;
-      const draftScreenNext = draftPos ? project(draftPos) : null;
-      setDraftScreen((prev) => {
-        if (prev === draftScreenNext) return prev;
-        if (prev && draftScreenNext && prev.x === draftScreenNext.x && prev.y === draftScreenNext.y) {
-          return prev;
-        }
-        return draftScreenNext;
-      });
-
-      raf = requestAnimationFrame(tick);
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
-    };
-    // The list of annotations is captured per-render via annotationList;
-    // that closure is what the rAF tick reads. Pin position changes
-    // automatically pick up via the next render's loop replacement.
-  }, [cameraCallbacks, annotationList, emptyNoteLabel]);
-
   const selectedAnnotation = selectedAnnotationId ? annotations.get(selectedAnnotationId) : null;
-  const selectedScreen = useMemo(() => {
-    if (!selectedAnnotation) return null;
-    return projectedPins.find((p) => p.id === selectedAnnotation.id)?.screen ?? null;
-  }, [selectedAnnotation, projectedPins]);
+  const selectedAnchor = useScreenAnchor(selectedAnnotation?.position ?? null);
+  const draftAnchor = useScreenAnchor(draft?.position ?? null);
 
   // Resolve entity type + id for the popover header. Cheap lookup
   // against whichever data store the annotation was anchored to.
@@ -206,50 +154,48 @@ export function AnnotationLayer() {
     return dataStore.entities.getTypeName(expressId) || null;
   };
 
-  if (!bounds) {
-    return <div ref={containerRef} className="absolute inset-0 pointer-events-none" />;
-  }
-
   return (
     <div
       ref={containerRef}
       className="absolute inset-0 pointer-events-none overflow-hidden"
       aria-label={t('annotations.layer.ariaLabel')}
     >
+      {/* Hidden anchors that mirror the popover/drop-input's screen position
+          through the shared projector (see useScreenAnchor above). */}
+      <div ref={selectedAnchor.hiddenRef} style={{ display: 'none' }} />
+      <div ref={draftAnchor.hiddenRef} style={{ display: 'none' }} />
+
       {/* Pins */}
-      {projectedPins.map((pin) => {
-        if (!pin.screen) return null;
-        const annotation = annotations.get(pin.id);
-        if (!annotation) return null;
-        const isSelected = selectedAnnotationId === pin.id;
+      {annotationList.map((annotation, i) => {
+        const index = i + 1;
+        const isSelected = selectedAnnotationId === annotation.id;
+        const preview = makePreview(annotation.note, emptyNoteLabel);
         return (
-          <div
-            key={pin.id}
-            data-annotation-pin-id={pin.id}
-            className="absolute pointer-events-auto"
-            style={{
-              left: pin.screen.x,
-              top: pin.screen.y,
-              transform: 'translate(-50%, -50%)',
-              animationDelay: `${pin.index * 40}ms`,
-            }}
+          <Pin
+            key={annotation.id}
+            worldPoint={annotation.position}
+            active={isSelected}
+            title={
+              preview
+                ? t('annotations.pin.ariaLabelWithPreview', { index, preview })
+                : t('annotations.pin.ariaLabelNoPreview', { index })
+            }
+            onClick={() => selectAnnotation(isSelected ? null : annotation.id)}
+            groupProps={{ 'data-annotation-pin-id': annotation.id }}
           >
-            <AnnotationPin
-              index={pin.index}
-              selected={isSelected}
-              preview={pin.preview}
-              onClick={() => selectAnnotation(isSelected ? null : pin.id)}
-            />
-          </div>
+            <text textAnchor="middle" dy="1" className="font-mono font-bold tabular-nums">
+              {index <= 9 ? index : '·'}
+            </text>
+          </Pin>
         );
       })}
 
       {/* Popover for the selected pin */}
-      {selectedAnnotation && selectedScreen && (
+      {selectedAnnotation && bounds && selectedAnchor.screen && (
         <AnnotationPopover
           annotation={selectedAnnotation}
-          anchorX={selectedScreen.x}
-          anchorY={selectedScreen.y}
+          anchorX={selectedAnchor.screen.x}
+          anchorY={selectedAnchor.screen.y}
           canvasWidth={bounds.width}
           canvasHeight={bounds.height}
           entityType={resolveEntityType(selectedAnnotation.modelId, selectedAnnotation.entityExpressId)}
@@ -259,30 +205,25 @@ export function AnnotationLayer() {
         />
       )}
 
-      {/* Drop input + ghost pin while drafting */}
-      {draft && draftScreen && (
-        <>
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              left: draftScreen.x,
-              top: draftScreen.y,
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <AnnotationPin index={annotationList.length + 1} variant="draft" />
-          </div>
-          <AnnotationDropInput
-            anchorX={draftScreen.x}
-            anchorY={draftScreen.y}
-            canvasWidth={bounds.width}
-            canvasHeight={bounds.height}
-            entityType={resolveEntityType(draft.modelId, draft.entityExpressId)}
-            entityExpressId={draft.entityExpressId}
-            onSave={(note) => commitDraft(note)}
-            onCancel={cancelDraft}
-          />
-        </>
+      {/* Ghost pin + drop input while drafting */}
+      {draft && (
+        <Pin worldPoint={draft.position} active>
+          <text textAnchor="middle" dy="1" className="font-mono font-bold tabular-nums">
+            {annotationList.length + 1 <= 9 ? annotationList.length + 1 : '·'}
+          </text>
+        </Pin>
+      )}
+      {draft && bounds && draftAnchor.screen && (
+        <AnnotationDropInput
+          anchorX={draftAnchor.screen.x}
+          anchorY={draftAnchor.screen.y}
+          canvasWidth={bounds.width}
+          canvasHeight={bounds.height}
+          entityType={resolveEntityType(draft.modelId, draft.entityExpressId)}
+          entityExpressId={draft.entityExpressId}
+          onSave={(note) => commitDraft(note)}
+          onCancel={cancelDraft}
+        />
       )}
     </div>
   );

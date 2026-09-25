@@ -38,6 +38,7 @@ import { GeometryModeBanner } from './GeometryModeBanner';
 import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -190,7 +191,9 @@ it('GeometryModeBanner: renders the fast-mode banner in English and translates i
       geometryReloadReason: 'mode',
     });
   });
-  const container = render(<GeometryModeBanner />);
+  // `GeometryModeBanner` portals into `ViewportHud`'s top-center region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const container = render(<><ViewportHud /><GeometryModeBanner /></>);
   assert.ok(container.textContent?.includes('Fast geometry enabled'));
   assert.ok(container.textContent?.includes('Reload model to apply the new setting.'));
   const reloadButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Reload'));
@@ -239,13 +242,15 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
 
 it('LevelDisplayIndicator: renders the exploded/solo labels in English and translates them (#4918)', () => {
   act(() => useViewerStore.setState({ levelDisplayMode: 'exploded', explodedGap: 2 }));
-  const exploded = render(<LevelDisplayIndicator />);
+  // `LevelDisplayIndicator` portals into `ViewportHud`'s top-left region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const exploded = render(<><ViewportHud /><LevelDisplayIndicator /></>);
   assert.ok(exploded.textContent?.includes('Exploded · 2 m gap'));
 
   registerLocale('leveldisplayindicator-de', { 'levelDisplayIndicator.storeyFallback': 'Geschoss' });
   act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm1', expressId: 1 } }));
   act(() => setLocale('leveldisplayindicator-de'));
-  const solo = render(<LevelDisplayIndicator />);
+  const solo = render(<><ViewportHud /><LevelDisplayIndicator /></>);
   // No matching storey is loaded, so `soloName` falls through to the
   // translated fallback.
   assert.ok(solo.textContent?.includes('Solo · Geschoss'));

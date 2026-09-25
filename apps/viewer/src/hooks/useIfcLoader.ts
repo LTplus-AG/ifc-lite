@@ -297,7 +297,8 @@ export function useIfcLoader() {
       : loadSessionRef.current;
     // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
     const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
-    const releaseCanceller = target.kind === 'primary' ? installPrimaryLoadCanceller(() => { loadSessionRef.current += 1; }) : null; // #5849
+    let abortGeometry: (() => void) | null = null; // set once the geometry pool starts
+    const releaseCanceller = target.kind === 'primary' ? installPrimaryLoadCanceller(() => { loadSessionRef.current += 1; abortGeometry?.(); }) : null; // #5849
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -1584,6 +1585,7 @@ export function useIfcLoader() {
         const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(buffer);
         // Closing aborts: return() can't stop a pool parked on a hung worker (#4884).
         const geometryAbort = new AbortController();
+        abortGeometry = () => geometryAbort.abort(); // #5849: a user Cancel stops the pool, not just the session
         const geometryEvents = geometryProcessor.processAdaptive(geometryView, {
               signal: geometryAbort.signal,
               hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // reads skippedHungElements below

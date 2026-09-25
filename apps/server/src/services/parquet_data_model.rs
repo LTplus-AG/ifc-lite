@@ -5,12 +5,12 @@
 //! Parquet serialization for IFC data model (entities, properties, relationships, spatial hierarchy).
 
 use crate::services::data_model::{
-    ClassificationAssociation, DataModel, DocumentAssociation, EntityMetadata, MaterialAssociation,
+    ClassificationAssociation, DataModel, DocumentAssociation, EntityMetadata,
     PropertySet, QuantitySet, Relationship, SpatialHierarchyData, SpatialNode,
 };
 use arrow::array::builder::ListBuilder;
 use arrow::array::UInt32Builder;
-use arrow::array::{BooleanArray, Float64Array, StringArray, UInt16Array, UInt32Array};
+use arrow::array::{BooleanArray, StringArray, UInt16Array, UInt32Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
@@ -20,6 +20,10 @@ use rayon::prelude::*;
 use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
+
+#[path = "parquet_data_model_materials.rs"]
+mod materials;
+use materials::serialize_materials_table;
 
 /// Errors during data model Parquet serialization.
 #[derive(Debug, Error)]
@@ -147,55 +151,6 @@ fn serialize_classifications_table(
             Arc::new(StringArray::from(identifications)),
             Arc::new(StringArray::from(names)),
             Arc::new(StringArray::from(locations)),
-        ],
-    )?;
-
-    write_parquet_batch(batch)
-}
-
-/// Serialize material associations table.
-fn serialize_materials_table(
-    rows: &[MaterialAssociation],
-) -> Result<Vec<u8>, DataModelParquetError> {
-    let count = rows.len();
-    let mut element_ids = Vec::with_capacity(count);
-    let mut set_names: Vec<Option<String>> = Vec::with_capacity(count);
-    let mut layer_indices = Vec::with_capacity(count);
-    let mut material_names = Vec::with_capacity(count);
-    let mut thicknesses: Vec<Option<f64>> = Vec::with_capacity(count);
-    let mut ventilated: Vec<Option<bool>> = Vec::with_capacity(count);
-    let mut categories: Vec<Option<String>> = Vec::with_capacity(count);
-
-    for row in rows {
-        element_ids.push(row.element_id);
-        set_names.push(row.set_name.clone());
-        layer_indices.push(row.layer_index);
-        material_names.push(row.material_name.clone());
-        thicknesses.push(row.thickness);
-        ventilated.push(row.is_ventilated);
-        categories.push(row.category.clone());
-    }
-
-    let schema = Schema::new(vec![
-        Field::new("element_id", DataType::UInt32, false),
-        Field::new("set_name", DataType::Utf8, true),
-        Field::new("layer_index", DataType::UInt32, false),
-        Field::new("material_name", DataType::Utf8, false),
-        Field::new("thickness", DataType::Float64, true),
-        Field::new("is_ventilated", DataType::Boolean, true),
-        Field::new("category", DataType::Utf8, true),
-    ]);
-
-    let batch = RecordBatch::try_new(
-        Arc::new(schema),
-        vec![
-            Arc::new(UInt32Array::from(element_ids)),
-            Arc::new(StringArray::from(set_names)),
-            Arc::new(UInt32Array::from(layer_indices)),
-            Arc::new(StringArray::from(material_names)),
-            Arc::new(Float64Array::from(thicknesses)),
-            Arc::new(BooleanArray::from(ventilated)),
-            Arc::new(StringArray::from(categories)),
         ],
     )?;
 

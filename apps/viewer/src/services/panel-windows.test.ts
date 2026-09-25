@@ -43,7 +43,13 @@ function fakeWindow() {
     },
     document: {
       title: '',
-      documentElement: { className: '', style: {} as Record<string, string> },
+      documentElement: {
+        className: '',
+        style: {
+          props: {} as Record<string, string>,
+          setProperty(name: string, value: string) { this.props[name] = value; },
+        },
+      },
       head: { appendChild: () => {} },
       body: { style: {} as Record<string, string> },
       createElement: () => ({}),
@@ -170,6 +176,23 @@ describe('panel-windows', () => {
         .className,
       'dark',
     );
+  });
+
+  it('syncPanelWindowsTheme carries the overlay tokens, not just the class (#5490)', async () => {
+    await openPanelWindow('clash');
+    document.documentElement.style.setProperty('--overlay-clash-a', '#e0af68');
+    document.documentElement.style.setProperty('--unrelated', 'red');
+    try {
+      syncPanelWindowsTheme('dark');
+      const props = (openedWindows[0].document as unknown as {
+        documentElement: { style: { props: Record<string, string> } };
+      }).documentElement.style.props;
+      assert.equal(props['--overlay-clash-a'], '#e0af68');
+      assert.equal(props['--unrelated'], undefined, 'only overlay tokens are mirrored');
+    } finally {
+      document.documentElement.style.removeProperty('--overlay-clash-a');
+      document.documentElement.style.removeProperty('--unrelated');
+    }
   });
 
   it('re-docking a panel via the store (poppedOutIds no longer includes it) closes its window', async () => {

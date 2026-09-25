@@ -24,6 +24,7 @@ import { LearnTab } from '@/components/tours/LearnTab';
 import { PreferencesTab } from './PreferencesTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation } from '@/i18n';
+import { isTextEntryTarget } from '@/lib/keyboard-event';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
@@ -542,15 +543,7 @@ export function useKeyboardShortcutsDialog() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input or textarea
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return;
-      }
+      if (isTextEntryTarget(e)) return;
       if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
         e.preventDefault();
         setTab('shortcuts'); // `?` is the documented shortcuts key: open there, not on About

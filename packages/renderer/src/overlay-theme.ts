@@ -59,15 +59,22 @@ export interface OverlayTheme {
   clashA: Rgba;
   /** Clash element B highlight tint. sRGB-direct RGBA. */
   clashB: Rgba;
-  /** Clash overlap box / contact-line / intersection-solid default tint. sRGB-direct RGBA. */
+  /**
+   * Clash overlap box / contact-line / intersection-solid tint, used whenever
+   * `setClashOverlapBox` / `setClashContactLines` / `setClashIntersectionSolid`
+   * is called without a `color`. sRGB-direct RGBA.
+   */
   clashOverlap: Rgba;
 }
 
 /**
- * Reproduces the renderer's pre-#5484 hardcoded look exactly, so a caller
- * that never calls `setOverlayTheme` (a test, a standalone tool) sees no
- * visual change: the old selection blue, the old "down"-axis section-plane
- * colour, opaque-black overlay lines, and the old clash tints.
+ * Reproduces the renderer's pre-#5484 hardcoded look, so a caller that never
+ * calls `setOverlayTheme` (a test, a standalone tool) sees no visual change:
+ * the old selection blue, the old "down"-axis section-plane colour and
+ * opaque-black overlay lines. The clash tints never had a renderer-side look
+ * to preserve (every caller passed its own colour), so they are the viewer's
+ * light-theme `clash-a` / `clash-b` / `clash-overlap` tokens (#5490) rather
+ * than the retired amber / cyan / magenta.
  */
 export const DEFAULT_OVERLAY_THEME: OverlayTheme = {
   // Linear-light decode of the historic sRGB selection-blue #4D99FF
@@ -76,7 +83,7 @@ export const DEFAULT_OVERLAY_THEME: OverlayTheme = {
   selection: [0.07323895587840543, 0.31854677812509186, 1, 1],
   sectionPlane: [0.012, 0.663, 0.957, 1], // #03A9F4 — the historic "down"-axis colour
   overlayLine: [0, 0, 0, 1],
-  clashA: [1.0, 0.5, 0.05, 1],
-  clashB: [0.0, 0.82, 1.0, 1],
-  clashOverlap: [1.0, 0.1, 0.85, 1],
+  clashA: [0x8c / 255, 0x6c / 255, 0x3e / 255, 1], // #8c6c3e
+  clashB: [0x00 / 255, 0x71 / 255, 0x97 / 255, 1], // #007197
+  clashOverlap: [0xf5 / 255, 0x2a / 255, 0x65 / 255, 1], // #f52a65
 };

@@ -16,9 +16,8 @@
  */
 
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import { AlertCircle, FileText, Trash2, Upload, X } from 'lucide-react';
+import { AlertCircle, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIDS } from '@/hooks/useIDS';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
@@ -27,6 +26,7 @@ import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrection
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
+import { IDSPanelHeaderActions } from './IDSPanelHeaderActions';
 
 // ============================================================================
 // Types
@@ -184,7 +184,6 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {/* Load New IDS */}
             {document && (
               <>
                 <input
@@ -194,42 +193,18 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      aria-label={t('idsPanel.loadNew')}
-                      onClick={() => { void handleLoadIdsClick(); }}
-                    >
-                      <Upload className="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('idsPanel.loadNew')}</TooltipContent>
-                </Tooltip>
+                <IDSPanelHeaderActions
+                  reportModelId={report?.modelInfo[0]?.modelId ?? null}
+                  loading={loading}
+                  onRerun={(modelId) => { void runValidation(modelId); }}
+                  onLoadNew={() => { void handleLoadIdsClick(); }}
+                  onClearResults={clearValidation}
+                  onUnload={() => {
+                    clearIDS();
+                    clearValidation();
+                  }}
+                />
               </>
-            )}
-
-            {/* Clear */}
-            {document && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    aria-label={t('idsPanel.clear')}
-                    onClick={() => {
-                      clearIDS();
-                      clearValidation();
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('idsPanel.clear')}</TooltipContent>
-              </Tooltip>
             )}
 
             {/* Close */}

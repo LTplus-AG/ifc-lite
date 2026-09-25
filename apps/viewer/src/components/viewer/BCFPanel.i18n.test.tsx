@@ -94,7 +94,7 @@ describe('BCFPanel localization (#4918)', () => {
       ['bcf.panel.exportTitle', 'lucide-download'],
     ] as const) {
       const title = CATALOGUE[titleKey] as string;
-      const button = [...container.querySelectorAll('button')].find((item) => item.title === title);
+      const button = [...container.querySelectorAll('button')].find((item) => item.getAttribute('aria-label') === title);
       assert.ok(button, `expected a button titled ${title}`);
       assert.ok(button.querySelector(`svg.${iconClass}`), `${title} should show ${iconClass}`);
     }

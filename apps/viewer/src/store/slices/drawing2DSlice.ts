@@ -176,6 +176,13 @@ export interface Drawing2DState {
     scanSectionOpacity: number;
     /** Include the scan layer's dots in SVG export/print. */
     scanSectionIncludeInExport: boolean;
+    /**
+     * Print preview (#5496): forces the direct-mode canvas to white paper
+     * with black ink regardless of the active app theme, previewing what
+     * exports already produce. Off by default — the canvas otherwise
+     * follows the theme (dark paper in dark theme).
+     */
+    showPrintPreview: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -362,6 +369,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
   scanSectionOpacity: 0.9,
   scanSectionIncludeInExport: true,
+  showPrintPreview: false,
 });
 
 export const getDefaultDrawing2DState = (): Drawing2DState => ({

@@ -884,15 +884,17 @@ use super::outline::trim_polyline;
     #[test]
     fn composite_curve_trim_uses_polyline_parent_span_5566() {
         // #5566: a composite's parameter is the running sum of its parents'
-        // spans. A 3-point polyline parent spans [0, 2], so the composite
-        // spans [0, 3] and [1, 2.5] is the second polyline edge plus half of
-        // the second segment. Unit-per-segment read [1, 2.5] as "all of seg 1
-        // and half of seg 2".
+        // spans. A 3-point polyline parent spans [0, 2] (one unit per edge,
+        // whatever the edge length), so the composite spans [0, 3] and
+        // [1, 2.5] is the second polyline edge plus half of the second
+        // segment. Unit-per-segment read [1, 2.5] as "all of seg 1 and half
+        // of seg 2"; an arc-length reading would cut elsewhere on these
+        // unequal edges.
         let content = r#"
 #1=IFCCARTESIANPOINT((0.0,0.0,0.0));
 #2=IFCCARTESIANPOINT((0.0,2.0,0.0));
-#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
-#4=IFCCARTESIANPOINT((0.0,6.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,5.0,0.0));
+#4=IFCCARTESIANPOINT((0.0,9.0,0.0));
 #5=IFCPOLYLINE((#1,#2,#3));
 #6=IFCPOLYLINE((#3,#4));
 #7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
@@ -908,8 +910,61 @@ use super::outline::trim_polyline;
         let ys: Vec<f64> = pts.iter().map(|p| p.y).collect();
         assert_eq!(ys.len(), 3, "got points: {pts:?}");
         assert!((ys[0] - 2.0).abs() < 1e-9);
-        assert!((ys[1] - 4.0).abs() < 1e-9);
-        assert!((ys[2] - 5.0).abs() < 1e-9);
+        assert!((ys[1] - 5.0).abs() < 1e-9);
+        assert!((ys[2] - 7.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn composite_curve_trim_counts_a_reversed_segment_from_its_new_start_5566() {
+        // #5566: SameSense=.F. traverses the parent backwards, so the
+        // composite's parameter runs from the parent's END. Segment 2 is
+        // (0,4)->(0,8) reversed: [1, 1.25] is its first quarter, y 8 -> 7.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,8.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,4.0,0.0));
+#5=IFCPOLYLINE((#1,#2));
+#6=IFCPOLYLINE((#3,#2));
+#7=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#5);
+#8=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.F.,#6);
+#9=IFCCOMPOSITECURVE((#7,#8),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let curve = decoder.decode_by_id(9).unwrap();
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(1.0), Some(1.25))
+            .unwrap();
+        assert_eq!(pts.len(), 2, "got points: {pts:?}");
+        assert!(approx_eq_p3(pts[0], Point3::new(0.0, 8.0, 0.0), 1e-9), "{pts:?}");
+        assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9), "{pts:?}");
+    }
+
+    #[test]
+    fn composite_curve_trim_survives_a_parent_the_analytic_reader_rejects_5566() {
+        // A negative circle Radius: the sampler draws it, the stricter
+        // analytic reader errors. The span is then unknown and the
+        // composite is swept whole; the solid must not fail.
+        let content = r#"
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCCARTESIANPOINT((0.0,2.0,0.0));
+#3=IFCPOLYLINE((#1,#2));
+#4=IFCDIRECTION((0.0,0.0,1.0));
+#5=IFCDIRECTION((1.0,0.0,0.0));
+#6=IFCAXIS2PLACEMENT3D(#2,#4,#5);
+#7=IFCCIRCLE(#6,-1.0);
+#8=IFCTRIMMEDCURVE(#7,(IFCPARAMETERVALUE(0.0)),(IFCPARAMETERVALUE(1.0)),.T.,.PARAMETER.);
+#9=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#3);
+#10=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#8);
+#11=IFCCOMPOSITECURVE((#9,#10),.F.);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let curve = decoder.decode_by_id(11).unwrap();
+        let pts = processor
+            .get_composite_curve_points_trimmed(&curve, &mut decoder, Some(0.0), Some(0.5))
+            .expect("an unreadable span must not fail the directrix");
+        assert!(pts.len() > 2, "{pts:?}");
     }
 
     #[test]

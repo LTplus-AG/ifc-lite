@@ -6,10 +6,11 @@ import type { TranslationValue } from '../types';
 
 /**
  * The 3D-viewport-chrome + sun/lighting catalogue (#4918 viewport/lighting
- * slice, `viewportLighting.*`) covers seven files: `ViewportContainer.tsx`
+ * slice, `viewportLighting.*`) covers eight files: `ViewportContainer.tsx`
  * (the empty/welcome state, its WebGPU-unavailable banner, and the
  * "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
- * cluster and the per-model basepoint toggle), `Viewport.tsx`'s own
+ * cluster and the per-model basepoint toggle), `EditModeHudChip.tsx` (the
+ * edit-mode status chip), `Viewport.tsx`'s own
  * render-failure fallback, `FlySpeedIndicator.tsx`'s fly-mode HUD,
  * `ShadowControls.tsx` and `SunTimeControls.tsx` (the Environment panel's
  * shadow and manual time-of-day sub-panels), and `EnvironmentPanel.tsx` itself
@@ -81,6 +82,11 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.basepointToggle.hide': 'Hide model basepoints',
   'viewportLighting.overlays.basepointToggle.showAria': 'Show model basepoints',
   'viewportLighting.overlays.basepointToggle.showTooltip': 'Show model basepoints (IFC 0,0,0)',
+
+  // ── EditModeHudChip.tsx — the top-left "Editing" status chip (#5489);
+  // `{model}` is the model's own displayed name, runtime data ──────────
+  'viewportLighting.overlays.editingChip': 'Editing',
+  'viewportLighting.overlays.editingChipWithModel': 'Editing · {model}',
 
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',

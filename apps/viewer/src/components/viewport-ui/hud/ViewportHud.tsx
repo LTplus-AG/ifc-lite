@@ -50,8 +50,8 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
  * docked bottom panel that shrinks the viewport shrinks this with it instead
  * of being covered by it — no separate sizing logic needed here.
  *
- * No overlay has been migrated onto this yet (#5478 item 3 ships the kernel
- * with zero consumers; migrations are later items).
+ * Consumers portal in through `HudItem`; the first is the edit-mode chip
+ * (`EditModeHudChip`, #5489). The remaining overlays migrate in later items.
  */
 export function ViewportHud() {
   return (

@@ -25,6 +25,7 @@ import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { DEFAULT_FLAVOR_ID, type Bundle, type BundleFile, type Flavor } from '@ifc-lite/extensions';
 import { cleanup, render, click } from '@/test/render.js';
+import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
 import { registerLocale, setLocale } from '@/i18n';
 import type { Catalogue, TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
@@ -86,14 +87,6 @@ function readableStrings(): Set<string> {
     if (ownText) out.add(ownText);
   });
   return out;
-}
-
-function latestToast(): string {
-  const stack = [...document.body.querySelectorAll('div')].find((element) =>
-    element.className.includes('z-[9999]'),
-  );
-  assert.ok(stack, 'expected a toast stack');
-  return stack.children[stack.children.length - 1]?.textContent ?? '';
 }
 
 interface Occurrence {

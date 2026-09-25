@@ -20,9 +20,11 @@
  *    irradiance, renders as authored; brighter colours roll off with their
  *    hue preserved (pure white lands at 0.88, about 241/255, leaving
  *    headroom for sunlit highlights). It is the Khronos PBR Neutral operator
- *    without its toe: the toe subtracts up to 0.04 to cancel a specular F0
- *    offset, and this renderer has no specular term, so keeping it would only
- *    crush dark materials.
+ *    without its toe: the toe subtracts up to 0.04 to cancel the specular F0
+ *    offset a dielectric picks up under a unit-radiance environment. This
+ *    renderer's sky is far dimmer, so its specular term (specular.wgsl.ts)
+ *    lifts a dark matte surface by only about 0.01-0.02, and keeping the toe
+ *    would crush dark materials below their authored value.
  *  - `linearToSrgb` is the exact piecewise encode. The canvas is configured
  *    with a non-sRGB format, so the shader must encode.
  */

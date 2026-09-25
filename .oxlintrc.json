@@ -9,7 +9,11 @@
   "plugins": [
     "unicorn",
     "typescript",
-    "oxc"
+    "oxc",
+    // #5607: the plugin's correctness rules run at the default WARN, so none
+    // is a gate here. scripts/check-jsx-a11y.mjs ratchets their per-file
+    // counts against scripts/jsx-a11y-baseline.json instead.
+    "jsx-a11y"
   ],
   "categories": {},
   "rules": {

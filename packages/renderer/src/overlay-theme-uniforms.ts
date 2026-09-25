@@ -9,9 +9,13 @@
  * budget by it).
  */
 
-import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
+import { DEFAULT_OVERLAY_THEME, type OverlayTheme, type Rgba } from './overlay-theme.js';
 import type { SectionPlaneRenderer } from './section-plane.js';
 import type { Section2DOverlayRenderer } from './section-2d-overlay.js';
+import type { ClashSolidInput, ClashSolidPipeline } from './clash-solid-pipeline.js';
+
+/** A clash solid whose `color` may be omitted to follow the theme's `clashOverlap` (#5490). */
+export type ThemedClashSolidInput = Omit<ClashSolidInput, 'color'> & { color?: ClashSolidInput['color'] };
 
 /**
  * The selection highlight tint: group(1) binding 4, a standalone 16-byte
@@ -47,32 +51,57 @@ export class SelectionColorUniform {
 }
 
 /**
- * Applies an `OverlayTheme` to the section-plane preview and section-2D
- * overlay (line/section-cut) renderers, and remembers the last theme set so
- * a pre-init `setTheme` call — or a later re-init after device loss — still
- * lands once those GPU objects exist.
+ * Applies an `OverlayTheme` to the section-plane preview, the section-2D
+ * overlay (line/section-cut) renderers and the focused clash's overlap marks,
+ * and remembers the last theme set so a pre-init `setTheme` call — or a later
+ * re-init after device loss — still lands once those GPU objects exist.
+ *
+ * The clash box / contact lines and the clash solid take `clashOverlap` when
+ * their caller omits a colour (#5490), and keep following it: a theme change
+ * while a clash is focused recolours the marks in place instead of leaving the
+ * previous theme's tint baked into them.
  */
 export class OverlayThemeApplier {
   private theme: OverlayTheme = DEFAULT_OVERLAY_THEME;
+  private clashLinesFollowTheme = false;
+  private themedClashSolid: ThemedClashSolidInput | null = null;
 
   get current(): OverlayTheme {
     return this.theme;
   }
 
-  /** Set a new theme and apply it to whichever renderers already exist (either may be null pre-init). */
+  /** Set a new theme and apply it to whichever renderers already exist (any may be null pre-init). */
   set(
     theme: OverlayTheme,
     sectionPlaneRenderer: SectionPlaneRenderer | null,
     section2DOverlayRenderer: Section2DOverlayRenderer | null,
+    clashSolidPipeline: Pick<ClashSolidPipeline, 'upload'> | null = null,
   ): void {
     this.theme = theme;
     section2DOverlayRenderer?.setOverlayLineColor(theme.overlayLine);
     sectionPlaneRenderer?.setPlaneColor(theme.sectionPlane);
+    if (this.clashLinesFollowTheme) section2DOverlayRenderer?.setClashBoxLineColor(theme.clashOverlap);
+    if (this.themedClashSolid) clashSolidPipeline?.upload(this.clashSolid(this.themedClashSolid));
   }
 
   /** Re-apply the current theme to freshly (re)created renderers, e.g. from `init()`. */
   reapply(sectionPlaneRenderer: SectionPlaneRenderer, section2DOverlayRenderer: Section2DOverlayRenderer): void {
     section2DOverlayRenderer.setOverlayLineColor(this.theme.overlayLine);
     sectionPlaneRenderer.setPlaneColor(this.theme.sectionPlane);
+    if (this.clashLinesFollowTheme) section2DOverlayRenderer.setClashBoxLineColor(this.theme.clashOverlap);
+  }
+
+  /** The clash box / contact-line colour: `color` when given, else the theme's `clashOverlap`, followed from now on. */
+  clashLineColor(color: Rgba | undefined): Rgba {
+    this.clashLinesFollowTheme = color === undefined;
+    return color ?? this.theme.clashOverlap;
+  }
+
+  /** The clash solid to upload: `color` when given, else the theme's `clashOverlap`, followed from now on. */
+  clashSolid(input: ThemedClashSolidInput | null): ClashSolidInput | null {
+    this.themedClashSolid = input && input.color === undefined ? input : null;
+    if (!input) return null;
+    const [r, g, b, a] = input.color ?? this.theme.clashOverlap;
+    return { ...input, color: [r, g, b, a] };
   }
 }

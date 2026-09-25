@@ -10,6 +10,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from '@/i18n';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 interface AxisHelperProps {
   rotationX?: number;
@@ -92,10 +93,11 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
           transform: `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`,
         }}
       >
-        {/* X Axis - Red (pointing right) */}
+        {/* X axis (pointing right). Colours are the shared axis-x/y/z triad (#5490). */}
         <div
-          className="absolute bg-red-500"
+          className="absolute"
           style={{
+            background: IFC_AXIS_COLORS.x,
             width: axisLength,
             height: 2,
             left: size / 2,
@@ -106,8 +108,9 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
         />
         <div
           ref={xLabelRef}
-          className="absolute text-red-500 font-bold text-xs"
+          className="absolute font-bold text-xs"
           style={{
+            color: IFC_AXIS_COLORS.x,
             left: size / 2 + labelOffset,
             top: size / 2 - 6,
             transform: `rotateY(${-rotationY}deg) rotateX(${-rotationX}deg)`,
@@ -117,10 +120,11 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
           {t('cesiumGeo.axisHelper.labelX')}
         </div>
 
-        {/* Z Axis - Blue (pointing up in IFC) - this is WebGL Y */}
+        {/* Z axis (pointing up in IFC) - this is WebGL Y */}
         <div
-          className="absolute bg-blue-500"
+          className="absolute"
           style={{
+            background: IFC_AXIS_COLORS.z,
             width: 2,
             height: axisLength,
             left: size / 2 - 1,
@@ -130,8 +134,9 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
         />
         <div
           ref={zLabelRef}
-          className="absolute text-blue-500 font-bold text-xs"
+          className="absolute font-bold text-xs"
           style={{
+            color: IFC_AXIS_COLORS.z,
             left: size / 2 - 4,
             top: size / 2 - labelOffset - 6,
             transform: `rotateY(${-rotationY}deg) rotateX(${-rotationX}deg)`,
@@ -141,10 +146,11 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
           {t('cesiumGeo.axisHelper.labelZ')}
         </div>
 
-        {/* Y Axis - Green (pointing into screen in IFC) - this is WebGL -Z */}
+        {/* Y axis (pointing into screen in IFC) - this is WebGL -Z */}
         <div
-          className="absolute bg-green-500"
+          className="absolute"
           style={{
+            background: IFC_AXIS_COLORS.y,
             width: axisLength,
             height: 2,
             left: size / 2,
@@ -155,8 +161,9 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
         />
         <div
           ref={yLabelRef}
-          className="absolute text-green-500 font-bold text-xs"
+          className="absolute font-bold text-xs"
           style={{
+            color: IFC_AXIS_COLORS.y,
             left: size / 2 - 4,
             top: size / 2 + 6,
             transform: `translateZ(${labelOffset}px) rotateY(${-rotationY}deg) rotateX(${-rotationX}deg)`,
@@ -168,7 +175,7 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
 
         {/* Origin point */}
         <div
-          className="absolute w-2 h-2 bg-white rounded-full border border-gray-400"
+          className="absolute w-2 h-2 bg-overlay-halo rounded-full border border-overlay-ink-muted"
           style={{
             left: size / 2 - 4,
             top: size / 2 - 4,

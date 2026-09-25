@@ -37,6 +37,7 @@ import type { CoordinateInfo, GeometryResult, MeshData, KmzAltitudeMode } from '
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { render, cleanup } from '@/test/render.js';
+import { downloadedNames, clearDownloads } from '@/test/download-capture.js';
 import { toast } from '@/components/ui/toast.js';
 import { LocationMap } from './LocationMap.js';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter.js';
@@ -129,6 +130,7 @@ function makeStub() {
 async function exportViaButton(
   instancedModelRange?: { idOffset: number; maxExpressId: number } | null,
   processor?: KmzProcessor,
+  modelName?: string,
 ): Promise<RecordedCall[]> {
   const { gp, calls } = makeStub();
   const container = render(
@@ -140,6 +142,7 @@ async function exportViaButton(
       lengthUnitScale={1}
       createKmzProcessor={() => processor ?? gp}
       instancedModelRange={instancedModelRange}
+      modelName={modelName}
     />,
   );
 
@@ -259,6 +262,14 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       placement(calls[0]),
       'the panel and the dialog must place the same model identically',
     );
+  });
+
+  // #5833: this button downloaded every model as `model.kmz`, while the Export
+  // KMZ dialog named the same model's file after the model.
+  it('files the KMZ under the model name, as the Export KMZ dialog does', async () => {
+    clearDownloads();
+    await exportViaButton(null, undefined, 'Haus.ifc');
+    assert.deepStrictEqual(downloadedNames(), ['Haus.kmz']);
   });
 
   it('shows a visible error when the now-fallible KMZ exporter rejects the model', async () => {

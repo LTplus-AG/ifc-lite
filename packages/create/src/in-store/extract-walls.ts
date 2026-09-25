@@ -48,6 +48,13 @@ import {
   storeyPlacementChain,
   type OverlayWallReader,
 } from './placement-frame.js';
+import {
+  buildRelatingChildrenIndex,
+  createOverlayLookup,
+  effectiveMemberType,
+  effectiveStoreyIds,
+  type OverlayLookup,
+} from './spatial-children.js';
 
 export type { OverlayWallReader };
 
@@ -165,7 +172,8 @@ export function extractWallSegmentsForStorey(
   }
 
   const extractor = new EntityExtractor(store.source);
-  const dividerIds = collectDividerIdsOnStorey(store, extractor, storeyExpressId, dividerTypes, log);
+  const lookup = createOverlayLookup(overlay);
+  const dividerIds = collectDividerIdsOnStorey(store, extractor, lookup, storeyExpressId, dividerTypes, log);
   log(`storey #${storeyExpressId}: ${dividerIds.length} contained divider element(s)`);
 
   // Segments are emitted in the STOREY frame, so composition of each
@@ -174,6 +182,8 @@ export function extractWallSegmentsForStorey(
   const storeyChain = storeyPlacementChain(store, extractor, overlay, storeyExpressId);
 
   for (const id of dividerIds) {
+    // Created dividers have no source bytes; the overlay loop below reads them.
+    if (lookup.createdType(id) !== undefined) continue;
     const result = extractWallAxisFromSource(store, extractor, id, storeyChain, log);
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
@@ -186,8 +196,15 @@ export function extractWallSegmentsForStorey(
 
   let overlayCount = 0;
   if (overlay) {
+    // Only the created dividers the spatial walk found on THIS storey: it
+    // indexes overlay-created IfcRelContainedInSpatialStructure too, and every
+    // authoring path writes one. Taking all of getNewEntities() made a wall
+    // authored on one storey a room boundary on every storey (#5642).
+    const onStorey = new Set(dividerIds);
     for (const ent of overlay.getNewEntities()) {
-      if (!dividerTypes.has(ent.type.toLowerCase())) continue;
+      if (!onStorey.has(ent.expressId)) continue;
+      // Effective class: a created wall retyped away is not a divider (#5249).
+      if (!dividerTypes.has((lookup.retypeOf(ent.expressId) ?? ent.type).toLowerCase())) continue;
       overlayCount++;
       const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, storeyChain, log);
       if (result.segment) {
@@ -220,7 +237,8 @@ export function extractWallSegmentsForStorey(
     contributingWallIds: contributing,
     wallThicknesses,
     skipped,
-    considered: dividerIds.length + overlayCount,
+    // dividerIds already holds the created dividers on this storey (#5642).
+    considered: dividerIds.length,
     lengthUnitScale,
   };
 }
@@ -256,6 +274,7 @@ type Logger = (...args: unknown[]) => void;
 function collectDividerIdsOnStorey(
   store: IfcDataStore,
   extractor: EntityExtractor,
+  lookup: OverlayLookup,
   storeyId: number,
   dividerTypes: Set<string>,
   log: Logger,
@@ -270,15 +289,15 @@ function collectDividerIdsOnStorey(
   // entity in the file looking for one with the right relating id —
   // O(R·N) total in the number of rels and parents visited.
   const aggregateChildren = buildRelatingChildrenIndex(
-    store, extractor, 'IFCRELAGGREGATES', 4, 5,
+    store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5,
   );
   const containmentChildren = buildRelatingChildrenIndex(
-    store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4,
+    store, extractor, lookup, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4,
   );
 
   const visitMember = (memberId: number) => {
     if (seen.has(memberId)) return;
-    const memberType = store.entities.getTypeName(memberId);
+    const memberType = effectiveMemberType(store, lookup, memberId);
     if (memberType && isDividerType(memberType, dividerTypes)) {
       seen.add(memberId);
       ids.push(memberId);
@@ -339,74 +358,44 @@ function collectDividerIdsOnStorey(
  * call site (`generateSpaces` in `generate-spaces-all.ts`) rather than
  * emitting mis-scaled polygons.
  */
-export function existingSpaceFootprintsByStorey(store: IfcDataStore): Map<number, Vec2[][]> {
+export function existingSpaceFootprintsByStorey(
+  store: IfcDataStore,
+  overlay?: OverlayWallReader,
+): Map<number, Vec2[][]> {
   const out = new Map<number, Vec2[][]>();
   if (!store.source) return out;
   const extractor = new EntityExtractor(store.source);
   const scale = safeLengthUnitScale(store.source, store.entityIndex, 'existingSpaceFootprintsByStorey');
   if (scale === null) return out;
-  const aggregated = buildRelatingChildrenIndex(store, extractor, 'IFCRELAGGREGATES', 4, 5);
-  const contained = buildRelatingChildrenIndex(store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
-  for (const st of store.getEntitiesByType('IfcBuildingStorey')) {
+  // Spaces baked earlier this session count as existing (#5249).
+  const lookup = createOverlayLookup(overlay);
+  const aggregated = buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5);
+  const contained = buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
+  for (const storeyId of effectiveStoreyIds(store, lookup)) {
+    const st = { expressId: storeyId };
     const kids = [...(aggregated.get(st.expressId) ?? []), ...(contained.get(st.expressId) ?? [])];
     // Same frame as the extracted wall segments — storey-local — so the
     // overlap test in generate-spaces compares like with like.
-    const storeyChain = storeyPlacementChain(store, extractor, undefined, st.expressId);
+    const storeyChain = storeyPlacementChain(store, extractor, overlay, st.expressId);
     const footprints: Vec2[][] = [];
     for (const id of kids) {
-      if ((store.entities.getTypeName(id) ?? '').toUpperCase() !== 'IFCSPACE') continue;
-      const ref = store.entityIndex.byId.get(id);
-      if (!ref) continue;
-      const ent = extractor.extractEntity(ref);
+      if ((effectiveMemberType(store, lookup, id) ?? '').toUpperCase() !== 'IFCSPACE') continue;
+      const ent = readEntity(store, extractor, overlay, id);
       if (!ent) continue;
       const placementId = numericAttr(ent.attributes[5]);   // ObjectPlacement
       const representationId = numericAttr(ent.attributes[6]); // Representation
       if (placementId === null || representationId === null) continue;
-      const frame = frameInStoreyFrame(store, extractor, undefined, placementId, storeyChain);
-      const localPts = gatherBodyFootprintPoints(store, extractor, undefined, representationId);
+      const frame = frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
+      const localPts = gatherBodyFootprintPoints(store, extractor, overlay, representationId);
       if (!frame || !localPts || localPts.length < 3) continue;
+      // An authored (baked) space is written in metres; a parsed one is native.
+      const k = lookup.createdType(id) !== undefined ? 1 : scale;
       footprints.push(localPts.map((p) => {
         const w = applyFrame(frame, p);
-        return [w[0] * scale, w[1] * scale] as Vec2;
+        return [w[0] * k, w[1] * k] as Vec2;
       }));
     }
     if (footprints.length) out.set(st.expressId, footprints);
-  }
-  return out;
-}
-
-/**
- * Index every relationship of `relType` by its "relating" attribute, so a
- * lookup of "what's anchored to id X" becomes O(1) instead of an O(R)
- * scan of every relationship.
- */
-function buildRelatingChildrenIndex(
-  store: IfcDataStore,
-  extractor: EntityExtractor,
-  relType: string,
-  relatingIdx: number,
-  relatedIdx: number,
-): Map<number, number[]> {
-  const out = new Map<number, number[]>();
-  const relIds = store.entityIndex.byType.get(relType);
-  if (!relIds) return out;
-  for (const relId of relIds) {
-    const ref = store.entityIndex.byId.get(relId);
-    if (!ref) continue;
-    const rel = extractor.extractEntity(ref);
-    if (!rel) continue;
-    const relating = rel.attributes[relatingIdx];
-    if (typeof relating !== 'number') continue;
-    const related = rel.attributes[relatedIdx];
-    if (!Array.isArray(related)) continue;
-    let bucket = out.get(relating);
-    if (!bucket) {
-      bucket = [];
-      out.set(relating, bucket);
-    }
-    for (const child of related) {
-      if (typeof child === 'number') bucket.push(child);
-    }
   }
   return out;
 }
@@ -423,6 +412,7 @@ function extractWallAxisFromSource(
   storeyChain: ReadonlyMap<number, number> | null,
   log: Logger,
 ): ExtractAttempt {
+  // @raw-entity-enumeration-ok point read of one source divider; deleted ones were dropped by the effective spatial walk and created ones are read by the overlay loop
   const ref = store.entityIndex.byId.get(wallId);
   if (!ref) {
     log(`wall #${wallId}: missing entity ref`);

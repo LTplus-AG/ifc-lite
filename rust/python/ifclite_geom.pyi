@@ -4,7 +4,7 @@
 #
 # Type stubs for the ifclite-geom native extension.
 # Shipped next to the compiled module so editors and type checkers see the API.
-from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
+from typing import Any, Dict, List, Literal, Optional, Set, TypedDict, Union, overload
 
 Quality = Literal["lowest", "low", "medium", "high", "highest"]
 
@@ -22,6 +22,55 @@ class GeometryBuffers(TypedDict):
     rtc_offset: List[float]  # [x, y, z], already folded into vertices
     element_count: int
     elements: Dict[int, ElementBuffers]  # keyed by IFC STEP id
+
+class DirectrixLine(TypedDict):
+    type: Literal["line"]
+    start: List[float]
+    end: List[float]
+
+class DirectrixArc(TypedDict):
+    type: Literal["arc"]
+    center: List[float]
+    normal: List[float]
+    x_axis: List[float]
+    radius: float
+    start_angle: float
+    sweep_angle: float
+
+DirectrixSegment = Union[DirectrixLine, DirectrixArc]
+
+class CompleteDirectrix(TypedDict):
+    type: Literal["complete"]
+
+class UnsupportedDirectrix(TypedDict):
+    type: Literal["unsupported"]
+    reason: str
+
+DirectrixStatus = Union[CompleteDirectrix, UnsupportedDirectrix]
+
+class DirectrixSegmentMetrics(TypedDict):
+    segment_index: int  # index into Directrix
+    length: float  # world centreline metres
+    bend_angle: Optional[float]  # arc sweep magnitude in radians; None for lines
+
+class DirectrixMetrics(TypedDict):
+    total_length: float  # sum of segment centreline lengths in world metres
+    segments: List[DirectrixSegmentMetrics]
+
+class SweptDiskOccurrence(TypedDict):
+    solid_id: int
+    directrix_id: int
+    Radius: float  # world radius when complete; authored radius in metres when unsupported
+    InnerRadius: Optional[float]  # same coordinate rule as Radius
+    Directrix: List[DirectrixSegment]  # IFC Z-up, absolute world metres
+    directrix_metrics: Optional[DirectrixMetrics]  # None when status is unsupported
+    status: DirectrixStatus
+    mapping_path: List[int]
+    source_modified: bool  # source operand may differ from final boolean result
+
+class GeometryBuffersWithDirectrices(GeometryBuffers):
+    swept_disks: Dict[int, List[SweptDiskOccurrence]]
+    directrix_diagnostics: List[str]
 
 class PropValue(TypedDict):
     name: str
@@ -66,10 +115,22 @@ class EntityData(TypedDict):
     entity_count: int
     entities: Dict[int, EntityRow]  # keyed by IFC STEP id, in file order
 
+@overload
 def geometry_data_buffers(
     ifc_bytes: bytes,
     quality: Optional[Quality] = None,
     ids: Optional[Set[int]] = None,
+    *,
+    include_directrices: Literal[True],
+) -> GeometryBuffersWithDirectrices: ...
+
+@overload
+def geometry_data_buffers(
+    ifc_bytes: bytes,
+    quality: Optional[Quality] = None,
+    ids: Optional[Set[int]] = None,
+    *,
+    include_directrices: bool = False,
 ) -> GeometryBuffers:
     """Tessellate IFC bytes; return per-entity geometry with vertices/faces as
     raw little-endian byte buffers (f64 xyz triplets, u32 triangle indices) for
@@ -90,6 +151,13 @@ def geometry_data_buffers(
     ids absent from the file are ignored. Relationship and representation
     dependencies needed by selected products are still resolved.
 
+    ``include_directrices=True`` adds ``swept_disks`` (keyed by occurrence STEP
+    id) and ``directrix_diagnostics``. Each sweep preserves its IFC Radius,
+    InnerRadius, ordered analytic line/arc Directrix, and centreline lengths and
+    arc bend angles in ``directrix_metrics``. Lengths are world metres and bend
+    angles are positive radians; the signed arc ``sweep_angle`` retains travel
+    direction. Unsupported sweeps have ``directrix_metrics=None``.
+
     Raises:
         RuntimeError: the geometry pipeline failed.
         ValueError: ``quality`` is not a recognised label.
@@ -100,6 +168,8 @@ def geometry_data_json(
     ifc_bytes: bytes,
     quality: Optional[Quality] = None,
     ids: Optional[Set[int]] = None,
+    *,
+    include_directrices: bool = False,
 ) -> str:
     """Tessellate IFC bytes; return the ``ifc-lite-geometry-data`` JSON document
     as a string (call ``json.loads`` on it).
@@ -107,6 +177,8 @@ def geometry_data_json(
     Same geometry as :func:`geometry_data_buffers`, but vertices/faces are JSON
     arrays (no numpy needed) and each element also carries ``global_id`` and
     ``name`` when present. ``quality`` and ``ids`` are as documented there.
+    ``include_directrices=True`` adds the same swept-disk descriptions with
+    JSON object keys for occurrence STEP ids.
 
     Raises:
         RuntimeError: the geometry pipeline failed.

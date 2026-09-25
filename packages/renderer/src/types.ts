@@ -199,9 +199,22 @@ export interface VisualEnhancementOptions {
     enabled?: boolean;
     intensity?: number;
   };
+  /**
+   * Screen-space ambient occlusion (the option keeps its historical name).
+   * Darkens corners, junctions and contact areas from the depth buffer; the
+   * sky and background are never darkened. Paused while navigating on GPUs
+   * that miss frames (see {@link RenderOptions.isInteracting}).
+   */
   contactShading?: {
+    /** `'low'`: half-resolution AO, 12 taps. `'high'`: full resolution, 16 taps. Default `'off'`. */
     quality?: ContactShadingQuality;
+    /** Darkening strength, 0-1 (clamped). Default 0.8. */
     intensity?: number;
+    /**
+     * Occlusion radius in WORLD units (metres for IFC models), 0.05-10
+     * (clamped). Geometry farther than this from a point does not occlude it.
+     * Default 1.
+     */
     radius?: number;
   };
   separationLines?: {
@@ -216,8 +229,8 @@ export interface RenderOptions {
   clearColor?: [number, number, number, number];
   /**
    * Global lighting environment (sun direction/colour, hemisphere ambient,
-   * exposure, procedural sky). Omitted/empty reproduces the legacy hardcoded
-   * look exactly. See {@link import('./environment.js').LightingEnvironment}.
+   * exposure, procedural sky). Omitted/empty uses the default rig. See
+   * {@link import('./environment.js').LightingEnvironment}.
    */
   environment?: import('./environment.js').LightingEnvironment;
   /**
@@ -314,9 +327,9 @@ export interface RenderOptions {
   // Streaming state
   isStreaming?: boolean;          // If true, skip expensive operations like picker
   // True during rapid camera movement (zoom, orbit, pan, animations).
-  // Post effects (contact shading / separation lines) KEEP RUNNING during
+  // Post effects (ambient occlusion / separation lines) KEEP RUNNING during
   // interaction as long as the measured frame cadence holds; on GPUs that
-  // miss frames the renderer adaptively degrades to skipping the post pass
+  // miss frames the renderer adaptively degrades to skipping the post passes
   // for the rest of the gesture (see InteractionEffectsGovernor). Full
   // quality is always restored on the next non-interacting frame.
   isInteracting?: boolean;

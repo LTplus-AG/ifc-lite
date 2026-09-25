@@ -19,8 +19,7 @@
  * being split out of `spatial-hierarchy-builder.ts`.
  */
 
-import { EntityExtractor } from './entity-extractor.js';
-import type { IfcDataStore } from './columnar-parser.js';
+import type { CostEntityReader } from './cost-reader.js';
 import { parseIso8601Duration } from './iso8601-duration.js';
 import type { WorkCalendarInfo } from './schedule-calendar-types.js';
 
@@ -336,13 +335,10 @@ function durationTypeFromString(s: string | undefined): TaskDurationType | undef
 }
 
 export function extractTaskTime(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   taskTimeId: number,
 ): ScheduleTaskTimeInfo | undefined {
-  const ref = store.entityIndex.byId.get(taskTimeId);
-  if (!ref) return undefined;
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(taskTimeId);
   if (!entity) return undefined;
   const t = entity.type.toUpperCase();
   if (t !== 'IFCTASKTIME' && t !== 'IFCTASKTIMERECURRING') return undefined;
@@ -369,13 +365,10 @@ export function extractTaskTime(
 }
 
 export function extractLagTimeSeconds(
-  extractor: EntityExtractor,
-  store: IfcDataStore,
+  reader: CostEntityReader,
   lagId: number,
 ): { seconds?: number; duration?: string } {
-  const ref = store.entityIndex.byId.get(lagId);
-  if (!ref) return {};
-  const entity = extractor.extractEntity(ref);
+  const entity = reader.get(lagId);
   if (!entity) return {};
   if (entity.type.toUpperCase() !== 'IFCLAGTIME') return {};
   const a = entity.attributes || [];

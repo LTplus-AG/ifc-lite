@@ -20,6 +20,7 @@
 // ── Filter-rule vocabulary + evaluator ──────────────────────────────────────
 export * from './filter/filter-rules.js';
 export * from './filter/filter-groups.js';
+export { MODEL_FACTS, type ModelFact } from './filter/filter-model-fact.js';
 export * from './filter/filter-rule-guards.js';
 export * from './filter/filter-ops.js';
 export * from './filter/filter-match.js';

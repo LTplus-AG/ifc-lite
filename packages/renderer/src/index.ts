@@ -18,7 +18,7 @@ export { invertAppearancePartition, validateAppearancePartition, type Appearance
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
-import { resizeRendererViewport } from './renderer-viewport.js';
+import { measureDrawingBuffer, resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -70,6 +70,9 @@ export {
     ENVIRONMENT_UNIFORM_SIZE,
 } from './environment.js';
 export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
+export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js';
+export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
+import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
@@ -152,7 +155,7 @@ import type {
     Mesh,
     BatchedMesh,
 } from './types.js';
-import { VisualEnhancementResolver } from './visual-enhancement.js';
+import { VisualEnhancementResolver, livePostEffects } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
 import {
     MESH_FLAGS_BYTE_OFFSET,
@@ -162,6 +165,7 @@ import {
     packRteCameraOrigin,
     packRteFragmentSpace,
 } from './mesh-rte-uniforms.js';
+import { packMeshMaterial } from './mesh-material.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
@@ -171,14 +175,13 @@ import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from 
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
-import { PostProcessor } from './post-processor.js';
+import { PostPassChain } from './post-pass-chain.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
-import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
@@ -233,10 +236,13 @@ export class Renderer {
     private scene: Scene;
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
+    // The overlay theme (#5484), kept so a pre-init `setOverlayTheme` call
+    // (and a later re-init) still lands — `init()` re-applies it to `pipeline`.
+    private overlayTheme: OverlayTheme = DEFAULT_OVERLAY_THEME;
     /**
      * Section-plane gizmo, 2D section drawing/cap, and the standalone 3D line
      * + symbolic annotation overlays (issue #2425). Created here rather than in
-     * `init()` so a pre-init `setOverlayLineColor` still lands — the GPU
+     * `init()` so a pre-init `setOverlayTheme` still lands — the GPU
      * objects inside stay null until `init()` calls `overlays.init()`.
      */
     private readonly overlays = new RendererOverlays({
@@ -252,9 +258,12 @@ export class Renderer {
     });
     private readonly referenceImages = createReferenceImageManager(this);
     getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
-    private postProcessor: PostProcessor | null = null;
+    // Ambient occlusion, separation lines and eye-dome lighting (post-pass-chain.ts),
+    // created on the first rendered frame.
+    private postPasses: PostPassChain | null = null;
+    /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
+    private pixelRatio = 1;
     private readonly interactionEffects = new InteractionEffectsGovernor();
-    private edlPass: EdlPass | null = null;
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
     private skyPass: SkyPass | null = null;
@@ -527,8 +536,8 @@ export class Renderer {
      * are released first. The comment below advertises a `destroy()` + `init()`
      * re-init flow, and the obvious device-loss auto-recovery is to call
      * `init()` on the live instance — which, without this, silently orphaned
-     * two render pipelines, the picker, the post-processor, the point-cloud and
-     * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
+     * two render pipelines, the picker, the post passes, the point-cloud and
+     * deviation pipelines and the overlay layer's glyph atlas, per
      * recovery (#2448). Making the method self-safe is cheaper than trusting
      * every future caller to remember.
      *
@@ -594,8 +603,8 @@ export class Renderer {
 
         // A `destroy()` (or a newer `init()`) landed while we were parked on the
         // device. Everything below allocates a full GPU stack — two pipelines,
-        // the picker, the post-processor, the point-cloud and deviation
-        // pipelines, the EDL pass, the overlay glyph atlas — and this aborted
+        // the picker, the point-cloud and deviation pipelines, the overlay
+        // glyph atlas — and this aborted
         // path runs no second teardown, so all of it would be orphaned outright
         // (#2465). `markReady()`'s generation check is not enough on its own: it
         // withholds the readiness PUBLICATION, not the allocation. Release the
@@ -606,15 +615,15 @@ export class Renderer {
             return;
         }
 
-        // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
-        // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
-        // can't overflow on tall/wide layouts (see render() for the per-frame clamp).
-        const rect = this.canvas.getBoundingClientRect();
+        // Size the buffer to the element's device pixels, the same sizing every
+        // frame applies (#5383); an unlaid-out canvas keeps its attributes. Both
+        // are clamped to the GPU's max 2D texture dimension so the initial
+        // pipeline allocations can't overflow on tall/wide layouts.
         const maxDim = this.device.getMaxTextureDimension();
-        const rawWidth = this.canvas.width || Math.max(1, Math.floor(rect.width));
-        const rawHeight = this.canvas.height || Math.max(1, Math.floor(rect.height));
-        const width = Math.min(rawWidth, maxDim);
-        const height = Math.min(rawHeight, maxDim);
+        const measured = measureDrawingBuffer(this.canvas, maxDim);
+        this.pixelRatio = measured?.pixelRatio ?? 1;
+        const width = Math.max(1, Math.min(measured?.width ?? this.canvas.width, maxDim));
+        const height = Math.max(1, Math.min(measured?.height ?? this.canvas.height, maxDim));
 
         // Set pixel dimensions if not already set, or if we clamped them down
         if (!this.canvas.width || !this.canvas.height || this.canvas.width !== width || this.canvas.height !== height) {
@@ -623,6 +632,9 @@ export class Renderer {
         }
 
         this.pipeline = new RenderPipeline(this.device, width, height);
+        // Re-apply any theme set before this (re)creation, or set by a prior
+        // init() before a device-loss re-init, so it isn't lost (#5484).
+        this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
         this.overlays.init(
             this.device.getDevice(),
@@ -630,18 +642,6 @@ export class Renderer {
             this.pipeline.getSampleCount(),
         );
         this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
-        // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
-        // depth TEXTURE_BINDING), rendering still works without post-processing.
-        try {
-            this.postProcessor = new PostProcessor(this.device, {
-                enableContactShading: true,
-                contactRadius: 1.0,
-                contactIntensity: 0.3,
-            }, this.pipeline.getSampleCount());
-        } catch (e) {
-            console.warn('[Renderer] PostProcessor init failed (post-processing disabled):', e);
-            this.postProcessor = null;
-        }
         this.pointCloudRenderer = new PointCloudRenderer(
             this.device.getDevice(),
             this.device.getFormat(),
@@ -653,7 +653,6 @@ export class Renderer {
         // owns the per-triangle BVH GPU buffers; idle until the first
         // `computeDeviations` call.
         this.deviationComputer.init(this.device.getDevice());
-        this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
         // Update picking manager with initialized picker
@@ -903,11 +902,13 @@ export class Renderer {
         // regions really do have such a source on a HEALTHY device: the outer
         // one runs `scene.restoreAllEvicted()` for capture frames, the encode
         // one builds visibility sub-batches through
-        // `scene.getOrCreatePartialBatch()`, and both allocate via
-        // `createBuffer({ mappedAtCreation: true })`, which throws a plain
-        // `RangeError` under host memory pressure — the failure
-        // `gpu-upload-guard` documents verbatim. Latching there would kill the
-        // viewport for a failure whose blast radius should be one frame, and
+        // `scene.getOrCreatePartialBatch()`, and both merge geometry into
+        // fresh typed arrays, whose allocation throws a plain `RangeError`
+        // ("Array buffer allocation failed") under host memory pressure.
+        // (Before #5429 the GPU upload itself added a second source, the
+        // mapped-at-creation `createBuffer` RangeError; uploads now go through
+        // `createStaticGpuBuffer`, which cannot raise it.) Latching there
+        // would kill the viewport for a failure whose blast radius should be one frame, and
         // would raise a false "graphics device was lost" toast plus false
         // `device_lost` telemetry on top.
         //
@@ -1649,21 +1650,13 @@ export class Renderer {
             return;
         }
 
-        // Validate canvas dimensions
-        // Align width to 64 pixels for WebGPU texture row alignment (256 bytes / 4 bytes per pixel)
-        // and clamp both axes to the GPU's max 2D texture dimension. Some hosts (e.g. tall iframes
-        // on high-DPR displays) can produce canvas dimensions that exceed 8192 and would otherwise
-        // make every depth/colour texture allocation a validation error.
-        const rect = this.canvas.getBoundingClientRect();
-        const maxDim = this.device.getMaxTextureDimension();
-        const rawWidth = Math.max(1, Math.floor(rect.width));
-        const widthAligned = Math.max(64, Math.floor(rawWidth / 64) * 64);
-        const width = Math.min(widthAligned, Math.floor(maxDim / 64) * 64);
-        const rawHeight = Math.max(1, Math.floor(rect.height));
-        const height = Math.min(rawHeight, maxDim);
-
-        // Skip rendering if canvas is too small
-        if (width < 64 || height < 10) { this._renderSkipCount++; return; }
+        // Drawing buffer = the element's device-pixel size (capped ratio, clamped
+        // to the GPU's max texture dimension); see computeDrawingBufferSize (#5383).
+        const measured = measureDrawingBuffer(this.canvas, this.device.getMaxTextureDimension());
+        // Skip rendering while the canvas is collapsed or too small.
+        if (!measured || measured.height < 10) { this._renderSkipCount++; return; }
+        const { width, height } = measured;
+        this.pixelRatio = measured.pixelRatio;
 
         // Update canvas pixel dimensions if needed
         const dimensionsChanged = this.canvas.width !== width || this.canvas.height !== height;
@@ -1739,11 +1732,8 @@ export class Renderer {
         const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
         const edgeEnabledU32 = edgeEnabled ? 1 : 0;
         const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
-        const contactEnabled = effectsLive && visualEnhancement.enabled && visualEnhancement.contactShading.quality !== 'off';
-        const separationEnabled = effectsLive && visualEnhancement.enabled
-            && visualEnhancement.separationLines.enabled
-            && visualEnhancement.separationLines.quality !== 'off';
-        const needsObjectIdPass = contactEnabled || separationEnabled;
+        // Only the edge pass reads the object-id attachment after the pass.
+        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).edges;
 
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;
@@ -2019,9 +2009,7 @@ export class Renderer {
                     meshBuf[34] = mesh.color[2];
                     // Selected meshes always keep their own alpha so highlights stay opaque
                     meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
-                    meshBuf[36] = mesh.material?.metallic ?? 0.0;
-                    meshBuf[37] = mesh.material?.roughness ?? 0.6;
-                    meshBuf[38] = 0; meshBuf[39] = 0;
+                    packMeshMaterial(meshBuf, mesh.color[3], mesh.material);
 
                     // Section plane data (offset 40-43)
                     if (sectionPlaneData) {
@@ -2352,7 +2340,7 @@ export class Renderer {
                         mode: this.camera.getProjectionMode(),
                         fovYRadians: this.camera.getFOV(),
                         orthoHalfHeight: this.camera.getOrthoSize(),
-                        viewportHeightPx: this.canvas.height,
+                        viewportHeightPx: this.canvas.height / this.pixelRatio, // CSS px, like the thresholds
                     };
                 }
 
@@ -2524,11 +2512,9 @@ export class Renderer {
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
                 tpl[24] = 0; tpl[25] = 0; tpl[26] = 1; tpl[27] = 0;
                 tpl[28] = 0; tpl[29] = 0; tpl[30] = 0; tpl[31] = 1;
-                // Color placeholder — overwritten per batch
-                // tpl[32..35] set per batch
-                tpl[36] = 0.0; // metallic
-                tpl[37] = 0.6; // roughness
-                tpl[38] = 0; tpl[39] = 0; // padding
+                // Colour + material row (tpl[32..39]) are patched per draw; the
+                // instanced passes keep this opaque default.
+                packMeshMaterial(tpl);
                 if (sectionPlaneData) {
                     tpl[40] = sectionPlaneData.normal[0];
                     tpl[41] = sectionPlaneData.normal[1];
@@ -2562,11 +2548,13 @@ export class Renderer {
                 const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
                     if (!batch.bindGroup || !batch.uniformBuffer) return;
 
-                    // Patch only the per-batch color (4 floats at offset 32)
+                    // Patch the per-batch colour, and the material its AUTHORED
+                    // alpha implies: an X-Ray fade is not glass (#5386).
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
+                    packMeshMaterial(tpl, batch.color[3]);
 
                     // Per-batch local frame: the batch's vertices are stored
                     // RELATIVE to batch.origin (f32-small), so set the model
@@ -2760,6 +2748,16 @@ export class Renderer {
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
                         tpl[35] = txAlpha;
+                        // Same authored-alpha + material contract as the flat/batched
+                        // paths (mesh-material.ts) — a call with neither argument
+                        // silently gave every textured metal or translucent mesh the
+                        // opaque dielectric default (#5623 review). The pipeline
+                        // itself is still opaque/depth-write only (no blend state,
+                        // see `txAlpha` above), so a translucent authored alpha still
+                        // never actually blends here — only the glass/roughness
+                        // CHOICE in the shader follows the same rule as everywhere
+                        // else, for the same reason `tm.material` does.
+                        packMeshMaterial(tpl, tm.color[3], tm.material);
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);
@@ -2836,7 +2834,7 @@ export class Renderer {
                 // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
                 // (the overlay pipeline now has src-alpha blending so low-alpha ghost
                 // tints composite correctly against the opaque pass) AND skip the
-                // glass-fresnel branch (which is meant for real glass materials and
+                // specular term (glass reflections are meant for real glass and
                 // would whiten low-alpha colour overrides at grazing angles).
                 const overrideBatches = this.scene.getOverrideBatches();
                 if (overrideBatches.length > 0) {
@@ -2953,9 +2951,7 @@ export class Renderer {
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                         tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
-                        tpl[36] = mesh.material?.metallic ?? 0.0;
-                        tpl[37] = mesh.material?.roughness ?? 0.6;
-                        tpl[38] = 0; tpl[39] = 0;
+                        packMeshMaterial(tpl, mesh.color[3], mesh.material);
                         if (sectionPlaneData) {
                             tpl[40] = sectionPlaneData.normal[0];
                             tpl[41] = sectionPlaneData.normal[1];
@@ -3015,9 +3011,7 @@ export class Renderer {
                     tpl.set(mesh.transform.m, 16);
                     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
-                    tpl[36] = mesh.material?.metallic ?? 0.0;
-                    tpl[37] = mesh.material?.roughness ?? 0.6;
-                    tpl[38] = 0; tpl[39] = 0;
+                    packMeshMaterial(tpl, mesh.color[3], mesh.material);
                     if (sectionPlaneData) {
                         tpl[40] = sectionPlaneData.normal[0];
                         tpl[41] = sectionPlaneData.normal[1];
@@ -3091,7 +3085,7 @@ export class Renderer {
                         ? { ...sectionPlaneData, flipped: options.sectionPlane?.flipped === true }
                         : null,
                     clipBox: options.clipBox,
-                    viewport: { width: this.canvas.width, height: this.canvas.height },
+                    viewport: { width: this.canvas.width / this.pixelRatio, height: this.canvas.height / this.pixelRatio },
                 });
             }
 
@@ -3109,8 +3103,8 @@ export class Renderer {
                 viewProj,
                 modelBounds: this.getModelBounds(),
                 camera: this.camera,
-                canvasWidth: this.canvas.width,
-                canvasHeight: this.canvas.height,
+                canvasWidth: this.canvas.width / this.pixelRatio, // CSS px: glyph sizes are CSS px
+                canvasHeight: this.canvas.height / this.pixelRatio, pixelRatio: this.pixelRatio,
                 relativeToEyeFrame,
                 rteViewProj: relativeToEyeFrame.getViewProjection().m,
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
@@ -3118,51 +3112,23 @@ export class Renderer {
 
             pass.end();
 
-            const canRunPostPass = (contactEnabled || separationEnabled)
-                && this.postProcessor !== null;
-            if (canRunPostPass && this.postProcessor) {
-                this.postProcessor.updateOptions({
-                    enableContactShading: contactEnabled,
-                    contactRadius: visualEnhancement.contactShading.radius,
-                    contactIntensity: visualEnhancement.contactShading.intensity,
-                });
-                this.postProcessor.apply(encoder, {
-                    targetView: textureView,
-                    // Depth-only view required because depth24plus-stencil8
-                    // cannot be sampled as texture_depth_* with aspect 'all'.
-                    depthView: this.pipeline.getDepthOnlyTextureView(),
-                    objectIdView: this.pipeline.getObjectIdTextureView(),
-                    contactQuality: contactEnabled && visualEnhancement.contactShading.quality === 'high' ? 'high' : 'low',
-                    radius: Math.min(3.0, Math.max(1.0, visualEnhancement.contactShading.radius)),
-                    intensity: contactEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.contactShading.intensity)) : 0.0,
-                    separationQuality: visualEnhancement.separationLines.quality === 'high' ? 'high' : 'low',
-                    separationRadius: Math.min(2.0, Math.max(1.0, visualEnhancement.separationLines.radius)),
-                    separationIntensity: separationEnabled ? Math.min(1.0, Math.max(0.0, visualEnhancement.separationLines.intensity)) : 0.0,
-                    enableSeparationLines: separationEnabled,
-                });
-            }
-
-            // Eye-Dome Lighting — runs AFTER contact/separation so it darkens
-            // every layer uniformly. Cheap (~9 depth taps), only active when
-            // there are point clouds in the scene and the user has enabled it.
-            if (
-                this.edlPass
-                && this.edlOptions.enabled
-                && this.pointCloudRenderer?.hasAssets()
-            ) {
-                this.edlPass.apply(
-                    encoder,
-                    {
-                        targetView: textureView,
-                        depthView: this.pipeline.getDepthOnlyTextureView(),
-                    },
-                    {
-                        strength: this.edlOptions.strength,
-                        radiusPx: this.edlOptions.radiusPx,
-                        highQuality: this.edlOptions.highQuality,
-                    },
-                );
-            }
+            // Created lazily like the sky/shadow passes; each pass inside is too.
+            this.postPasses ??= new PostPassChain(this.device, this.pipeline.getSampleCount());
+            this.postPasses.encode({
+                encoder,
+                targetView: textureView,
+                width: this.canvas.width,
+                height: this.canvas.height,
+                // Depth-only: depth24plus-stencil8 cannot be sampled as texture_depth_* with aspect 'all'.
+                depthView: this.pipeline.getDepthOnlyTextureView(),
+                objectIdView,
+                projection: this.camera.getProjMatrix(),
+                enhancement: visualEnhancement,
+                effectsLive,
+                pixelRatio: this.pixelRatio,
+                // EDL only when point clouds are loaded and the user enabled it.
+                edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
+            });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
             device.queue.submit([encoder.finish()]);
@@ -3214,7 +3180,9 @@ export class Renderer {
             // typed-array views — plus one 5-argument call in
             // `point-cloud-uniforms.ts` whose offset and size are compile-time
             // constants matching its scratch array — so the spec's
-            // `OperationError` preconditions are unreachable; the one
+            // `OperationError` preconditions are unreachable (the partial-batch
+            // upload's `createStaticGpuBuffer` also pads its whole-view payload
+            // to the 4-byte multiple the spec demands, #5429); the one
             // `copyExternalImageToTexture` copies the glyph atlas's own
             // never-externally-drawn canvas at its full fixed size, so neither
             // `SecurityError` nor a zero-size `OperationError` can arise; and
@@ -3223,8 +3191,8 @@ export class Renderer {
             // draws, `finish`, `submit`, `createBindGroup`) reports failure as
             // an asynchronous `GPUValidationError` through the error scope, not
             // as a throw. The region's real healthy-device failure is
-            // `getOrCreatePartialBatch`'s `createBuffer({ mappedAtCreation:
-            // true })`, and that throws a `RangeError` — which is exactly why
+            // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
+            // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
             this.containFrameThrow(error, 'encode');
             cancelRendererColorFrame(this);
@@ -3449,13 +3417,21 @@ export class Renderer {
     }
 
     /**
-     * Set the colour of the overlay lines (annotation / alignment / grid) and the
-     * section-cut outline (RGBA, 0..1). Defaults to opaque black; theme it to keep
-     * lines legible on a dark canvas. The matching label colour is per-text via
+     * Set the one colour vocabulary every overlay draws in (#5484): the selection
+     * highlight, the section-plane preview (one accent for every axis), every
+     * overlay line channel (section-cut outline, IfcAnnotation, alignment,
+     * IfcGrid, DXF / LandXML) and the clash pair / overlap tints. Call this on
+     * theme change and once after `init()`; the underlying GPU uniforms are
+     * written only here, never per frame. Supersedes `setOverlayLineColor`
+     * (deleted — the app never called it with a themed colour). See
+     * `OverlayTheme` for which fields want linear-light RGBA and which want
+     * sRGB-direct RGBA. The matching label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
-    setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        this.overlays.setOverlayLineColor(color);
+    setOverlayTheme(theme: OverlayTheme): void {
+        this.overlayTheme = theme;
+        this.pipeline?.selectionColorUniform.update(theme.selection);
+        this.overlays.setTheme(theme);
     }
 
     /**
@@ -3469,7 +3445,7 @@ export class Renderer {
      *
      * Every channel is an independent buffer with its own visibility, so
      * setting one leaves the other three untouched. All four share the colour
-     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * set by `Renderer.setOverlayTheme`'s `overlayLine` field; label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      *
      * The channels differ in exactly one way — whether they grow the scene
@@ -3490,11 +3466,13 @@ export class Renderer {
     /**
      * Show (or clear) the clash-overlap box: the wireframe AABB of a focused
      * clash, drawn in `color` so the overlap region reads as a distinct third
-     * colour next to the two glowing clash elements (#1277). Pass `null` to
-     * clear. `min`/`max` are world-space corners (clash works in world frame).
+     * colour next to the two glowing clash elements (#1277). Omit `color` to
+     * draw it in the overlay theme's `clashOverlap` and keep following it
+     * across `setOverlayTheme` calls (#5490). Pass `null` to clear.
+     * `min`/`max` are world-space corners (clash works in world frame).
      */
     setClashOverlapBox(
-        box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
+        box: { min: [number, number, number]; max: [number, number, number]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashOverlapBox(box);
     }
@@ -3503,11 +3481,13 @@ export class Renderer {
      * Draw the focused clash's CONTACT geometry as 3D line segments — the real
      * shared-face polygon outlines / intersection lines, not the AABB box.
      * `vertices` is a flat line-list (x,y,z per endpoint, 2 endpoints per
-     * segment) in world frame. Pass `null` to clear. Shares the clash-box line
-     * buffer, so only one of this / setClashOverlapBox is shown at a time.
+     * segment) in world frame. Omit `color` to follow the overlay theme's
+     * `clashOverlap`, as for `setClashOverlapBox`. Pass `null` to clear. Shares
+     * the clash-box line buffer, so only one of this / setClashOverlapBox is
+     * shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }
@@ -3519,10 +3499,11 @@ export class Renderer {
      * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
      * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
      * which one is current for a given clash (solid when the kernel resolved
-     * one, box/lines as the fallback when it didn't).
+     * one, box/lines as the fallback when it didn't). Omit `color` to follow
+     * the overlay theme's `clashOverlap`, as for `setClashOverlapBox`.
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }
@@ -3684,11 +3665,8 @@ export class Renderer {
         this.picker = null;
         this.pickingManager.setPicker(null);
 
-        // Post-processor uniform buffer
-        this.postProcessor?.destroy();
-        this.postProcessor = null;
-        this.edlPass?.destroy();
-        this.edlPass = null;
+        this.postPasses?.destroy();
+        this.postPasses = null;
         this.skyPass?.destroy();
         this.skyPass = null;
         this.shadowPass?.destroy();

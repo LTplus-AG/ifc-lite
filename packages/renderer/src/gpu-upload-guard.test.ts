@@ -5,15 +5,16 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
-import { runGuardedGpuUpload, isMappedCreateBufferOverflow } from './gpu-upload-guard.js';
+import { runGuardedGpuUpload } from './gpu-upload-guard.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 // Issue #4885: every GPU upload path outside `render()`'s own containment —
 // `addMeshes` / `loadGeometry` (both wrap `Scene.appendToBatches`), `addMesh`,
 // `ensureMeshResources`, `createMeshFromData` — must gate on device loss
 // through `runGuardedGpuUpload`, returning a typed no-op instead of throwing
-// into whatever called them. This file pins that, plus the RangeError probe
-// that tells a lost-device symptom apart from real host memory pressure.
+// into whatever called them. This file pins that, plus the post-throw
+// `isDeviceLost()` re-check that tells a lost-device symptom apart from real
+// host memory pressure.
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
     MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
@@ -24,10 +25,6 @@ import type { MeshData } from '@ifc-lite/geometry';
 };
 (globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
 
-/** Verbatim Chromium wording from the issue's production report. */
-const MAPPED_CREATE_BUFFER_MESSAGE =
-    "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, " +
-    'size (672) is too large for the implementation when mappedAtCreation == true';
 
 function poke(renderer: Renderer, field: string, value: unknown): void {
     (renderer as unknown as Record<string, unknown>)[field] = value;
@@ -69,18 +66,13 @@ function triangle(expressId: number): MeshData {
 function makeUploadableRenderer(): { renderer: Renderer; createBufferCalls: () => number; lose: () => void } {
     let createBufferCalls = 0;
     const queue = { writeBuffer() { /* no-op */ } };
-    // `mappedAtCreation` buffers need a real backing store — see
-    // `scene-batch-upload.ts`'s `getMappedRange().set(...)` calls.
-    const makeBuffer = (desc: { size: number }) => {
-        const ab = new ArrayBuffer(desc.size);
-        return { getMappedRange: () => ab, unmap: () => undefined, destroy: () => undefined };
-    };
+    const makeBuffer = () => ({ destroy: () => undefined });
     const fakeDevice = new Proxy({} as Record<string | symbol, unknown>, {
         get(_t, prop) {
             switch (prop) {
                 case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024 };
                 case 'queue': return queue;
-                case 'createBuffer': return (desc: { size: number }) => { createBufferCalls++; return makeBuffer(desc); };
+                case 'createBuffer': return () => { createBufferCalls++; return makeBuffer(); };
                 case 'createBindGroup': return () => ({});
                 case 'createCommandEncoder': return () => ({ beginRenderPass: () => ({}), finish: () => ({}) });
                 case 'createShaderModule': return () => ({});
@@ -123,23 +115,6 @@ function makeUploadableRenderer(): { renderer: Renderer; createBufferCalls: () =
     };
 }
 
-describe('isMappedCreateBufferOverflow', () => {
-    it('matches the mapped-createBuffer RangeError, at production sizes down to a few hundred bytes', () => {
-        for (const size of [672, 5544, 15176, 193836]) {
-            const message =
-                `Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size (${size}) ` +
-                'is too large for the implementation when mappedAtCreation == true';
-            assert.strictEqual(isMappedCreateBufferOverflow(new RangeError(message)), true);
-        }
-    });
-
-    it('does not match an unrelated RangeError or a differently-typed throw', () => {
-        assert.strictEqual(isMappedCreateBufferOverflow(new RangeError('Array buffer allocation failed')), false);
-        assert.strictEqual(isMappedCreateBufferOverflow(new Error(MAPPED_CREATE_BUFFER_MESSAGE)), false);
-        assert.strictEqual(isMappedCreateBufferOverflow('a string'), false);
-    });
-});
-
 describe('runGuardedGpuUpload', () => {
     it('never calls run() when the device is already known lost', () => {
         let ran = false;
@@ -153,7 +128,7 @@ describe('runGuardedGpuUpload', () => {
         assert.deepStrictEqual(outcome, { ok: true, value: 42 });
     });
 
-    it('classifies a mapped-createBuffer RangeError as device loss when the loss lands during the call', () => {
+    it('reports a RangeError as device-loss fallout when the loss lands during the call', () => {
         // Models the race the pre-check alone cannot close: `isDeviceLost()`
         // answers false when the call starts, but the loss latches (the
         // async `device.lost` promise resolving, or a synchronous Safari
@@ -163,13 +138,13 @@ describe('runGuardedGpuUpload', () => {
             () => lost,
             () => {
                 lost = true;
-                throw new RangeError(MAPPED_CREATE_BUFFER_MESSAGE);
+                throw new RangeError('Array buffer allocation failed');
             },
         );
         assert.strictEqual(outcome.ok, false);
         assert.ok(!outcome.ok && outcome.reason === 'error');
         if (!outcome.ok && outcome.reason === 'error') {
-            assert.strictEqual(isMappedCreateBufferOverflow(outcome.error), true);
+            assert.ok(outcome.error instanceof RangeError);
             assert.strictEqual(outcome.deviceLostAtTime, true);
         }
     });

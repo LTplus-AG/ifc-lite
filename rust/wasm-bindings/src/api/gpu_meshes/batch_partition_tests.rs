@@ -149,6 +149,28 @@ fn only_ordinary_occurrence_geometry_is_a_candidate() {
     assert!(is_instancing_candidate(&occurrence));
 }
 
+/// #5409: an opaque, repeated `IfcOpeningElement` rode the shard, which carries
+/// no class, so the Openings toggle never reached it. Every class-toggled class
+/// must stay flat; a physical class with the same shape must still instance,
+/// or the gate would be refusing everything rather than reading the class.
+#[test]
+fn class_toggled_classes_stay_flat_and_physical_classes_still_instance() {
+    for class in CLASS_TOGGLED_TYPES {
+        let mut mesh = plain_mesh();
+        mesh.ifc_type = (*class).to_string();
+        assert!(
+            !is_instancing_candidate(&mesh),
+            "{class} is gated by a whole-class viewer toggle; on the shard it \
+             would ignore that toggle"
+        );
+    }
+    for class in ["IfcWall", "IfcDoor", "IfcMember", "IfcOpeningElementType"] {
+        let mut mesh = plain_mesh();
+        mesh.ifc_type = class.to_string();
+        assert!(is_instancing_candidate(&mesh), "{class} is not class-toggled");
+    }
+}
+
 /// The candidate gate is about the mesh's own properties. Instance metadata
 /// decides repetition, not eligibility — so a candidate with no metadata is
 /// still a candidate (it just tallies nothing and lands on the flat path).

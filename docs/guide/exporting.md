@@ -213,6 +213,11 @@ const quantsParquet = await exporter.exportTable('quantities');
 await saveFile('quantities.parquet', quantsParquet);
 ```
 
+Pass a `MutablePropertyView` as the third constructor argument to export live
+entity, relationship, property, and quantity rows, including sets on created
+entities. Geometry rows still come from the supplied geometry result; use STEP
+or IFC5 export when geometry payload edits must be included.
+
 ### Parquet Schema
 
 Column names are PascalCase (ara3d BIM Open Schema style); entity types are
@@ -433,6 +438,19 @@ For quick scripts there is also `exportToStep(dataStore, options?)`, which
 returns the STEP text as a string (defaults `schema` to the source model's own
 schema, so a round-trip preserves it; pass `schema` explicitly to convert.
 Prefer `StepExporter` and its `Uint8Array` output for very large files).
+
+#### Which schema identifier is written
+
+A re-export that does not change schema keeps the source file's own
+`FILE_SCHEMA` identifier verbatim (`IFC4X3_ADD2`, `IFC2X3_TC1`, …). When ifc-lite
+chooses the identifier itself (a schema conversion, a merged export, a model
+authored with `IfcCreator`), it writes the family name, except for IFC4X3,
+which it declares as **`IFC4X3_ADD2`** (ISO 16739-1:2024). ifc-lite writes the
+IFC4X3_ADD2 attribute layouts, and IfcOpenShell (and so the buildingSMART
+Validation Service) resolves a bare `IFC4X3` token to a later development schema
+whose layouts differ, so the bare token would fail validation. The `schema`
+option still takes `'IFC4X3'`; only the header token differs. ifc-lite reads
+both identifiers as IFC4X3. The Rust exporter (CLI, wasm) follows the same rule.
 
 ### Visible-Only Export
 

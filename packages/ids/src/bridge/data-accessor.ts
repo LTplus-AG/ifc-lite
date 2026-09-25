@@ -24,7 +24,7 @@ import type {
 } from '../types.js';
 
 import { flattenMaterials } from './materials.js';
-import { resolveClassifications } from './classifications.js';
+import { createExternalReferenceContext, resolveClassifications, type ExternalReferenceContext } from './classifications.js';
 import { resolvePartOfAncestors } from './ancestors.js';
 import {
   resolveEffectivePropertySets,
@@ -83,6 +83,8 @@ export function createDataAccessor(
   entityVisibility?: EntityVisibilityView
 ): IFCDataAccessor {
   const overlay = entityVisibility ? overlayEntityLookup(entityVisibility) : null;
+  // Built on first classification read, once per accessor (#5249).
+  let externalReferences: ExternalReferenceContext | undefined;
 
   // Memoize per-entity attribute extraction. extractAllEntityAttributes
   // re-parses the entity from the raw source buffer on every call, and the
@@ -262,7 +264,8 @@ export function createDataAccessor(
     },
 
     getClassifications(expressId: number): ClassificationInfo[] {
-      return resolveClassifications(store, expressId);
+      externalReferences ??= createExternalReferenceContext(store, entityVisibility);
+      return resolveClassifications(store, expressId, externalReferences);
     },
 
     getMaterials(expressId: number): MaterialInfo[] {

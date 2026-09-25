@@ -535,4 +535,54 @@ describe('PickingManager', () => {
       assert.equal(warnings.length, 1, 'the failure must be logged, not swallowed');
     });
   });
+
+  // #5383: the drawing buffer is now the element's device-pixel size. The pick
+  // pass must stay at CSS resolution: pointer input only resolves CSS pixels,
+  // the single-pixel pick copies the whole depth image back, and the splat
+  // picker's CSS-px point sizes must match the point draw's.
+  describe('pick target on a HiDPI drawing buffer (#5383)', () => {
+    function hidpiHarness() {
+      const calls: Array<{ x: number; y: number; width: number; height: number }> = [];
+      const rectCalls: Array<{ x0: number; y0: number; x1: number; y1: number; width: number; height: number }> = [];
+      const picker = {
+        pick: async (x: number, y: number, width: number, height: number) => {
+          calls.push({ x, y, width, height });
+          return null;
+        },
+        pickRect: async (x0: number, y0: number, x1: number, y1: number, width: number, height: number) => {
+          rectCalls.push({ x0, y0, x1, y1, width, height });
+          return new Set<number>();
+        },
+      };
+      const scene = {
+        getMeshes: () => [{ expressId: 1 }],
+        getBatchedMeshes: () => [],
+        getTexturedMeshes: () => [],
+        getInstancedTemplates: () => undefined,
+      };
+      const camera = { getViewProjMatrix: () => ({ m: new Float32Array(16) }) };
+      // DPR 2: an 800 x 600 CSS box with a 1600 x 1200 drawing buffer.
+      const canvas = { width: 1600, height: 1200, getBoundingClientRect: () => ({ width: 800, height: 600 }) };
+      const manager = new PickingManager(
+        camera as never,
+        scene as never,
+        picker as never,
+        canvas as HTMLCanvasElement,
+        () => ({ ok: true as const, value: undefined }),
+      );
+      return { manager, calls, rectCalls };
+    }
+
+    it('picks at CSS resolution with CSS coordinates, not the device-pixel buffer', async () => {
+      const h = hidpiHarness();
+      await h.manager.pick(600, 150);
+      assert.deepStrictEqual(h.calls, [{ x: 600, y: 150, width: 800, height: 600 }]);
+    });
+
+    it('rect-picks in the same CSS-resolution target', async () => {
+      const h = hidpiHarness();
+      await h.manager.pickRect(100, 50, 700, 550);
+      assert.deepStrictEqual(h.rectCalls, [{ x0: 100, y0: 50, x1: 700, y1: 550, width: 800, height: 600 }]);
+    });
+  });
 });

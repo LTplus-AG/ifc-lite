@@ -74,6 +74,7 @@ import { SearchInline } from './SearchInline';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
@@ -81,6 +82,9 @@ import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
+
+/** Edit mode's latched state: the interaction accent, never a mode-specific hue (#5489). */
+const EDIT_ACTIVE_CLASS = 'bg-overlay-accent text-overlay-halo hover:bg-overlay-accent/90';
 
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
 // This fixes Radix UI Tooltip's asChild prop becoming stale during re-renders
@@ -313,24 +317,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Basket presentation state
   const pinboardEntities = useViewerStore((state) => state.pinboardEntities);
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
-  const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
-  const toggleBasketPresentationVisible = useViewerStore((state) => state.toggleBasketPresentationVisible);
+  const presentationOpen = activeWorkspacePanels.has('presentation'); // same source as the ribbon's Present button (#5508)
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  // Sun & Sky panel state (sky, lighting presets, sun-path study)
+  // Environment panel state (sky, lighting presets, sun-path study, #5506)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
-  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
-  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   // Effective, not raw: the Cesium world context defaults this on (#4771).
   const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
-  // SpaceMouse panel state (3D mouse navigation, #1677)
-  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
-  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  // SpaceMouse connection state (3D mouse navigation, #1677); its settings
+  // moved to Preferences → Navigation (#5509).
   const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
 
   // Selection chip uses the multi-select size when present; falls back
@@ -715,7 +715,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               (e.currentTarget as HTMLButtonElement).blur();
               toggleEditEnabled();
             }}
-            className={cn(editEnabled && 'bg-purple-600 text-white hover:bg-purple-700')}
+            className={cn(editEnabled && EDIT_ACTIVE_CLASS)}
           >
             <PenLine className="h-4 w-4" />
           </Button>
@@ -737,12 +737,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           user has a one-click recovery for any change. */}
       <UndoRedoButtons />
 
-      {/* Space Sketch is authoring chrome (it bakes IfcSpace
-          entities), so like every other authoring affordance it only
-          surfaces in edit mode — keeping the default toolbar lean.
-          It lives next to the Edit pill that reveals it, with the
-          same purple accent, and a drafting icon distinct from the
-          square/grid icons (Panels, Basket, View options). */}
+      {/* Space Sketch is authoring chrome (it bakes IfcSpace entities), so
+          it only surfaces in edit mode, next to the Edit pill with the same
+          accent and a drafting icon distinct from Panels/Basket/View. */}
       {editEnabled && (
         <ToolButton
           tool="spaceSketch"
@@ -750,7 +747,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           label={t('mainToolbar.spaceSketch')}
           activeTool={activeTool}
           onToolChange={setActiveTool}
-          activeAccentClass="bg-purple-600 text-white hover:bg-purple-700"
+          activeAccentClass={EDIT_ACTIVE_CLASS}
         />
       )}
 
@@ -791,17 +788,17 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={basketPresentationVisible ? 'default' : 'ghost'}
+            variant={presentationOpen ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={basketPresentationVisible ? t('mainToolbar.presentationHide') : t('mainToolbar.presentationShow')}
-            aria-pressed={basketPresentationVisible}
+            aria-label={presentationOpen ? t('mainToolbar.presentationHide') : t('mainToolbar.presentationShow')}
+            aria-pressed={presentationOpen}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleBasketPresentationVisible();
+              handleToggleBottomPanel('presentation'); // bottom-panel table (#5508), not the raw flag toggle
             }}
             disabled={models.size === 0 && !geometryResult}
             className={cn(
-              (basketPresentationVisible || pinboardEntities.size > 0) && 'relative',
+              (presentationOpen || pinboardEntities.size > 0) && 'relative',
             )}
           >
             <LayoutTemplate className="h-4 w-4" />
@@ -956,21 +953,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </>
       )}
 
-      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
-          Available for every model, georeferenced or not. */}
+      {/* Environment panel — sky, lighting presets and the sun-path study
+          (#5506: a docked side panel, not a floating one). Available for
+          every model, georeferenced or not. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={envPanelOpen ? 'default' : 'ghost'}
+            variant={activeWorkspacePanels.has('environment') ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={envPanelOpen ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
-            aria-pressed={envPanelOpen}
+            aria-label={activeWorkspacePanels.has('environment') ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
+            aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleEnvPanel();
+              useViewerStore.getState().toggleWorkspacePanel('environment');
             }}
             className={cn(
-              (envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default')
+              (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')
                 && 'bg-amber-500 text-zinc-950 hover:bg-amber-400',
             )}
           >
@@ -980,23 +978,20 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>{t('mainToolbar.sunSkyTooltip')}</TooltipContent>
       </Tooltip>
 
-      {/* SpaceMouse panel — connect a 3Dconnexion 3D mouse over WebHID and
-          tune its sensitivity (#1677). */}
+      {/* SpaceMouse — connect a 3Dconnexion 3D mouse over WebHID and tune its
+          sensitivity (#1677). Settings live in Preferences → Navigation now
+          (#5509); this opens the Info dialog straight to that tab. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={spaceMousePanelOpen ? 'default' : 'ghost'}
+            variant={spaceMouseConnected ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={spaceMousePanelOpen ? t('mainToolbar.spaceMouseClose') : t('mainToolbar.spaceMouseOpen')}
-            aria-pressed={spaceMousePanelOpen}
+            aria-label={t('mainToolbar.spaceMouseOpen')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              toggleSpaceMousePanel();
+              window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }));
             }}
-            className={cn(
-              (spaceMousePanelOpen || spaceMouseConnected)
-                && 'bg-teal-600 text-white hover:bg-teal-500',
-            )}
+            className={cn(spaceMouseConnected && 'bg-primary text-primary-foreground hover:bg-primary/90')}
           >
             <Move3d className="h-4 w-4" />
           </Button>

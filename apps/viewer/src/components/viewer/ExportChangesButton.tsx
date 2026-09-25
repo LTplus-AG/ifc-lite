@@ -11,16 +11,17 @@
  * export).
  */
 
-import { useState, useCallback, useMemo, useLayoutEffect } from 'react';
+import { useState, useCallback, useLayoutEffect } from 'react';
 import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
-import { downloadFile } from '@/lib/export/download';
+import { buildExportFilename, downloadFile } from '@/lib/export/download';
 import {
   collectChangedModels,
   totalChangeCount,
@@ -176,17 +177,6 @@ export function useReviewGroups(
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const { t } = useTranslation();
-  // Subscribe to everything that can change the pending-changes count so the
-  // badge stays live. `mutationVersion` bumps on every property / quantity /
-  // attribute / georef mutation; schedule edits are watched explicitly.
-  const models = useViewerStore((s) => s.models);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const georefMutations = useViewerStore((s) => s.georefMutations);
-  const scheduleData = useViewerStore((s) => s.scheduleData);
-  const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
-  const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
-  const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
-
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   // Two-step export (issue #1915): the toolbar button opens a review dialog
@@ -194,12 +184,8 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   // confirm step that actually runs `handleExport` below.
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const changed = useMemo(
-    () => collectChangedModels(useViewerStore.getState()),
-    // getState() reads the live snapshot; these deps drive recomputation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, mutationVersion, georefMutations, scheduleData, scheduleIsEdited, scheduleSourceModelId, legacyIfcDataStore],
-  );
+  // The same live change set the unexported-edits guards read (#5604).
+  const changed = useChangedModels();
 
   const totalCount = totalChangeCount(changed);
   const modelCount = changed.models.length;
@@ -259,7 +245,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       const date = formatDate();
       if (files.length === 1) {
         const f = files[0];
-        downloadFile(f.content, `${f.base}_${date}.${f.ext}`, f.mime);
+        downloadFile(f.content, buildExportFilename(`${f.base}_${date}`, f.ext), f.mime);
       } else {
         const zipped = await zipArtifacts(files);
         downloadFile(zipped, `ifc-lite-changes_${date}.zip`, 'application/zip');

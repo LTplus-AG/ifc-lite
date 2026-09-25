@@ -2,12 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/** Types for the Lists feature - configurable property tables from IFC data */
 import type { ListModelTagScope } from './model-tag-scope.js';
-
-/**
- * Types for the Lists feature - configurable property tables from IFC data
- */
-
 import type { IfcTypeEnum, PropertySet, QuantitySet } from '@ifc-lite/data';
 
 // ============================================================================
@@ -95,6 +91,8 @@ export interface ListDataProvider {
   getClassifications?(expressId: number): ListClassificationRef[];
   /** Building-storey name the element belongs to, or '' when unplaced. */
   getStoreyName?(expressId: number): string;
+  /** The element's `IfcRelAggregates` parents (whole of which it is a part), for `inherit: 'aggregation'` (#5433). */
+  getAggregateParents?(expressId: number): number[];
   /** Name of the element's IMMEDIATE spatial container — the direct
    *  IfcRelContainedInSpatialStructure parent (a storey, or for infrastructure
    *  the IfcBridgePart / IfcRoadPart / IfcSpatialZone it sits in). Falls back to
@@ -271,6 +269,8 @@ export interface PropertyCondition {
   propertyName: string;
   operator: ConditionOperator;
   value: string | number | boolean;
+  /** property/quantity only: `'aggregation'` takes the nearest aggregate parent's value when the element has none (#5433). Type values are always read. */
+  inherit?: 'type' | 'aggregation';
 }
 
 export type ConditionOperator =

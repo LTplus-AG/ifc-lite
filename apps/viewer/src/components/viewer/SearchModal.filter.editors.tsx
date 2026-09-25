@@ -32,7 +32,8 @@ import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema
 import { RULE_KIND_LABEL } from './filter-rule-labels';
 import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
 import { ElevationEditor } from './SearchModal.filter.editors.elevation';
-import { ClassificationEditor, GroupEditor } from './SearchModal.filter.editors.membership';
+import { ClassificationEditor, GroupEditor, ModelFactEditor } from './SearchModal.filter.editors.membership';
+import { ReadOptionControls } from './SearchModal.filter.editors.readOptions';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
 import type { ModelTag } from '@ifc-lite/rules';
 import {
@@ -168,6 +169,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
       )}
 
       {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
+      {rule.kind === 'modelFact' && <ModelFactEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor
@@ -396,6 +398,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
           onChange={(value) => onChange({ ...rule, value, valueKind: undefined })}
         />
       )}
+      <ReadOptionControls rule={rule} onChange={onChange} />
     </>
   );
 }
@@ -440,6 +443,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         onChange={(e) => onChange({ ...rule, value: Number.parseFloat(e.target.value) || 0 })}
         className="h-7 w-32 text-xs font-mono"
       />
+      <ReadOptionControls rule={rule} onChange={onChange} />
     </>
   );
 }

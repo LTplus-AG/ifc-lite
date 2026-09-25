@@ -131,6 +131,7 @@ const OWNER_HISTORY_SLOT = 1;
  * an interface of its privates; an export is the same access, stated.
  */
 export function entityLineText(ctx: PropertySetContext, entityId: number): string | null {
+  // @raw-entity-enumeration-ok point lookup for the source line being decoded; authored entities have no source bytes and use overlay readers
   const entityRef = ctx.dataStore.entityIndex.byId.get(entityId);
   if (!entityRef || !ctx.isReadableSourceRef(entityRef)) return null;
   return decodeRange(
@@ -203,6 +204,7 @@ export function getTypeOwnedHasPropertySetIds(ctx: PropertySetContext, entityId:
     return authoredEntityRefs(overlaySlotValue(ctx, entityId, HAS_PROPERTY_SETS_SLOT, authored));
   }
   if (!ctx.entityExtractor) return [];
+  // @raw-entity-enumeration-ok point lookup for this type's source HasPropertySets; overlay-created types were handled above
   const entityRef = ctx.dataStore.entityIndex.byId.get(entityId);
   if (!entityRef) return [];
 
@@ -262,6 +264,7 @@ function getOwnerHistoryRefOfEntity(ctx: PropertySetContext, entityId: number): 
     ctx.ownerHistory.byEntity.set(entityId, result);
     return result;
   }
+  // @raw-entity-enumeration-ok point lookup for the host's source OwnerHistory slot; effective fallback checks deletion and retype below
   const entityRef = ctx.dataStore.entityIndex.byId.get(entityId);
   // Readability rather than presence, as everywhere else (#2491). A clamped
   // decode would match nothing here, so this is tidiness rather than a bug —
@@ -326,6 +329,7 @@ export function resolveFallbackOwnerHistoryRef(ctx: PropertySetContext, willBeEm
     // Source-only: the fallback is a best-effort "some owner history the file
     // still has", and the host's OWN history above is the path that resolves
     // an overlay-created one.
+    // @raw-entity-enumeration-ok source OwnerHistory candidates are filtered by isWrittenOwnerHistory; a created host's own history resolves above
     ctx.ownerHistory.fallbackRef = firstWrittenOwnerHistoryRef(ctx.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), (id) => isWrittenOwnerHistory(id, willBeEmitted, effective), 0);
   }
   return ctx.ownerHistory.fallbackRef;

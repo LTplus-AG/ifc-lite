@@ -1,5 +1,11 @@
 # @ifc-lite/plugin-api
 
+## 0.3.1
+
+### Patch Changes
+
+- [#5270](https://github.com/LTplus-AG/ifc-lite/pull/5270) [`8327d5f`](https://github.com/LTplus-AG/ifc-lite/commit/8327d5f6a6775df9692e7618a1d02707639eb54e) Thanks [@louistrue](https://github.com/louistrue)! - A host application that builds the viewer from source can now register its own file-source providers at build time: call `mountViewer(root, { sourceProviders: [() => new MyProvider()] })` from `apps/viewer/src/bootstrap.tsx` in its own entry. Each factory is constructed and registered independently, after the built-ins, through `SourceHost.register()`, so version, duplicate-name and relay checks apply unchanged, and a provider that throws or is refused is listed in the Sources panel as failed to register without affecting any other provider. The plugin-api README documents the seam.
+
 ## 0.3.0
 
 ### Minor Changes

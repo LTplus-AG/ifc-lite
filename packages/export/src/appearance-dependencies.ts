@@ -33,6 +33,7 @@ export function captureAppearanceDependencies(
 ): { validate(current: MutablePropertyView): void } {
   const read = (current: MutablePropertyView) => {
     // Refuse a large source/overlay before the effective index copies its maps.
+    // @raw-entity-enumeration-ok source index size is one half of a pre-allocation budget; overlay creations are counted separately below
     if (store.entityIndex.byId.size + (store.deferredEntityIndex?.size ?? 0) > 200_000
       || current.getNewEntities().length > 100_000) {
       throw new Error('Appearance dependency validation exceeds its entity budget. Choose a smaller IFC model.');

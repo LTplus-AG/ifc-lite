@@ -1,5 +1,17 @@
 # @ifc-lite/spatial
 
+## 1.15.0
+
+### Minor Changes
+
+- [#5256](https://github.com/LTplus-AG/ifc-lite/pull/5256) [`5e79d7e`](https://github.com/LTplus-AG/ifc-lite/commit/5e79d7eb6837e238060dde19fa0b4933b832c1a7) Thanks [@louistrue](https://github.com/louistrue)! - Keep large spatial-index builds responsive with bounded, time-sliced median selection.
+
+### Patch Changes
+
+- [#5241](https://github.com/LTplus-AG/ifc-lite/pull/5241) [`7e5eb9e`](https://github.com/LTplus-AG/ifc-lite/commit/7e5eb9eb9631bceeefd5f03e6c18ac4cc7e35876) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `FrustumUtils.isAABBVisible` reporting a NaN-bounded box as visible. Every plane comparison was `distance < PLANE_EPSILON`, and a comparison against NaN is always false, so a corrupt mesh's bounds never tripped any of the six plane rejects and fell through to `true` — disagreeing with `AABBUtils.intersects` and raycast queries, which both already exclude it. `isAABBVisible` now rejects a non-finite AABB up front.
+- Updated dependencies [[`8d45322`](https://github.com/LTplus-AG/ifc-lite/commit/8d45322f544ba1c3a6352303dfb048cc5d3836a6)]:
+  - @ifc-lite/geometry@7.5.1
+
 ## 1.14.19
 
 ### Patch Changes

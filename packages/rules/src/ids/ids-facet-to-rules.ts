@@ -14,12 +14,16 @@ import type { FilterRule, NumericOp, TextKind } from '../filter/filter-rules.js'
 import { Rule } from '../filter/filter-rules.js';
 import { idsPatternToJsRegex } from './ids-regex.js';
 
-export type FacetRules = { ok: true; rules: FilterRule[]; notes?: string[] } | { ok: false; reason: string };
+export type FacetRules =
+  | { ok: true; rules: FilterRule[]; dropped?: string[] }
+  | { ok: false; reason: string };
 
-/** IDS states measure values in SI units; the engine compares them as stored (#5292 review). */
-export const SI_UNITS_NOTE =
-  'IDS states measure values in SI units; the imported rules compare them with the value as stored in the model, ' +
-  'so a numeric check on a length, area or volume only agrees with IDS for a model authored in SI units';
+/**
+ * IDS states measure values in SI units, so every imported numeric property
+ * and quantity check compares in SI (`valueUnit: 'si'`): the engine converts
+ * each value with its own unit before comparing (#5225 decision).
+ */
+const SI = { valueUnit: 'si' } as const;
 
 type Role = 'applicability' | 'requirement';
 
@@ -142,9 +146,18 @@ function attributeRules(facet: Extract<IDSFacet, { type: 'attribute' }>, role: R
 }
 
 function propertyRules(facet: Extract<IDSFacet, { type: 'property' }>): FacetRules {
-  if (facet.dataType) {
-    return { ok: false, reason: 'a property dataType check has no rule equivalent' };
-  }
+  const result = propertyRulesIgnoringDataType(facet);
+  if (!result.ok || !facet.dataType) return result;
+  // Maintainer decision on #5225: a dataType is dropped, never a reason to
+  // refuse the facet; the rule vocabulary has no data-type check. Each
+  // dropped one is reported, so the loss is visible.
+  const dataType = facet.dataType.type === 'simpleValue' ? facet.dataType.value : describe(facet.dataType);
+  const set = facet.propertySet.type === 'simpleValue' ? facet.propertySet.value : describe(facet.propertySet);
+  const base = facet.baseName.type === 'simpleValue' ? facet.baseName.value : describe(facet.baseName);
+  return { ...result, dropped: [`${set}.${base}: data type ${dataType} not checked`] };
+}
+
+function propertyRulesIgnoringDataType(facet: Extract<IDSFacet, { type: 'property' }>): FacetRules {
   const set = nameOperand(facet.propertySet, 'propertySet');
   if (typeof set === 'string') return { ok: false, reason: set };
   const base = nameOperand(facet.baseName, 'baseName');
@@ -164,30 +177,26 @@ function propertyRules(facet: Extract<IDSFacet, { type: 'property' }>): FacetRul
       const text = facet.value.value.trim();
       const n = Number(text);
       if (text === '' || !Number.isFinite(n)) return { ok: false, reason: `${label}: "${facet.value.value}" is not a number` };
-      return { ok: true, rules: [Rule.quantity(set.name, base.name, 'eq', n, qtyKinds)], notes: [SI_UNITS_NOTE] };
+      return { ok: true, rules: [{ ...Rule.quantity(set.name, base.name, 'eq', n, qtyKinds), ...SI }] };
     }
     const ops = numericOps(facet.value);
     if (typeof ops === 'string') return { ok: false, reason: `${label}: ${ops}` };
-    return {
-      ok: true,
-      rules: ops.map(({ op, value }) => Rule.quantity(set.name, base.name, op, value, qtyKinds)),
-      notes: [SI_UNITS_NOTE],
-    };
+    return { ok: true, rules: ops.map(({ op, value }) => ({ ...Rule.quantity(set.name, base.name, op, value, qtyKinds), ...SI })) };
   }
 
   if (!facet.value) return { ok: true, rules: [Rule.property(set.name, base.name, 'isSet', '', kinds)] };
   if (facet.value.type === 'bounds') {
     const ops = numericOps(facet.value);
     if (typeof ops === 'string') return { ok: false, reason: `${label}: ${ops}` };
-    return {
-      ok: true,
-      rules: ops.map(({ op, value }) => Rule.property(set.name, base.name, op, String(value), kinds)),
-      notes: [SI_UNITS_NOTE],
-    };
+    return { ok: true, rules: ops.map(({ op, value }) => ({ ...Rule.property(set.name, base.name, op, String(value), kinds), ...SI })) };
   }
   const operand = textOperand(facet.value);
   if (typeof operand === 'string') return { ok: false, reason: `${label}: ${operand}` };
-  return { ok: true, rules: [Rule.property(set.name, base.name, operand.op, operand.value, kinds)] };
+  // A numeric simple value compares numerically, so in SI like a bound;
+  // on a label property the value has no unit and SI changes nothing.
+  const numeric = operand.op === 'eq' && operand.value.trim() !== '' && Number.isFinite(Number(operand.value));
+  const rule = Rule.property(set.name, base.name, operand.op, operand.value, kinds);
+  return { ok: true, rules: [numeric ? { ...rule, ...SI } : rule] };
 }
 
 /** Map one facet. `role` matters only for the entity facet and GlobalId. */

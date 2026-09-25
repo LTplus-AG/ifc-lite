@@ -148,7 +148,7 @@ export function collectModifications(
     // below previously walked every entity in `entityIndex.byId` per
     // modified entity (O(E·N)); the index keeps the per-entity step
     // O(K) where K is the number of rels referencing that entity.
-    const { byEntity: relDefinesByEntity, relatedByRel } = buildRelDefinesByPropertiesIndex(ctx.propertySetContext());
+    const { byEntity: relDefinesByEntity, relatedByRel } = buildRelDefinesByPropertiesIndex(ctx.propertySetContext(), pass.effective);
 
     // A source IfcRelDefinesByProperties whose EVERY related object the
     // session deleted has nothing left to relate, and emitting it leaves a

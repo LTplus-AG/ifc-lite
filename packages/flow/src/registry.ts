@@ -61,6 +61,15 @@ export interface NodeRunContext<H> {
   readonly tracking?: LaneTracking;
   readonly signal?: AbortSignal;
   log(level: LogLevel, message: string): void;
+  /**
+   * Reports that this invocation's result depends on the world outside the
+   * graph (it made a network request), so the node's outputs from this run
+   * are not memoised: the next run computes them again. The per-run form of
+   * `NodeDef.volatile`, for a node that only sometimes reaches out (a script
+   * that may or may not call `bim.network.fetch`). Optional so a context
+   * built outside the scheduler (a unit test) need not supply it.
+   */
+  markVolatile?(): void;
 }
 
 /** Plain outputs keyed by port name, each in the shape the port's `access` declares. */
@@ -80,6 +89,12 @@ export interface NodeDef<H = unknown, P = Readonly<Record<string, unknown>>> {
   /** Memo key includes model revisions when set; write nodes are never memoised. */
   readonly reads?: 'model';
   readonly writes?: 'model';
+  /**
+   * Outputs depend on the world outside the graph (a network response), so
+   * the node is never memoised: a rerun must send the request again. A node
+   * that only sometimes reaches out calls `ctx.markVolatile()` instead.
+   */
+  readonly volatile?: boolean;
   /** Headless behaviour when a required backend feature is absent: `noop` runs as no-op. */
   readonly headless?: 'run' | 'noop';
   /** Host prerequisites the availability check tests for. */

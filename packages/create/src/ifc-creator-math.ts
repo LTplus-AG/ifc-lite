@@ -7,7 +7,7 @@
  * These have zero coupling to class state — they take inputs and return outputs.
  */
 
-import { formatStepReal } from '@ifc-lite/data';
+import { firstProjAxis, formatStepReal } from '@ifc-lite/data';
 import type { Point3D, PropertyDef, QuantityDef } from './types.js';
 
 // ============================================================================
@@ -114,6 +114,33 @@ export function vecCross(a: Point3D, b: Point3D): Point3D {
   ];
 }
 
+/**
+ * Complete an `IfcAxis2Placement3D` `Axis`/`RefDirection` pair (#5469).
+ *
+ * The schema rule `IfcAxis2Placement3D.AxisAndRefDirProvision` requires the two
+ * to be both present or both absent, so a placement that only rotates about Z
+ * (a `RefDirection` with no `Axis`) is invalid as written. Returns `undefined`
+ * when neither is given (the `$,$` form stays), otherwise both, with the
+ * missing one set to the value the schema implies for it when absent, so the
+ * placement's geometry is unchanged:
+ *   - no `Axis`: `(0,0,1)`, the `IfcAxis2Placement3D.P` default;
+ *   - no `RefDirection`: `firstProjAxis(Axis)`, the fill ifc-lite's renderer
+ *     reads a `$` there as (world X projected onto the plane normal to
+ *     `Axis`, per `IfcFirstProjAxis`; `(0,-1,0)` for an Axis of exactly -X,
+ *     where the schema's projection vanishes). Writing that value keeps what
+ *     is drawn identical to the `$` it replaces (#5922).
+ */
+export function completePlacementAxes(
+  axis: Point3D | undefined,
+  refDirection: Point3D | undefined,
+): { Axis: Point3D; RefDirection: Point3D } | undefined {
+  if (axis && refDirection) return { Axis: axis, RefDirection: refDirection };
+  if (refDirection) return { Axis: [0, 0, 1], RefDirection: refDirection };
+  if (!axis) return undefined;
+  // `vecNorm` throws on a zero-length Axis: a builder must not write one.
+  return { Axis: axis, RefDirection: firstProjAxis(vecNorm(axis)) };
+}
+
 // ============================================================================
 // STEP attribute helpers (optional strings / enums / booleans / reals)
 // ============================================================================
@@ -159,6 +186,28 @@ export function intList(values: number[] | undefined): string {
 }
 
 /**
+ * Measures whose value is a count, written as an integer literal when the value
+ * is whole. IfcCountMeasure is NUMBER in IFC4 and INTEGER from IFC4X3 on; an
+ * integer literal is valid for both, whereas `12.` is not an INTEGER.
+ */
+const INTEGER_VALUED_MEASURES: ReadonlySet<string> = new Set(['IfcCountMeasure']);
+
+/** Declared types a number has always been written as IFCREAL under, unchanged. */
+const NON_NUMERIC_TYPES: ReadonlySet<string> = new Set(['IfcLabel', 'IfcText', 'IfcIdentifier', 'IfcBoolean', 'IfcLogical']);
+
+/**
+ * The type name is interpolated into STEP as `TYPENAME(value)`, and untyped
+ * callers (the sandbox, JSON input) can pass any string. Anything that is not a
+ * bare IFC identifier would corrupt the line, so it is refused rather than
+ * written.
+ */
+function assertStepTypeName(typeName: string): void {
+  if (!/^Ifc[A-Za-z]+$/.test(typeName)) {
+    throw new Error(`Invalid property value type "${typeName}": expected an IFC type name such as IfcPositiveLengthMeasure`);
+  }
+}
+
+/**
  * Serialize an IfcPropertySingleValue NominalValue as a named SELECT branch.
  *
  * Moved here from `IfcCreator` (it never touched class state) so that file
@@ -166,12 +215,26 @@ export function intList(values: number[] | undefined): string {
  */
 export function serializePropertyValue(prop: PropertyDef): string {
   const val = prop.NominalValue;
+  // An empty `Type` (a JSON payload that defaults an unset field to '') means
+  // "not declared", exactly like an absent one.
+  const declared = prop.Type || undefined;
   if (typeof val === 'string') {
-    const typeName = prop.Type ?? 'IfcLabel';
+    const typeName = declared ?? 'IfcLabel';
+    assertStepTypeName(typeName);
     return `${typeName.toUpperCase()}('${esc(val)}')`;
   }
   if (typeof val === 'number') {
-    const typeName = prop.Type ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    const typeName = declared ?? (Number.isInteger(val) ? 'IfcInteger' : 'IfcReal');
+    // A declared measure type is written AS that type. This used to emit every
+    // number as IFCINTEGER or IFCREAL whatever `Type` said, so a
+    // `ThermalTransmittance` declared an IfcThermalTransmittanceMeasure came out
+    // an IFCREAL and failed any IDS data-type check against Pset_WallCommon.
+    if (typeName !== 'IfcInteger' && !NON_NUMERIC_TYPES.has(typeName)) {
+      assertStepTypeName(typeName);
+      return INTEGER_VALUED_MEASURES.has(typeName) && Number.isInteger(val)
+        ? `${typeName.toUpperCase()}(${val})`
+        : `${typeName.toUpperCase()}(${num(val)})`;
+    }
     return typeName === 'IfcInteger' ? `IFCINTEGER(${Math.round(val)})` : `IFCREAL(${num(val)})`;
   }
   if (typeof val === 'boolean') {

@@ -111,6 +111,18 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
+!!! tip "Pinning the GlobalId of a created entity"
+    `entity_create` takes an optional `global_id`: the GlobalId of the new
+    entity, the MCP counterpart of the `GlobalId` parameter the in-store
+    builders and `bim.store.add*` accept. It must be a valid 22-character IFC
+    GUID (the `isValidIfcGuid` rule from `@ifc-lite/encoding`), the class must
+    derive from `IfcRoot` (the value is written to attribute 0), and it must not
+    already be carried by an entity in the model, parsed or created this
+    session. Each violation is refused with `INVALID_INPUT` and nothing is
+    queued; a GlobalId given both as `global_id` and as a different
+    `attributes[0]` is refused too. Without `global_id` the tool behaves as
+    before.
+
 !!! tip "`model_diff` and re-exported models"
     `model_diff` compares by GlobalId, so two files that describe the same
     building read as *the whole model deleted and re-added* when the second was
@@ -147,6 +159,9 @@ Tools are grouped by capability. Everything below is registered in the default t
     `relationships` tool reads voids, fills, groups and connections from the
     parsed graph, so an `IfcRelVoidsElement` this session created or deleted
     shows up there only after a save and reload.
+
+    `model_audit` scores identity and naming from effective classes, GlobalIds
+    and Names, including queued retypes and edits.
 
     **One GlobalId, one entity, whichever tool asks.** A GlobalId is supposed to
     be unique and in practice is not — a session can create an entity under an id

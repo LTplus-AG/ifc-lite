@@ -10,6 +10,7 @@ import {
   loadLastSectionMode,
   type SectionSlice,
 } from './sectionSlice.js';
+import { facePickInset } from './sectionFacePick.js';
 import { SECTION_PLANE_DEFAULTS } from '../constants.js';
 import type { CustomSectionPlane } from '../types.js';
 
@@ -310,17 +311,22 @@ describe('SectionSlice', () => {
       // (e.g. `0 / 2 === 0` vs `-0 / 2 === -0`) doesn't cause spurious
       // failures (CR feedback PR #650).
       assertVecClose(c!.normal, [1, 0, 0]);
-      assert.strictEqual(c!.distance, 3); // dot([3,4,5], [1,0,0])
+      // dot([3,4,5], [1,0,0]) = 3, inset into the solid so the plane is not
+      // coplanar with the picked face (#5480).
+      assert.strictEqual(c!.distance, 3 - facePickInset([3, 4, 5]));
       assert.deepStrictEqual(c!.pickedAt, [3, 4, 5]);
       assert.strictEqual(state.sectionPlane.enabled, true);
       assert.strictEqual(state.sectionPickMode, false);
     });
 
-    it('setSectionPlaneFromFace updates axis + flipped to the signed-dominant cardinal', () => {
-      // CR P1 from #581: dropping the sign produced inverted exports.
+    it('setSectionPlaneFromFace sets the dominant cardinal axis and resets the flip', () => {
+      // `flipped` is relative to the custom normal (#5644), so a pick always
+      // starts on the default kept side; the cardinal sign lives in
+      // `cardinalSectionFlipped` (CR P1 from #581: exports need it).
+      state.flipSectionPlane();
       state.setSectionPlaneFromFace([-1, 0, 0], [0, 0, 0]);
       assert.strictEqual(state.sectionPlane.axis, 'side');
-      assert.strictEqual(state.sectionPlane.flipped, true);
+      assert.strictEqual(state.sectionPlane.flipped, false);
 
       state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
       assert.strictEqual(state.sectionPlane.axis, 'front');
@@ -366,7 +372,7 @@ describe('SectionSlice', () => {
       state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
       const before = state.sectionPlane.custom!;
       assert.strictEqual(state.sectionPlane.flipped, false);
-      assert.strictEqual(before.distance, 5);
+      assert.strictEqual(before.distance, 5 - facePickInset([0, 0, 5])); // inset, #5480
 
       state.flipSectionPlane();
       const after = state.sectionPlane.custom!;

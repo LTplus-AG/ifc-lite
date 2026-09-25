@@ -202,6 +202,7 @@ END-ISO-10303-21;`);
       const request = workers[0].message!;
       const exported = await new IfcParser().parseColumnar(new Uint8Array(request.source).buffer, { disableWorkerScan: true });
       check(exported.entities.getName(25) === 'Edited before preview', 'worker did not receive effective IFC overlay');
+      // @raw-entity-enumeration-ok harness asserts the reparsed exported IFC source contains its canonical geometry record
       check(exported.entityIndex.byType.get('IFCTRIANGULATEDFACESET')?.includes(11), 'worker source omitted canonical surface geometry');
       check(request.request.productIds.length === 1 && request.request.productIds[0] === 25, 'worker scope lost source IFC identity');
       check(request.request.imageUri === appearanceAssets.get(sourceId)?.exportName, 'worker image URI differs from retained encoded image');

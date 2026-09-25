@@ -7,6 +7,7 @@
  * Supports both IFC4 (STEP) and IFC5 (IFCX/JSON) formats
  */
 
+import { createLogger } from '@ifc-lite/data';
 import { unwrapIfcZip } from './ifczip.js';
 // `unwrapIfcZip` unwraps an ArrayBuffer (no-op for non-zip); `unwrapIfcZipView`
 // is the same for Node Buffer/Uint8Array callers (CLI/MCP loaders). The
@@ -75,6 +76,7 @@ export { scaleMeasureValue, scaledPropertyValue, roundToScale } from './measure-
 export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractClassificationSystemsOnDemand, extractMaterialsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, resolveAllMaterialDefIds, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractTypeQuantitiesOnDemand, mergeInheritedPropertySets, mergeInheritedQuantitySets, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractExactRelatedIds, extractGroupMembersOnDemand, extractGroupAssignmentFactorOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type ClassificationSystemNames, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type TypeQuantityInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
+export type { ExtractedProperty } from './property-value-parser.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
 export { buildDropCensus, type DropCensus, type DropCensusInput, type ClassCensusEntry, type DropCategory } from './drop-census.js';
 export { createSyntheticDataStore, type SyntheticDataStoreOptions, type SyntheticEntity } from './synthetic-data-store.js';
@@ -253,6 +255,8 @@ export interface ParseOptions {
   preScannedEntityIndex?: PreScannedEntityIndex;
 }
 
+const parserLog = createLogger('IfcParser');
+
 /**
  * Main parser class
  */
@@ -334,7 +338,7 @@ export class IfcParser {
     options: ParseOptions = {},
   ): Promise<IfcDataStore> {
     const { entityRefs, entityColumns, processed, elapsedMs, scanPath } = await scanColumnarEntities(buffer, options);
-    console.log(`[IfcParser] Fast scan: ${processed} entities in ${elapsedMs.toFixed(0)}ms (path=${scanPath})`);
+    parserLog.debug(`Fast scan: ${processed} entities in ${elapsedMs.toFixed(0)}ms (path=${scanPath})`);
 
     // Build columnar structures with on-demand property extraction
     const dataStore = await parseColumnarInput(buffer, entityColumns ?? entityRefs, options);

@@ -26,15 +26,22 @@
  * draws exactly that line:
  *  - a call on a dead / invalid-state device throws a `DOMException`
  *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
- *  - a buffer allocation the host cannot back throws a plain `RangeError`
- *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
- *    true"), which `isMappedCreateBufferOverflow` below documents happening
- *    on a HEALTHY device under memory pressure.
+ *  - host memory pressure on a HEALTHY device throws a plain `RangeError` —
+ *    today from the CPU side of an upload (typed-array allocation while
+ *    merging geometry: "Array buffer allocation failed"). Until #5429 the
+ *    upload's own `createBuffer({ mappedAtCreation: true })` was a second
+ *    source ("createBuffer failed, size (…) is too large … when
+ *    mappedAtCreation == true", at sizes as small as 672 B); static geometry
+ *    now uploads through `gpu-static-upload.ts`'s `createStaticGpuBuffer`,
+ *    which never maps at creation and so cannot raise it.
  *
  * Treating the second as a device loss is a false positive that costs the
  * whole session — see `runGuardedGpuUpload`'s doc for how a caught RangeError
  * is instead checked against `isDeviceLost()`, not this classifier, to tell
- * loss fallout from real memory pressure.
+ * loss fallout from real memory pressure. The one healthy-device
+ * `DOMException` an upload could raise — `writeBuffer`'s `OperationError` for
+ * a byte count that is not a multiple of 4 — is ruled out by construction:
+ * `createStaticGpuBuffer` pads every payload.
  *
  * Shared by `index.ts`'s frame-level `containFrameThrow` (the ONE throw class
  * that latches mid-frame) and this module's `runGuardedGpuUpload` (the same
@@ -62,28 +69,6 @@ export type GpuUploadOutcome<T> =
      * host memory pressure.
      */
     | { ok: false; reason: 'error'; error: unknown; deviceLostAtTime: boolean };
-
-/**
- * Chromium's wording for a `createBuffer({ mappedAtCreation: true })` the
- * host could not back:
- *
- *   RangeError: Failed to execute 'createBuffer' on 'GPUDevice': createBuffer
- *   failed, size (672) is too large for the implementation when
- *   mappedAtCreation == true
- *
- * — at sizes (672 B, 5.5 KB, 15 KB) nowhere near any real device limit. This
- * is the same string `packages/renderer/src/index.ts`'s `isDeviceLossThrow`
- * deliberately does NOT latch on inside a frame (see that function's doc: a
- * RangeError there is genuine, frame-scoped memory pressure on a device that
- * IS still alive). This matcher answers a different question for a DIFFERENT
- * caller — one that sits outside the frame's own containment and wants to
- * know whether a RangeError it just caught is fallout from a loss that has
- * already happened, not a fresh probe of a healthy device.
- */
-export function isMappedCreateBufferOverflow(error: unknown): boolean {
-    return error instanceof RangeError
-        && /createbuffer failed.*mappedatcreation/i.test(error.message);
-}
 
 /**
  * Run one GPU upload, gated on device loss.

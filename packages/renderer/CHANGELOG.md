@@ -1,5 +1,86 @@
 # @ifc-lite/renderer
 
+## 5.0.0
+
+### Major Changes
+
+- [#5637](https://github.com/LTplus-AG/ifc-lite/pull/5637) [`34750d2`](https://github.com/LTplus-AG/ifc-lite/commit/34750d20244f4151baf0b6d0b017513745914434) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.setOverlayTheme(theme: OverlayTheme)` replaces every hardcoded overlay colour with one call the app makes on theme change: the selection highlight (was the WGSL constant `vec3<f32>(0.3, 0.6, 1.0)`), the section-plane preview accent (was per-axis Material colours plus a custom violet `#9C6BDE`), every overlay line channel and the section-cut outline, and the clash pair / overlap tints. The GPU uniforms it drives are written only on this call, never per frame.
+  
+  `Renderer.setOverlayLineColor` is removed (superseded by `setOverlayTheme`'s `overlayLine` field) — a breaking change for any consumer calling it directly; migrate to `renderer.setOverlayTheme({ ...DEFAULT_OVERLAY_THEME, overlayLine: yourColor })` (also exported: `OverlayTheme`, `DEFAULT_OVERLAY_THEME`). `RenderPipeline` gains `updateSelectionColor`.
+
+### Minor Changes
+
+- [#5798](https://github.com/LTplus-AG/ifc-lite/pull/5798) [`e7a658d`](https://github.com/LTplus-AG/ifc-lite/commit/e7a658d3f5f7041ec87c43688165d8684817025a) Thanks [@louistrue](https://github.com/louistrue)! - `setClashOverlapBox`, `setClashContactLines` and `setClashIntersectionSolid` accept an optional `color` ([#5490](https://github.com/LTplus-AG/ifc-lite/issues/5490)). Omit it and the overlap marks are drawn in the overlay theme's `clashOverlap`, and are recoloured in place by a later `setOverlayTheme` call, so a theme switch while a clash is focused no longer leaves the previous theme's tint on screen. An explicit `color` behaves exactly as before. `DEFAULT_OVERLAY_THEME`'s clash tints are now the viewer's light-theme clash tokens rather than the retired amber / cyan / magenta; nothing in the renderer read those fields before this change.
+
+- [#5632](https://github.com/LTplus-AG/ifc-lite/pull/5632) [`7b1473c`](https://github.com/LTplus-AG/ifc-lite/commit/7b1473c316fc7c8f490ecd798cac80af9529d950) Thanks [@louistrue](https://github.com/louistrue)! - Replace the separation-line post pass with a real edge pass ([#5385](https://github.com/LTplus-AG/ifc-lite/issues/5385)). The old pass fired only on an entity-id change, read a fixed 1-3 px tap of raw (non-linear, reverse-Z) depth, and thresholded that as a hard boolean; storey joints on a flush facade flickered into dashed lines because the per-pixel slope crossed the threshold, not the geometry, and a wall's own corners or a roof ridge got no line at all since nothing there changes entity id.
+  
+  `RenderOptions.visualEnhancement.separationLines` keeps its name and now drives the edge pass. It shares the ambient-occlusion pass's depth reconstruction (`depth-reconstruct.ts`/`.wgsl.ts`, [#5384](https://github.com/LTplus-AG/ifc-lite/issues/5384)) to rebuild view-space position and normals, then votes an edge at each of 4 (`low`) or 8 (`high`, + diagonals) tap directions on three cues: an entity-id change, a normal crease past 25 degrees, and a depth silhouette measured in linear view-space units (not raw device depth). The average vote across directions is a coverage estimate, so a line antialiases instead of dashing on/off.
+  
+  - `radius` (tap distance in pixels) is now clamped to 1-3, was 1-2, so `high` quality has room to space its 8 taps.
+  - `quality`, `intensity` and `enabled` are unchanged.
+  - The in-shader derivative edge darkening in `main.wgsl.ts` (the `flags.z` block) is left in place: it is a separate, per-fragment effect gated by `edgeContrast`, and this PR keeps that file's changes to zero to stay out of the way of the concurrent specular work there. Follow-up: retire it once the edge pass is confirmed to supersede it visually.
+
+- [#5623](https://github.com/LTplus-AG/ifc-lite/pull/5623) [`40a58c9`](https://github.com/LTplus-AG/ifc-lite/commit/40a58c99afb968c02b8507ff1b5c394e4d107c50) Thanks [@louistrue](https://github.com/louistrue)! - The geometry shader now has a default specular term ([#5386](https://github.com/LTplus-AG/ifc-lite/issues/5386)): a GGX/Smith/Schlick-Fresnel lobe for the sun plus a split-sum environment reflection along the reflection vector, using the `metallicRoughness` uniform the renderer already wrote but the shader never read. Diffuse is weighted down by `(1 - Fresnel) * (1 - metallic)` so a highlight never adds energy on top of full diffuse.
+  
+  This replaces the old fake glass branch (a fixed tint mix, a flat `glassShine` term, edge desaturation, and a flat 0.7 alpha multiply applied to every translucent material regardless of its actual finish). Glass is now derived from the AUTHORED alpha a mesh was drawn with — not any display fade (X-Ray, compare) applied on top — so a faded opaque wall stays a dielectric and only real translucent geometry reflects as glass, with a roughness low enough to show a sky reflection and a sun glint.
+  
+  `mesh-material.ts`'s `packMeshMaterial` is the single writer of the mesh uniform's material row across every draw path (flat, batched, textured, instanced template), replacing repeated `mesh.material?.roughness ?? 0.6` literals. The default opaque roughness moved from 0.6 to 0.9 (`DEFAULT_MATERIAL_ROUGHNESS`): at 0.6 the new specular term's highlight washed a whitish film over sunlit coloured roofs; at 0.9 it is a faint, broad sheen that leaves a plain white/grey wall visually unchanged (pinned in `mesh-material.test.ts` and verified with pixel samples before/after this change: a sampled FZK-Haus wall moved by at most 1/255 per channel).
+  
+  No IFC-authored specular (`IfcSurfaceStyleRendering`'s `SpecularColour`/`SpecularHighlight`/`ReflectanceMethod`) is extracted yet — every draw uses this default unless its `Mesh.material` already supplies metallic/roughness. That extraction is filed separately as [#5582](https://github.com/LTplus-AG/ifc-lite/issues/5582).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/geometry@7.5.2
+
+## 4.2.0
+
+### Minor Changes
+
+- [#5643](https://github.com/LTplus-AG/ifc-lite/pull/5643) [`aad1cbc`](https://github.com/LTplus-AG/ifc-lite/commit/aad1cbc6d88c020063f6483be6335bde6339568e) Thanks [@louistrue](https://github.com/louistrue)! - Widen the procedural sky's below-horizon `ground` falloff and lift the day/golden-hour ground tone, so a downward-pitched camera (the ordinary BIM viewing angle) sees a gradient from the horizon colour instead of an abrupt flat mid-grey fill.
+
+- [#5602](https://github.com/LTplus-AG/ifc-lite/pull/5602) [`df36858`](https://github.com/LTplus-AG/ifc-lite/commit/df368584163d44e0a76d54c4b50836091b07a2d2) Thanks [@louistrue](https://github.com/louistrue)! - Replace "contact shading" with real screen-space ambient occlusion ([#5384](https://github.com/LTplus-AG/ifc-lite/issues/5384)). The old pass took 4 taps (8 on `high`) 1-3 px from each pixel and compared raw reverse-Z depth values, so at BIM viewing distances it measured almost nothing: room corners, wall-floor junctions and a building's contact with its site got no darkening.
+  
+  `RenderOptions.visualEnhancement.contactShading` keeps its name and now drives an SAO-style pass. It reconstructs view-space positions and normals from the depth buffer (perspective and orthographic cameras), takes a per-pixel rotated spiral of taps inside a world-space radius, ignores geometry beyond that radius, smooths the result with a depth-aware blur, and multiplies it onto the frame. The sky and background are never darkened, and the pass is still paused while navigating on GPUs that miss frames.
+  
+  - `radius` is now in world units (metres for IFC models), clamped to 0.05-10, default 1. It used to be pixels, clamped to 1-3.
+  - `quality`: `'low'` runs at half resolution with 12 taps, `'high'` at full resolution with 16 taps. `'off'` allocates nothing.
+  - `intensity` stays 0-1 (clamped); the default is now 0.8.
+  - The two AO targets are allocated on the first AO frame, follow the drawing-buffer size, and are released when AO is switched off.
+
+- [#5461](https://github.com/LTplus-AG/ifc-lite/pull/5461) [`262cb2e`](https://github.com/LTplus-AG/ifc-lite/commit/262cb2ea8049f5e64912624996f665eb5fce2ba3) Thanks [@louistrue](https://github.com/louistrue)! - Wheel zoom toward the cursor now approaches the surface under it instead of passing straight through thin objects ([#5393](https://github.com/LTplus-AG/ifc-lite/issues/5393)). `Camera.zoom` takes an optional trailing `surfacePoint`: when zooming in toward one, each notch covers a fraction of the remaining distance along the cursor ray and stops short of the surface, keeping it under the cursor. The viewer picks that point once per wheel gesture with `raycastScene`; empty space, zooming out, fast zoom and orthographic keep the previous behaviour.
+
+## 4.1.0
+
+### Minor Changes
+
+- [#5400](https://github.com/LTplus-AG/ifc-lite/pull/5400) [`b1004c3`](https://github.com/LTplus-AG/ifc-lite/commit/b1004c3f0fe070d01dd7fc8b8d889c3dd990c14b) Thanks [@louistrue](https://github.com/louistrue)! - Stop distorting authored colours ([#5381](https://github.com/LTplus-AG/ifc-lite/issues/5381)). The geometry shader used to multiply sRGB colours by light as if they were linear, then darken near-greys, stretch contrast, boost saturation 1.4x, run ACES and apply a 2.2 power. That turned grass green neon, brown brick crimson and every grey at or below 40/255 pure black, and kept pure white below 202/255.
+  
+  Colours, overlay tints, texture texels and the selection blue are now decoded to linear before lighting. Highlights roll off with a hue-preserving operator (Khronos PBR Neutral without its toe), and the result is encoded as exact sRGB. The procedural sky uses the same shared functions.
+  
+  `LightingEnvironment` values keep their meaning and defaults. A fixed calibration converts them to linear irradiance, so the default rig lights a sun-facing horizontal surface at unit irradiance by luma, and every preset keeps its relative brightness. Mid-tone colours on that surface render within about 2% of their authored values per channel (the residual comes from the default sky tint). Colours brighter than about 227/255 roll off with their hue preserved, so pure white lands near 241/255. The rendered look of every model changes.
+
+- [#5466](https://github.com/LTplus-AG/ifc-lite/pull/5466) [`3f0af07`](https://github.com/LTplus-AG/ifc-lite/commit/3f0af07966ecd8493b83315b81a0cdf2c9889d66) Thanks [@louistrue](https://github.com/louistrue)! - Give buildings a lit side and a shaded side ([#5382](https://github.com/LTplus-AG/ifc-lite/issues/5382)). The sun and fill lights used `abs(dot(N, L))`, which lit a face turned away from the sun exactly as brightly as one facing it (a slab's underside came out at 0.91 of its top). The default sun also sat behind the default camera, so both walls seen on open were sunlit. With cast shadows on, shadowed areas went near-black because the ambient was about 0.09 of the key light.
+  
+  The sun and fill are now one-sided, and the fill comes from the side opposite the sun. The default rig is re-balanced:
+  - sun from `normalize(-0.45, 1, 0.6)`, which lights +Z and leaves +X (seen on open) in shade;
+  - `sunIntensity` 0.4, `ambientIntensity` 0.775, `skyColor` [0.34, 0.35, 0.36] (near-neutral, so the ambient, now almost half the key, does not tint sunlit whites), `groundColor` [0.24, 0.2, 0.17], `fillIntensity` 0.1, `rimIntensity` 0.05.
+  
+  A sun-facing horizontal surface stays at unit irradiance (each channel within about 1.5%). Faces turned away from the sun keep about 42% of the key, and a cast-shadowed floor about 48%. Callers passing their own `LightingEnvironment` get the one-sided shading with their values.
+
+### Patch Changes
+
+- [#5436](https://github.com/LTplus-AG/ifc-lite/pull/5436) [`b12b113`](https://github.com/LTplus-AG/ifc-lite/commit/b12b11325a47f1989c855f6e12c1f243da10ef9a) Thanks [@louistrue](https://github.com/louistrue)! - IfcAnnotation labels now draw with a thin contrasting halo (black around light text, white around dark text), so they stay legible over model geometry and over the empty backdrop in every theme ([#5388](https://github.com/LTplus-AG/ifc-lite/issues/5388)). Glyph quads and atlas UVs are widened by the halo margin; the glyph itself does not move.
+
+- [#5437](https://github.com/LTplus-AG/ifc-lite/pull/5437) [`8fe905e`](https://github.com/LTplus-AG/ifc-lite/commit/8fe905ed4ee6db585da82e6eb15b1b117d45c86b) Thanks [@louistrue](https://github.com/louistrue)! - Render the 3D canvas at the display's device-pixel resolution, and stop flooring its width to a multiple of 64 ([#5383](https://github.com/LTplus-AG/ifc-lite/issues/5383)). The drawing buffer now follows the element's CSS size times `devicePixelRatio` (capped at 2, and lowered uniformly on both axes when the GPU's max texture dimension would be exceeded), so HiDPI screens get a sharp image instead of an upscaled CSS-resolution one, and the buffer's aspect matches the element's, so the view is no longer stretched sideways. Sizes authored in CSS pixels stay the same on screen at every density: point-cloud splats, symbolic text, section-cap hatching, contact shading, separation lines, eye-dome lighting, snap tolerances and the small-object cull thresholds. Picking keeps rendering at CSS resolution, so a click costs the same as before. In the viewer, wheel and pinch zoom-to-cursor and the orbit pivot pair CSS cursor coordinates with the CSS extent instead of the drawing-buffer width, and the scale bar and the adaptive fit read CSS sizes.
+
+- [#5453](https://github.com/LTplus-AG/ifc-lite/pull/5453) [`08f3eca`](https://github.com/LTplus-AG/ifc-lite/commit/08f3eca2222a244402d07e30f7aaab8633967bb5) Thanks [@louistrue](https://github.com/louistrue)! - Make a streaming finalize rebuild only what was streamed since the last finalize ([#5358](https://github.com/LTplus-AG/ifc-lite/issues/5358)). `Scene.finalizeStreaming()` and `finalizeStreamingAsync()` used to dissolve and rebuild every bucket in the scene, so each streamed federated add re-merged and re-uploaded the whole federation (O(N²) over N models) and briefly held two GPU copies of all of it. They now re-group and rebuild only the buckets that received streamed meshes (plus any key already pending). Every other model keeps its batches, its partial-visibility caches and its residency state. The streamed meshes are still re-grouped by their current colour, so deferred style colours applied during streaming still land in the right batch. On a failed GPU upload the bucket map is restored along with the drawables.
+
+- [#5519](https://github.com/LTplus-AG/ifc-lite/pull/5519) [`049d987`](https://github.com/LTplus-AG/ifc-lite/commit/049d9873ebb4a1f312ea0e8f8bef4c55460d3d23) Thanks [@louistrue](https://github.com/louistrue)! - Upload static geometry (batch vertex/index/LOD buffers, instanced template and instance buffers, and their device-recovery rebuilds) with `queue.writeBuffer` instead of `createBuffer({ mappedAtCreation: true })` ([#5429](https://github.com/LTplus-AG/ifc-lite/issues/5429)). On Chromium (Chrome / Edge / WebView2), a mapped-at-creation buffer keeps a shared-memory copy of its full contents for as long as it lives, so a loaded scene carried a hidden second copy of all its GPU geometry in system commit. Every site now goes through one helper, `createStaticGpuBuffer`, which pads payloads to the 4-byte multiple `writeBuffer` requires, so an odd-length upload can never raise an `OperationError` that the device-loss classifier would mistake for a lost device. The `createBuffer failed … when mappedAtCreation == true` RangeError can no longer come from these uploads.
+- Updated dependencies [[`8d45322`](https://github.com/LTplus-AG/ifc-lite/commit/8d45322f544ba1c3a6352303dfb048cc5d3836a6), [`5e79d7e`](https://github.com/LTplus-AG/ifc-lite/commit/5e79d7eb6837e238060dde19fa0b4933b832c1a7), [`7e5eb9e`](https://github.com/LTplus-AG/ifc-lite/commit/7e5eb9eb9631bceeefd5f03e6c18ac4cc7e35876)]:
+  - @ifc-lite/geometry@7.5.1
+  - @ifc-lite/spatial@1.15.0
+
 ## 4.0.0
 
 ### Major Changes

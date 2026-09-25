@@ -14,6 +14,7 @@ import type { SectionPlane } from '@/store';
 import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
+import { cameraPoseKey, createZoomSurfacePicker, type SurfacePoint } from './zoomSurface.js';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
@@ -79,6 +80,17 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     const camera = renderer.getCamera();
     const touchState = touchStateRef.current;
+    const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
+    // The surface a pinch zooms in toward (#5547, the wheel's #5393): picked
+    // once per pinch, on its first zoom-in step, at the pinch midpoint. The
+    // surface step moves the camera along the ray through that point, so it
+    // stays valid while only surface steps move the camera. `pose` is the
+    // pose the last step left; a zoom-out step in between (plain zoom, which
+    // leaves that ray) forces a re-pick. Deliberately not re-picked as the
+    // midpoint drifts: two fingers jitter by more than the wheel's 4 px slop
+    // on every move, and a raycast per touchmove is what the gate is there to
+    // avoid. Cleared when a new two-finger gesture starts.
+    let pinchSurface: { point: SurfacePoint | null; pose: string } | null = null;
 
     // Anchor the orbit pivot to the 3D point directly under a finger.
     // Touch UX: prefer the finger's actual hit, then fall back to ray-projection
@@ -115,7 +127,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Anchor to the scene centre (stable) rather than the drifting camera
       // target, projected onto the finger ray (issue #1107, item 3). Matches
       // the mouse orbit fallback in useMouseControls.
-      camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, canvas.width, canvas.height));
+      camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, tx, ty, rect.width, rect.height));
     };
 
     const handleTouchStart = async (e: TouchEvent) => {
@@ -160,6 +172,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         touchState.twoFingerGesture = 'none';
         touchState.gestureDistanceAccum = 0;
         touchState.gesturePanAccum = 0;
+        pinchSurface = null;
       }
     };
 
@@ -195,7 +208,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const panDx = centerX - touchState.lastCenter.x;
         const panDy = centerY - touchState.lastCenter.y;
 
-        const zoomDelta = distance - touchState.lastDistance;
+        // Positive when the fingers close. `Camera.zoom` reads a positive
+        // delta as zoom OUT (as the wheel's scroll-down), so spreading the
+        // fingers zooms in, the mobile convention (#5777).
+        const zoomDelta = touchState.lastDistance - distance;
 
         // Determine dominant gesture if not yet locked
         if (touchState.twoFingerGesture === 'none') {
@@ -215,7 +231,16 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           camera.pan(panDx, panDy, false);
         } else if (touchState.twoFingerGesture === 'pinch') {
           const rect = canvas.getBoundingClientRect();
-          camera.zoom(zoomDelta * 3, false, centerX - rect.left, centerY - rect.top, canvas.width, canvas.height);
+          const x = centerX - rect.left, y = centerY - rect.top, delta = zoomDelta * 3;
+          // Only a zoom-in step (negative delta, as `Camera.zoom` reads it)
+          // can pass through a surface, so only it picks.
+          if (delta < 0) {
+            if (pinchSurface?.pose !== cameraPoseKey(camera)) pinchSurface = { point: pickSurface(x, y), pose: '' };
+            camera.zoom(delta, false, x, y, rect.width, rect.height, false, pinchSurface.point ?? undefined);
+            pinchSurface.pose = cameraPoseKey(camera);
+          } else {
+            camera.zoom(delta, false, x, y, rect.width, rect.height);
+          }
         }
         // While gesture is 'none' (detecting), don't apply either — avoids jitter
 

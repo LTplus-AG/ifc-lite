@@ -1,5 +1,22 @@
 # @ifc-lite/geometry
 
+## 7.5.2
+
+### Patch Changes
+
+- Updated dependencies [[`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c), [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90), [`975c430`](https://github.com/LTplus-AG/ifc-lite/commit/975c43086065cc7eaaf841d18f6f5ecbe626f0bd), [`b218ab4`](https://github.com/LTplus-AG/ifc-lite/commit/b218ab440fc09011c6bb1d39524525120e119cb1), [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`6bf4181`](https://github.com/LTplus-AG/ifc-lite/commit/6bf418103e872f13666037ae4868e03468e3840c), [`d2cfb9e`](https://github.com/LTplus-AG/ifc-lite/commit/d2cfb9e66affc2674d6de5da44ecdc5d8a76b59e), [`477c1d5`](https://github.com/LTplus-AG/ifc-lite/commit/477c1d5ef5bb5057ff12f9d074270ec2359b39e1), [`db7f991`](https://github.com/LTplus-AG/ifc-lite/commit/db7f991eb63998c65389a28e7331ac984a5448ad)]:
+  - @ifc-lite/wasm@10.1.1
+  - @ifc-lite/data@6.0.0
+
+## 7.5.1
+
+### Patch Changes
+
+- [#5257](https://github.com/LTplus-AG/ifc-lite/pull/5257) [`8d45322`](https://github.com/LTplus-AG/ifc-lite/commit/8d45322f544ba1c3a6352303dfb048cc5d3836a6) Thanks [@louistrue](https://github.com/louistrue)! - Fix model bounds staying poisoned for the rest of a load after one corrupted vertex ([#5210](https://github.com/LTplus-AG/ifc-lite/issues/5210)). The sampling bounds path (the default for WASM-streamed models) skipped the per-vertex validity filter, so a single garbage vertex widened the accumulated bounds permanently. Each sampled batch result is now checked once; a batch with a bound beyond the 10,000 km sanity limit is recomputed through the filtered path, which drops only the garbage vertex. The recovery is counted in the new optional `CoordinateInfo.boundsRecoveryFallbackCount`, reported by `getCurrentCoordinateInfo()` and `getFinalCoordinateInfo()`.
+- Updated dependencies [[`2523acc`](https://github.com/LTplus-AG/ifc-lite/commit/2523acc5881252316439de2f69f7fab4266d559f), [`5909977`](https://github.com/LTplus-AG/ifc-lite/commit/5909977e0631cc242c421b5ded6c887acadd92ba), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`32ac1f9`](https://github.com/LTplus-AG/ifc-lite/commit/32ac1f9846a5703c63ea859e5aeaf224f164db0c), [`c8fcbfb`](https://github.com/LTplus-AG/ifc-lite/commit/c8fcbfbfcc8e45526ef93c84ee8a254df586c10b), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`3166183`](https://github.com/LTplus-AG/ifc-lite/commit/31661831c8137f31aa6c3b0da286832ed6e16a7b), [`87d62bc`](https://github.com/LTplus-AG/ifc-lite/commit/87d62bca61704029b92882f2dd280dd497a77bd7), [`be636b4`](https://github.com/LTplus-AG/ifc-lite/commit/be636b414c11e7c5b77c2b98d0e916822ac39d09), [`e6f46cb`](https://github.com/LTplus-AG/ifc-lite/commit/e6f46cbaf7d2ea515296f40497556b2b31bc5bd2), [`76d1119`](https://github.com/LTplus-AG/ifc-lite/commit/76d1119fb1573ef81f50d03c04026be3c83674ce), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`897eb6c`](https://github.com/LTplus-AG/ifc-lite/commit/897eb6c15342ad20a032b40fcb803559bf1a10f7), [`177f6d1`](https://github.com/LTplus-AG/ifc-lite/commit/177f6d18decd296ab6c25e7ec1d8200e461ceda0)]:
+  - @ifc-lite/wasm@10.0.0
+  - @ifc-lite/data@5.1.0
+
 ## 7.5.0
 
 ### Minor Changes

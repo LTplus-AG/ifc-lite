@@ -1,0 +1,24 @@
+diff --git a/rust/export/examples/bounded_spike.rs b/rust/export/examples/bounded_spike.rs
+new file mode 100644
+index 000000000..588cca413
+--- /dev/null
++++ b/rust/export/examples/bounded_spike.rs
+@@ -0,0 +1,18 @@
++//! #5357 full bounded GLB artifact probe. Timing includes source read and scratch cleanup.
++use std::time::Instant;
++fn main() {
++    let args: Vec<_> = std::env::args().collect();
++    let start = Instant::now();
++    let content = std::fs::read(&args[1]).unwrap();
++    let read_ms = start.elapsed().as_secs_f64() * 1000.;
++    let mut opts = ifc_lite_export::GltfOptions::default();
++    opts.quantize = args.get(3).is_some_and(|s| s == "quantize");
++    let (glb, stats) = ifc_lite_export::try_export_glb_streaming_bounded(&content, &opts).unwrap();
++    let artifact_ms = start.elapsed().as_secs_f64() * 1000.;
++    std::fs::write(&args[2], &glb).unwrap();
++    let output_ms = start.elapsed().as_secs_f64() * 1000.;
++    let hash = glb.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3));
++    println!("{}", serde_json::json!({"read_ms":read_ms,"artifact_ms":artifact_ms,"output_ms":output_ms,
++        "bytes":glb.len(),"fnv":format!("{hash:016x}"),"meshes":stats.meshes,"triangles":stats.triangles,
++        "vertices":stats.vertices,"materials":stats.materials,"unverified_instance_groups":stats.unverified_instance_groups}));
++}

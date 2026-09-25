@@ -28,6 +28,7 @@ import {
   type ClassificationRule,
   type FilterRule,
   type GroupRule,
+  type ModelFactRule,
   type IfcTypeRule,
   type MaterialRule,
   type NumericOp,
@@ -42,6 +43,7 @@ import {
 import type { FilterGroup } from '../filter/filter-groups.js';
 import type { FilteredElement } from '../filter/filter-evaluate.js';
 import { readSubject, type ReadSubjectContext, type SubjectValue } from '../filter/read-subject.js';
+import { toSiValues } from '../filter/subject-match.js';
 import {
   matchStringAnyNone,
   numericOpMatches,
@@ -93,6 +95,7 @@ function subjectLabel(rule: FilterRule): string {
     case 'material': return 'Material';
     case 'classification': return rule.system ? `Classification[${rule.system}]` : 'Classification';
     case 'group': return rule.groupClass ? `Group[${rule.groupClass}]` : 'Group';
+    case 'modelFact': return `model.${rule.fact}`;
     case 'ifcType': return 'IfcType';
     case 'predefinedType': return 'PredefinedType';
     default: return rule.kind;
@@ -124,6 +127,7 @@ function checkKindOf(kind: FilterRule['kind']): CheckKind {
     case 'predefinedType':
       return 'entity';
     case 'storey': return 'spatial';
+    case 'modelFact': return 'model';
     default: return 'attribute';
   }
 }
@@ -134,6 +138,7 @@ function renderExpected(rule: FilterRule): string {
       return `${OP_LABEL[rule.op]} ${rule.value}`;
     case 'property':
     case 'attribute':
+    case 'modelFact':
     case 'name':
     case 'type':
     case 'parent':
@@ -156,13 +161,13 @@ function renderExpected(rule: FilterRule): string {
  *  and reported as `SpecificationResult.error`). */
 type ElementRule =
   | PropertyRule | QuantityRule | AttributeRule | NameRule | TypeNameRule
-  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule | GroupRule;
+  | ParentRule | MaterialRule | ClassificationRule | IfcTypeRule | PredefinedTypeRule | GroupRule | ModelFactRule;
 
 function isElementRule(rule: FilterRule): rule is ElementRule {
   switch (rule.kind) {
     case 'property': case 'quantity': case 'attribute': case 'name': case 'type':
     case 'parent': case 'material': case 'classification': case 'ifcType': case 'predefinedType':
-    case 'group':
+    case 'group': case 'modelFact':
       return true;
     default:
       return false;
@@ -170,7 +175,10 @@ function isElementRule(rule: FilterRule): rule is ElementRule {
 }
 
 function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: ValidationOpts): RuleOutcome {
-  const subject = readSubject(rule, ctx);
+  // `valueUnit: 'si'` (#5225): compare SI values, the same reading search uses.
+  const subject = (rule.kind === 'property' || rule.kind === 'quantity') && rule.valueUnit === 'si'
+    ? toSiValues(readSubject(rule, ctx))
+    : readSubject(rule, ctx);
   const facetType = checkKindOf(rule.kind);
   const label = subjectLabel(rule);
   const actual = actualOf(subject);
@@ -196,6 +204,7 @@ function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: Valid
     }
     case 'property':
     case 'attribute':
+    case 'modelFact':
       return checkValueOp(rule, subject, opts, facetType, actual, expected, checkedDescription);
     case 'ifcType':
     case 'predefinedType': {
@@ -216,7 +225,7 @@ function checkFilterRule(rule: ElementRule, ctx: ReadSubjectContext, opts: Valid
 }
 
 function checkValueOp(
-  rule: PropertyRule | AttributeRule,
+  rule: PropertyRule | AttributeRule | ModelFactRule,
   subject: SubjectValue,
   opts: ValidationOpts,
   facetType: CheckKind,
@@ -240,12 +249,16 @@ function checkValueOp(
     return { passed, reason: passed ? undefined : 'mismatch', actual, expected, facetType, checkedDescription };
   }
   if (op === 'eq' || op === 'ne') {
-    const rv = Number(rule.value);
-    const nums = strVals.map((v) => Number(v));
-    const allFinite = Number.isFinite(rv) && nums.length > 0 && nums.every(Number.isFinite);
-    const matchAny = allFinite
-      ? nums.some((cv) => numericOpMatches('eq', cv, rv, opts))
-      : strVals.some((v) => stringOpMatches('eq', v, rule.value, undefined, opts));
+    // Numeric vs text is decided per member (#5475): a table mixes text and
+    // number cells, and one text cell must not turn every number cell into
+    // a string compare. A blank member is never the number 0.
+    const rv = rule.value.trim() === '' ? Number.NaN : Number(rule.value);
+    const matchAny = strVals.some((v) => {
+      const cv = v.trim() === '' ? Number.NaN : Number(v);
+      return Number.isFinite(rv) && Number.isFinite(cv)
+        ? numericOpMatches('eq', cv, rv, opts)
+        : stringOpMatches('eq', v, rule.value, undefined, opts);
+    });
     const passed = op === 'eq' ? matchAny : !matchAny;
     return { passed, reason: passed ? undefined : 'mismatch', actual, expected, facetType, checkedDescription };
   }

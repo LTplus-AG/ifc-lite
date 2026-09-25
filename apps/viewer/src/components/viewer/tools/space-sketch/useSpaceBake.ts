@@ -184,7 +184,7 @@ export function useSpaceBake({
     if (!ifcDataStore) {
       return { emitted: 0, floors: 0, error: 'Model data is still loading — confirm again in a moment.' };
     }
-    const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
+    const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore, useViewerStore.getState().getMutationView(sketchModelId) ?? undefined);
     const { dx, dy } = roomFrameToModelWorld(coordinateInfo);
     let emitted = 0, floors = 0;
     let firstError: string | null = null;

@@ -159,6 +159,9 @@ describe('addSpatialZonesToStore', () => {
     const dir = refDir?.attributes[0] as number[];
     expect(Math.abs(dir[0] - 0)).toBeLessThan(1e-9);
     expect(Math.abs(dir[1] - 1)).toBeLessThan(1e-9);
+    // AxisAndRefDirProvision: a RefDirection needs its Axis (#5469).
+    const up = entities.find((e) => `#${e.expressId}` === axis?.attributes[1]);
+    expect(up?.attributes[0]).toEqual([0, 0, 1]);
 
     // Still a rectangle: a receiving tool reads the shape without unpicking a
     // rotated polygon.
@@ -174,6 +177,7 @@ describe('addSpatialZonesToStore', () => {
     const zone = entities.find((e) => e.expressId === result.zoneIds[0]);
     const placement = entities.find((e) => `#${e.expressId}` === zone?.attributes[5]);
     const axis = entities.find((e) => `#${e.expressId}` === placement?.attributes[1]);
+    expect(axis?.attributes[1]).toBeNull();
     expect(axis?.attributes[2]).toBeNull();
   });
 

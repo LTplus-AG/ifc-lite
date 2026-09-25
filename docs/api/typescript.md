@@ -47,10 +47,12 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
+| [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
 | [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
+| [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
@@ -263,6 +265,11 @@ class RelationshipGraphBuilder { /* build(): RelationshipGraph */ }
 ```
 
 Each table type also has `fromColumns` / `toColumns` helpers for structured-clone transfer across workers (`entityTableFromColumns`, `propertyTableToColumns`, ...). Shared enums and types live here too: `IfcTypeEnum`, `PropertyValueType`, `QuantityType`, `RelationshipType`, `SpatialHierarchy`, `IfcStoreBase`, the generated entity-name lists (`ENTITIES_IFC2X3` / `IFC4` / `IFC4X3`), plus utilities like `safeUtf8Decode` and `createLogger`.
+
+`countEffectiveEntityTypes(store, overlay, sourceIds?)` returns uppercase IFC
+class counts after queued creates, deletes, and retypes. Pass the same store and
+overlay used by `iterateEffectiveEntities`; supply `sourceIds` for a columnar
+source without STEP type buckets, such as IFCX.
 
 `IFC_DATA_TYPES` sits alongside those entity lists: the raw, read-only table of EXPRESS **defined types** (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`, ...) across all three schemas. The upstream data the `ENTITIES_*` lists come from carries defined types as entity rows, so any synchronous consumer deciding "is this name a real class?" has to subtract this table — that is what `@ifc-lite/parser`'s `isKnownType` does. Prefer the async `findDataType(version, name)` when you only need a single lookup and are not inside a synchronous guard.
 
@@ -561,7 +568,7 @@ Creates a `.bos` archive (ZIP of Parquet files) from a parsed store, optionally 
 
 ```typescript
 class ParquetExporter {
-  constructor(store: IfcDataStore, geometryResult?: GeometryResult);
+  constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView);
 
   exportBOS(options?: ParquetExportOptions): Promise<Uint8Array>;
   exportTable(tableName: string): Promise<Uint8Array>;
@@ -913,7 +920,7 @@ function extractViewpointState(viewpoint: BCFViewpoint): {
 
 ### Utilities
 
-GUID conversion (`uuidToIfcGuid`, `ifcGuidToUuid`, `generateIfcGuid`, `isValidIfcGuid`), ARGB colour helpers (`parseARGBColor`, `toARGBColor`), 3D marker overlay (`computeMarkerPositions`, `BCFOverlayRenderer`), and `createBCFFromIDSReport` to turn an IDS validation report into BCF topics.
+GUID conversion (`uuidToIfcGuid`, `ifcGuidToUuid`, `generateIfcGuid`, `isValidIfcGuid`), ARGB colour helpers (`parseARGBColor`, `toARGBColor`), 3D marker positioning (`computeMarkerPositions`), and `createBCFFromIDSReport` to turn an IDS validation report into BCF topics.
 
 ---
 

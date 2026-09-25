@@ -160,6 +160,8 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   // One reverse-relationship lookup (IfcRelAssignsToGroup) + a columnar
   // Name/class read per group, like `type`; no source-buffer parse.
   group:          1,
+  // Read once per model (units, georeferencing and header are memoised).
+  modelFact:      1,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

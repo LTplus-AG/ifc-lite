@@ -1,5 +1,92 @@
 # @ifc-lite/parser
 
+## 9.0.0
+
+### Major Changes
+
+- [#5675](https://github.com/LTplus-AG/ifc-lite/pull/5675) [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d) Thanks [@louistrue](https://github.com/louistrue)! - STEP re-export no longer turns a source `FILE_NAME` author or organization of `$` (or `($)`) into `()`, which is not a valid `LIST [1:?]` and failed IfcOpenShell validation. The exporter now writes its `('')` default for those ([#5470](https://github.com/LTplus-AG/ifc-lite/issues/5470)).
+  
+  BREAKING: `IfcSourceHeader.author` and `.organization` (re-exported by `@ifc-lite/parser`, and returned by `parseSourceHeader`) are now optional. They are absent when the source wrote `$`, a list of only unset entries, or no `FILE_NAME` record. They are `[]` only for a literal `()`, which still round-trips as `()`. Code that reads them must handle `undefined`, e.g. `header.author ?? []`.
+
+### Minor Changes
+
+- [#5545](https://github.com/LTplus-AG/ifc-lite/pull/5545) [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9) Thanks [@louistrue](https://github.com/louistrue)! - **Behaviour change:** element rules now read list, enumerated and table property values member by member, in search, applicability and validation, and so in everything built on the same filter evaluator (appearance query scopes, clash set filters, chart filters). The `unit` requirement's reported value lists each member with its unit. In validation, `eq` and `ne` choose number or text comparison per member, so one text cell in a table no longer forces every number cell to a text comparison. A positive operator passes when ANY member matches. A negated operator (`ne`, `notContains`, `notMatches`) passes only when NO member has the value.
+  
+  Before, these rules compared the joined display string, so results change for existing list-valued properties. Against the list `Colors = (Red, Blue)`:
+  - `Colors = Blue` used to fail and now passes.
+  - `Colors = "Red, Blue"` used to pass and now fails.
+  - `Colors != Red` used to pass and now fails.
+  
+  Each bound of a range is checked against the members on its own, so on a table `>= 15 AND <= 5` passes when some cell is ≥ 15 and another is ≤ 5. In search, negated operators also stop passing on a single non-matching property set when a regex set name matches several sets. That is the NONE rule validation already applied.
+  
+  The set checks (`unique`, `aggregate`, `compare`) still read each property as one whole value (a list's joined text, a table's `Table (N rows)` summary), so their results do not change.
+  
+  Bounded values and complex properties keep their display value. Lens colouring, the CLI's `--where` and bulk-edit queries are not rules and keep their own matching. Models whose properties come from a server-parsed property table carry no structure marker, so they keep the joined value.
+  
+  `@ifc-lite/parser` marks each extracted property with a `structure` (`enumerated`, `bounded`, `list`, `table`, `reference`, `complex`) when it is not a single value, and exports the `ExtractedProperty` type. `@ifc-lite/data`'s `Property` declares the same field, and `MutablePropertyView` keeps it on base properties. The filter value suggestions offer list members. `propertyCandidates` and `readSubjectWhole` are exported.
+
+### Patch Changes
+
+- Updated dependencies [[`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c), [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90), [`975c430`](https://github.com/LTplus-AG/ifc-lite/commit/975c43086065cc7eaaf841d18f6f5ecbe626f0bd), [`b218ab4`](https://github.com/LTplus-AG/ifc-lite/commit/b218ab440fc09011c6bb1d39524525120e119cb1), [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`6bf4181`](https://github.com/LTplus-AG/ifc-lite/commit/6bf418103e872f13666037ae4868e03468e3840c), [`d2cfb9e`](https://github.com/LTplus-AG/ifc-lite/commit/d2cfb9e66affc2674d6de5da44ecdc5d8a76b59e), [`477c1d5`](https://github.com/LTplus-AG/ifc-lite/commit/477c1d5ef5bb5057ff12f9d074270ec2359b39e1), [`db7f991`](https://github.com/LTplus-AG/ifc-lite/commit/db7f991eb63998c65389a28e7331ac984a5448ad)]:
+  - @ifc-lite/wasm@10.1.1
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/ifcx@4.2.1
+
+## 8.2.0
+
+### Minor Changes
+
+- [#5568](https://github.com/LTplus-AG/ifc-lite/pull/5568) [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3) Thanks [@louistrue](https://github.com/louistrue)! - Parsing no longer prints to the host console by default. Every `parseColumnar` call emitted ~16 unconditional `console.log` lines (`[parseLite] categorize …`, `[IfcParser] Fast scan …`), so the three-line snippet in the README produced fourteen lines of internal phase timings, and any CLI command writing JSON to stdout got them interleaved into its payload. These are telemetry, and the package already had two channels for them: the structured `onDiagnostic` callback, which is unchanged, and `@ifc-lite/data`'s `createLogger`, whose `debug` level is gated on `IFC_DEBUG` (`IFC_DEBUG=true` in Node, `localStorage.setItem('IFC_DEBUG', 'true')` in a browser). The timings are now routed through the latter, so `IFC_DEBUG=true` still prints exactly what it printed before.
+
+### Patch Changes
+
+- Updated dependencies [[`223f4d7`](https://github.com/LTplus-AG/ifc-lite/commit/223f4d71f26d074ba949f77031dc24f559da34ca), [`0576221`](https://github.com/LTplus-AG/ifc-lite/commit/0576221cbd57276bce8da8d709045e2ae398a0df), [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`69dceea`](https://github.com/LTplus-AG/ifc-lite/commit/69dceeac3743944ad476e4338d38712f5cd1f12d)]:
+  - @ifc-lite/wasm@10.0.1
+  - @ifc-lite/data@5.2.0
+
+## 8.1.0
+
+### Minor Changes
+
+- [#5305](https://github.com/LTplus-AG/ifc-lite/pull/5305) [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking (`@ifc-lite/ids`):** `PropertyValueResult.dataType` and `PropertySetInfo` properties' `dataType` are now `string | undefined`, where `undefined` means the type is unknown. Code that assumed a `string` must handle `undefined`.
+  
+  An IDS property facet that requires a `dataType` now **fails** when the property's dataType is unknown, instead of skipping the check ([#5224](https://github.com/LTplus-AG/ifc-lite/issues/5224)). A spec that demanded `IFCBOOLEAN` used to pass `"not-a-boolean-at-all"` whenever the stored property carried no dataType.
+  
+  - `@ifc-lite/ids`: the new failure type `PROPERTY_DATATYPE_UNKNOWN` holds under every optionality, `prohibited` included, so "cannot verify" is never a pass. It has messages in both formatters and in en/de/fr. Only a property flagged `dataTypeMixed` (an `IfcPropertyTableValue`, whose columns differ in type by design) is exempt, and it defers to the value match, as upstream ifctester does. The property overlay resolver no longer manufactures `''` for a correction created without a dataType. `PropertySetInfo` properties now type `dataType` as `string | undefined` and gain `dataTypeMixed`. A predefined property set's attributes (`IfcDoorPanelProperties.PanelOperation`, …) take their declared EXPRESS type as their dataType.
+  - `@ifc-lite/parser`: `IfcPropertyListValue` and `IfcPropertyEnumeratedValue` carry the one `dataType` their members share, and a table sets `dataTypeMixed`. The new export `getAttributeTypeForSchema` returns an attribute's declared EXPRESS type.
+  - `@ifc-lite/data`: `Property` gains `dataTypeMixed`.
+  - `@ifc-lite/server-client`: `Property` gains `data_type_mixed`, decoded from the server's new `data_type_mixed` column (data-model payload v7).
+
+- [#5554](https://github.com/LTplus-AG/ifc-lite/pull/5554) [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456) Thanks [@louistrue](https://github.com/louistrue)! - Schedule reads pending entity edits, creations, deletions and retypes through export-equivalent records; the viewer refreshes cached schedule data when mutations change.
+
+- [#5298](https://github.com/LTplus-AG/ifc-lite/pull/5298) [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5) Thanks [@louistrue](https://github.com/louistrue)! - `extractAllMaterialsOnDemand` now consults the relationship graph before it gives up on a store without source bytes, such as a server-parsed model ([#5227](https://github.com/LTplus-AG/ifc-lite/issues/5227)). The classification resolver already did this for [#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948). When the graph proves a material association, it returns one `{ type: 'Material', unresolved: true }` marker per association instead of `[]`, so callers can tell "has a material this store cannot read" apart from "no material". `MaterialInfo` gains the optional `unresolved` flag.
+
+- [#5306](https://github.com/LTplus-AG/ifc-lite/pull/5306) [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610) Thanks [@louistrue](https://github.com/louistrue)! - Rule sets can now assert the unit a value is recorded in, e.g. "Width is recorded in mm". The new `unit` requirement kind (`{ kind: 'unit', subject, unit: 'mm' }`) takes a property or quantity subject. An element passes when every value of that subject is recorded in the unit. The unit is the value's explicit unit, or the project unit for its measure type when it has none. IDS 1.0 cannot express this check. `readSubject` reports those units as `valueUnits`. A quantity's explicit `Unit` now also sets the unit label shown for it, where before the project unit was always shown. The parser's quantity records carry that explicit unit's symbol as `explicitUnit`. The Data validation editor offers the new kind as "Unit".
+
+### Patch Changes
+
+- [#5337](https://github.com/LTplus-AG/ifc-lite/pull/5337) [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a broken classification chain (a dangling `ReferencedSource`, an unreadable entity, an entity of an unexpected type, or a cycle) reporting a confident `CLASSIFICATION_SYSTEM_MISMATCH` instead of `CLASSIFICATION_UNRESOLVED`. `walkClassificationChain` (`@ifc-lite/parser`) and the structurally identical `IfcExternalReferenceRelationship` walk in `@ifc-lite/ids`'s `resolveClassifications` both stopped without reporting anything when the chain could not be followed to an `IfcClassification` root, leaving `system` `undefined` — indistinguishable from a chain that legitimately ends without naming one (`ReferencedSource` omitted, which is schema-legal). Both walks now mark the classification record `unresolved` when the chain genuinely could not be resolved, so the IDS classification facet reports `CLASSIFICATION_UNRESOLVED` (the same fail-closed path [#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948) already established) instead of asserting a system mismatch the data never proved.
+
+- [#5295](https://github.com/LTplus-AG/ifc-lite/pull/5295) [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590) Thanks [@louistrue](https://github.com/louistrue)! - Every schema-specific reader of the IFC4 entity table now uses `ENTITIES_IFC4_EXPRESS`, a new `@ifc-lite/data` export ([#5204](https://github.com/LTplus-AG/ifc-lite/issues/5204)). It is `ENTITIES_IFC4` checked against the IFC4 EXPRESS schema:
+  - Rows IFC4 does not declare are dropped. These are the draft alignment-extension entities such as `IfcAlignment2DHorizontal` and `IfcLinearPlacement`.
+  - Attribute lists follow EXPRESS, so `IfcCartesianPointList2D`/`3D` lose the IFC4X3-only `TagList`.
+  - The attribute-less defined-type rows are kept.
+  
+  The corrections are generated from `@ifc-lite/parser`'s EXPRESS registry by `scripts/generate-ifc4-express-corrections.mjs`, and CI checks that they are up to date. This fixes:
+  - `@ifc-lite/data`: `getEntities('IFC4')`, `findEntity('IFC4', …)` and `expandTypeNamesToDescendants`, which is what the IDS auditor reads;
+  - `@ifc-lite/parser`: `getAttributeNamesAcrossSchemas` / `isKnownType`;
+  - `@ifc-lite/mcp`: the schema tables;
+  - `@ifc-lite/export`: the subset-export attribute reader, the product/root type sets and the STEP retype re-layout. The retype re-layout could previously write a class IFC4 lacks, or a spurious `TagList` argument, into a file declaring `FILE_SCHEMA(('IFC4'))`;
+  - `@ifc-lite/ifcx`: the building-element family.
+
+- [#5281](https://github.com/LTplus-AG/ifc-lite/pull/5281) [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412) Thanks [@louistrue](https://github.com/louistrue)! - Fix a corrupted STEP numeric literal (e.g. a dropped comma fusing `1.52,3.0` into `1.52.3`) silently parsing as the truncated value `1.52` instead of being refused. `parseAttributeValue`'s numeric fallback and `getNumber` now require the token to match the STEP REAL/INTEGER grammar in full before trusting `parseFloat`, and preserve the raw token otherwise — the same refuse-and-warn shape already used for an overflowing literal like `1.0E400`.
+
+- [#5432](https://github.com/LTplus-AG/ifc-lite/pull/5432) [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97) Thanks [@louistrue](https://github.com/louistrue)! - Property and quantity rules can compare in SI units: `valueUnit: 'si'`, the "SI" toggle on the chip. Each value is converted with its own unit before the comparison: an explicit `Unit`, else the project unit for its measure type. This works in search, applicability and validation. `idsToRuleSet` sets it on every imported numeric check, so an imported IDS gives the same verdicts on a millimetre model as the IDS checker does. `ruleSetToIds` takes the loaded `models` and writes model-unit numeric checks to the IDS in SI. A rule whose unit can't be settled (no models, or models that disagree) is refused with the reason. The SI-units caveat note is gone. `readSubject` now also reports `valueSiScales`. `TypePropertyInfo` now declares the `unit` / `unitSiScale` its property rows already carry.
+- Updated dependencies [[`2523acc`](https://github.com/LTplus-AG/ifc-lite/commit/2523acc5881252316439de2f69f7fab4266d559f), [`5909977`](https://github.com/LTplus-AG/ifc-lite/commit/5909977e0631cc242c421b5ded6c887acadd92ba), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`32ac1f9`](https://github.com/LTplus-AG/ifc-lite/commit/32ac1f9846a5703c63ea859e5aeaf224f164db0c), [`c8fcbfb`](https://github.com/LTplus-AG/ifc-lite/commit/c8fcbfbfcc8e45526ef93c84ee8a254df586c10b), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`3166183`](https://github.com/LTplus-AG/ifc-lite/commit/31661831c8137f31aa6c3b0da286832ed6e16a7b), [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d), [`87d62bc`](https://github.com/LTplus-AG/ifc-lite/commit/87d62bca61704029b92882f2dd280dd497a77bd7), [`be636b4`](https://github.com/LTplus-AG/ifc-lite/commit/be636b414c11e7c5b77c2b98d0e916822ac39d09), [`58691b3`](https://github.com/LTplus-AG/ifc-lite/commit/58691b362d67ab87f666d76d6ee27e39d1ec45f9), [`e6f46cb`](https://github.com/LTplus-AG/ifc-lite/commit/e6f46cbaf7d2ea515296f40497556b2b31bc5bd2), [`76d1119`](https://github.com/LTplus-AG/ifc-lite/commit/76d1119fb1573ef81f50d03c04026be3c83674ce), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`897eb6c`](https://github.com/LTplus-AG/ifc-lite/commit/897eb6c15342ad20a032b40fcb803559bf1a10f7), [`177f6d1`](https://github.com/LTplus-AG/ifc-lite/commit/177f6d18decd296ab6c25e7ec1d8200e461ceda0)]:
+  - @ifc-lite/wasm@10.0.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/ifcx@4.2.0
+
 ## 8.0.0
 
 ### Major Changes

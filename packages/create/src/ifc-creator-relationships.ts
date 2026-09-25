@@ -29,6 +29,11 @@ export interface SpatialStructure extends RelationshipContext {
    * survey annotations, which have no storey to belong to.
    */
   siteElements: readonly number[];
+  /**
+   * Products aggregated by the project directly — `IfcAlignment`, which IFC 4.3
+   * relates to the project rather than containing it in a spatial element.
+   */
+  projectElements?: readonly number[];
 }
 
 function refs(ids: readonly number[]): string {
@@ -64,7 +69,7 @@ export function emitRelFillsElement(
  * so an empty one is invalid rather than merely useless.
  */
 export function emitSpatialRelationships(structure: SpatialStructure): void {
-  emitRelAggregates(structure.projectId, [structure.siteId], structure);
+  emitRelAggregates(structure.projectId, [structure.siteId, ...(structure.projectElements ?? [])], structure);
   emitRelAggregates(structure.siteId, [structure.buildingId], structure);
 
   if (structure.storeyIds.length > 0) {

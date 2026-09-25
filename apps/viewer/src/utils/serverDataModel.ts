@@ -273,6 +273,7 @@ export function convertServerDataModel(
     sumByType: (quantityName: string, elementType?: number): number => {
       let sum = 0;
       // Pre-compute valid IDs set for efficient type filtering
+      // @raw-entity-enumeration-ok this server-backed source quantity table sums its own snapshot, not the viewer's separate mutation overlay
       const validIds = elementType !== undefined
         ? new Set(entities.getByType(elementType))
         : null;

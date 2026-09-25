@@ -326,8 +326,8 @@ export function matchRowAgainstContext(
     }
 
     case 'property': {
-      // Malformed-cell contract mirrors generateMutations: a Real/Integer
-      // cell that isn't a number is SKIPPED with a warning, never coerced
+      // Malformed-cell contract mirrors generateMutations: a cell that is not
+      // exactly a value of the type is SKIPPED with a warning, never coerced
       // to a fabricated match (see csv-parse-value.ts's PARSE_INVALID doc).
       // The property may be stored under several declared types across
       // entities; try each, and only report a parse failure when the cell is

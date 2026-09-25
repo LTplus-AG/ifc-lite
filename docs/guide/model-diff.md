@@ -670,7 +670,7 @@ The [`model_diff` tool](mcp.md) takes the same `by_content` switch, so an agent 
 }
 ```
 
-Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. `key_from` (`"Tag"` or `"Pset.Prop"`) keys the comparison on an authored identifier the same way the CLI's `--key-from` does, and `contentDiff.keyProperty` / `duplicateAuthoredKeys` echo what applied. With `by_content` the result gains a `contentDiff`:
+Without it the tool reports per-type count deltas and `entityDiff` (GlobalIds added / removed / common) exactly as before. `key_from` (`"Tag"` or `"Pset.Prop"`) keys the comparison on an authored identifier the same way the CLI's `--key-from` does, and `contentDiff.keyProperty` / `duplicateAuthoredKeys` echo what applied. For a live MCP model, queued creations and retypes join or leave the content comparison immediately; a newly authored value also participates in duplicate-key detection. With `by_content` the result gains a `contentDiff`:
 
 ```json
 {

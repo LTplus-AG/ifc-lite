@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 /** Subtle pressed-state tint shared by ribbon toggles (loud solid fills
  *  read as alarm at ribbon scale; Office-style tint + inset ring reads
- *  as "latched"). Per-tool accents (amber annotate, purple edit) pass
+ *  as "latched"). Per-tool accents (amber annotate, accent edit) pass
  *  their own class instead. */
 export const RIBBON_ACTIVE_CLASS =
   'bg-primary/15 text-foreground ring-1 ring-inset ring-primary/40';
@@ -85,7 +85,12 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
             onClick?.(e);
           }}
           className={cn(
-            'relative flex h-full w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
+            // Width: 56 px floor, grown to the longest unbreakable word. A fixed
+            // `w-14` clipped any single word wider than the ~48 px label box
+            // sideways with no ellipsis, "Orthographic" -> "Orthograpl" (#5395).
+            // `w-min` is the min-content width, so multi-word labels still wrap
+            // onto two lines instead of widening the button.
+            'relative flex h-full w-min min-w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
             'text-[10px] font-medium leading-[1.15] text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -96,7 +101,8 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
         >
           <Icon className="h-8 w-8 shrink-0" aria-hidden="true" />
           <span className="flex h-[2.3em] w-full items-start justify-center gap-0.5">
-            <span className="line-clamp-2 min-w-0 text-center">{label}</span>
+            {/* `data-ribbon-label`: the e2e overflow check measures these (#5395). */}
+            <span data-ribbon-label className="line-clamp-2 min-w-0 text-center">{label}</span>
             {hasMenu && <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           </span>
           {badge}

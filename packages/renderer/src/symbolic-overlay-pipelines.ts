@@ -14,7 +14,7 @@
  * the result is ear-clipped.
  */
 
-import { SymbolicTextAtlas } from './symbolic-text-atlas.js';
+import { haloGlyphQuad, SymbolicTextAtlas } from './symbolic-text-atlas.js';
 import {
   SYMBOLIC_FILL_WGSL,
   SYMBOLIC_TEXT_WGSL,
@@ -575,8 +575,8 @@ export class SymbolicTextPipeline {
         const pyBottom = isCenterV
           ? -glyph.heightPx * 0.5
           : -baselineOffset - (glyph.heightPx - glyph.baselinePx);
-        const widthAtlas = glyph.widthPx;
-        const heightGlyphAtlas = glyph.heightPx;
+        // Quad widened by the halo margin on every side (#5388).
+        const { qx0, qyBottom, widthAtlas, heightGlyphAtlas, uvBounds } = haloGlyphQuad(glyph, px0, pyBottom, this.atlas.atlasSize);
 
         // Convert atlas-pixel local coords to world-space offsets:
         //   right axis in world = (ux, 0, uz) * (widthAtlas * heightWorld / heightAtlas)
@@ -590,14 +590,14 @@ export class SymbolicTextPipeline {
         const ax = anchored ? text.origin![0] + text.worldPos[0] : text.worldPos[0];
         const ay = anchored ? text.origin![1] + text.worldPos[1] : text.worldPos[1];
         const az = anchored ? text.origin![2] + text.worldPos[2] : text.worldPos[2];
-        const ox = anchored ? ux * px0 * wScale : ax + ux * px0 * wScale;
-        const oy = anchored ? pyBottom * wScale : ay + pyBottom * wScale;
-        const oz = anchored ? uz * px0 * wScale : az + uz * px0 * wScale;
+        const ox = anchored ? ux * qx0 * wScale : ax + ux * qx0 * wScale;
+        const oy = anchored ? qyBottom * wScale : ay + qyBottom * wScale;
+        const oz = anchored ? uz * qx0 * wScale : az + uz * qx0 * wScale;
         layouts.push({
           origin: [ox, oy, oz],
           rightAxis: [ux * widthWorld, 0, uz * widthWorld],
           upAxis: [0, heightGlyphWorld, 0],
-          uvBounds: [glyph.u0, glyph.v0, glyph.u1, glyph.v1],
+          uvBounds,
           color: tint,
           // Shared per-label anchor (text.worldPos) lets the shader compute
           // one screen-space scale and apply it uniformly across all glyphs.
@@ -610,8 +610,8 @@ export class SymbolicTextPipeline {
           // (via cameraRight/cameraUp) when billboard=1 so the glyph quad
           // tracks the screen instead of the floor plane.
           glyphOffsetSize: [
-            px0 * wScale,         // offsetX from anchor along baseline
-            pyBottom * wScale,    // offsetY (ascender / descender / baseline)
+            qx0 * wScale,         // offsetX from anchor along baseline
+            qyBottom * wScale,    // offsetY (ascender / descender / baseline)
             widthAtlas * wScale,  // glyph width
             heightGlyphAtlas * wScale, // glyph height
           ],

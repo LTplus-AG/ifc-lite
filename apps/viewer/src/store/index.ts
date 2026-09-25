@@ -6,8 +6,6 @@
 
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
-
-// Import slices
 import { createLoadingSlice, type LoadingSlice } from './slices/loadingSlice.js';
 import { createSelectionSlice, type SelectionSlice } from './slices/selectionSlice.js';
 import { createVisibilitySlice, type VisibilitySlice } from './slices/visibilitySlice.js';
@@ -16,6 +14,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 import { registerSectionVisibility } from './section-active.js';
+import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -38,6 +37,7 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
+import { createDrawingInspectorSlice, type DrawingInspectorSlice } from './slices/drawingInspectorSlice.js';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { bottomPanelFlags, isBottomPanel, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
@@ -64,6 +64,7 @@ import { createModelTagsSlice, type ModelTagsSlice } from './slices/modelTagsSli
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
+import { SIDEBAR_PANEL_FLAGS, registerSidebarExclusivity, registerHierarchyLeftSync, registerDrawingInspectorSheetSync, reconcileInitialStoreSync } from './store-sync.js';
 // The composed teardown `resetViewerState` dispatches. Its own module rather
 // than this file: `slices/modelSlice.ts` is another entry point and this file
 // imports that slice, so a registry declared here would be a runtime cycle.
@@ -114,6 +115,7 @@ export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 export type { LayerStackSlice, LayerStackEntry, LayerStackDiffResult, LayerAuthorKind } from './slices/layerStackSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
 export type { SidebarSlice, SidebarMode, SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
+export type { DrawingInspectorSlice, DrawingInspectorTab } from './slices/drawingInspectorSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
@@ -165,6 +167,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   LayerStackSlice &
   DockSlice &
   SidebarSlice &
+  DrawingInspectorSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -261,6 +264,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createLayerStackSlice(...args),
   ...createDockSlice(...args),
   ...createSidebarSlice(...args),
+  ...createDrawingInspectorSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
@@ -473,82 +477,6 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
   [STORE_SINGLETON_KEY]?: ReturnType<typeof createViewerStore>;
 };
 
-/**
- * The per-panel visibility flags that drive the single-tenant sidebar,
- * paired with their registry id. `properties` has no flag — it is the
- * fallback shown when none of these are on. (Script / Schedule / Lists are
- * NOT here: they live in the bottom panel and stay independent.)
- */
-const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
-  ['bcfPanelVisible', 'bcf'],
-  ['idsPanelVisible', 'validation'],
-  ['lensPanelVisible', 'lens'],
-  ['clashPanelVisible', 'clash'],
-  ['comparePanelVisible', 'compare'],
-  ['extensionsPanelVisible', 'extensions'],
-  ['sourcesPanelVisible', 'sources'],
-  ['collabPanelVisible', 'collab'],
-  ['layersPanelVisible', 'layers'],
-];
-
-/**
- * Enforce the "one docked panel at a time" invariant for the unified sidebar
- * (#1208), without having to touch the ~15 call sites that flip a panel flag
- * directly (ChatPanel, IdeasPanel, GenerateScheduleDialog, search-to-list, …).
- *
- * Whenever a panel flag transitions off→on we make it the sole active panel:
- * clear every other flag and record it as `sidebarActivePanel`. When the
- * active panel's flag goes on→off we re-resolve to the next open panel, or the
- * Information fallback. This is the single writer of `sidebarActivePanel`.
- */
-function registerSidebarExclusivity(store: ReturnType<typeof createViewerStore>): void {
-  store.subscribe((state, prev) => {
-    // Did any panel just open this tick? (first off→on wins)
-    let opened: WorkspacePanelId | null = null;
-    for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
-      if (state[flag] && !prev[flag]) { opened = id; break; }
-    }
-
-    if (opened) {
-      const patch: Record<string, boolean> = {};
-      for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
-        if (id !== opened && state[flag]) patch[flag] = false;
-      }
-      if (Object.keys(patch).length > 0) store.setState(patch as Partial<ViewerState>);
-      state.setSidebarActivePanel(opened);
-      // Opening a panel from anywhere (toolbar, command palette, chat, …) means
-      // the user wants to see it — reveal the sidebar if it was collapsed/hidden.
-      if (state.sidebarMode !== 'expanded') state.setSidebarMode('expanded');
-      return;
-    }
-
-    // Did the active panel just close? Re-resolve the docked slot.
-    const active = state.sidebarActivePanel;
-    if (active !== 'properties') {
-      const flag = SIDEBAR_PANEL_FLAGS.find(([, id]) => id === active)?.[0];
-      if (flag && !state[flag] && prev[flag]) {
-        const next = SIDEBAR_PANEL_FLAGS.find(([f]) => state[f]);
-        state.setSidebarActivePanel(next ? next[1] : 'properties');
-      }
-    }
-  });
-}
-
-/**
- * Keep the Hierarchy left slot (#1267) in step with its rail visibility: hiding
- * the Hierarchy icon from the activity bar collapses its left slot, and showing
- * it again re-opens the slot, so "hide it" actually hides the panel, not just
- * its rail entry. One-way (hidden-set drives collapse); collapsing via the left
- * drag handle keeps the rail icon so the panel can be re-opened from there.
- */
-function registerHierarchyLeftSync(store: ReturnType<typeof createViewerStore>): void {
-  store.subscribe((state, prev) => {
-    const wasHidden = prev.sidebarHiddenIds.includes('hierarchy');
-    const isHidden = state.sidebarHiddenIds.includes('hierarchy');
-    if (isHidden !== wasHidden) state.setLeftPanelCollapsed(isHidden);
-  });
-}
-
 export function getViewerStoreApi() {
   const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
   if (existing) return existing;
@@ -556,16 +484,10 @@ export function getViewerStoreApi() {
   globalStoreRegistry[STORE_SINGLETON_KEY] = store;
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
+  registerDrawingInspectorSheetSync(store);
   registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
-  // Initial reconcile: a persisted panel flag (e.g. scriptPanelVisible) can be
-  // true at load before any change fires the subscription, so seed the docked
-  // panel from the current flags rather than leaving it on the fallback.
-  const init = store.getState();
-  const initialActive = SIDEBAR_PANEL_FLAGS.find(([flag]) => init[flag])?.[1];
-  if (initialActive) init.setSidebarActivePanel(initialActive);
-  // A persisted "Hierarchy hidden" never fired the subscription above, so seed
-  // the collapsed left slot from it on load (#1267).
-  if (init.sidebarHiddenIds.includes('hierarchy')) init.setLeftPanelCollapsed(true);
+  registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
+  reconcileInitialStoreSync(store);
   return store;
 }
 

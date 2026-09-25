@@ -3,41 +3,69 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Cell-to-value parsing for the CSV connector, split out so `csv-connector.ts`
- * stays within its module-size budget.
+ * Cell-to-value parsing for every table import path: `CsvConnector` and the
+ * flow table nodes (`@ifc-lite/flow-nodes`' CSV/XLSX readers and
+ * `model.applyTable`) all parse through this one function, so they agree on
+ * what a cell means.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { PropertyValue } from './types.js';
 
 /**
- * Returned for a Real/Integer cell that is not a number at all ("N/A", "TBD").
- * `parseFloat`/`parseInt` yield `NaN` for these and `NaN || 0` is `0`, which
- * writes a fabricated zero no consumer can tell from an imported one. Callers
- * must check for this sentinel and skip the cell instead.
+ * Returned for a cell that is not a complete value of its type: `"N/A"` in a
+ * Real column, `"12,5"` (decimal comma), `"60abc"`, `"2.7"` in an Integer
+ * column, `"ja"` in a Boolean one. Callers must check for this sentinel and
+ * report and skip the cell, never write a substitute.
  */
 export const PARSE_INVALID = Symbol('csv-parse-invalid');
 
-/** Parse a CSV cell to `type`, or {@link PARSE_INVALID} if it cannot be. */
+/**
+ * The WHOLE trimmed cell has to match; nothing is guessed. `parseFloat` reads
+ * the longest numeric prefix, so the lenient parse this replaced wrote
+ * `"12,5"` as 12 and `"60abc"` as 60, and every word but true/yes/1 became
+ * `false` (#5427). A decimal comma is refused rather than converted: `1,250`
+ * is a thousands separator in one locale and 1.25 in another. Exponent form
+ * (`1.2E-05`) is accepted, because spreadsheets export small numbers that way
+ * and it has one reading.
+ */
+const REAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const INTEGER = /^[+-]?\d+$/;
+/**
+ * IFC LOGICAL's UNKNOWN is deliberately absent: the property model carries a
+ * boolean, and writing UNKNOWN as `false` would state a fact the sheet did not.
+ */
+const BOOLEAN = /^(true|false|yes|no|1|0)$/i;
+const TRUE = /^(true|yes|1)$/i;
+
+/**
+ * Parse a cell to `type`, or {@link PARSE_INVALID} if the cell is not exactly
+ * a value of that type. Surrounding whitespace is ignored for typed cells;
+ * text types are returned as given.
+ */
 export function parseValue(
   value: string,
   type: PropertyValueType
 ): PropertyValue | typeof PARSE_INVALID {
   switch (type) {
     case PropertyValueType.Real: {
-      const parsed = parseFloat(value);
-      return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
+      // The syntax alone admits `1e309`, which is Infinity.
+      const text = value.trim();
+      const parsed = Number(text);
+      return REAL.test(text) && Number.isFinite(parsed) ? parsed : PARSE_INVALID;
     }
 
     case PropertyValueType.Integer: {
-      const parsed = parseInt(value, 10);
-      return Number.isNaN(parsed) ? PARSE_INVALID : parsed;
+      // Past 2^53 the number is silently rounded to a neighbour.
+      const text = value.trim();
+      const parsed = Number(text);
+      return INTEGER.test(text) && Number.isSafeInteger(parsed) ? parsed : PARSE_INVALID;
     }
 
     case PropertyValueType.Boolean:
     case PropertyValueType.Logical: {
-      const lower = value.toLowerCase();
-      return lower === 'true' || lower === 'yes' || lower === '1';
+      const text = value.trim();
+      return BOOLEAN.test(text) ? TRUE.test(text) : PARSE_INVALID;
     }
 
     case PropertyValueType.List: {

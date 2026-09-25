@@ -57,6 +57,11 @@ export interface ImportStats {
   matchedRows: number;
   unmatchedRows: number;
   mutationsCreated: number;
+  /**
+   * The mutations the import applied to the view, in order. A host with an
+   * undo history records these (the connector writes the view directly).
+   */
+  mutations: Mutation[];
   errors: string[];
   warnings: string[];
 }
@@ -169,15 +174,30 @@ export class CsvConnector {
   /**
    * Generate mutations from matched data.
    *
-   * `warnings`, when passed, collects one message per skipped cell — a
-   * malformed Real/Integer value (see {@link parseValue}) that would
-   * otherwise have silently written `0`. Optional and additive: existing
+   * `warnings`, when passed, collects one message per skipped cell — one
+   * that is not exactly a value of its column's type (see {@link parseValue}),
+   * such as `12,5` in a Real column or `ja` in a Boolean one. Optional and additive: existing
    * callers that only want the mutation list are unaffected.
+   *
+   * On a throw, the writes already applied stay in the view but cannot be
+   * returned; `import()` / `importAsync()` report them in `stats.mutations` (#5958).
    */
   generateMutations(matches: MatchResult[], mapping: DataMapping, warnings?: string[]): Mutation[] {
-    checkMutationGuard(this.canEdit);
     const mutations: Mutation[] = [];
+    this.applyMatches(matches, mapping, warnings, mutations);
+    return mutations;
+  }
 
+  /**
+   * Write `matches` to the view, pushing each mutation into `applied` the
+   * moment it is written. The sink is the caller's, not a local array
+   * returned at the end, so a transform or `setProperty` that throws partway
+   * leaves every write that DID land in the caller's hands: the view already
+   * holds them, and a host that records undo history must be able to revert
+   * them (#5958).
+   */
+  private applyMatches(matches: MatchResult[], mapping: DataMapping, warnings: string[] | undefined, applied: Mutation[]): void {
+    checkMutationGuard(this.canEdit);
     for (const match of matches) {
       if (match.matchedEntityIds.length === 0) continue;
 
@@ -199,20 +219,16 @@ export class CsvConnector {
             continue;
           }
 
-          const mutation = this.mutationView.setProperty(
+          applied.push(this.mutationView.setProperty(
             entityId,
             propMapping.targetPset,
             propMapping.targetProperty,
             value,
             propMapping.valueType
-          );
-
-          mutations.push(mutation);
+          ));
         }
       }
     }
-
-    return mutations;
   }
 
   /**
@@ -230,6 +246,7 @@ export class CsvConnector {
       matchedRows: 0,
       unmatchedRows: 0,
       mutationsCreated: 0,
+      mutations: [],
       errors: [],
       warnings: [],
     };
@@ -253,12 +270,12 @@ export class CsvConnector {
         }
       }
 
-      // Generate and apply mutations
-      const mutations = this.generateMutations(matches, mapping, stats.warnings);
-      stats.mutationsCreated = mutations.length;
+      // Generate and apply mutations; a throw keeps what was applied (#5958).
+      this.applyMatches(matches, mapping, stats.warnings, stats.mutations);
     } catch (error) {
       stats.errors.push(error instanceof Error ? error.message : 'Unknown error');
     }
+    stats.mutationsCreated = stats.mutations.length;
 
     return stats;
   }
@@ -271,7 +288,16 @@ export class CsvConnector {
     content: string,
     mapping: DataMapping,
     onProgress: (progress: ImportProgress) => void,
-    options: CsvParseOptions & { batchSize?: number } = {}
+    options: CsvParseOptions & {
+      batchSize?: number;
+      /**
+       * Called after each apply batch with the mutations it wrote, including
+       * the part of a batch that landed before a throw. Lets a host record
+       * undo history as the import goes, so an edit made while it yields
+       * stays in commit order with it (#5958).
+       */
+      onApplied?: (mutations: readonly Mutation[]) => void;
+    } = {}
   ): Promise<ImportStats> {
     const batchSize = options.batchSize || 200;
 
@@ -280,6 +306,7 @@ export class CsvConnector {
       matchedRows: 0,
       unmatchedRows: 0,
       mutationsCreated: 0,
+      mutations: [],
       errors: [],
       warnings: [],
     };
@@ -329,17 +356,22 @@ export class CsvConnector {
       }
 
       // Phase 3: Apply mutations in batches (60–100%)
-      let mutationCount = 0;
       for (let i = 0; i < allMatches.length; i += batchSize) {
         const batch = allMatches.slice(i, i + batchSize);
-        const mutations = this.generateMutations(batch, mapping, stats.warnings);
-        mutationCount += mutations.length;
+        const applied: Mutation[] = [];
+        try {
+          this.applyMatches(batch, mapping, stats.warnings, applied);
+        } finally {
+          // Also on a throw: these writes are in the view already (#5958).
+          for (const mutation of applied) stats.mutations.push(mutation);
+          if (applied.length > 0) reportApplied(options.onApplied, applied, stats.errors);
+        }
 
         const applyProgress = Math.min(i + batchSize, allMatches.length) / allMatches.length;
         onProgress({
           phase: 'applying',
           percent: MATCH_WEIGHT + applyProgress * APPLY_WEIGHT,
-          mutationsCreated: mutationCount,
+          mutationsCreated: stats.mutations.length,
           matchedRows: stats.matchedRows,
           totalRows: rows.length,
         });
@@ -348,10 +380,10 @@ export class CsvConnector {
         await new Promise((r) => setTimeout(r, 0));
       }
 
-      stats.mutationsCreated = mutationCount;
     } catch (error) {
       stats.errors.push(error instanceof Error ? error.message : 'Unknown error');
     }
+    stats.mutationsCreated = stats.mutations.length;
 
     return stats;
   }
@@ -473,5 +505,21 @@ export class CsvConnector {
       .replace(/[^a-zA-Z0-9_]/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_|_$/g, '');
+  }
+}
+
+/**
+ * Hand an applied batch to the host. A throwing callback is reported as an
+ * import error rather than replacing the error that ended the batch (#5958).
+ */
+function reportApplied(
+  onApplied: ((mutations: readonly Mutation[]) => void) | undefined,
+  applied: readonly Mutation[],
+  errors: string[],
+): void {
+  try {
+    onApplied?.(applied);
+  } catch (error) {
+    errors.push(`onApplied: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

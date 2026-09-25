@@ -94,6 +94,9 @@ import {
 } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
+import { matchModelFactRule } from './filter-model-fact.js';
+import { readsThroughSubject } from './subject-read-options.js';
+import { matchRuleThroughSubject } from './subject-match.js';
 
 /** A single matched element. Mirrors the Rust `FilteredElement` shape. */
 export interface FilteredElement {
@@ -520,14 +523,12 @@ function evaluateRule(
       if (!attrsFor) return false;
       return matchAttributeRule(rule, attrsFor());
     }
-    case 'property': {
-      if (!psetsFor) return false;
-      return matchPropertyRule(rule, psetsFor());
-    }
-    case 'quantity': {
-      if (!qtysFor) return false;
-      return matchQuantityRule(rule, qtysFor());
-    }
+    case 'property':
+      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
+      return psetsFor ? matchPropertyRule(rule, psetsFor()) : false;
+    case 'quantity':
+      if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
+      return qtysFor ? matchQuantityRule(rule, qtysFor()) : false;
     case 'material': {
       if (!matNamesFor) return false;
       return matchStringAnyNone(rule.op, matNamesFor(), rule.value, rule.valueKind);
@@ -548,6 +549,7 @@ function evaluateRule(
     }
     case 'parent': return matchParentRule(rule, ctx.store, expressId);
     case 'group': return matchGroupRule(rule, ctx.store, expressId);
+    case 'modelFact': return matchModelFactRule(rule, ctx.store);
   }
 }
 

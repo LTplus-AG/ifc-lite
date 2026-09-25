@@ -3,13 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Live 3D placement preview for the Add Element tool.
+ * Live 3D placement preview for the Add Element tool
+ * (`TOOL_HUD.addElement.Scene`, #5503).
  *
  * Renders SVG lines / rectangles / polygons over the canvas, anchored
  * to renderer-frame world coords pulled from the addElement slice
  * (`pendingPoints` + `hoverPoint`). Each point is projected to screen
  * via the camera's `projectToScreen` callback so the preview tracks
- * the camera in real time.
+ * the camera in real time. The length / width / depth / area readouts
+ * are scene-kernel `WorldLabel`s anchored on world midpoints, so they
+ * share the one card surface and ink every other on-screen number uses,
+ * and the strokes use the overlay tokens (one accent, no per-tool hue).
  *
  * What it draws (per element type):
  *   - column: nothing (single click — snap dot is enough)
@@ -19,19 +23,30 @@
  *     aligned rectangle with the diagonal, plus W/D readouts
  *   - slab polygon: pending edges + closing-edge ghost back to start
  *     when ≥3 points exist (so the user can preview the close)
+ *
+ * On the shared scene-overlay kernel (#5486/#5512, charter #5478): mounted
+ * inside `ToolOverlays`' `<SceneOverlayRoot>`. `useProjectorTick`
+ * re-renders this component off the ONE shared `SceneProjector` dirty tick
+ * instead of running its own unconditional `requestAnimationFrame` poll.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import type { AddElementVec3 } from '@/store/slices/addElementSlice';
+import { OVERLAY_GLOW_FILTER, WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
+import { formatDistance } from './formatDistance';
+import { formatArea } from './computePolygonArea';
 
 type Pt = { x: number; y: number };
 type Project = (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
 
-const PRIMARY = '#10b981'; // emerald-500
-const PRIMARY_LIGHT = 'rgba(16, 185, 129, 0.18)';
-const GHOST = 'rgba(16, 185, 129, 0.45)';
+// The one interaction accent (overlay tokens, #5483): the live stroke is
+// `accent`, fills are `accent-soft`, the about-to-commit ghost box is the
+// accent at half strength.
+const STROKE = 'stroke-overlay-accent';
+const FILL = 'fill-overlay-accent-soft';
+const GHOST_OPACITY = 0.5;
 
 export function AddElementOverlay() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -44,78 +59,29 @@ export function AddElementOverlay() {
   const { models, ifcDataStore } = useIfc();
   const addElementModelId = useViewerStore((s) => s.addElementModelId);
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Camera realtime updates intentionally bypass React renders for
-  // performance (see `updateCameraRotationRealtime`), so we drive our
-  // own RAF tick while the tool is active to re-project pending +
-  // hover points each frame. The tick state is just a number that
-  // forces a re-render; the projection itself is read fresh from the
-  // store callback.
-  //
-  // Two perf gates:
-  //  1. Skip the loop entirely when there's nothing to project.
-  //     pendingPoints / hoverPoint / autoSpacePreview already trigger
-  //     React re-renders via the store, so the only reason we'd need
-  //     a per-frame tick is to track the camera while content exists.
-  //  2. Only re-render when the camera actually moved since last tick.
-  //     A held tool with a static camera does ~0 work.
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
+  // performance (see `updateCameraRotationRealtime`), so we need a tick to
+  // re-project pending + hover points on camera motion. Sourced from the
+  // ONE shared `SceneProjector` dirty tick (`useProjectorTick`)
+  // instead of a private `requestAnimationFrame` poll: it already skips
+  // work while idle (static camera) and while there's nothing to project
+  // — `hasOverlayContent` below gates registration the same way the old
+  // loop gated itself.
   const hasOverlayContent =
     pendingPoints.length > 0 ||
     hoverPoint !== null ||
     (autoSpacePreview != null && autoSpacePreview.outlines.length > 0);
-  const [frameTick, setFrameTick] = useState(0);
-  const rafRef = useRef<number | null>(null);
-  const lastViewpointRef = useRef<{
-    px: number; py: number; pz: number;
-    tx: number; ty: number; tz: number;
-    fov: number;
-  } | null>(null);
-  useEffect(() => {
-    if (activeTool !== 'addElement') return;
-    if (!hasOverlayContent) return;
-    let mounted = true;
-    const loop = () => {
-      if (!mounted) return;
-      const vp = getViewpoint?.();
-      if (vp) {
-        const last = lastViewpointRef.current;
-        const moved =
-          !last ||
-          last.px !== vp.position.x || last.py !== vp.position.y || last.pz !== vp.position.z ||
-          last.tx !== vp.target.x  || last.ty !== vp.target.y  || last.tz !== vp.target.z  ||
-          last.fov !== vp.fov;
-        if (moved) {
-          lastViewpointRef.current = {
-            px: vp.position.x, py: vp.position.y, pz: vp.position.z,
-            tx: vp.target.x,   ty: vp.target.y,   tz: vp.target.z,
-            fov: vp.fov,
-          };
-          setFrameTick((t) => (t + 1) & 0xffff);
-        }
-      } else {
-        // Fallback for environments without getViewpoint — preserves the
-        // pre-fix behaviour of an unconditional tick so the projection
-        // can't get stuck stale.
-        setFrameTick((t) => (t + 1) & 0xffff);
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      mounted = false;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      lastViewpointRef.current = null;
-    };
-  }, [activeTool, hasOverlayContent, getViewpoint]);
+  const frameTick = useProjectorTick(activeTool === 'addElement' && hasOverlayContent);
 
   const projection = useMemo(
     () => makeProjection(projectToScreen),
     // Re-creating the memoized projection on every tick is wasted —
-    // the underlying function reference rarely changes. We only
-    // depend on `projectToScreen` itself; the RAF tick triggers the
-    // re-render that calls the projection again with current camera.
+    // the underlying function reference rarely changes. We only depend on
+    // `projectToScreen` itself; the shared-projector frame tick below
+    // triggers the re-render that calls the projection again with current
+    // camera.
     [projectToScreen],
   );
 
@@ -136,8 +102,8 @@ export function AddElementOverlay() {
     const elev = ds?.spatialHierarchy?.storeyElevations?.get(autoSpacePreview.storeyExpressId);
     if (typeof elev === 'number' && Number.isFinite(elev)) storeyElevation = elev;
   }
-  const ifcToRenderer = (xy: [number, number]) =>
-    projection({ x: xy[0], y: storeyElevation, z: -xy[1] });
+  const ifcToWorld = (xy: [number, number]): AddElementVec3 => ({ x: xy[0], y: storeyElevation, z: -xy[1] });
+  const ifcToRenderer = (xy: [number, number]) => projection(ifcToWorld(xy));
 
   const screenPending = pendingPoints
     .map(projection)
@@ -149,18 +115,9 @@ export function AddElementOverlay() {
 
   return (
     <svg
-      className="absolute inset-0 pointer-events-none z-20"
+      className="absolute inset-0 pointer-events-none z-(--z-scene)"
       style={{ overflow: 'visible' }}
     >
-      <defs>
-        <filter id="add-elem-glow">
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
 
       {/* Hover-ghost for single-click placements — column/door/window. */}
       {(type === 'column' || type === 'door' || type === 'window') && hoverPoint && (
@@ -179,6 +136,7 @@ export function AddElementOverlay() {
           pendingWorld={pendingPoints}
           hoverWorld={hoverPoint}
           projection={projection}
+          unitDisplayOverrides={unitDisplayOverrides}
         />
       ) : null}
 
@@ -190,6 +148,7 @@ export function AddElementOverlay() {
           pendingWorld={pendingPoints}
           hoverWorld={hoverPoint}
           projection={projection}
+          unitDisplayOverrides={unitDisplayOverrides}
         />
       ) : null}
 
@@ -200,7 +159,7 @@ export function AddElementOverlay() {
 
       {/* Pending point markers — drawn on top so they're always visible. */}
       {screenPending.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r={4.5} fill="white" stroke={PRIMARY} strokeWidth={2} />
+        <circle key={i} cx={p.x} cy={p.y} r={4.5} className={`fill-overlay-halo ${STROKE}`} strokeWidth={2} />
       ))}
 
       {/* Auto-space preview: candidate outlines from the wall-graph
@@ -214,20 +173,21 @@ export function AddElementOverlay() {
         }
         if (pts.length < 3) return null;
         const polygon = pts.map((p) => `${p.x},${p.y}`).join(' ');
-        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        const cx = outline.reduce((s, xy) => s + xy[0], 0) / outline.length;
+        const cy = outline.reduce((s, xy) => s + xy[1], 0) / outline.length;
         const region = autoSpacePreview!.regions[idx];
         return (
           <g key={`auto-${idx}`}>
             <polygon
               points={polygon}
-              fill={PRIMARY_LIGHT}
-              stroke={PRIMARY}
+              className={`${FILL} ${STROKE}`}
               strokeWidth={1.5}
               strokeDasharray="4,3"
             />
             {region && (
-              <Label x={cx} y={cy} text={`${region.area.toFixed(1)} m²`} />
+              <WorldLabel worldPoint={ifcToWorld([cx, cy])} offset={{ dx: -20, dy: -10 }}>
+                {formatArea(region.area)}
+              </WorldLabel>
             )}
           </g>
         );
@@ -246,18 +206,19 @@ function WallBeamPreview({
   pendingWorld,
   hoverWorld,
   projection,
+  unitDisplayOverrides,
 }: {
   pending: Pt[];
   hover: Pt | null;
   pendingWorld: AddElementVec3[];
   hoverWorld: AddElementVec3 | null;
   projection: Project;
+  unitDisplayOverrides: Record<string, string>;
 }) {
   if (pending.length === 0 || !hover) return null;
   const start = pending[0];
   const startWorld = pendingWorld[0];
   const length = hoverWorld ? worldDistance2D(startWorld, hoverWorld) : 0;
-  const mid = { x: (start.x + hover.x) / 2, y: (start.y + hover.y) / 2 };
 
   // 3D ghost box — read the per-type params from the store so the
   // outline matches the about-to-commit element's actual size.
@@ -288,8 +249,8 @@ function WallBeamPreview({
       {ghostOutline && (
         <polygon
           points={ghostOutline}
-          fill={PRIMARY_LIGHT}
-          stroke={GHOST}
+          className={`${FILL} ${STROKE}`}
+          strokeOpacity={GHOST_OPACITY}
           strokeWidth={1}
           strokeDasharray="3,3"
         />
@@ -299,12 +260,16 @@ function WallBeamPreview({
         y1={start.y}
         x2={hover.x}
         y2={hover.y}
-        stroke={PRIMARY}
+        className={STROKE}
         strokeWidth={2}
         strokeDasharray="6,4"
-        filter="url(#add-elem-glow)"
+        filter={OVERLAY_GLOW_FILTER}
       />
-      {length > 0.001 && <Label x={mid.x} y={mid.y} text={`${length.toFixed(2)} m`} />}
+      {length > 0.001 && hoverWorld && (
+        <WorldLabel worldPoint={midWorld(startWorld, hoverWorld)} active>
+          {formatDistance(length, unitDisplayOverrides)}
+        </WorldLabel>
+      )}
     </>
   );
 }
@@ -357,8 +322,8 @@ function SingleClickGhost({
   return (
     <polygon
       points={outline}
-      fill={PRIMARY_LIGHT}
-      stroke={GHOST}
+      className={`${FILL} ${STROKE}`}
+      strokeOpacity={GHOST_OPACITY}
       strokeWidth={1}
       strokeDasharray="3,3"
     />
@@ -433,12 +398,14 @@ function SlabRectanglePreview({
   pendingWorld,
   hoverWorld,
   projection,
+  unitDisplayOverrides,
 }: {
   pending: Pt[];
   hover: Pt | null;
   pendingWorld: AddElementVec3[];
   hoverWorld: AddElementVec3 | null;
   projection: Project;
+  unitDisplayOverrides: Record<string, string>;
 }) {
   if (pending.length === 0 || !hover || !pendingWorld[0] || !hoverWorld) return null;
   // Build the four world-space corners on the storey floor (renderer
@@ -461,14 +428,20 @@ function SlabRectanglePreview({
   // Width and Depth in IFC X/Y (renderer X / -Z).
   const width = Math.abs(b.x - a.x);
   const depth = Math.abs(b.z - a.z); // renderer Z magnitude maps to IFC Y magnitude
-  const widthMid = midpoint(cornersScreen[0], cornersScreen[1]);
-  const depthMid = midpoint(cornersScreen[1], cornersScreen[2]);
 
   return (
     <>
-      <polygon points={points} fill={PRIMARY_LIGHT} stroke={PRIMARY} strokeWidth={2} strokeDasharray="6,4" />
-      {width > 0.001 && <Label x={widthMid.x} y={widthMid.y} text={`${width.toFixed(2)} m`} />}
-      {depth > 0.001 && <Label x={depthMid.x} y={depthMid.y} text={`${depth.toFixed(2)} m`} />}
+      <polygon points={points} className={`${FILL} ${STROKE}`} strokeWidth={2} strokeDasharray="6,4" />
+      {width > 0.001 && (
+        <WorldLabel worldPoint={midWorld(cornersWorld[0], cornersWorld[1])} active>
+          {formatDistance(width, unitDisplayOverrides)}
+        </WorldLabel>
+      )}
+      {depth > 0.001 && (
+        <WorldLabel worldPoint={midWorld(cornersWorld[1], cornersWorld[2])} active>
+          {formatDistance(depth, unitDisplayOverrides)}
+        </WorldLabel>
+      )}
     </>
   );
 }
@@ -484,9 +457,9 @@ function SlabPolygonPreview({ pending, hover }: { pending: Pt[]; hover: Pt | nul
       <polyline
         points={path}
         fill="none"
-        stroke={PRIMARY}
+        className={STROKE}
         strokeWidth={2}
-        filter="url(#add-elem-glow)"
+        filter={OVERLAY_GLOW_FILTER}
       />
       {/* Pending edge from last committed point to cursor. */}
       {hover && (
@@ -495,7 +468,7 @@ function SlabPolygonPreview({ pending, hover }: { pending: Pt[]; hover: Pt | nul
           y1={pending[pending.length - 1].y}
           x2={liveEnd.x}
           y2={liveEnd.y}
-          stroke={PRIMARY}
+          className={STROKE}
           strokeWidth={2}
           strokeDasharray="6,4"
         />
@@ -507,7 +480,8 @@ function SlabPolygonPreview({ pending, hover }: { pending: Pt[]; hover: Pt | nul
           y1={liveEnd.y}
           x2={pending[0].x}
           y2={pending[0].y}
-          stroke={GHOST}
+          className={STROKE}
+          strokeOpacity={GHOST_OPACITY}
           strokeWidth={1.5}
           strokeDasharray="3,4"
         />
@@ -518,7 +492,8 @@ function SlabPolygonPreview({ pending, hover }: { pending: Pt[]; hover: Pt | nul
           y1={pending[pending.length - 1].y}
           x2={pending[0].x}
           y2={pending[0].y}
-          stroke={GHOST}
+          className={STROKE}
+          strokeOpacity={GHOST_OPACITY}
           strokeWidth={1.5}
           strokeDasharray="3,4"
         />
@@ -544,38 +519,6 @@ function worldDistance2D(a: AddElementVec3, b: AddElementVec3): number {
   return Math.hypot(dx, dz);
 }
 
-function midpoint(a: Pt, b: Pt): Pt {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-interface LabelProps {
-  x: number;
-  y: number;
-  text: string;
-}
-
-function Label({ x, y, text }: LabelProps) {
-  return (
-    <g pointerEvents="none">
-      <rect
-        x={x - text.length * 4 - 6}
-        y={y - 11}
-        width={text.length * 8 + 12}
-        height={16}
-        rx={3}
-        fill="rgba(15, 23, 42, 0.92)"
-      />
-      <text
-        x={x}
-        y={y}
-        fill="white"
-        fontSize="11"
-        fontFamily="ui-monospace,SFMono-Regular,Menlo,monospace"
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        {text}
-      </text>
-    </g>
-  );
+function midWorld(a: AddElementVec3, b: AddElementVec3): AddElementVec3 {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
 }

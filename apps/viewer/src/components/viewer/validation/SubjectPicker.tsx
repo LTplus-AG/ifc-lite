@@ -25,14 +25,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import type { FilterRule } from '@ifc-lite/rules';
-import type { Subject } from '@ifc-lite/rules';
+import { MODEL_FACTS, type ModelFact, type Subject } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
+import { InheritSelect } from '../InheritSelect';
 
 /** Every `Subject` kind `rule-set-io-subject.ts` accepts — `model`/
  *  `modelTag`/`elevation` are applicability-only concerns, never a
  *  checkable fact about one element, so they have no `Subject` form. */
 const SUBJECT_KINDS = [
-  'attribute', 'property', 'quantity', 'classification', 'group',
+  'attribute', 'property', 'quantity', 'classification', 'group', 'modelFact',
   'name', 'material', 'storey', 'parent', 'type', 'ifcType', 'predefinedType', 'globalId',
 ] as const;
 
@@ -52,6 +53,7 @@ function blankSubjectOfKind(kind: (typeof SUBJECT_KINDS)[number]): Subject {
     case 'quantity': return { kind: 'quantity', setName: '', quantityName: '' };
     case 'classification': return { kind: 'classification' };
     case 'group': return { kind: 'group' };
+    case 'modelFact': return { kind: 'modelFact', fact: 'georef.crs' };
     default: return { kind };
   }
 }
@@ -145,6 +147,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
             className="h-7 w-40 text-xs font-mono"
             onChange={(next) => onChange({ ...subject, propertyName: next, propertyNameKind: undefined })}
           />
+          <InheritSelect value={subject.inherit} offered={['aggregation']} onChange={(inherit) => onChange({ ...subject, inherit })} />
         </>
       )}
 
@@ -165,7 +168,19 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
             className="h-7 w-40 text-xs font-mono"
             onChange={(next) => onChange({ ...subject, quantityName: next, quantityNameKind: undefined })}
           />
+          <InheritSelect value={subject.inherit} offered={['type', 'aggregation']} onChange={(inherit) => onChange({ ...subject, inherit })} />
         </>
+      )}
+
+      {subject.kind === 'modelFact' && (
+        <select
+          value={subject.fact}
+          onChange={(e) => onChange({ kind: 'modelFact', fact: e.target.value as ModelFact })}
+          aria-label={t('validationEditor.subjectPicker.modelFactAriaLabel')}
+          className="h-7 rounded border border-zinc-300 bg-transparent px-1 text-xs font-mono dark:border-zinc-700"
+        >
+          {MODEL_FACTS.map((fact) => <option key={fact} value={fact}>{fact}</option>)}
+        </select>
       )}
 
       {subject.kind === 'group' && (

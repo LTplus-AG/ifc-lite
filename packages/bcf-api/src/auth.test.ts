@@ -93,6 +93,7 @@ describe('requestPasswordToken', () => {
     expect(authError.errorCode).toBe('invalid_request');
     expect(authError.message).toBe('username and password are required');
     expect(authError.status).toBe(400);
+    expect(authError.name).toBe('BcfAuthenticationError');
   });
 
   it('rejects a 200 response that carries no access_token', async () => {
@@ -105,6 +106,17 @@ describe('requestPasswordToken', () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BcfAuthenticationError);
     expect((error as Error).message).toBe('Token response carried no access_token');
+  });
+
+  it('names client-registration failures BcfAuthenticationError, as before the Foundation extraction', async () => {
+    const fetchFn: FetchLike = async () => jsonResponse({ message: 'registration closed' }, 403);
+    const error = await registerBcfClient({
+      registrationUrl: 'https://host/register',
+      clientName: 'ifc-lite',
+      fetchFn,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BcfAuthenticationError);
+    expect((error as Error).name).toBe('BcfAuthenticationError');
   });
 });
 

@@ -9,6 +9,9 @@
 
 import type { ComposedNode } from './types.js';
 import { ATTR, IFCLITE_ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
+import { mirroredFlatPropertyKeys } from './flat-property-mirror.js';
+
+export { mirroredFlatPropertyKeys };
 import {
   StringTable,
   PropertyTableBuilder,
@@ -80,10 +83,12 @@ function groupAttributesByNamespace(
   attributes: Map<string, unknown>
 ): Map<string, Map<string, unknown>> {
   const grouped = new Map<string, Map<string, unknown>>();
+  const mirrored = mirroredFlatPropertyKeys(attributes);
 
   for (const [key, value] of attributes) {
-    // Skip non-property attributes
-    if (SKIP_ATTRIBUTES.has(key)) {
+    // Skip non-property attributes, and flat official-schema keys that only
+    // mirror a pset-qualified value (#5376).
+    if (SKIP_ATTRIBUTES.has(key) || mirrored.has(key)) {
       continue;
     }
 

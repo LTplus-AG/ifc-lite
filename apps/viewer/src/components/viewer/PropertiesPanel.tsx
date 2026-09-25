@@ -58,6 +58,7 @@ import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
+import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
@@ -446,29 +447,17 @@ export function PropertiesPanel() {
     return null;
   }, [overlayEntity]);
 
-  // Check if the selected entity is a type entity (IfcWallType, etc.)
-  // Uses the entity type name to detect — type entity names end with "Type"
-  const isTypeEntity = useMemo(() => {
-    if (!selectedEntity) return false;
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore?.entities) return false;
-    const typeName = dataStore.entities.getTypeName(selectedEntity.expressId);
-    return typeName.endsWith('Type');
-  }, [selectedEntity, model, ifcDataStore]);
-
-  // Detect a material definition selected from the "Materials" hierarchy tab.
-  // Materials aren't products, so the EntityTable's getTypeName doesn't cover
-  // them — read the raw class from the entity index instead.
-  const selectedMaterialId = useMemo(() => {
+  // Selection can name an overlay-created or retyped class that the parsed
+  // EntityTable and source index have never seen. Both type-owned properties
+  // and the Materials route must use the same live answer.
+  const selectedClass = useMemo(() => {
     if (!selectedEntity) return null;
-    const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    const rawType = (dataStore as IfcDataStore | null)?.entityIndex?.byId?.get(selectedEntity.expressId)?.type;
-    // Every IfcMaterialSelect member, not just the set-valued ones: the tab
-    // renders a row for any definition the usage index leaves unexpanded (a
-    // bare IfcMaterialConstituent, an IfcMaterialLayerWithOffsets), and a
-    // narrower gate here turns those rows into dead clicks.
-    return isMaterialDefinitionType(rawType) ? selectedEntity.expressId : null;
-  }, [selectedEntity, model, ifcDataStore]);
+    const modelId = selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId;
+    return effectiveSelectedClass(activeDataStore as IfcDataStore | null, mutationViews.get(modelId), selectedEntity.expressId);
+  }, [selectedEntity, activeDataStore, mutationViews, mutationVersion]);
+  const isTypeEntity = selectedClass?.endsWith('Type') ?? false;
+  const selectedMaterialId = selectedEntity && isMaterialDefinitionType(selectedClass)
+    ? selectedEntity.expressId : null;
 
   // Unified property/quantity access - EntityNode handles on-demand extraction automatically
   // These hooks must be called before any early return to maintain hook order
@@ -1184,6 +1173,11 @@ export function PropertiesPanel() {
   const renderedSpatialContainment = spatialContainment;
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
+  // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
+  const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
+    typeId: renderedTypeProperties.typeId, typeName: renderedTypeProperties.typeName,
+    psetNames: renderedTypeProperties.psets.map((p) => p.name).filter((n) => !renderedOccurrenceProperties.some((o) => o.name === n)),
+  } : null, [renderedTypeProperties, renderedOccurrenceProperties, isTypeEntity]);
   const renderedIsTypeEntity = isTypeEntity;
   const renderedProjectUnits = projectUnits;
   const renderedExistingProps = useMemo(() => {
@@ -1467,7 +1461,7 @@ export function PropertiesPanel() {
           <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Tag className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
-            {editMode && <PenLine className="h-3 w-3 text-purple-500 ml-1" />}
+            {editMode && <PenLine className="h-3 w-3 text-overlay-accent ml-1" />}
             <span className="text-xs text-muted-foreground ml-auto">{renderedAttributes.length}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -1626,6 +1620,7 @@ export function PropertiesPanel() {
                   existingPsets={renderedMergedProperties.map(p => p.name)}
                   existingQtos={renderedQuantities.map(q => q.name)}
                   schemaVersion={activeDataStore?.schemaVersion}
+                  inheritedFrom={inheritedFrom}
                 />
               </>
             )}
@@ -1830,6 +1825,7 @@ export function PropertiesPanel() {
                 existingQsets={renderedQuantities.map(q => q.name)}
                 existingQuants={renderedExistingQuants}
                 existingAttributes={renderedExistingAttributeNames}
+                inheritedFrom={inheritedFrom}
               />
             )}
           </TabsContent>
@@ -1893,7 +1889,7 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={save}
-          className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-purple-300 dark:border-purple-700 outline-none focus:ring-1 focus:ring-purple-400"
+          className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent"
         />
         <Button
           variant="ghost"
@@ -1921,10 +1917,10 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-opacity"
+            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
             onClick={() => setEditing(true)}
           >
-            <PenLine className="h-3 w-3 text-purple-500" />
+            <PenLine className="h-3 w-3 text-overlay-accent" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>

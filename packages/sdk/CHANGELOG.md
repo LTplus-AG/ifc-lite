@@ -1,5 +1,70 @@
 # @ifc-lite/sdk
 
+## 7.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc)]:
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/clash@2.4.2
+
+## 7.1.2
+
+### Patch Changes
+
+- [#5735](https://github.com/LTplus-AG/ifc-lite/pull/5735) [`a3dfacb`](https://github.com/LTplus-AG/ifc-lite/commit/a3dfacb2862d1db09267ebe52707193630c35ff7) Thanks [@louistrue](https://github.com/louistrue)! - Deprecate `ExportGltfOptions`. `bim.export` has no glTF or GLB method, so nothing reads these options. The type will be removed in the next major ([#5701](https://github.com/LTplus-AG/ifc-lite/issues/5701)).
+- Updated dependencies [[`7fae2b8`](https://github.com/LTplus-AG/ifc-lite/commit/7fae2b8b2d6264a90af3235d95e0a4f6c257b9d7), [`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c), [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90), [`f947f8e`](https://github.com/LTplus-AG/ifc-lite/commit/f947f8e92e23535fe4e6ba21c2ebd2a854540ce5), [`e095908`](https://github.com/LTplus-AG/ifc-lite/commit/e0959083fa58854ce536c0a68d7b0c52f824f5ef), [`d83d9fe`](https://github.com/LTplus-AG/ifc-lite/commit/d83d9fe4138e0d6ae64a3ed439c8a5c9a280878a), [`91b1340`](https://github.com/LTplus-AG/ifc-lite/commit/91b1340bbba42abc42d9842169e422b540aa96eb), [`dcdc8df`](https://github.com/LTplus-AG/ifc-lite/commit/dcdc8dff3ea9e0588ffcce802b0f3ec781082f2e), [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f), [`a2e5d2d`](https://github.com/LTplus-AG/ifc-lite/commit/a2e5d2d9aa578efeb6d3becdc94335650b89f67d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`42b3f21`](https://github.com/LTplus-AG/ifc-lite/commit/42b3f214290d6c7d5fb27f697ec8451b323aabd4), [`a0e1bfe`](https://github.com/LTplus-AG/ifc-lite/commit/a0e1bfe567e3a892287faa8ee3e1b3610b59511d), [`11478f7`](https://github.com/LTplus-AG/ifc-lite/commit/11478f7b7e3b530a6111874bb233fada1a36d785), [`ddebcd9`](https://github.com/LTplus-AG/ifc-lite/commit/ddebcd91b999d6304e19358f90d142cd439a420a), [`cddb321`](https://github.com/LTplus-AG/ifc-lite/commit/cddb32122c9d628b635910158a06fa5a94c0071a)]:
+  - @ifc-lite/bcf@4.2.1
+  - @ifc-lite/clash@2.4.1
+  - @ifc-lite/create@3.0.0
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/export@4.7.3
+  - @ifc-lite/ids@3.0.3
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/lists@2.3.3
+  - @ifc-lite/query@2.5.1
+
+## 7.1.1
+
+### Patch Changes
+
+- [#5702](https://github.com/LTplus-AG/ifc-lite/pull/5702) [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63) Thanks [@louistrue](https://github.com/louistrue)! - `bim.export` is documented as what it is. The README and the scripting guide advertised "CSV, glTF, STEP, HBJSON": there is no glTF or GLB method at all, and STEP is spelled `ifc()`. The real set is `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`, and `json`/`dfjson` were not mentioned at all.
+  
+  The README's only usage snippet was also unrunnable: `createBimContext({ backend: myLocalBackend })` never said where `myLocalBackend` comes from, and `BimBackend` is a 16-namespace interface nobody writes by hand. It now names `HeadlessLikeBackend` from `@ifc-lite/mcp`, the one exported headless backend, with its real arity.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/lists@2.3.2
+
+## 7.1.0
+
+### Minor Changes
+
+- [#5554](https://github.com/LTplus-AG/ifc-lite/pull/5554) [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456) Thanks [@louistrue](https://github.com/louistrue)! - Schedule reads pending entity edits, creations, deletions and retypes through export-equivalent records; the viewer refreshes cached schedule data when mutations change.
+
+- [#5301](https://github.com/LTplus-AG/ifc-lite/pull/5301) [`316c0bf`](https://github.com/LTplus-AG/ifc-lite/commit/316c0bf248ca2573cc63acf421e4ccba4c7638c7) Thanks [@louistrue](https://github.com/louistrue)! - Resolve cost authoring's `IfcOwnerHistory` from the effective entity set, including overlay creations and type changes in the viewer and CLI hosts ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). SDK callers may pass the mutation view as a third argument; the two-argument source-only call remains available.
+
+### Patch Changes
+
+- Updated dependencies [[`77f5e16`](https://github.com/LTplus-AG/ifc-lite/commit/77f5e16e939aac5d28301c56a29c04472aa90792), [`610c3a1`](https://github.com/LTplus-AG/ifc-lite/commit/610c3a1d60c76850c2d2cc839e176f97ec0e2ca6), [`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88), [`5e79d7e`](https://github.com/LTplus-AG/ifc-lite/commit/5e79d7eb6837e238060dde19fa0b4933b832c1a7), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e), [`bc22259`](https://github.com/LTplus-AG/ifc-lite/commit/bc222597e04bfa46d8fc331913615ec72d25bc64), [`32ac1f9`](https://github.com/LTplus-AG/ifc-lite/commit/32ac1f9846a5703c63ea859e5aeaf224f164db0c), [`0ddc31a`](https://github.com/LTplus-AG/ifc-lite/commit/0ddc31a0d4f321e4f4f43dd3e95572972c7937bb), [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f), [`7bab13a`](https://github.com/LTplus-AG/ifc-lite/commit/7bab13af06b8d8778f6cdb513ad299e760e55074), [`809e2ba`](https://github.com/LTplus-AG/ifc-lite/commit/809e2baa4b796a91ea2a2dbd52ae29e7dd4ef5ff), [`d8f7c64`](https://github.com/LTplus-AG/ifc-lite/commit/d8f7c643703012c55a41a1e8224db6e21a0c66b3), [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1), [`51cb84d`](https://github.com/LTplus-AG/ifc-lite/commit/51cb84d29c5d6add21d94ffd9947f7c6884f5b39), [`eb8c3d6`](https://github.com/LTplus-AG/ifc-lite/commit/eb8c3d66a8a9091aecb947ceeb2b2dcae189d533), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9), [`b8a9cde`](https://github.com/LTplus-AG/ifc-lite/commit/b8a9cde0a7dfe40137632bf083875961efb57c1a), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`73c0c5d`](https://github.com/LTplus-AG/ifc-lite/commit/73c0c5de3981987d6672de19cef2c64d61259277), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c), [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9), [`7e5eb9e`](https://github.com/LTplus-AG/ifc-lite/commit/7e5eb9eb9631bceeefd5f03e6c18ac4cc7e35876), [`d6f65a0`](https://github.com/LTplus-AG/ifc-lite/commit/d6f65a009b72bef2f11c65e2b577b4d621abd0eb), [`4041f2f`](https://github.com/LTplus-AG/ifc-lite/commit/4041f2f75ae136a400e11de5c546bb136e97e8ef), [`a341dc9`](https://github.com/LTplus-AG/ifc-lite/commit/a341dc9512531a353c12d264b806a527d8de63f6), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`1c12066`](https://github.com/LTplus-AG/ifc-lite/commit/1c12066f096f52389277b5fce738fc7e03a5334d), [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d), [`79716f9`](https://github.com/LTplus-AG/ifc-lite/commit/79716f9828e4f57bedeaef66292233806b15edf7), [`d05f542`](https://github.com/LTplus-AG/ifc-lite/commit/d05f5423a7caf761f0a2e12d064d85e84355d031), [`9132f7a`](https://github.com/LTplus-AG/ifc-lite/commit/9132f7ab81939eb145e8fe1b26eb1e9048321638), [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`becc9dc`](https://github.com/LTplus-AG/ifc-lite/commit/becc9dc4bd33267dbe8522f788fb8936dd349b70), [`24b7921`](https://github.com/LTplus-AG/ifc-lite/commit/24b79210c442f44614d5786ff2986ee3a2b9c0d7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1), [`7e8d225`](https://github.com/LTplus-AG/ifc-lite/commit/7e8d225273d3f20d727dac879e31ac4e6ce165bb), [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97), [`f66adb5`](https://github.com/LTplus-AG/ifc-lite/commit/f66adb5fa9a35bf4ae4a9a9e9f36e477f815ad35), [`decff6b`](https://github.com/LTplus-AG/ifc-lite/commit/decff6bc31589df65bdd8dd20e72a0b840a4be7a), [`affda87`](https://github.com/LTplus-AG/ifc-lite/commit/affda87e1b892b608d5790387a3ab3315d47ae8c), [`24b7921`](https://github.com/LTplus-AG/ifc-lite/commit/24b79210c442f44614d5786ff2986ee3a2b9c0d7), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`b0f3b80`](https://github.com/LTplus-AG/ifc-lite/commit/b0f3b803d70442307b6741b78b85adef976e6f63), [`1d71f36`](https://github.com/LTplus-AG/ifc-lite/commit/1d71f366e11043a80fa81055323b5118d84d213e), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`9f48e65`](https://github.com/LTplus-AG/ifc-lite/commit/9f48e653f8264d303f70f47370be727ebca6049a), [`621de01`](https://github.com/LTplus-AG/ifc-lite/commit/621de015a52e65493fcda331ccaf9ffcfb626a47), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d), [`18b082f`](https://github.com/LTplus-AG/ifc-lite/commit/18b082ff95eedf847d29108726d4fee63c93057e), [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610), [`18650b0`](https://github.com/LTplus-AG/ifc-lite/commit/18650b0c67973833f675c6b8128ab55250a47efd)]:
+  - @ifc-lite/bcf@4.2.0
+  - @ifc-lite/mutations@2.7.0
+  - @ifc-lite/spatial@1.15.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/clash@2.3.2
+  - @ifc-lite/parser@8.1.0
+  - @ifc-lite/ids@3.0.0
+  - @ifc-lite/export@4.7.0
+  - @ifc-lite/create@2.9.0
+  - @ifc-lite/lists@2.3.0
+
 ## 7.0.0
 
 ### Major Changes

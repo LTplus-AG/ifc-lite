@@ -25,7 +25,7 @@ const IDS_XML = `<?xml version="1.0" encoding="UTF-8"?>
     <specification name="Walls are rated" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" identifier="EIR-001">
       <applicability minOccurs="0" maxOccurs="unbounded"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability>
       <requirements>
-        <property cardinality="required"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName></property>
+        <property cardinality="required" dataType="IFCLABEL"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName></property>
       </requirements>
     </specification>
     <specification name="Walls sit on a storey" ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2">
@@ -92,6 +92,8 @@ describe('ValidationPanel — IDS import and export (#5225)', () => {
     const summary = ui.querySelector('[data-testid="ids-interchange-summary"]')?.textContent ?? '';
     assert.ok(summary.includes('Walls sit on a storey'), 'the refused specification is named');
     assert.ok(summary.includes('partOf facet'), 'with its reason');
+    assert.ok(summary.includes('Imported without these checks'), 'dropped checks are listed (#5225 decision)');
+    assert.ok(summary.includes('Walls are rated: Pset_WallCommon.FireRating: data type IFCLABEL not checked'));
 
     const names = [...ui.querySelectorAll('input')].map((i) => (i as HTMLInputElement).value);
     assert.ok(names.includes('BEP deliverable'), 'the rule set is named after the IDS title');

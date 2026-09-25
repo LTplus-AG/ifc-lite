@@ -16,20 +16,20 @@ function assertClose(actual: number, expected: number, eps = 1e-6, msg?: string)
 }
 
 describe('resolveEnvironment', () => {
-  it('defaults reproduce the historic hardcoded look', () => {
+  it('defaults are the one-sided rig (#5382)', () => {
     const env = resolveEnvironment();
-    // normalize(0.5, 1.0, 0.3) — the shader's old sunLight constant.
-    const len = Math.hypot(0.5, 1.0, 0.3);
-    assertClose(env.sunDirection[0], 0.5 / len);
+    // normalize(-0.45, 1.0, 0.6): lights +Z, leaves +X (seen on open) in shade.
+    const len = Math.hypot(-0.45, 1.0, 0.6);
+    assertClose(env.sunDirection[0], -0.45 / len);
     assertClose(env.sunDirection[1], 1.0 / len);
-    assertClose(env.sunDirection[2], 0.3 / len);
-    assert.strictEqual(env.sunIntensity, 0.55);
+    assertClose(env.sunDirection[2], 0.6 / len);
+    assert.strictEqual(env.sunIntensity, 0.4);
     assert.deepStrictEqual(env.sunColor, [1, 1, 1]);
-    assert.deepStrictEqual(env.skyColor, [0.3, 0.35, 0.4]);
-    assert.deepStrictEqual(env.groundColor, [0.15, 0.1, 0.08]);
-    assert.strictEqual(env.ambientIntensity, 0.25);
-    assert.strictEqual(env.fillIntensity, 0.15);
-    assert.strictEqual(env.rimIntensity, 0.15);
+    assert.deepStrictEqual(env.skyColor, [0.34, 0.35, 0.36]);
+    assert.deepStrictEqual(env.groundColor, [0.24, 0.2, 0.17]);
+    assert.strictEqual(env.ambientIntensity, 0.775);
+    assert.strictEqual(env.fillIntensity, 0.1);
+    assert.strictEqual(env.rimIntensity, 0.05);
     assert.strictEqual(env.sunSoftness, 0.3);
     assert.strictEqual(env.exposure, 0.85);
     assert.strictEqual(env.skyEnabled, false);
@@ -201,6 +201,30 @@ describe('deriveSkyGradient', () => {
     const b = deriveSkyGradient(-0.019);
     for (let i = 0; i < 3; i++) {
       assert.ok(Math.abs(a.zenith[i] - b.zenith[i]) < 0.02);
+    }
+  });
+
+  it('lifts the day/golden ground tone without warming it toward the horizon hue (#5583)', () => {
+    // The below-horizon fill is what a downward-pitched BIM camera actually
+    // sees; it used to read as a flat, dreary mid-grey. The fix lifts its
+    // brightness while keeping the channel RATIOS the same (so it stays a
+    // neutral-ish grey, not a mud-brown blend toward the warm horizon).
+    // 0.35 and 0.17 are where the day/golden bands are fully saturated
+    // (see the `band(...)` stops in deriveSkyGradient) — anything nearer
+    // twilight is a blend and would understate the lift.
+    const day = deriveSkyGradient(0.35);
+    const golden = deriveSkyGradient(0.17);
+    // Brighter than the pre-fix values (day [0.14, 0.145, 0.15], golden
+    // [0.11, 0.105, 0.105]) by a comfortable margin, not just a rounding blip.
+    assert.ok(day.ground[0] > 0.2, `day ground should be lifted, got ${day.ground.join(',')}`);
+    assert.ok(golden.ground[0] > 0.15, `golden ground should be lifted, got ${golden.ground.join(',')}`);
+    // Still near-neutral: no channel more than ~10% off the mean, i.e. not
+    // blended toward golden hour's strongly red-dominant horizon.
+    for (const ground of [day.ground, golden.ground]) {
+      const mean = (ground[0] + ground[1] + ground[2]) / 3;
+      for (const c of ground) {
+        assert.ok(Math.abs(c - mean) / mean < 0.12, `ground channel ${c} strays too far from neutral mean ${mean}`);
+      }
     }
   });
 });

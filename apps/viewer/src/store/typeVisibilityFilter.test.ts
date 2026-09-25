@@ -61,6 +61,8 @@ describe('isTypeVisible', () => {
       ['IfcSpace', 'spaces'],
       ['IfcSpatialZone', 'spatialZones'],
       ['IfcOpeningElement', 'openings'],
+      // #5409: IFC4's standard-case opening rode no toggle at all.
+      ['IfcOpeningStandardCase', 'openings'],
       ['IfcVirtualElement', 'virtualElements'],
       ['IfcSite', 'site'],
       ['IfcGeographicElement', 'site'],
@@ -111,7 +113,7 @@ describe('buildHiddenIfcTypes', () => {
     const expected: Record<keyof typeof ALL_ON, string[]> = {
       spaces: ['IfcSpace'],
       spatialZones: ['IfcSpatialZone'],
-      openings: ['IfcOpeningElement'],
+      openings: ['IfcOpeningElement', 'IfcOpeningStandardCase'],
       virtualElements: ['IfcVirtualElement'],
       site: ['IfcSite', 'IfcGeographicElement'],
       ifcAnnotations: ['IfcAnnotation'],
@@ -132,6 +134,7 @@ describe('buildHiddenIfcTypes', () => {
       'IfcAnnotation',
       'IfcGeographicElement',
       'IfcOpeningElement',
+      'IfcOpeningStandardCase',
       'IfcSite',
       'IfcSpace',
       'IfcSpatialZone',

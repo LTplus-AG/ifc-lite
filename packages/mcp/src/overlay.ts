@@ -28,7 +28,7 @@
  * for a read-only caller.
  */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import { countEffectiveEntityTypes, type PropertySet, type QuantitySet } from '@ifc-lite/data';
 import { storeHasSourceEntity, type MutablePropertyView, type NewEntity } from '@ifc-lite/mutations';
 import {
   getInheritanceChainAcrossSchemas,
@@ -40,6 +40,7 @@ import {
   normalizeIfcTypeName,
 } from '@ifc-lite/parser';
 import type { LoadedModel } from './context.js';
+import { effectiveSourceIds, pendingEntityMembership } from './effective-entity-membership.js';
 /** An entity that exists only in the overlay (`entity_create`). */
 export interface CreatedEntity {
   expressId: number;
@@ -66,6 +67,7 @@ export interface CreatedEntity {
  * the enum grows, the readback carries.
  */
 export type AttributeOverrides = ReadonlyMap<string, string>;
+const NO_POSITIONAL_ATTRIBUTES: ReadonlyMap<number, unknown> = new Map();
 /** The overlay's read surface, as every folding tool consumes it. */
 export interface PendingOverlay {
   /** Express ids tombstoned by `entity_delete`. Empty is the common case.
@@ -98,6 +100,10 @@ export interface PendingOverlay {
    *  entity's type must go through this, or it disagrees with what export
    *  writes (#5009 review). */
   effectiveType(expressId: number): string | null;
+  /** Sparse queued class changes for effective whole-model enumeration. */
+  typeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
+  /** Sparse retype intents for aggregate class counts; absent in older read shims. */
+  getTypeMutations?(): ReadonlyMap<number, { readonly newType: string }>;
   attributes(expressId: number): AttributeOverrides;
   positionalAttributes(expressId: number): ReadonlyMap<number, unknown>;
   /** Every entity with a queued attribute write, keyed by expressId. For loops
@@ -208,6 +214,14 @@ class ViewOverlay implements PendingOverlay {
     return retype ? normalizeIfcTypeName(retype) : null;
   }
 
+  typeMutations(): ReadonlyMap<number, { readonly newType: string }> {
+    return this.view.getTypeMutations();
+  }
+
+  getTypeMutations(): ReadonlyMap<number, { readonly newType: string }> {
+    return this.view.getTypeMutations();
+  }
+
   attributes(expressId: number): AttributeOverrides {
     // Every queued write, not a chosen few. Last write wins, which is what
     // `getAttributeMutationsForEntity` already orders for us.
@@ -219,7 +233,7 @@ class ViewOverlay implements PendingOverlay {
   }
 
   positionalAttributes(expressId: number): ReadonlyMap<number, unknown> {
-    return this.view.getPositionalMutationsForEntity(expressId) ?? new Map();
+    return this.view.getPositionalMutationsForEntity(expressId) ?? NO_POSITIONAL_ATTRIBUTES;
   }
 
   attributesByEntity(): ReadonlyMap<number, AttributeOverrides> {
@@ -229,7 +243,7 @@ class ViewOverlay implements PendingOverlay {
   private get relationshipOverlay(): EffectiveRelationshipOverlay {
     if (!this.effectiveRelations) this.effectiveRelations = resolveEffectiveRelationshipOverlay(this.store, {
       createdEntities: () => this.view.getNewEntities(),
-      mutatedEntityIds: () => this.view.getMutations().map(mutation => mutation.entityId),
+      mutatedEntityIds: () => this.view.getEffectiveChanges().map(change => change.entityId),
       namedAttributes: id => this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
       positionalAttributes: id => this.view.getPositionalMutationsForEntity(id) ?? [],
       entityType: id => this.view.getEntityTypeMutation(id)?.newType,
@@ -256,27 +270,12 @@ class ViewOverlay implements PendingOverlay {
 }
 
 /**
- * Entity count per STEP type key, with the session's queued creates and deletes
- * applied. Created entities are counted under the uppercase key the store uses,
- * so `entity_create('IfcWall')` lands on the same row as the walls already in
- * the file rather than opening a second `IfcWall` row.
+ * Entity count per STEP type key, with queued creates, deletes and retypes
+ * applied by the shared aggregate accessor. A created entity is counted under
+ * its effective uppercase class, matching the parsed type buckets.
  */
 export function foldedTypeCounts(store: IfcDataStore, overlay: PendingOverlay | null): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const [type, ids] of store.entityIndex.byType) {
-    let live = ids.length;
-    // Only walk the ids when something is actually tombstoned — the type pass is
-    // otherwise O(number of types), and a model has millions of entities.
-    if (overlay && overlay.deleted.size > 0) {
-      for (const id of ids) if (overlay.deleted.has(id)) live--;
-    }
-    counts.set(type, live);
-  }
-  for (const entity of overlay?.createdAll ?? []) {
-    const key = entity.ifcType.toUpperCase();
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
+  return countEffectiveEntityTypes(store, pendingEntityMembership(overlay), effectiveSourceIds(store));
 }
 
 /**

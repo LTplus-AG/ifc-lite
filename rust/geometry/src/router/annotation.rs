@@ -16,6 +16,17 @@ pub(super) fn accepts(product: &DecodedEntity, rep_type: &str) -> bool {
     product.ifc_type == IfcType::IfcAnnotation && matches!(rep_type, "Annotation2D" | "Surface2D")
 }
 
+/// Whether `shape_rep` reaches the mesher only for its fill areas: an
+/// annotation's own `Annotation2D` / `Surface2D` representation, admitted by
+/// [`accepts`] (never a body type). Its other items (curve sets, polylines,
+/// text literals) are symbolic: the symbolic-annotation layer draws them and
+/// no mesh processor exists for them, so walking them only counted each one as
+/// a dropped item and warned "missing or incomplete" on a clean model (#5389).
+pub(super) fn is_fill_only_representation(product: &DecodedEntity, shape_rep: &DecodedEntity) -> bool {
+    super::rep_filter::effective_element_rep_type(product, shape_rep)
+        .is_some_and(|rep_type| accepts(product, rep_type))
+}
+
 impl GeometryRouter {
     pub(super) fn process_annotation_fill(
         &self,

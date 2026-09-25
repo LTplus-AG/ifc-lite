@@ -1,5 +1,169 @@
 # @ifc-lite/mcp
 
+## 0.22.0
+
+### Minor Changes
+
+- [#5935](https://github.com/LTplus-AG/ifc-lite/pull/5935) [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenCDE Documents API flow nodes and `model.openFromSource` ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634), [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.4).
+  
+  `@ifc-lite/flow-nodes` gains `documents.queryVersions` (polls `POST /document-versions` with the previous ETag; outputs a versions table, the new ETag and `changed`, which is `false` on a 304), `documents.download` (downloads a version's file as base64 with its name, size and content type) and `model.openFromSource` (opens downloaded bytes as a model through the new optional `FlowHost.openModel`, gated by the `openModel` backend feature). Every Documents API request goes through `coreNetworkRequest` with the graph's `network.fetch:<host>` grants; the bearer token param takes `{{secret:NAME}}`. `model.select` and `model.byType` gain an optional `modelId` input, so a read can be wired to run after, and on, an opened model.
+  
+  `@ifc-lite/sandbox`: `coreNetworkRequest` accepts `responseType: 'bytes'` and then returns the capped body as `NetworkResponse.bytes`, unmangled by a text decode. A new `allowNotModified: true` option returns a 304 Not Modified as a response; without it a 304 is still refused like every other 3xx, so existing `http.request` and `bim.network.fetch` behaviour is unchanged.
+  
+  `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`) implement `openModel` with their own loaders: the opened model becomes the one the rest of the run (and the CLI's `--out`) works on, and MCP registers it for later tool calls. The viewer loads it through `addModel`, the same path as a dropped file.
+
+### Patch Changes
+
+- Updated dependencies [[`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114), [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc), [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b)]:
+  - @ifc-lite/flow-nodes@0.5.0
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/clash@2.4.2
+  - @ifc-lite/sdk@7.1.3
+  - @ifc-lite/rules@0.4.1
+
+## 0.21.0
+
+### Minor Changes
+
+- [#5446](https://github.com/LTplus-AG/ifc-lite/pull/5446) [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef) Thanks [@louistrue](https://github.com/louistrue)! - Add outbound network requests and environment secrets to flow graphs ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phases 3.3/3.5), deny-by-default throughout.
+  
+  `@ifc-lite/extensions` gains a `secret` capability scope: `secret.read:<NAME>` grants a graph read access to one named env var, with a strict exact-match target (`[A-Z][A-Z0-9_]*`, no glob, no universal wildcard) — the one capability target grammar stricter than the general pattern grammar.
+  
+  `@ifc-lite/sandbox` gains `bim.network.fetch`, gated by a new `network` permission (off by default) plus an exact-host allow-list re-checked on every call against the running graph's actual `network.fetch:<host>` grants. Requests are restricted to `https:`, matched against `new URL(url).hostname` (never the raw URL string, so userinfo/suffix spoofing is rejected by construction), refuse every redirect, cap the response body mid-stream, enforce a combined timeout/abort signal, and strip `Host`/`Cookie`/hop-by-hop headers. The core request logic (`network-request.ts`) is the single implementation shared by the sandbox bridge and the new `HttpRequest` flow node.
+  
+  `@ifc-lite/flow-nodes` gains the `http.request` node and a `secrets.ts` module: a node param may reference `{{secret:NAME}}`, validated against the graph's declared `secret.read:<NAME>` capabilities and the real environment BEFORE a run starts (an undeclared or unset reference is a validation error, never a silently empty string), then substituted into a throwaway copy of the document. Every resolved secret at least 6 characters long is redacted (`<secret:NAME>`) from run logs, node outputs, and errors — applied at the outer boundary, so a secret that comes back inside a fetched response body is still caught.
+  
+  Secrets resolve from `process.env` ONLY in `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`), which now also redact their `--json`/tool-result output. The viewer's `HostFeatures.secrets` stays always-empty (the browser has no `process.env`), so a graph referencing a secret is reported `unavailable` before it runs, not mid-run; `HostFeatures.network` is `true` there too, so `http.request` runs subject to the browser's own CORS enforcement, surfacing a blocked cross-origin request as an explicit CORS-likely error rather than a silent empty result.
+  
+  `@ifc-lite/flow` now owns the `{{secret:NAME}}` grammar (`referencedSecrets`, `replaceSecretRefs`), and `checkAvailability` reports a node whose params reference a secret the host lacks as `unavailable`, so `flow validate` no longer calls such a graph runnable.
+
+- [#5934](https://github.com/LTplus-AG/ifc-lite/pull/5934) [`356e151`](https://github.com/LTplus-AG/ifc-lite/commit/356e151813f37be4ceaf8699251be09c1149ffca) Thanks [@louistrue](https://github.com/louistrue)! - `entity_create` accepts an optional `global_id`, the MCP counterpart of the `GlobalId` the in-store builders and `bim.store.add*` take. It is validated as a 22-character IFC GUID, applies to IfcRoot subtypes only (written to attribute 0), and a GlobalId already carried by an entity in the model (parsed or created this session) is refused with `INVALID_INPUT` instead of authoring a duplicate.
+
+### Patch Changes
+
+- [#5945](https://github.com/LTplus-AG/ifc-lite/pull/5945) [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5) Thanks [@louistrue](https://github.com/louistrue)! - `@ifc-lite/data` builds for the browser again. 5.3.0 exported `readPackageVersion` and `UNKNOWN_VERSION` from the package root with a static `node:fs` import, so every Vite app that bundles `@ifc-lite/data` failed its production build on `"readFileSync" is not exported by "__vite-browser-external"` ([#5767](https://github.com/LTplus-AG/ifc-lite/issues/5767)). Both now live on a Node-only subpath, `@ifc-lite/data/node`, and are no longer exported from the root (breaking: import them from `@ifc-lite/data/node`). `@ifc-lite/cli` and `@ifc-lite/mcp` import from there. A test bundles the package root for the browser and fails on any Node builtin reaching it.
+- Updated dependencies [[`ca5ff8d`](https://github.com/LTplus-AG/ifc-lite/commit/ca5ff8d98979cbcadd1644e32ddad4990d178eb4), [`7fae2b8`](https://github.com/LTplus-AG/ifc-lite/commit/7fae2b8b2d6264a90af3235d95e0a4f6c257b9d7), [`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c), [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90), [`f947f8e`](https://github.com/LTplus-AG/ifc-lite/commit/f947f8e92e23535fe4e6ba21c2ebd2a854540ce5), [`e095908`](https://github.com/LTplus-AG/ifc-lite/commit/e0959083fa58854ce536c0a68d7b0c52f824f5ef), [`d83d9fe`](https://github.com/LTplus-AG/ifc-lite/commit/d83d9fe4138e0d6ae64a3ed439c8a5c9a280878a), [`91b1340`](https://github.com/LTplus-AG/ifc-lite/commit/91b1340bbba42abc42d9842169e422b540aa96eb), [`dcdc8df`](https://github.com/LTplus-AG/ifc-lite/commit/dcdc8dff3ea9e0588ffcce802b0f3ec781082f2e), [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f), [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef), [`a2e5d2d`](https://github.com/LTplus-AG/ifc-lite/commit/a2e5d2d9aa578efeb6d3becdc94335650b89f67d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`42b3f21`](https://github.com/LTplus-AG/ifc-lite/commit/42b3f214290d6c7d5fb27f697ec8451b323aabd4), [`a0e1bfe`](https://github.com/LTplus-AG/ifc-lite/commit/a0e1bfe567e3a892287faa8ee3e1b3610b59511d), [`11478f7`](https://github.com/LTplus-AG/ifc-lite/commit/11478f7b7e3b530a6111874bb233fada1a36d785), [`ddebcd9`](https://github.com/LTplus-AG/ifc-lite/commit/ddebcd91b999d6304e19358f90d142cd439a420a), [`cddb321`](https://github.com/LTplus-AG/ifc-lite/commit/cddb32122c9d628b635910158a06fa5a94c0071a), [`4c7bd47`](https://github.com/LTplus-AG/ifc-lite/commit/4c7bd47e5e8c9bf62d88af6260cc6384a77e0cdf), [`a3dfacb`](https://github.com/LTplus-AG/ifc-lite/commit/a3dfacb2862d1db09267ebe52707193630c35ff7)]:
+  - @ifc-lite/flow-nodes@0.4.0
+  - @ifc-lite/bcf@4.2.1
+  - @ifc-lite/clash@2.4.1
+  - @ifc-lite/create@3.0.0
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/rules@0.4.0
+  - @ifc-lite/export@4.7.3
+  - @ifc-lite/extensions@0.10.0
+  - @ifc-lite/flow@0.4.0
+  - @ifc-lite/ids@3.0.3
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/sdk@7.1.2
+  - @ifc-lite/viewer-core@0.2.23
+  - @ifc-lite/cache@3.6.1
+  - @ifc-lite/collab@0.9.1
+  - @ifc-lite/geometry@7.5.2
+  - @ifc-lite/ifcx@4.2.1
+  - @ifc-lite/query@2.5.1
+
+## 0.20.2
+
+### Patch Changes
+
+- [#5586](https://github.com/LTplus-AG/ifc-lite/pull/5586) [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398) Thanks [@louistrue](https://github.com/louistrue)! - The MCP server reports the version you can actually install. `VERSION` was the literal `'0.1.0'`, so `--version`, `--help` and the `serverInfo` block of every MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0 — in the one field a client UI puts in front of an operator.
+  
+  The CLI had already paid for this exact mistake (a hard-coded `'0.4.0'` that `--version` still reported at 0.22.0) and fixed it with a `readCliVersion` helper. Rather than copy that helper into a second package, it moves to `@ifc-lite/data` as `readPackageVersion`, which both already depend on, so the two shipped servers cannot drift apart on how they answer `--version`. Its behaviour is unchanged: a broken install reports `0.0.0-unknown` on stderr rather than inventing a plausible number.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`1909a6a`](https://github.com/LTplus-AG/ifc-lite/commit/1909a6ac6b9934c8793b6e6be8f80dfece3fd44e), [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/extensions@0.9.0
+  - @ifc-lite/sdk@7.1.1
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/flow-nodes@0.3.1
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/rules@0.3.2
+
+## 0.20.1
+
+### Patch Changes
+
+- [#5574](https://github.com/LTplus-AG/ifc-lite/pull/5574) [`4d19160`](https://github.com/LTplus-AG/ifc-lite/commit/4d19160676b6c9b1cb3e2d5b183486aa5c0e5450) Thanks [@louistrue](https://github.com/louistrue)! - Make model_audit score effective session entities and edited identity and names.
+
+- [#5556](https://github.com/LTplus-AG/ifc-lite/pull/5556) [`8cf2887`](https://github.com/LTplus-AG/ifc-lite/commit/8cf288755fdf9c0c5ceefd48913b2686b84f27e7) Thanks [@louistrue](https://github.com/louistrue)! - MCP model_diff now counts created entities in authored-key collisions and follows queued retypes through the shared effective-entity iterator.
+- Updated dependencies [[`2bae848`](https://github.com/LTplus-AG/ifc-lite/commit/2bae8482ffc606951ebb3626ba1910ea15630395), [`223f4d7`](https://github.com/LTplus-AG/ifc-lite/commit/223f4d71f26d074ba949f77031dc24f559da34ca), [`0576221`](https://github.com/LTplus-AG/ifc-lite/commit/0576221cbd57276bce8da8d709045e2ae398a0df), [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3)]:
+  - @ifc-lite/export@4.7.1
+  - @ifc-lite/clash@2.3.3
+  - @ifc-lite/data@5.2.0
+  - @ifc-lite/create@2.9.1
+  - @ifc-lite/parser@8.2.0
+  - @ifc-lite/ids@3.0.1
+  - @ifc-lite/rules@0.3.1
+
+## 0.20.0
+
+### Minor Changes
+
+- [#5359](https://github.com/LTplus-AG/ifc-lite/pull/5359) [`94324e2`](https://github.com/LTplus-AG/ifc-lite/commit/94324e2a69a6cf41cf23488ccdc56b2b7d2c069f) Thanks [@louistrue](https://github.com/louistrue)! - Add `describe_flow` and `run_flow` MCP tools ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) Phase 4.3): agents can now discover and execute a `.flow.json` graph headlessly through MCP, exactly as `ifc-lite flow run` does. `describe_flow` returns a graph's declared inputs/outputs with types and registry-aware wiring diagnostics (`validateFlowWiring`, not just the registry-free `parseFlowDocument`) without throwing on an invalid graph. `run_flow` executes a graph against a loaded model, rejects `inputs` keys naming no declared parameter, and reports the run status plus a summary of tracked writes. `@ifc-lite/flow` gains `describeFlowIO`, `resolveDeclaredParam`, `unknownInputKeys`, and `declaredInputKeys` — the introspection/input-validation helpers now shared between `@ifc-lite/cli`'s `flow` command and the new MCP tools, so the two callers cannot independently drift on what counts as a declared parameter.
+
+- [#5288](https://github.com/LTplus-AG/ifc-lite/pull/5288) [`82fffa3`](https://github.com/LTplus-AG/ifc-lite/commit/82fffa36637e14c9457b631e3e9aa9599c410c5b) Thanks [@louistrue](https://github.com/louistrue)! - The MCP input validator now enforces `anyOf`, which it previously accepted in the schema type and documented as supported but never read, and its error names what each branch wanted. `entity_set_property`, `entity_delete_property`, `entity_set_attribute` and `entity_delete` use it to declare their existing `global_id`-or-`express_id` requirement, so a call missing both is rejected at validation instead of inside the handler. `required` is now also honoured on a schema that declares no `properties`, and treats a `null` value as missing (handlers read null and absent alike). An `anyOf` branch no longer matches on the strength of its own defaults. `oneOf`, documented but equally unimplemented and used by no schema, is removed from the doc comment and from the exported `JsonSchema` type (a type-surface removal, hence minor: a consumer reading `schema.oneOf` now sees `unknown`).
+  
+  `tools/list` does not publish a root-level `anyOf`: the Anthropic Messages API rejects a tool `input_schema` with a root `anyOf`/`oneOf`/`allOf`, failing the whole request, so the rule is stated in the `global_id`/`express_id` descriptions and enforced server-side. A call naming neither id (or only a null one) was already bound to fail in the handler; it now fails at validation, with the same `INVALID_INPUT` code. A `null` passed for a required field is now rejected.
+
+- [#5377](https://github.com/LTplus-AG/ifc-lite/pull/5377) [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df) Thanks [@louistrue](https://github.com/louistrue)! - `run_flow` now provides the model's entity table to flow graphs, so `table.joinByKey`'s `tag` and `property` strategies run over MCP as they do in the viewer and `ifc-lite flow run`. `HeadlessLikeBackend.getOrCreateMutationView()` is public: it is the view `bim.mutate` writes through, and a join must read the same overlay.
+
+### Patch Changes
+
+- [#5546](https://github.com/LTplus-AG/ifc-lite/pull/5546) [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43) Thanks [@louistrue](https://github.com/louistrue)! - Add an effective entity type-count accessor and report queued retypes under their current class in MCP model summaries, audits, and diffs.
+
+- [#5295](https://github.com/LTplus-AG/ifc-lite/pull/5295) [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590) Thanks [@louistrue](https://github.com/louistrue)! - Every schema-specific reader of the IFC4 entity table now uses `ENTITIES_IFC4_EXPRESS`, a new `@ifc-lite/data` export ([#5204](https://github.com/LTplus-AG/ifc-lite/issues/5204)). It is `ENTITIES_IFC4` checked against the IFC4 EXPRESS schema:
+  - Rows IFC4 does not declare are dropped. These are the draft alignment-extension entities such as `IfcAlignment2DHorizontal` and `IfcLinearPlacement`.
+  - Attribute lists follow EXPRESS, so `IfcCartesianPointList2D`/`3D` lose the IFC4X3-only `TagList`.
+  - The attribute-less defined-type rows are kept.
+  
+  The corrections are generated from `@ifc-lite/parser`'s EXPRESS registry by `scripts/generate-ifc4-express-corrections.mjs`, and CI checks that they are up to date. This fixes:
+  - `@ifc-lite/data`: `getEntities('IFC4')`, `findEntity('IFC4', …)` and `expandTypeNamesToDescendants`, which is what the IDS auditor reads;
+  - `@ifc-lite/parser`: `getAttributeNamesAcrossSchemas` / `isKnownType`;
+  - `@ifc-lite/mcp`: the schema tables;
+  - `@ifc-lite/export`: the subset-export attribute reader, the product/root type sets and the STEP retype re-layout. The retype re-layout could previously write a class IFC4 lacks, or a spurious `TagList` argument, into a file declaring `FILE_SCHEMA(('IFC4'))`;
+  - `@ifc-lite/ifcx`: the building-element family.
+
+- [#5260](https://github.com/LTplus-AG/ifc-lite/pull/5260) [`7ac41e9`](https://github.com/LTplus-AG/ifc-lite/commit/7ac41e9c1899763be20d4f7fa501f8b9f955ec96) Thanks [@louistrue](https://github.com/louistrue)! - Route MCP GlobalId and spatial scans through the effective entity iterator.
+
+- [#5276](https://github.com/LTplus-AG/ifc-lite/pull/5276) [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f) Thanks [@louistrue](https://github.com/louistrue)! - IDS validation of a live, edited model now validates the session's effective model instead of the file as parsed ([#5184](https://github.com/LTplus-AG/ifc-lite/issues/5184)). `createDataAccessor` takes an optional third `entityVisibility` argument (`EntityVisibilityView`). A `MutablePropertyView` satisfies it structurally, and so does a plain structured-clone snapshot. When it is supplied:
+  
+  - `getAllEntityIds()` and `getEntitiesByType()` enumerate through the shared `@ifc-lite/data` effective-entity accessor. A deleted entity is no longer counted, validated or reported. An entity created this session is validated under its class, and a retyped entity under its new class. `getEntitiesByType()` is the dominant path, because every specification whose applicability names an entity type resolves through it.
+  - `getEntityType()` answers the same effective class. A created entity's authored attributes (Name, GlobalId, Description, …) are read from its creation payload, because it has no source bytes.
+  
+  Omitting the argument leaves the accessor answering for the parsed file, unchanged. Attribute and quantity edits are still not reflected. The MCP `ids_validate` tool now passes its model's mutation view.
+
+- [#5264](https://github.com/LTplus-AG/ifc-lite/pull/5264) [`9f7dddb`](https://github.com/LTplus-AG/ifc-lite/commit/9f7dddb8ac649de09b271856ec3ba826fa034f56) Thanks [@louistrue](https://github.com/louistrue)! - Use effective entity enumeration for MCP typed and unfiltered queries.
+
+- [#5462](https://github.com/LTplus-AG/ifc-lite/pull/5462) [`337aab4`](https://github.com/LTplus-AG/ifc-lite/commit/337aab4f4f7dbb37834502414eac69561ccae932) Thanks [@louistrue](https://github.com/louistrue)! - Honor history-free relationship endpoint edits in CLI and MCP reads.
+
+- [#5303](https://github.com/LTplus-AG/ifc-lite/pull/5303) [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1) Thanks [@louistrue](https://github.com/louistrue)! - Fix `StoreEditor.removeEntity()` returning `false` and deleting nothing for a property or quantity atom the parser deferred out of `entityIndex.byId` (`deferPropertyAtomIndex: true`, the canonical example in the parsing guide), even though `StoreEditor.hasEntity()` reported that entity present. Callers that ignore the returned boolean silently kept the entity. The source-index membership test is now one shared predicate, `storeHasSourceEntity(store, expressId)` (new export), used by `StoreEditor`'s `addEntity`, `removeEntity` and `hasEntity` and by the CLI and MCP headless backends, so these checks can no longer disagree about whether an entity exists.
+
+- [#5242](https://github.com/LTplus-AG/ifc-lite/pull/5242) [`a1a7f32`](https://github.com/LTplus-AG/ifc-lite/commit/a1a7f32bc5ecb9a9aed9432c575afa5191791737) Thanks [@louistrue](https://github.com/louistrue)! - Resolve MCP viewer GlobalIds through the live mutation overlay.
+- Updated dependencies [[`77f5e16`](https://github.com/LTplus-AG/ifc-lite/commit/77f5e16e939aac5d28301c56a29c04472aa90792), [`610c3a1`](https://github.com/LTplus-AG/ifc-lite/commit/610c3a1d60c76850c2d2cc839e176f97ec0e2ca6), [`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88), [`8d45322`](https://github.com/LTplus-AG/ifc-lite/commit/8d45322f544ba1c3a6352303dfb048cc5d3836a6), [`dec98a2`](https://github.com/LTplus-AG/ifc-lite/commit/dec98a2c97e03e70e8b78c55bb27e87b5b4013a6), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e), [`bc22259`](https://github.com/LTplus-AG/ifc-lite/commit/bc222597e04bfa46d8fc331913615ec72d25bc64), [`32ac1f9`](https://github.com/LTplus-AG/ifc-lite/commit/32ac1f9846a5703c63ea859e5aeaf224f164db0c), [`0ddc31a`](https://github.com/LTplus-AG/ifc-lite/commit/0ddc31a0d4f321e4f4f43dd3e95572972c7937bb), [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f), [`7bab13a`](https://github.com/LTplus-AG/ifc-lite/commit/7bab13af06b8d8778f6cdb513ad299e760e55074), [`809e2ba`](https://github.com/LTplus-AG/ifc-lite/commit/809e2baa4b796a91ea2a2dbd52ae29e7dd4ef5ff), [`d8f7c64`](https://github.com/LTplus-AG/ifc-lite/commit/d8f7c643703012c55a41a1e8224db6e21a0c66b3), [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1), [`51cb84d`](https://github.com/LTplus-AG/ifc-lite/commit/51cb84d29c5d6add21d94ffd9947f7c6884f5b39), [`eb8c3d6`](https://github.com/LTplus-AG/ifc-lite/commit/eb8c3d66a8a9091aecb947ceeb2b2dcae189d533), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9), [`b8a9cde`](https://github.com/LTplus-AG/ifc-lite/commit/b8a9cde0a7dfe40137632bf083875961efb57c1a), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`73c0c5d`](https://github.com/LTplus-AG/ifc-lite/commit/73c0c5de3981987d6672de19cef2c64d61259277), [`074178f`](https://github.com/LTplus-AG/ifc-lite/commit/074178f651c21dacbfbec33534701a59a7e81ace), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c), [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9), [`94324e2`](https://github.com/LTplus-AG/ifc-lite/commit/94324e2a69a6cf41cf23488ccdc56b2b7d2c069f), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`46f79e3`](https://github.com/LTplus-AG/ifc-lite/commit/46f79e38649c6d78753587aeaefbf3d5bbef0d95), [`29688df`](https://github.com/LTplus-AG/ifc-lite/commit/29688df238998baea77b3fe55afe113b40c13eae), [`d6f65a0`](https://github.com/LTplus-AG/ifc-lite/commit/d6f65a009b72bef2f11c65e2b577b4d621abd0eb), [`4041f2f`](https://github.com/LTplus-AG/ifc-lite/commit/4041f2f75ae136a400e11de5c546bb136e97e8ef), [`a341dc9`](https://github.com/LTplus-AG/ifc-lite/commit/a341dc9512531a353c12d264b806a527d8de63f6), [`b9206c9`](https://github.com/LTplus-AG/ifc-lite/commit/b9206c94dceef0041dcf37e4cfe44cf09f4b4d7b), [`70ad6a7`](https://github.com/LTplus-AG/ifc-lite/commit/70ad6a7c77b73d6a04a7d842a64ce4a014451e68), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`1c12066`](https://github.com/LTplus-AG/ifc-lite/commit/1c12066f096f52389277b5fce738fc7e03a5334d), [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d), [`79716f9`](https://github.com/LTplus-AG/ifc-lite/commit/79716f9828e4f57bedeaef66292233806b15edf7), [`d05f542`](https://github.com/LTplus-AG/ifc-lite/commit/d05f5423a7caf761f0a2e12d064d85e84355d031), [`9132f7a`](https://github.com/LTplus-AG/ifc-lite/commit/9132f7ab81939eb145e8fe1b26eb1e9048321638), [`58691b3`](https://github.com/LTplus-AG/ifc-lite/commit/58691b362d67ab87f666d76d6ee27e39d1ec45f9), [`610d7f2`](https://github.com/LTplus-AG/ifc-lite/commit/610d7f29708bb4febf7dd9a8d716a8e5e0b4dba4), [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`94bd946`](https://github.com/LTplus-AG/ifc-lite/commit/94bd946d7a4e9ab98c5e9a950fa6e8a8e39b5316), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`becc9dc`](https://github.com/LTplus-AG/ifc-lite/commit/becc9dc4bd33267dbe8522f788fb8936dd349b70), [`24b7921`](https://github.com/LTplus-AG/ifc-lite/commit/24b79210c442f44614d5786ff2986ee3a2b9c0d7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`685b541`](https://github.com/LTplus-AG/ifc-lite/commit/685b5414f57eec64c74e056b9b51b6b8ffe3a88f), [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1), [`7e8d225`](https://github.com/LTplus-AG/ifc-lite/commit/7e8d225273d3f20d727dac879e31ac4e6ce165bb), [`fc6f49c`](https://github.com/LTplus-AG/ifc-lite/commit/fc6f49c79485640073b924df86a0973c691b7a5f), [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97), [`fbda35b`](https://github.com/LTplus-AG/ifc-lite/commit/fbda35b5bbf5475fe99d85301aff728624058f8d), [`f66adb5`](https://github.com/LTplus-AG/ifc-lite/commit/f66adb5fa9a35bf4ae4a9a9e9f36e477f815ad35), [`decff6b`](https://github.com/LTplus-AG/ifc-lite/commit/decff6bc31589df65bdd8dd20e72a0b840a4be7a), [`affda87`](https://github.com/LTplus-AG/ifc-lite/commit/affda87e1b892b608d5790387a3ab3315d47ae8c), [`316c0bf`](https://github.com/LTplus-AG/ifc-lite/commit/316c0bf248ca2573cc63acf421e4ccba4c7638c7), [`24b7921`](https://github.com/LTplus-AG/ifc-lite/commit/24b79210c442f44614d5786ff2986ee3a2b9c0d7), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`b0f3b80`](https://github.com/LTplus-AG/ifc-lite/commit/b0f3b803d70442307b6741b78b85adef976e6f63), [`1d71f36`](https://github.com/LTplus-AG/ifc-lite/commit/1d71f366e11043a80fa81055323b5118d84d213e), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`9f48e65`](https://github.com/LTplus-AG/ifc-lite/commit/9f48e653f8264d303f70f47370be727ebca6049a), [`2e13572`](https://github.com/LTplus-AG/ifc-lite/commit/2e135720996f3a3d48ec830f6895ac304f69e5dd), [`621de01`](https://github.com/LTplus-AG/ifc-lite/commit/621de015a52e65493fcda331ccaf9ffcfb626a47), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d), [`18b082f`](https://github.com/LTplus-AG/ifc-lite/commit/18b082ff95eedf847d29108726d4fee63c93057e), [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610), [`18650b0`](https://github.com/LTplus-AG/ifc-lite/commit/18650b0c67973833f675c6b8128ab55250a47efd)]:
+  - @ifc-lite/bcf@4.2.0
+  - @ifc-lite/mutations@2.7.0
+  - @ifc-lite/geometry@7.5.1
+  - @ifc-lite/collab@0.9.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/clash@2.3.2
+  - @ifc-lite/parser@8.1.0
+  - @ifc-lite/ids@3.0.0
+  - @ifc-lite/export@4.7.0
+  - @ifc-lite/create@2.9.0
+  - @ifc-lite/flow-nodes@0.3.0
+  - @ifc-lite/ifcx@4.2.0
+  - @ifc-lite/flow@0.3.0
+  - @ifc-lite/rules@0.3.0
+  - @ifc-lite/sdk@7.1.0
+  - @ifc-lite/diff@0.10.0
+  - @ifc-lite/viewer-core@0.2.22
+  - @ifc-lite/merge@0.4.7
+
 ## 0.19.0
 
 ### Minor Changes

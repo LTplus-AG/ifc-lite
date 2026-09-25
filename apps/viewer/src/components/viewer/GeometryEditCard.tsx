@@ -214,11 +214,11 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   }, [modelId, entityId, entityLabel, removeEntity, setSelectedEntityId, t]);
 
   return (
-    <div className="border border-purple-200 dark:border-purple-900/40 bg-purple-50/40 dark:bg-purple-950/20">
+    <div className="border border-overlay-accent/40 bg-overlay-accent/5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-xs font-semibold tracking-wide uppercase text-purple-800 dark:text-purple-300 hover:bg-purple-100/60 dark:hover:bg-purple-900/30"
+        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-xs font-semibold tracking-wide uppercase text-foreground hover:bg-overlay-accent-soft"
         aria-expanded={expanded}
       >
         <MoveIcon className="h-3.5 w-3.5 shrink-0" />
@@ -230,12 +230,12 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
         <div className="px-2 pb-2 space-y-2">
           {/* Position — XYZ inputs + ±step nudges */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-purple-700/80 dark:text-purple-400/80">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
               <span>{t('geometryExport.editCard.positionSectionLabel')}</span>
               <select
                 value={step}
                 onChange={(e) => setStep(parseFloat(e.target.value))}
-                className="bg-transparent border border-purple-300 dark:border-purple-700 px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-purple-500"
+                className="bg-transparent border border-overlay-accent/40 px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-overlay-accent"
                 aria-label={t('geometryExport.editCard.nudgeStepAriaLabel')}
                 disabled={!movable}
               >
@@ -245,7 +245,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               </select>
             </div>
             {!movable ? (
-              <p className="text-[11px] text-purple-700/70 dark:text-purple-400/70">
+              <p className="text-[11px] text-muted-foreground">
                 {t('geometryExport.editCard.nonStandardPlacementHint')}
               </p>
             ) : (
@@ -274,7 +274,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-7 text-xs border-purple-300 dark:border-purple-700"
+                  className="w-full h-7 text-xs border-overlay-accent/40"
                   onClick={applyAbsolute}
                 >
                   {t('geometryExport.editCard.applyXyzButton')}
@@ -287,9 +287,9 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               same action; this row gives the discoverable UI plus a
               readout for the current angle. */}
           {rotation && (
-            <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">
-              <RotateCw className="h-3 w-3 shrink-0 text-purple-700 dark:text-purple-400" />
-              <span className="text-[11px] font-mono text-purple-800 dark:text-purple-300 flex-1">
+            <div className="flex items-center gap-1 pt-1 border-t border-overlay-accent/40">
+              <RotateCw className="h-3 w-3 shrink-0 text-overlay-accent" />
+              <span className="text-[11px] font-mono text-foreground flex-1">
                 {yawDegrees !== null
                   ? t('geometryExport.editCard.yawReadout', { degrees: yawDegrees.toFixed(1) })
                   : t('geometryExport.editCard.yawReadoutEmpty')}
@@ -299,7 +299,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="h-6 w-6 text-purple-700"
+                    className="h-6 w-6 text-overlay-accent"
                     onClick={() => rotateBy(-15)}
                     aria-label={t('geometryExport.editCard.rotateMinus15AriaLabel')}
                   >
@@ -313,7 +313,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="h-6 w-6 text-purple-700"
+                    className="h-6 w-6 text-overlay-accent"
                     onClick={() => rotateBy(15)}
                     aria-label={t('geometryExport.editCard.rotatePlus15AriaLabel')}
                   >
@@ -327,7 +327,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="h-6 w-6 text-purple-700"
+                    className="h-6 w-6 text-overlay-accent"
                     onClick={() => rotateBy(90)}
                     aria-label={t('geometryExport.editCard.rotatePlus90AriaLabel')}
                   >
@@ -343,7 +343,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               Available even when Move isn't. Split surfaces only
               for resizable walls so the panel stays uncluttered
               for selections where the action doesn't apply. */}
-          <div className="flex items-center gap-1 pt-1 border-t border-purple-200/60 dark:border-purple-900/40">
+          <div className="flex items-center gap-1 pt-1 border-t border-overlay-accent/40">
             {splittable && (
               <Tooltip>
                 <TooltipTrigger asChild>

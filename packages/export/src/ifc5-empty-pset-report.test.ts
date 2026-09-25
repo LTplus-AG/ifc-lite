@@ -110,7 +110,8 @@ describe('Ifc5Exporter empty-pset reporting (#5201)', () => {
     const wallNode = file.data.find(
       (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
     );
-    expect(wallNode.attributes['bsi::ifc::prop::FireRating']).toBe('REI90');
+    // Pset-qualified since #5376: `FireRating` has no official flat IFC5 key.
+    expect(wallNode.attributes['bsi::ifc::v5a::Pset_FireSafety::FireRating']).toEqual({ type: 'IfcText', value: 'REI90' });
   });
 
   it('mixed: an empty pset is reported while a real pset on the same entity still exports', () => {
@@ -134,6 +135,7 @@ describe('Ifc5Exporter empty-pset reporting (#5201)', () => {
     const wallNode = file.data.find(
       (n: any) => n.attributes?.['bsi::ifc::prop::Name'] === 'Wall1',
     );
-    expect(wallNode.attributes['bsi::ifc::prop::FireRating']).toBe('REI90');
+    // Pset-qualified since #5376: `FireRating` has no official flat IFC5 key.
+    expect(wallNode.attributes['bsi::ifc::v5a::Pset_FireSafety::FireRating']).toEqual({ type: 'IfcText', value: 'REI90' });
   });
 });

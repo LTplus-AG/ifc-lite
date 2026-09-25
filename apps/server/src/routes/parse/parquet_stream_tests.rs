@@ -266,6 +266,15 @@ async fn stream_once(state: &AppState, content: &str) -> Vec<Value> {
 /// whenever its payload changes shape, so two lists here would be two things to
 /// bump and one of them would be forgotten.
 async fn await_cache_fill(state: &AppState, live: &[Value]) -> String {
+    await_cache_fill_for(state, live, crate::services::ParquetLayout::Flat).await
+}
+
+/// [`await_cache_fill`] for the entry a given layout fills.
+async fn await_cache_fill_for(
+    state: &AppState,
+    live: &[Value],
+    layout: crate::services::ParquetLayout,
+) -> String {
     let key = live
         .iter()
         .find(|e| e["type"] == "start")
@@ -274,7 +283,7 @@ async fn await_cache_fill(state: &AppState, live: &[Value]) -> String {
         .unwrap()
         .to_string();
     let required = [
-        format!("{key}-parquet-v5"),
+        crate::routes::parse::cache_keys::parquet_geometry_key(&key, layout),
         format!("{key}-parquet-metadata-v5"),
         crate::routes::parse::cache_keys::data_model_cache_key(&key),
         crate::routes::parse::cache_keys::symbolic_cache_key(&key),
@@ -373,3 +382,6 @@ async fn the_symbolic_sidecar_is_encoded_off_the_async_worker() {
 
 #[path = "parquet_stream_hash_only_tests.rs"]
 mod hash_only;
+
+#[path = "parquet_stream_cross_batch_tests.rs"]
+mod cross_batch;

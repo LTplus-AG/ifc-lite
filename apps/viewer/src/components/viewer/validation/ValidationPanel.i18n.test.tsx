@@ -26,6 +26,7 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { validationPanelEn } from '@/i18n/catalogues/validation-panel.en';
 import { useViewerStore } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
+import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel, RunningState } from './ValidationPanel.js';
 import { IdsSummary } from './ValidationPanel.idsSummary.js';
 
@@ -142,6 +143,7 @@ function reportFixture(): ValidationReport {
 
 function resetReport(): void {
   useViewerStore.setState({ idsValidationReport: null, validationSource: null });
+  setValidationSourceChoice(null);
 }
 
 /**
@@ -201,7 +203,7 @@ async function mountAll(): Promise<Set<string>> {
   for (const direction of ['export', 'import'] as const) {
     render(
       <IdsSummary
-        summary={{ direction, converted: 0, total: 1, refused: [{ name: 'r', reasons: ['reason'] }], notes: ['note'] }}
+        summary={{ direction, converted: 0, total: 1, refused: [{ name: 'r', reasons: ['reason'] }], notes: ['note'], dropped: ['dropped'] }}
         onDismiss={() => {}}
       />,
     );
@@ -243,6 +245,7 @@ afterEach(() => {
   cleanup();
   setLocale('en');
   useViewerStore.setState({ ...initial, idsValidationReport: null, validationSource: null });
+  setValidationSourceChoice(null);
 });
 
 describe('ValidationPanel localization (#5138)', () => {

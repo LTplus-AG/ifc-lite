@@ -31,6 +31,7 @@ import { createSourceRefReader } from './source-ref-bounds.js';
 import { buildStepHeader } from './step-header.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 
 /**
@@ -319,6 +320,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     warnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
+    enums: new EnumReconciliation(),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
   };
   // The same object, deliberately. See the file header.

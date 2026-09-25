@@ -28,7 +28,7 @@ const UNIQUE_SCOPES = new Set(['perModel', 'federation']);
  *  one list, not a second copy that could drift. */
 export const ELEMENT_REQUIREMENT_KINDS: ReadonlySet<FilterRule['kind']> = new Set([
   'property', 'quantity', 'attribute', 'name', 'material', 'classification',
-  'type', 'parent', 'predefinedType', 'ifcType', 'group',
+  'type', 'parent', 'predefinedType', 'ifcType', 'group', 'modelFact',
 ]);
 
 /** Parses a `RuleBlock`, restricting which `FilterRule` kinds may appear.

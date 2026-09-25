@@ -38,10 +38,16 @@ import {
 /** One ordinary mouse-wheel notch, as Chrome sends it. */
 const NOTCH_DELTA_Y = 120;
 
-function makeCanvas(): HTMLCanvasElement {
+/**
+ * An 800 x 600 CSS-px canvas whose drawing buffer is `pixelRatio` times that,
+ * as the renderer sizes it (#5383). happy-dom does no layout, so the CSS box
+ * is stubbed; without it `getBoundingClientRect()` is 0 x 0.
+ */
+function makeCanvas(pixelRatio = 1): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = 800;
-  canvas.height = 600;
+  canvas.width = 800 * pixelRatio;
+  canvas.height = 600 * pixelRatio;
+  canvas.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 800, height: 600 });
   document.body.appendChild(canvas);
   return canvas;
 }
@@ -153,6 +159,24 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
     assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
     assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
     assert.strictEqual(subject.getDistance(), reference.getDistance());
+  });
+
+  it('anchors at the cursor on a HiDPI canvas, in CSS px on both sides (#5383)', () => {
+    // Off-centre cursor, so a wrong extent visibly moves the anchor. The
+    // reference is the anchor the user pointed at: CSS cursor over CSS box.
+    const e = wheelEvent();
+    Object.defineProperties(e, {
+      clientX: { value: 700, configurable: true },
+      clientY: { value: 100, configurable: true },
+    });
+    const reference = new Camera();
+    reference.zoom(NOTCH_DELTA_Y, false, 700, 100, 800, 600, false);
+
+    const subject = new Camera();
+    applyWheelZoom(e, { camera: subject, canvas: makeCanvas(2), fastZoom: false, fineModifierHeld: false });
+
+    assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
+    assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
   });
 
   it('calls preventDefault when the modifier is active, so the browser does not zoom the page', () => {
@@ -319,5 +343,114 @@ describe('fine-zoom modifier tracker - real key presses only (#2683)', () => {
     tracker.dispose();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true }));
     assert.strictEqual(tracker.isHeld(), false);
+  });
+});
+
+describe('wheel zoom toward the surface under the cursor (#5393)', () => {
+  // A thin wall, the plane z = 2, straight under the canvas-centre cursor of a
+  // camera at z = 10 looking at the origin: the surface the user zooms at.
+  const WALL_Z = 2;
+
+  function rig() {
+    const canvas = makeCanvas();
+    const camera = new Camera();
+    camera.setAspect(800 / 600);
+    camera.setPosition(0, 0, 10);
+    camera.setTarget(0, 0, 0);
+    const picks: Array<[number, number]> = [];
+    const pickSurface = (x: number, y: number) => { picks.push([x, y]); return { x: 0, y: 0, z: WALL_Z }; };
+    return { canvas, camera, picks, pickSurface };
+  }
+
+  /** `n` wheel-in notches at the canvas centre; the camera's z after each. */
+  function zoomIn(r: ReturnType<typeof rig>, n: number, withSurface: boolean): number[] {
+    const zs: number[] = [];
+    for (let i = 0; i < n; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false,
+        ...(withSurface ? { pickSurface: r.pickSurface } : {}),
+      });
+      zs.push(r.camera.getPosition().z);
+    }
+    return zs;
+  }
+
+  it('without a surface pick, repeated notches pass through the wall (the defect)', () => {
+    const zs = zoomIn(rig(), 60, false);
+    assert.ok(Math.min(...zs) < WALL_Z, `plain zoom never passed the wall: min z ${Math.min(...zs)}`);
+  });
+
+  it('with a surface pick, repeated notches approach the wall and never pass it', () => {
+    const r = rig();
+    const zs = zoomIn(r, 60, true);
+    zs.forEach((z, i) => assert.ok(z > WALL_Z, `notch ${i}: camera at z ${z} is at or behind the wall`));
+    assert.ok(zs[zs.length - 1] - WALL_Z < 0.1, `60 notches got close to the wall: z ${zs[zs.length - 1]}`);
+  });
+
+  it('picks once per gesture, not once per notch', () => {
+    const r = rig();
+    zoomIn(r, 20, true);
+    assert.strictEqual(r.picks.length, 1, `picks: ${JSON.stringify(r.picks)}`);
+    assert.deepStrictEqual(r.picks[0], [400, 300], 'picked at the cursor, in CSS px');
+  });
+
+  it('never picks under fast zoom, which ignores the surface (PR #5461 review)', () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+      });
+    }
+    assert.strictEqual(r.picks.length, 0);
+  });
+
+  it('re-picks when anything else moved the camera between notches (PR #5461 review)', () => {
+    const r = rig();
+    zoomIn(r, 3, true);
+    assert.strictEqual(r.picks.length, 1);
+    // A fast-zoom dolly (or orbit/pan) within the same gesture window moves the
+    // camera off the cached point's ray: the next surface notch must re-pick.
+    applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+      camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+    });
+    zoomIn(r, 1, true);
+    assert.strictEqual(r.picks.length, 2, 'a stale point was reused after the camera moved');
+  });
+
+  it('re-picks after a look-around that turned the view without moving the camera (PR #5461 review)', () => {
+    const r = rig();
+    zoomIn(r, 2, true);
+    const p = r.camera.getPosition();
+    r.camera.setTarget(p.x + 1, p.y, p.z - 1); // same position, new view direction
+    zoomIn(r, 1, true);
+    assert.strictEqual(r.picks.length, 2, 'a point picked on the old view ray was reused');
+  });
+
+  it('re-picks when the cursor moves beyond the gesture slop, or after a pause', () => {
+    const r = rig();
+    zoomIn(r, 2, true);
+    const moved = wheelEvent({ deltaY: -NOTCH_DELTA_Y });
+    Object.defineProperty(moved, 'clientX', { value: 410, configurable: true });
+    applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+    assert.strictEqual(r.picks.length, 2, 'a 10 px cursor move starts a new gesture');
+    const realNow = Date.now;
+    try {
+      const t = realNow();
+      Date.now = () => t + 1000; // past the 400 ms idle window
+      applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+    } finally {
+      Date.now = realNow;
+    }
+    assert.strictEqual(r.picks.length, 3, 'a pause starts a new gesture');
+  });
+
+  it('never picks when zooming out, which cannot pass through anything', () => {
+    const r = rig();
+    for (let i = 0; i < 5; i++) {
+      applyWheelZoom(wheelEvent({ deltaY: NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface,
+      });
+    }
+    assert.strictEqual(r.picks.length, 0);
   });
 });

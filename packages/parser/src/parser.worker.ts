@@ -25,6 +25,7 @@ import type { WasmScanApi } from './entity-scanner.js';
 import type { ParserMemorySnapshot } from './data-store-transport.js';
 import { WorkerIndexPublisher, type WorkerStorePayload } from './worker-index-publication.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
+import { createLogger } from '@ifc-lite/data';
 
 /** Input message: pass the SAB-backed source bytes and an opaque request id. */
 export interface ParserWorkerInputMessage {
@@ -74,6 +75,8 @@ export interface ParserWorkerProgressMessage {
   id: string;
   progress: { phase: string; percent: number };
 }
+
+const parseLiteLog = createLogger('parseLite');
 
 /** Optional structured diagnostic line (mirrors parseColumnar `onDiagnostic`). */
 export interface ParserWorkerDiagnosticMessage {
@@ -300,7 +303,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         publishedContentKey = prepassKey ?? store.source.contentKey;
         fingerprintChosen = true;
         // Report the actual choice, not readiness observed later on the host.
-        console.log(`[parseLite] source fingerprint: origin=${prepassKey === undefined ? 'parser' : 'prepass'} bytes=${source.byteLength}`);
+        parseLiteLog.debug(`source fingerprint: origin=${prepassKey === undefined ? 'parser' : 'prepass'} bytes=${source.byteLength}`);
       }
       return publishedContentKey ?? null;
     };

@@ -12,7 +12,7 @@
  * Dashboards persist in localStorage; the first open seeds "Model overview".
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Plus, X } from 'lucide-react';
+import { BarChart3, Plus } from 'lucide-react';
 import { chartElementFilterKey } from '@/lib/charts/source-filter';
 import { elementFieldColumnId, type Aggregation, type ChartScope, type ChartSpec, type DashboardLayoutItem, type DashboardSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,6 @@ const SCOPE_LABEL: Record<ChartScope['kind'], string> = { all: 'All models', vis
 const EMPTY_CLASH_RULES: readonly ClashRuleOption[] = [];
 
 export interface ChartsPanelProps {
-  onClose?: () => void;
   /** Injectable chart renderer; tests pass a recorder, the app uses ECharts. */
   renderer?: ChartRenderer;
   /** Injectable PDF seams for the report export; the app uses jsPDF + the live renderer. */
@@ -62,7 +61,7 @@ export function ensureActiveDashboard(): void {
   }
 }
 
-export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps) {
+export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
   const { t } = useTranslation();
   const dashboards = useViewerStore((s) => s.dashboards);
   const activeDashboardId = useViewerStore((s) => s.activeDashboardId);
@@ -239,11 +238,6 @@ export function ChartsPanel({ onClose, renderer, reportSeams }: ChartsPanelProps
             {t('chartsPanel.addChartButton')}
           </Button>
           <ReportExportDialog dashboard={dashboard} aggregations={aggregations} onSaveReportSetup={upsertDashboard} seams={reportSeams} />
-          {onClose && (
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose} aria-label={t('chartsPanel.closeAriaLabel')}>
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
         </div>
       </div>
 

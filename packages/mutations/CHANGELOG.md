@@ -1,5 +1,72 @@
 # @ifc-lite/mutations
 
+## 2.8.0
+
+### Minor Changes
+
+- [#5912](https://github.com/LTplus-AG/ifc-lite/pull/5912) [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9) Thanks [@louistrue](https://github.com/louistrue)! - Bulk edits and CSV imports are now one undo step each ([#5861](https://github.com/LTplus-AG/ifc-lite/issues/5861)).
+  
+  The Bulk property editor and the CSV importer write straight to the model's property overlay, so neither run reached the undo history: Ctrl+Z did nothing, the model was not flagged as having unsaved changes, and cancelling a Bulk run left the chunks it had already applied in place with no way back. Both now record their run as a single undo step (one Ctrl+Z reverts the run, one Ctrl+Y re-applies it) and mark the model as changed. A cancelled Bulk run says how far it got, and undo reverts what it applied.
+  
+  Undo and redo of a batch no longer recurse once per change and commit the stacks in one update, so a 10,000-element batch undoes in milliseconds instead of overflowing the call stack.
+  
+  `ImportStats` (`@ifc-lite/mutations`) gains `mutations`, the list of mutations the import applied, so a host with an undo history can record them.
+
+## 2.7.1
+
+### Patch Changes
+
+- [#5545](https://github.com/LTplus-AG/ifc-lite/pull/5545) [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9) Thanks [@louistrue](https://github.com/louistrue)! - **Behaviour change:** element rules now read list, enumerated and table property values member by member, in search, applicability and validation, and so in everything built on the same filter evaluator (appearance query scopes, clash set filters, chart filters). The `unit` requirement's reported value lists each member with its unit. In validation, `eq` and `ne` choose number or text comparison per member, so one text cell in a table no longer forces every number cell to a text comparison. A positive operator passes when ANY member matches. A negated operator (`ne`, `notContains`, `notMatches`) passes only when NO member has the value.
+  
+  Before, these rules compared the joined display string, so results change for existing list-valued properties. Against the list `Colors = (Red, Blue)`:
+  - `Colors = Blue` used to fail and now passes.
+  - `Colors = "Red, Blue"` used to pass and now fails.
+  - `Colors != Red` used to pass and now fails.
+  
+  Each bound of a range is checked against the members on its own, so on a table `>= 15 AND <= 5` passes when some cell is ≥ 15 and another is ≤ 5. In search, negated operators also stop passing on a single non-matching property set when a regex set name matches several sets. That is the NONE rule validation already applied.
+  
+  The set checks (`unique`, `aggregate`, `compare`) still read each property as one whole value (a list's joined text, a table's `Table (N rows)` summary), so their results do not change.
+  
+  Bounded values and complex properties keep their display value. Lens colouring, the CLI's `--where` and bulk-edit queries are not rules and keep their own matching. Models whose properties come from a server-parsed property table carry no structure marker, so they keep the joined value.
+  
+  `@ifc-lite/parser` marks each extracted property with a `structure` (`enumerated`, `bounded`, `list`, `table`, `reference`, `complex`) when it is not a single value, and exports the `ExtractedProperty` type. `@ifc-lite/data`'s `Property` declares the same field, and `MutablePropertyView` keeps it on base properties. The filter value suggestions offer list members. `propertyCandidates` and `readSubjectWhole` are exported.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+
+## 2.7.0
+
+### Minor Changes
+
+- [#5255](https://github.com/LTplus-AG/ifc-lite/pull/5255) [`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88) Thanks [@louistrue](https://github.com/louistrue)! - Enumerate live IFC entities through one mutation-aware boundary in headless queries.
+
+- [#5464](https://github.com/LTplus-AG/ifc-lite/pull/5464) [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5) Thanks [@louistrue](https://github.com/louistrue)! - Adding many elements into a model no longer slows down quadratically ([#5413](https://github.com/LTplus-AG/ifc-lite/issues/5413)). Every `bim.store.add*` call, Flow `Add element` lane and UI add looked up the owner history and representation contexts by walking every entity created so far, so adding 2,000 columns took about 12 s. The effective-entity enumeration now reads a single-class query from a per-class index of created entities, and checks created-entity membership in O(1). The same 2,000 columns now take about 0.4 s, and 4,000 about the same. `MutablePropertyView` gains `getNewEntitiesOfType(type)`, and `EffectiveEntityOverlay` gains two optional members, `getNewEntity` and `getNewEntitiesOfType`. A plain-data overlay without them keeps the previous full scan.
+
+- [#5517](https://github.com/LTplus-AG/ifc-lite/pull/5517) [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1) Thanks [@louistrue](https://github.com/louistrue)! - `parseValue` and `CsvConnector` now accept a Real, Integer, Boolean or Logical cell only when the whole cell is a value of that type ([#5427](https://github.com/LTplus-AG/ifc-lite/issues/5427)). Values that were silently coerced before are now reported per cell and left unwritten: `12,5` or `60abc` in a Real column (previously written as 12 and 60), `2.7` in an Integer column (previously 2), and any word other than true/false/yes/no/1/0 in a Boolean or Logical column, such as `ja` or `UNKNOWN` (previously `false`). A property match on such a cell no longer selects entities either. `generateMutations` reports each skipped cell through its `warnings` array. Surrounding whitespace and exponent notation (`1.2E-05`) are still accepted; a decimal comma is refused rather than guessed. The flow table nodes already applied this check and now share the same function, so their behaviour is unchanged.
+
+- [#5316](https://github.com/LTplus-AG/ifc-lite/pull/5316) [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9) Thanks [@louistrue](https://github.com/louistrue)! - Allow `resolveSpatialAnchor` to read the effective entity set through an optional mutation view. In-store authoring can now target a created storey or placement and will not reuse deleted or retyped-away owner history, contexts, storeys or placements ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). CLI and viewer authoring pass their live views.
+  
+  `StoreEditor.getMutationView()` gives in-store helpers the same effective read context; generated spaces now resolve their anchor through it.
+
+- [#5377](https://github.com/LTplus-AG/ifc-lite/pull/5377) [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df) Thanks [@louistrue](https://github.com/louistrue)! - Export `buildMatchContext`/`matchRowAgainstContext` (from `csv-match.ts`) and `parseValue`/`PARSE_INVALID` (from `csv-parse-value.ts`) so `@ifc-lite/flow-nodes`' `table.joinByKey` (issue [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.2) can reuse the existing tag/property row-matching index and typed-cell parsing instead of re-implementing them.
+
+- [#5303](https://github.com/LTplus-AG/ifc-lite/pull/5303) [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1) Thanks [@louistrue](https://github.com/louistrue)! - Fix `StoreEditor.removeEntity()` returning `false` and deleting nothing for a property or quantity atom the parser deferred out of `entityIndex.byId` (`deferPropertyAtomIndex: true`, the canonical example in the parsing guide), even though `StoreEditor.hasEntity()` reported that entity present. Callers that ignore the returned boolean silently kept the entity. The source-index membership test is now one shared predicate, `storeHasSourceEntity(store, expressId)` (new export), used by `StoreEditor`'s `addEntity`, `removeEntity` and `hasEntity` and by the CLI and MCP headless backends, so these checks can no longer disagree about whether an entity exists.
+
+- [#5282](https://github.com/LTplus-AG/ifc-lite/pull/5282) [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7) Thanks [@louistrue](https://github.com/louistrue)! - Allow the effective-entity iterator to enumerate a caller's source table domain, and make federated search filters include live deletions, creations, and class changes without scanning unrelated STEP records.
+
+### Patch Changes
+
+- [#5378](https://github.com/LTplus-AG/ifc-lite/pull/5378) [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e) Thanks [@louistrue](https://github.com/louistrue)! - `BulkQueryEngine` now selects from the session's effective model ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). An entity created this session is a bulk-edit candidate, matched by class and by its authored GlobalId and Name. A retyped entity is selected by its new class, not its parsed one. A queued Name edit is what `namePattern` matches. Deleted entities stay excluded ([#5196](https://github.com/LTplus-AG/ifc-lite/issues/5196)).
+
+- [#5276](https://github.com/LTplus-AG/ifc-lite/pull/5276) [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f) Thanks [@louistrue](https://github.com/louistrue)! - Add `iterateEffectiveEntities`, the single effective-entity enumeration for a live model session ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). Given a store's entity index and its mutation overlay, it yields every source entity except tombstoned ones and every overlay-created entity, with its effective class (retypes applied) and an `overlayCreated` flag. The overlay can be a `MutablePropertyView` or any object with the same `isDeleted`/`getNewEntities`/`getTypeMutations` shape, such as a worker snapshot. It lives in `@ifc-lite/data` so that packages which do not depend on `@ifc-lite/mutations`, such as IDS, can use it. `@ifc-lite/mutations`' `iterateEffectiveEntityIds` now delegates to it, with the same signature and results.
+
+- [#5239](https://github.com/LTplus-AG/ifc-lite/pull/5239) [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `BulkQueryEngine.select()` (both the entity-type fast path and the no-filter `getAllEntityIds()` path) selecting, counting, and mutating entities that were already deleted in the mutation view. The deleted entities' writes previously survived `restoreFromTombstone` (undo of the delete).
+
+- [#5302](https://github.com/LTplus-AG/ifc-lite/pull/5302) [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9) Thanks [@louistrue](https://github.com/louistrue)! - CSV import (`CsvConnector`) now matches rows against the session's effective model ([#5198](https://github.com/LTplus-AG/ifc-lite/issues/5198)). Previously every match strategy (GlobalId, Express ID, Name, Tag and `property`) enumerated the base entity table. So an entity deleted this session was still matched, counted and written to, and those writes survived undo of the delete. An entity created this session could never be matched. Candidates now come from the shared effective-entity accessor: tombstoned entities are excluded, and overlay-created entities are included. A created entity matches by its authored GlobalId, Name and Tag (a queued attribute edit wins) and by its overlay property sets.
+
+- [#5448](https://github.com/LTplus-AG/ifc-lite/pull/5448) [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d) Thanks [@louistrue](https://github.com/louistrue)! - Allow explicit base providers for live property views
+- Updated dependencies [[`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412)]:
+  - @ifc-lite/data@5.1.0
+
 ## 2.6.0
 
 ### Minor Changes

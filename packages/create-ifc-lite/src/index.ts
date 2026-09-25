@@ -4,8 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 import { createBasicTemplate } from './templates/basic.js';
 import { createThreejsTemplate } from './templates/threejs.js';
@@ -14,16 +15,47 @@ import { createReactTemplate } from './templates/react.js';
 import { createServerTemplate } from './templates/server.js';
 import { createServerNativeTemplate } from './templates/server-native.js';
 
+/** Every template, mapped to the function that scaffolds it. */
 const TEMPLATES = {
-  basic: 'basic',
-  threejs: 'threejs',
-  babylonjs: 'babylonjs',
-  react: 'react',
-  server: 'server',
-  'server-native': 'server-native',
+  basic: createBasicTemplate,
+  threejs: createThreejsTemplate,
+  babylonjs: createBabylonjsTemplate,
+  react: createReactTemplate,
+  server: createServerTemplate,
+  'server-native': createServerNativeTemplate,
 } as const;
 
 type TemplateType = keyof typeof TEMPLATES;
+
+const TEMPLATE_NAMES = Object.keys(TEMPLATES) as TemplateType[];
+
+/**
+ * `name in TEMPLATES` walks the prototype chain, so `--template toString`
+ * passed the guard and then matched no branch, silently scaffolding `basic`.
+ */
+function isTemplate(name: string): name is TemplateType {
+  return Object.hasOwn(TEMPLATES, name);
+}
+
+/**
+ * Read this package's own version. A failure here is a broken install, not a
+ * normal condition, so report it and return a value that reads as unknown
+ * rather than a plausible number a bug report would then carry — the same
+ * lesson `@ifc-lite/cli`'s `readCliVersion` records.
+ */
+function readOwnVersion(): string {
+  const pkgPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+  try {
+    const pkg: unknown = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const version = (pkg as { version?: unknown }).version;
+    if (typeof version === 'string' && version.length > 0) return version;
+  } catch (err) {
+    console.error(`Warning: could not read ${pkgPath} (${err instanceof Error ? err.message : String(err)}).`);
+    return '0.0.0-unknown';
+  }
+  console.error(`Warning: ${pkgPath} declares no "version".`);
+  return '0.0.0-unknown';
+}
 
 function printUsage() {
   console.log(`
@@ -33,8 +65,9 @@ function printUsage() {
     npx create-ifc-lite [project-name] [options]
 
   Options:
-    --template <type>   Template to use [default: basic]
-    --help              Show this help message
+    -t, --template <type>   Template to use [default: basic]
+    -v, --version           Print the create-ifc-lite version
+    -h, --help              Show this help message
 
   Examples:
     npx create-ifc-lite my-ifc-app
@@ -62,24 +95,38 @@ async function main() {
     process.exit(0);
   }
 
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(readOwnVersion());
+    process.exit(0);
+  }
+
   // Parse arguments
-  let projectName = 'my-ifc-app';
+  let projectName: string | undefined;
   let template: TemplateType = 'basic';
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--template' || arg === '-t') {
-      const t = args[++i] as TemplateType;
-      if (t && t in TEMPLATES) {
-        template = t;
-      } else {
-        console.error(`Invalid template: ${t}. Available: basic, threejs, babylonjs, react, server, server-native`);
+      const value = args[++i];
+      if (value === undefined || !isTemplate(value)) {
+        console.error(`Invalid template: ${value ?? '(missing)'}. Available: ${TEMPLATE_NAMES.join(', ')}`);
         process.exit(1);
       }
-    } else if (!arg.startsWith('-')) {
+      template = value;
+    } else if (arg.startsWith('-')) {
+      // Previously ignored, which made `--templat react` scaffold a project
+      // literally named "react" instead of reporting the typo.
+      console.error(`Unknown option: ${arg}\nRun \`npx create-ifc-lite --help\` to see the available options.`);
+      process.exit(1);
+    } else if (projectName === undefined) {
       projectName = arg;
+    } else {
+      console.error(`Unexpected argument: ${arg}. Only one project name is accepted.`);
+      process.exit(1);
     }
   }
+
+  projectName ??= 'my-ifc-app';
 
   // Reject path separators, '..', and names that would yield an invalid npm
   // `name`, so join(process.cwd(), projectName) stays under cwd and the
@@ -103,24 +150,15 @@ async function main() {
 
   console.log(`\n  Creating IFC-Lite project in ${targetDir}...\n`);
 
-  if (template === 'threejs') {
-    mkdirSync(targetDir, { recursive: true });
-    createThreejsTemplate(targetDir, projectName);
-  } else if (template === 'babylonjs') {
-    mkdirSync(targetDir, { recursive: true });
-    createBabylonjsTemplate(targetDir, projectName);
-  } else if (template === 'react') {
-    mkdirSync(targetDir, { recursive: true });
-    createReactTemplate(targetDir, projectName);
-  } else if (template === 'server') {
-    mkdirSync(targetDir, { recursive: true });
-    createServerTemplate(targetDir, projectName);
-  } else if (template === 'server-native') {
-    mkdirSync(targetDir, { recursive: true });
-    createServerNativeTemplate(targetDir, projectName);
-  } else {
-    mkdirSync(targetDir, { recursive: true });
-    createBasicTemplate(targetDir, projectName);
+  mkdirSync(targetDir, { recursive: true });
+  try {
+    TEMPLATES[template](targetDir, projectName);
+  } catch (error) {
+    // Templates resolve their dependency versions from the npm registry as
+    // their first act, so an offline run fails AFTER the directory exists.
+    // Leaving it behind made the obvious retry fail with "already exists".
+    rmSync(targetDir, { recursive: true, force: true });
+    throw error;
   }
 
   console.log(`  Done! Next steps:\n`);
@@ -128,7 +166,7 @@ async function main() {
 
   if (template === 'server') {
     console.log(`    docker compose up -d`);
-    console.log(`    npm install && npm run example`);
+    console.log(`    npm install && npm run example ./your-model.ifc`);
     console.log(`\n  Server will be available at http://localhost:3001`);
   } else if (template === 'server-native') {
     console.log(`    npm install`);
@@ -146,6 +184,13 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? `\n  ${error.message}\n` : error);
+  if (error instanceof Error) {
+    console.error(`\n  ${error.message}`);
+    const cause = error.cause;
+    if (cause instanceof Error) console.error(`  Caused by: ${cause.message}`);
+    console.error();
+  } else {
+    console.error(error);
+  }
   process.exit(1);
 });

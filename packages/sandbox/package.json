@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/sandbox",
-  "version": "2.6.1",
+  "version": "2.8.0",
   "description": "QuickJS-in-WASM sandboxed script execution for ifc-lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,6 +23,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "esbuild-wasm": "^0.28.2",
     "quickjs-emscripten": "^0.32.0"

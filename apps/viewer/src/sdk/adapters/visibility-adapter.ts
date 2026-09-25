@@ -56,7 +56,7 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
     hide(refs: EntityRef[]) {
       const state = store.getState();
       // Convert EntityRef to global IDs — the renderer subscribes to the flat
-      // hiddenEntities set (global IDs), not hiddenEntitiesByModel.
+      // hiddenEntities set (global IDs).
       const globalIds: number[] = [];
       for (const ref of refs) {
         if (!getModelForRef(state, ref.modelId)) continue;

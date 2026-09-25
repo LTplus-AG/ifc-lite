@@ -4,10 +4,13 @@
 
 /**
  * Regression coverage for the #4918 grab-bag "standalone panels, part 1"
- * slice's `misc-panels-a.en.ts` catalogue and its five unrelated
- * consumers, one `describe` block per component: `BasketPresentationDock`,
- * `DeviationPanel`, `ExportChangesReviewDialog`, `ScanSectionPanel`, and
- * `SpaceMousePanel`.
+ * slice's `misc-panels-a.en.ts` catalogue and its four remaining unrelated
+ * consumers, one `describe` block per component: `DeviationPanel`,
+ * `ExportChangesReviewDialog`, `ScanSectionPanel`, and `SpaceMousePanel`.
+ * (`BasketPresentationDock`'s own describe block moved to
+ * `presentation/PresentationPanel.i18n.test.tsx` when it became the
+ * `presentation` bottom panel, #5508 — its `basketPresentationDock.*` prefix
+ * is now `presentationPanel.*`.)
  *
  * Same pseudo-locale-oracle shape as `RoomPanel.i18n.test.tsx`: every
  * catalogue key under the five prefixes is marked, the component is
@@ -30,17 +33,14 @@ import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
 import type { TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { BasketPresentationDock } from './BasketPresentationDock.js';
 import { DeviationPanel } from './DeviationPanel.js';
 import { ExportChangesReviewDialog, type ModelReviewGroup } from './ExportChangesReviewDialog.js';
 import { ScanSectionPanel } from './ScanSectionPanel.js';
 import { SpaceMousePanel } from './SpaceMousePanel.js';
 import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
 import type { EffectiveChange } from '@ifc-lite/mutations';
-import type { BasketView } from '@/store/slices/pinboardSlice';
 
 const PREFIXES = [
-  'basketPresentationDock.',
   'deviationPanel.',
   'exportChangesReviewDialog.',
   'scanSectionPanel.',
@@ -134,13 +134,7 @@ function domAfterPseudo(container: HTMLElement): DomSnapshot {
 }
 
 const RESET_STATE = {
-  pinboardEntities: new Set<string>(),
-  isolatedEntities: null,
-  basketViews: [] as BasketView[],
-  activeBasketViewId: null,
-  basketPresentationVisible: false,
   isMobile: false,
-  spaceMousePanelOpen: false,
   spaceMouseSupported: false,
   spaceMouseConnected: false,
   spaceMouseDeviceName: null,
@@ -158,86 +152,6 @@ afterEach(() => {
   cleanup();
   setLocale(BASELINE_LOCALE);
   useViewerStore.setState(RESET_STATE);
-});
-
-describe('BasketPresentationDock localization (#4918)', () => {
-  it('translates the collapsed trigger', () => {
-    useViewerStore.setState({ basketPresentationVisible: false });
-    const container = render(<BasketPresentationDock />);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate(
-      [{ key: 'basketPresentationDock.presentationLabel' }],
-      englishDom,
-      afterDom,
-    );
-  });
-
-  it('translates the expanded dock header, empty strip, and control titles', () => {
-    useViewerStore.setState({ basketPresentationVisible: true });
-    const container = render(<BasketPresentationDock />);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate(
-      [
-        { key: 'basketPresentationDock.dragToMoveTitle' },
-        { key: 'basketPresentationDock.presentationLabel' },
-        { key: 'basketPresentationDock.inBasketCount', params: { count: 0 } },
-        { key: 'basketPresentationDock.viewsCount', params: { count: 0 } },
-        { key: 'basketPresentationDock.setFromContextTitle' },
-        { key: 'basketPresentationDock.addToBasketTitle' },
-        { key: 'basketPresentationDock.removeFromBasketTitle' },
-        { key: 'basketPresentationDock.showActiveBasketTitle' },
-        { key: 'basketPresentationDock.clearActiveBasketTitle' },
-        { key: 'basketPresentationDock.saveCurrentViewTitle' },
-        { key: 'basketPresentationDock.playAllTitle' },
-        { key: 'basketPresentationDock.hideButton' },
-        { key: 'basketPresentationDock.scrollLeftTitle' },
-        { key: 'basketPresentationDock.scrollRightTitle' },
-        { key: 'basketPresentationDock.resizeWidthTitle' },
-        { key: 'basketPresentationDock.emptyStripHint' },
-      ],
-      englishDom,
-      afterDom,
-    );
-  });
-
-  it('translates a saved-view card: active badge, object/transition counts, and per-card titles', () => {
-    useViewerStore.setState({
-      basketPresentationVisible: true,
-      activeBasketViewId: 'view-1',
-      basketViews: [
-        {
-          id: 'view-1',
-          name: 'My View',
-          entityRefs: ['a', 'b'],
-          thumbnailDataUrl: null,
-          transitionMs: 1500,
-          viewpoint: null,
-          section: null,
-          source: 'manual',
-          createdAt: 0,
-          updatedAt: 0,
-        },
-      ],
-    });
-    const container = render(<BasketPresentationDock />);
-    const englishDom = readableStrings(container);
-    const afterDom = domAfterPseudo(container);
-    assertAllTranslate(
-      [
-        { key: 'basketPresentationDock.activeBadge' },
-        { key: 'basketPresentationDock.objectsCount', params: { count: 2 } },
-        { key: 'basketPresentationDock.transitionSuffix', params: { duration: '1.5' } },
-        { key: 'basketPresentationDock.renameViewTitle' },
-        { key: 'basketPresentationDock.setTransitionTitle' },
-        { key: 'basketPresentationDock.deleteViewTitle' },
-        { key: 'basketPresentationDock.viewsCount', params: { count: 1 } },
-      ],
-      englishDom,
-      afterDom,
-    );
-  });
 });
 
 describe('DeviationPanel localization (#4918)', () => {
@@ -349,16 +263,14 @@ describe('ExportChangesReviewDialog localization (#4918)', () => {
 });
 
 describe('ScanSectionPanel localization (#4918)', () => {
-  it('translates the header, toggle labels, and the no-point-cloud message', () => {
+  it('translates the toggle labels and the no-point-cloud message', () => {
     const container = render(
-      <ScanSectionPanel onClose={() => {}} hasPointCloud={false} totalInBand={0} renderedCount={0} />,
+      <ScanSectionPanel hasPointCloud={false} totalInBand={0} renderedCount={0} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'scanSectionPanel.title' },
-        { key: 'scanSectionPanel.closeAriaLabel' },
         { key: 'scanSectionPanel.showScanPointsLabel' },
         { key: 'scanSectionPanel.noPointCloudMessage' },
         { key: 'scanSectionPanel.includeInExportLabel' },
@@ -370,7 +282,7 @@ describe('ScanSectionPanel localization (#4918)', () => {
 
   it('translates the band-thickness/opacity labels and the partial-decimation footnote with a point cloud loaded', () => {
     const container = render(
-      <ScanSectionPanel onClose={() => {}} hasPointCloud totalInBand={5000} renderedCount={1200} />,
+      <ScanSectionPanel hasPointCloud totalInBand={5000} renderedCount={1200} />,
     );
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
@@ -391,16 +303,14 @@ describe('ScanSectionPanel localization (#4918)', () => {
   });
 });
 
-describe('SpaceMousePanel localization (#4918)', () => {
-  it('translates the header and the no-WebHID-support message', () => {
-    useViewerStore.setState({ spaceMousePanelOpen: true, spaceMouseSupported: false });
+describe('SpaceMousePanel localization (#4918, #5509)', () => {
+  it('translates the no-WebHID-support message', () => {
+    useViewerStore.setState({ spaceMouseSupported: false });
     const container = render(<SpaceMousePanel />);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'spaceMousePanel.dragToMoveTitle' },
-        { key: 'spaceMousePanel.headerLabel' },
         { key: 'spaceMousePanel.noWebHidMessage' },
       ],
       englishDom,
@@ -409,7 +319,7 @@ describe('SpaceMousePanel localization (#4918)', () => {
   });
 
   it('translates the connect button and sensitivity controls when supported but not connected', () => {
-    useViewerStore.setState({ spaceMousePanelOpen: true, spaceMouseSupported: true, spaceMouseConnected: false });
+    useViewerStore.setState({ spaceMouseSupported: true, spaceMouseConnected: false });
     const container = render(<SpaceMousePanel />);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
@@ -427,7 +337,6 @@ describe('SpaceMousePanel localization (#4918)', () => {
 
   it('translates the connected/disconnect row and device-name fallback', () => {
     useViewerStore.setState({
-      spaceMousePanelOpen: true,
       spaceMouseSupported: true,
       spaceMouseConnected: true,
       spaceMouseDeviceName: null,
@@ -460,7 +369,6 @@ describe('SpaceMousePanel localization (#4918)', () => {
       buildDump: () => '{}',
     };
     useViewerStore.setState({
-      spaceMousePanelOpen: true,
       spaceMouseSupported: true,
       spaceMouseConnected: true,
       spaceMouseDeviceName: 'Test Device',

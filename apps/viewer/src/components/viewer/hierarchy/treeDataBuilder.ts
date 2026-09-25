@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
+import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
+import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
 import type { GroupSubFilter } from './groupEntityTypes.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
@@ -12,14 +14,13 @@ export type { GroupSubFilter } from './groupEntityTypes.js';
 
 import {
   IfcTypeEnum,
-  EntityFlags,
   RelationshipType,
   isSpaceLikeSpatialType,
   isStoreyLikeSpatialType,
   type SpatialNode,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { buildMaterialUsageIndex, extractGroupMembersOnDemand } from '@ifc-lite/parser';
+import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
@@ -835,31 +836,21 @@ export function buildIfcTypeTree(
     );
 
     const view = overlay?.(modelId);
-    // Find all type entities (entities with IS_TYPE flag)
-    // @raw-entity-enumeration-ok parsed type rows, each passed through effectiveTreeType (deleted skipped, retype applied)
-    for (let i = 0; i < dataStore.entities.count; i++) {
-      const flags = dataStore.entities.flags[i];
-      if (!(flags & EntityFlags.IS_TYPE)) continue;
-
-      const expressId = dataStore.entities.expressId[i];
-      const typeClassName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId));
-      if (typeClassName === null) continue;
-
-      // Skip relationship entities and non-product types
-      if (typeClassName.startsWith('IfcRel') || typeClassName === 'Unknown') continue;
-      const typeName = dataStore.entities.getName(expressId) || `#${expressId}`;
+    const assignments = effectiveTypeAssignments(dataStore, view);
+    for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 
       // Get instances via DefinesByType (forward: type → occurrences)
-      const instanceIds = dataStore.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'forward');
+      const instanceIds = effectiveTypeInstanceIds(dataStore, expressId, view, assignments);
       const instances: TypeEntry['instances'] = [];
 
       for (const instId of instanceIds) {
         const instGlobalId = resolveTreeGlobalId(modelId, instId, models);
         // An IfcElementAssemblyType's occurrences carry no geometry of their
         // own — without this the type row reported 0 elements (#1133).
-        const instIfcType = effectiveTreeType(view, instId, dataStore.entities.getTypeName(instId) || 'Unknown');
+        const instIfcType = effectiveTreeType(view, instId,
+          (view?.getNewEntity(instId)?.type ?? dataStore.entities.getTypeName(instId)) || 'Unknown');
         if (instIfcType === null) continue;
-        const instName = dataStore.entities.getName(instId) || `#${instId}`;
+        const instName = effectiveTreeEntityName(dataStore, view, instId);
         if (!assemblyGeometry.renders(instIfcType, instId, instGlobalId)) {
           if (assemblyGeometry.isOther(instIfcType, instId, instGlobalId)) {
             otherInstances.push({ expressId: instId, globalId: instGlobalId, name: instName, modelId, ifcType: instIfcType });
@@ -1176,42 +1167,21 @@ export function buildGroupTree(
   const entries: GroupEntry[] = [];
 
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
-    const byType = dataStore.entityIndex?.byType;
     const entities = dataStore.entities;
     if (!entities) return;
-
-    // IFCX ingest builds `entityIndex` permanently EMPTY (there are no STEP
-    // byte spans to index — see buildIfcxDataStore), so an empty byType must
-    // not read as "no groups": fall back to ONE scan of the EntityTable's
-    // type-name column, restricted to the group classes (the scope-chips
-    // pattern, #1662). STEP stores keep the O(1) index path untouched.
-    let fallbackByType: Map<string, number[]> | null = null;
-    if (!byType || byType.size === 0) {
-      fallbackByType = new Map();
-      const wanted = new Set<string>(GROUP_ENTITY_TYPES.map((t) => t.toUpperCase()));
-      for (let i = 0; i < entities.count; i++) {
-        const expressId = entities.expressId[i];
-        const upper = entities.getTypeName(expressId).toUpperCase();
-        if (!wanted.has(upper)) continue;
-        const bucket = fallbackByType.get(upper);
-        if (bucket) bucket.push(expressId);
-        else fallbackByType.set(upper, [expressId]);
-      }
-      if (fallbackByType.size === 0) return;
-    }
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
     const view = overlay?.(modelId);
+    const groups = effectiveGroupIds(dataStore, view);
+    const assignments = effectiveGroupAssignments(dataStore, view);
 
     for (let rank = 0; rank < GROUP_ENTITY_TYPES.length; rank++) {
       const typeName = GROUP_ENTITY_TYPES[rank];
       if (!groupMatchesSubFilter(typeName, subFilter)) continue;
-      const groupIds = byType?.get(typeName.toUpperCase()) ?? fallbackByType?.get(typeName.toUpperCase());
+      const groupIds = groups.get(typeName);
       if (!groupIds || groupIds.length === 0) continue;
 
       for (const groupId of groupIds) {
-        if (effectiveTreeType(view, groupId, typeName) === null) continue;
-        const members = extractGroupMembersOnDemand(dataStore, groupId)
-          .filter((member) => effectiveTreeType(view, member.id, member.type) !== null);
+        const members = effectiveGroupMembers(dataStore, groupId, view, assignments);
         // Empty group: a dead click, skip (mirror the empty-material skip).
         if (members.length === 0) continue;
 
@@ -1261,12 +1231,10 @@ export function buildGroupTree(
 
         // Name with ObjectType fallback for unnamed systems — same display
         // logic as the properties panel's Groups & Zones card (#1075).
-        const name = entities.getName(groupId);
-        const objectType = entities.getObjectType?.(groupId);
         entries.push({
           modelId,
           groupExpressId: groupId,
-          name: name || objectType || `${typeName} #${groupId}`,
+          name: effectiveGroupName(dataStore, view, groupId, typeName),
           ifcType: typeName,
           typeRank: rank,
           memberRows: Array.from(rowByGlobalId.values()),

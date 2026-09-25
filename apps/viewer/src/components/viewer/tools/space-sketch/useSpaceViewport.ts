@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeFitFromPoints, PAD, type Fit, type Pt } from '@/lib/space-sketch-geometry';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { clampToCanvas, zoomStep } from './space-viewport';
 
 const DEFAULT_W = 420;
@@ -72,6 +73,15 @@ export interface UseSpaceViewport {
   };
 }
 
+/**
+ * The canvas is drawn at its nominal width through a `viewBox`, but CSS may
+ * render it narrower (the HUD caps the top-center lane, #5503), so a screen
+ * offset scales by nominal/rendered width before it is a canvas px.
+ */
+function canvasScale(nominalWidth: number, rect: DOMRect): number {
+  return rect.width > 0 ? nominalWidth / rect.width : 1;
+}
+
 export function useSpaceViewport(): UseSpaceViewport {
   const svgRef = useRef<SVGSVGElement | null>(null);
   // The canvas element as STATE as well as a ref, so the wheel effect below can
@@ -107,7 +117,8 @@ export function useSpaceViewport(): UseSpaceViewport {
 
   const svgPoint = useCallback((e: { clientX: number; clientY: number }): Pt => {
     const rect = svgRef.current!.getBoundingClientRect();
-    return clampToCanvas(e.clientX - rect.left, e.clientY - rect.top, sizeRef.current.w, sizeRef.current.h);
+    const k = canvasScale(sizeRef.current.w, rect);
+    return clampToCanvas((e.clientX - rect.left) * k, (e.clientY - rect.top) * k, sizeRef.current.w, sizeRef.current.h);
   }, []);
 
   // Wheel = zoom about the cursor. A native NON-PASSIVE listener so
@@ -118,7 +129,8 @@ export function useSpaceViewport(): UseSpaceViewport {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = svgEl.getBoundingClientRect();
-      const next = zoomStep(fitRef.current, e.deltaY, e.clientX - rect.left, e.clientY - rect.top);
+      const k = canvasScale(sizeRef.current.w, rect);
+      const next = zoomStep(fitRef.current, e.deltaY, (e.clientX - rect.left) * k, (e.clientY - rect.top) * k);
       if (next) applyFit(next);
     };
     svgEl.addEventListener('wheel', onWheel, { passive: false });
@@ -130,7 +142,7 @@ export function useSpaceViewport(): UseSpaceViewport {
       e.preventDefault();
       e.stopPropagation();
       resizeRef.current = { x: e.clientX, y: e.clientY, w: sizeRef.current.w, h: sizeRef.current.h };
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      capturePointer(e.currentTarget, e.pointerId);
     }, []),
     onPointerMove: useCallback((e: React.PointerEvent) => {
       const r = resizeRef.current;
@@ -142,7 +154,7 @@ export function useSpaceViewport(): UseSpaceViewport {
     }, []),
     onPointerUp: useCallback((e: React.PointerEvent) => {
       resizeRef.current = null;
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      releasePointer(e.currentTarget, e.pointerId);
     }, []),
   };
 

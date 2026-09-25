@@ -54,6 +54,7 @@ export function pruneReplacedSubgraphs(
   report: DemeshApplyReport,
 ): void {
   const source = store.source!;
+  // @raw-entity-enumeration-ok reverse-reference prune indexes original source bytes; new overlay geometry is excluded and shared infrastructure is protected
   const byId = store.entityIndex.byId;
   const extractor = new EntityExtractor(source);
   const indexAdapter = {

@@ -1,0 +1,50 @@
+{
+  "name": "@ifc-lite/opencde-foundation",
+  "version": "0.2.0",
+  "description": "buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/opencde-foundation"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "opencde",
+    "foundation-api",
+    "buildingsmart",
+    "oauth2",
+    "cde"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

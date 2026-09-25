@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
+import { capturePointer } from '@/lib/pointer-capture';
 
 export interface PreviewMarker { id: string; point: { x: number; y: number; z: number }; check?: boolean }
 export interface ProjectedMarker { id: string; x: number; y: number; check?: boolean }
@@ -81,7 +82,7 @@ export function useLocalPreviewRenderer({ upload, release, deps, disabled, marke
   /** Begins an orbit/pick gesture on the primary pointer. */
   const beginGesture = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!event.isPrimary || blocked.current || !renderer.current) return;
-    const p = point(event); gesture.current = { start: p, last: p, pointer: event.pointerId }; event.currentTarget.setPointerCapture(event.pointerId);
+    const p = point(event); gesture.current = { start: p, last: p, pointer: event.pointerId }; capturePointer(event.currentTarget, event.pointerId);
   };
   /** The live gesture for this pointer event, or null when none is in progress or the preview is disabled. */
   const currentGesture = (event: React.PointerEvent<HTMLCanvasElement>): { current: PreviewGesture; view: Renderer } | null => {

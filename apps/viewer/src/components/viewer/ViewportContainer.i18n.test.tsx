@@ -123,7 +123,8 @@ describe('ViewportContainer localization (#4918 viewport/lighting slice)', () =>
       'viewportLighting.container.emptyState.openFromCloud',
       'viewportLighting.container.emptyState.driveWithLlm',
       'viewportLighting.container.emptyState.footerCaption',
-      'viewportLighting.container.emptyState.layersPromo.title',
+      'viewportLighting.container.emptyState.loadDemo.button',
+      'viewportLighting.container.emptyState.layersDemo',
       'viewportLighting.container.emptyState.footer.discoverPrompt',
       'viewportLighting.container.emptyState.footer.shortcutsLabel',
     ];

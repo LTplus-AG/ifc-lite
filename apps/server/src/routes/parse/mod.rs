@@ -6,6 +6,7 @@
 
 pub(crate) mod cache_keys;
 mod cached_replay;
+mod stream_batch;
 mod stream_event;
 mod stream_progress;
 mod fetch;
@@ -14,6 +15,7 @@ mod parquet;
 mod parquet_optimized;
 mod parquet_optimized_replay;
 mod parquet_stream;
+mod replay_header;
 
 pub use fetch::{check_cache, get_cached_geometry, get_data_model, get_symbolic};
 pub use json::{parse_full, parse_metadata, parse_stream};
@@ -23,7 +25,7 @@ pub use parquet_stream::parse_parquet_stream;
 
 use crate::error::ApiError;
 use crate::services::cache::DiskCache;
-use crate::services::{OpeningFilterMode, ParquetLayout};
+use crate::services::{OpeningFilterMode, ParquetLayout, StreamShapes};
 use axum::extract::Multipart;
 use flate2::read::GzDecoder;
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
@@ -49,6 +51,13 @@ pub struct ParseQuery {
     /// takes this struct, so the signal travels with the cache identity.
     #[serde(default)]
     pub parquet_layout: ParquetLayout,
+    /// Whether `POST /api/v1/parse/parquet-stream` may share shapes ACROSS
+    /// batches (#5407): "batch-local" (default) or "cross-batch", which needs
+    /// `parquet_layout=shared-shapes`. See [`StreamShapes`] for why it is a
+    /// second opt-in rather than implied by the layout. Ignored by every other
+    /// route, and not part of the cache identity.
+    #[serde(default)]
+    pub stream_shapes: StreamShapes,
     /// SHA-256 of the file the client is asking about, hex, lowercase (#3901).
     ///
     /// Read by `POST /api/v1/parse/parquet-stream` and (since #5128)
@@ -66,6 +75,19 @@ pub struct ParseQuery {
 }
 
 impl ParseQuery {
+    /// The stream's batch-sharing mode, refusing cross-batch sharing on the
+    /// flat layout: that layout has no rotation columns and must stay
+    /// byte-identical to v5, so it cannot share anything, and a client asking
+    /// for it has misread the contract.
+    fn resolved_stream_shapes(&self) -> Result<StreamShapes, ApiError> {
+        if self.stream_shapes == StreamShapes::CrossBatch && !self.parquet_layout.has_rotation() {
+            return Err(ApiError::BadRequest(
+                "stream_shapes=cross-batch requires parquet_layout=shared-shapes".to_string(),
+            ));
+        }
+        Ok(self.stream_shapes)
+    }
+
     /// Resolve and validate the requested tessellation level.
     fn resolved_tessellation_quality(&self) -> Result<TessellationQuality, ApiError> {
         match self.tessellation_quality.as_deref() {

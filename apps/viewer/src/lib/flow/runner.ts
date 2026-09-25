@@ -19,7 +19,7 @@
 
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { runFlow, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
-import { BROWSER_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, type FlowHost } from '@ifc-lite/flow-nodes';
+import { BROWSER_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BrowserTrackingStore } from './persistence.js';
 
@@ -39,6 +39,10 @@ export interface ViewerRunInput {
   readonly cache: MemoCache;
   readonly inputs?: Readonly<Record<string, unknown>>;
   readonly signal?: AbortSignal;
+  /** Entity-table access for `table.joinByKey`'s tag/property strategies — see `viewer-tables.ts`. */
+  readonly tables?: FlowHost['tables'];
+  /** Loads a model for `model.openFromSource` through `addModel` — see `open-model.ts`. */
+  readonly openModel?: FlowHost['openModel'];
 }
 
 export class FlowCapabilityError extends Error {
@@ -48,10 +52,42 @@ export class FlowCapabilityError extends Error {
   }
 }
 
+/**
+ * The browser has no `process.env` and must never persist a secret, so
+ * `HostFeatures.secrets` is always empty here (`BROWSER_FEATURES`). A graph
+ * that references `{{secret:NAME}}` anywhere would otherwise interpolate
+ * nothing (or fail deep inside a node, after other nodes already ran) — this
+ * is the viewer's own pre-flight check, thrown BEFORE `runFlow` starts, so
+ * the failure is reported up front like `FlowCapabilityError` rather than
+ * mid-run (#5167 phase 3.5). The CLI/MCP entry points never hit this class:
+ * their `HostFeatures.secrets` reflects the real environment, and their own
+ * `validateSecretReferences` runs the equivalent check against it.
+ */
+export class FlowSecretUnavailableError extends Error {
+  constructor(readonly names: readonly string[]) {
+    super(`this graph references secret(s) ${names.join(', ')}, which are never available in the viewer — run it via the CLI or MCP instead`);
+    this.name = 'FlowSecretUnavailableError';
+  }
+}
+
 export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult> {
   const parsed = parseCapabilities(input.doc.capabilities);
   if (!parsed.ok) throw new FlowCapabilityError(parsed.errors.map((e) => e.message));
-  const host: FlowHost = { bim: input.bim, grants: parsed.value, defaultModelId: input.bim.model.activeId() ?? undefined };
+  const secretNames = [...new Set(referencedSecrets(input.doc).map((r) => r.name))];
+  if (secretNames.length > 0) throw new FlowSecretUnavailableError(secretNames);
+  // `networkGrants` is the SAME parsed capability list as `grants` here: the
+  // viewer always gates on the author's declared capabilities (there is no
+  // "trusted, no gate" mode in the browser). A CORS-blocked `http.request`
+  // surfaces its own explicit error (see `network-request.ts`'s
+  // `describeFetchFailure`) rather than an empty success.
+  const host: FlowHost = {
+    bim: input.bim,
+    grants: parsed.value,
+    networkGrants: parsed.value,
+    defaultModelId: input.bim.model.activeId() ?? undefined,
+    ...(input.tables ? { tables: input.tables } : {}),
+    ...(input.openModel ? { openModel: input.openModel } : {}),
+  };
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
   const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
     runFlow(input.doc, {

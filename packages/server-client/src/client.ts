@@ -18,7 +18,7 @@ import { withNarrowedCoordinateSpace,
   type SymbolicData,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
-import { parseQuery } from './parse-query.js';
+import { parquetStreamQuery, parseQuery } from './parse-query.js';
 import {
   consumeParquetStream,
   STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
@@ -346,7 +346,7 @@ export class IfcServerClient {
       let probe: Response | null = null;
       try {
         probe = await fetch(
-          `${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true, hash)}`,
+          `${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options, hash)}`,
           {
             method: 'POST',
             headers: this.authHeaders(),
@@ -386,7 +386,7 @@ export class IfcServerClient {
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true)}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options)}`, {
       method: 'POST',
       headers: this.authHeaders(),
       body: formData,

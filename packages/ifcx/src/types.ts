@@ -12,6 +12,7 @@ import {
   ENTITIES_IFC4_EXPRESS,
   ENTITIES_IFC4X3,
   IfcTypeEnumToString,
+  PropertyValueType,
   SPATIAL_STRUCTURE_TYPE_ENUMS,
 } from '@ifc-lite/data';
 import type { IfcEntityInfo } from '@ifc-lite/data';
@@ -223,6 +224,25 @@ export interface TypedPropertyValue {
   unit?: string;
   source?: string;
 }
+
+/**
+ * The IFC defined type a {@link TypedPropertyValue} names for each
+ * `PropertyValueType`. Shared by every writer of typed records: collab's
+ * mutation bridge and the IFCX exporter's pset-qualified keys (#5376).
+ */
+export const PROPERTY_TYPE_NAMES: Record<PropertyValueType, string> = {
+  [PropertyValueType.String]: 'IfcText',
+  [PropertyValueType.Real]: 'IfcReal',
+  [PropertyValueType.Integer]: 'IfcInteger',
+  [PropertyValueType.Boolean]: 'IfcBoolean',
+  [PropertyValueType.Logical]: 'IfcLogical',
+  [PropertyValueType.Label]: 'IfcLabel',
+  [PropertyValueType.Identifier]: 'IfcIdentifier',
+  [PropertyValueType.Text]: 'IfcText',
+  [PropertyValueType.Enum]: 'IfcLabel',
+  [PropertyValueType.Reference]: 'IfcLabel',
+  [PropertyValueType.List]: 'IfcText',
+};
 
 const TYPED_PROPERTY_KEYS = new Set(['type', 'value', 'unit', 'source']);
 

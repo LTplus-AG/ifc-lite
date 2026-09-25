@@ -23,6 +23,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
  * can never drop real data — worst case is the pre-existing behaviour.
  */
 export function hasEntityType(store: IfcDataStore, ...types: string[]): boolean {
+  // @raw-entity-enumeration-ok source-byte WASM parse prefilter; overlay creations have no source bytes for this scan
   const byType = store.entityIndex?.byType;
   if (!byType || byType.size === 0) return true;
   for (const t of types) {

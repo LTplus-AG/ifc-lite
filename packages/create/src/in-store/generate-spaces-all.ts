@@ -25,6 +25,8 @@ import {
   type BoundaryMode,
 } from './generate-spaces.js';
 import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
+import { authoredScalar, createOverlayLookup, effectiveStoreyIds } from './spatial-children.js';
+import { safeLengthUnitScale } from './length-unit-scale.js';
 
 /** Snap tolerances tried, in order, when `snap: 'auto'`. First that encloses
  *  rooms wins (least over-merging); else the largest is used. */
@@ -92,14 +94,36 @@ export interface GenerateSpacesAllResult {
   skippedExisting: number;
 }
 
-/** Every IfcBuildingStorey with resolved name + elevation, low → high. */
-export function listStoreys(store: IfcDataStore): StoreyInfo[] {
+/**
+ * Every IfcBuildingStorey of the effective model (#5249) with resolved name +
+ * elevation, low → high: a storey deleted this session is not listed, and one
+ * created this session is, named and elevated from its authored payload.
+ */
+export function listStoreys(store: IfcDataStore, overlay?: OverlayWallReader): StoreyInfo[] {
   const elevs = store.spatialHierarchy?.storeyElevations;
-  const list = store.getEntitiesByType('IfcBuildingStorey').map((s) => ({
-    id: s.expressId,
-    name: store.entities.getName(s.expressId) || `Storey #${s.expressId}`,
-    elevation: elevs?.get(s.expressId) ?? 0,
-  }));
+  const lookup = createOverlayLookup(overlay);
+  // A created storey is raw STEP (no in-store storey builder exists), so its
+  // Elevation is in the file's native unit; parsed elevations are metres.
+  const scale = store.source
+    ? safeLengthUnitScale(store.source, store.entityIndex, 'listStoreys') ?? 1
+    : 1;
+  const list = effectiveStoreyIds(store, lookup).map((id) => {
+    const authored = lookup.createdAttributes(id);
+    if (authored) {
+      const name = authoredScalar(authored[2]);
+      const elevation = authoredScalar(authored[9]);
+      return {
+        id,
+        name: typeof name === 'string' && name ? name : `Storey #${id}`,
+        elevation: typeof elevation === 'number' ? elevation * scale : 0,
+      };
+    }
+    return {
+      id,
+      name: store.entities.getName(id) || `Storey #${id}`,
+      elevation: elevs?.get(id) ?? 0,
+    };
+  });
   list.sort((a, b) => a.elevation - b.elevation);
   return list;
 }
@@ -110,7 +134,7 @@ export function generateSpaces(
   options: GenerateSpacesAllOptions = {},
   overlay?: OverlayWallReader,
 ): GenerateSpacesAllResult {
-  const all = listStoreys(store);
+  const all = listStoreys(store, overlay);
   const want = options.storeys;
   const selected = want === undefined || want === 'all'
     ? all
@@ -118,7 +142,7 @@ export function generateSpaces(
 
   // Per-space dedup: skip detected rooms that overlap an existing space, while
   // still emitting non-overlapping rooms on the same storey. `force` opts out.
-  const footprintsByStorey = options.force ? new Map() : existingSpaceFootprintsByStorey(store);
+  const footprintsByStorey = options.force ? new Map() : existingSpaceFootprintsByStorey(store, overlay);
 
   const minArea = options.minArea ?? 0.5;
   const topH = options.topStoreyHeight ?? DEFAULT_TOP_HEIGHT;

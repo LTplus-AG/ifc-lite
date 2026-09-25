@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/mcp",
-  "version": "0.19.0",
+  "version": "0.22.0",
   "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
@@ -46,6 +46,7 @@
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/diff": "workspace:^",
+    "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",

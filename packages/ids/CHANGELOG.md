@@ -1,5 +1,86 @@
 # @ifc-lite/ids
 
+## 3.0.3
+
+### Patch Changes
+
+- [#5589](https://github.com/LTplus-AG/ifc-lite/pull/5589) [`a2e5d2d`](https://github.com/LTplus-AG/ifc-lite/commit/a2e5d2d9aa578efeb6d3becdc94335650b89f67d) Thanks [@louistrue](https://github.com/louistrue)! - IDS external-reference classifications ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): an authored typed value (e.g. an `IfcIdentifier` whose text is `[#22](https://github.com/LTplus-AG/ifc-lite/issues/22)` or `$`) is read as its text instead of being re-parsed as a reference or unset token.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/codegen@1.18.1
+
+## 3.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/data@5.3.0
+
+## 3.0.1
+
+### Patch Changes
+
+- Updated dependencies [[`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3)]:
+  - @ifc-lite/data@5.2.0
+  - @ifc-lite/parser@8.2.0
+
+## 3.0.0
+
+### Major Changes
+
+- [#5305](https://github.com/LTplus-AG/ifc-lite/pull/5305) [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking (`@ifc-lite/ids`):** `PropertyValueResult.dataType` and `PropertySetInfo` properties' `dataType` are now `string | undefined`, where `undefined` means the type is unknown. Code that assumed a `string` must handle `undefined`.
+  
+  An IDS property facet that requires a `dataType` now **fails** when the property's dataType is unknown, instead of skipping the check ([#5224](https://github.com/LTplus-AG/ifc-lite/issues/5224)). A spec that demanded `IFCBOOLEAN` used to pass `"not-a-boolean-at-all"` whenever the stored property carried no dataType.
+  
+  - `@ifc-lite/ids`: the new failure type `PROPERTY_DATATYPE_UNKNOWN` holds under every optionality, `prohibited` included, so "cannot verify" is never a pass. It has messages in both formatters and in en/de/fr. Only a property flagged `dataTypeMixed` (an `IfcPropertyTableValue`, whose columns differ in type by design) is exempt, and it defers to the value match, as upstream ifctester does. The property overlay resolver no longer manufactures `''` for a correction created without a dataType. `PropertySetInfo` properties now type `dataType` as `string | undefined` and gain `dataTypeMixed`. A predefined property set's attributes (`IfcDoorPanelProperties.PanelOperation`, …) take their declared EXPRESS type as their dataType.
+  - `@ifc-lite/parser`: `IfcPropertyListValue` and `IfcPropertyEnumeratedValue` carry the one `dataType` their members share, and a table sets `dataTypeMixed`. The new export `getAttributeTypeForSchema` returns an attribute's declared EXPRESS type.
+  - `@ifc-lite/data`: `Property` gains `dataTypeMixed`.
+  - `@ifc-lite/server-client`: `Property` gains `data_type_mixed`, decoded from the server's new `data_type_mixed` column (data-model payload v7).
+
+### Minor Changes
+
+- [#5280](https://github.com/LTplus-AG/ifc-lite/pull/5280) [`51cb84d`](https://github.com/LTplus-AG/ifc-lite/commit/51cb84d29c5d6add21d94ffd9947f7c6884f5b39) Thanks [@louistrue](https://github.com/louistrue)! - Fix `xs:totalDigits`/`xs:fractionDigits` counting the wrong digits for a value in scientific notation ([#5186](https://github.com/LTplus-AG/ifc-lite/issues/5186)). A string such as `"1.5e3"` or `"1E3"` had its `e`/`E` and exponent digits counted as digits of the value. The digit counter now reads the exponent and applies it arithmetically to the lexical digits, so `"1.5e3"` counts as 1500 (4 total, 0 fraction). The count stays exact beyond double precision, and a huge exponent is never expanded into a string. Both the pass/fail check and the failure-reason text use the same counter. Validation outcomes can change for digit facets checked against exponential values, so this is `minor`.
+
+- [#5246](https://github.com/LTplus-AG/ifc-lite/pull/5246) [`d6f65a0`](https://github.com/LTplus-AG/ifc-lite/commit/d6f65a009b72bef2f11c65e2b577b4d621abd0eb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `passRate`/`overallPassRate` reporting 100 on a specification (or a
+  whole report) that fails on cardinality (`minOccurs`/`maxOccurs`) with no
+  individual entity failures — e.g. three matching entities under
+  `maxOccurs: 2` each satisfy their own requirements, so the old
+  `passedCount / totalEntities` formula landed on 100 while `status` was
+  `'fail'`. `passRate` and `overallPassRate` are now clamped to 0 whenever
+  the corresponding `status`/`failedSpecifications` says the check failed
+  and the formula would otherwise disagree with it; a spec that fails on
+  genuine per-entity requirement failures keeps its real (already `< 100`)
+  rate. Bumped `minor` because the corrected numbers are consumer-visible —
+  scripts, dashboards or agents reading `passRate` today may be silently
+  trusting the old, misleading value.
+
+- [#5276](https://github.com/LTplus-AG/ifc-lite/pull/5276) [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f) Thanks [@louistrue](https://github.com/louistrue)! - IDS validation of a live, edited model now validates the session's effective model instead of the file as parsed ([#5184](https://github.com/LTplus-AG/ifc-lite/issues/5184)). `createDataAccessor` takes an optional third `entityVisibility` argument (`EntityVisibilityView`). A `MutablePropertyView` satisfies it structurally, and so does a plain structured-clone snapshot. When it is supplied:
+  
+  - `getAllEntityIds()` and `getEntitiesByType()` enumerate through the shared `@ifc-lite/data` effective-entity accessor. A deleted entity is no longer counted, validated or reported. An entity created this session is validated under its class, and a retyped entity under its new class. `getEntitiesByType()` is the dominant path, because every specification whose applicability names an entity type resolves through it.
+  - `getEntityType()` answers the same effective class. A created entity's authored attributes (Name, GlobalId, Description, …) are read from its creation payload, because it has no source bytes.
+  
+  Omitting the argument leaves the accessor answering for the parsed file, unchanged. Attribute and quantity edits are still not reflected. The MCP `ids_validate` tool now passes its model's mutation view.
+
+- [#5298](https://github.com/LTplus-AG/ifc-lite/pull/5298) [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5) Thanks [@louistrue](https://github.com/louistrue)! - IDS material facets no longer report `MATERIAL_MISSING` for an element that has a material on a server-parsed model ([#5227](https://github.com/LTplus-AG/ifc-lite/issues/5227)). The contract follows the classification facet's `unresolved` handling ([#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948)). A proven material association satisfies a presence-only material facet. A value-constrained facet that no readable material satisfies reports the new failure type `MATERIAL_UNRESOLVED`, which is neither `MATERIAL_MISSING` nor `MATERIAL_VALUE_MISMATCH`. That failure **fails** the requirement even when its optionality is `prohibited`, so "cannot verify" is never reported as a pass. `MaterialInfo` gains `unresolved`, and an unresolved entry carries `name: ''` (as `ClassificationInfo` does), so `name` stays a `string`. The failure has a user-facing message in both formatters and in the en/de/fr locales.
+
+- [#5291](https://github.com/LTplus-AG/ifc-lite/pull/5291) [`7e8d225`](https://github.com/LTplus-AG/ifc-lite/commit/7e8d225273d3f20d727dac879e31ac4e6ce165bb) Thanks [@louistrue](https://github.com/louistrue)! - `ruleSetToIds` exports the rules of a rule set that IDS 1.0 can express as IDS XML. It never approximates: each rule without an exact IDS equivalent is refused with every reason listed. `@ifc-lite/ids` now exports `translateXsdRegex`, the XSD-to-JavaScript regex translator its checker uses.
+
+- [#5286](https://github.com/LTplus-AG/ifc-lite/pull/5286) [`18650b0`](https://github.com/LTplus-AG/ifc-lite/commit/18650b0c67973833f675c6b8128ab55250a47efd) Thanks [@louistrue](https://github.com/louistrue)! - `xs:pattern` facets now evaluate XSD character-class subtraction (`[a-z-[aeiou]]`) exactly ([#5183](https://github.com/LTplus-AG/ifc-lite/issues/5183)). The matcher used to approximate the construct as its positive class, so `[a-z-[aeiou]]` became `[a-z]` and a consonants-only pattern accepted `"aeiou"`, which is exactly the value it was written to exclude. Subtraction is now translated to a negative lookahead, `(?:(?![aeiou])[a-z])`. That form matches the same single characters, nests (`[a-z-[b-y-[c]]]`), and translates XSD escapes on either side. A subtraction that cannot be delimited, such as an unterminated one, is refused, so its specification fails with an error that names the construct. The document auditor no longer warns `W_REGEX_UNVERIFIED` for a well-formed subtraction, because the runtime now evaluates it faithfully.
+  
+  This changes validation outcomes for IDS files that use subtraction patterns: values the pattern excludes now fail where they used to pass. Patterns without subtraction are unaffected.
+
+### Patch Changes
+
+- [#5337](https://github.com/LTplus-AG/ifc-lite/pull/5337) [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a broken classification chain (a dangling `ReferencedSource`, an unreadable entity, an entity of an unexpected type, or a cycle) reporting a confident `CLASSIFICATION_SYSTEM_MISMATCH` instead of `CLASSIFICATION_UNRESOLVED`. `walkClassificationChain` (`@ifc-lite/parser`) and the structurally identical `IfcExternalReferenceRelationship` walk in `@ifc-lite/ids`'s `resolveClassifications` both stopped without reporting anything when the chain could not be followed to an `IfcClassification` root, leaving `system` `undefined` — indistinguishable from a chain that legitimately ends without naming one (`ReferencedSource` omitted, which is schema-legal). Both walks now mark the classification record `unresolved` when the chain genuinely could not be resolved, so the IDS classification facet reports `CLASSIFICATION_UNRESOLVED` (the same fail-closed path [#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948) already established) instead of asserting a system mismatch the data never proved.
+
+- [#5467](https://github.com/LTplus-AG/ifc-lite/pull/5467) [`4041f2f`](https://github.com/LTplus-AG/ifc-lite/commit/4041f2f75ae136a400e11de5c546bb136e97e8ef) Thanks [@louistrue](https://github.com/louistrue)! - IDS classification facets on a live, edited model read `IfcExternalReferenceRelationship` classifications of non-rooted resources (materials, profiles) from the session's effective model ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). A relationship deleted this session no longer classifies its material, and one created this session does. Created classification references in the chain are read from their authored payload. Pass the model's mutation view as `createDataAccessor`'s third argument, as before.
+
+- [#5548](https://github.com/LTplus-AG/ifc-lite/pull/5548) [`a341dc9`](https://github.com/LTplus-AG/ifc-lite/commit/a341dc9512531a353c12d264b806a527d8de63f6) Thanks [@louistrue](https://github.com/louistrue)! - IDS external-reference classifications on a live model ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249) follow-up): the session's relationship list and record reader are built once per accessor instead of on every `getClassifications` call; an authored string attribute is read as the literal value (it was un-quoted, disagreeing with the STEP writer), and an authored typed value is unwrapped.
+- Updated dependencies [[`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610)]:
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/parser@8.1.0
+
 ## 2.0.0
 
 ### Major Changes

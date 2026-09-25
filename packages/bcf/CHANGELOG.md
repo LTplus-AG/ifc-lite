@@ -1,5 +1,31 @@
 # @ifc-lite/bcf
 
+## 5.0.0
+
+### Major Changes
+
+- [#5970](https://github.com/LTplus-AG/ifc-lite/pull/5970) [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8) Thanks [@louistrue](https://github.com/louistrue)! - Removed `BCFOverlayRenderer` and `BCFOverlayRendererOptions` ([#5511](https://github.com/LTplus-AG/ifc-lite/issues/5511), charter [#5478](https://github.com/LTplus-AG/ifc-lite/issues/5478)). The framework-agnostic DOM overlay class — and the injected `<style>` stylesheet it carried — is gone; the viewer's `BCFOverlay` was its only consumer and now renders markers, connector lines and hover tooltips as `Pin` / `AnchoredCard` primitives on the viewport's shared scene-overlay projector instead of running its own `requestAnimationFrame` polling loop against this class. `computeMarkerPositions` and every other export of `@ifc-lite/bcf` are unchanged — marker *position* computation stays a pure, viewer-agnostic function; only the DOM rendering class is removed. A consumer still wanting a plain-DOM BCF overlay (no React) needs to render markers itself from `computeMarkerPositions`' output.
+
+## 4.2.1
+
+### Patch Changes
+
+- [#5804](https://github.com/LTplus-AG/ifc-lite/pull/5804) [`7fae2b8`](https://github.com/LTplus-AG/ifc-lite/commit/7fae2b8b2d6264a90af3235d95e0a4f6c257b9d7) Thanks [@louistrue](https://github.com/louistrue)! - `BCFOverlayRenderer` now takes its colours from the host page's CSS custom properties instead of a hard-coded dark palette, so the marker tooltip is legible on light pages as well as dark ones ([#5491](https://github.com/LTplus-AG/ifc-lite/issues/5491)). The tooltip reads `--color-popover`, `--color-popover-foreground`, `--color-muted-foreground` and `--color-border`; pins read `--overlay-status-danger` / `-warn` / `-ok` (open / in progress / resolved), `--overlay-ink-muted` (closed), `--overlay-ink` (any other status) and `--overlay-halo` (outline and index); the active marker is ringed in `--overlay-accent`. Every property has a light fallback, so a page that defines none of them still gets a readable dark-on-white tooltip.
+
+- [#5906](https://github.com/LTplus-AG/ifc-lite/pull/5906) [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f) Thanks [@louistrue](https://github.com/louistrue)! - Write ZIP archives with "version needed to extract" 2.0 on DEFLATE entries, as the ZIP APPNOTE requires. JSZip hardcodes 1.0 on every entry, so `writeBCF` (.bcfzip) and `ParquetExporter.exportBOS` (.bos) now pack with fflate, which writes 2.0 itself. Found while investigating [#3612](https://github.com/LTplus-AG/ifc-lite/issues/3612); this is not shown to be the cause of the Solibri import failure reported there.
+
+## 4.2.0
+
+### Minor Changes
+
+- [#5247](https://github.com/LTplus-AG/ifc-lite/pull/5247) [`becc9dc`](https://github.com/LTplus-AG/ifc-lite/commit/becc9dc4bd33267dbe8522f788fb8936dd349b70) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `readBCF` silently dropping topics nested below the archive root (e.g. `MyProject/<guid>/markup.bcf`, the shape produced by zipping a folder rather than its contents) and dropping viewpoints named with an uppercase `.BCFV` extension. Both previously vanished with no warning and no error. Topic-folder matching now works at any depth while explicitly excluding `__MACOSX` resource-fork shadow paths, so this is a behaviour change consumers may observe as more topics/viewpoints being read from archives that used to import as empty or incomplete.
+
+### Patch Changes
+
+- [#5293](https://github.com/LTplus-AG/ifc-lite/pull/5293) [`77f5e16`](https://github.com/LTplus-AG/ifc-lite/commit/77f5e16e939aac5d28301c56a29c04472aa90792) Thanks [@louistrue](https://github.com/louistrue)! - Fix `readBCF` silently returning an empty project for a `.bcfzip` whose entries use backslash path separators (a real historical Windows-zip-writer output). Entry names are normalised to `/` once when the archive loads, so the archive root, topic folders, viewpoints and snapshots all resolve, including in a zipped-folder archive. A `markup.bcf` that no topic folder can claim is now reported through `onWarning` (and the console) instead of reading as a successful empty result.
+
+- [#5278](https://github.com/LTplus-AG/ifc-lite/pull/5278) [`610c3a1`](https://github.com/LTplus-AG/ifc-lite/commit/610c3a1d60c76850c2d2cc839e176f97ec0e2ca6) Thanks [@louistrue](https://github.com/louistrue)! - `readBCF` now reads `bcf.version` and `project.bcfp` when their names differ only in case (for example `MyProject/BCF.VERSION`), at the archive root and inside a wrapped project folder. Previously the wrapped root was matched case-insensitively and then read under a lowercase name that did not exist, so the import failed with `missing bcf.version`.
+
 ## 4.1.0
 
 ### Minor Changes

@@ -19,7 +19,8 @@ import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { downloadFile, downloadDataUrl } from '@/lib/export/download';
+import { editedModelBytes } from '@/lib/export/edited-model-bytes';
+import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
@@ -30,6 +31,14 @@ export interface ResolvedExportCommand {
   command: RegisteredExportCommand;
   disabled: boolean;
 }
+
+/** `spatial` is the one table whose type id does not say what the file holds. */
+const CSV_SUFFIX: Record<CsvExportType, string> = {
+  entities: '_entities',
+  properties: '_properties',
+  quantities: '_quantities',
+  spatial: '_spatial-hierarchy',
+};
 
 export function useExportCommands() {
   const { ifcDataStore, models, geometryResult } = useIfc();
@@ -64,9 +73,11 @@ export function useExportCommands() {
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
     if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
-      const csv = await exportCsvFromBytes(ifcDataStore.source.materialize(), type, { includeProperties: type === 'entities' });
-      const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
-      downloadFile(csv, filename, 'text/csv');
+      // The model as edited, not the file as loaded (#5397).
+      const { activeModelId, getMutationView } = useViewerStore.getState();
+      const bytes = editedModelBytes(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
+      const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
+      downloadFile(csv, modelExportFilename(activeModelName(useViewerStore.getState()), 'csv', CSV_SUFFIX[type]), 'text/csv');
       toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);
     } catch (err) {
       console.error('CSV export failed:', err);
@@ -82,7 +93,7 @@ export function useExportCommands() {
       const entities = buildCommandPaletteJsonEntities(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
 
       const json = JSON.stringify({ entities }, null, 2);
-      downloadFile(json, 'model-data.json', 'application/json');
+      downloadFile(json, modelExportFilename(activeModelName(useViewerStore.getState()), 'json', '_data'), 'application/json');
       toast.success(`Exported ${entities.length} entities as JSON${activeModelOnlyNote}`);
     } catch (err) {
       console.error('JSON export failed:', err);
@@ -91,10 +102,11 @@ export function useExportCommands() {
   }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleScreenshot = useCallback(() => {
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
+    // The 3D viewport's canvas, not merely the first on the page (#5601).
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
     try {
-      downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
+      if (!canvas) throw new Error('no 3D viewport canvas on screen');
+      downloadDataUrl(canvas.toDataURL('image/png'), modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
       toast.success('Screenshot saved');
     } catch (err) {
       console.error('Screenshot failed:', err);

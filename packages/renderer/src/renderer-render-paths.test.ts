@@ -11,6 +11,7 @@ import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
+import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -77,6 +78,8 @@ interface Harness {
         passes: string[];
         /** number of GPU textures allocated after the harness is constructed */
         createdTextures: number;
+        /** label and size of every texture allocated, in call order */
+        textures: { label: string; width: number; height: number }[];
         /** label of every texture whose `destroy()` fired (shadow depth-texture
          *  release on toggle-off). */
         destroyedTextures: string[];
@@ -114,7 +117,7 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, destroyedTextures: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -221,6 +224,7 @@ function makeHarness(): Harness {
                 case 'createBindGroup': return () => ({});
                 case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => {
                     stats.createdTextures++;
+                    stats.textures.push({ label: desc.label ?? '', width: desc.size.width, height: desc.size.height });
                     return {
                         width: desc.size.width,
                         height: desc.size.height,
@@ -1655,5 +1659,164 @@ describe('rendered clipping query for exact correspondence picking (#4381)', () 
         assert.equal(h.renderer.hasActiveClipping(), false);
         await h.settle();
         h.renderer.destroy();
+    });
+});
+
+// Ambient occlusion (#5384) is `visualEnhancement.contactShading`. These drive
+// the real render() loop and read the encoded pass labels and the textures the
+// frame allocates, so "AO ran at half resolution" is observed, not assumed.
+describe('ambient occlusion post pass (#5384)', () => {
+    const AO_PASSES = ['ao', 'ao-blur-h', 'ao-blur-v', 'ao-composite'];
+    const aoFrame = (quality: 'off' | 'low' | 'high'): RenderOptions => ({
+        visualEnhancement: {
+            enabled: true,
+            contactShading: { quality, intensity: 0.8, radius: 1 },
+            separationLines: { enabled: false },
+        },
+    });
+    const aoTargets = (h: Harness) => h.stats.textures.filter((t) => t.label === 'ao-target' || t.label === 'ao-scratch');
+
+    it('encodes AO, a separable blur and the composite after the scene pass', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        const firstAo = h.stats.passes.indexOf('ao');
+        assert.ok(firstAo > 0, `expected the AO passes after the scene pass, got ${JSON.stringify(h.stats.passes)}`);
+        assert.deepStrictEqual(h.stats.passes.slice(firstAo, firstAo + 4), AO_PASSES);
+    });
+
+    it('works at half resolution on low and full resolution on high', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        assert.deepStrictEqual(
+            aoTargets(h).map((t) => [t.width, t.height]),
+            [[128, 128], [128, 128]],
+            'the 256 px canvas gets 128 px AO and blur targets',
+        );
+        h.stats.textures.length = 0;
+        h.render(aoFrame('high'));
+        assert.deepStrictEqual(aoTargets(h).map((t) => [t.width, t.height]), [[256, 256], [256, 256]]);
+        assert.ok(h.stats.destroyedTextures.includes('ao-target'), 'the half-resolution target is released on the switch');
+    });
+
+    it('allocates nothing while off and releases its targets when switched off', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('off'));
+        assert.ok(!h.stats.passes.includes('ao'), 'no AO pass while off');
+        assert.deepStrictEqual(aoTargets(h), [], 'no AO targets while off');
+
+        h.render(aoFrame('low'));
+        assert.ok(h.stats.passes.includes('ao'));
+        h.stats.passes.length = 0;
+        h.render(aoFrame('off'));
+        assert.ok(!h.stats.passes.includes('ao'), 'the toggle-off frame must not encode AO');
+        assert.deepStrictEqual(
+            h.stats.destroyedTextures.filter((l) => l === 'ao-target' || l === 'ao-scratch').sort(),
+            ['ao-scratch', 'ao-target'],
+            'toggle-off must release the screen-sized targets, not hold them for the session',
+        );
+    });
+
+    it('keeps its targets across frames of the same size and quality', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        h.render(aoFrame('low'));
+        assert.strictEqual(aoTargets(h).length, 2, 'targets are created once, not per frame');
+        assert.strictEqual(h.stats.passes.filter((l) => l === 'ao-composite').length, 2);
+    });
+
+    it('releases its targets when the renderer is destroyed', async () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.render(aoFrame('low'));
+        await h.settle();
+        h.renderer.destroy();
+        assert.deepStrictEqual(
+            h.stats.destroyedTextures.filter((l) => l === 'ao-target' || l === 'ao-scratch').sort(),
+            ['ao-scratch', 'ao-target'],
+        );
+    });
+});
+
+/**
+ * #5623 review — the textured draw path called `packMeshMaterial(tpl)` with
+ * neither the authored alpha nor `tm.material`, so every textured mesh
+ * silently got the opaque-dielectric default no matter what it was authored
+ * as. Fixed to `packMeshMaterial(tpl, tm.color[3], tm.material)`, matching
+ * the flat/batched call sites. Asserted at the level that actually caught the
+ * bug: the material row of the uniform buffer the real render() loop writes
+ * for a textured draw, not the source text of the call site.
+ */
+describe('the textured draw path passes authored alpha and material to packMeshMaterial (#5623 review)', () => {
+    function seedTextured(h: Harness, meshes: MeshData[]) {
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(meshes, device, pipeline, false);
+        return scene.getTexturedMeshes();
+    }
+
+    /** The material row (metallic, roughness, transmission flag) of the uniform written for `tm`. */
+    function materialRowFor(h: Harness, uniformBuffer: unknown): number[] | null {
+        const at = MESH_UNIFORM_OFFSET.metallicRoughness;
+        for (let i = h.stats.writes.length - 1; i >= 0; i--) {
+            const w = h.stats.writes[i];
+            if (w.buffer === uniformBuffer && w.floats.length > at + 3) {
+                return [w.floats[at], w.floats[at + 1], w.floats[at + 2]];
+            }
+        }
+        return null;
+    }
+
+    it('gives an opaque textured mesh the default dielectric', () => {
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1)]);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        assert.equal(row![1], Math.fround(0.9), 'roughness: default dielectric');
+        assert.equal(row![2], 0, 'transmission flag: not glass');
+    });
+
+    it('gives a textured mesh with an authored translucent tint the glass roughness and transmission flag, not the opaque default', () => {
+        const h = makeHarness();
+        const mesh = texturedTriangle(1);
+        mesh.color = [1, 1, 1, 0.4]; // translucent authored tint
+        const textured = seedTextured(h, [mesh]);
+        assert.strictEqual(textured.length, 1);
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        // Before the fix this was 0.9 / 0 (the opaque default), because
+        // packMeshMaterial(tpl) never saw the authored alpha at all.
+        assert.equal(row![1], Math.fround(0.05), 'roughness: expected GLASS_ROUGHNESS from the authored alpha');
+        assert.equal(row![2], 1, 'transmission flag: expected glass from the authored alpha');
+    });
+
+    it('reads a material attached to the textured mesh, once one is set, the same way the flat/batched paths read mesh.material', () => {
+        // Nothing wires this from MeshData yet (#5582: IFC-authored specular is
+        // not extracted). This proves the DRAW PATH reads `tm.material` at
+        // all — the exact argument the #5623 review found silently dropped —
+        // independent of who eventually populates it.
+        const h = makeHarness();
+        const textured = seedTextured(h, [texturedTriangle(1)]);
+        (textured[0] as { material?: unknown }).material = { baseColor: [1, 1, 1, 1], metallic: 0.8, roughness: 0.2 };
+
+        h.stats.writes.length = 0;
+        h.render();
+
+        const row = materialRowFor(h, textured[0].uniformBuffer);
+        assert.ok(row, 'expected the textured draw to write the material row');
+        assert.equal(row![0], Math.fround(0.8), 'metallic override reaches the uniform');
+        assert.equal(row![1], Math.fround(0.2), 'roughness override reaches the uniform');
     });
 });

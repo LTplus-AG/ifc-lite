@@ -223,6 +223,24 @@ pub fn default_color_for_type(ifc_type: IfcType) -> Rgba {
     }
 }
 
+/// The colour a class ALWAYS renders with, overriding any authored styling, or
+/// `None` for the ordinary style precedence.
+///
+/// Only `IfcOpeningElement` (and its subtypes such as `IfcOpeningStandardCase`)
+/// is fixed. An opening is a virtual subtraction volume, not a surface anyone
+/// sees in the built object, so an authored style on it says nothing about
+/// appearance: Revit, for one, writes its neutral grey onto opening geometry
+/// through `IfcIndexedColourMap` / `IfcStyledItem`. Honouring that drew the
+/// opening as an opaque solid plugging the very hole it cuts, next to other
+/// openings in the translucent overlay, and an opaque shape then also qualified
+/// for GPU instancing (#5409). One overlay colour for every opening is the
+/// display contract.
+pub fn fixed_display_color_for_type(ifc_type: &IfcType) -> Option<Rgba> {
+    ifc_type
+        .is_subtype_of(IfcType::IfcOpeningElement)
+        .then(|| default_color_for_type(IfcType::IfcOpeningElement))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

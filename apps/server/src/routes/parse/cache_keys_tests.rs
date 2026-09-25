@@ -296,6 +296,9 @@ fn request_cache_key_separates_content_filter_and_quality() {
                 opening_filter: mode,
                 tessellation_quality: None,
                 parquet_layout: ParquetLayout::Flat,
+                // Not cache identity either (#5407): both stream modes fill
+                // the same entry. Set to the non-default so a leak would show.
+                stream_shapes: crate::services::StreamShapes::CrossBatch,
                 // A client-supplied hash is a SELECTOR for the hash-only
                 // stream probe (#3901); it is not part of the cache identity
                 // a body-carrying request builds. Set to a value that would

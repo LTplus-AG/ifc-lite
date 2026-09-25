@@ -488,7 +488,7 @@ export function MeasureQuantities() {
 
   if (!summary) {
     return (
-      <div className="border-t px-2 py-2 text-center text-[10px] text-muted-foreground">
+      <div className="px-3 py-8 text-center text-xs text-muted-foreground">
         {t('measure.quantities.selectPrompt')}
       </div>
     );
@@ -507,9 +507,9 @@ export function MeasureQuantities() {
     && derivedWeights.length === 0;
 
   return (
-    <div className="border-t px-2 py-2 space-y-1.5">
+    <div className="space-y-1.5 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-primary">
+        <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-foreground">
           <Boxes className="h-3 w-3" />
           {t('measure.quantities.header')}
         </span>

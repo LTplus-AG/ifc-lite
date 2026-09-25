@@ -153,8 +153,9 @@ export interface ClashSettings {
  *   earlier "deepest crossing-triangle vertex" probe that was a sampling
  *   artifact, converging to 0 as a mesh was retessellated instead of to the
  *   true depth (PR #2536).
- * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
- *   dimension. Reported for a hard clash whenever the narrow phase could not
+ * - `'estimate'` — an uncertified depth: the smallest overlapping dimension of
+ *   the two element AABBs, or for a box through-penetration that value capped
+ *   by the box-box minimum translation distance (see below). Reported for a hard clash whenever the narrow phase could not
  *   certify a box-box depth. That happens in four shapes, all common in real
  *   models: either element is not (confirmed) a box; surfaces that only
  *   coincide (stacked layers sharing a footprint); one solid modelled wholly
@@ -165,7 +166,9 @@ export interface ClashSettings {
  *   `'mesh'` for exactly that reason. The value is then a property of the two
  *   BOXES, not of the solids — it can equal an element's own thickness rather
  *   than how far the two actually interpenetrate. Treat it as an indication of
- *   scale, not as a measurement.
+ *   scale, not as a measurement. For a through-penetration between two boxes
+ *   it never exceeds the box-box minimum translation distance, a distance
+ *   proven to separate them (#5742).
  */
 export type ClashDistanceKind = 'mesh' | 'estimate';
 
@@ -184,6 +187,21 @@ export interface Clash {
    * assignable — absent means "unknown", never "measured".
    */
   distanceKind?: ClashDistanceKind;
+  /**
+   * For a `hard` clash, the float32 noise floor of `distance` along the
+   * direction that depth was measured: the depth at or below which the engine
+   * would have classified the pair as `touch` (#5405). Derived from the
+   * elements' own coordinates on that axis and their sizes, never from their
+   * distance from the origin along other axes, so it does not change under a
+   * translation orthogonal to the depth. `isTouching` uses it for its default
+   * band (#5639).
+   *
+   * Set by the engine on every `hard` clash, absent on every other status.
+   * Optional so that a clash recorded before this field existed (or
+   * rehydrated from BCF/JSON without it) stays assignable; `isTouching` then
+   * falls back to its older coordinate-magnitude band.
+   */
+  depthFloor?: number;
   /** True contact point (hard) or closest-point midpoint (clearance/touch). */
   point: Vec3;
   /** Overlap region (hard) or closest-segment box (clearance/touch). */

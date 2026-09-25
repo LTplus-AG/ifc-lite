@@ -84,6 +84,7 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
 export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData[]): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
+  // @raw-entity-enumeration-ok load-time watermark scans parsed source ids before any live overlay is installed
   const entityIndex = dataStore?.entityIndex?.byId;
   if (entityIndex instanceof CompactEntityIndex) {
     maxExpressIdFromEntities = entityIndex.maxExpressId;

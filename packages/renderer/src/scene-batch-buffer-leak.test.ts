@@ -11,13 +11,13 @@
  * `paired-buffer-leak.test.ts`); `createBatchedMesh` is the batching path
  * every model streams through and was left uncovered.
  *
- * `device.createBuffer` genuinely throws in production — this file's own
- * comments elsewhere (scene.ts:2057, index.ts:168) document a real
- * "createBuffer failed, size (...) is too large" RangeError. When the index
- * buffer's createBuffer throws, the vertex buffer created just before it
- * must be destroyed before the error propagates, or a rebuild loop that
- * retries (rebuildPendingBatches iterates every pending key) leaks one
- * orphaned GPU buffer per failed key.
+ * A GPU call in the run can throw synchronously in production (Safari's
+ * `InvalidStateError` on a lost device; before #5429 also Chromium's
+ * mapped-at-creation "createBuffer failed, size (...) is too large"
+ * RangeError). When the index buffer's allocation throws, the vertex buffer
+ * created just before it must be destroyed before the error propagates, or a
+ * rebuild loop that retries (rebuildPendingBatches iterates every pending
+ * key) leaks one orphaned GPU buffer per failed key.
  */
 
 import { describe, it } from 'node:test';
@@ -32,13 +32,10 @@ import type { MeshData } from '@ifc-lite/geometry';
 };
 
 function fakeBuffer(): GPUBuffer & { destroyed: number } {
-  const mapped = new ArrayBuffer(256);
   const buf = {
     size: 0,
     destroyed: 0,
     destroy() { this.destroyed++; },
-    getMappedRange: () => mapped,
-    unmap() {},
   };
   return buf as unknown as GPUBuffer & { destroyed: number };
 }
@@ -59,25 +56,29 @@ const fakePipeline = {
 } as unknown as RenderPipeline;
 
 describe('Scene.createBatchedMesh: paired buffer leak on a mid-run createBuffer throw', () => {
-  for (const failure of ['unmap', 'bindGroup'] as const) {
-    it(`releases every staged buffer when ${failure} throws before publication (#4243)`, () => {
+  for (const failure of ['writeBuffer', 'bindGroup'] as const) {
+    it(`releases every staged buffer when ${failure} throws before publication (#4243, #5429)`, () => {
       const scene = new Scene();
       const created: Array<GPUBuffer & { destroyed: number }> = [];
       const device = {
         limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
         createBuffer: () => {
           const buffer = fakeBuffer();
-          if (failure === 'unmap') buffer.unmap = () => { throw new Error('staged unmap failed'); };
           created.push(buffer);
           return buffer;
         },
         createBindGroup: () => { throw new Error('staged bindGroup failed'); },
+        queue: {
+          writeBuffer: () => {
+            if (failure === 'writeBuffer') throw new Error('staged writeBuffer failed');
+          },
+        },
       } as unknown as GPUDevice;
       assert.throws(
         () => scene['createBatchedMesh']([meshData(1)], [1, 1, 1, 1], device, fakePipeline, 'key'),
         new RegExp(`staged ${failure} failed`),
       );
-      assert.strictEqual(created.length, failure === 'unmap' ? 1 : 3);
+      assert.strictEqual(created.length, failure === 'writeBuffer' ? 1 : 3);
       assert.ok(created.every(buffer => buffer.destroyed === 1));
       assert.strictEqual(scene['nextBatchId'], 0, 'failed staging publishes no batch identity');
     });
@@ -91,9 +92,9 @@ describe('Scene.createBatchedMesh: paired buffer leak on a mid-run createBuffer 
       limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
       createBuffer: (desc: GPUBufferDescriptor) => {
         call++;
-        // 1st call: vertex buffer (mappedAtCreation, succeeds).
-        // 2nd call: index buffer — this is where production observes
-        // "createBuffer failed, size (...) is too large" on real hardware.
+        // 1st call: vertex buffer (succeeds).
+        // 2nd call: index buffer — throws, standing in for any synchronous
+        // allocation failure (the RangeError shape pre-#5429 Chromium raised).
         if (call === 2) {
           throw new RangeError("Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed");
         }

@@ -3,113 +3,118 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * BCFOverlay — renders BCF topic markers as 3D-positioned overlays in the viewport.
+ * BCFOverlay — renders BCF topic markers as 3D-positioned overlays in the
+ * viewport, on the shared scene-overlay kernel (#5511, charter #5478).
+ *
+ * Each marker is a `Pin`, its connector line two anchors on a shared `<line>`
+ * (`Connector` below — no fixed-pixel-offset primitive fits "two independent
+ * world points", so it registers directly on the projector the same way
+ * `Leader` does internally), and its hover tooltip an `AnchoredCard`. All of
+ * it rides the ONE shared `SceneProjector` mounted by `SceneOverlayRoot` in
+ * `ViewportContainer`; this component no longer creates its own WebGPU
+ * projection adapter or polls `requestAnimationFrame` itself (that adapter,
+ * and the framework-agnostic DOM renderer it drove — `@ifc-lite/bcf`'s
+ * `BCFOverlayRenderer` — are gone; see the package's changeset).
+ *
+ * Distance-based marker scale/opacity (the pre-kernel renderer's depth cue)
+ * is dropped as an intentional simplification — out of scope for a
+ * projector-consolidation PR; every other scene primitive keeps a constant
+ * screen size regardless of distance.
  *
  * Connects:
  *   - Zustand store (BCF topics, active topic)
- *   - Renderer (camera projection, entity bounds)
- *   - BCFOverlayRenderer (pure DOM marker rendering)
+ *   - Renderer (entity bounds, for marker positioning — `computeMarkerPositions`)
  *   - BCF panel (click marker → open topic, bidirectional sync)
- *
- * KEY DESIGN: Bounds lookup queries the renderer Scene directly via a
- * mutable ref (not React state). Marker computation is triggered by an
- * `overlayReady` counter that bumps once the renderer is available AND
- * when loading completes (ensuring bounding boxes are cached).
- * The camera's current distance is passed as `targetDistance` so fallback
- * markers land at the orbit center — not at hardcoded 10 units.
  */
 
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { globalIdToExpressId as globalIdToExpressIdLookup } from '@/hooks/bcfIdLookup';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from '@/hooks/bcf/viewpoint-world-frame';
-import {
-  computeMarkerPositions,
-  BCFOverlayRenderer,
-  type BCFOverlayProjection,
-  type OverlayBBox,
-  type OverlayPoint3D,
-  type EntityBoundsLookup,
-} from '@ifc-lite/bcf';
-import type { Renderer } from '@ifc-lite/renderer';
+import { computeMarkerPositions, type BCFMarker3D, type OverlayBBox, type EntityBoundsLookup } from '@ifc-lite/bcf';
+import { Pin, AnchoredCard, useSceneLayer, useWorldAnchor, type Vec3, type ScreenPoint } from '@/components/viewport-ui/scene';
 
 // ============================================================================
-// WebGPU projection adapter
+// Status → colour (BCF status strings are free text; these four cover the
+// common BCF vocabulary, everything else falls back to ink).
 // ============================================================================
 
-function createWebGPUProjection(
-  renderer: Renderer,
-  canvas: HTMLCanvasElement,
-): BCFOverlayProjection {
-  let prevPosX = NaN;
-  let prevPosY = NaN;
-  let prevPosZ = NaN;
-  let prevTgtX = NaN;
-  let prevTgtY = NaN;
-  let prevTgtZ = NaN;
-  let prevWidth = 0;
-  let prevHeight = 0;
+const STATUS_FILL_VAR: Record<string, string> = {
+  open: 'var(--overlay-status-danger)',
+  'in progress': 'var(--overlay-status-warn)',
+  resolved: 'var(--overlay-status-ok)',
+  closed: 'var(--overlay-ink-muted)',
+};
 
-  const listeners = new Set<() => void>();
-  let rafId: number | null = null;
-  let listenerCount = 0;
+function statusFill(status: string, active: boolean): string {
+  if (active) return 'var(--overlay-accent)';
+  return STATUS_FILL_VAR[status.toLowerCase()] ?? 'var(--overlay-ink)';
+}
 
-  function poll() {
-    rafId = requestAnimationFrame(poll);
-    const cam = renderer.getCamera();
-    const pos = cam.getPosition();
-    const tgt = cam.getTarget();
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+// ============================================================================
+// Connector: a line between two independently-projected world points — the
+// marker's floating position and its bbox-anchor. Registers two invisible
+// anchors on the shared projector (same technique `Leader` uses internally
+// for its own visible line) rather than reusing `Leader`, which connects one
+// world anchor to a FIXED PIXEL offset, not a second world point.
+// ============================================================================
 
-    if (
-      pos.x !== prevPosX || pos.y !== prevPosY || pos.z !== prevPosZ ||
-      tgt.x !== prevTgtX || tgt.y !== prevTgtY || tgt.z !== prevTgtZ ||
-      w !== prevWidth || h !== prevHeight
-    ) {
-      prevPosX = pos.x; prevPosY = pos.y; prevPosZ = pos.z;
-      prevTgtX = tgt.x; prevTgtY = tgt.y; prevTgtZ = tgt.z;
-      prevWidth = w; prevHeight = h;
-      for (const cb of listeners) cb();
+function Connector({ from, to, color }: { from: Vec3; to: Vec3; color: string }) {
+  const svgLayer = useSceneLayer('svg');
+  const lineRef = useRef<SVGLineElement | null>(null);
+  const p1Ref = useRef<ScreenPoint | null>(null);
+  const p2Ref = useRef<ScreenPoint | null>(null);
+
+  const apply = () => {
+    const line = lineRef.current;
+    if (!line) return;
+    const p1 = p1Ref.current;
+    const p2 = p2Ref.current;
+    if (!p1 || !p2) {
+      line.style.display = 'none';
+      return;
     }
-  }
-
-  return {
-    projectToScreen(worldPos: OverlayPoint3D) {
-      return renderer.getCamera().projectToScreen(
-        worldPos,
-        canvas.clientWidth,
-        canvas.clientHeight,
-      );
-    },
-
-    getEntityBounds(expressId: number): OverlayBBox | null {
-      return renderer.getScene().getEntityBoundingBox(expressId);
-    },
-
-    getCanvasSize() {
-      return { width: canvas.clientWidth, height: canvas.clientHeight };
-    },
-
-    getCameraPosition(): OverlayPoint3D {
-      return renderer.getCamera().getPosition();
-    },
-
-    onCameraChange(callback: () => void) {
-      listeners.add(callback);
-      listenerCount++;
-      if (listenerCount === 1) rafId = requestAnimationFrame(poll);
-      return () => {
-        listeners.delete(callback);
-        listenerCount--;
-        if (listenerCount === 0 && rafId !== null) {
-          cancelAnimationFrame(rafId);
-          rafId = null;
-        }
-      };
-    },
+    line.style.display = '';
+    line.setAttribute('x1', String(p1.x));
+    line.setAttribute('y1', String(p1.y));
+    line.setAttribute('x2', String(p2.x));
+    line.setAttribute('y2', String(p2.y));
   };
+
+  const { ref: anchor1 } = useWorldAnchor<SVGGElement>(() => from, {
+    onProject: (projection) => {
+      p1Ref.current = projection.screen;
+      apply();
+    },
+  });
+  const { ref: anchor2 } = useWorldAnchor<SVGGElement>(() => to, {
+    onProject: (projection) => {
+      p2Ref.current = projection.screen;
+      apply();
+    },
+  });
+
+  if (!svgLayer) return null;
+
+  return createPortal(
+    <>
+      <g ref={anchor1} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
+      <g ref={anchor2} style={{ display: 'none' }} data-scene-primitive="bcf-connector-anchor" />
+      <line
+        ref={lineRef}
+        style={{ display: 'none' }}
+        data-scene-primitive="bcf-connector"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeDasharray="3 2"
+        strokeOpacity={0.5}
+      />
+    </>,
+    svgLayer,
+  );
 }
 
 // ============================================================================
@@ -117,13 +122,8 @@ function createWebGPUProjection(
 // ============================================================================
 
 export function BCFOverlay() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<BCFOverlayRenderer | null>(null);
-  const rendererRef = useRef<Renderer | null>(null);
-
-  // Bumped when overlay/renderer is ready or geometry finishes loading,
-  // triggering marker recomputation with real bounding boxes.
-  const [overlayReady, setOverlayReady] = useState(0);
+  const { t } = useTranslation();
+  const [hoveredGuid, setHoveredGuid] = useState<string | null>(null);
 
   // Store selectors
   const bcfProject = useViewerStore((s) => s.bcfProject);
@@ -141,27 +141,20 @@ export function BCFOverlay() {
     [models, ifcDataStore],
   );
 
-  // Bounds lookup — queries the renderer Scene directly
+  // Bounds lookup — queries the live renderer's Scene directly.
   const boundsLookup: EntityBoundsLookup = useCallback(
     (ifcGuid: string): OverlayBBox | null => {
-      const r = rendererRef.current;
-      if (!r) return null;
+      const renderer = getGlobalRenderer();
+      if (!renderer) return null;
       const result = globalIdToExpressId(ifcGuid);
       if (!result) return null;
-      return r.getScene().getEntityBoundingBox(result.expressId);
+      return renderer.getScene().getEntityBoundingBox(result.expressId);
     },
     [globalIdToExpressId],
   );
 
-  // Get current camera distance (for proper fallback marker placement)
-  const getCameraDistance = useCallback((): number => {
-    const r = rendererRef.current;
-    if (!r) return 50; // safe default
-    return r.getCamera().getDistance();
-  }, []);
-
-  // Topics list
-  // Stored viewpoints are world coordinates; markers are placed in the render frame (#4806).
+  // Topics list — stored viewpoints are world coordinates; markers are
+  // placed in the render frame (#4806).
   const topics = (() => {
     if (!bcfProject) return [];
     const offset = bcfWorldOffset(models, useViewerStore.getState().geometryResult);
@@ -169,91 +162,78 @@ export function BCFOverlay() {
     return Array.from(bcfProject.topics.values(), (topic) => topicToRenderFrame(topic, offset, bounds));
   })();
 
-  // Compute markers — recomputes when topics, bounds, loading, or readiness changes
+  // Compute markers — recomputes when topics, bounds, or loading changes
+  // (bounding boxes get cached once geometry finishes loading).
   const markers = useMemo(
-    () => computeMarkerPositions(topics, boundsLookup, {
-      targetDistance: getCameraDistance(),
-    }),
+    () =>
+      computeMarkerPositions(topics, boundsLookup, {
+        targetDistance: getGlobalRenderer()?.getCamera().getDistance() ?? 50,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [topics, boundsLookup, overlayReady, loading],
+    [topics, boundsLookup, loading],
   );
 
-  // Initialize overlay renderer
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const renderer = getGlobalRenderer();
-    if (!renderer) return;
-
-    const canvas = container.closest('[data-viewport]')?.querySelector('canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-
-    rendererRef.current = renderer;
-
-    const projection = createWebGPUProjection(renderer, canvas);
-    const overlay = new BCFOverlayRenderer(container, projection, {
-      showConnectors: true,
-      showTooltips: true,
-      verticalOffset: 36,
-    });
-    overlayRef.current = overlay;
-
-    // Trigger marker recomputation now that renderer is available
-    setOverlayReady((n) => n + 1);
-
-    return () => {
-      overlay.dispose();
-      overlayRef.current = null;
-      rendererRef.current = null;
-    };
-  }, [models]);
-
-  // Recompute markers when loading finishes (bounding boxes get cached)
-  useEffect(() => {
-    if (!loading && rendererRef.current) {
-      setOverlayReady((n) => n + 1);
-    }
-  }, [loading]);
-
-  // Push markers to overlay renderer
-  useEffect(() => {
-    overlayRef.current?.setMarkers(markers);
-  }, [markers, overlayReady]);
-
-  // Sync active marker
-  useEffect(() => {
-    overlayRef.current?.setActiveMarker(activeTopicId);
-  }, [activeTopicId, overlayReady]);
-
-  // Visibility — reproject markers when becoming visible so they don't
-  // sit at stale positions until the next camera move.
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    const hasTopics = bcfProject !== null && bcfProject.topics.size > 0;
-    overlay.setVisible(hasTopics);
-    if (hasTopics) overlay.updatePositions();
-  }, [bcfProject, overlayReady]);
-
-  // Click handler — read bcfPanelVisible from store inside callback to
-  // avoid re-registering the handler on every panel toggle.
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    return overlay.onMarkerClick((topicGuid) => {
-      setActiveTopic(topicGuid);
-      // Open BCF exclusively so clicking a marker brings it to the front over any
-      // other right panel (e.g. clash), instead of leaving it behind.
-      openWorkspacePanel('bcf');
-    });
-  }, [overlayReady, setActiveTopic, openWorkspacePanel]);
+  const hasTopics = bcfProject !== null && bcfProject.topics.size > 0;
+  if (!hasTopics) return null;
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 pointer-events-none z-20"
-      data-bcf-overlay
-    />
+    <>
+      {/* Connector lines, drawn first so markers paint on top. */}
+      {markers.map(
+        (marker: BCFMarker3D) =>
+          marker.connectorAnchor && (
+            <Connector
+              key={`${marker.topicGuid}-connector`}
+              from={marker.position}
+              to={marker.connectorAnchor}
+              color={statusFill(marker.status, marker.topicGuid === activeTopicId)}
+            />
+          ),
+      )}
+
+      {/* Markers. */}
+      {markers.map((marker: BCFMarker3D) => (
+        <Pin
+          key={marker.topicGuid}
+          worldPoint={marker.position}
+          fill={statusFill(marker.status, marker.topicGuid === activeTopicId)}
+          title={marker.title}
+          onClick={() => {
+            setActiveTopic(marker.topicGuid);
+            // Open BCF exclusively so clicking a marker brings it to the
+            // front over any other right panel (e.g. clash).
+            openWorkspacePanel('bcf');
+          }}
+          groupProps={{
+            'data-bcf-marker-id': marker.topicGuid,
+            onPointerEnter: () => setHoveredGuid(marker.topicGuid),
+            onPointerLeave: () => setHoveredGuid((prev) => (prev === marker.topicGuid ? null : prev)),
+          }}
+        >
+          <text textAnchor="middle" dy="1" className="font-mono font-bold tabular-nums">
+            {marker.index}
+          </text>
+        </Pin>
+      ))}
+
+      {/* Hover tooltip — one at a time, an `AnchoredCard` in the DOM layer. */}
+      {markers.map(
+        (marker: BCFMarker3D) =>
+          hoveredGuid === marker.topicGuid && (
+            <AnchoredCard key={`${marker.topicGuid}-tooltip`} worldPoint={marker.position} offset={{ dx: -90, dy: -48 }}>
+              <div className="w-[180px] font-mono text-[11px] leading-relaxed">
+                <p className="font-semibold truncate">{marker.title}</p>
+                <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {marker.status}
+                  {marker.priority ? ` · ${marker.priority}` : ''}
+                  {marker.commentCount > 0
+                    ? ` · ${t('bcf.topicDetail.commentCount', { count: marker.commentCount })}`
+                    : ''}
+                </p>
+              </div>
+            </AnchoredCard>
+          ),
+      )}
+    </>
   );
 }

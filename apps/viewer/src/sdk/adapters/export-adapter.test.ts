@@ -7,11 +7,13 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveVisibilityFilterSets, injectScheduleIntoStep, createExportAdapter } from './export-adapter.js';
 import { LEGACY_MODEL_ID } from './model-compat.js';
+import { LEGACY_MUTATION_MODEL_ID } from './mutation-view.js';
 import type { StoreApi } from './types.js';
 import type { ScheduleExtraction, IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '../local-backend.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '../../store/index.js';
 
 test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state (routed through resolveExportVisibility, #4333 follow-up)', () => {
@@ -20,8 +22,6 @@ test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated
     models: new Map(),
     hiddenEntities: new Set([11, 12]),
     isolatedEntities: new Set([21, 22]),
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
     classFilter: null,
   });
 
@@ -607,9 +607,8 @@ test('export.csv escapeCsv quotes a value containing a newline', () => {
 // them through `resolveExportVisibility`, the single resolver that combines
 // hidden/isolated state with `classFilter` (Class tab), `selectedStoreys`,
 // and `typeVisibility`. This adapter's own `resolveVisibilityFilterSets`
-// was left untouched — it only ever read `hiddenEntitiesByModel` /
-// `isolatedEntitiesByModel` (plus the legacy globals) and never `classFilter`
-// at all, so `sdk.export.ifc(refs, { visibleOnly: true })` still reproduced
+// was left untouched — it only ever read the hidden/isolated sets and
+// never `classFilter` at all, so `sdk.export.ifc(refs, { visibleOnly: true })` still reproduced
 // the original #4328 bug for the scripting/extension surface: filter the
 // Class tab to `IfcWallStandardCase` and the whole model still comes out.
 
@@ -744,6 +743,46 @@ describe('sdk.export.ifc() must honor classFilter when refs cover the whole mode
   });
 });
 
+describe('sdk.export.ifc() classifies refs against the edited model (#5249)', () => {
+  beforeEach(() => useViewerStore.getState().resetViewerState());
+
+  it('applies class visibility when refs cover a created entity and omit a deleted source entity', () => {
+    const dataStore = buildFourEntityStore();
+    const view = new MutablePropertyView(null, LEGACY_MODEL_ID);
+    view.setExpressIdWatermark(4);
+    view.deleteEntity(4);
+    const created = view.createEntity('IfcDoor', ['0newdoor0000000000000', null, 'New door']);
+    useViewerStore.setState({
+      models: new Map(), ifcDataStore: dataStore,
+      mutationViews: new Map([[LEGACY_MUTATION_MODEL_ID, view]]),
+      hiddenEntities: new Set(), isolatedEntities: null,
+      classFilter: { ids: new Set([3]), label: 'IfcWallStandardCase' },
+    });
+
+    const refs = [1, 2, 3, created.expressId].map(expressId => ({ modelId: LEGACY_MODEL_ID, expressId }));
+    const out = decodeIfcOutput(createExportAdapter(useViewerStore as unknown as StoreApi).ifc(refs, { visibleOnly: true }));
+    assert.ok(out.includes('IFCWALLSTANDARDCASE'));
+    assert.ok(!out.includes('0newdoor0000000000000'), 'created door must obey the class filter for full-model refs');
+  });
+
+  it('isolates source-only refs when a created entity makes them a partial selection', () => {
+    const dataStore = buildFourEntityStore();
+    const view = new MutablePropertyView(null, LEGACY_MODEL_ID);
+    view.setExpressIdWatermark(4);
+    view.createEntity('IfcDoor', ['0newdoor0000000000001', null, 'New door']);
+    useViewerStore.setState({
+      models: new Map(), ifcDataStore: dataStore,
+      mutationViews: new Map([[LEGACY_MUTATION_MODEL_ID, view]]),
+      hiddenEntities: new Set(), isolatedEntities: null, classFilter: null,
+    });
+
+    const refs = [1, 2, 3, 4].map(expressId => ({ modelId: LEGACY_MODEL_ID, expressId }));
+    const out = decodeIfcOutput(createExportAdapter(useViewerStore as unknown as StoreApi).ifc(refs, {}));
+    assert.ok(out.includes('IFCDOOR'), 'selected source door still exports');
+    assert.ok(!out.includes('0newdoor0000000000001'), 'unselected created door must not be exported');
+  });
+});
+
 // ─── resolveVisibilityFilterSets: "full model" is coverage, not cardinality
 // ───────────────────────────────────────────────────────────────────────
 //
@@ -816,8 +855,6 @@ describe('resolveVisibilityFilterSets: full-model classification requires member
       models: new Map(),
       hiddenEntities: new Set([2]),
       isolatedEntities: null,
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
       classFilter: null,
     });
     const hasEntity = (id: number) => [1, 2, 3, 4].includes(id);

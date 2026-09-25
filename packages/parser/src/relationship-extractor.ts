@@ -10,6 +10,9 @@
  */
 
 import type { IfcEntity, Relationship } from './types.js';
+import { createLogger } from '@ifc-lite/data';
+
+const relationshipLog = createLogger('RelationshipExtractor');
 
 export class RelationshipExtractor {
   private entities: Map<number, IfcEntity>;
@@ -44,8 +47,8 @@ export class RelationshipExtractor {
       }
     }
 
-    console.log('[RelationshipExtractor] Relationship type counts:', Object.fromEntries(typeCounts));
-    console.log('[RelationshipExtractor] Successfully extracted:', relationships.length);
+    relationshipLog.debug('Relationship type counts:', Object.fromEntries(typeCounts));
+    relationshipLog.debug('Successfully extracted:', relationships.length);
 
     return relationships;
   }
@@ -69,8 +72,8 @@ export class RelationshipExtractor {
       }
     }
 
-    console.log('[RelationshipExtractor] Relationship type counts:', Object.fromEntries(typeCounts));
-    console.log('[RelationshipExtractor] Successfully extracted:', relationships.length);
+    relationshipLog.debug('Relationship type counts:', Object.fromEntries(typeCounts));
+    relationshipLog.debug('Successfully extracted:', relationships.length);
 
     return relationships;
   }

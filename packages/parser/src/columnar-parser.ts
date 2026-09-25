@@ -13,7 +13,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { extractPsetsFromIds } from './on-demand-extractors.js';
+import { extractPsetsFromIds } from './on-demand-extractors.js'; import type { ExtractedProperty } from './property-value-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import type { DropCensus } from './drop-census.js';
@@ -25,8 +25,9 @@ import {
     QuantityTableBuilder,
     RelationshipGraphBuilder,
     RelationshipType,
+    createLogger,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName, hasAttrValueAt } from './columnar-parser-attributes.js';
 import {
@@ -140,6 +141,8 @@ export interface IfcDataStore extends IfcStoreBase {
     lengthUnitScale?: number;
 }
 
+const parseLiteLog = createLogger('parseLite');
+
 /** Internal implementation shared by public refs and parser-worker columns. */
 export async function parseColumnarInput(
         buffer: ArrayBuffer | SharedArrayBuffer,
@@ -164,7 +167,11 @@ export async function parseColumnarInput(
         const logPhase = (name: string) => {
             const now = performance.now();
             const elapsed = Math.round(now - phaseStart);
-            console.log(`[parseLite] ${name}: ${elapsed}ms`);
+            // Phase timings are telemetry, not output: a consumer of the published
+            // package got 14 unconditional console lines per parse, and a CLI
+            // command emitting JSON got them interleaved into stdout. `onDiagnostic`
+            // is the structured channel; `IFC_DEBUG` is the console one.
+            parseLiteLog.debug(`${name}: ${elapsed}ms`);
             emitDiagnostic(`${name}: ${elapsed}ms`);
             phaseStart = now;
         };
@@ -730,7 +737,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -786,7 +793,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }

@@ -7,7 +7,10 @@
 //! and result construction match bit-for-bit so the two engines agree.
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
-use crate::depth::{box_penetration, crossing_vertex_penetration, depth_clash_result};
+use crate::depth::{
+    box_penetration, clearly_inside, contained_solid_is_buried, crossing_vertex_penetration,
+    depth_clash_result,
+};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
@@ -40,6 +43,12 @@ pub struct NarrowResult {
     pub distance_kind: DistanceKind,
     pub point: Vec3,
     pub bounds: Aabb,
+    /// For a `Hard` result, the f32 noise floor of `distance` along the
+    /// direction it was measured (`depth_floor` / `estimate_floor`): the depth
+    /// at or below which this pair would have been `Touch`. `None` otherwise.
+    /// Carried out so the reported touching band is decided by the same rule
+    /// as the verdict (#5639).
+    pub depth_floor: Option<f64>,
 }
 
 /// Run the narrow phase for a candidate element pair.
@@ -227,20 +236,22 @@ pub fn test_pair(
         // element's own extent), so without it a flush contained pair —
         // whose only measurable penetration is f32 noise — would be
         // promoted to `Hard` at a number that measures nothing (the eight
-        // Infra-Bridge pairs, see `depth_clash_result`).
+        // Infra-Bridge pairs, see `depth_clash_result`). Since #5406 a pair
+        // flush to within the tri-tri predicate's own f32 noise band no
+        // longer crosses at all; this still decides a crossing above that
+        // band but at or below its precision floor.
+        // `None` means "no crossing vertex inside at all" (e.g. a thin member
+        // piercing straight through) — no evidence either way, not evidence
+        // of a sub-floor contact. The deeper side wins, the small side on a
+        // tie (the TS kernel's order).
         let mesh_evidence = match (cross_small.as_ref(), cross_large.as_ref()) {
-            (Some(cs), Some(cl)) => {
-                let d = crossing_vertex_penetration(small, large, cs)
-                    .max(crossing_vertex_penetration(large, small, cl));
-                // 0 means "no crossing vertex inside at all" (e.g. a thin
-                // member piercing straight through) — no evidence either
-                // way, not evidence of a sub-floor contact.
-                if d > 0.0 {
-                    Some(d)
-                } else {
-                    None
-                }
-            }
+            (Some(cs), Some(cl)) => match (
+                crossing_vertex_penetration(small, large, cs),
+                crossing_vertex_penetration(large, small, cl),
+            ) {
+                (Some(s), Some(l)) if l.depth > s.depth => Some(l),
+                (s, l) => s.or(l),
+            },
             _ => None,
         };
         return depth_clash_result(
@@ -257,15 +268,16 @@ pub fn test_pair(
 
     // Fully-enclosed solid: one element's AABB is wholly inside the other's,
     // so it may be buried. No surface crossing means the inner solid is
-    // entirely inside OR outside, so ray-casting ONE vertex of the contained
-    // mesh decides it (correctly "outside" for a concave notch, unlike an
-    // AABB test). B-contains-A tested first so the inner pick is deterministic
-    // on equal AABBs. Exact box-box depth when both are boxes; else the AABB
-    // gap is an estimate.
+    // entirely inside OR outside, so ray-casting one probe point of the
+    // contained mesh decides it (correctly "outside" for a concave notch,
+    // unlike an AABB test) — one chosen off the other's surface, see
+    // `contained_solid_is_buried` (#5473). B-contains-A tested first so the
+    // inner pick is deterministic on equal AABBs. Exact box-box depth when
+    // both are boxes; else the AABB gap is an estimate.
     let enclosed = if aabb_contains(aabb_b, aabb_a) {
-        tri_a.count > 0 && tri_b.contains_point(tri_a.tri(0)[0])
+        contained_solid_is_buried(tri_a, tri_b, aabb_a, aabb_b)
     } else if aabb_contains(aabb_a, aabb_b) {
-        tri_b.count > 0 && tri_a.contains_point(tri_b.tri(0)[0])
+        contained_solid_is_buried(tri_b, tri_a, aabb_a, aabb_b)
     } else {
         false
     };
@@ -303,9 +315,16 @@ pub fn test_pair(
         if gap < -tolerance {
             let probe_centroid = mid(tri_a.vertex_centroid(), tri_b.vertex_centroid());
             let probe_overlap = overlap.center();
-            if (tri_a.contains_point(probe_centroid) && tri_b.contains_point(probe_centroid))
-                || (tri_a.contains_point(probe_overlap) && tri_b.contains_point(probe_overlap))
-            {
+            // Each probe counts only when it is CLEARLY inside both solids:
+            // for a flush pair the AABB-overlap centre sits ON the shared
+            // face, where ray parity is a coin flip, and a lucky flip used to
+            // report the pair Hard at the AABB estimate (an element
+            // dimension, not a depth) — differently wherever the model sat
+            // (#5751). Same rule as `contained_solid_is_buried`.
+            let inside_both = |p: Vec3| {
+                clearly_inside(tri_a, p, aabb_a, aabb_b) && clearly_inside(tri_b, p, aabb_a, aabb_b)
+            };
+            if inside_both(probe_centroid) || inside_both(probe_overlap) {
                 // Tight contact region (clamped to the element overlap, not the
                 // whole-element AABB intersection, #1362/#1402). Exact box-box
                 // depth when both are boxes. May legitimately return `None`
@@ -340,6 +359,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 
@@ -355,6 +375,7 @@ pub fn test_pair(
             distance_kind: DistanceKind::Mesh,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
+            depth_floor: None,
         });
     }
 

@@ -3,18 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SpaceMouse panel (#1677): connect a 3Dconnexion device over WebHID and tune
- * its sensitivity. The connect button must stay a plain click handler, WebHID
- * only shows its device chooser from a user gesture. Everything device-side
- * lives in useSpaceMouseControls; this panel is a thin view over the
- * spaceMouse store slice.
+ * SpaceMouse settings (#1677, moved to Preferences by #5509): connect a
+ * 3Dconnexion device over WebHID and tune its sensitivity. The connect
+ * button must stay a plain click handler, WebHID only shows its device
+ * chooser from a user gesture. Everything device-side lives in
+ * useSpaceMouseControls; this is a thin view over the spaceMouse store
+ * slice, rendered inside the Preferences dialog's Navigation section
+ * (`KeyboardShortcutsDialog.tsx`) rather than floated over the viewport.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Activity, ChevronDown, ChevronUp, Copy, GripVertical, Unplug } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Activity, ChevronDown, ChevronUp, Copy, Unplug } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { useDraggablePanel } from '@/hooks/useDraggablePanel';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AXIS_FULL_SCALE, SENSITIVITY } from '@/lib/spacemouse/constants';
 import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
@@ -31,7 +33,7 @@ function AxisBar({ label, value }: { label: string; value: number }) {
       <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
         <div className="absolute inset-y-0 left-1/2 w-px bg-muted-foreground/30" />
         <div
-          className={cn('absolute inset-y-0 bg-teal-500', fraction === 0 && 'opacity-0')}
+          className={cn('absolute inset-y-0 bg-primary', fraction === 0 && 'opacity-0')}
           style={fraction >= 0
             ? { left: '50%', width: `${half}%` }
             : { right: '50%', width: `${half}%` }}
@@ -46,7 +48,6 @@ function AxisBar({ label, value }: { label: string; value: number }) {
 
 export function SpaceMousePanel() {
   const { t } = useTranslation();
-  const open = useViewerStore((s) => s.spaceMousePanelOpen);
 
   const supported = useViewerStore((s) => s.spaceMouseSupported);
   const connected = useViewerStore((s) => s.spaceMouseConnected);
@@ -58,19 +59,14 @@ export function SpaceMousePanel() {
   const disconnect = useViewerStore((s) => s.spaceMouseDisconnect);
   const getDiagnostics = useViewerStore((s) => s.spaceMouseGetDiagnostics);
 
-  const [collapsed, setCollapsed] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
   const [diag, setDiag] = useState<SpaceMouseDiagnostics | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
-  // Hooks must run unconditionally — keep these ABOVE the `!open` early return
-  // (a conditional hook is React error #310).
-  const panelRef = useRef<HTMLDivElement>(null);
-  const drag = useDraggablePanel(panelRef);
 
   // Poll the session's diagnostics snapshot at UI rate while the section is
   // visible. Reports stream at ~125Hz; pushing each one through the store
   // would be waste, so the panel pulls instead.
-  const diagActive = open && !collapsed && diagOpen && !!getDiagnostics;
+  const diagActive = diagOpen && !!getDiagnostics;
   useEffect(() => {
     if (!diagActive || !getDiagnostics) {
       setDiag(null);
@@ -93,173 +89,142 @@ export function SpaceMousePanel() {
     setTimeout(() => setCopyState('idle'), 2000);
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      ref={panelRef}
-      style={drag.style}
-      className="pointer-events-auto absolute top-56 right-4 z-10 w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs"
-    >
-      {/* Header: the grip drags; the rest toggles collapse (same split of
-          affordances as SunSkyPanel). */}
-      <div className="flex items-center gap-1.5">
-        <span
-          onMouseDown={drag.onDragStart}
-          title={t('spaceMousePanel.dragToMoveTitle')}
-          className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
-        >
-          <GripVertical className="h-3.5 w-3.5" />
-        </span>
-        <button
+    <div className="flex flex-col gap-2 text-xs">
+      {!supported ? (
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {t('spaceMousePanel.noWebHidMessage')}
+        </p>
+      ) : connected ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-xs text-foreground" title={deviceName ?? undefined}>
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-status-ok align-middle" />
+            {deviceName ?? t('spaceMousePanel.deviceNameFallback')}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => disconnect?.()}
+            title={t('spaceMousePanel.disconnectTitle')}
+            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+          >
+            <Unplug className="h-3 w-3" />
+            {t('spaceMousePanel.disconnectButton')}
+          </Button>
+        </div>
+      ) : (
+        <Button
           type="button"
-          onClick={() => setCollapsed(!collapsed)}
-          aria-expanded={!collapsed}
-          className="flex-1 flex items-center justify-between gap-2 text-left"
+          onClick={() => connect?.()}
+          disabled={!connect}
+          className="w-full"
         >
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {t('spaceMousePanel.headerLabel')}
-          </span>
-          <span className="text-muted-foreground">
-            {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-          </span>
-        </button>
-      </div>
+          {t('spaceMousePanel.connectButton')}
+        </Button>
+      )}
 
-      {!collapsed && (
+      {error && !connected && (
+        <p className="text-[11px] leading-snug text-destructive">{error}</p>
+      )}
+
+      {supported && (
         <>
-          {!supported ? (
-            <p className="text-[9px] leading-snug text-muted-foreground">
-              {t('spaceMousePanel.noWebHidMessage')}
-            </p>
-          ) : connected ? (
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-[10px] text-foreground" title={deviceName ?? undefined}>
-                <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-teal-500 align-middle" />
-                {deviceName ?? t('spaceMousePanel.deviceNameFallback')}
-              </span>
+          <label className="flex flex-col gap-0.5">
+            <span className="flex justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
+              <span>{t('spaceMousePanel.sensitivityLabel')}</span>
               <button
                 type="button"
-                onClick={() => disconnect?.()}
-                title={t('spaceMousePanel.disconnectTitle')}
-                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => setSensitivity(SENSITIVITY.default)}
+                title={t('spaceMousePanel.resetSensitivityTitle')}
+                className={cn(
+                  'tabular-nums transition-colors',
+                  sensitivity !== SENSITIVITY.default && 'text-foreground hover:text-primary',
+                )}
               >
-                <Unplug className="h-3 w-3" />
-                {t('spaceMousePanel.disconnectButton')}
+                {t('spaceMousePanel.sensitivityValue', { value: sensitivity.toFixed(1) })}
               </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => connect?.()}
-              disabled={!connect}
-              className="w-full rounded bg-teal-600 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white transition-colors hover:bg-teal-500 disabled:opacity-50"
-            >
-              {t('spaceMousePanel.connectButton')}
-            </button>
-          )}
+            </span>
+            <input
+              type="range"
+              min={SENSITIVITY.min}
+              max={SENSITIVITY.max}
+              step={SENSITIVITY.step}
+              value={sensitivity}
+              onChange={(e) => setSensitivity(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+          </label>
 
-          {error && !connected && (
-            <p className="text-[9px] leading-snug text-amber-600 dark:text-amber-500">{error}</p>
-          )}
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {t('spaceMousePanel.guidanceMessage')}
+          </p>
 
-          {supported && (
-            <>
-              <label className="flex flex-col gap-0.5">
-                <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-                  <span>{t('spaceMousePanel.sensitivityLabel')}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSensitivity(SENSITIVITY.default)}
-                    title={t('spaceMousePanel.resetSensitivityTitle')}
-                    className={cn(
-                      'tabular-nums transition-colors',
-                      sensitivity !== SENSITIVITY.default && 'text-foreground hover:text-teal-600',
-                    )}
-                  >
-                    {t('spaceMousePanel.sensitivityValue', { value: sensitivity.toFixed(1) })}
-                  </button>
-                </span>
-                <input
-                  type="range"
-                  min={SENSITIVITY.min}
-                  max={SENSITIVITY.max}
-                  step={SENSITIVITY.step}
-                  value={sensitivity}
-                  onChange={(e) => setSensitivity(Number(e.target.value))}
-                  className="w-full accent-teal-600"
-                />
-              </label>
+          {connected && getDiagnostics && (
+            <div className="flex flex-col gap-1.5 border-t pt-1.5">
+              <button
+                type="button"
+                onClick={() => setDiagOpen(!diagOpen)}
+                aria-expanded={diagOpen}
+                className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Activity className="h-3 w-3" />
+                {t('spaceMousePanel.diagnosticsLabel')}
+                {diagOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+              </button>
 
-              <p className="text-[9px] leading-snug text-muted-foreground">
-                {t('spaceMousePanel.guidanceMessage')}
-              </p>
+              {diagOpen && diag && (
+                <>
+                  <div className="flex flex-col gap-0.5">
+                    {AXIS_KEYS.map((axis) => (
+                      <AxisBar key={axis} label={axis} value={diag.axes[axis]} />
+                    ))}
+                  </div>
 
-              {connected && getDiagnostics && (
-                <div className="flex flex-col gap-1.5 border-t pt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setDiagOpen(!diagOpen)}
-                    aria-expanded={diagOpen}
-                    className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <Activity className="h-3 w-3" />
-                    {t('spaceMousePanel.diagnosticsLabel')}
-                    {diagOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
-                  </button>
-
-                  {diagOpen && diag && (
-                    <>
-                      <div className="flex flex-col gap-0.5">
-                        {AXIS_KEYS.map((axis) => (
-                          <AxisBar key={axis} label={axis} value={diag.axes[axis]} />
-                        ))}
-                      </div>
-
-                      <div className="font-mono text-[8px] leading-snug text-muted-foreground">
-                        <div>
-                          {t('spaceMousePanel.layoutLine', {
-                            value: diag.layoutSource === 'descriptor'
-                              ? t('spaceMousePanel.layoutDescriptor', { axes: diag.layoutAxes })
-                              : t('spaceMousePanel.layoutBuiltIn'),
+                  <div className="font-mono text-[10px] leading-snug text-muted-foreground">
+                    <div>
+                      {t('spaceMousePanel.layoutLine', {
+                        value: diag.layoutSource === 'descriptor'
+                          ? t('spaceMousePanel.layoutDescriptor', { axes: diag.layoutAxes })
+                          : t('spaceMousePanel.layoutBuiltIn'),
+                      })}
+                    </div>
+                    {diag.reports.length === 0 ? (
+                      <div>{t('spaceMousePanel.noReportsMessage')}</div>
+                    ) : (
+                      diag.reports.map((r) => (
+                        <div key={r.reportId} className="truncate" title={r.lastBytesHex}>
+                          {t('spaceMousePanel.reportLine', {
+                            id: r.reportId,
+                            count: r.count,
+                            bytes: r.byteLength,
+                            hex: r.lastBytesHex,
                           })}
                         </div>
-                        {diag.reports.length === 0 ? (
-                          <div>{t('spaceMousePanel.noReportsMessage')}</div>
-                        ) : (
-                          diag.reports.map((r) => (
-                            <div key={r.reportId} className="truncate" title={r.lastBytesHex}>
-                              {t('spaceMousePanel.reportLine', {
-                                id: r.reportId,
-                                count: r.count,
-                                bytes: r.byteLength,
-                                hex: r.lastBytesHex,
-                              })}
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      ))
+                    )}
+                  </div>
 
-                      <button
-                        type="button"
-                        onClick={() => { void copyDump(); }}
-                        className="flex items-center justify-center gap-1 rounded border px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Copy className="h-2.5 w-2.5" />
-                        {copyState === 'copied'
-                          ? t('spaceMousePanel.copiedLabel')
-                          : copyState === 'failed'
-                            ? t('spaceMousePanel.copyFailedLabel')
-                            : t('spaceMousePanel.copyDeviceReportLabel')}
-                      </button>
-                      <p className="text-[8px] leading-snug text-muted-foreground">
-                        {t('spaceMousePanel.reportHintMessage')}
-                      </p>
-                    </>
-                  )}
-                </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { void copyDump(); }}
+                    className="h-7 gap-1 text-[11px] text-muted-foreground"
+                  >
+                    <Copy className="h-2.5 w-2.5" />
+                    {copyState === 'copied'
+                      ? t('spaceMousePanel.copiedLabel')
+                      : copyState === 'failed'
+                        ? t('spaceMousePanel.copyFailedLabel')
+                        : t('spaceMousePanel.copyDeviceReportLabel')}
+                  </Button>
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    {t('spaceMousePanel.reportHintMessage')}
+                  </p>
+                </>
               )}
-            </>
+            </div>
           )}
         </>
       )}

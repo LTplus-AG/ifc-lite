@@ -6,19 +6,20 @@ import type { TranslationValue } from '../types';
 
 /**
  * The 3D-viewport-chrome + sun/lighting catalogue (#4918 viewport/lighting
- * slice, `viewportLighting.*`) covers seven files: `ViewportContainer.tsx`
+ * slice, `viewportLighting.*`) covers eight files: `ViewportContainer.tsx`
  * (the empty/welcome state, its WebGPU-unavailable banner, and the
  * "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
- * cluster and the per-model basepoint toggle), `Viewport.tsx`'s own
+ * cluster and the per-model basepoint toggle), `EditModeHudChip.tsx` (the
+ * edit-mode status chip), `Viewport.tsx`'s own
  * render-failure fallback, `FlySpeedIndicator.tsx`'s fly-mode HUD,
- * `ShadowControls.tsx` and `SunTimeControls.tsx` (the Sun & Sky panel's
- * shadow and manual time-of-day sub-panels), and `SunSkyPanel.tsx` itself
+ * `ShadowControls.tsx` and `SunTimeControls.tsx` (the Environment panel's
+ * shadow and manual time-of-day sub-panels), and `EnvironmentPanel.tsx` itself
  * (environment/base-map pickers, the sun study's date/time/sweep controls
  * and its readout grid). `CONTEXT_SOURCES`/`SWEEP_MODES` moved their
  * `label`/`hint` strings to `labelKey`/`hintKey` fields, the same
  * data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO`
  * and this sweep's other select-option tables use, so a locale switch
- * retranslates the Sun & Sky panel's dropdowns too, even though the gate
+ * retranslates the Environment panel's dropdowns too, even though the gate
  * below does not itself see through an object literal's own fields.
  * `ShadowControls.tsx`'s `resolutionLabel` takes the same non-hook
  * `t: typeof resolve = resolve` default parameter `bulk-property-value.ts`
@@ -41,9 +42,9 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.title': 'IFClite',
   'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
-  'viewportLighting.container.emptyState.openButton.open': 'Open .ifc file',
+  'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drag & drop anywhere',
+  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
   'viewportLighting.container.emptyState.orDivider': 'or',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
@@ -54,11 +55,12 @@ export const viewportLightingEn = {
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  'viewportLighting.container.emptyState.layersPromo.badge': 'New',
-  'viewportLighting.container.emptyState.layersPromo.title': 'Layers',
-  'viewportLighting.container.emptyState.layersPromo.description':
-    'Version your model like code: layers, drafts, merges, reviews',
-  'viewportLighting.container.emptyState.layersPromo.cta': 'Try the demo stack →',
+  // First-run primary action (#5840): the demo-kit sample, loaded through
+  // the same `loadFile` as any user file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
+  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
+  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
@@ -84,6 +86,11 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.basepointToggle.showAria': 'Show model basepoints',
   'viewportLighting.overlays.basepointToggle.showTooltip': 'Show model basepoints (IFC 0,0,0)',
 
+  // ── EditModeHudChip.tsx — the top-left "Editing" status chip (#5489);
+  // `{model}` is the model's own displayed name, runtime data ──────────
+  'viewportLighting.overlays.editingChip': 'Editing',
+  'viewportLighting.overlays.editingChipWithModel': 'Editing · {model}',
+
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',
   'viewportLighting.viewport.renderFailed.browserHint':
@@ -92,7 +99,7 @@ export const viewportLightingEn = {
   // ── FlySpeedIndicator.tsx — fly-mode speed HUD ───────────────────────
   'viewportLighting.flySpeed.label': 'Fly speed {level}/{total}',
 
-  // ── ShadowControls.tsx — Sun & Sky panel's shadow sub-panel ──────────
+  // ── ShadowControls.tsx — Environment panel's shadow sub-panel ──────────
   'viewportLighting.shadowControls.title': 'Cast shadows',
   'viewportLighting.shadowControls.toggleAria': 'Toggle sun cast shadows',
   'viewportLighting.shadowControls.softnessLabel': 'Softness',
@@ -107,17 +114,18 @@ export const viewportLightingEn = {
   'viewportLighting.shadowControls.resolution.medium': 'Medium ({resolution}px)',
   'viewportLighting.shadowControls.resolution.high': 'High ({resolution}px)',
 
-  // ── SunTimeControls.tsx — Sun & Sky panel's manual time-of-day sub-panel
+  // ── SunTimeControls.tsx — Environment panel's manual time-of-day sub-panel
   'viewportLighting.sunTimeControls.title': 'Time of day',
   'viewportLighting.sunTimeControls.toggleAria': 'Toggle manual time-of-day sun',
   'viewportLighting.sunTimeControls.sunTimeLabel': 'Sun time',
   'viewportLighting.sunTimeControls.resetTitle': 'Reset to early afternoon',
   'viewportLighting.sunTimeControls.overriddenHint': 'Overridden by the georeferenced sun study.',
 
-  // ── SunSkyPanel.tsx — header ──────────────────────────────────────────
-  'viewportLighting.sunSkyPanel.header.dragTitle': 'Drag to move',
-  'viewportLighting.sunSkyPanel.header.title': 'Sun & Sky',
-  // ── SunSkyPanel.tsx — world-context (Cesium) environment ─────────────
+  // ── EnvironmentPanel.tsx — header (#5506: docked side panel, was the
+  // floating SunSkyPanel.tsx) ──────────────────────────────────────────
+  'viewportLighting.sunSkyPanel.header.title': 'Environment',
+  'viewportLighting.sunSkyPanel.header.closeTitle': 'Close Environment panel',
+  // ── EnvironmentPanel.tsx — world-context (Cesium) environment ─────────
   'viewportLighting.sunSkyPanel.cesium.skyToggleLabel': 'Sky',
   'viewportLighting.sunSkyPanel.cesium.skyToggleTitle':
     'Sky, sun disc and haze in the world context — also drives lighting',
@@ -138,11 +146,11 @@ export const viewportLightingEn = {
   'viewportLighting.sunSkyPanel.cesium.contextSources.custom3dTiles.label': 'Custom (3D Tiles)',
   'viewportLighting.sunSkyPanel.cesium.contextSources.custom3dTiles.hint':
     'Your own 3D Tiles tileset URL (1.0 or 1.1)',
-  // ── SunSkyPanel.tsx — standalone (WebGPU) environment ────────────────
+  // ── EnvironmentPanel.tsx — standalone (WebGPU) environment ────────────────
   'viewportLighting.sunSkyPanel.standalone.environmentLabel': 'Environment',
   'viewportLighting.sunSkyPanel.standalone.environmentAria': 'Environment preset',
   'viewportLighting.sunSkyPanel.standalone.noSkySuffix': ' (no sky)',
-  // ── SunSkyPanel.tsx — sun study ───────────────────────────────────────
+  // ── EnvironmentPanel.tsx — sun study ───────────────────────────────────────
   'viewportLighting.sunSkyPanel.sunStudy.title': 'Sun study',
   'viewportLighting.sunSkyPanel.sunStudy.on': 'On',
   'viewportLighting.sunSkyPanel.sunStudy.off': 'Off',

@@ -16,7 +16,7 @@
  * `-2.384185791015625e-7` (exactly the float32 ULP at magnitude `[2,4)`)
  * across unrelated element-type pairs at different physical locations —
  * the signature of a quantization floor, not independent measurements. The
- * fix (`precisionFloor` in `narrow.ts` / `precision_floor` in `narrow.rs`)
+ * fix (the depth path's precision floor, now `depthFloor` / `estimateFloor`)
  * reclassifies a sub-floor crossing as `touch` (the surfaces genuinely are
  * in contact — that's real information) instead of `hard`; CLI-default
  * rules don't opt into `reportTouch`, so these pairs now report zero
@@ -31,7 +31,7 @@
  * exclude toward: reaching it needs #2536 fixed first, then an opt-in
  * bearing rule (never a default — the file carries no connection metadata).
  *
- * WHY THIS STAYS 50 after #2536's depth-provenance work: the floor takes
+ * WHY THIS STAYED 50 after #2536's depth-provenance work: the floor takes
  * precedence over depth derivation. #2536's through-penetration guard makes
  * a box pair in a through-penetration configuration report the AABB
  * estimate instead of the box MTD, and on this model eight pairs have a
@@ -43,7 +43,22 @@
  * magnitude the number is not measurable either way — so `depthClashResult`
  * (`depth_clash_result` in Rust) floor-tests every candidate depth the pair
  * has, and the estimate-vs-mesh selection only applies to pairs already
- * above the floor. This count is where that decision is recorded.
+ * above the floor.
+ *
+ * WHY IT IS 2 SINCE #5406: 48 of those 50 were flush contacts whose only
+ * "crossing" was f32 rounding pushing two coincident surfaces a few ULP
+ * through each other. The tri-tri predicate decided touching on an exact
+ * floating-point tie (`<=`), so a ULP either way made it a crossing, and a
+ * crossing sent the pair to the depth path, where 45 of them reported an
+ * AABB estimate that is an element dimension (4.084 m, 2.5 m, 1.75 m, ...)
+ * and 3 a box MTD of 16-73 um. The predicate now reads overlap within the
+ * f32 noise band of the tested axis as contact, so all 48 are `touch` at a
+ * mesh-measured distance of at most 1.4e-6 m (measured, `reportTouch` on:
+ * 74 touch + 50 hard before, 122 touch + 2 hard after — no pair appeared or
+ * vanished, only 48 moved hard -> touch). That is the "true count of ~0"
+ * above reached for the contact class, without an exclusion rule. The 2
+ * that remain are IfcBeam x IfcBeam at a 0.4 m AABB estimate: two of the
+ * eight authored bearing details, 10 m apart, so still 2 clusters.
  */
 
 import { existsSync } from 'node:fs';
@@ -67,7 +82,7 @@ const SUITE_TITLE = 'regression: Infra-Bridge.ifc (buildingSMART sample) CLI-def
 
 describe.skipIf(!canRun)(canRun ? SUITE_TITLE : `${SUITE_TITLE} (fixture missing; run pnpm fixtures)`, () => {
   it(
-    'reports 50 hard clashes at CLI defaults, 8 of them IfcBeam x IfcBeam, grouping to 2 clusters at epsilon=3m',
+    'reports 2 hard clashes at CLI defaults, both IfcBeam x IfcBeam, grouping to 2 clusters at epsilon=3m',
     async () => {
       const bytes = await readFile(FIXTURE);
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -90,17 +105,16 @@ describe.skipIf(!canRun)(canRun ? SUITE_TITLE : `${SUITE_TITLE} (fixture missing
       const rules = [{ id: 'cli-rule', name: '* self-clash', a: '*', mode: 'hard' as const }];
       const clashResult = await engine.run(elements, rules, { exclusions });
 
-      expect(clashResult.summary.total).toBe(50);
+      expect(clashResult.summary.total).toBe(2);
 
       const beamBeam = clashResult.clashes.filter(
         (c) => c.a.tag === 'IfcBeam' && c.b.tag === 'IfcBeam',
       );
-      expect(beamBeam).toHaveLength(8);
+      expect(beamBeam).toHaveLength(2);
 
-      // Default epsilon (1.5m) splits one abutment's beam pairs into extra
-      // clusters — a known, deliberately-unchanged default. At epsilon=3m
-      // (within the documented safe range [2.0, 6.5]) the 8 IfcBeam x IfcBeam
-      // pairs (authored bearing details, not defects) group to 2 clusters.
+      // At epsilon=3m (within the documented safe range [2.0, 6.5]) the
+      // IfcBeam x IfcBeam pairs (authored bearing details, not defects) group
+      // to 2 clusters (the two remaining pairs are ~10 m apart).
       const groups = groupClashes(clashResult, { by: 'cluster', epsilon: 3 });
       const beamBeamGroups = groups.filter((g) =>
         g.members.every((c) => c.a.tag === 'IfcBeam' && c.b.tag === 'IfcBeam'),

@@ -533,12 +533,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // tail, leaving the shiftedBounds / computeBounds paths below untouched.
       // `sceneBoundsFull` is the FULL AABB and is what feeds setSceneBounds —
       // near/far clipping + section ranges must still cover the far meshes.
-      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry) : null;
+      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry, { streaming: isStreaming }) : null;
       const robustEarly = rbEarly?.robust ?? null;
       let sceneBoundsFull: Bounds | null = null;
       if (robustEarly) {
         const canvas = renderer.getCanvas();
-        const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+        const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
         const policy = renderer.getCamera().fitBoundsAdaptive(
           robustEarly,
           { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -553,7 +553,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         const maxSize = Math.max(sb.max.x - sb.min.x, sb.max.y - sb.min.y, sb.max.z - sb.min.z);
         if (maxSize > 0 && Number.isFinite(maxSize)) {
           const canvas = renderer.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           const policy = renderer.getCamera().fitBoundsAdaptive(
             { min: sb.min, max: sb.max },
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -569,7 +569,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         const bounds = computeBounds(geometry);
         if (bounds) {
           const canvas = renderer.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           const policy = renderer.getCamera().fitBoundsAdaptive(
             bounds,
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -669,7 +669,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             if (exactBounds) {
               if (!userMovedCamera(r, cameraSnapshotRef.current)) {
                 const canvas = r.getCanvas();
-                const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+                const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
                 const policy = r.getCamera().fitBoundsAdaptive(
                   exactBounds,
                   { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -816,7 +816,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingInstancedShards.length > 0) {
       for (const { modelId, bytes } of pendingInstancedShards) {
         // CRITICAL: never let a shard decode/upload throw OUT of this effect.
-        // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
+        // addInstancedShard creates GPU buffers; on a degraded
         // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
         // throws — and an uncaught throw in a React effect tears down the Viewport
         // subtree via the error boundary, unmounting the <canvas> entirely. Instanced

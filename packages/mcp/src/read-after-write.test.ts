@@ -333,6 +333,10 @@ describe('query_entities after an edit', () => {
     expect(doors.entities[0].type).toBe('IfcDoor');
     const walls = await structured<QueryShape>('query_entities', { type: 'IfcWall' });
     expect(walls.entities.map((entity) => entity.expressId)).toEqual([73]);
+    const info = await structured<InfoShape>('model_info', {});
+    const counts = new Map(info.typeCountsTop20.map(row => [row.type, row.count]));
+    expect(counts.get('IfcWall')).toBe(1);
+    expect(counts.get('IfcDoor')).toBe(1);
   }, 30_000);
 
   it('reports a renamed entity under its new name', async () => {
@@ -1174,6 +1178,46 @@ describe('containment over queued relationships', () => {
 });
 
 describe('model_audit over queued edits', () => {
+  it('uses the session GlobalId when checking identity (#5249)', async () => {
+    await session();
+    await call('entity_set_attribute', { global_id: guid('WALA'), attribute: 'Name', value: 'Wall A again' });
+    const view = ctx.registry.get('m')?.backend.getMutationView();
+    if (!view) throw new Error('mutation view not created');
+
+    view.setAttribute(73, 'GlobalId', guid('WALA'));
+    expect((await structured<AuditShape>('model_audit', {})).issues
+      .filter((issue) => issue.rule === 'duplicate-globalid').map((issue) => issue.message))
+      .toEqual([`Duplicate GlobalId ${guid('WALA')} on 2 entities`]);
+
+    // A positional edit is the other supported write path for the same slot.
+    view.setAttribute(73, 'GlobalId', guid('WALB'));
+    view.setPositionalAttribute(72, 0, guid('WALB'));
+    expect((await structured<AuditShape>('model_audit', {})).issues
+      .filter((issue) => issue.rule === 'duplicate-globalid').map((issue) => issue.message))
+      .toEqual([`Duplicate GlobalId ${guid('WALB')} on 2 entities`]);
+  }, 30_000);
+
+  it('scores the effective class and positional Name after source retypes (#5249)', async () => {
+    await session();
+    await call('entity_set_attribute', { global_id: guid('WALA'), attribute: 'Name', value: 'Wall A again' });
+    const view = ctx.registry.get('m')?.backend.getMutationView();
+    if (!view) throw new Error('mutation view not created');
+    const before = await structured<AuditShape>('model_audit', {});
+
+    view.setEntityType(72, 'IfcRelAggregates', null, 'IfcWall');
+    const withoutWall = await structured<AuditShape>('model_audit', {});
+    expect(withoutWall.totals.products).toBe(before.totals.products - 1);
+
+    view.setEntityType(84, 'IfcWall', null, 'IfcRelDefinesByProperties');
+    const withRetypedRel = await structured<AuditShape>('model_audit', {});
+    expect(withRetypedRel.totals.products).toBe(before.totals.products);
+    expect(withRetypedRel.totals.unnamed).toBe(before.totals.unnamed + 1);
+
+    view.setPositionalAttribute(73, 2, '');
+    const withUnnamedWall = await structured<AuditShape>('model_audit', {});
+    expect(withUnnamedWall.totals.unnamed).toBe(before.totals.unnamed + 2);
+  }, 30_000);
+
   it('catches a duplicate GlobalId this session created', async () => {
     await session();
     await call('entity_create', {

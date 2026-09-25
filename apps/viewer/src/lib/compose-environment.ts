@@ -17,7 +17,7 @@
  * the resulting uniform values rather than through the Viewport component.
  */
 
-import type { LightingEnvironment } from '@ifc-lite/renderer';
+import { resolveEnvironment, type LightingEnvironment } from '@ifc-lite/renderer';
 import { sunLightingForAltitude } from './geo/solar-direction.js';
 
 export interface EnvironmentTrims {
@@ -55,28 +55,32 @@ export function composeLightingEnvironment(
   opts: ComposeOptions,
 ): LightingEnvironment {
   const { exposure, hardness, softness } = trims;
+  // The preset with the renderer's defaults filled in, so a trim scales what
+  // would actually render. Copying the defaults here as literals let them
+  // drift from the renderer's (#5382).
+  const base = resolveEnvironment(preset);
   const env: LightingEnvironment = {
     ...preset,
     skyEnabled: (preset.skyEnabled ?? false) && !opts.cesiumActive,
-    exposure: (preset.exposure ?? 0.85) * exposure,
+    exposure: base.exposure * exposure,
     // Terminator softness: user trim on the preset's base wrap. The renderer
     // clamps the product to [0, 1].
-    sunSoftness: (preset.sunSoftness ?? 0.3) * softness,
+    sunSoftness: base.sunSoftness * softness,
   };
   if (opts.solar) {
     const sun = sunLightingForAltitude(opts.solar.altitudeDeg);
     env.sunDirection = opts.solar.sunDirection;
     env.sunColor = sun.color;
-    env.sunIntensity = (preset.sunIntensity ?? 0.55) * sun.intensityFactor;
-    env.ambientIntensity = (preset.ambientIntensity ?? 0.25) * sun.ambientFactor;
+    env.sunIntensity = base.sunIntensity * sun.intensityFactor;
+    env.ambientIntensity = base.ambientIntensity * sun.ambientFactor;
     // Let the sky derive its palette from the real sun altitude.
     delete env.sky;
   }
   // Light hardness: deepen shadows by cutting the hemisphere ambient + fill.
   // Applied last so it composes over the solar override's ambient too.
   if (hardness !== 1) {
-    env.ambientIntensity = (env.ambientIntensity ?? 0.25) / hardness;
-    env.fillIntensity = (env.fillIntensity ?? 0.15) / hardness;
+    env.ambientIntensity = (env.ambientIntensity ?? base.ambientIntensity) / hardness;
+    env.fillIntensity = (env.fillIntensity ?? base.fillIntensity) / hardness;
   }
   return env;
 }

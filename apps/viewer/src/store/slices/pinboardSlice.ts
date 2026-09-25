@@ -153,10 +153,11 @@ export interface PinboardSlice {
   setHierarchyBasketSelection: (refs: EntityRef[]) => void;
   /** Clear hierarchy-derived basket source */
   clearHierarchyBasketSelection: () => void;
-  /** Show/hide presentation dock */
+  /** Show/hide the `presentation` bottom panel's dock flag (#5508). Toggling
+   *  it directly bypasses the bottom-strip's mutual exclusivity —
+   *  `toggleBottomPanel('presentation')` (`store/index.ts`) is the entry
+   *  point every UI surface uses instead. */
   setBasketPresentationVisible: (visible: boolean) => void;
-  /** Toggle presentation dock */
-  toggleBasketPresentationVisible: () => void;
   /** Save current basket as a reusable view preset */
   saveCurrentBasketView: (options?: SaveBasketViewOptions) => string | null;
   /** Restore basket entities and isolation only (no camera/section). Use activateBasketViewFromStore for full restore. */
@@ -302,8 +303,6 @@ export const createPinboardSlice: StateCreator<
   clearHierarchyBasketSelection: () => set({ hierarchyBasketSelection: new Set() }),
 
   setBasketPresentationVisible: (basketPresentationVisible) => set({ basketPresentationVisible }),
-  toggleBasketPresentationVisible: () =>
-    set((state) => ({ basketPresentationVisible: !state.basketPresentationVisible })),
 
   saveCurrentBasketView: (options) => {
     const state = get();

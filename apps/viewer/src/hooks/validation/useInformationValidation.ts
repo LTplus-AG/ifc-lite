@@ -16,7 +16,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { runRuleSet, type RuleEngineProgress } from '@ifc-lite/rules';
+import { resolveTargetModels, runRuleSet, type RuleEngineProgress } from '@ifc-lite/rules';
 import type { RuleSetFile } from '@ifc-lite/rules';
 import { parseRuleSetFile } from '@ifc-lite/rules';
 import { importRuleSetFile, exportRuleSet } from '@/lib/validation/rule-set-io-browser';
@@ -37,6 +37,8 @@ export interface IdsInterchangeSummary {
   total: number;
   refused: ReadonlyArray<{ name: string; reasons: readonly string[] }>;
   notes: readonly string[];
+  /** Import only: IDS checks the imported rules do not make (a dropped `dataType`). */
+  dropped?: readonly string[];
 }
 
 function blankRuleSet(): RuleSetFile {
@@ -142,8 +144,13 @@ export function useInformationValidation(): UseInformationValidationResult {
 
   const exportIds = useCallback(() => {
     if (!file) return;
-    const schemas = [...useViewerStore.getState().models.values()].map((m) => m.schemaVersion);
-    const result = exportRuleSetAsIds(file, idsVersionsForSchemas(schemas));
+    const state = useViewerStore.getState();
+    const schemas = [...state.models.values()].map((m) => m.schemaVersion);
+    const result = exportRuleSetAsIds(
+      file,
+      idsVersionsForSchemas(schemas),
+      resolveTargetModels(evaluatorModelsFromState(state), file.targets),
+    );
     setIdsSummary({
       direction: 'export',
       converted: result.exportedRuleIds.length,
@@ -167,6 +174,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       total: imported + result.refused.length,
       refused: result.refused.map((r) => ({ name: r.specificationName, reasons: r.reasons })),
       notes: result.notes,
+      dropped: result.droppedChecks,
     });
     if (!result.file) {
       setError(null);

@@ -11,8 +11,10 @@ import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork,
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
+import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -41,25 +43,26 @@ export function ViewTab() {
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
+  const { activeWorkspacePanels, handleToggleBottomPanel } = useWorkspacePanelControls();
 
-  // Sun & Sky panel state (sky, lighting presets, sun-path study)
+  // Environment panel state (sky, lighting presets, sun-path study, #5506)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
-  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
-  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   // Effective, not raw: the Cesium world context defaults this on (#4771).
   const envSkyEnabled = useEffectiveSkyEnabled();
   const envPreset = useViewerStore((state) => state.envPreset);
 
-  // SpaceMouse panel state (3D mouse navigation, #1677)
-  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
-  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  // SpaceMouse connection state (3D mouse navigation, #1677); its settings
+  // moved to Preferences → Navigation (#5509).
   const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
 
-  // Basket presentation state
+  // Basket presentation state. The dock flag (`basketPresentationVisible`) is
+  // still the source of truth for "active" — the `presentation` bottom panel
+  // reuses it (#5508) — but opening/closing routes through the bottom-panel
+  // table (`handleToggleBottomPanel`) rather than the raw toggle, so it stays
+  // mutually exclusive with Script/Schedule/Lists/etc. instead of stacking a
+  // second bottom panel open underneath.
   const pinboardEntities = useViewerStore((state) => state.pinboardEntities);
   const basketViewCount = useViewerStore((state) => state.basketViews.length);
-  const basketPresentationVisible = useViewerStore((state) => state.basketPresentationVisible);
-  const toggleBasketPresentationVisible = useViewerStore((state) => state.toggleBasketPresentationVisible);
   const hasModels = useViewerStore((state) => state.models.size > 0 || (state.geometryResult?.meshes.length ?? 0) > 0);
 
   return (
@@ -155,9 +158,9 @@ export function ViewTab() {
           icon={Lighting}
           label={t('ribbon.view.lighting')}
           tooltip={t('ribbon.view.lightingTooltip')}
-          active={envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default'}
+          active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
-          onClick={toggleEnvPanel}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('environment')}
         />
         <RibbonSmallStack>
           {cesiumAvailable && cesiumEnabled && (
@@ -178,9 +181,9 @@ export function ViewTab() {
             icon={SpaceMouse}
             label={t('ribbon.view.spaceMouse')}
             tooltip={t('ribbon.view.spaceMouseTooltip')}
-            active={spaceMousePanelOpen || spaceMouseConnected}
-            activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
-            onClick={toggleSpaceMousePanel}
+            active={spaceMouseConnected}
+            activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
+            onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'preferences' } }))}
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -192,9 +195,9 @@ export function ViewTab() {
           icon={Viewpoint}
           label={t('ribbon.view.present')}
           tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
-          active={basketPresentationVisible}
+          active={activeWorkspacePanels.has('presentation')}
           disabled={!hasModels}
-          onClick={toggleBasketPresentationVisible}
+          onClick={() => handleToggleBottomPanel('presentation')}
           badge={(basketViewCount > 0 || pinboardEntities.size > 0) ? (
             <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-[9px] font-bold text-primary-foreground">
               {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}

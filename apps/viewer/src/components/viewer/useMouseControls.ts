@@ -25,6 +25,7 @@ import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
@@ -37,6 +38,7 @@ import {
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
+import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
 
@@ -454,7 +456,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       invalidateSelectionPick(canvas);
       e.preventDefault();
       // Capture the pointer so move/up events fire even outside the canvas
-      canvas.setPointerCapture(e.pointerId);
+      capturePointer(canvas, e.pointerId);
       mouseState.isDragging = true;
       mouseState.button = e.button;
       mouseState.lastX = e.clientX;
@@ -537,7 +539,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           }
         } else {
           // No geometry hit or large model — anchor the pivot to the scene centre.
-          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, canvas.width, canvas.height));
+          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, rect.width, rect.height));
         }
       }
 
@@ -621,7 +623,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // follow-up). Runs INSTEAD of the generic tooltip path while
       // pick mode is armed so the overlay stays the only signal under
       // the cursor — the tooltip would just compete visually with the
-      // violet quad. See `handleSectionPickHover` for the full
+      // accent quad. See `handleSectionPickHover` for the full
       // anti-jitter rules.
       if (tool === 'section' && !mouseState.isDragging && sectionPickModeRef.current) {
         handleSectionPickHover(e, x, y);
@@ -684,8 +686,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseUp = (e: PointerEvent) => {
-      // Release pointer capture (safe to call even if not captured)
-      canvas.releasePointerCapture(e.pointerId);
+      releasePointer(canvas, e.pointerId);
 
       // Clear interaction flag so the animation loop restores post-processing
       if (isInteractingRef.current) {
@@ -755,7 +756,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // Section face-pick preview: cursor left the canvas, so any
       // pending dwell timer would otherwise commit a stale hover
       // when the user returns. Drop the overlay too so we don't leave
-      // a violet quad orphaned on the last-seen face after leaving.
+      // an accent quad orphaned on the last-seen face after leaving.
       if (sectionDwellTimerRef.current) {
         clearTimeout(sectionDwellTimerRef.current);
         sectionDwellTimerRef.current = null;
@@ -803,6 +804,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         canvas,
         fastZoom: e.shiftKey || params.fastZoomRef.current,
         fineModifierHeld: fineZoomModifier.isHeld(),
+        pickSurface: createZoomSurfacePicker(renderer, camera, getPickOptions), // #5393
       });
 
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);

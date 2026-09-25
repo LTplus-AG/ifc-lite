@@ -1061,6 +1061,43 @@ describe('deleting an overlay-created entity emits nothing at all (#2012 instanc
 // The eighth instance — the same shape on a SOURCE entity (#1978, PR #1996)
 // ---------------------------------------------------------------------------
 
+describe('authored IfcRelDefinesByProperties over a replaced source set (#5236)', () => {
+  it('does not leave the authored relation pointing at the withheld source pset', async () => {
+    // Remove the second source owner so #11 belongs only to #8. The authored
+    // relation below then becomes the one extra owner the source-only reverse
+    // index cannot see when the overlay replaces Pset_WallCommon.
+    const source = BASE_IFC.replace(/^#15=IFCRELDEFINESBYPROPERTIES.*\n/m, '');
+    const store = await new IfcParser().parseColumnar(toArrayBuffer(new TextEncoder().encode(source)));
+    const { view, editor } = newView(store);
+    const authoredRel = editor.addEntity('IfcRelDefinesByProperties', [
+      guid('authoredrel'), null, null, null, [`#${EXISTING_WALL_ID}`], `#${EXISTING_PSET_ID}`,
+    ]);
+    editor.addPropertySet(EXISTING_WALL_ID, 'Pset_WallCommon', [
+      { name: 'IsExternal', value: true, type: 'BOOLEAN' },
+    ]);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const out = await reparse(result.content);
+    expect(out.danglingRefs()).toEqual([]);
+    expect(out.relDefinesTargeting(EXISTING_WALL_ID)).toHaveLength(1);
+    expect(out.typeOf(authoredRel.expressId)).toBeNull();
+  });
+
+  it('indexes the edited RelatedObjects of a source relationship', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    editor.setPositionalAttribute(EXISTING_REL_ID, 4, [`#${LONE_WALL_ID}`]);
+    editor.addPropertySet(LONE_WALL_ID, 'Pset_WallCommon', [
+      { name: 'IsExternal', value: true, type: 'BOOLEAN' },
+    ]);
+
+    const out = await reparse(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+    expect(out.typeOf(EXISTING_REL_ID)).toBeNull();
+    expect(out.relDefinesTargeting(LONE_WALL_ID)).toHaveLength(1);
+    expect(out.danglingRefs()).toEqual([]);
+  });
+});
+
 describe('deleting an EDITED source entity emits no dangling relation (#2012)', () => {
   it('drops the queued pset of a tombstoned source entity, and the original', async () => {
     const store = await parseBase();

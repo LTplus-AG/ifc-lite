@@ -1,5 +1,11 @@
 # @ifc-lite/diff
 
+## 0.10.0
+
+### Minor Changes
+
+- [#5311](https://github.com/LTplus-AG/ifc-lite/pull/5311) [`2e13572`](https://github.com/LTplus-AG/ifc-lite/commit/2e135720996f3a3d48ec830f6895ac304f69e5dd) Thanks [@louistrue](https://github.com/louistrue)! - `diffModels` now classifies a re-parented element (moved to a different spatial container — storey, space, or building) as `modified` with a `'container'` change kind, instead of `unchanged`. Previously `EntityFingerprint.container` was computed but never read by the key-matched classification, so an `IfcRelContainedInSpatialStructure`/`IfcRelAggregates` reassignment with no accompanying attribute or geometry change was invisible to Compare. The comparison only fires when both revisions resolved a non-empty container; an unresolved container on either side is not treated as a change.
+
 ## 0.9.0
 
 ### Minor Changes

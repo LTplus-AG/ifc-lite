@@ -1,5 +1,29 @@
 # @ifc-lite/charts
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/rules@0.4.0
+
+## 0.6.0
+
+### Minor Changes
+
+- [#5176](https://github.com/LTplus-AG/ifc-lite/pull/5176) [`aaaa9c6`](https://github.com/LTplus-AG/ifc-lite/commit/aaaa9c65de99ee25cdd95a34a0c234405576e8bd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `ChartSourceFilter` gains an optional `clashRule` field so a `clash` chart can be built from ONE detection rule/run instead of every rule of the current clash result being counted together ([#5156](https://github.com/LTplus-AG/ifc-lite/issues/5156)). Absent means every rule, same as before; `validate.ts` rejects it on any source other than `clash`.
+
+- [#5368](https://github.com/LTplus-AG/ifc-lite/pull/5368) [`e8e5813`](https://github.com/LTplus-AG/ifc-lite/commit/e8e58133abd2bd1a6a1f42bc3f8f6c9df828464a) Thanks [@louistrue](https://github.com/louistrue)! - Allow chart source filters to store filter rule groups, including model tags, alongside existing selector filters ([#4946](https://github.com/LTplus-AG/ifc-lite/issues/4946)).
+
+- [#5375](https://github.com/LTplus-AG/ifc-lite/pull/5375) [`6198d55`](https://github.com/LTplus-AG/ifc-lite/commit/6198d55d1fd38e02c91e48bf689ab9127fbdf2f8) Thanks [@louistrue](https://github.com/louistrue)! - Allow charts to sum an IFC numeric field independently of the grouping field and validate copied chart specs consistently
+
+### Patch Changes
+
+- Updated dependencies [[`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`29688df`](https://github.com/LTplus-AG/ifc-lite/commit/29688df238998baea77b3fe55afe113b40c13eae), [`b9206c9`](https://github.com/LTplus-AG/ifc-lite/commit/b9206c94dceef0041dcf37e4cfe44cf09f4b4d7b), [`70ad6a7`](https://github.com/LTplus-AG/ifc-lite/commit/70ad6a7c77b73d6a04a7d842a64ce4a014451e68), [`79716f9`](https://github.com/LTplus-AG/ifc-lite/commit/79716f9828e4f57bedeaef66292233806b15edf7), [`610d7f2`](https://github.com/LTplus-AG/ifc-lite/commit/610d7f29708bb4febf7dd9a8d716a8e5e0b4dba4), [`94bd946`](https://github.com/LTplus-AG/ifc-lite/commit/94bd946d7a4e9ab98c5e9a950fa6e8a8e39b5316), [`7e8d225`](https://github.com/LTplus-AG/ifc-lite/commit/7e8d225273d3f20d727dac879e31ac4e6ce165bb), [`fc6f49c`](https://github.com/LTplus-AG/ifc-lite/commit/fc6f49c79485640073b924df86a0973c691b7a5f), [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97), [`fbda35b`](https://github.com/LTplus-AG/ifc-lite/commit/fbda35b5bbf5475fe99d85301aff728624058f8d), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610)]:
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/rules@0.3.0
+
 ## 0.5.0
 
 ### Minor Changes

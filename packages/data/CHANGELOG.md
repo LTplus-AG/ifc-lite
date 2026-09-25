@@ -1,5 +1,85 @@
 # @ifc-lite/data
 
+## 6.0.0
+
+### Major Changes
+
+- [#5945](https://github.com/LTplus-AG/ifc-lite/pull/5945) [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5) Thanks [@louistrue](https://github.com/louistrue)! - `@ifc-lite/data` builds for the browser again. 5.3.0 exported `readPackageVersion` and `UNKNOWN_VERSION` from the package root with a static `node:fs` import, so every Vite app that bundles `@ifc-lite/data` failed its production build on `"readFileSync" is not exported by "__vite-browser-external"` ([#5767](https://github.com/LTplus-AG/ifc-lite/issues/5767)). Both now live on a Node-only subpath, `@ifc-lite/data/node`, and are no longer exported from the root (breaking: import them from `@ifc-lite/data/node`). `@ifc-lite/cli` and `@ifc-lite/mcp` import from there. A test bundles the package root for the browser and fails on any Node builtin reaching it.
+
+- [#5675](https://github.com/LTplus-AG/ifc-lite/pull/5675) [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d) Thanks [@louistrue](https://github.com/louistrue)! - STEP re-export no longer turns a source `FILE_NAME` author or organization of `$` (or `($)`) into `()`, which is not a valid `LIST [1:?]` and failed IfcOpenShell validation. The exporter now writes its `('')` default for those ([#5470](https://github.com/LTplus-AG/ifc-lite/issues/5470)).
+  
+  BREAKING: `IfcSourceHeader.author` and `.organization` (re-exported by `@ifc-lite/parser`, and returned by `parseSourceHeader`) are now optional. They are absent when the source wrote `$`, a list of only unset entries, or no `FILE_NAME` record. They are `[]` only for a literal `()`, which still round-trips as `()`. Code that reads them must handle `undefined`, e.g. `header.author ?? []`.
+
+### Minor Changes
+
+- [#5545](https://github.com/LTplus-AG/ifc-lite/pull/5545) [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9) Thanks [@louistrue](https://github.com/louistrue)! - **Behaviour change:** element rules now read list, enumerated and table property values member by member, in search, applicability and validation, and so in everything built on the same filter evaluator (appearance query scopes, clash set filters, chart filters). The `unit` requirement's reported value lists each member with its unit. In validation, `eq` and `ne` choose number or text comparison per member, so one text cell in a table no longer forces every number cell to a text comparison. A positive operator passes when ANY member matches. A negated operator (`ne`, `notContains`, `notMatches`) passes only when NO member has the value.
+  
+  Before, these rules compared the joined display string, so results change for existing list-valued properties. Against the list `Colors = (Red, Blue)`:
+  - `Colors = Blue` used to fail and now passes.
+  - `Colors = "Red, Blue"` used to pass and now fails.
+  - `Colors != Red` used to pass and now fails.
+  
+  Each bound of a range is checked against the members on its own, so on a table `>= 15 AND <= 5` passes when some cell is ≥ 15 and another is ≤ 5. In search, negated operators also stop passing on a single non-matching property set when a regex set name matches several sets. That is the NONE rule validation already applied.
+  
+  The set checks (`unique`, `aggregate`, `compare`) still read each property as one whole value (a list's joined text, a table's `Table (N rows)` summary), so their results do not change.
+  
+  Bounded values and complex properties keep their display value. Lens colouring, the CLI's `--where` and bulk-edit queries are not rules and keep their own matching. Models whose properties come from a server-parsed property table carry no structure marker, so they keep the joined value.
+  
+  `@ifc-lite/parser` marks each extracted property with a `structure` (`enumerated`, `bounded`, `list`, `table`, `reference`, `complex`) when it is not a single value, and exports the `ExtractedProperty` type. `@ifc-lite/data`'s `Property` declares the same field, and `MutablePropertyView` keeps it on base properties. The filter value suggestions offer list members. `propertyCandidates` and `readSubjectWhole` are exported.
+
+## 5.3.0
+
+### Minor Changes
+
+- [#5586](https://github.com/LTplus-AG/ifc-lite/pull/5586) [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398) Thanks [@louistrue](https://github.com/louistrue)! - The MCP server reports the version you can actually install. `VERSION` was the literal `'0.1.0'`, so `--version`, `--help` and the `serverInfo` block of every MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0 — in the one field a client UI puts in front of an operator.
+  
+  The CLI had already paid for this exact mistake (a hard-coded `'0.4.0'` that `--version` still reported at 0.22.0) and fixed it with a `readCliVersion` helper. Rather than copy that helper into a second package, it moves to `@ifc-lite/data` as `readPackageVersion`, which both already depend on, so the two shipped servers cannot drift apart on how they answer `--version`. Its behaviour is unchanged: a broken install reports `0.0.0-unknown` on stderr rather than inventing a plausible number.
+
+## 5.2.0
+
+### Minor Changes
+
+- [#5571](https://github.com/LTplus-AG/ifc-lite/pull/5571) [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0) Thanks [@louistrue](https://github.com/louistrue)! - IFC4X3 output now declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, the ISO 16739-1:2024 identifier, instead of the bare `IFC4X3` ([#5351](https://github.com/LTplus-AG/ifc-lite/issues/5351)). ifc-lite already wrote IFC4X3_ADD2's attribute layouts. IfcOpenShell, and the buildingSMART Validation Service built on it, resolves the bare `IFC4X3` token to a later development schema whose layouts differ (`IfcTriangulatedFaceSet`/`IfcTriangulatedIrregularNetwork` put `Closed` before `Normals`, and `IfcMapConversion` has 10 attributes instead of 8), so it rejected conformant files because of the identifier alone.
+  
+  This applies wherever ifc-lite chooses the identifier: `IfcCreator` with `Schema: 'IFC4X3'`, a `StepExporter` conversion to `IFC4X3`, a `MergedExporter` export to `IFC4X3`, and the Rust STEP and merged exporters (CLI, wasm) when given an explicit IFC4X3 target. A re-export that does not change schema still keeps the source file's own `FILE_SCHEMA` token verbatim. The Rust STEP exporter now follows the TypeScript rule for that too: an explicit target that does not change the schema family keeps the source token rather than writing the target label. The `schema` options still take `'IFC4X3'`, and ifc-lite reads both identifiers as IFC4X3.
+  
+  `ProjectParams.FileSchemaIdentifier` (added in `@ifc-lite/create` 2.9.0 as the opt-in for this) is deprecated: IFC4X3 output is declared `IFC4X3_ADD2` without it, so it no longer changes the output. It still refuses a `Schema` other than `'IFC4X3'`, and is removed at the next major ([#5562](https://github.com/LTplus-AG/ifc-lite/issues/5562)).
+  
+  `@ifc-lite/data` exports `fileSchemaIdentifier(schema)`, which maps a schema family to the identifier a writer declares. It is the single source for the TypeScript writers.
+
+## 5.1.0
+
+### Minor Changes
+
+- [#5464](https://github.com/LTplus-AG/ifc-lite/pull/5464) [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5) Thanks [@louistrue](https://github.com/louistrue)! - Adding many elements into a model no longer slows down quadratically ([#5413](https://github.com/LTplus-AG/ifc-lite/issues/5413)). Every `bim.store.add*` call, Flow `Add element` lane and UI add looked up the owner history and representation contexts by walking every entity created so far, so adding 2,000 columns took about 12 s. The effective-entity enumeration now reads a single-class query from a per-class index of created entities, and checks created-entity membership in O(1). The same 2,000 columns now take about 0.4 s, and 4,000 about the same. `MutablePropertyView` gains `getNewEntitiesOfType(type)`, and `EffectiveEntityOverlay` gains two optional members, `getNewEntity` and `getNewEntitiesOfType`. A plain-data overlay without them keeps the previous full scan.
+
+- [#5276](https://github.com/LTplus-AG/ifc-lite/pull/5276) [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f) Thanks [@louistrue](https://github.com/louistrue)! - Add `iterateEffectiveEntities`, the single effective-entity enumeration for a live model session ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). Given a store's entity index and its mutation overlay, it yields every source entity except tombstoned ones and every overlay-created entity, with its effective class (retypes applied) and an `overlayCreated` flag. The overlay can be a `MutablePropertyView` or any object with the same `isDeleted`/`getNewEntities`/`getTypeMutations` shape, such as a worker snapshot. It lives in `@ifc-lite/data` so that packages which do not depend on `@ifc-lite/mutations`, such as IDS, can use it. `@ifc-lite/mutations`' `iterateEffectiveEntityIds` now delegates to it, with the same signature and results.
+
+- [#5546](https://github.com/LTplus-AG/ifc-lite/pull/5546) [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43) Thanks [@louistrue](https://github.com/louistrue)! - Add an effective entity type-count accessor and report queued retypes under their current class in MCP model summaries, audits, and diffs.
+
+- [#5295](https://github.com/LTplus-AG/ifc-lite/pull/5295) [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590) Thanks [@louistrue](https://github.com/louistrue)! - Every schema-specific reader of the IFC4 entity table now uses `ENTITIES_IFC4_EXPRESS`, a new `@ifc-lite/data` export ([#5204](https://github.com/LTplus-AG/ifc-lite/issues/5204)). It is `ENTITIES_IFC4` checked against the IFC4 EXPRESS schema:
+  - Rows IFC4 does not declare are dropped. These are the draft alignment-extension entities such as `IfcAlignment2DHorizontal` and `IfcLinearPlacement`.
+  - Attribute lists follow EXPRESS, so `IfcCartesianPointList2D`/`3D` lose the IFC4X3-only `TagList`.
+  - The attribute-less defined-type rows are kept.
+  
+  The corrections are generated from `@ifc-lite/parser`'s EXPRESS registry by `scripts/generate-ifc4-express-corrections.mjs`, and CI checks that they are up to date. This fixes:
+  - `@ifc-lite/data`: `getEntities('IFC4')`, `findEntity('IFC4', …)` and `expandTypeNamesToDescendants`, which is what the IDS auditor reads;
+  - `@ifc-lite/parser`: `getAttributeNamesAcrossSchemas` / `isKnownType`;
+  - `@ifc-lite/mcp`: the schema tables;
+  - `@ifc-lite/export`: the subset-export attribute reader, the product/root type sets and the STEP retype re-layout. The retype re-layout could previously write a class IFC4 lacks, or a spurious `TagList` argument, into a file declaring `FILE_SCHEMA(('IFC4'))`;
+  - `@ifc-lite/ifcx`: the building-element family.
+
+- [#5305](https://github.com/LTplus-AG/ifc-lite/pull/5305) [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking (`@ifc-lite/ids`):** `PropertyValueResult.dataType` and `PropertySetInfo` properties' `dataType` are now `string | undefined`, where `undefined` means the type is unknown. Code that assumed a `string` must handle `undefined`.
+  
+  An IDS property facet that requires a `dataType` now **fails** when the property's dataType is unknown, instead of skipping the check ([#5224](https://github.com/LTplus-AG/ifc-lite/issues/5224)). A spec that demanded `IFCBOOLEAN` used to pass `"not-a-boolean-at-all"` whenever the stored property carried no dataType.
+  
+  - `@ifc-lite/ids`: the new failure type `PROPERTY_DATATYPE_UNKNOWN` holds under every optionality, `prohibited` included, so "cannot verify" is never a pass. It has messages in both formatters and in en/de/fr. Only a property flagged `dataTypeMixed` (an `IfcPropertyTableValue`, whose columns differ in type by design) is exempt, and it defers to the value match, as upstream ifctester does. The property overlay resolver no longer manufactures `''` for a correction created without a dataType. `PropertySetInfo` properties now type `dataType` as `string | undefined` and gain `dataTypeMixed`. A predefined property set's attributes (`IfcDoorPanelProperties.PanelOperation`, …) take their declared EXPRESS type as their dataType.
+  - `@ifc-lite/parser`: `IfcPropertyListValue` and `IfcPropertyEnumeratedValue` carry the one `dataType` their members share, and a table sets `dataTypeMixed`. The new export `getAttributeTypeForSchema` returns an attribute's declared EXPRESS type.
+  - `@ifc-lite/data`: `Property` gains `dataTypeMixed`.
+  - `@ifc-lite/server-client`: `Property` gains `data_type_mixed`, decoded from the server's new `data_type_mixed` column (data-model payload v7).
+
+- [#5281](https://github.com/LTplus-AG/ifc-lite/pull/5281) [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412) Thanks [@louistrue](https://github.com/louistrue)! - Add `isCompleteStepNumericLiteral(token)`, the single STEP REAL/INTEGER grammar check shared by every STEP token reader. `parseStepValue` now uses it, so a corrupted literal such as `1.52.3` (a dropped comma) comes back as its raw token rather than silently truncated to `1.52`.
+
 ## 5.0.0
 
 ### Major Changes

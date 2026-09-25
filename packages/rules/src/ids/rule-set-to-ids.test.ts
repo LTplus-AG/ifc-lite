@@ -63,7 +63,10 @@ describe('ruleSetToIds — exportable rules (#5225)', () => {
       rule([Rule.name('matches', '^W-[0-9]{3}$', 'regex')], { id: 'r3', name: 'Wall naming' }),
       rule([Rule.material('contains', 'Concrete')], { id: 'r4', name: 'Concrete walls' }),
       rule(
-        [Rule.property('Pset_WallCommon', 'ThermalTransmittance', 'gte', '0.1'), Rule.property('Pset_WallCommon', 'ThermalTransmittance', 'lte', '0.3')],
+        [
+          { ...Rule.property('Pset_WallCommon', 'ThermalTransmittance', 'gte', '0.1'), valueUnit: 'si' },
+          { ...Rule.property('Pset_WallCommon', 'ThermalTransmittance', 'lte', '0.3'), valueUnit: 'si' },
+        ],
         { id: 'r5', name: 'U-value in range', cardinality: { minApplicable: 1 } },
       ),
     ));
@@ -101,12 +104,13 @@ describe('ruleSetToIds — exportable rules (#5225)', () => {
     assert.deepEqual(errors, [], 'the exported IDS has no audit errors');
   });
 
-  it('carries the rule id and description, and records the SI-units caveat for numeric property checks', () => {
-    const result = ruleSetToIds(file(rule([Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.2)], { description: 'min width' })));
+  it('carries the rule id and description; an SI rule exports its operand unchanged', () => {
+    const result = ruleSetToIds(file(rule([{ ...Rule.quantity('Qto_WallBaseQuantities', 'Width', 'gte', 0.2), valueUnit: 'si' }], { description: 'min width' })));
     const spec = parseIDS(result.xml!).specifications[0];
     assert.equal(spec.identifier, 'r1');
     assert.equal(spec.description, 'min width');
-    assert.ok(result.notes.some((n) => /SI units/.test(n)));
+    const value = spec.requirements[0].facet.type === 'property' ? spec.requirements[0].facet.value : undefined;
+    assert.equal(value?.type === 'bounds' && value.minInclusive, 0.2);
   });
 
   it('notes where a pattern without the u flag can read astral-plane characters differently (review, #5291)', () => {

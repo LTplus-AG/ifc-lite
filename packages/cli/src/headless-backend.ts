@@ -40,6 +40,7 @@ import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdap
 import { createStoreAuthoring } from './headless-backend-store-authoring.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, storeHasSourceEntity } from '@ifc-lite/mutations';
+import type { TableAccess } from '@ifc-lite/flow-nodes';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -237,11 +238,15 @@ export class HeadlessBackend implements BimBackend {
 
   private createSpacesAdapter(): SpacesBackendMethods {
     return {
-      listStoreys: () => listStoreys(this.dataStore),
+      // The session's edited model (#5249): deleted walls/storeys out, spaces
+      // and storeys created earlier in the session in.
+      listStoreys: () => listStoreys(this.dataStore, this.mutationView ?? undefined),
       // Spaces are written via the shared StoreEditor/MutablePropertyView, so
       // they're picked up by this backend's export adapter (StepExporter).
-      generate: (options?: GenerateSpacesAllOptions) =>
-        generateSpaces(this.getOrCreateStoreEditor(), this.dataStore, options),
+      generate: (options?: GenerateSpacesAllOptions) => {
+        const editor = this.getOrCreateStoreEditor();
+        return generateSpaces(editor, this.dataStore, options, editor.getMutationView());
+      },
     };
   }
 
@@ -277,6 +282,7 @@ export class HeadlessBackend implements BimBackend {
     function getEntityData(ref: EntityRef): EntityData | null {
       const overlay = overlayEntityData(getMutationView(), ref, store.schemaVersion);
       if (overlay !== undefined) return overlay;
+      // @raw-entity-enumeration-ok overlayEntityData already handles deleted and created ids; this is source membership for one remaining ref
       if (!store.entityIndex.byId.has(ref.expressId)) return null; // not parsed either
       const node = new EntityNode(store, ref.expressId);
       const type = node.type;
@@ -517,6 +523,16 @@ export class HeadlessBackend implements BimBackend {
     this.getOrCreateStoreEditor();
     // Non-null immediately after: both fields are assigned together and never cleared.
     return this.mutationView as MutablePropertyView;
+  }
+
+  /**
+   * The bulk entity-table access `table.joinByKey` needs to reuse
+   * `@ifc-lite/mutations`' `csv-match.ts` tag/property index (#5167, #5230)
+   * rather than re-implement it. Same lazily-created overlay as `bim.cost`.
+   */
+  tableAccess(modelId?: string): TableAccess {
+    if (modelId) this.assertKnownModelId(modelId);
+    return { entities: this.dataStore.entities, mutationView: this.getOrCreateMutationView(), strings: this.dataStore.strings ?? null };
   }
 
   private getOrCreateStoreEditor(): StoreEditor {

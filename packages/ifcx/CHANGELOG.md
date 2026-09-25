@@ -1,5 +1,47 @@
 # @ifc-lite/ifcx
 
+## 4.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/mutations@2.7.1
+
+## 4.2.0
+
+### Minor Changes
+
+- [#5435](https://github.com/LTplus-AG/ifc-lite/pull/5435) [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d) Thanks [@louistrue](https://github.com/louistrue)! - IFCX export no longer silently merges same-named properties from different property sets ([#5376](https://github.com/LTplus-AG/ifc-lite/issues/5376)). Before this change, every pset property went out under `bsi::ifc::prop::<Name>`, which has no pset component. Two psets on one entity that shared a name wrote the same key, the last value won, and on import the pset each property came from could not be recovered.
+  
+  - With `onlyKnownProperties: false` (full fidelity, used by Export Changes), every pset property is now written under `bsi::ifc::v5a::<Pset>::<Name>` as a typed `{ type, value }` record. This is the pset-qualified form collab snapshots and MCP draft ops already write, so nothing is lost, and re-import restores each pset with its real name.
+  - The flat `bsi::ifc::prop::<Name>` key is still written, but only for names the official IFC5 property schema (`prop@v5a.ifcx`) defines, so standard IFCX consumers still find them. Custom names such as `Reference` no longer get a flat key the schema does not define.
+  - `Ifc5ExportResult.stats.propertyCollisions` lists every official flat key that two psets on one entity disagreed on. `valueLost` is true when only the flat key was written (`onlyKnownProperties: true`), which means one value is missing from the file. The viewer's IFCX export toast now reports lost values.
+  - On import, `@ifc-lite/ifcx` skips a flat key that only mirrors a pset-qualified value on the same node, so the property is not listed twice.
+  - `PROPERTY_TYPE_NAMES` (`PropertyValueType` → IFC defined type name for typed records) now lives in `@ifc-lite/ifcx`, shared by the exporter and collab. `@ifc-lite/collab` still re-exports it.
+  
+  Files written before this change still read the same: their flat keys land in "IFC Properties", as before.
+
+### Patch Changes
+
+- [#5295](https://github.com/LTplus-AG/ifc-lite/pull/5295) [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590) Thanks [@louistrue](https://github.com/louistrue)! - Every schema-specific reader of the IFC4 entity table now uses `ENTITIES_IFC4_EXPRESS`, a new `@ifc-lite/data` export ([#5204](https://github.com/LTplus-AG/ifc-lite/issues/5204)). It is `ENTITIES_IFC4` checked against the IFC4 EXPRESS schema:
+  - Rows IFC4 does not declare are dropped. These are the draft alignment-extension entities such as `IfcAlignment2DHorizontal` and `IfcLinearPlacement`.
+  - Attribute lists follow EXPRESS, so `IfcCartesianPointList2D`/`3D` lose the IFC4X3-only `TagList`.
+  - The attribute-less defined-type rows are kept.
+  
+  The corrections are generated from `@ifc-lite/parser`'s EXPRESS registry by `scripts/generate-ifc4-express-corrections.mjs`, and CI checks that they are up to date. This fixes:
+  - `@ifc-lite/data`: `getEntities('IFC4')`, `findEntity('IFC4', …)` and `expandTypeNamesToDescendants`, which is what the IDS auditor reads;
+  - `@ifc-lite/parser`: `getAttributeNamesAcrossSchemas` / `isKnownType`;
+  - `@ifc-lite/mcp`: the schema tables;
+  - `@ifc-lite/export`: the subset-export attribute reader, the product/root type sets and the STEP retype re-layout. The retype re-layout could previously write a class IFC4 lacks, or a spurious `TagList` argument, into a file declaring `FILE_SCHEMA(('IFC4'))`;
+  - `@ifc-lite/ifcx`: the building-element family.
+
+- [#5345](https://github.com/LTplus-AG/ifc-lite/pull/5345) [`58691b3`](https://github.com/LTplus-AG/ifc-lite/commit/58691b362d67ab87f666d76d6ee27e39d1ec45f9) Thanks [@louistrue](https://github.com/louistrue)! - Export live IFCX entities from the effective mutation view, including created nodes and excluding deleted nodes and child references.
+- Updated dependencies [[`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e), [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1), [`c0f6caa`](https://github.com/LTplus-AG/ifc-lite/commit/c0f6caab3c726369707173e8aa48017a609e7cc0), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c), [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d)]:
+  - @ifc-lite/mutations@2.7.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/pointcloud@0.11.0
+
 ## 4.1.3
 
 ### Patch Changes

@@ -10,13 +10,14 @@ import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } 
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
+import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
 import { AppearanceBuckets } from './scene-appearance-buckets.js';
 import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-authored-owner.js';
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
-import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState, Material } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -46,6 +47,7 @@ import { ModelTranslations, type ModelYaw } from './model-translation.js';
 import { unionInstancedWorldAabb as unionInstanceBounds } from './scene-instance-bounds.js';
 import { DerivedMeshProvenance } from './scene-derived-mesh-provenance.js';
 import { rebuildSceneBatches } from './scene-batch-rebuild.js';
+import { regroupStreamedBuckets, type FinalizeRegroup } from './scene-finalize-regroup.js';
 import {
   dropAllPartialCaches as dropAllPartialCachesIn,
   dropPartialCacheForBatch as dropPartialCacheForBatchIn,
@@ -103,6 +105,15 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
+  /**
+   * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
+   * this today — `MeshData` (the WASM extraction boundary) carries no
+   * metallic/roughness fields, and IFC-authored specular is not extracted yet
+   * (#5582) — so `packMeshMaterial` falls back to its defaults for every
+   * textured draw. The field exists so a textured mesh has the SAME optional
+   * hook `Mesh` does, ready for #5582 without a second API.
+   */
+  material?: Material;
   /**
    * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
    * renderer must reconstruct `world = origin + position`.
@@ -405,6 +416,9 @@ export class Scene {
   // Temporary fragment batches created during streaming for immediate rendering.
   // Destroyed and replaced by proper merged batches in finalizeStreaming().
   private streamingFragments: BatchedMesh[] = [];
+  // Buckets that received streamed meshes since the last finalize — the only
+  // ones a finalize re-groups and rebuilds (#5358).
+  private streamedBucketKeys: Set<string> = new Set();
 
   // ─── Mesh command queue ────────────────────────────────────────────
   // Decouples React state updates from GPU work.  Callers push meshes
@@ -1190,7 +1204,7 @@ export class Scene {
    * STREAMING OPTIMIZATION: During streaming, creates lightweight "fragment"
    * batches from ONLY the new meshes instead of re-merging all accumulated
    * data. This reduces streaming from O(N²) to O(N). Call finalizeStreaming()
-   * when streaming completes to do one O(N) full merge.
+   * when streaming completes to merge the streamed buckets (only those, #5358).
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false): void {
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
@@ -1255,17 +1269,16 @@ export class Scene {
         // Also store individual mesh data for visibility filtering
         this.addMeshData(meshData);
 
-        // Track pending keys for non-streaming rebuild only
-        if (!isStreaming) {
-          this.pendingBatchKeys.add(bucketKey);
-        }
+        // Non-streaming rebuilds now; streamed buckets wait for finalize.
+        if (isStreaming) this.streamedBucketKeys.add(bucketKey);
+        else this.pendingBatchKeys.add(bucketKey);
       }
     }
 
     if (isStreaming) {
       // STREAMING: Create small fragment batches from ONLY the new meshes.
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
-      // finalizeStreaming() destroys fragments and does one O(N) full merge.
+      // finalizeStreaming() destroys fragments and merges the streamed buckets.
       // `renderable` excludes textured meshes (drawn via the textured pipeline).
       this.createStreamingFragments(renderable, device, pipeline);
       return;
@@ -1888,7 +1901,7 @@ export class Scene {
     // yielding the frame back at the TOP of the loop. The mesh-count-only chunker
     // could merge a 512-mesh chunk of high-poly meshes (e.g. 899 Velux roof
     // windows at 7624 tris each → ~3.9M tris) in ONE indivisible mergeGeometry +
-    // mappedAtCreation buffer copy — hundreds of ms that parked the main thread
+    // GPU buffer upload copy — hundreds of ms that parked the main thread
     // past the 16s stream watchdog. Capping each appendToBatches by index volume
     // keeps every synchronous slice ≈ one bounded fragment merge (~12-15ms).
     const MAX_MESHES_PER_FLUSH = 4096;
@@ -1999,15 +2012,14 @@ export class Scene {
   }
 
   /**
-   * Finalize streaming: destroy temporary fragment batches and do one full
-   * O(N) merge of all accumulated mesh data into proper batches.
+   * Finalize streaming: destroy the temporary fragment batches and merge the
+   * meshes streamed since the last finalize into proper batches.
    * Call this when streaming completes instead of rebuildPendingBatches().
    *
-   * IMPORTANT: During streaming, external code (applyColorUpdatesToMeshes)
-   * may mutate meshData.color in-place for deferred style/material colors.
-   * This means the bucket keys (computed at insertion time from the ORIGINAL
-   * color) no longer match the meshes' current colors. We must re-group all
-   * meshData by their CURRENT color to produce correct batches.
+   * Only the buckets that received streamed meshes are re-grouped and rebuilt
+   * (plus any key already pending); every other model's batches stay as they
+   * are (#5358). See `regroupStreamedBuckets` for why the streamed meshes are
+   * re-grouped by their CURRENT colour.
    */
   finalizeStreaming(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.streamingFragments.length === 0) return;
@@ -2019,6 +2031,29 @@ export class Scene {
     }
   }
 
+  private regroupStreamed(): FinalizeRegroup {
+    return regroupStreamedBuckets<BatchBucket>({
+      buckets: this.buckets,
+      meshDataBucket: this.meshDataBucket,
+      activeBucketKey: this.activeBucketKey,
+      coldBuckets: this.coldBuckets,
+      pendingBatchKeys: this.pendingBatchKeys,
+      streamedBucketKeys: this.streamedBucketKeys,
+      bucketBaseKey: (md) => this.bucketBaseKey(md),
+      resolveActiveBucket: (base, md) => this.resolveActiveBucket(base, md),
+      createBucket: (key) => ({ key, meshData: [], batchedMesh: null, vertexBytes: 0 }),
+    });
+  }
+
+  /** Free batches the finalize swap replaced, with their per-batch caches. */
+  private retireFinalizedBatches(batches: Iterable<BatchedMesh>): void {
+    for (const batch of batches) {
+      this.dropPartialCacheForBatch(batch);
+      this.lastDrawnFrame.delete(batch.id);
+      destroyGpuResources(batch);
+    }
+  }
+
   private finalizeStreamingInner(device: GPUDevice, pipeline: RenderPipeline): void {
     // Save references to old fragments/batches — keep them rendering
     // until the new proper batches are fully built (no visual gap).
@@ -2026,107 +2061,48 @@ export class Scene {
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
-    // Steps 1-4 detach the old drawables (streamingFragments = [],
-    // batchedMeshes = []) BEFORE the replacement GPU buffers exist. If a
-    // createBuffer fails part-way through, callers that CONTAIN the throw to
-    // keep the canvas alive would otherwise be left rendering a half-built —
-    // often empty — scene, turning a crash into a silently blank model.
+    // The re-group detaches the streamed buckets BEFORE the replacement GPU
+    // buffers exist. If a createBuffer fails part-way through, callers that
+    // CONTAIN the throw to keep the canvas alive would otherwise be left
+    // rendering a half-built scene, turning a crash into a silently blank model.
+    let regroup: FinalizeRegroup | null = null;
     let rebuilt = false;
     try {
       this.streamingFragments = [];
-
-      // 1. Collect ALL accumulated meshData before clearing state.
-      //    Cold buckets (issue #1682 phase 3b) hold NO meshData — their
-      //    geometry lives on disk — so they are carried through the rebuild as
-      //    sealed shells instead of being re-grouped (re-grouping would
-      //    silently drop them).
-      const allMeshData: MeshData[] = [];
-      const carriedCold: Array<[string, BatchBucket]> = [];
-      for (const [key, bucket] of this.buckets) {
-        if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
-          carriedCold.push([key, bucket]);
-          continue;
-        }
-        for (const md of bucket.meshData) allMeshData.push(md);
-      }
-
-      // 2. Clear all bucket/batch state for a clean rebuild
-      // NOTE: batchedMeshes keeps the OLD array reference — the renderer
-      // continues to draw from it until we swap in the new array below.
-      this.buckets.clear();
-      this.meshDataBucket = new Map();
-      this.activeBucketKey.clear();
-      this.lastDrawnFrame.clear();
-      this.residencyRestoreQueue.clear();
-      this.pendingBatchKeys.clear();
-
-      // Re-seat the carried cold shells in the fresh bucket map (their GPU
-      // shells re-enter the flat array via rebuildPendingBatches below).
-      for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
-
-      // 3. Re-group ALL meshData by their CURRENT color (and grid cell).
-      //    meshData.color may have been mutated in-place since the mesh was
-      //    first bucketed, so the original bucket key is stale. Re-grouping
-      //    by current color ensures batches render with correct colors.
-      for (const meshData of allMeshData) {
-        const baseKey = this.bucketBaseKey(meshData);
-        const bucketKey = this.resolveActiveBucket(baseKey, meshData);
-        let bucket = this.buckets.get(bucketKey);
-        if (!bucket) {
-          bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-          this.buckets.set(bucketKey, bucket);
-        }
-        bucket.meshData.push(meshData);
-        this.meshDataBucket.set(meshData, bucket);
-        this.pendingBatchKeys.add(bucketKey);
-      }
-
-      // 4. Build new proper batches into a fresh array
+      regroup = this.regroupStreamed();
+      // Build into a fresh array; rebuildPendingBatches republishes every
+      // bucket's batch, untouched ones included.
       this.batchedMeshes = [];
       this.rebuildPendingBatches(device, pipeline);
       rebuilt = true;
-
-      // Cached partial (filtered-visibility) batches are keyed by their SOURCE
-      // batch, so they only go stale once the replacement batches are live.
-      // Dropping them up in step 2 destroyed their GPU resources BEFORE the
-      // rebuild could fail, and the rollback cannot bring them back — an active
-      // hide/isolate view lost its visible subset and had to recreate it
-      // against the very device that just failed. On the failure path they now
-      // survive, still matching the restored batches.
-      this.dropAllPartialCaches();
     } finally {
       if (!rebuilt) {
-        // Free ONLY what this attempt created. Carried cold shells are aliased
-        // into BOTH the old and the new array, so anything that was already
-        // live before the rebuild must be left alone — destroying it would
-        // leave the restored arrays pointing at dead buffers.
+        // Free ONLY what this attempt created: anything live before the
+        // rebuild is what the restored arrays point back at.
         for (const created of this.batchedMeshes) {
           if (!oldBatchSet.has(created) && !fragmentSet.has(created)) {
             destroyGpuResources(created);
           }
         }
-        // Step 5 never ran, so every old fragment/batch is still a live GPU
-        // resource: putting the arrays back restores exactly what was on
-        // screen.
+        regroup?.rollback();
         this.streamingFragments = oldFragments;
         this.batchedMeshes = oldBatches;
       }
     }
 
-
-    // 5. NOW destroy old fragment/batch GPU resources (new batches are live)
-    for (const fragment of oldFragments) destroyGpuResources(fragment);
-    for (const batch of oldBatches) {
-      if (!fragmentSet.has(batch)) destroyGpuResources(batch);
-    }
+    // NOW free the fragments and the dissolved buckets' batches (the
+    // replacements are live). Batches of rebuilt surviving buckets were
+    // already retired by rebuildPendingBatches.
+    this.retireFinalizedBatches(oldFragments);
+    this.retireFinalizedBatches(regroup?.retired ?? []);
     this.reapplyColorOverrides(device, pipeline);
   }
 
   /**
    * Time-sliced version of finalizeStreaming.
-   * Re-groups mesh data and rebuilds GPU batches in small chunks,
-   * yielding to the event loop between chunks so orbit/pan stays responsive.
-   * Streaming fragments continue rendering until each new batch replaces them.
+   * Rebuilds the streamed buckets' batches in small chunks, yielding to the
+   * event loop between chunks so orbit/pan stays responsive. The fragments
+   * keep rendering until the rebuilt batches are swapped in.
    *
    * @param device  GPU device
    * @param pipeline  Render pipeline
@@ -2163,31 +2139,27 @@ export class Scene {
     // spec). Every entry point that can fail — the synchronous preamble AND
     // each chunked continuation — must therefore run under its own try/catch
     // that explicitly calls `reject`, mirroring finalizeStreamingInner's
-    // try/finally contract: restore oldFragments/oldBatches, free only what
-    // this attempt created, defer dropAllPartialCaches() until success, and
-    // always clear finalizeInProgress.
+    // try/finally contract: restore oldFragments/oldBatches and the bucket
+    // map, free only what this attempt created, and always clear
+    // finalizeInProgress.
     return new Promise<void>((resolve, reject) => {
-      const newBatches: BatchedMesh[] = [];
       // Every batch this attempt creates, paired with the bucket that now owns
-      // it and the value it displaced. `newBatches` alone is not enough to roll
-      // back: processChunk publishes each batch into `bucket.batchedMesh`, so
-      // freeing it without repairing the owner leaves the bucket map pointing
-      // at destroyed GPU resources (use-after-free on the next bucket-driven
-      // access). `previous` is null for the freshly built buckets and, for a
-      // carried COLD bucket a re-grouped meshData landed in, the shell that the
-      // restored `batchedMeshes` still holds — put back, not nulled.
+      // it and the value it displaced. processChunk publishes each batch into
+      // `bucket.batchedMesh`, so a rollback must repair the owner before the
+      // free (no bucket may point at destroyed GPU resources). `previous` is
+      // null for a freshly built bucket and, for a surviving bucket the
+      // re-group added meshes to, the batch still drawn from the old array —
+      // put back on failure, retired on success.
       type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh };
       const createdOwned: Owned[] = [];
-      let carriedCold: Array<[string, BatchBucket]> = [];
+      // Pending keys whose bucket ended up empty: deleted (and their batch
+      // retired) at the swap, exactly as rebuildPendingBatches would.
+      const emptied: string[] = [];
+      let regroup: FinalizeRegroup | null = null;
       let pendingKeys: string[] = [];
       let keyIdx = 0;
 
       function rollback(): void {
-        // Free ONLY what this attempt created — carried cold shells and
-        // anything already live before the rebuild must be left alone (they
-        // are what the restored arrays point back at). Iterating the owned
-        // pairs rather than `newBatches` also skips the carried cold shells
-        // appended just before the swap, which this attempt did not create.
         for (const { bucket, previous, previousFrameOrigin, batch } of createdOwned) {
           // Repair the owner BEFORE the free, so no bucket is ever observable
           // holding a destroyed batch; its frame origin (what a later
@@ -2200,7 +2172,8 @@ export class Scene {
             destroyGpuResources(batch);
           }
         }
-        scene.streamingFragments = oldFragments;
+        regroup?.rollback();
+        scene.streamingFragments = [...oldFragments, ...scene.streamingFragments]; // + any streamed in meanwhile
         scene.batchedMeshes = oldBatches;
         scene.finalizeInProgress = false;
       }
@@ -2212,7 +2185,7 @@ export class Scene {
             const key = pendingKeys[keyIdx++];
             const bucket = scene.buckets.get(key);
             if (!bucket || bucket.meshData.length === 0) {
-              scene.buckets.delete(key);
+              emptied.push(key);
               continue;
             }
             const color = bucket.meshData[0].color;
@@ -2222,7 +2195,6 @@ export class Scene {
             bucket.batchedMesh = batchedMesh;
             bucket.frameOrigin = batchedMesh.origin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
-            newBatches.push(batchedMesh);
 
             // Check time budget — yield if exceeded
             if (performance.now() - chunkStart >= budgetMs) {
@@ -2231,27 +2203,22 @@ export class Scene {
             }
           }
 
-          // Carried cold shells stay drawable-when-restored: keep them in the
-          // flat array (their buffers are already destroyed; the draw loop
-          // skips gpuResident === false and the restore path revives them).
-          for (const [, bucket] of carriedCold) {
-            if (bucket.batchedMesh) newBatches.push(bucket.batchedMesh);
+          const retired: BatchedMesh[] = [...oldFragments, ...(regroup?.retired ?? [])];
+          for (const { previous } of createdOwned) if (previous) retired.push(previous);
+          for (const key of emptied) {
+            const batch = scene.buckets.get(key)?.batchedMesh;
+            if (batch) retired.push(batch);
+            scene.buckets.delete(key);
           }
-          // All batches built — atomic swap so renderer never sees an empty array
-          scene.batchedMeshes = newBatches;
-
-          // Cached partial (filtered-visibility) batches are keyed by their
-          // SOURCE batch, so they only go stale once the replacement batches
-          // are live — dropping them any earlier destroys GPU resources a
-          // mid-rebuild failure could never get back (same rationale as
-          // finalizeStreamingInner).
-          scene.dropAllPartialCaches();
-
-          // Destroy old fragment/batch GPU resources
-          for (const fragment of oldFragments) destroyGpuResources(fragment);
-          for (const batch of oldBatches) {
-            if (!fragmentSet.has(batch)) destroyGpuResources(batch);
-          }
+          // Atomic swap so the renderer never sees an empty array: every
+          // bucket's live batch (untouched models included, evicted shells
+          // too — the draw loop skips gpuResident === false and the restore
+          // path revives them) plus any fragment streamed in meanwhile.
+          scene.batchedMeshes = [
+            ...[...scene.buckets.values()].flatMap((b) => (b.batchedMesh ? [b.batchedMesh] : [])),
+            ...scene.streamingFragments,
+          ];
+          scene.retireFinalizedBatches(retired);
           scene.finalizeInProgress = false;
           scene.reapplyColorOverrides(device, pipeline); // never throws: the swap above is committed
           resolve();
@@ -2262,48 +2229,9 @@ export class Scene {
       }
 
       try {
-        // --- Synchronous preamble (fast O(N) bookkeeping) ---
+        // --- Synchronous preamble: re-group the streamed meshes only ---
         scene.streamingFragments = [];
-
-        // 1. Collect ALL accumulated meshData (cold buckets carried as sealed
-        //    shells — see the sync finalize for the rationale)
-        const allMeshData: MeshData[] = [];
-        for (const [key, bucket] of scene.buckets) {
-          if (scene.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
-            carriedCold.push([key, bucket]);
-            continue;
-          }
-          for (const md of bucket.meshData) allMeshData.push(md);
-        }
-
-        // 2. Clear bucket/batch state. dropAllPartialCaches() is deliberately
-        //    NOT called here — see the success path above.
-        scene.buckets.clear();
-        scene.meshDataBucket = new Map();
-        scene.activeBucketKey.clear();
-        scene.lastDrawnFrame.clear();
-        scene.residencyRestoreQueue.clear();
-        scene.pendingBatchKeys.clear();
-
-        // Re-seat the carried cold shells in the fresh bucket map.
-        for (const [key, bucket] of carriedCold) scene.buckets.set(key, bucket);
-
-        // 3. Re-group meshData by current color (and grid cell) — fast
-        for (const meshData of allMeshData) {
-          const baseKey = scene.bucketBaseKey(meshData);
-          const bucketKey = scene.resolveActiveBucket(baseKey, meshData);
-          let bucket = scene.buckets.get(bucketKey);
-          if (!bucket) {
-            bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-            scene.buckets.set(bucketKey, bucket);
-          }
-          bucket.meshData.push(meshData);
-          scene.meshDataBucket.set(meshData, bucket);
-          scene.pendingBatchKeys.add(bucketKey);
-        }
-
-        // Build new batches into a temporary array so the old batchedMeshes
-        // (streaming fragments) keep rendering until the swap is complete.
+        regroup = scene.regroupStreamed();
         pendingKeys = Array.from(scene.pendingBatchKeys);
         scene.pendingBatchKeys.clear();
       } catch (err) {
@@ -2347,6 +2275,7 @@ export class Scene {
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
+    this.streamedBucketKeys.clear();
     this.dropAllPartialCaches();
     this.geometryReleased = true;
     this.ephemeralStreamingMode = false;
@@ -3120,21 +3049,8 @@ export class Scene {
         // vf[o + 6] (entityId lane) stays 0.
       }
 
-      const vertexBuffer = device.createBuffer({
-        size: vtx.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vtx));
-      vertexBuffer.unmap();
-
-      const indexBuffer = device.createBuffer({
-        size: t.indices.byteLength,
-        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint32Array(indexBuffer.getMappedRange()).set(t.indices);
-      indexBuffer.unmap();
+      const vertexBuffer = createStaticGpuBuffer(device, vtx, GPUBufferUsage.VERTEX);
+      const indexBuffer = createStaticGpuBuffer(device, t.indices, GPUBufferUsage.INDEX);
 
       // instanceBuffer is already the interleaved mat4 + entityId + rgba block
       // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
@@ -3146,15 +3062,11 @@ export class Scene {
         t.canonicalMatrixTranslations,
       );
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
-      const instanceBuffer = device.createBuffer({
-        size: instSize,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true,
-      });
-      new Uint8Array(instanceBuffer.getMappedRange()).set(
+      const instanceBuffer = createStaticGpuBuffer(
+        device,
         new Uint8Array(t.instanceBuffer, 0, instSize),
+        GPUBufferUsage.VERTEX,
       );
-      instanceBuffer.unmap();
 
       // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;
@@ -3842,6 +3754,7 @@ export class Scene {
     this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
+    this.streamedBucketKeys.clear();
     this.meshQueue = [];
     this.meshQueueReadIndex = 0;
     this.geometryReleased = false;

@@ -29,25 +29,33 @@
  * batching). Each call lands as one mutation on the undo stack,
  * which is intentionally coarse — fine for v1; if it gets noisy we
  * can collapse runs in a later pass.
+ *
+ * Re-render wake (#5510): re-projecting the arrows on every camera move
+ * used to run its own `requestAnimationFrame` polling loop
+ * (`useCameraTickSubscription`) — one more per-component timer doing the
+ * same camera-pose diff the scene kernel's shared `SceneProjector` already
+ * does once per viewport (#5486). `useProjectorTick` subscribes to that
+ * one loop instead; the actual projection math below is unchanged (still
+ * `cameraCallbacks.projectToScreen` in the render body, not the
+ * projector's own anchor system — this component's drag math needs the
+ * raw screen-space "pixels per metre" basis per axis, which the
+ * projector's fire-and-forget anchors don't expose).
  */
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { getEntityCenter } from '@/utils/viewportUtils';
 import { dragTranslation } from '@/lib/model-placement/drag';
+import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 type Axis = 'x' | 'y' | 'z';
 
-const AXIS_COLORS: Record<Axis, string> = {
-  x: '#ef4444', // red — IFC X
-  y: '#10b981', // green — IFC Y
-  z: '#3b82f6', // blue — IFC Z (up)
-};
 
 /** Renderer-frame unit vector for each IFC axis. */
 const AXIS_RENDERER_OFFSET: Record<Axis, Vec3> = {
@@ -69,7 +77,6 @@ export function GizmoOverlay() {
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
   const translateEntity = useViewerStore((s) => s.translateEntity);
   const readEntityPosition = useViewerStore((s) => s.readEntityPosition);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -121,11 +128,11 @@ export function GizmoOverlay() {
     mutationVersion,
   ]);
 
-  // Camera-tick subscription — wakes the gizmo on real viewport
+  // Shared-projector wake (#5510) — re-renders the gizmo on real viewport
   // motion (camera tick bypasses React renders for perf, see
-  // `Viewport.tsx` `updateCameraRotationRealtime`). Skipped when
-  // the gizmo isn't visible.
-  void useCameraTickSubscription(getViewpoint, ready !== null);
+  // `Viewport.tsx` `updateCameraRotationRealtime`). Skipped when the gizmo
+  // isn't visible.
+  void useProjectorTick(ready !== null);
 
   if (!ready) return null;
 
@@ -193,7 +200,7 @@ export function GizmoOverlay() {
     e.preventDefault();
     const perMetre = axisPerMeter[axis];
     if (!perMetre) return;
-    (e.target as SVGElement).setPointerCapture(e.pointerId);
+    capturePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = {
       axis,
       originScreen,
@@ -235,7 +242,7 @@ export function GizmoOverlay() {
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    releasePointer(e.currentTarget, e.pointerId);
     dragRef.current = null;
   };
 
@@ -256,7 +263,7 @@ export function GizmoOverlay() {
             markerHeight="6"
             orient="auto"
           >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={AXIS_COLORS[axis]} />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={IFC_AXIS_COLORS[axis]} />
           </marker>
         ))}
       </defs>
@@ -268,7 +275,7 @@ export function GizmoOverlay() {
       {(['x', 'y', 'z'] as const).map((axis) => {
         const tip = axisTips[axis];
         if (!tip) return null;
-        const colour = AXIS_COLORS[axis];
+        const colour = IFC_AXIS_COLORS[axis];
         return (
           <g key={axis} style={{ pointerEvents: 'auto' }}>
             <line
@@ -304,8 +311,7 @@ export function GizmoOverlay() {
         cx={originScreen.x}
         cy={originScreen.y}
         r={4}
-        fill="#fff"
-        stroke="#71717a"
+        className="fill-overlay-halo stroke-overlay-ink-muted"
         strokeWidth={1.5}
         pointerEvents="none"
       />

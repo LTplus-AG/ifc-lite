@@ -5,18 +5,26 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Measure tool (#2199 et al.) — the panel (`MeasurePanel.tsx`), its
- * three expandable sections (`MeasureQuantities.tsx`,
- * `MeasurePointReadout.tsx`), the on-canvas overlay labels
- * (`MeasurementVisuals.tsx`), and the shared georeferenced E/N/H readout
- * (`measure-modes/geo-readout.tsx`). Measurement unit symbols (`m`, `m²`,
+ * The Measure tool (#2199 et al.) — its HUD bar (`MeasureToolbar.tsx`), the
+ * hint and geo readout (`MeasureHudReadouts.tsx`), the Measurements side
+ * panel (`MeasurementsPanel.tsx`) with its three tabs (`MeasurementList.tsx`,
+ * `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`), the on-canvas overlay
+ * labels (`MeasurementVisuals.tsx`), and the shared georeferenced E/N/H
+ * readout (`measure-modes/geo-readout.tsx`). Measurement unit symbols (`m`, `m²`,
  * `mm`, `°`) are not catalogued — those stay literal by the sweep's own
  * rule (#4918).
  */
 export const measureEn = {
-  'measure.dragToMove': 'Drag to move',
   'measure.panelTitle': 'Measure',
+  'measure.bar.modeAria': 'Measure mode',
+  'measure.bar.angleKindAria': 'Angle kind',
+  // MeasurementsPanel.tsx — the docked side panel (#5502).
+  'measure.panel.title': 'Measurements',
+  'measure.panel.toggleTitle': 'Show or hide the Measurements panel',
+  'measure.panel.close': 'Close panel',
+  'measure.panel.startMeasuring': 'Start measuring',
   'measure.clearAll': 'Clear all',
+  'measure.clearAllConfirm': 'Clear every measurement? This cannot be undone.',
   'measure.close': 'Close',
 
   // Angle-mode click hints (`angleHint`), one key per kind/pick-count
@@ -42,7 +50,8 @@ export const measureEn = {
   'measure.angleKind.faces.label': 'Faces',
   'measure.angleKind.faces.hint': 'Angle between two planes: click one face, then the other',
 
-  // SECTIONS — the List / Point / Qty section buttons.
+  // TABS — the List / Point / Qty tabs of the Measurements panel (the bar's
+  // panel button reuses the List label).
   'measure.section.list.label': 'List',
   'measure.section.list.title': 'Measurements taken',
   'measure.section.point.label': 'Point',
@@ -50,21 +59,17 @@ export const measureEn = {
   'measure.section.quantities.label': 'Qty',
   'measure.section.quantities.title': 'Quantities of the selected elements',
 
-  'measure.modeToggle.title':
-    'Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels), Radius (three or more clicks on a circular edge; double-click or Enter to finish; Esc cancels)',
   'measure.mode.distance': 'Distance',
   'measure.mode.polyline': 'Polyline',
   'measure.mode.angle': 'Angle',
   'measure.mode.radius': 'Radius',
 
   'measure.snapToggle.title': 'Toggle snap (S key)',
-  'measure.snap.on': 'Snap On',
-  'measure.snap.off': 'Snap Off',
+  'measure.snap.label': 'Snap',
 
   'measure.geoToggle.enabledTitle': 'Toggle real-world XYZ (Eastings / Northings / Height)',
   'measure.geoToggle.disabledTitle': 'Requires map georeferencing (IfcMapConversion) in the model',
-  'measure.geo.on': 'Geo XYZ On',
-  'measure.geo.off': 'Geo XYZ Off',
+  'measure.geo.label': 'Geo XYZ',
   'measure.geo.easting': 'E',
   'measure.geo.northing': 'N',
   'measure.geo.height': 'H',

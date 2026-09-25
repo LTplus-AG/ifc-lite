@@ -36,7 +36,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { IfcAttributeValue, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { asExpressIdRef, readAttributes } from './placement-core.js';
 
 /** Relationship entity types we touch (case follows STEP storage form). */
@@ -105,8 +105,7 @@ export function cloneElementMetadata(
 
   let touched = 0;
   for (const [type, index] of RELATIONSHIPS_TO_CLONE) {
-    const relIds = dataStore.entityIndex.byType.get(type) ?? [];
-    for (const relId of relIds) {
+    for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, [type])) {
       const attrs = readAttributes(dataStore, view, editor, relId);
       if (!attrs) continue;
       const currentRelated = relatedObjectIds(attrs[index]);

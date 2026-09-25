@@ -4,12 +4,14 @@
 
 /**
  * The Measure tool reads the i18n catalogue (#4918, following #4785/#4883):
- * `MeasurePanel.tsx`, `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`,
+ * `MeasureToolbar.tsx`, `MeasureHudReadouts.tsx`, `MeasurementsPanel.tsx`,
+ * `MeasurementList.tsx`, `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`,
  * `MeasurementVisuals.tsx` and `measure-modes/geo-readout.tsx`.
  *
  * Same oracle as `MainToolbar.i18n.test.tsx`: a pseudo-locale maps every
- * `measure.*` key to a marked copy of its English text, the panel (via the
- * real `MeasureOverlay`) is driven into a handful of states that surface as
+ * `measure.*` key to a marked copy of its English text, the tool (the real
+ * `MeasureOverlay` on a real `ViewportHud`, plus the real `MeasurementsPanel`,
+ * #5502) is driven into a handful of states that surface as
  * much of the catalogue as feasible, the locale is switched live, and every
  * marked string that was visible in English must reappear marked. Plural and
  * `{param}` keys are exercised with `expectedMarked`, which replicates just
@@ -43,6 +45,24 @@ import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
 import type { MeasurePoint } from '@/store/types';
 import { MeasureOverlay } from './MeasurePanel.js';
+import { MeasurementsPanel } from '../MeasurementsPanel.js';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
+import { SceneOverlayRoot } from '../../viewport-ui/scene/index.js';
+
+/** The shipped surfaces together: the HUD host (the bar and hint portal into
+ *  it), the scene root (the world labels portal into it), the tool's
+ *  overlay, and the docked Measurements panel. */
+function renderMeasure(): HTMLElement {
+  return render(
+    <>
+      <ViewportHud />
+      <SceneOverlayRoot>
+        <MeasureOverlay />
+      </SceneOverlayRoot>
+      <MeasurementsPanel onClose={() => {}} />
+    </>,
+  );
+}
 
 // Guarded dynamic import (#4918 revert-oracle): `check-test-revert-oracle.mjs`
 // reverting production hunks treats a brand-new module (this catalogue) as a
@@ -105,11 +125,11 @@ function chromeStrings(container: HTMLElement): Set<string> {
   return out;
 }
 
-/** Click the panel's section button whose ENGLISH label is `label`. Must run
- *  before the locale switch — after it the button text is the marked copy. */
+/** Click the Measurements panel's tab whose ENGLISH label is `label`. Must run
+ *  before the locale switch — after it the tab text is the marked copy. */
 function openSection(container: HTMLElement, label: string): void {
-  const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
-  assert.ok(button, `no section button labelled "${label}" on the measure panel`);
+  const button = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.trim() === label);
+  assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
     button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
   });
@@ -201,6 +221,9 @@ afterEach(() => {
 /** Static-key keys this suite's render states cannot show, each for a stated
  *  reason. */
 const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
+  // The "Clear all" confirm text goes to window.confirm, not the DOM
+  // (#5598); hooks/useKeyboardShortcuts.measure-clear.test.tsx asserts it.
+  'measure.clearAllConfirm',
   // No fixture in this file records a CLOSED polyline (`closed: true`) — the
   // completed-polyline fixtures used throughout are all open runs, so the
   // "closed" basis label never renders. `measure.polyline.basisLength`
@@ -209,7 +232,6 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   // Georeferenced rows never render without a model whose IfcMapConversion
   // resolves through useAnchorGeoreference — no model is loaded here.
   'measure.geoToggle.enabledTitle',
-  'measure.geo.on',
   'measure.geo.easting',
   'measure.geo.northing',
   'measure.geo.height',
@@ -279,7 +301,20 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
       measurements: [{ id: 'm1', start: mp(0, 0, 0), end: mp(1, 0, 0), distance: 1 }],
       snapEnabled: true,
     });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
+    const english = chromeStrings(container);
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+
+    assertStaticCoverage(english, after);
+  });
+
+  it('list tab with the tool closed: the "Start measuring" affordance', () => {
+    useViewerStore.setState({ activeTool: 'select' });
+    const container = render(<MeasurementsPanel />);
+    openSection(container, 'List');
     const english = chromeStrings(container);
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
@@ -291,7 +326,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
   it('chrome: snap-off variant', () => {
     useViewerStore.setState({ snapEnabled: false });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     const english = chromeStrings(container);
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
@@ -303,7 +338,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
   it('angle mode: kind buttons and every click-hint, across kinds and pick counts', () => {
     useViewerStore.setState({ measureMode: 'angle' });
-    render(<MeasureOverlay />);
+    renderMeasure();
 
     const states: Array<{ kind: 'points' | 'edges' | 'faces'; picks: number }> = [
       { kind: 'points', picks: 0 },
@@ -343,7 +378,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
   it('radius mode: hints on and off an active sequence', () => {
     useViewerStore.setState({ measureMode: 'radius', activeRadius: null });
-    render(<MeasureOverlay />);
+    renderMeasure();
 
     const walk = (out: Set<string>) => {
       act(() => useViewerStore.setState({ activeRadius: null }));
@@ -365,7 +400,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
   it('polyline mode: start hint before any point is placed', () => {
     useViewerStore.setState({ measureMode: 'polyline', activePolyline: null });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     const english = chromeStrings(container);
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
@@ -393,7 +428,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
       radiusMeasurements: [{ id: 'r1', points: activeRadiusPoints }],
       activeRadius: { points: activeRadiusPoints },
     });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'List');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -448,7 +483,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
       angleKind: 'edges',
       activeAngle: { kind: 'edges', picks: [edgePick, edgePick] },
     });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'List');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -466,7 +501,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
   });
 
   it('list section: empty state', () => {
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'List');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -480,7 +515,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
   });
 
   it('quantities section: no selection prompt', () => {
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'Qty');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -495,7 +530,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
 
   it('quantities section: a selection unresolved to any loaded model', () => {
     useViewerStore.setState({ selectedEntity: { modelId: 'legacy', expressId: 2 } });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'Qty');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -517,7 +552,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
   });
 
   it('point section: empty prompt (no live point)', () => {
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'Point');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -535,7 +570,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
       measurements: [{ id: 'm1', start: mp(0, 0, 0), end: mp(5, 6, 7), distance: 10.6 }],
       measureReferencePoint: { x: 1, y: 2, z: 3 },
     });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'Point');
     const english = new Set<string>();
     addReadable(document.body, english);
@@ -552,7 +587,7 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     useViewerStore.setState({
       activeMeasurement: { start: mp(0, 0, 0), current: mp(1, 1, 1), distance: 1.7 },
     });
-    const container = render(<MeasureOverlay />);
+    const container = renderMeasure();
     openSection(container, 'Point');
     const english = new Set<string>();
     addReadable(document.body, english);

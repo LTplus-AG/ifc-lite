@@ -25,21 +25,24 @@
 
 mod empty;
 mod guid;
+mod header;
 mod line_edit;
 mod plan;
+mod single_parents;
 mod spatial;
 mod units;
+mod warnings;
 
 use std::collections::{HashMap, HashSet};
 
 use crate::schema_detect::detect_schema;
-use crate::step_text::escape;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+use crate::schema_enum::ConversionChecks;
 use units::{resolve_length_scale, resolve_model_modes};
 pub use units::UnitReconciliation;
 
@@ -155,15 +158,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         .or_else(|| models.first().map(|m| detect_schema(m.content)))
         .unwrap_or_else(|| "IFC4".to_string());
 
-    let mut out = String::new();
-    out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
-    out.push_str(&format!(
-        "FILE_NAME('','',(''),(''),'{}','ifc-lite-export','');\n",
-        escape(&opts.application)
-    ));
-    out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(&schema)));
-    out.push_str("ENDSEC;\nDATA;\n");
+    let mut out = header::merged_header(opts, &schema);
 
     let mut stats = MergedStats {
         models: models.len(),
@@ -235,6 +230,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
+    let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut parents = single_parents::ParentClaims::new(crate::schema_convert::targets_ifc2x3(&schema)); // one parent per inverse (#5727, #5802)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
@@ -326,7 +323,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 Some(g) => replace_global_id(&remapped, g),
                 None => remapped,
             };
-            let mut final_text = if converting {
+            let final_text = if converting {
                 // Pass the GLOBAL id (offset applied): a schema downgrade with no
                 // target type falls back to IFCPROXY with a `placeholder_guid(id)`
                 // GlobalId, so two models sharing a source-local id must not seed the
@@ -358,6 +355,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     &schema,
                     id.saturating_add(offset),
                     &mut slot_fill,
+                    Some(&mut checks),
                 ) {
                     Ok(text) => text,
                     Err(e) => {
@@ -368,6 +366,9 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             } else {
                 after_guid
             };
+
+            let ty = index.type_of.get(&id).map_or("", String::as_str);
+            let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
 
             if let Some(local_guid) = plan.local_guids.get(&id) {
                 let mut emitted = read_leading_guid(&final_text)
@@ -405,39 +406,9 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         offset = next;
     }
 
-    if stats.federated_model_count > 0 {
-        stats.warnings.push(format!(
-            "{} model(s) had an incompatible length unit and were federated as separate IfcProject instances (relaxing IfcSingleProjectInstance).",
-            stats.federated_model_count
-        ));
-    }
-
-    if refused_refs_total > 0 {
-        // Issue #3421/#3752: a `#<digits>` reference above `u32::MAX` is
-        // refused, not wrapped onto a real entity, while resolving which
-        // ids a filtered/merged model reaches. The referenced record could
-        // never itself be a real entity (every id in this store is also
-        // `u32`-bound), so nothing reachable was excluded — this only says
-        // at least one input file contains an express id ifc-lite cannot
-        // represent.
-        stats.warnings.push(format!(
-            "{refused_refs_total} reference(s) above the u32 express-id bound were refused (see issue #3421) while resolving model reference closures."
-        ));
-    }
-
-    if !unrepresented_types_kept.is_empty() {
-        // #5116: kept pass-through, not proxied or dropped -- see the fallback
-        // above. Names every affected TYPE (not every occurrence) so this stays
-        // readable on a large merge with many instances of the same type.
-        stats.warnings.push(format!(
-            "{} entity type(s) have no representation in {schema} and are not IfcRoot subtypes, \
-             so the merge kept them unconverted instead of guessing (see issue #5116): {}.",
-            unrepresented_types_kept.len(),
-            unrepresented_types_kept.into_iter().collect::<Vec<_>>().join(", ")
-        ));
-    }
-
+    warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
+    stats.warnings.extend(checks.warnings());
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)

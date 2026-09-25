@@ -24,11 +24,15 @@
  * The unmodified wheel is untouched, so existing muscle memory is unchanged.
  */
 
+import { cameraPoseKey, type SurfacePoint, type ZoomPoseCamera, type ZoomSurfacePicker } from './zoomSurface.js';
+
 /** Fraction of the normal wheel step applied while the fine modifier is held. */
 export const FINE_ZOOM_STEP_FACTOR = 0.2;
 
-/** The part of `Camera` this module drives. Keeps the unit testable. */
-export interface WheelZoomCamera {
+/** The part of `Camera` this module drives. Keeps the unit testable. The pose
+ *  getters are read back after each notch so a cached surface point is only
+ *  reused while nothing but the surface zoom has moved the camera (#5393). */
+export interface WheelZoomCamera extends ZoomPoseCamera {
   zoom(
     delta: number,
     addVelocity?: boolean,
@@ -37,6 +41,7 @@ export interface WheelZoomCamera {
     canvasWidth?: number,
     canvasHeight?: number,
     fastZoom?: boolean,
+    surfacePoint?: SurfacePoint,
   ): void;
 }
 
@@ -147,6 +152,44 @@ export interface WheelZoomOptions {
   fastZoom: boolean;
   /** {@link FineZoomModifierTracker.isHeld} at the time of the event. */
   fineModifierHeld: boolean;
+  /**
+   * The visible surface under a canvas point, in CSS px (#5393), e.g. the
+   * renderer's `raycastScene(...).intersection.point`. When given, zooming IN
+   * approaches that surface and stops short of it instead of passing through
+   * thin objects; null (empty space) keeps the plain zoom.
+   */
+  pickSurface?: ZoomSurfacePicker;
+}
+
+/**
+ * One pick per wheel GESTURE, not per notch (#5393). A gesture is a run of
+ * wheel events with the cursor held within {@link SURFACE_GESTURE_SLOP_PX}
+ * and no pause over {@link SURFACE_GESTURE_IDLE_MS}. The surface zoom moves
+ * the camera along the cursor ray, so the picked point stays under the cursor
+ * and stays valid for the rest of the gesture. It is valid ONLY while the
+ * surface zoom is the sole thing moving the camera: the pose
+ * ({@link cameraPoseKey}) after each notch is recorded, and any other move in
+ * between (a fast-zoom dolly, an orbit, a pan, a look-around, a key) takes the
+ * point off the cursor ray, so the next notch re-picks.
+ */
+const SURFACE_GESTURE_IDLE_MS = 400;
+const SURFACE_GESTURE_SLOP_PX = 4;
+interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null; pose: string }
+const surfaceGestures = new WeakMap<object, SurfaceGesture>();
+
+function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
+  const pick = opts.pickSurface;
+  if (!pick) return null;
+  const now = Date.now();
+  const g = surfaceGestures.get(opts.canvas);
+  if (g && now - g.at < SURFACE_GESTURE_IDLE_MS && g.pose === cameraPoseKey(opts.camera)
+    && Math.abs(g.x - mouseX) <= SURFACE_GESTURE_SLOP_PX && Math.abs(g.y - mouseY) <= SURFACE_GESTURE_SLOP_PX) {
+    g.at = now;
+    return g;
+  }
+  const fresh: SurfaceGesture = { x: mouseX, y: mouseY, at: now, point: pick(mouseX, mouseY), pose: '' };
+  surfaceGestures.set(opts.canvas, fresh);
+  return fresh;
 }
 
 /**
@@ -166,13 +209,22 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
 
+  const delta = wheelZoomDelta(e, opts.fineModifierHeld);
+  // Only zooming in can pass through a surface; zooming out and the fast
+  // (pure dolly) zoom keep the plain path and never pick.
+  const gesture = delta < 0 && !opts.fastZoom ? gestureSurface(opts, mouseX, mouseY) : null;
+  const surface = gesture?.point ?? undefined;
   opts.camera.zoom(
-    wheelZoomDelta(e, opts.fineModifierHeld),
+    delta,
     false,
     mouseX,
     mouseY,
-    opts.canvas.width,
-    opts.canvas.height,
+    // The cursor is in CSS px, so the extent must be too. The drawing buffer
+    // (`canvas.width`) is in device px and drifted the anchor (#5383).
+    rect.width,
+    rect.height,
     opts.fastZoom,
+    surface,
   );
+  if (gesture) gesture.pose = cameraPoseKey(opts.camera);
 }

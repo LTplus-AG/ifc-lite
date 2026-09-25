@@ -1,5 +1,101 @@
 # @ifc-lite/create
 
+## 3.1.0
+
+### Minor Changes
+
+- [#5932](https://github.com/LTplus-AG/ifc-lite/pull/5932) [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde) Thanks [@louistrue](https://github.com/louistrue)! - LandXML → IFC (mapping v1.3, spec §14): station equations are now written instead of refused. Each `StaEquation` on a written alignment becomes an `IfcReferent` / `.STATION.` with `Pset_Stationing` (`Station`, `IncomingStation`, `HasIncreasingStation`), linearly placed at its distance along the alignment's curve and nested with the start referent in order along the alignment. An alignment's equations are refused all or none, by name, when one cannot be placed. A vertical profile on an alignment with station equations is no longer refused: its PVI stations are read as displayed stations and placed through the stationing, and only a station in an equation's gap or displayed at more than one place is refused. `AlignmentParams` gains an optional `StationEquations` list and `AlignmentResult` an `equationReferentIds` list; `StationEquationParams` is exported. `CgPoint`s stay `IfcAnnotation` / `.SURVEY.` (§14.3 records why).
+
+- [#5930](https://github.com/LTplus-AG/ifc-lite/pull/5930) [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42) Thanks [@louistrue](https://github.com/louistrue)! - LandXML → IFC mapping v1.2: a written alignment's design profile (`ProfAlign`) is now exported as `IfcAlignmentVertical` with `IfcAlignmentVerticalSegment`s (`CONSTANTGRADIENT`, `PARABOLICARC`, `CIRCULARARC`; an `UnsymParaCurve` as two parabolic arcs) and an `IfcGradientCurve` over the horizontal composite curve, following IfcOpenShell's vertical segment mapping. Profiles that cannot be mapped exactly (sampled `ProfSurf`, unlinked, a second design profile, station equations, inconsistent curves, a profile running past its alignment) are refused by name with their reason. `AlignmentParams` gains an optional `Vertical` layout, `AlignmentResult` optional `verticalId` / `gradientCurveId`, and `LandXmlIfcCoverage` an optional `profiles` count.
+
+### Patch Changes
+
+- Updated dependencies [[`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9)]:
+  - @ifc-lite/mutations@2.8.0
+
+## 3.0.0
+
+### Major Changes
+
+- [#5722](https://github.com/LTplus-AG/ifc-lite/pull/5722) [`cddb321`](https://github.com/LTplus-AG/ifc-lite/commit/cddb32122c9d628b635910158a06fa5a94c0071a) Thanks [@louistrue](https://github.com/louistrue)! - Remove `ProjectParams.FileSchemaIdentifier` ([#5562](https://github.com/LTplus-AG/ifc-lite/issues/5562)). It has done nothing since [#5351](https://github.com/LTplus-AG/ifc-lite/issues/5351): `IfcCreator` declares every IFC4X3 file as `FILE_SCHEMA(('IFC4X3_ADD2'))` on its own. The only thing it still did was throw when combined with a `Schema` other than `'IFC4X3'`. Callers just delete the option; the output does not change.
+
+### Minor Changes
+
+- [#5731](https://github.com/LTplus-AG/ifc-lite/pull/5731) [`91b1340`](https://github.com/LTplus-AG/ifc-lite/commit/91b1340bbba42abc42d9842169e422b540aa96eb) Thanks [@louistrue](https://github.com/louistrue)! - Numeric property values are now written as the measure type they declare. `addIfcPropertySet` used to emit every number as `IFCREAL` or `IFCINTEGER` whatever `Type` said, so a `ThermalTransmittance` declared `IfcThermalTransmittanceMeasure` came out `IFCREAL(0.25)` and failed IDS data-type checks against `Pset_WallCommon`. `PropertyType` now accepts any `Ifc…Measure` (new `PropertyMeasureType`); a whole `IfcCountMeasure` is written as an integer, and a type name that is not a bare IFC identifier is refused instead of being spliced into the STEP line.
+
+### Patch Changes
+
+- [#5671](https://github.com/LTplus-AG/ifc-lite/pull/5671) [`e095908`](https://github.com/LTplus-AG/ifc-lite/commit/e0959083fa58854ce536c0a68d7b0c52f824f5ef) Thanks [@louistrue](https://github.com/louistrue)! - `IfcCreator` and the in-store builders no longer write an `IfcAxis2Placement3D` with a `RefDirection` but no `Axis` (or the reverse), which failed the `AxisAndRefDirProvision` rule in IfcOpenShell validation. Walls, stairs, curtain walls, furnishing elements, rotated spatial zones and any `addLocalPlacement` given only one of the two now write both, with the missing one set to its schema default, so the placement's geometry is unchanged ([#5469](https://github.com/LTplus-AG/ifc-lite/issues/5469)). The one case the schema leaves undefined, an `Axis` of exactly `-X` with no `RefDirection` (world X projects to zero), now writes world Y as the RefDirection.
+
+- [#5920](https://github.com/LTplus-AG/ifc-lite/pull/5920) [`d83d9fe`](https://github.com/LTplus-AG/ifc-lite/commit/d83d9fe4138e0d6ae64a3ed439c8a5c9a280878a) Thanks [@louistrue](https://github.com/louistrue)! - A placement given only an `Axis` of exactly `-X` now writes `RefDirection (0,-1,0)`, the value ifc-lite's own reader uses for an absent RefDirection there, instead of world Y, which rendered it turned 180 degrees compared with before ([#5469](https://github.com/LTplus-AG/ifc-lite/issues/5469)).
+
+- [#5908](https://github.com/LTplus-AG/ifc-lite/pull/5908) [`dcdc8df`](https://github.com/LTplus-AG/ifc-lite/commit/dcdc8dff3ea9e0588ffcce802b0f3ec781082f2e) Thanks [@louistrue](https://github.com/louistrue)! - `addIfcPropertySet` now rejects a malformed `Type` on a string property too, as it already did for numbers, so the type name can't be spliced into the STEP line. An empty `Type` (a JSON payload that defaults an unset field to `''`) is treated as undeclared and no longer throws.
+
+- [#5904](https://github.com/LTplus-AG/ifc-lite/pull/5904) [`ddebcd9`](https://github.com/LTplus-AG/ifc-lite/commit/ddebcd91b999d6304e19358f90d142cd439a420a) Thanks [@louistrue](https://github.com/louistrue)! - Auto Spaces: a wall created in this session now bounds rooms only on the storey it is contained in ([#5642](https://github.com/LTplus-AG/ifc-lite/issues/5642)). `extractWallSegmentsForStorey` used to add every overlay-created divider to whichever storey was being processed, so a wall authored on one storey split rooms on every storey. Created dividers now come from the same spatial walk as source ones: a created divider with no `IfcRelContainedInSpatialStructure` (for example a raw `IfcWall` added through a generic entity-create tool) no longer bounds any storey, and the extraction's `considered` count no longer counts created walls twice.
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/mutations@2.7.1
+
+## 2.9.2
+
+### Patch Changes
+
+- [#5579](https://github.com/LTplus-AG/ifc-lite/pull/5579) [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c) Thanks [@louistrue](https://github.com/louistrue)! - In-store authoring walks, review follow-up ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): storeys are enumerated from the edited model (`listStoreys` takes an optional overlay; a deleted storey is no longer listed), a created wall retyped out of the divider set no longer bounds rooms, queued positional edits to containment/aggregation relationships are honoured, and the overlay is snapshotted once per walk. The headless `bim.spaces` backend passes the session's mutation view.
+- Updated dependencies [[`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/data@5.3.0
+
+## 2.9.1
+
+### Patch Changes
+
+- [#5571](https://github.com/LTplus-AG/ifc-lite/pull/5571) [`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0) Thanks [@louistrue](https://github.com/louistrue)! - IFC4X3 output now declares `FILE_SCHEMA(('IFC4X3_ADD2'))`, the ISO 16739-1:2024 identifier, instead of the bare `IFC4X3` ([#5351](https://github.com/LTplus-AG/ifc-lite/issues/5351)). ifc-lite already wrote IFC4X3_ADD2's attribute layouts. IfcOpenShell, and the buildingSMART Validation Service built on it, resolves the bare `IFC4X3` token to a later development schema whose layouts differ (`IfcTriangulatedFaceSet`/`IfcTriangulatedIrregularNetwork` put `Closed` before `Normals`, and `IfcMapConversion` has 10 attributes instead of 8), so it rejected conformant files because of the identifier alone.
+  
+  This applies wherever ifc-lite chooses the identifier: `IfcCreator` with `Schema: 'IFC4X3'`, a `StepExporter` conversion to `IFC4X3`, a `MergedExporter` export to `IFC4X3`, and the Rust STEP and merged exporters (CLI, wasm) when given an explicit IFC4X3 target. A re-export that does not change schema still keeps the source file's own `FILE_SCHEMA` token verbatim. The Rust STEP exporter now follows the TypeScript rule for that too: an explicit target that does not change the schema family keeps the source token rather than writing the target label. The `schema` options still take `'IFC4X3'`, and ifc-lite reads both identifiers as IFC4X3.
+  
+  `ProjectParams.FileSchemaIdentifier` (added in `@ifc-lite/create` 2.9.0 as the opt-in for this) is deprecated: IFC4X3 output is declared `IFC4X3_ADD2` without it, so it no longer changes the output. It still refuses a `Schema` other than `'IFC4X3'`, and is removed at the next major ([#5562](https://github.com/LTplus-AG/ifc-lite/issues/5562)).
+  
+  `@ifc-lite/data` exports `fileSchemaIdentifier(schema)`, which maps a schema family to the identifier a writer declares. It is the single source for the TypeScript writers.
+- Updated dependencies [[`0f5d174`](https://github.com/LTplus-AG/ifc-lite/commit/0f5d174d2fb726536d1a3a30c7e5415603db72c0), [`579b759`](https://github.com/LTplus-AG/ifc-lite/commit/579b7590bfe79cad5689cc89ab8082f95b5d6ea3)]:
+  - @ifc-lite/data@5.2.0
+  - @ifc-lite/parser@8.2.0
+
+## 2.9.0
+
+### Minor Changes
+
+- [#5316](https://github.com/LTplus-AG/ifc-lite/pull/5316) [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9) Thanks [@louistrue](https://github.com/louistrue)! - Allow `resolveSpatialAnchor` to read the effective entity set through an optional mutation view. In-store authoring can now target a created storey or placement and will not reuse deleted or retyped-away owner history, contexts, storeys or placements ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). CLI and viewer authoring pass their live views.
+  
+  `StoreEditor.getMutationView()` gives in-store helpers the same effective read context; generated spaces now resolve their anchor through it.
+
+- [#5370](https://github.com/LTplus-AG/ifc-lite/pull/5370) [`d05f542`](https://github.com/LTplus-AG/ifc-lite/commit/d05f5423a7caf761f0a2e12d064d85e84355d031) Thanks [@louistrue](https://github.com/louistrue)! - LandXML→IFC now writes horizontal alignments as `IfcAlignment` (mapping spec v1.1, §11). Line, circular arc and clothoid segments become `IfcAlignmentHorizontalSegment`s, together with their `IfcCompositeCurve` geometry, a zero-length terminating segment and a start-station `IfcReferent`, aggregated by the project. An alignment containing anything else (an IrregularLine, a non-clothoid spiral, an unresolved point reference, a gap, or a segment whose parameters miss its authored end point) is refused whole and by name, because a gap would make every later station wrong. `IfcCreator.terrain().addAlignment` exposes the emitter, and `mapAlignments` / `alignmentMappingOf` expose the mapping as a cheap pre-flight.
+  
+  Converted files now declare `FILE_SCHEMA(('IFC4X3_ADD2'))` through the new `ProjectParams.FileSchemaIdentifier`. The layouts written were always IFC4X3_ADD2's, but IfcOpenShell (and the buildingSMART validator built on it) resolves the bare `IFC4X3` token to a later development schema and rejects them ([#5351](https://github.com/LTplus-AG/ifc-lite/issues/5351)). The output is now checked in CI by `ifcopenshell.validate`, and alignment geometry by IfcOpenShell's own mapping and evaluator.
+  
+  Nothing published narrows or gains a required member, whichever of this and the pending release ships first. `LandXmlIfcCoverage.alignments` is optional. `LandXmlIfcSource.alignments` stays `unknown[]`: each record is shape-checked at run time (`isAlignmentRecord`), and one that is not a `LandXmlIfcAlignment` is refused by name rather than read into.
+
+- [#5268](https://github.com/LTplus-AG/ifc-lite/pull/5268) [`9132f7a`](https://github.com/LTplus-AG/ifc-lite/commit/9132f7ab81939eb145e8fe1b26eb1e9048321638) Thanks [@louistrue](https://github.com/louistrue)! - `landXmlToIfc` converts a parsed LandXML document to IFC4X3, implementing v1.0 of `docs/architecture/landxml-to-ifc-mapping.md` ([#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937)). A TIN surface becomes `IfcGeographicElement`/`.TERRAIN.` carrying an `IfcTriangulatedIrregularNetwork`; a `CgPoint` becomes `IfcAnnotation`/`.SURVEY.` with a property set; a declared CRS becomes `IfcProjectedCRS` + `IfcMapConversion`.
+  
+  Purely additive. Every out-of-scope LandXML record family (alignments, profiles, cross sections, roadways, parcels, monuments, plan features, pipe networks, surface breaklines/boundaries/contours) is counted and named rather than dropped, and a source with no mappable record returns `{ status: 'refused' }` rather than a valid, empty IFC. GlobalIds derive deterministically from the LandXML source id; with a fixed `timestampMs`, re-exporting an unchanged source is byte-identical (without one, only the header and owner-history timestamps differ).
+  
+  `IfcCreator.terrain()` exposes the underlying IFC4X3 terrain/survey emitters directly. It throws on any other schema — `IfcTriangulatedIrregularNetwork` and the `.TERRAIN.`/`.SURVEY.` predefined types do not exist before IFC4X3.
+
+- [#5279](https://github.com/LTplus-AG/ifc-lite/pull/5279) [`24b7921`](https://github.com/LTplus-AG/ifc-lite/commit/24b79210c442f44614d5786ff2986ee3a2b9c0d7) Thanks [@louistrue](https://github.com/louistrue)! - `addColumnToStore`, `addDoorToStore`, `addWindowToStore`, `addSlabToStore`, `addRoofToStore`, `addPlateToStore` and `addSpaceToStore` now reject a non-finite `Position` (`NaN`/`Infinity`), naming the field. This matches the guard `addWallToStore`/`addBeamToStore`/`addMemberToStore` already apply to `Start`/`End`. `IfcCreator` now refuses a non-finite coordinate at the single point where every `IfcCartesianPoint` is written. That covers `addIfcColumn`, `addIfcDoor`, `addIfcWindow`, `addIfcSlab`, `addIfcRoof`, `addIfcPlate` and `addIfcSpace`, plus every other builder that places a caller-supplied point (stair, ramp, gable roof, footing, pile, furnishing, proxy, hosted door and window fills, openings). Before this change, a non-finite `Position` produced an invalid file with no error: `$` inside `IfcCartesianPoint.Coordinates` on the in-store path, and a `NaN.` token on the `IfcCreator` path. Callers that pass a computed, possibly non-finite `Position` now get a thrown `Error` instead of a corrupt export.
+
+### Patch Changes
+
+- [#5459](https://github.com/LTplus-AG/ifc-lite/pull/5459) [`809e2ba`](https://github.com/LTplus-AG/ifc-lite/commit/809e2baa4b796a91ea2a2dbd52ae29e7dd4ef5ff) Thanks [@louistrue](https://github.com/louistrue)! - Expose the effective root geometric context on spatial anchors so drawing markup can parent its subcontext under live edits.
+
+- [#5520](https://github.com/LTplus-AG/ifc-lite/pull/5520) [`d8f7c64`](https://github.com/LTplus-AG/ifc-lite/commit/d8f7c643703012c55a41a1e8224db6e21a0c66b3) Thanks [@louistrue](https://github.com/louistrue)! - In-store authoring walks read the session's edited model ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)). Auto Spaces no longer treats a wall deleted this session, or retyped into a non-divider class, as a room divider. Space Sketch dedup (`existingSpaceFootprintsByStorey`, now taking an optional overlay) counts a space created earlier in the session as existing, and no longer counts a deleted one. Duplicate (`resolveDuplicateSource`, now taking an optional `StoreEditor`) replays only the source's live association relationships, including ones created this session, and refuses a source deleted this session. `OverlayWallReader` gains optional `isDeleted` and `getTypeMutations`.
+
+- [#5318](https://github.com/LTplus-AG/ifc-lite/pull/5318) [`b8a9cde`](https://github.com/LTplus-AG/ifc-lite/commit/b8a9cde0a7dfe40137632bf083875961efb57c1a) Thanks [@louistrue](https://github.com/louistrue)! - Make in-store style authoring enumerate effective IfcStyledItem records. Deleted source styles no longer block restyling, while overlay-created styles prevent duplicate styling ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)).
+
+- [#5269](https://github.com/LTplus-AG/ifc-lite/pull/5269) [`9f48e65`](https://github.com/LTplus-AG/ifc-lite/commit/9f48e653f8264d303f70f47370be727ebca6049a) Thanks [@louistrue](https://github.com/louistrue)! - `IfcCreator` no longer writes an invalid STEP REAL for values with magnitude >= 1e21. At that size `Number.prototype.toFixed` switches to JavaScript exponent notation (`1e+21`), which has no decimal point in the mantissa, so the fixed-decimal fallback leaked it into the file. Those values are now written in the ISO 10303-21 exponent form (`1.E+21`) using the same `formatStepReal` rule that `@ifc-lite/export` uses. `NaN` and `Infinity` have no STEP REAL spelling, so they now throw instead of being written as `NaN.` / `Infinity.`. Values below 1e21 serialize byte-for-byte as before.
+- Updated dependencies [[`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e), [`45ddd91`](https://github.com/LTplus-AG/ifc-lite/commit/45ddd91d1cee1c261ca5f1b1d0087fb2e070690f), [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c), [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9), [`5665917`](https://github.com/LTplus-AG/ifc-lite/commit/566591746eead289fcc5aa60258ef96b30366456), [`253cc3e`](https://github.com/LTplus-AG/ifc-lite/commit/253cc3e96ff001b3514f182a61b1be70f6a89fa5), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1), [`6314cbe`](https://github.com/LTplus-AG/ifc-lite/commit/6314cbed245efb39552487307be55b6884fd0b97), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d), [`4175a1e`](https://github.com/LTplus-AG/ifc-lite/commit/4175a1e0e8b055de2a5c58288a87b84c3c85c610)]:
+  - @ifc-lite/mutations@2.7.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/parser@8.1.0
+
 ## 2.8.0
 
 ### Minor Changes

@@ -12,7 +12,6 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
-import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
@@ -53,7 +52,7 @@ import {
 export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
-    properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }>;
+    properties: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }>;
 }
 
 /**
@@ -91,7 +90,7 @@ export type { GeoreferenceInfo as GeorefInfo };
 export interface MaterialPsetGroup {
     materialId: number;
     materialName: string;
-    psets: Array<{ name: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }>;
+    psets: Array<{ name: string; properties: Array<ExtractedProperty> }>;
 }
 
 // ============================================================================
@@ -107,7 +106,7 @@ export {
     resolveComplexPropertyValue,
     parsePropertyValueWithComplex,
 } from './property-value-parser.js';
-import { parsePropertyValueWithComplex } from './property-value-parser.js';
+import { parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
 // ============================================================================
 // Property Set Extraction Helpers
@@ -118,8 +117,8 @@ export function extractPsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     psetIds: number[]
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
-    const result: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> = [];
+): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
+    const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
 
     for (const psetId of psetIds) {
         const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
@@ -136,7 +135,7 @@ export function extractPsetsFromIds(
         const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
         const hasProperties = psetAttrs[4];
 
-        const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> = [];
+        const properties: Array<ExtractedProperty> = [];
 
         if (Array.isArray(hasProperties)) {
             for (const propRef of hasProperties) {
@@ -153,7 +152,7 @@ export function extractPsetsFromIds(
                 if (!propName) continue;
 
                 const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
-                const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true; unit?: string; unitSiScale?: number } = {
+                const entry: ExtractedProperty = {
                     name: propName,
                     type: parsed.type,
                     value: parsed.value,
@@ -161,6 +160,7 @@ export function extractPsetsFromIds(
                 if (parsed.values) entry.values = parsed.values;
                 if (parsed.dataType) entry.dataType = parsed.dataType;
                 if (parsed.dataTypeMixed) entry.dataTypeMixed = true;
+                if (parsed.structure) entry.structure = parsed.structure;
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
@@ -216,7 +216,7 @@ export function extractTypePropertiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
     const seenPsetKeys = new Set<string>();
     const ownPsetIds = new Set<number>();
 
@@ -258,7 +258,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -266,7 +266,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; dataTypeMixed?: true }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
     const seenPsetKeys = new Set<string>();
     const ownPsetIds = new Set<number>();
 

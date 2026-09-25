@@ -1,5 +1,21 @@
 # @ifc-lite/bcf-api
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8)]:
+  - @ifc-lite/bcf@5.0.0
+
+## 0.2.3
+
+### Patch Changes
+
+- [#5438](https://github.com/LTplus-AG/ifc-lite/pull/5438) [`3edd57d`](https://github.com/LTplus-AG/ifc-lite/commit/3edd57d9bf0b4fddb28da3401bc5cf0189756729) Thanks [@louistrue](https://github.com/louistrue)! - Refactor: `BcfApiClient` now extends the new `@ifc-lite/opencde-foundation`'s `FoundationApiClient`, and BCF's OAuth2 token exchange, dynamic client registration, base-URL normalization/retry, and error types are that package's implementation, reached here under their historical BCF names (`normalizeBcfBaseUrl`, `registerBcfClient`, `BcfApiError`, `BcfAuthenticationError`, ...). `BcfApiError` and `BcfAuthenticationError` are thin subclasses of the Foundation errors, so a directly constructed BCF error is named as before too. No change to `@ifc-lite/bcf-api`'s public API or behaviour. Errors still report `name` as `BcfApiError` / `BcfAuthenticationError`, and `BcfApiVersion` and `getVersions(): Promise<BcfApiVersion[]>` keep their `{ version_id, detailed_version? }` shape. The OAuth2 functions are thin wrappers over the Foundation ones.
+- Updated dependencies [[`77f5e16`](https://github.com/LTplus-AG/ifc-lite/commit/77f5e16e939aac5d28301c56a29c04472aa90792), [`610c3a1`](https://github.com/LTplus-AG/ifc-lite/commit/610c3a1d60c76850c2d2cc839e176f97ec0e2ca6), [`becc9dc`](https://github.com/LTplus-AG/ifc-lite/commit/becc9dc4bd33267dbe8522f788fb8936dd349b70), [`3edd57d`](https://github.com/LTplus-AG/ifc-lite/commit/3edd57d9bf0b4fddb28da3401bc5cf0189756729)]:
+  - @ifc-lite/bcf@4.2.0
+  - @ifc-lite/opencde-foundation@0.2.0
+
 ## 0.2.2
 
 ### Patch Changes

@@ -89,6 +89,69 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
 
 The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
+## Spreadsheet connectors
+
+`table.readCsv` / `table.writeCsv` and `table.readXlsx` / `table.writeXlsx`
+move a `Table` to and from a mapping spreadsheet:
+
+- `table.readCsv` takes CSV text on its `text` input, `columns` (`[{ name, type }]`,
+  defaulting to the header row typed `string`) and `delimiter` params, and returns
+  `table` plus `problems` — a malformed row (wrong field count, a cell that will not
+  parse as its column's type) is **reported, never dropped**.
+- `table.writeCsv` is the reverse, through `@ifc-lite/export`'s `tableToCsv` — the one
+  place in the repo that guards a cell against spreadsheet formula injection
+  (CWE-1236; `scripts/check-csv-escaper-copies.mjs` fails the build on a second copy).
+- `table.readXlsx` / `table.writeXlsx` do the same over a single-sheet `.xlsx`
+  workbook. A `Scalar` carries no bytes, so the workbook travels an edge as base64
+  text (`data` in/out). The underlying `readXlsxTable`/`writeXlsxTable` functions are
+  exported from `@ifc-lite/flow-nodes` as a shared module — both the CLI and the
+  viewer read/write `.xlsx` through the same code.
+
+`table.joinByKey` joins spreadsheet rows to model entities by `globalId`, `tag`,
+`name`, or an indexed `property` (`pset`/`prop` params) and produces three outputs:
+`matched` (one row per uniquely matched entity, with a `GlobalId` column added),
+`unmatched` (no entity claims the row's key), and `ambiguous` (the row matches
+**several** entities, or its uniquely-matched entity is also uniquely claimed by
+**another** row — reported with a `MatchedGlobalIds` column, never silently resolved
+to the first match). `tag`/`property` reuse `@ifc-lite/mutations`' row-matching index
+builder rather than re-scanning the model per row; that needs bulk entity-table
+access (`FlowHost.tables()`), which all three hosts provide — the viewer, `ifc-lite
+flow run`, and MCP `run_flow` — each over the same mutation overlay its writes go
+through, so a join sees properties written earlier in the session or run.
+
+`model.applyTable` writes a table's columns back as property mutations, one entity
+per row (the row key names the target's GlobalId — `table.joinByKey`'s `matched`
+output is the usual source). Each column writes through the pset/prop its `mapping`
+param names, or its own `binding` when the table came from `table.fromEntities`. A
+cell that does not parse as its column's declared type is reported per row in
+`problems` and **not written** — never coerced to `0`/`''`/`false`.
+
+`model.applyTable` never deletes a property. An empty cell, including a cell a reader could
+not parse or a short row's missing field, leaves the property as it is. Those cells are
+already reported in the reader's `problems` output, so a typo in a spreadsheet can never
+quietly erase a value.
+
+```json
+{
+  "id": "csv", "type": "core.string", "params": { "value": "Tag,FireRating\nT-100,REI90\n" }
+}
+```
+```json
+{ "id": "read", "type": "table.readCsv", "params": { "columns": [{ "name": "Mark", "type": "string" }, { "name": "FireRating", "type": "string" }] } },
+{ "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
+{ "id": "join", "type": "table.joinByKey", "params": { "strategy": "property", "column": "Mark", "pset": "Pset_Fabrication", "prop": "Mark" } },
+{ "id": "apply", "type": "model.applyTable", "params": { "mapping": [{ "column": "FireRating", "pset": "Pset_WallCommon", "prop": "FireRating" }] } }
+```
+
+`packages/cli/src/commands/flow-table-connectors.test.ts` runs this pilot workflow
+(`ReadCsv → JoinByKey → ApplyTable`) end to end against a real model, including a
+duplicate match value that must land in `ambiguous`, not get resolved to either
+entity.
+
+`strategy: "tag"` works in the viewer. Headless (`ifc-lite flow run`, MCP) it
+currently matches nothing, because the CLI's columnar parser does not populate `Tag`
+(#1765). Use a `property` join, as above, until it does.
+
 ## Creating elements, and re-running
 
 `element.wall`, `element.column`, `element.beam` and `element.slab` build
@@ -153,7 +216,11 @@ for (const o of result.graphOutputs) console.log(o.label, o.data);
 
 Re-running with the same `cache` recomputes only nodes whose inputs,
 params, or model revision changed. Every write node bumps the cache's write
-generation, so reads never serve a memo taken before a write.
+generation, so reads never serve a memo taken before a write. Nodes that
+reach the network are never served from the memo: `HttpRequest` always
+sends its request again, and a Script node is recomputed on every run in
+which its code called `bim.network.fetch` (a Script that makes no request
+stays memoised).
 
 ## Script nodes
 
@@ -185,6 +252,387 @@ The `code` parameter is a `code` param kind rather than a plain string, which
 is the editor's cue to give it a multi-line editor: the Flow panel's
 inspector shows a monospace textarea, and the ⤢ button beside it opens the
 full CodeMirror editor (the same `bim.*` completions as the script console).
+
+## Network requests and secrets
+
+`http.request` issues one `https:` GET/POST to a host the graph explicitly
+grants. A `network.fetch:<host>` capability names the exact hostname (or a
+single-label wildcard, e.g. `network.fetch:*.example.com` — the `*` never
+spans a `.`); it is matched against `new URL(url).hostname`, never the raw
+URL string, so a spoofed suffix (`api.example.com.evil.net`) or a userinfo
+trick (`https://user@api.example.com@evil.net/`, whose real hostname is
+`evil.net`) does not match a grant for the real host. Only `https:` is
+supported — `http:`, `file:`, and `data:` are always refused — and a
+redirect response is refused rather than followed. See
+`packages/sandbox/src/network-request.ts` for the full policy and its
+rationale.
+
+In the viewer, `http.request` runs subject to the browser's own CORS
+enforcement: a host that does not send `Access-Control-Allow-Origin` for
+the request fails with an explicit "likely CORS" message, never a silent
+empty result. The CLI and MCP have no such restriction (Node's `fetch` is
+not CORS-limited).
+
+A node param may reference an environment secret with `{{secret:NAME}}`
+(inside a plain string or nested in a `json`-kind param, such as a header
+map). The graph must also declare `secret.read:NAME` as a capability —
+an undeclared or declared-but-unset reference is a **validation error
+raised before the run starts**, not a silently empty string. Secrets are
+resolved from `process.env` **only** by `ifc-lite flow run` and MCP's
+`run_flow`. The viewer's `HostFeatures.secrets` is always empty, so a graph
+needing a secret shows `unavailable` in the panel before it ever runs.
+`ifc-lite flow validate` checks against its own environment: a referenced
+secret counts as available there only when the graph declares it and the
+variable is set to a value at least 6 characters long (the redaction
+minimum below), the same conditions `flow run` enforces.
+
+Every secret value at least 6 characters long is redacted — as
+`<secret:NAME>` — from run logs, node outputs, error messages, and
+`--json`/MCP output, including a value that comes back inside a fetched
+response body (a server echoing an `Authorization` header, for example).
+Redaction happens once, right before output leaves the process, so it
+catches a secret wherever it resurfaces in the run's own result — not just
+at the point it was substituted into a param.
+
+```json
+{
+  "capabilities": ["network.fetch:api.example.com", "secret.read:API_TOKEN"],
+  "nodes": [
+    {
+      "id": "req",
+      "type": "http.request",
+      "params": {
+        "url": "https://api.example.com/status",
+        "headers": { "Authorization": "Bearer {{secret:API_TOKEN}}" }
+      }
+    }
+  ]
+}
+```
+
+### BCF API nodes
+
+Three nodes talk to a BCF API (OpenCDE) server through `@ifc-lite/bcf-api`,
+with every request going through the same gated transport as
+`http.request`: `https:` only, and the `baseUrl` hostname must match a
+declared `network.fetch:<host>` capability.
+
+- `bcf.listTopics` lists a project's topics (optional OData `filter`,
+  `orderby`, `top`) as a table keyed by `guid`, with columns `title`,
+  `status`, `type`, `priority`, `assigned_to`, `creation_date`,
+  `modified_date`, `labels` (`;`-separated) and `description`, plus the raw
+  topic list and a `count`.
+- `bcf.createTopic` creates one topic from its params, or one per row when a
+  table is wired into `rows` (same column names as `bcf.listTopics`; an empty
+  cell falls back to the param). Every row is validated before the first
+  request, and it outputs the created `guids`.
+- `bcf.addComment` posts a comment to `topicGuid`. Wiring `bcf.createTopic`'s
+  `guids` into its `topicGuid` input comments on each new topic.
+
+Each takes `baseUrl` (up to but excluding the version segment), `version`
+(default `2.1`), `projectId`, and `token`, sent as
+`Authorization: Bearer <token>`. Put the token in a secret rather than the
+graph. The nodes are never memoised, so every run asks the server again.
+
+```json
+{
+  "capabilities": ["network.fetch:bcf.example.com", "secret.read:BCF_TOKEN"],
+  "nodes": [
+    {
+      "id": "open",
+      "type": "bcf.listTopics",
+      "params": {
+        "baseUrl": "https://bcf.example.com/bcf",
+        "projectId": "my-project",
+        "token": "{{secret:BCF_TOKEN}}",
+        "filter": "topic_status eq 'Open'"
+      }
+    },
+    {
+      "id": "sheet",
+      "type": "table.writeCsv"
+    }
+  ],
+  "edges": [{ "from": ["open", "table"], "to": ["sheet", "table"] }]
+}
+```
+
+### Receiving a Speckle model
+
+`speckle.receive` fetches one Speckle model version and writes its walls,
+floors, flat roofs, columns and beams into a target storey, with the Revit
+parameters as `Speckle_TypeParameters` / `Speckle_InstanceParameters`
+property sets and the source identity as `Speckle_Source`. Its `url` is
+the address you copy from the Speckle web app
+(`https://<server>/projects/<project>/models/<model>`, optionally
+`@<version>`; legacy `/streams/<id>/commits/<id>` and
+`/streams/<id>/objects/<id>` URLs work too). It speaks to Speckle only
+through the same gated request function as `http.request`, so the graph
+must grant the server's host, and a private project's token comes in as a
+secret:
+
+```json
+{
+  "capabilities": [
+    "model.read", "model.create", "model.delete",
+    "model.mutate:Speckle_Source", "model.mutate:Speckle_TypeParameters", "model.mutate:Speckle_InstanceParameters",
+    "network.fetch:app.speckle.systems", "secret.read:SPECKLE_TOKEN"
+  ],
+  "nodes": [
+    { "id": "storeys", "type": "model.byType", "params": { "type": "IfcBuildingStorey" } },
+    { "id": "first", "type": "core.first" },
+    {
+      "id": "rx",
+      "type": "speckle.receive",
+      "params": {
+        "url": "https://app.speckle.systems/projects/<project>/models/<model>",
+        "token": "{{secret:SPECKLE_TOKEN}}"
+      }
+    }
+  ],
+  "edges": [
+    { "from": ["storeys", "entities"], "to": ["first", "items"] },
+    { "from": ["first", "item"], "to": ["rx", "storey"] }
+  ]
+}
+```
+
+Where the host enforces grants, the three `model.mutate:Speckle_*` grants
+above are needed exactly as spelled (pset grants match by name), and
+`model.delete` is checked only when a receive replaces elements an earlier
+receive wrote.
+
+Everything the mapping cannot reproduce is reported on the `refusals`
+output, by Speckle type, reason and count, and nothing is dropped silently.
+Display meshes are never written: the element body is rebuilt parametrically.
+The mapping table and its limits are in
+[Speckle → IFC mapping](../architecture/speckle-mapping.md).
+
+### Running a graph in CI, with secrets from GitHub Actions
+
+A workflow can install the CLI, run a graph with a secret passed through
+`env:`, and publish the result — the graph declares exactly which secret
+it needs (`secret.read:API_TOKEN`) and which host it may reach
+(`network.fetch:api.example.com`); nothing beyond that is available to it,
+and the secret is redacted from anything the job uploads or comments.
+
+```yaml
+# .github/workflows/flow-audit.yml (illustrative — not run in this repo's CI)
+name: Flow audit
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # the summary comment
+
+jobs:
+  audit:
+    # Repository secrets are not passed to pull requests from forks, and the
+    # token cannot comment there, so run only for same-repository branches.
+    # Audit a fork's change after merge, or from a maintainer-triggered
+    # workflow. Never use `pull_request_target` with a checkout of the fork's
+    # code to reach the secret: that runs untrusted code with it.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ifc-lite CLI
+        run: npm install -g @ifc-lite/cli
+
+      - name: Run the audit graph
+        id: run
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        # `flow run` exits 1 when the graph fails. Keep that status, but
+        # write the summary output first so the comment step can report it.
+        run: |
+          set +e
+          ifc-lite flow run graphs/fire-rating-audit.flow.json model.ifc \
+            --out audit-result.ifc --json > run-summary.json
+          status=$?
+          set -e
+          echo "ok=$(jq -r .ok run-summary.json)" >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Publish the audited model as a layer
+        if: steps.run.outputs.ok == 'true'
+        run: ifc-lite layer publish audit-result.ifc --layer fire-rating-audit
+
+      - name: Comment the run summary on the PR
+        # Also after a failed run (the job still fails from the step above).
+        if: always() && steps.run.outputs.ok != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            // run-summary.json was already redacted by `flow run` itself —
+            // secrets never reach an artifact, an env dump, or this comment.
+            const summary = JSON.parse(fs.readFileSync('run-summary.json', 'utf-8'));
+            const body = `Flow audit: ${summary.ok ? 'passed' : 'FAILED'} (` +
+              Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ') + ')';
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+```
+
+`API_TOKEN` is scoped by two independent things: the repository secret
+(`${{ secrets.API_TOKEN }}`, GitHub's own access control) and the graph's
+own `secret.read:API_TOKEN` capability (`ifc-lite`'s — a graph that does
+not declare it cannot read the env var even though the workflow set it).
+Nothing the workflow uploads, comments, or logs can carry the raw value:
+`flow run --json` redacts it before it is ever written to
+`run-summary.json`, so every consumer downstream — the artifact, the PR
+comment, the job log — only ever sees `<secret:API_TOKEN>` if the value
+happened to surface at all.
+
+### Autodesk Platform Services (APS)
+
+Two nodes read Autodesk model data into a graph, so Revit or ACC properties
+can be joined to an IFC model:
+
+- `aps.token` gets an APS access token: a 2-legged client-credentials token
+  from `clientId` / `clientSecret` (`scope` defaults to
+  `data:read viewables:read`), or a ready 3-legged token passed as
+  `accessToken`. Its `token` output is an opaque handle. The token itself is
+  never an output value, a log line or part of `--json` output, because a
+  token minted from a secret is not a secret the redaction step knows about.
+- `aps.modelProperties` reads a translated model's Model Derivative
+  metadata, picks the master (else first) 3D view, and reads its properties.
+  The output is a table with one row per object: `objectid`, `externalId`
+  (for Revit, the element's UniqueId), `name`, `category`, `IfcGUID`, and
+  every property as a `Group.Property` column. The `key` param picks the
+  key column (default `externalId`). While APS is still extracting
+  properties it answers `202`. The node retries up to `maxAttempts` times,
+  waiting `retryDelayMs` between tries, then fails with a clear message.
+  Credentials come from a connected `token`, or from the same credential
+  params on the node itself. `region` sets the data centre (`US`, `EMEA`, …).
+
+Both nodes reach only `developer.api.autodesk.com`, through the same
+host-grant check as `http.request`. They are volatile, so every run fetches
+fresh data. Run them from the CLI or MCP: the viewer has no secrets, and
+APS's endpoints are not meant to be called from a browser page.
+
+This graph joins a Revit model's properties to the walls of the loaded IFC
+model through the `IfcGUID` that Revit's IFC exporter writes:
+
+```json
+{
+  "flowVersion": 1,
+  "id": "aps-join",
+  "name": "Revit properties onto IFC walls",
+  "capabilities": [
+    "model.read",
+    "network.fetch:developer.api.autodesk.com",
+    "secret.read:APS_CLIENT_ID",
+    "secret.read:APS_CLIENT_SECRET"
+  ],
+  "inputs": [],
+  "outputs": [{ "nodeId": "join", "port": "matched", "label": "matched" }],
+  "nodes": [
+    {
+      "id": "tok",
+      "type": "aps.token",
+      "params": { "clientId": "{{secret:APS_CLIENT_ID}}", "clientSecret": "{{secret:APS_CLIENT_SECRET}}" }
+    },
+    {
+      "id": "props",
+      "type": "aps.modelProperties",
+      "params": { "urn": "urn:adsk.wipprod:fs.file:vf.XXXXXXXX?version=3", "region": "US", "key": "IfcGUID" }
+    },
+    { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
+    { "id": "join", "type": "table.joinByKey", "params": { "strategy": "globalId", "column": "IfcGUID" } }
+  ],
+  "edges": [
+    { "from": ["tok", "token"], "to": ["props", "token"] },
+    { "from": ["props", "table"], "to": ["join", "table"] },
+    { "from": ["walls", "entities"], "to": ["join", "entities"] }
+  ]
+}
+```
+
+```bash
+APS_CLIENT_ID=… APS_CLIENT_SECRET=… ifc-lite flow run aps-join.json model.ifc --json
+```
+
+**Getting a URN.** `urn` takes either form:
+
+- The version id of a Docs, ACC or BIM 360 file, such as
+  `urn:adsk.wipprod:fs.file:vf.…?version=N`. The Data Management API returns
+  it (`GET /data/v1/projects/{project}/items/{item}/versions`, the `id` of
+  each version). The node base64url-encodes it for you. An item id
+  (`…:dm.lineage:…`) names no version, so the node refuses it.
+- An already-encoded derivative URN, which the APS Viewer and translation
+  jobs print (the `urn:` prefix the viewer adds is accepted).
+
+The file must already be translated. Opening it once in ACC or Docs does
+that; for your own OSS bucket, start a Model Derivative job first. A
+2-legged token can read an ACC project only when the APS app has been added
+to the ACC account as a custom integration. Otherwise, pass a user's
+3-legged token as `accessToken: "{{secret:APS_TOKEN}}"` and declare
+`secret.read:APS_TOKEN`.
+
+## OpenCDE documents
+
+Three nodes connect a graph to a CDE that speaks the buildingSMART
+[OpenCDE Documents API](https://github.com/buildingSMART/documents-API)
+(`@ifc-lite/documents-api`):
+
+| Node | Does | Outputs |
+|---|---|---|
+| `documents.queryVersions` | `POST /document-versions` for a list of document ids, sending the previous poll's ETag as `If-None-Match` | `versions` (a table: `document_id`, `version_number`, `version_index`, `title`, `creation_date`, `file_name`, `size_in_bytes`, `download_url`), `etag`, `changed` |
+| `documents.download` | downloads one version from its `download_url` | `data` (the file, base64), `name`, `size`, `contentType` |
+| `model.openFromSource` | opens downloaded bytes as a model on the host | `modelId` |
+
+When the server answers 304 Not Modified, `changed` is `false`, `versions`
+is empty and `etag` echoes the one sent, so a scheduled run can stop early
+when nothing moved. Both `documents.*` nodes go through the same gated
+request as `http.request`: the graph must declare `network.fetch:<host>` for
+the CDE's API host and for its file host when downloads come from another
+one. A body over the node's `maxBytes` fails the node rather than yielding a
+truncated file. The `token` param carries the bearer token as
+`{{secret:NAME}}`, so these nodes run in the CLI and MCP, where secrets
+resolve; in the viewer, only an anonymous CDE works. Both nodes are never
+memoised: a rerun always asks the server again.
+
+`model.openFromSource` loads through the host's own loader. In the viewer
+that is the same path a dropped file takes, and the model joins the
+federation. The CLI and MCP hold one model per run, so the opened model
+replaces the command-line one for the rest of the run, `--out` included;
+when a run opens several files, reads see the last one opened. MCP also
+registers each opened model, so later tool calls can address it by the
+returned id. Wire `modelId` into the `modelId` input of `model.select` or
+`model.byType`: the edge makes the read run after the model is open and
+aim at it. The node needs the `model.create` capability.
+
+```json
+{
+  "capabilities": ["network.fetch:cde.example.com", "secret.read:CDE_TOKEN", "model.create", "model.read"],
+  "nodes": [
+    { "id": "poll", "type": "documents.queryVersions",
+      "params": { "baseUrl": "https://cde.example.com/documents/1.0", "documentIds": ["d1"], "token": "{{secret:CDE_TOKEN}}" } },
+    { "id": "url", "type": "table.column", "params": { "column": "download_url" } },
+    { "id": "name", "type": "table.column", "params": { "column": "file_name" } },
+    { "id": "get", "type": "documents.download", "params": { "token": "{{secret:CDE_TOKEN}}" } },
+    { "id": "open", "type": "model.openFromSource" },
+    { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } }
+  ],
+  "edges": [
+    { "from": ["poll", "versions"], "to": ["url", "table"] },
+    { "from": ["poll", "versions"], "to": ["name", "table"] },
+    { "from": ["url", "values"], "to": ["get", "url"] },
+    { "from": ["name", "values"], "to": ["get", "name"] },
+    { "from": ["get", "data"], "to": ["open", "data"] },
+    { "from": ["get", "name"], "to": ["open", "name"] },
+    { "from": ["open", "modelId"], "to": ["walls", "modelId"] }
+  ]
+}
+```
+
 
 ## Editing a graph
 

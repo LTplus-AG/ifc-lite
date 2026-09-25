@@ -1,5 +1,46 @@
 # @ifc-lite/collab
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [[`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9)]:
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/ifcx@4.2.1
+
+## 0.9.0
+
+### Minor Changes
+
+- [#5294](https://github.com/LTplus-AG/ifc-lite/pull/5294) [`dec98a2`](https://github.com/LTplus-AG/ifc-lite/commit/dec98a2c97e03e70e8b78c55bb27e87b5b4013a6) Thanks [@louistrue](https://github.com/louistrue)! - Fix `mergeBranch(..., 'layer')` recreating an entity that the parent deleted after the fork. The branch's IFCX snapshot carries every entity the branch still has, including ones it never touched, and the overlay created any of those the parent lacked. `forkSession` now records the parent's Yjs state vector inside the branch doc (`meta` key `branch.forkStateVector`). A layer merge drops a snapshot node whose path the parent no longer has when the branch's copy is the entity it inherited at fork. A branch that deleted and re-created that path after the fork still merges it.
+  
+  `MergeReport.droppedDeletions` is computed from the same record, so it no longer depends on the branch session still holding the original `Y.Doc` object. Before, a reload, a second tab, or a merge job rebuilding the session reported a confident `0` and also lost the resurrection guard. The type is now `number | null`. `null` means the branch doc has no fork record (it was forked by an earlier version); in that case neither the count nor the parent-deletion guard could be applied. It never means zero.
+
+### Patch Changes
+
+- [#5287](https://github.com/LTplus-AG/ifc-lite/pull/5287) [`074178f`](https://github.com/LTplus-AG/ifc-lite/commit/074178f651c21dacbfbec33534701a59a7e81ace) Thanks [@louistrue](https://github.com/louistrue)! - Fix the conflict detector throwing a `TypeError` out of `Y.applyUpdate` when it is attached to a raw `Y.Doc` (for example one passed as `CollabSessionOptions.doc`) whose top-level maps had never been accessed locally. The first remote update decoded `entities` as a bare `Y.AbstractType`, and because the detector watches the same doc the websocket provider writes to, the throw landed inside the provider's message handling. The detector now initialises the maps it reads when it is created, so that update is classified normally instead of crashing.
+  
+  Also fix the detector missing conflicts when a single `Y.applyUpdate` carries writes from more than one remote client (relay catch-up, a merged diff, coalesced updates). It used to attribute the whole transaction to one guessed client. It now reads the structs the transaction inserted and credits every client that wrote the key, so a conflict is reported the same way whether it arrives batched or as separate transactions.
+
+- [#5435](https://github.com/LTplus-AG/ifc-lite/pull/5435) [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d) Thanks [@louistrue](https://github.com/louistrue)! - IFCX export no longer silently merges same-named properties from different property sets ([#5376](https://github.com/LTplus-AG/ifc-lite/issues/5376)). Before this change, every pset property went out under `bsi::ifc::prop::<Name>`, which has no pset component. Two psets on one entity that shared a name wrote the same key, the last value won, and on import the pset each property came from could not be recovered.
+  
+  - With `onlyKnownProperties: false` (full fidelity, used by Export Changes), every pset property is now written under `bsi::ifc::v5a::<Pset>::<Name>` as a typed `{ type, value }` record. This is the pset-qualified form collab snapshots and MCP draft ops already write, so nothing is lost, and re-import restores each pset with its real name.
+  - The flat `bsi::ifc::prop::<Name>` key is still written, but only for names the official IFC5 property schema (`prop@v5a.ifcx`) defines, so standard IFCX consumers still find them. Custom names such as `Reference` no longer get a flat key the schema does not define.
+  - `Ifc5ExportResult.stats.propertyCollisions` lists every official flat key that two psets on one entity disagreed on. `valueLost` is true when only the flat key was written (`onlyKnownProperties: true`), which means one value is missing from the file. The viewer's IFCX export toast now reports lost values.
+  - On import, `@ifc-lite/ifcx` skips a flat key that only mirrors a pset-qualified value on the same node, so the property is not listed twice.
+  - `PROPERTY_TYPE_NAMES` (`PropertyValueType` → IFC defined type name for typed records) now lives in `@ifc-lite/ifcx`, shared by the exporter and collab. `@ifc-lite/collab` still re-exports it.
+  
+  Files written before this change still read the same: their flat keys land in "IFC Properties", as before.
+
+- [#5289](https://github.com/LTplus-AG/ifc-lite/pull/5289) [`685b541`](https://github.com/LTplus-AG/ifc-lite/commit/685b5414f57eec64c74e056b9b51b6b8ffe3a88f) Thanks [@louistrue](https://github.com/louistrue)! - Fix `applyIfcxOverlay` silently dropping a concurrent peer's deletion. Cross-call overlay tombstones were stored as one JSON array under a single doc key. When two peers tombstoned different paths at the same time, each wrote its whole array, Yjs kept only the last write, and one peer's deletion was lost even though both peers converged. A later layer with no opinion on that path could then resurrect it. Tombstones now live one per path in a dedicated root-level map (`overlay.tombstones.registry`), so concurrent deletions of different paths no longer race.
+  
+  Migration: a doc written before this change is still honoured. Its legacy `meta` array is read and never written again, and an explicit per-path revival overrides a stale legacy entry. Rollout limit: an old-code peer and a new-code peer editing the same room at the same time are not supported. The old peer only reads the legacy array, which stops being updated, so it will not see tombstones the new peer records. Upgrade every client of a room together.
+- Updated dependencies [[`35b8b23`](https://github.com/LTplus-AG/ifc-lite/commit/35b8b238821138d6c5bc94d3ad51abf832677a88), [`83284a9`](https://github.com/LTplus-AG/ifc-lite/commit/83284a947d9adb9e1ece28f9d5ee7166722be1e5), [`992f553`](https://github.com/LTplus-AG/ifc-lite/commit/992f55304ca0ec8ed5be3b4eabab429c68808a7e), [`e66c849`](https://github.com/LTplus-AG/ifc-lite/commit/e66c849b6a79de9691a1e70ee3b2b593c5327fa1), [`52d30de`](https://github.com/LTplus-AG/ifc-lite/commit/52d30de0ae3fc8ef6322191bd1831483b93d485f), [`a250a92`](https://github.com/LTplus-AG/ifc-lite/commit/a250a928b1c8c64ac6153136772fe6c71398eee9), [`617da29`](https://github.com/LTplus-AG/ifc-lite/commit/617da29bc17326105dd1143385c967210e529a43), [`dabc489`](https://github.com/LTplus-AG/ifc-lite/commit/dabc48987aca1392685218dd31641f8dbadf9590), [`60f70f9`](https://github.com/LTplus-AG/ifc-lite/commit/60f70f93c9cdf9948f1a7325efb1e157a09d3a60), [`bd15b3f`](https://github.com/LTplus-AG/ifc-lite/commit/bd15b3f607f43ab47c8f4d530ed95231f802e15c), [`eebb00e`](https://github.com/LTplus-AG/ifc-lite/commit/eebb00e52719e0254d1626f791740ce7fe7489a9), [`f942fb6`](https://github.com/LTplus-AG/ifc-lite/commit/f942fb6c48ac9be1464e49fd963340835a72945d), [`58691b3`](https://github.com/LTplus-AG/ifc-lite/commit/58691b362d67ab87f666d76d6ee27e39d1ec45f9), [`2dd677d`](https://github.com/LTplus-AG/ifc-lite/commit/2dd677d7307d87f3b433256bd00647a2a3ee06df), [`71ace41`](https://github.com/LTplus-AG/ifc-lite/commit/71ace41b0ccfde286fe7fc1074011a91c9c8d5b1), [`07ed0dd`](https://github.com/LTplus-AG/ifc-lite/commit/07ed0ddaf4e527f1fff3704cc0d36e700fcde1a7), [`0d9cbc0`](https://github.com/LTplus-AG/ifc-lite/commit/0d9cbc0072baa634923623c6772500d57a63f412), [`80c6a38`](https://github.com/LTplus-AG/ifc-lite/commit/80c6a38a3efc8783965e94d309bcc2f984cef71d)]:
+  - @ifc-lite/mutations@2.7.0
+  - @ifc-lite/data@5.1.0
+  - @ifc-lite/ifcx@4.2.0
+
 ## 0.8.1
 
 ### Patch Changes

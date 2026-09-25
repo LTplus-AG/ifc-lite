@@ -21,6 +21,7 @@
  */
 
 import {
+  normaliseBundlePath,
   parseCapabilities,
   wrapEntrySource,
   type ActivationDispatcher,
@@ -164,7 +165,7 @@ export async function runExtensionExporter(
     }
     const grants = grantsResult.value;
 
-    const file = bundle.files.get(contribution.handler);
+    const file = bundle.files.get(normaliseBundlePath(contribution.handler));
     if (!file) {
       throw new Error(
         `Exporter handler "${contribution.handler}" missing from bundle ${record.id}.`,

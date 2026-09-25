@@ -19,7 +19,9 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { collectPhysicalEntityIds } from '@/lib/physical-objects';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { countEffectiveEntityTypes } from '@ifc-lite/data';
+import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects } from '@/lib/object-count';
 import type { AggregationRelationships } from '@/utils/aggregation';
 
@@ -29,6 +31,10 @@ export interface ModelStats {
 }
 
 export interface ModelStatsGeometryContext {
+  /** The displayed model's live mutation view, when it has one. */
+  mutationView?: MutablePropertyView | null;
+  /** Stable membership prepared by the panel across geometry-only renders. */
+  physicalIds?: ReadonlySet<number>;
   /** Whether an empty geometry result is authoritative rather than provisional. */
   geometryReady: boolean;
   /** Resolve a renderer/global id only when it belongs to the displayed model. */
@@ -49,13 +55,13 @@ export function computeModelStats(
   if (!dataStore?.spatialHierarchy) {
     return { storeys: 0, elementsWithGeometry: 0 };
   }
-  const storeys = dataStore.spatialHierarchy.byStorey.size;
+  const storeys = countEffectiveEntityTypes(dataStore, geometry.mutationView).get('IFCBUILDINGSTOREY') ?? 0;
   const meshedIds = new Set<number>();
   for (const globalId of collectMeshedIds(geometryResult)) {
     const localId = geometry.toLocalId(globalId);
     if (localId !== undefined) meshedIds.add(localId);
   }
-  const physicalIds = collectPhysicalEntityIds(dataStore.entityIndex?.byType);
+  const physicalIds = geometry.physicalIds ?? collectEffectivePhysicalEntityIds(dataStore, geometry.mutationView);
   const elementsWithGeometry = countShapedObjects(physicalIds, {
     relationships: dataStore.relationships as AggregationRelationships | undefined,
     meshedIds,

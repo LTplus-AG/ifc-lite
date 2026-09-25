@@ -1,0 +1,74 @@
+{
+  "qualification": "exploratory native-only screen; two balanced pairs per fixture; not production qualification",
+  "runs": 12,
+  "allExitZero": true,
+  "allScratchUnlinked": true,
+  "fixtures": {
+    "holter": {
+      "artifactSha256": "b1e640c8772bef21b260d6c324ae75d3a3c5fe4208fd00b835122b314fa8ab46",
+      "baseOutputMs": [
+        9059.034462,
+        8862.780172
+      ],
+      "candidateOutputMs": [
+        5030.469475,
+        4962.390288
+      ],
+      "baseMedianOutputMs": 8960.907317000001,
+      "candidateMedianOutputMs": 4996.4298815,
+      "basePeakRssKiB": [
+        863548,
+        873908
+      ],
+      "candidatePeakRssKiB": [
+        785060,
+        792436
+      ],
+      "pairedCandidateFaster": true
+    },
+    "csg129": {
+      "artifactSha256": "ad4fa2fbb50d471d2e5a7a3e242a36c45e49d2cdb8fd66f8c09b645218d471c2",
+      "baseOutputMs": [
+        3683.096452,
+        3844.263428
+      ],
+      "candidateOutputMs": [
+        1851.611869,
+        1917.601834
+      ],
+      "baseMedianOutputMs": 3763.67994,
+      "candidateMedianOutputMs": 1884.6068515000002,
+      "basePeakRssKiB": [
+        124156,
+        126288
+      ],
+      "candidatePeakRssKiB": [
+        97936,
+        97368
+      ],
+      "pairedCandidateFaster": true
+    },
+    "haus": {
+      "artifactSha256": "f4f8101798167c8c1b7ca15b2bee73c33af0e3fe73a9322af418ee1e77957f60",
+      "baseOutputMs": [
+        71.889596,
+        74.93294
+      ],
+      "candidateOutputMs": [
+        38.691831,
+        33.928459000000004
+      ],
+      "baseMedianOutputMs": 73.411268,
+      "candidateMedianOutputMs": 36.310145000000006,
+      "basePeakRssKiB": [
+        23616,
+        23232
+      ],
+      "candidatePeakRssKiB": [
+        23040,
+        22656
+      ],
+      "pairedCandidateFaster": true
+    }
+  }
+}

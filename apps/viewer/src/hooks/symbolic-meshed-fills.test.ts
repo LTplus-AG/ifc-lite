@@ -32,7 +32,7 @@ function parsed() {
   return buildParseResult(flat, { elementToStorey: new Map(), storeyElevations: new Map() });
 }
 const params = { enabled: true, effectiveGridEnabled: false, clipEnabled: false,
-  clipPos: 0, clipDepth: 1, fallbackY: 0 };
+  clipPos: 0, clipDepth: 1, fallbackY: 0, theme: 'light' as const };
 
 it('omits only the exact meshed owner/item from 3D while retaining all 2D fills (#4459)', () => {
   const cached = parsed();

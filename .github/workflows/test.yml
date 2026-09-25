@@ -145,10 +145,60 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # A push event filters against the previous commit, which a depth-1
-          # clone does not contain. PRs filter against the base ref and are
-          # unaffected, so only the push path pays the extra object.
-          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+          # Depth 2 on EVERY event: on a PR the late-changeset gate below
+          # compares the merge ref with HEAD~1 (the base tip). merge_group and
+          # push fetch their own base. The push path's paths-filter needed
+          # depth 2 already; PRs filter via the API.
+          fetch-depth: 2
+      # A RELEASE COMMIT THAT STILL CARRIES A CHANGESET PUBLISHES NOTHING
+      # (#5647). changesets/action publishes only a tree with no pending
+      # changesets, and Release runs once per push, on its tip. So a push that
+      # carries a Version Packages commit AND a pending changeset publishes
+      # nothing: a stale version PR squashed onto a main that gained a
+      # changeset since its last refresh, or a changeset entry landing in the
+      # same queue push as the version PR (up to five entries land at once).
+      #
+      # The base is therefore the start of what can land in ONE push: on
+      # merge_group the CURRENT main tip, fetched here (entries ahead of this
+      # one are not on main yet and may land with it); on push, the commit
+      # main moved from; on a PR, the merge ref's parent. A failing entry is
+      # kicked from the queue, and a failing PR cannot be queued (the
+      # aggregate is required).
+      #
+      # On PUSH the commit has already landed, so the check ANNOTATES and
+      # does not fail the step: every lane `needs: changes`, so failing here
+      # would skip build, tests and parity for exactly the push that got past
+      # the queue, hiding any real breakage it carries. The `::error::`
+      # annotation still shows, and Release's own late-changeset step fails
+      # that push's Release run.
+      #
+      # It runs HERE, in `changes`, because this job feeds the required
+      # `Build + WASM + Rust + Node` aggregate on every event and fails first.
+      # It is the first step so a failure is judged even on an `edited` event:
+      # the no-op probe below never runs, `noop` stays false, and the
+      # aggregate judges this job rather than replaying an older verdict. A
+      # fetch that fails fails the step, which is the closed direction.
+      - name: Refuse a release commit that still carries changesets
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "${EVENT}" in
+            merge_group)
+              git fetch --no-tags --depth=1 origin refs/heads/main
+              BASE=$(git rev-parse FETCH_HEAD); CONTEXT=merge ;;
+            push)
+              git fetch --no-tags --depth=1 origin "${BEFORE}"
+              BASE="${BEFORE}"; CONTEXT=push ;;
+            *)
+              BASE=HEAD~1; CONTEXT=merge ;;
+          esac
+          if [ "${EVENT}" = push ]; then
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}" \
+              || echo "Late-changeset gate reported on push (annotation above); not failing 'changes' so the lanes still run."
+          else
+            node scripts/check-release-late-changesets.mjs --context "${CONTEXT}" --base "${BASE}"
+          fi
       # THE NO-OP EDIT PROBE. Only an `edited` event can be a no-op, so the
       # step is skipped on every other event and costs nothing there; on an
       # `edited` it is one check-runs read. `noop=true` requires BOTH a
@@ -354,6 +404,8 @@ jobs:
               # widening that exclusion.
               - 'apps/landing/samples/**'
               - 'docs/architecture/coverage-ledger.md'
+              # scripts/generate-enum-reconciliation.mjs checks this generated ledger (#5365).
+              - 'docs/architecture/schema-enum-reconciliation.md'
             geometry:
               - 'rust/geometry/**'
               - 'rust/core/**'
@@ -1051,6 +1103,12 @@ jobs:
         run: node --test scripts/check-i18n-literals.test.mjs
       - name: Check for hardcoded viewer UI literals
         run: node scripts/check-i18n-literals.mjs
+      # #5607: the jsx-a11y ratchet itself runs in the Lint job (`pnpm lint`);
+      # its tests run here with the other ratchet gates' tests, and cover the
+      # shared comparison (scripts/lib/count-ratchet.mjs) the viewer smoke
+      # e2e's axe baseline also uses.
+      - name: Check jsx-a11y ratchet gate regressions
+        run: node --test scripts/check-jsx-a11y.test.mjs scripts/lib/count-ratchet.test.mjs
       # Five favicon variants sat in apps/viewer/public unreferenced for
       # months (1.885 MiB shipped to every visitor) until a maintainer's own
       # grep found them (#4111, deleted by #4114). Nothing caught them when
@@ -1066,6 +1124,34 @@ jobs:
       # actual assets can't make these pass vacuously.
       - name: Check asset-usage gate regressions
         run: node --test scripts/check-asset-usage.test.mjs
+      # A `var(--name)` reference with no fallback that resolves to nothing
+      # renders `none`/invalid rather than failing loudly (#5479):
+      # MeasurementVisuals.tsx stroked finished measurement lines with
+      # `hsl(var(--primary))` at 16 sites, but no `--primary` custom property
+      # was ever declared -- the viewer's Tailwind v4 @theme block defines
+      # `--color-primary` instead. Once a drag ended, the line's computed
+      # stroke was `none`: two floating endpoint dots and a label were all
+      # that remained. tsc does not know CSS custom properties exist, so
+      # nothing caught it. Its own tests run first, same reason as every
+      # other gate here: this check's value is entirely in not passing
+      # vacuously.
+      - name: Check CSS custom-property gate's own tests
+        run: node --test scripts/check-css-vars.test.mjs
+      - name: Check for undefined CSS custom-property references
+        run: node scripts/check-css-vars.mjs
+      # The #5478 audit found ~35 independently positioned viewport overlays,
+      # each with its own colour and z-index: violet `#9C6BDE` for the custom
+      # section plane, purple `#a855f7` for split/wall handles and edit mode,
+      # z-index from `z-10` to `z-[9999]`. #5483 shipped a token module and a
+      # z scale (`z-(--z-hud)`); this ratchet (#5487) stops a NEW hard-coded
+      # hex/rgb literal or raw z-index from landing in viewport code, and a
+      # new purple-family Tailwind utility anywhere in the viewer, without
+      # requiring the full colour-unification sweep (#5488-#5512) up front.
+      # Its own tests run first, same reason as every other gate here.
+      - name: Check overlay-palette gate's own tests
+        run: node --test scripts/check-overlay-palette.test.mjs
+      - name: Check for hard-coded viewport overlay colours and z-index
+        run: node scripts/check-overlay-palette.mjs
       # An entity can legitimately carry two distinct property/quantity sets
       # sharing the same name (type + occurrence). `sets.find(s => s.name ===
       # x)` only ever sees the first one -- fixed one call site at a time
@@ -1463,6 +1549,13 @@ jobs:
       # the workflow back to that spelling reddens these tests.
       - name: Check the release version-bump gate sees non-root bumps and fails open
         run: node --test scripts/release-version-changed.test.mjs
+      # Release's credential-quota preflight (#5693) runs on main only, like
+      # the gate above, so on a PR only its tests exercise it: the verdict and
+      # the CLI against a stub `gh`, including the drained-GraphQL reading that
+      # killed Release run 36009885836. (The `scripts/*.test.mjs` sweep below
+      # runs them too; this named step says what broke.)
+      - name: Check the release credential quota preflight
+        run: node --test scripts/check-release-credential-quota.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has
@@ -1540,6 +1633,11 @@ jobs:
       # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
       - name: Check IFC4 required-slot table freshness
         run: node scripts/generate-ifc4-required-slots.mjs --check
+      # The ledger of enum members a schema conversion can meet that the target
+      # lacks, and what the converter writes for each (#5365). A schema
+      # regeneration that adds one fails here until its rows are reviewed.
+      - name: Check enum reconciliation ledger freshness
+        run: node scripts/generate-enum-reconciliation.mjs --check
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

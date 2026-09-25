@@ -113,6 +113,7 @@ describe('resolveSpatialAnchor over live entities (#5249)', () => {
     expect(anchor.ownerHistoryId).toBe(ownerHistoryId);
     expect(anchor.bodyContextId).toBe(contextId);
     expect(anchor.axisContextId).toBe(contextId);
+    expect(anchor.rootContextId).toBe(contextId);
     const column = addColumnToStore(editor, anchor, {
       Position: [1, 2, 0], Width: 0.3, Depth: 0.4, Height: 3,
     });
@@ -121,5 +122,27 @@ describe('resolveSpatialAnchor over live entities (#5249)', () => {
       entity.type === 'IfcShapeRepresentation'
       && entity.attributes[0] === `#${contextId}`,
     )).toBe(true);
+  });
+});
+
+describe('resolveSpatialAnchor cost does not grow with the overlay (#5413)', () => {
+  it('never reads the full created-entity list, so N adds stay linear', async () => {
+    const { store, view, editor } = await session();
+    let fullReads = 0;
+    const counted = new Proxy(view, {
+      get(target, key, receiver) {
+        if (key === 'getNewEntities') return () => { fullReads++; return target.getNewEntities(); };
+        const value: unknown = Reflect.get(target, key, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    for (let i = 0; i < 100; i++) {
+      addColumnToStore(editor, resolveSpatialAnchor(store, 42, counted), {
+        Position: [i, 0, 0], Width: 0.3, Depth: 0.3, Height: 3,
+      });
+    }
+    // Each full read is O(every created entity); one per add made a bulk add O(n²).
+    expect(fullReads).toBe(0);
+    expect(editor.getNewEntities().filter((entity) => entity.type === 'IfcColumn')).toHaveLength(100);
   });
 });

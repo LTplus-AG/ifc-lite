@@ -6,6 +6,7 @@
 //! (`schema_pad`), and a proxy fallback for types with no target representation.
 
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
+use crate::schema_enum::ConversionChecks;
 use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError};
 use crate::step_slot::split_top_level_args;
 
@@ -262,6 +263,8 @@ fn trim_attributes(attrs: &str, max_count: usize) -> Option<String> {
 /// exporter cannot convert without having decided which owner history it
 /// writes, and cannot lose the count of what stayed `$`.
 ///
+/// `checks`: enum members the target lacks (#5365); IFC4-required `$` slots, counted (#5307).
+///
 /// Errs for a type with no representation in `to` at all (#5116, [`crate::schema_unrepresented`]).
 pub fn convert_step_line(
     line: &str,
@@ -269,17 +272,19 @@ pub fn convert_step_line(
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
+    checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
         return Ok(line.to_string());
     }
-    let converted = convert_record(line, cfrom, cto, express_id)?;
-    Ok(if cto == "IFC2X3" {
-        slots.apply(converted)
-    } else {
-        converted
-    })
+    let mut converted = convert_record(line, cfrom, cto, express_id)?;
+    if let Some(checks) = checks {
+        converted = checks.enums.apply(converted, cto);
+        let ifc4_downgrade = cto == "IFC4" && (cfrom == "IFC4X3" || cfrom == "IFC5");
+        ifc4_downgrade.then(|| checks.ifc4_slots.count(&converted));
+    }
+    Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two

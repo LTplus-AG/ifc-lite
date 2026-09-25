@@ -170,3 +170,61 @@ fn annotation_fill_4406_reversed_rings_keep_area_and_normal_winding() {
         assert!((area - 15.).abs() < 1e-5);
     }
 }
+
+/// #5389: the curve and text items that share an annotation's `Annotation2D` /
+/// `Surface2D` representation with its fill are symbolic (drawn by the
+/// symbolic-annotation layer). Admitting that representation for the fill
+/// (#4406) walked them too, so every one was counted as a dropped item and the
+/// viewer warned "missing or incomplete" on a clean model (293 items on
+/// AC20-FZK-Haus).
+fn with_symbolic_items(source: &str) -> String {
+    source.replace("(#12));#21", "(#12,#50,#52,#10));#21")
+        + "#50=IFCGEOMETRICCURVESET((#10,#11));#51=IFCAXIS2PLACEMENT2D(#1,$);#53=IFCPLANAREXTENT(1.,1.);#52=IFCTEXTLITERALWITHEXTENT('A',#51,.LEFT.,#53,'bottom-left');"
+}
+
+#[test]
+fn annotation_symbolic_items_5389_are_not_counted_as_dropped() {
+    for rep in ["Annotation2D", "Surface2D"] {
+        let source = with_symbolic_items(&fixture("IFCANNOTATION", rep));
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(40).unwrap();
+
+        let router = GeometryRouter::new();
+        let parts = router
+            .process_element_with_submeshes(&entity, &mut decoder)
+            .unwrap();
+        assert_eq!(parts.sub_meshes.len(), 1, "{rep}: only the fill meshes");
+        assert_eq!(parts.sub_meshes[0].geometry_id, 12);
+        assert!(
+            router.take_unsupported_items().is_empty(),
+            "{rep}: symbolic items reported as dropped"
+        );
+
+        let router = GeometryRouter::new();
+        let mesh = router.process_element(&entity, &mut decoder).unwrap();
+        assert_eq!(mesh.triangle_count(), 8, "{rep}: the combined path meshes the fill");
+        assert!(
+            router.take_unsupported_items().is_empty(),
+            "{rep}: combined path reported symbolic items"
+        );
+    }
+}
+
+#[test]
+fn annotation_symbolic_items_5389_body_representation_still_reports() {
+    // Bounding control: the same curve set in a Body representation IS a
+    // dropped mesh item, so the skip is scoped to the fill-only representation.
+    let source = with_symbolic_items(&fixture("IFCANNOTATION", "Annotation2D"))
+        .replace("'Annotation2D',(#12,#50,#52,#10))", "'Body',(#50))");
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(40).unwrap();
+    let router = GeometryRouter::new();
+    assert!(router
+        .process_element_with_submeshes(&entity, &mut decoder)
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        router.take_unsupported_items().get("IfcGeometricCurveSet"),
+        Some(&1)
+    );
+}

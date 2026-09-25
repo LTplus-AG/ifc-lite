@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -17,10 +17,12 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
+import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomSheet';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
@@ -33,6 +35,8 @@ import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDial
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
+import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
+import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
@@ -52,6 +56,8 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
+import { useThemeDocumentClass } from './useThemeDocumentClass';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -65,6 +71,7 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
   // the whole session: a second instance would keep its own ownership map and
@@ -187,12 +194,9 @@ export function ViewerLayout() {
     };
   }, [shortcutsDialog]);
 
-  // Initialize theme on mount
-  const theme = useViewerStore((s) => s.theme);
   // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
   const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
-  const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -211,6 +215,21 @@ export function ViewerLayout() {
     [floatingPanels, poppedOutIds],
   );
   const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
+
+  // Side-by-side 2D/3D layout preset (#5515): a persisted dock-side choice
+  // ("does Drawing go beside the viewport or below it") that only takes
+  // effect while Drawing is the actual docked panel — switching the strip's
+  // tab to anything else falls back to the normal bottom dock for it, same
+  // as detaching Drawing itself already does above.
+  const [stripOrientation, setStripOrientation] = useState(() => loadBottomStripOrientation());
+  const toggleStripOrientation = useCallback(() => {
+    setStripOrientation((prev) => {
+      const next = prev === 'side' ? 'bottom' : 'side';
+      persistBottomStripOrientation(next);
+      return next;
+    });
+  }, []);
+  const sideBySideDrawing = stripOrientation === 'side' && dockedBottomPanel === 'drawing';
 
   // ── Mobile bottom sheet ──
   // Mobile shows exactly ONE panel at a time, so resolve which, then render it
@@ -252,6 +271,8 @@ export function ViewerLayout() {
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -264,31 +285,10 @@ export function ViewerLayout() {
   const { models, geometryResult } = useIfc();
   const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
-  // Detect mobile viewport — use both width check AND touch capability
-  useEffect(() => {
-    const checkMobile = () => {
-      const narrowScreen = window.innerWidth < 768;
-      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const mobile = narrowScreen || (hasTouchScreen && window.innerWidth < 1024);
-      setIsMobile(mobile);
-      // Auto-collapse panels on mobile
-      if (mobile) {
-        setLeftPanelCollapsed(true);
-        setRightPanelCollapsed(true);
-      }
-    };
+  // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
+  useMobileLayoutMode();
 
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile, setLeftPanelCollapsed, setRightPanelCollapsed]);
-
-  // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('colorful', theme === 'colorful');
-  }, [theme]);
-
+  useThemeDocumentClass();
 
   const safeMode = isSafeMode();
 
@@ -315,9 +315,8 @@ export function ViewerLayout() {
         <SearchModal />
         <TourHost />
         {/* Trigger-less: this instance exists so the entity context menu's
-            "Export anonymized…" and the Command Palette's "export:anonymized"
-            (both only set `anonymizedExportRequested`, no trigger of their own)
-            have a mounted dialog regardless of whether the export toolbar
+            "Export anonymized…" (which only sets `anonymizedExportRequested`,
+            no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog />
@@ -341,7 +340,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={22}
+                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
                     minSize={10}
                     collapsible
                     collapsedSize={0}
@@ -370,7 +369,31 @@ export function ViewerLayout() {
                         dock never hides under the toolbar (its own close control
                         with it) or over the hierarchy / sidebar (#1245). */}
                     <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative">
-                      <ViewportContainer />
+                      {sideBySideDrawing ? (
+                        // Side-by-side 2D/3D preset (#5515): the drawing docks
+                        // beside the 3D view instead of below it, in its own
+                        // resizable split — same docked BottomStrip instance
+                        // (tabs, maximize, close), just placed here instead of
+                        // spanning the strip below.
+                        <PanelGroup orientation="horizontal" className="h-full w-full">
+                          <Panel id="viewport-3d-panel" defaultSize={60} minSize={20}>
+                            <ViewportContainer />
+                          </Panel>
+                          <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                          <Panel id="drawing-side-panel" defaultSize={40} minSize={20}>
+                            <BottomStrip
+                              dockedPanel={dockedBottomPanel}
+                              analysisExtension={null}
+                              containerRef={containerRef}
+                              closePanel={closePanel}
+                              orientation="side"
+                              onToggleOrientation={toggleStripOrientation}
+                            />
+                          </Panel>
+                        </PanelGroup>
+                      ) : (
+                        <ViewportContainer />
+                      )}
                     </div>
                   </Panel>
                 </PanelGroup>
@@ -382,12 +405,14 @@ export function ViewerLayout() {
 
             {/* Bottom strip — Schedule / Script / Lists / analysis ext. Launched from the
                 sidebar rail but docked here (their home region); a panel dragged out to
-                float / another screen is skipped. */}
+                float / another screen, or side-by-side (#5515), is skipped. */}
             <BottomStrip
-              dockedPanel={dockedBottomPanel}
+              dockedPanel={sideBySideDrawing ? null : dockedBottomPanel}
               analysisExtension={activeBottomAnalysisExtension}
               containerRef={containerRef}
               closePanel={closePanel}
+              orientation="bottom"
+              onToggleOrientation={toggleStripOrientation}
             />
 
             {/* Floating / docked workspace-panel windows (#1201) */}
@@ -506,178 +531,3 @@ export function ViewerLayout() {
   );
 }
 
-/**
- * Tracks the gap between the layout viewport (innerHeight) and the visual
- * viewport: how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
- */
-function useVisualViewportBottomInset(): number {
-  const [inset, setInset] = useState(0);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      const gap = window.innerHeight - vv.height - vv.offsetTop;
-      setInset(Math.max(0, Math.round(gap)));
-    };
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
-  return inset;
-}
-
-/**
- * Mobile bottom sheet with three snap states (dismissed / default / expanded).
- * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
- * cross thresholds instantly; otherwise the sheet snaps to the closest state.
- * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
- */
-function MobileBottomSheet({
-  title,
-  onClose,
-  bottomInset,
-  children,
-}: {
-  title: ReactNode;
-  onClose: () => void;
-  bottomInset: number;
-  children: ReactNode;
-}) {
-  const { t } = useTranslation();
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
-    startY: 0,
-    startT: 0,
-    startHeight: 0,
-    active: false,
-  });
-
-  const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
-
-  const getSnapPoints = useCallback(() => {
-    const h = window.visualViewport?.height ?? window.innerHeight;
-    return {
-      collapsed: 0,
-      defaultH: Math.round(h * 0.6),
-      expanded: Math.round(h * 0.92),
-    };
-  }, []);
-
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    dragRef.current = {
-      startY: e.clientY,
-      startT: performance.now(),
-      startHeight: sheet.getBoundingClientRect().height,
-      active: true,
-    };
-    sheet.style.transition = 'none';
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }, []);
-
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const sheet = sheetRef.current;
-    if (!dragRef.current.active || !sheet) return;
-    const dy = e.clientY - dragRef.current.startY;
-    const { expanded } = getSnapPoints();
-    const newHeight = Math.max(0, Math.min(expanded, dragRef.current.startHeight - dy));
-    sheet.style.height = `${newHeight}px`;
-  }, [getSnapPoints]);
-
-  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const sheet = sheetRef.current;
-    if (!dragRef.current.active || !sheet) return;
-    dragRef.current.active = false;
-    const dy = e.clientY - dragRef.current.startY;
-    const dt = Math.max(1, performance.now() - dragRef.current.startT);
-    // Positive velocity = upward drag (intent: enlarge).
-    const upwardVelocity = -dy / dt; // px/ms
-    const { collapsed, defaultH, expanded } = getSnapPoints();
-    const currentHeight = sheet.getBoundingClientRect().height;
-
-    sheet.style.transition = SPRING;
-
-    const snapTo = (h: number) => {
-      sheet.style.height = `${h}px`;
-    };
-
-    // Velocity-driven decisions take precedence over position.
-    if (upwardVelocity > 0.5) {
-      snapTo(expanded);
-      return;
-    }
-    if (upwardVelocity < -0.5) {
-      // Downward flick: from expanded → default, from default → dismiss.
-      if (dragRef.current.startHeight >= expanded - 8) {
-        snapTo(defaultH);
-      } else {
-        snapTo(collapsed);
-        window.setTimeout(onClose, 200);
-      }
-      return;
-    }
-
-    // Position-based snap: closest of the three targets.
-    const targets: Array<{ state: 'collapsed' | 'default' | 'expanded'; h: number }> = [
-      { state: 'collapsed', h: collapsed },
-      { state: 'default', h: defaultH },
-      { state: 'expanded', h: expanded },
-    ];
-    let closest = targets[1];
-    for (const t of targets) {
-      if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
-    }
-    snapTo(closest.h);
-    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
-  }, [getSnapPoints, onClose]);
-
-  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
-  useEffect(() => {
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    const { defaultH } = getSnapPoints();
-    sheet.style.height = `${defaultH}px`;
-  }, [getSnapPoints]);
-
-  return (
-    <div
-      ref={sheetRef}
-      className="absolute inset-x-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
-      style={{ bottom: `${bottomInset}px` }}
-    >
-      {/* Drag affordance — generously sized for touch */}
-      <div
-        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        role="button"
-        aria-label={t('shellChrome.layout.dragToResizeAriaLabel')}
-      >
-        <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
-      </div>
-      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
-        <span className="font-semibold text-sm">{title}</span>
-        <button
-          className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
-          onClick={onClose}
-          aria-label={t('viewerShell.dialog.close')}
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
-        {children}
-      </div>
-    </div>
-  );
-}

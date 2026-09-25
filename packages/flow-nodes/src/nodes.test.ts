@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { parseCapabilities, CapabilityDeniedError } from '@ifc-lite/extensions';
 import { NodeRegistry, runFlow, type FlowDocument, type FlowNode, type FlowEdge, type Table } from '@ifc-lite/flow';
 import { createFakeBim } from './__tests__/fake-backend.js';
-import { BROWSER_FEATURES, createStandardRegistry, headlessFeatures, type FlowHost, type FlowNodeDef } from './index.js';
+import { BROWSER_FEATURES, createStandardRegistry, headlessFeatures, readXlsxTable, writeXlsxTable, type FlowHost, type FlowNodeDef } from './index.js';
 
 const registry = createStandardRegistry();
 
@@ -191,6 +191,21 @@ describe('viewer and write nodes', () => {
     expect(denied.reports[0].error).toMatch(/Capability denied/);
   });
 
+  it('the Script node gets bim.network exactly when the graph holds a network.fetch grant (#5446 review)', async () => {
+    const run = async (networkGrants: ReturnType<typeof grants>) => {
+      const d = doc(
+        [{ id: 'sc', type: 'script.run', params: { code: 'typeof bim.network' } }],
+        [],
+        [{ nodeId: 'sc', port: 'result', label: 'r' }],
+      );
+      const r = await runFlow(d, { host: { bim: createFakeBim().bim, grants: grants('model.read'), networkGrants }, registry });
+      expect(r.ok, JSON.stringify(r.reports)).toBe(true);
+      return (r.outputs.get('sc')?.get('result') as { value?: unknown } | undefined)?.value;
+    };
+    expect(await run(grants('network.fetch:api.example.com'))).toBe('object');
+    expect(await run([])).toBe('undefined');
+  }, 30_000);
+
   it('the same graph produces the same outputs in the browser and headless', async () => {
     const d = doc(
       [
@@ -205,5 +220,349 @@ describe('viewer and write nodes', () => {
     const b = await runFlow(d, { host: { bim: createFakeBim().bim }, registry, features: headlessFeatures() });
     expect(JSON.stringify(a.graphOutputs)).toBe(JSON.stringify(b.graphOutputs));
     expect(a.graphOutputs[0].data).toEqual({ kind: 'list', items: ['REI60', null, 'REI90'] });
+  });
+});
+
+// #5167 phase 3.2: the pilot workflow's spreadsheet connector nodes. One
+// assertion per type here is deliberately load-bearing under the revert
+// oracle: reverting the production hunks restores `index.ts` to NOT register
+// these types, so `registry.get(...)` fails the `toBeDefined()` assertion
+// rather than the whole file failing to import (a brand-new module plus a
+// brand-new test importing it would otherwise only ever load-fail).
+describe('table connector nodes are registered', () => {
+  it('table.readCsv, table.writeCsv, table.readXlsx, table.writeXlsx, table.joinByKey, model.applyTable all exist', () => {
+    for (const type of ['table.readCsv', 'table.writeCsv', 'table.readXlsx', 'table.writeXlsx', 'table.joinByKey', 'model.applyTable']) {
+      expect(registry.get(type), type).toBeDefined();
+    }
+  });
+});
+
+function testCtx() {
+  return { host: { bim: createFakeBim().bim }, laneKey: null, log: () => undefined };
+}
+
+describe('table.readCsv / table.writeCsv', () => {
+  it('round-trips typed columns and reports a malformed row instead of dropping it', async () => {
+    // Row 2 has an unparseable Real cell ("abc"); row 3 has one extra field.
+    // Both must still appear in the table, not vanish.
+    const text = 'GlobalId,FireRating,IsExternal\nW1,60,true\nW2,abc,false\nW3,90,true,extra\n';
+    const readReg = registry.get('table.readCsv')!;
+    const readOut = (await readReg.run(testCtx(), { text }, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'FireRating', type: 'real' }, { name: 'IsExternal', type: 'boolean' }],
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    const table = readOut.table;
+    expect(table.rows).toEqual([
+      { GlobalId: 'W1', FireRating: 60, IsExternal: true },
+      { GlobalId: 'W2', FireRating: null, IsExternal: false },
+      { GlobalId: 'W3', FireRating: 90, IsExternal: true },
+    ]);
+    expect(readOut.problems).toEqual([
+      'row 3: column "FireRating": cannot parse "abc" as real',
+      'row 4: expected 3 field(s), got 4',
+    ]);
+
+    const writeReg = registry.get('table.writeCsv')!;
+    const out = (await writeReg.run(testCtx(), { table }, { delimiter: ',' })) as { text: string };
+    expect(out.text).toBe('GlobalId,FireRating,IsExternal\nW1,60,true\nW2,,false\nW3,90,true\n');
+  });
+
+  it('escapes CWE-1236 formula-injection triggers (=, +, -, @) in the actual output bytes', () => {
+    const reg = registry.get('table.writeCsv')!;
+    const table: Table = {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Note', type: 'string' }],
+      rows: [
+        { GlobalId: 'W1', Note: '=cmd|/c calc' },
+        { GlobalId: 'W2', Note: '+1+1' },
+        { GlobalId: 'W3', Note: '-2+3' },
+        { GlobalId: 'W4', Note: '@SUM(A1)' },
+        { GlobalId: 'W5', Note: 'a,b' },
+      ],
+      key: 'GlobalId',
+    };
+    const out = reg.run({ host: { bim: createFakeBim().bim }, laneKey: null, log: () => undefined }, { table }, { delimiter: ',' }) as { text: string };
+    expect(out.text).toBe(
+      'GlobalId,Note\n' +
+        "W1,'=cmd|/c calc\n" +
+        "W2,'+1+1\n" +
+        "W3,'-2+3\n" +
+        "W4,'@SUM(A1)\n" +
+        'W5,"a,b"\n',
+    );
+  });
+});
+
+describe('table.readXlsx / table.writeXlsx', () => {
+  it('reads back a sheet WriteXlsx produced, column types preserved', async () => {
+    const table: Table = {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'FireRating', type: 'real' }, { name: 'IsExternal', type: 'boolean' }],
+      rows: [
+        { GlobalId: 'W1', FireRating: 60, IsExternal: true },
+        { GlobalId: 'W2', FireRating: null, IsExternal: false },
+      ],
+      key: 'GlobalId',
+    };
+    const bytes = await writeXlsxTable(table, 'Data');
+    const { table: readBack, problems } = await readXlsxTable(bytes, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'FireRating', type: 'real' }, { name: 'IsExternal', type: 'boolean' }],
+    });
+    expect(problems).toEqual([]);
+    expect(readBack.rows).toEqual(table.rows);
+    expect(readBack.columns.map((c) => c.type)).toEqual(['identifier', 'real', 'boolean']);
+  });
+});
+
+describe('table.joinByKey', () => {
+  function walls(fake: ReturnType<typeof createFakeBim>) {
+    return fake.entities.filter((e) => e.type === 'IfcWall').map((e) => ({ globalId: e.globalId, modelId: 'm1', expressId: e.expressId }));
+  }
+
+  it('globalId strategy: separates matched, unmatched and ambiguous (two rows claiming one entity)', async () => {
+    const fake = createFakeBim();
+    const table: Table = {
+      columns: [{ name: 'Key', type: 'string' }, { name: 'Rating', type: 'string' }],
+      rows: [
+        { Key: 'W1', Rating: 'REI60' }, // matched
+        { Key: 'W1', Rating: 'REI61' }, // same entity, second row: entity-side ambiguity
+        { Key: 'W2', Rating: 'REI90' }, // matched
+        { Key: 'ZZZ', Rating: 'X' }, // unmatched: no such entity
+      ],
+      key: 'Key',
+    };
+    const handle: FlowNodeDef = {
+      type: 'test.entities', title: 't', category: 'test', inputs: [], outputs: [{ name: 'entities', type: { kind: 'entity', access: 'list' } }], params: [], capabilities: [],
+      run: () => ({ entities: walls(fake) }),
+    };
+    const handle2: FlowNodeDef = {
+      type: 'test.table', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [],
+      run: () => ({ table }),
+    };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle, handle2]);
+    const d = doc(
+      [
+        { id: 'e', type: 'test.entities' },
+        { id: 't', type: 'test.table' },
+        { id: 'j', type: 'table.joinByKey', params: { strategy: 'globalId', column: 'Key' } },
+      ],
+      [edge('e', 'entities', 'j', 'entities'), edge('t', 'table', 'j', 'table')],
+    );
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg });
+    expect(r.ok).toBe(true);
+    const matched = (r.outputs.get('j')!.get('matched') as { value: Table }).value;
+    const unmatched = (r.outputs.get('j')!.get('unmatched') as { value: Table }).value;
+    const ambiguous = (r.outputs.get('j')!.get('ambiguous') as { value: Table }).value;
+    expect(matched.rows).toEqual([{ Key: 'W2', Rating: 'REI90', GlobalId: 'W2' }]);
+    expect(unmatched.rows).toEqual([{ Key: 'ZZZ', Rating: 'X' }]);
+    expect(ambiguous.rows).toEqual([
+      { Key: 'W1', Rating: 'REI60', MatchedGlobalIds: 'W1' },
+      { Key: 'W1', Rating: 'REI61', MatchedGlobalIds: 'W1' },
+    ]);
+  });
+
+  it('name strategy matches case-insensitively', async () => {
+    const fake = createFakeBim();
+    const table: Table = { columns: [{ name: 'Key', type: 'string' }], rows: [{ Key: 'WALL 1' }], key: 'Key' };
+    const handle: FlowNodeDef = { type: 'test.e2', title: 't', category: 'test', inputs: [], outputs: [{ name: 'entities', type: { kind: 'entity', access: 'list' } }], params: [], capabilities: [], run: () => ({ entities: walls(fake) }) };
+    const handle2: FlowNodeDef = { type: 'test.t2', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle, handle2]);
+    const d = doc(
+      [{ id: 'e', type: 'test.e2' }, { id: 't', type: 'test.t2' }, { id: 'j', type: 'table.joinByKey', params: { strategy: 'name', column: 'Key' } }],
+      [edge('e', 'entities', 'j', 'entities'), edge('t', 'table', 'j', 'table')],
+    );
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg });
+    const matched = (r.outputs.get('j')!.get('matched') as { value: Table }).value;
+    expect(matched.rows).toEqual([{ Key: 'WALL 1', GlobalId: 'W1' }]);
+  });
+
+  it('tag/property strategies report plainly when the host provides no bulk table access', async () => {
+    const fake = createFakeBim();
+    const table: Table = { columns: [{ name: 'Key', type: 'string' }], rows: [{ Key: 'X' }], key: 'Key' };
+    const handle: FlowNodeDef = { type: 'test.e3', title: 't', category: 'test', inputs: [], outputs: [{ name: 'entities', type: { kind: 'entity', access: 'list' } }], params: [], capabilities: [], run: () => ({ entities: walls(fake) }) };
+    const handle2: FlowNodeDef = { type: 'test.t3', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle, handle2]);
+    const d = doc(
+      [{ id: 'e', type: 'test.e3' }, { id: 't', type: 'test.t3' }, { id: 'j', type: 'table.joinByKey', params: { strategy: 'tag', column: 'Key' } }],
+      [edge('e', 'entities', 'j', 'entities'), edge('t', 'table', 'j', 'table')],
+    );
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg });
+    expect(r.ok).toBe(false);
+    expect(r.reports.find((x) => x.nodeId === 'j')?.error).toMatch(/needs a host that provides bulk entity access/);
+  });
+});
+
+describe('model.applyTable', () => {
+  it('writes typed columns as property mutations; a cell that does not parse as its column type is reported per row and NOT written (never coerced to 0)', async () => {
+    const fake = createFakeBim();
+    const table: Table = {
+      columns: [
+        { name: 'GlobalId', type: 'identifier' },
+        { name: 'FireRating', type: 'string', binding: { pset: 'Pset_WallCommon', prop: 'FireRating' } },
+        { name: 'Width', type: 'real', binding: { pset: 'Pset_WallCommon', prop: 'Width' } },
+      ],
+      rows: [
+        { GlobalId: 'W1', FireRating: 'REI120', Width: 120.5 },
+        { GlobalId: 'W2', FireRating: 'REI30', Width: 'wide' },
+      ],
+      key: 'GlobalId',
+    };
+    const handle: FlowNodeDef = { type: 'test.t4', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle]);
+    const d = doc(
+      [{ id: 't', type: 'test.t4' }, { id: 'a', type: 'model.applyTable' }],
+      [edge('t', 'table', 'a', 'table')],
+    );
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg, features: headlessFeatures() });
+    expect(r.ok).toBe(true);
+    const problems = (r.outputs.get('a')?.get('problems') as { items: string[] } | undefined)?.items ?? [];
+    expect(problems).toEqual(['W2: column "Width": cannot parse "wide" as real']);
+    // W1: both columns wrote. W2: FireRating wrote, Width did NOT (bad cell) —
+    // and critically, NOT written as 0 (`parseFloat('wide')` is NaN, not 0).
+    expect(fake.mutations.map((m) => [m.ref.expressId, m.prop, m.value])).toEqual([
+      [10, 'FireRating', 'REI120'],
+      [10, 'Width', 120.5],
+      [11, 'FireRating', 'REI30'],
+    ]);
+  });
+  it('never deletes: an empty or unparseable cell leaves the existing property untouched', async () => {
+    // `GlobalId,Width\nW1,abc` read through table.readCsv yields Width: null
+    // (reported by the reader). Treating null as "delete" removed W1's
+    // existing Width — a typo in a spreadsheet became silent data loss.
+    const fake = createFakeBim();
+    const readOut = (await registry.get('table.readCsv')!.run(testCtx(), { text: 'GlobalId,Width\nW1,abc\n' }, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' }], delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(readOut.table.rows).toEqual([{ GlobalId: 'W1', Width: null }]);
+    const table: Table = {
+      ...readOut.table,
+      columns: readOut.table.columns.map((c) => (c.name === 'Width' ? { ...c, binding: { pset: 'Pset_WallCommon', prop: 'Width' } } : c)),
+    };
+    const handle: FlowNodeDef = { type: 'test.t5', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle]);
+    const d = doc([{ id: 't', type: 'test.t5' }, { id: 'a', type: 'model.applyTable' }], [edge('t', 'table', 'a', 'table')]);
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg, features: headlessFeatures() });
+    expect(r.ok).toBe(true);
+    expect(fake.mutations, 'no delete, no write — the property is left as it was').toEqual([]);
+  });
+  it('leaves a property untouched for a blank string cell, which the CSV reader keeps as ""', async () => {
+    const fake = createFakeBim();
+    const readOut = (await registry.get('table.readCsv')!.run(testCtx(), { text: 'GlobalId,Note\nW1,\n' }, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Note', type: 'string' }], delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(readOut.table.rows).toEqual([{ GlobalId: 'W1', Note: '' }]);
+    const table: Table = {
+      ...readOut.table,
+      columns: readOut.table.columns.map((c) => (c.name === 'Note' ? { ...c, binding: { pset: 'Pset_WallCommon', prop: 'Note' } } : c)),
+    };
+    const handle: FlowNodeDef = { type: 'test.t6', title: 't', category: 'test', inputs: [], outputs: [{ name: 'table', type: { kind: 'table', access: 'item' } }], params: [], capabilities: [], run: () => ({ table }) };
+    const reg = new NodeRegistry<FlowHost>().registerAll([...registry.list(), handle]);
+    const d = doc([{ id: 't', type: 'test.t6' }, { id: 'a', type: 'model.applyTable' }], [edge('t', 'table', 'a', 'table')]);
+    const r = await runFlow(d, { host: { bim: fake.bim }, registry: reg, features: headlessFeatures() });
+    expect(r.ok).toBe(true);
+    expect(fake.mutations, 'a blank cell does not overwrite the value with ""').toEqual([]);
+  });
+});
+
+describe('typed cells are read exactly or reported (#5377 review)', () => {
+  it('refuses a real, integer or boolean cell that is only a prefix of a value', async () => {
+    // `parseFloat('12,5')` is 12 and `parseFloat('60abc')` is 60; any word
+    // but true/yes/1 used to become `false`. A European CSV wrote 12.
+    const text = 'GlobalId,Width,Count,Flag\nW1,"12,5",1,ja\nW2,60abc,2.7,true\nW3,12.5,3,no\n';
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text }, {
+      columns: [
+        { name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' },
+        { name: 'Count', type: 'integer' }, { name: 'Flag', type: 'boolean' },
+      ],
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.rows).toEqual([
+      { GlobalId: 'W1', Width: null, Count: 1, Flag: null },
+      { GlobalId: 'W2', Width: null, Count: null, Flag: true },
+      { GlobalId: 'W3', Width: 12.5, Count: 3, Flag: false },
+    ]);
+    expect(out.problems).toEqual([
+      'row 2: column "Width": cannot parse "12,5" as real',
+      'row 2: column "Flag": cannot parse "ja" as boolean',
+      'row 3: column "Width": cannot parse "60abc" as real',
+      'row 3: column "Count": cannot parse "2.7" as integer',
+    ]);
+  });
+
+  it('parses the same trimmed text it checks, and refuses overflowing or imprecise numbers', async () => {
+    // A padded " true " passed the (trimmed) check but the raw text reached
+    // the parser, which wrote `false`. `1e309` parses to Infinity and
+    // 9007199254740993 rounds to ...992: both wrote a value the sheet did not hold.
+    const text = 'GlobalId,Width,Count,Flag\nW1, 2.5 , 7 , true \nW2,1e309,9007199254740993,no\n';
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text }, {
+      columns: [
+        { name: 'GlobalId', type: 'identifier' }, { name: 'Width', type: 'real' },
+        { name: 'Count', type: 'integer' }, { name: 'Flag', type: 'boolean' },
+      ],
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.rows).toEqual([
+      { GlobalId: 'W1', Width: 2.5, Count: 7, Flag: true },
+      { GlobalId: 'W2', Width: null, Count: null, Flag: false },
+    ]);
+    expect(out.problems).toEqual([
+      'row 3: column "Width": cannot parse "1e309" as real',
+      'row 3: column "Count": cannot parse "9007199254740993" as integer',
+    ]);
+  });
+
+  it('strips a UTF-8 byte-order mark so the first header is found', async () => {
+    const out = (await registry.get('table.readCsv')!.run(testCtx(), { text: '﻿"GlobalId",Width\nW1,1\n' }, {
+      delimiter: ',',
+    })) as { table: Table; problems: string[] };
+    expect(out.table.columns[0].name).toBe('GlobalId');
+    expect(out.table.key).toBe('GlobalId');
+  });
+});
+
+describe('readXlsxTable — object-valued cells (#5377 review)', () => {
+  it('reads rich text as its text and reports an error cell instead of writing "[object Object]"', async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['GlobalId', 'Note']);
+    ws.addRow(['W1', { richText: [{ text: 'fire ' }, { font: { bold: true }, text: 'rated' }] }]);
+    ws.addRow(['W2', { error: '#N/A' }]);
+    const bytes = new Uint8Array(await wb.xlsx.writeBuffer());
+    const out = await readXlsxTable(bytes, {
+      columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'Note', type: 'string' }],
+    });
+    expect(out.table.rows).toEqual([{ GlobalId: 'W1', Note: 'fire rated' }, { GlobalId: 'W2', Note: null }]);
+    expect(out.problems).toEqual(['row 3: column "Note": spreadsheet error #N/A']);
+  });
+});
+
+
+describe('http.request (#5167 phase 3.3/3.5)', () => {
+  it('is registered and declares a network requirement', () => {
+    const def = registry.get('http.request');
+    expect(def).toBeDefined();
+    expect(def?.requires?.network).toBe(true);
+  });
+
+  it('refuses a host with no matching network.fetch grant, without performing any fetch', async () => {
+    const d = doc(
+      [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', method: 'GET' } }],
+      [],
+      [{ nodeId: 'req', port: 'status', label: 'status' }],
+    );
+    const r = await runFlow(d, { host: { bim: createFakeBim().bim, networkGrants: [] }, registry, features: headlessFeatures() });
+    expect(r.ok).toBe(false);
+    expect(r.reports.find((x) => x.nodeId === 'req')?.error).toMatch(/network\.fetch refused/);
+  });
+
+  it('refuses a non-https URL even with a matching grant', async () => {
+    const d = doc(
+      [{ id: 'req', type: 'http.request', params: { url: 'http://api.example.invalid/', method: 'GET' } }],
+      [],
+      [{ nodeId: 'req', port: 'status', label: 'status' }],
+    );
+    const netGrants = grants('network.fetch:api.example.invalid');
+    const r = await runFlow(d, { host: { bim: createFakeBim().bim, networkGrants: netGrants }, registry, features: headlessFeatures() });
+    expect(r.ok).toBe(false);
+    expect(r.reports.find((x) => x.nodeId === 'req')?.error).toMatch(/https/);
   });
 });

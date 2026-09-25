@@ -11,9 +11,27 @@
  *   flow validate <graph.flow.json> [--json]        document + node availability report
  *
  * The CLI is a trusted caller running a local file, so no capability grants
- * are applied; the graph's declared `capabilities` are still reported.
- * Viewer nodes run as no-ops (`headlessFeatures`), so a graph that
- * colorizes failures in the viewer validates and runs in CI unchanged.
+ * are applied to model/viewer/export capabilities; the graph's declared
+ * `capabilities` are still reported. `network.fetch:<host>` and
+ * `secret.read:<NAME>` are the exception: they are ALWAYS checked against
+ * the graph's own declared capabilities regardless of trust level (see
+ * `FlowHost.networkGrants`'s doc comment in `@ifc-lite/flow-nodes`) — a
+ * local trusted run is still not trusted to reach an arbitrary host or leak
+ * an env var the graph never wrote down. Viewer nodes run as no-ops
+ * (`headlessFeatures`), so a graph that colorizes failures in the viewer
+ * validates and runs in CI unchanged.
+ *
+ * Secrets: `{{secret:NAME}}` references in node params are validated
+ * against the graph's `secret.read:<NAME>` capabilities and the real
+ * environment BEFORE the run starts (`validateSecretReferences`), then
+ * substituted into a throwaway copy of the document (`interpolateSecrets`)
+ * — the original document, and anything derived from it before this point
+ * (wiring/availability reports), never carries a real secret value.
+ * Every text this command emits afterwards (`--json`, plain-text summary,
+ * stderr) is passed through `redactDeep`/`redactText` first, so a secret
+ * that reaches a remote response body and comes back in a node's output or
+ * a thrown error is still scrubbed, not just the literal param it was
+ * interpolated into.
  */
 
 import { createHash } from 'node:crypto';
@@ -29,8 +47,19 @@ import {
   type FlowDocument,
   type RunResult,
 } from '@ifc-lite/flow';
-import { createStandardRegistry, headlessFeatures, type FlowHost } from '@ifc-lite/flow-nodes';
+import { parseCapabilities } from '@ifc-lite/extensions';
+import {
+  buildRedactionMap,
+  createStandardRegistry,
+  headlessFeatures,
+  interpolateSecrets,
+  redactDeep,
+  resolveSecretValues,
+  usableSecretNames,
+  validateSecretReferences,
+} from '@ifc-lite/flow-nodes';
 import { createHeadlessContext } from '../loader.js';
+import { createCliFlowSession } from './flow-host.js';
 import { fatal, getAllFlags, hasFlag, printJson } from '../output.js';
 import { defaultTrackingPath, FileTrackingStore } from './flow-tracking.js';
 
@@ -143,7 +172,7 @@ export async function flowCommand(args: string[]): Promise<void> {
     // output naming a port no node has would otherwise validate clean and
     // then produce nothing at run time.
     const wiring = validateFlowWiring(doc, registry);
-    const availability = checkAvailability(doc, registry, headlessFeatures(Object.keys(process.env)));
+    const availability = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)));
     const problems = availability.filter((a) => a.status === 'unavailable' || a.status === 'unknown');
     // The report goes out in either format FIRST, then the exit code — a
     // `--json` run that printed `ok: false` and returned 0 let CI read an
@@ -165,8 +194,29 @@ export async function flowCommand(args: string[]): Promise<void> {
   const [graphPath, modelPath] = positional;
   if (!modelPath) fatal(USAGE);
   const doc = await loadDocument(graphPath);
-  const { bim, store } = await createHeadlessContext(modelPath);
-  const host: FlowHost = { bim, defaultModelId: bim.model.activeId() ?? undefined };
+
+  // Capabilities first: `declaredSecrets` reads the all-or-nothing parse, so
+  // with one malformed capability every secret would be reported undeclared
+  // instead of the malformed capability itself (#5446 review).
+  const capsResult = parseCapabilities(doc.capabilities);
+  if (!capsResult.ok) fatal(`the graph declares malformed capabilities: ${capsResult.errors.map((e) => e.message).join('; ')}`);
+
+  // Secrets: validated against the real environment BEFORE anything else
+  // touches the graph — an undeclared or unset `{{secret:NAME}}` reference
+  // is refused here, never interpolated as an empty string.
+  const secretErrors = validateSecretReferences(doc, process.env);
+  if (secretErrors.length > 0) {
+    for (const e of secretErrors) process.stderr.write(`  error secrets: ${e.message}\n`);
+    fatal(`${secretErrors.length} secret reference problem(s); see above`);
+  }
+  const secretValues = resolveSecretValues(doc, process.env);
+  const redaction = buildRedactionMap(secretValues);
+  const runDoc = interpolateSecrets(doc, secretValues);
+
+  // The host follows the model the graph works on: `model.openFromSource`
+  // can replace the command-line model mid-run (see `flow-host.ts`).
+  const session = createCliFlowSession(await createHeadlessContext(modelPath), capsResult.value);
+  const host = session.host;
 
   let tracking: FileTrackingStore | undefined;
   const trackingPath = requireFlagValue(args, '--tracking') ?? defaultTrackingPath(graphPath);
@@ -181,11 +231,14 @@ export async function flowCommand(args: string[]): Promise<void> {
     }
   }
 
-  const result = await runFlow(doc, {
+  const result = await runFlow(runDoc, {
     host,
     registry,
+    // `--input` overrides are NOT scanned for `{{secret:NAME}}` — a secret
+    // must be authored into the graph's own node params, not passed at the
+    // command line, where it would land in shell history / process args.
     inputs: parseInputs(getAllFlags(args, '--input'), doc, registry),
-    features: headlessFeatures(Object.keys(process.env)),
+    features: headlessFeatures(usableSecretNames(process.env)),
     modelRevisions: { [host.defaultModelId ?? 'model']: 0 },
     tracking,
   });
@@ -197,14 +250,22 @@ export async function flowCommand(args: string[]): Promise<void> {
   const out = requireFlagValue(args, '--out');
   const wrote = out !== undefined && result.ok;
   if (wrote) {
+    const { bim, store } = session.active();
     const content = bim.export.ifc(null, { schema: (store.schemaVersion as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4', includeMutations: true });
     await writeFile(out, typeof content === 'string' ? content : Buffer.from(content));
   }
 
-  const summary = summarize(result);
+  // Redaction runs at the OUTER boundary, right before anything leaves this
+  // process — on the whole summary object (`--json` output included), not
+  // just the interpolated param string: a secret that reached a remote
+  // response body and came back as a node output or an error message is
+  // caught here too, not only at the point it was substituted in.
+  const summary = redactDeep(summarize(result), redaction);
   if (json) printJson({ ...summary, out: wrote ? out : null, tracking: trackingWritten ? tracking!.path : null });
   else {
     process.stdout.write(`${result.ok ? 'ok' : 'FAILED'}: ${Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ')}\n`);
+    // `summary` was already redacted (deep) above; `redactDeep` walks Maps
+    // too, so `o.data` here never carries a raw secret value.
     for (const o of summary.outputs) process.stdout.write(`  ${o.label}: ${JSON.stringify(o.data, (_k, v) => (v instanceof Map ? Object.fromEntries(v) : v))}\n`);
     for (const e of summary.errors) process.stderr.write(`  error ${e.nodeId}${e.laneKey ? `[${e.laneKey}]` : ''}: ${e.message}\n`);
     for (const w of summary.warnings) process.stderr.write(`  warn  ${w.nodeId}${w.laneKey ? `[${w.laneKey}]` : ''}: ${w.message}\n`);

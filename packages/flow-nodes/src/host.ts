@@ -14,9 +14,36 @@
  */
 
 import { CapabilityDeniedError, hasCapability, parseCapability, type Capability } from '@ifc-lite/extensions';
+import type { FetchTransport } from '@ifc-lite/sandbox';
 import type { NodeDef, NodeRunContext } from '@ifc-lite/flow';
 import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lite/sdk';
 import type { EntityRef } from '@ifc-lite/flow';
+import type { EntityTable } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+
+/** A string-interning lookup, the shape `csv-match.ts`'s match-context builder
+ *  needs for `globalId`/`name` strategies (an entity table's `name`/`globalId`
+ *  columns are interned string indices, not inline strings). */
+export type StringLookup = { get(idx: number): string } | null;
+
+/**
+ * Bulk entity access for `table.joinByKey`'s `tag`/`property` strategies,
+ * which reuse `@ifc-lite/mutations`' `csv-match.ts` index builder verbatim
+ * (issue #5230) instead of re-implementing tag/property matching. That
+ * builder scans a whole `EntityTable` once (`O(entities + rows)`) rather than
+ * once per candidate entity, so it needs the raw table, not `BimContext`'s
+ * per-`EntityRef` accessors.
+ *
+ * Optional on `FlowHost`: a host that cannot cheaply provide this (nothing
+ * today besides the CLI's `HeadlessBackend`) simply cannot run those two
+ * match strategies, and `table.joinByKey` reports that plainly rather than
+ * falling back to a slow re-implementation.
+ */
+export interface TableAccess {
+  readonly entities: EntityTable;
+  readonly mutationView: MutablePropertyView;
+  readonly strings: StringLookup;
+}
 
 export interface FlowHost {
   readonly bim: BimContext;
@@ -26,8 +53,35 @@ export interface FlowHost {
    * passes the grants the user accepted.
    */
   readonly grants?: readonly Capability[];
+  /**
+   * The graph's own declared `network.fetch:<host>` (and `secret.read:<NAME>`)
+   * capabilities — ALWAYS populated by every caller (CLI, MCP, viewer),
+   * independent of `grants`/the trust gate above. Real network access and
+   * secret reads are the one place "trusted local caller" does not mean
+   * "unrestricted": a request still needs the graph to have written down
+   * which host it may reach, so `HttpRequest` (and `bim.network.fetch` in
+   * the sandbox) always check the actual host against this list rather
+   * than relying on `grants` being undefined to skip the check entirely.
+   */
+  readonly networkGrants?: readonly Capability[];
+  /**
+   * Transport for `http.request`; `fetch` when absent. Only changes how bytes
+   * move — the grant check against `networkGrants` always runs first.
+   */
+  readonly networkTransport?: FetchTransport;
   /** Model to query when a node does not name one. */
   readonly defaultModelId?: string;
+  /** See {@link TableAccess}. `modelId` defaults to `defaultModelId`. */
+  tables?(modelId?: string): TableAccess | undefined;
+  /**
+   * Open `bytes` (an IFC file named `name`) as a model through the host's
+   * own load path, resolving to the id the loaded model answers to in
+   * `bim`. Backs `model.openFromSource`; a host that can do this lists the
+   * `openModel` backend feature. The viewer adds the model to the
+   * federation; a headless host (one model per `BimContext`) makes it the
+   * model `bim` and `defaultModelId` answer for from then on.
+   */
+  openModel?(bytes: Uint8Array, name: string): Promise<{ readonly modelId: string }>;
 }
 
 export type FlowNodeDef = NodeDef<FlowHost>;

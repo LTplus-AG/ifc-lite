@@ -32,7 +32,7 @@ export { IfcCreator } from './ifc-creator.js';
 // mapping needs. See `docs/architecture/landxml-to-ifc-mapping.md`.
 export type {
   GeoreferencingParams, SurveyPointParams, SurveyPropertySetParams,
-  TerrainSurfaceParams, TerrainSurfaceResult,
+  TerrainSurfaceParams, TerrainSurfaceResult, TerrainWriter,
 } from './ifc-creator-terrain.js';
 
 // LandXML → IFC4X3 v1. Contract: `docs/architecture/landxml-to-ifc-mapping.md`.
@@ -42,7 +42,18 @@ export {
 export {
   TRANSVERSE_MERCATOR_BOUNDS, checkCoordinateOrder, type CrsPlausibilityBounds,
 } from './landxml/coordinate-plausibility.js';
-export { collectRefusals, isMappableSurface, refusalReason } from './landxml/refusals.js';
+export {
+  alignmentMappingOf, alignmentRefusalMessage, collectRefusals, isMappableSurface, refusalReason,
+} from './landxml/refusals.js';
+export {
+  ALIGNMENT_POSITION_TOLERANCE_M, cogoPointResolver, isAlignmentRecord, mapAlignments,
+  type AlignmentMapping, type HorizontalSegment, type HorizontalSegmentType, type MappedAlignment,
+  type PointResolver, type RefusedAlignment,
+} from './landxml/alignment-mapping.js';
+export type { AlignmentParams, AlignmentResult } from './ifc-creator-alignment.js';
+export type { AlignmentVerticalParams } from './ifc-creator-alignment-vertical.js';
+export type { VerticalSegment, VerticalSegmentType } from './landxml/profile-geometry.js';
+export type { StationEquationParams } from './ifc-creator-alignment-referents.js';
 export type * from './landxml/source-types.js';
 export type * from './landxml/result-types.js';
 
@@ -242,6 +253,7 @@ export type {
 
   // Properties & quantities
   PropertyType,
+  PropertyMeasureType,
   PropertyDef,
   PropertySetDef,
   QuantityKind,

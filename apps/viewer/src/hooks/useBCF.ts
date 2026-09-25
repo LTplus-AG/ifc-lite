@@ -40,7 +40,7 @@ import { visibilityModelIdsForCapture } from './bcf/visibility-model-ids';
 import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/section-plane-position';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
-import { activeSectionPlane, clearSectionCut, showSectionCut } from '@/store/section-active';
+import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, showSectionCut } from '@/store/section-active';
 
 // ============================================================================
 // Types
@@ -152,12 +152,9 @@ export function getGlobalRenderer(): Renderer | null {
  * Read `clientHeight`/`clientWidth`, never `width`/`height`. The attributes are
  * the BACKING STORE size, which is conventionally `css * devicePixelRatio`, and
  * reading them for a physical-size derivation is wrong by exactly that ratio on
- * a Retina display. Today this particular canvas happens to be sized straight
- * from `getBoundingClientRect()` with no DPR factor (`packages/renderer`), so
- * the two coincide - which is precisely why the rule is written as a rule: the
- * day the renderer starts scaling its backing store, a caller that reached for
- * `width` silently starts reporting a scale that is off by the ratio, and
- * nothing about the resulting PDF looks wrong.
+ * a Retina display. Since #5383 the renderer does scale this canvas's backing
+ * store by the pixel ratio, so a caller that reached for `width` reports a
+ * scale off by that ratio, and nothing about the resulting PDF looks wrong.
  */
 export function getGlobalCanvas(): HTMLCanvasElement | null {
   return globalCanvasRef?.current ?? null;
@@ -423,7 +420,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // Only the cut on screen: `enabled` outlives the Section tool (#4806).
       const shown = activeSectionPlane(useViewerStore.getState());
       const viewerSectionPlane = capturedSection?.sectionPlane
-        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: shown.flipped } : undefined);
+        ?? (shown ? { axis: shown.axis, position: shown.position, enabled: true, flipped: cardinalSectionFlipped(shown) } : undefined);
       const viewpointBounds = capturedSection?.bounds ?? bounds;
 
       // Visibility GUIDs — the isolate allowlist or the hide-list, whichever the

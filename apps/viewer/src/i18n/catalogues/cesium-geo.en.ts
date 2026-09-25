@@ -7,11 +7,13 @@ import type { TranslationValue } from '../types';
 /**
  * The Cesium / geo-basemap catalogue (#4918 slice: cesiumgeo) covers the
  * five files owning the geospatial-basemap feature area:
- * `CesiumPlacementEditor.tsx` (the drag-to-move georeference gizmo and its
- * floating panel — deltas, nudge/rotate controls, the map-absolute
- * guard warning, and the apply/reset actions), `CustomBasemapEditor.tsx`
+ * `placement/CesiumPlacementGizmo.tsx` and `placement/GeoreferenceTab.tsx`
+ * (the drag-to-move georeference gizmo and the docked `placement` panel's
+ * Georeference tab that replaced its floating card, #5505 — deltas,
+ * nudge/rotate controls, the map-absolute guard warning, and the
+ * apply/reset actions), `CustomBasemapEditor.tsx`
  * and `CustomTilesetEditor.tsx` (the custom XYZ-tile and 3D-Tiles input
- * surfaces under the Sun & Sky panel's Base map selector, including their
+ * surfaces under the Environment panel's Base map selector, including their
  * third-party-privacy disclosures), `CesiumOverlay.tsx` (the globe's own
  * loading/error/basemap-warning banners), and `AxisHelper.tsx` (the 3D
  * axis-triad labels). `Eastings`, `Northings`, and `OrthogonalHeight` are
@@ -33,13 +35,8 @@ import type { TranslationValue } from '../types';
  * other placeholder.
  */
 export const cesiumGeoEn = {
-  // CesiumPlacementEditor
+  // CesiumPlacementGizmo / GeoreferenceTab
   'cesiumGeo.placement.headerTitle': 'Move Georef',
-  'cesiumGeo.placement.headerAriaLabel': 'Move georeference panel header',
-  'cesiumGeo.placement.unsavedChanges': 'Unsaved changes',
-  'cesiumGeo.placement.expandPanel': 'Expand panel',
-  'cesiumGeo.placement.collapsePanel': 'Collapse panel',
-  'cesiumGeo.placement.closeAriaLabel': 'Close georeference move mode',
   'cesiumGeo.placement.dragPlaneTitle': 'Drag to move Eastings/Northings',
   'cesiumGeo.placement.dragHeightTitle': 'Drag to change OrthogonalHeight',
   'cesiumGeo.placement.dragXYLabel': 'DRAG XY',
@@ -102,9 +99,9 @@ export const cesiumGeoEn = {
 
   // CesiumOverlay
   'cesiumGeo.overlay.loadingLabel': 'Loading 3D context...',
-  'cesiumGeo.overlay.noCustomBasemapWarning': 'No custom basemap is configured. Add a tile URL in Sun & Sky > Base map.',
+  'cesiumGeo.overlay.noCustomBasemapWarning': 'No custom basemap is configured. Add a tile URL in Environment > Base map.',
   'cesiumGeo.overlay.customBasemapUnavailable': 'That tile URL could not be used as a basemap.',
-  'cesiumGeo.overlay.noCustomTilesetWarning': 'No custom 3D Tiles URL is configured. Add one in Sun & Sky > Base map.',
+  'cesiumGeo.overlay.noCustomTilesetWarning': 'No custom 3D Tiles URL is configured. Add one in Environment > Base map.',
   'cesiumGeo.overlay.initFailed': 'Cesium initialization failed',
 
   // AxisHelper

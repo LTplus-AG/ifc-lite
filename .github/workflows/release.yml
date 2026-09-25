@@ -25,7 +25,23 @@ on:
     branches:
       - main
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+# One Release run at a time, and no push's run is cancelled unstarted (#5646).
+#
+# `queue: max` is load-bearing. Without it the group uses `queue: single`:
+# at most one run may be pending, and a newer push cancels the older PENDING
+# run (a running one is safe, `cancel-in-progress` defaults to false). main
+# takes several pushes an hour, so a run usually waits behind another one.
+# For an ordinary push that costs nothing. For a release commit it drops the
+# only run that takes the publish path, and the re-run that recovers a
+# partial publish is dropped the same way (both happened on 2026-09-24, see
+# #5646). `max` runs them FIFO with up to 100 pending; past that GitHub
+# cancels the NEW arrivals, not a run already waiting. The issue has the
+# measured queue depth, which stays far below 100. A stale version-PR run
+# stops early and only the publish path builds (see the `superseded` and
+# `changesets-read` steps).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  queue: max
 
 permissions:
   contents: read
@@ -67,6 +83,11 @@ jobs:
       # and `pull_requests: read+write` survives org/repo moves and removes
       # the App-management surface entirely. Rotate the PAT in the repo
       # secrets when it expires; no workflow change needed for rotation.
+      #
+      # The PAT must belong to an account NOTHING ELSE USES (#5693): a PAT
+      # spends its owner's hourly API quota, and a run fails when anything
+      # else on that account has drained it. See RELEASE.md, "Release
+      # credential", and the quota check before `Setup pnpm`.
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,7 +121,16 @@ jobs:
         run: |
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           echo "sb_version=$(node -p "require('./packages/server-bin/package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          # The same files @changesets/read counts as changesets (its
+          # `ignoredMdFiles`): top-level `*.md`, no dotfiles, not README (any
+          # case), AGENTS.md, CLAUDE.md or GEMINI.md. It must agree with
+          # changesets/action, because it decides whether a stale run is skipped
+          # and whether the release artifacts are due. It does not look in
+          # `.changeset/pre/`, so in pre "exit" mode it undercounts and a stale
+          # run is not skipped (the behaviour before the skip existed). This
+          # repo does not use pre mode. The publish toolchain is gated on the
+          # exact count, read after `pnpm install`.
+          echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name '.*' ! -iname 'README.md' ! -name 'AGENTS.md' ! -name 'CLAUDE.md' ! -name 'GEMINI.md' | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
           # Does THIS commit carry a version bump?
           #
@@ -138,13 +168,92 @@ jobs:
           [ "${VERSION_CHANGED}" = "false" ] || VERSION_CHANGED=true
           echo "version_changed=${VERSION_CHANGED}" >> "$GITHUB_OUTPUT"
 
+      # A release commit that still carries a pending changeset (#5647).
+      # changesets/action publishes only from a tree with NO pending
+      # changesets, so such a commit takes the version-PR path and publishes
+      # nothing, and the run used to go green. The merge queue refuses these
+      # (the same script, in test.yml's `changes` job); this is the backstop
+      # for one that lands anyway, by bypass or a queue run that missed it.
+      #
+      # Read HERE, before changesets/action consumes the changesets and bumps
+      # this working tree, and only RECORDED: the run still refreshes the
+      # version PR below, which is the recovery (merge it alone and every
+      # unpublished version ships), and `Fail a release commit that published
+      # nothing` at the end of this job turns the run red. `--record` writes
+      # `status=` (0 clean, 1 late changesets, 2 cannot tell) and exits 0, so
+      # a late verdict does not stop the job here. Anything but a recorded 0,
+      # including no status at all because node never got that far, fails
+      # that step: a broken gate is loud rather than silently clean.
+      #
+      # The base is `github.event.before`, not HEAD~1: this workflow runs once
+      # per push, on its tip, and the merge queue lands up to five entries in
+      # one push, so the Version Packages commit need not be the tip.
+      # `continue-on-error`: a crash here leaves `status` unset, which the
+      # final step turns red, without also skipping the publish or the
+      # version-PR refresh in between.
+      - name: Check for changesets a release commit left pending
+        id: late-changesets
+        continue-on-error: true
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/check-release-late-changesets.mjs --context release --base "${BEFORE}" --record "$GITHUB_OUTPUT"
+
+      # With `queue: max` (see `concurrency:`) a run can start well after its
+      # push. A run with changesets pending only refreshes the version PR, and
+      # when its commit is no longer the tip of the pushed ref, the tip's run
+      # does that from a newer tree. Doing it here as well wastes a run and can
+      # do harm: if the version PR merged in between, changesets/action finds
+      # no open PR and opens a NEW one from this older tree, repeating bumps
+      # main already carries. So such a run stops here (`skip`). This uses the
+      # `pre` step's count because it runs before `pnpm install`.
+      #
+      # A run with nothing pending (a release commit, a re-run of one, or an
+      # ordinary push retrying a failed publish) is never skipped: the tip may
+      # have changesets pending and would not retry the publish. If the tip
+      # cannot be read, TIP is empty and nothing is skipped. This narrows the
+      # stale-run race, it does not close it: the ref can still move between
+      # here and changesets/action.
+      - name: Skip a superseded version-PR run
+        id: superseded
+        run: |
+          SKIP=false
+          if [ "${PENDING}" != "0" ]; then
+            # ls-remote matches ref tails, so keep only the exact ref.
+            TIP=$(git ls-remote origin "${GITHUB_REF}" | awk -v r="${GITHUB_REF}" '$2 == r { print $1 }')
+            if [ -n "${TIP}" ] && [ "${TIP}" != "${GITHUB_SHA}" ]; then
+              echo "::notice title=Superseded::${GITHUB_REF} is at ${TIP}, this run is for ${GITHUB_SHA} with ${PENDING} changeset(s) pending. The run for the newer commit refreshes the version PR, so the rest of this job is skipped."
+              SKIP=true
+            fi
+          fi
+          echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
+        env:
+          PENDING: ${{ steps.pre.outputs.pending }}
+
+      # THE RELEASE CREDENTIAL'S QUOTA (#5693). RELEASE_PAT spends its OWNER's
+      # hourly API quota, shared with everything else that account does. Run
+      # 36009885836 died mid-job when agent sessions on the same account had
+      # drained its GraphQL bucket. Read `GET /rate_limit` (free) HERE, before
+      # anything is pushed, published or minted: wait for a reset that is near,
+      # fail with the owner and reset time otherwise. It runs on every
+      # non-superseded run, not only release commits: an ordinary push also
+      # retries a failed publish and refreshes the version PR, both on this
+      # credential. The real fix is a credential nothing else spends; see
+      # RELEASE.md, "Release credential".
+      - name: Check the release credential's API quota
+        if: steps.superseded.outputs.skip != 'true'
+        run: node scripts/check-release-credential-quota.mjs
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+
       - name: Setup pnpm
+        if: steps.superseded.outputs.skip != 'true'
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Setup Node.js
+        if: steps.superseded.outputs.skip != 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # Node 24 ships npm ≥ 11.5.1 out of the box, which is what npm
@@ -158,6 +267,41 @@ jobs:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Install Dependencies
+        if: steps.superseded.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Publish or version, decided by @changesets/read, the reader
+      # changesets/action itself uses, now that `pnpm install` has made it
+      # available. Everything only the publish path needs is gated on this,
+      # not on the `pre` step's `find`, so a disagreement between the two can
+      # never let the action publish without the toolchain. (`build-wasm.sh`
+      # soft-skips when wasm-pack is missing, so that would not fail loudly.)
+      - name: Read pending changesets
+        id: changesets-read
+        if: steps.superseded.outputs.skip != 'true'
+        run: |
+          # The same calls as changesets/action's readChangesetState, from the
+          # packages @changesets/cli depends on: readPreState (which also
+          # migrates a legacy pre.json), then readChangesets, dropping `pre/`
+          # ids in pre mode. A throw fails the step.
+          COUNT=$(node --input-type=module -e "
+            import { createRequire } from 'node:module';
+            const req = createRequire(createRequire(process.cwd() + '/').resolve('@changesets/cli/package.json'));
+            const { readPreState } = await import(req.resolve('@changesets/pre'));
+            const { readChangesets } = await import(req.resolve('@changesets/read'));
+            const preState = await readPreState(process.cwd());
+            let changesets = await readChangesets(process.cwd());
+            if (preState?.mode === 'pre') changesets = changesets.filter((c) => !c.id.startsWith('pre/'));
+            process.stdout.write(String(changesets.length));
+          ")
+          # Exit-0 output that is not a plain integer is not an answer either.
+          case "${COUNT}" in ''|*[!0-9]*) echo "::error::could not count pending changesets (got '${COUNT}')"; exit 1 ;; esac
+          echo "@changesets/read: ${COUNT} pending changeset(s)"
+          PUBLISH=false
+          if [ "${COUNT}" = "0" ]; then PUBLISH=true; fi
+          echo "publish=${PUBLISH}" >> "$GITHUB_OUTPUT"
+
       # rust-toolchain.toml pins nightly-2025-11-15 + wasm32-unknown-unknown.
       # `rustup show` installs that exact toolchain on GHA runners; matches
       # test.yml so the published bundle is byte-identical
@@ -168,17 +312,16 @@ jobs:
       # toolchain since M9). Single-sourced in
       # .github/actions/setup-wasm-build (shared with test.yml / sdk-canary.yml).
       - name: Setup WASM build toolchain
+        if: steps.changesets-read.outputs.publish == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: release
-
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
 
       # Cache + fetch fixtures so cross-package tests that load
       # tests/models/ifc5/*.ifcx (pointcloud, export, ifcx) can run.
       # Mirrors the Test workflow; key changes only when the manifest does.
       - name: Cache test fixtures
+        if: steps.changesets-read.outputs.publish == 'true'
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -190,10 +333,11 @@ jobs:
           key: release-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
 
       - name: Fetch fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        if: steps.changesets-read.outputs.publish == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
 
       - name: Verify fixtures
+        if: steps.changesets-read.outputs.publish == 'true'
         run: pnpm fixtures:check
 
       # Build the publishable artifacts. Typecheck / ESM-resolution /
@@ -203,17 +347,19 @@ jobs:
       # already passed all of them. Repeating them would add ~8 min
       # per release without changing the verdict.
       - name: Build Packages
+        if: steps.changesets-read.outputs.publish == 'true'
         run: pnpm build
 
       # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)
       # crates.io access token. A Trusted Publisher must be configured on
-      # crates.io for EACH published crate (ifc-lite-core, -geometry, -clash,
-      # -processing, -ffi, -wasm) pointing at this repo + this workflow
+      # crates.io for EACH crate in CRATES (scripts/lib/crates-io.mjs)
+      # pointing at this repo + this workflow
       # before its first automated publish. A brand-new crate name (e.g.
       # ifc-lite-ffi) must additionally be bootstrapped once with a personal
       # API token — `cargo publish -p <crate> --token …` — to claim the name,
       # since a Trusted Publisher can only be configured on an existing crate.
       - name: Authenticate to crates.io (OIDC)
+        if: steps.changesets-read.outputs.publish == 'true'
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
@@ -231,6 +377,7 @@ jobs:
       # the crates loop is charged against the token's real remaining
       # lifetime instead of escaping the bound entirely.
       - name: Stamp crates.io token mint time
+        if: steps.changesets-read.outputs.publish == 'true'
         id: crates-auth-time
         run: echo "minted_at_ms=$(node -e 'process.stdout.write(String(Date.now()))')" >> "$GITHUB_OUTPUT"
 
@@ -244,6 +391,7 @@ jobs:
       # as `cargo +stable semver-checks`, so this only has to exist; it does not
       # become the default toolchain and nothing else in the release uses it.
       - name: Install stable Rust for the crate semver gate
+        if: steps.changesets-read.outputs.publish == 'true'
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-05
         with:
           toolchain: stable
@@ -252,9 +400,11 @@ jobs:
       # it from source (~5 min) on a runner that is already the slowest job in
       # the repo.
       - name: Install cargo-semver-checks
+        if: steps.changesets-read.outputs.publish == 'true'
         uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
 
       - name: Create Release Pull Request or Publish
+        if: steps.superseded.outputs.skip != 'true'
         id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
@@ -313,6 +463,7 @@ jobs:
       # one, which a single shared flag would skip forever — the same
       # "one flag, two questions" mistake in miniature.
       - name: Decide release artifacts
+        if: steps.superseded.outputs.skip != 'true'
         id: release-gate
         run: |
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -505,6 +656,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
 
+      # The red half of the `late-changesets` step above (#5647). Last, so the
+      # version-PR refresh has already happened; `!cancelled()`, so it also
+      # fires when the run was skipped as superseded or an earlier step
+      # failed. An unset status (the step never ran) is not '0' and fails too.
+      - name: Fail a release commit that published nothing
+        # `outcome != 'skipped'`: when an earlier step failed, the check never
+        # ran and the job is already red for the real reason; a second
+        # "could not evaluate" error would only point operators the wrong way.
+        if: ${{ !cancelled() && steps.late-changesets.outcome != 'skipped' && steps.late-changesets.outputs.status != '0' }}
+        run: |
+          if [ "${STATUS}" = "1" ]; then
+            echo "::error title=Release commit still carries changesets (#5647)::This push (up to ${GITHUB_SHA}) bumps workspace versions but its tip still carries pending changesets, so nothing was published. Merge the refreshed Version Packages PR on its own to publish; see the 'Check for changesets a release commit left pending' step for the list, and RELEASE.md."
+          else
+            echo "::error title=Late-changeset gate failed::scripts/check-release-late-changesets.mjs could not evaluate this commit (status '${STATUS}'). See the 'Check for changesets a release commit left pending' step."
+          fi
+          exit 1
+        env:
+          STATUS: ${{ steps.late-changesets.outputs.status }}
+
   # ── Publish verification ────────────────────────────────────────────────
   #
   # Verify every published package/crate is actually reachable on its
@@ -539,8 +709,8 @@ jobs:
   # and passed, one second before the attempt was cancelled by hand. The
   # remaining structural argument does not hold either: `concurrency:` above
   # has no `cancel-in-progress`, which defaults to false, so a newer push
-  # QUEUES behind this run rather than cancelling it — GitHub never cancels
-  # these jobs with their parent. And a separate workflow queues into the
+  # never cancels a RUNNING run, and with `queue: max` it does not cancel a
+  # pending one either (#5646). And a separate workflow queues into the
   # same account-level runner pool, so being separate would confer no
   # scheduling priority in any case. Staying in-run keeps the verdict on the
   # Release run itself, keeps the YAML and `scripts/` at one commit, and

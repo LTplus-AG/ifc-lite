@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
@@ -61,7 +62,6 @@ export function ActivityBar() {
   const setSidebarCustomizing = useViewerStore((s) => s.setSidebarCustomizing);
   const setPanelShownInSidebar = useViewerStore((s) => s.setPanelShownInSidebar);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
-  const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
   const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
 
@@ -70,6 +70,10 @@ export function ActivityBar() {
   // the count where the user already looks, like the Room peers badge.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const hasStack = useViewerStore((s) => s.layerStack.length > 0);
+  // Point Clouds rail icon (#5507): only shown while at least one point
+  // cloud asset is loaded — same gating shape as `isCollabEnabled()` below,
+  // just driven by scene state instead of a feature flag.
+  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const pendingLayerEdits = useMemo(() => {
     void mutationVersion;
     return hasStack ? pendingCompositionMutations().length : 0;
@@ -86,7 +90,8 @@ export function ActivityBar() {
   const visibleIds = order.filter(
     (id) =>
       (!hidden.has(id) || id === 'properties') &&
-      (id !== 'collab' || isCollabEnabled()),
+      (id !== 'collab' || isCollabEnabled()) &&
+      (id !== 'pointclouds' || pointCloudAssetCount > 0),
   );
 
   const onIconClick = (id: WorkspacePanelId) => {
@@ -157,7 +162,8 @@ export function ActivityBar() {
                       setOverId(null);
                     }}
                     onDragOver={(e) => {
-                      if (!customizing) return;
+                      // Only an icon reorder claims the drag; a file is the window's (#5845).
+                      if (!customizing || !dragId) return;
                       e.preventDefault();
                       if (overId !== id) setOverId(id);
                     }}

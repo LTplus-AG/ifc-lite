@@ -1,0 +1,72 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import { HudSurface } from './HudSurface';
+
+export interface HudChipAction {
+  onClick: () => void;
+  /** Translated accessible name — required since the button is icon-only. */
+  'aria-label': string;
+  /** Optional hover tooltip, when the action wants more than its accessible name. */
+  title?: string;
+  icon: ReactNode;
+}
+
+export interface HudChipProps {
+  children: ReactNode;
+  icon?: ReactNode;
+  /** e.g. the parked-section chip's "resume" arrow (#5478 §6, item 18). */
+  resume?: HudChipAction;
+  /** e.g. dismiss for a chip the user can permanently clear. */
+  dismiss?: HudChipAction;
+  /** e.g. `status` for a warning chip a screen reader should announce. */
+  role?: string;
+  /** Paired with `role`; defaults follow from `role` when omitted. */
+  'aria-live'?: 'polite' | 'assertive' | 'off';
+  className?: string;
+}
+
+/**
+ * A short status chip — "Section parked · Resume", a solo/storey pill, a
+ * Cesium status flag — on the shared `HudSurface`, with an optional resume
+ * and/or dismiss action. Neither action renders text of its own; the caller
+ * supplies the translated `aria-label`.
+ */
+export function HudChip({ children, icon, resume, dismiss, role, 'aria-live': ariaLive, className }: HudChipProps) {
+  return (
+    <HudSurface
+      className={cn('flex max-w-[13rem] items-center gap-1.5 px-2 py-1 text-xs', className)}
+      role={role}
+      aria-live={ariaLive ?? (role === 'status' ? 'polite' : role === 'alert' ? 'assertive' : undefined)}
+    >
+      {icon}
+      {/* Bounded so a chip can never outgrow the HUD's side lane (`ViewportHud`). */}
+      <span className="min-w-0 truncate tabular-nums">{children}</span>
+      {resume && (
+        <button
+          type="button"
+          onClick={resume.onClick}
+          aria-label={resume['aria-label']}
+          title={resume.title}
+          className="rounded-sm p-0.5 text-overlay-accent hover:bg-overlay-accent-soft"
+        >
+          {resume.icon}
+        </button>
+      )}
+      {dismiss && (
+        <button
+          type="button"
+          onClick={dismiss.onClick}
+          aria-label={dismiss['aria-label']}
+          title={dismiss.title}
+          className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent"
+        >
+          {dismiss.icon}
+        </button>
+      )}
+    </HudSurface>
+  );
+}

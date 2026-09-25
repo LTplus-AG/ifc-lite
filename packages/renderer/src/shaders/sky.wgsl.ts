@@ -8,10 +8,13 @@
  * ground gradient plus a sun disc + glow, driven by the same sun direction
  * the geometry lighting uses.
  *
- * Tonemapping note: the geometry shader applies ACES + gamma at the end of
- * its fragment stage (not in a post pass), so the sky must apply the same
- * curve here or it would read as a different "film stock" than the model.
+ * Tonemapping note: the geometry shader applies its highlight roll-off and
+ * sRGB encode at the end of its fragment stage (not in a post pass), so the
+ * sky runs the same shared functions or it would read as a different "film
+ * stock" than the model. The gradient colours are linear radiance.
  */
+import { colorTransferWgsl } from './color-transfer.wgsl.js';
+
 export const skyShaderSource = `
         struct SkyUniforms {
           camRight: vec3<f32>,
@@ -49,15 +52,7 @@ export const skyShaderSource = `
           return out;
         }
 
-        // Same ACES filmic curve as the geometry fragment shader.
-        fn acesTonemap(c: vec3<f32>) -> vec3<f32> {
-          let a = 2.51;
-          let b = 0.03;
-          let cc = 2.43;
-          let d = 0.59;
-          let e = 0.14;
-          return clamp((c * (a * c + b)) / (c * (cc * c + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
-        }
+        ${colorTransferWgsl}
 
         struct FragmentOutput {
           @location(0) color: vec4<f32>,
@@ -82,14 +77,19 @@ export const skyShaderSource = `
           let zenithMix = pow(clamp(elevation, 0.0, 1.0), 0.45);
           var color = mix(sky.horizonColor, sky.zenithColor, zenithMix);
 
-          // Below the horizon: fade quickly into the ground colour.
+          // Below the horizon: fade gradually into the ground colour. The
+          // falloff spans elevation -0.5..0 (rather than a near-instant
+          // -0.1..0) so the ordinary downward-pitched BIM camera sees a
+          // gradient from the horizon tone into the ground tone instead of
+          // an abrupt flat-colour wall a few degrees below the horizon
+          // (#5583); only a near-vertical look-down reaches pure groundColor.
           // WGSL requires smoothstep's low < high, so express the
-          // downward ramp (0 at the horizon → 1 at elevation -0.1) as the
+          // downward ramp (0 at the horizon → 1 at elevation -0.5) as the
           // complement of an ascending smoothstep rather than passing
           // reversed edges, which Tint rejects as a shader-compile error
-          // (low 0.0 not less than high -0.1) — that invalidated the whole
+          // (low 0.0 not less than high -0.5) — that invalidated the whole
           // sky pipeline and blanked the frame on strict drivers.
-          let groundMix = 1.0 - smoothstep(-0.1, 0.0, elevation);
+          let groundMix = 1.0 - smoothstep(-0.5, 0.0, elevation);
           color = mix(color, sky.groundColor, groundMix);
 
           // Sun disc + glow. The disc is slightly oversized vs the real
@@ -103,10 +103,9 @@ export const skyShaderSource = `
           let sunTint = vec3<f32>(1.0, 0.92, 0.78);
           color += (disc * 6.0 + glow) * max(sky.sunIntensity, 0.0) * sunVisible * sunTint;
 
-          // Match the geometry pipeline: exposure → ACES → gamma.
+          // Match the geometry pipeline: exposure → highlight roll-off → sRGB.
           color *= sky.exposure;
-          color = acesTonemap(color);
-          color = pow(color, vec3<f32>(1.0 / 2.2));
+          color = linearToSrgb(clamp(neutralCompress(color), vec3<f32>(0.0), vec3<f32>(1.0)));
 
           var out: FragmentOutput;
           out.color = vec4<f32>(color, 1.0);

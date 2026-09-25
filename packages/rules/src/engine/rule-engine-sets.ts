@@ -17,7 +17,7 @@ import { collectSpatialAncestors } from '@ifc-lite/data';
 import { numericOpMatches } from '../filter/filter-ops.js';
 import { evaluateFilterGroupsFederated } from '../filter/filter-evaluate-groups.js';
 import type { FilteredElement, EvaluatorModel } from '../filter/filter-evaluate.js';
-import { readSubject } from '../filter/read-subject.js';
+import { readSubjectWhole } from '../filter/read-subject.js';
 import type { Subject, UniqueRequirement, AggregateRequirement } from '../rule-set/rule-set.js';
 import { OP_LABEL, type ValidationOpts } from './rule-engine-requirements.js';
 import { maybeYieldChunk, finalProgress, type RuleEngineProgress } from './rule-engine-chunk.js';
@@ -32,6 +32,7 @@ export function describeSubject(subject: Subject): string {
     case 'attribute': return subject.name;
     case 'classification': return subject.system ? `Classification[${subject.system}]` : 'Classification';
     case 'group': return subject.groupClass ? `Group[${subject.groupClass}]` : 'Group';
+    case 'modelFact': return `model.${subject.fact}`;
     default: return subject.kind;
   }
 }
@@ -106,7 +107,7 @@ export async function checkUnique(
     const el = applicable[i];
     const store = storesById.get(el.modelId);
     if (store) {
-      const subject = readSubject(requirement.subject, { store, expressId: el.expressId });
+      const subject = readSubjectWhole(requirement.subject, { store, expressId: el.expressId });
       if (!subject.present) {
         entityResults.push(baseRow(el, false, {
           requirement: { id: requirementId, label, optionality: 'required' },
@@ -211,7 +212,7 @@ function groupKeysOf(
     if (parentId === undefined) return [];
     return [{ key: `${el.modelId}:${parentId}`, label: store.entities.getName(parentId) }];
   }
-  const subject = readSubject(requirement.groupBy.subject, { store, expressId: el.expressId });
+  const subject = readSubjectWhole(requirement.groupBy.subject, { store, expressId: el.expressId });
   if (!subject.present) return [];
   const out: { key: string; label: string }[] = [];
   const seen = new Set<string>();
@@ -249,7 +250,7 @@ async function seedUniverse(
       continue;
     }
     if (!requirement.groupBy) continue;
-    const subject = readSubject(requirement.groupBy.subject, { store, expressId: uel.expressId });
+    const subject = readSubjectWhole(requirement.groupBy.subject, { store, expressId: uel.expressId });
     for (const raw of subject.values) {
       const s = String(raw);
       if (s.trim().length === 0) continue;
@@ -299,7 +300,7 @@ export async function checkAggregate(
             acc.count++;
           }
         } else {
-          const subject = readSubject(requirement.subject!, { store, expressId: el.expressId });
+          const subject = readSubjectWhole(requirement.subject!, { store, expressId: el.expressId });
           const nums = subject.present ? subject.values.map(Number).filter(Number.isFinite) : [];
           const reason: FailureReasonCode | undefined = !subject.present ? 'absent' : nums.length === 0 ? 'notNumeric' : undefined;
           for (const gk of groupKeys) {

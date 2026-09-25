@@ -19,6 +19,7 @@ import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
+import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -277,25 +278,22 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
 /**
  * Convert a raw STEP entity line from one schema version to another.
  *
- * Handles:
- * 1. Entity type name conversion
- * 2. Attribute count adjustment: trimming trailing attrs for older schemas, and
- *    padding trailing `$` for newer schemas that ADDED attributes (e.g. the
- *    PredefinedType IFC4 introduced on IfcWall/IfcBeam/IfcOpeningElement/…).
- * 3. Skipping entities that have no valid representation in the target schema
+ * Handles: 1. entity type names; 2. attribute counts (trim for older schemas,
+ * pad trailing `$` for attributes a newer schema APPENDED, e.g. IFC4's
+ * PredefinedType on IfcWall); 3. entities with no target representation;
+ * 4. enum members the target lacks (`enums`, #5365).
  *
  * @param line - Raw STEP entity line (e.g., "#1=IFCWALL('guid',...);")
  * @param fromSchema - Source schema version
  * @param toSchema - Target schema version
- * @param random - Optional seeded `RandomSource` for the GlobalId of any
- *   IFCPROXY placeholder minted here. Omit for the default random path; pass
- *   a seeded source when the caller needs byte-reproducible output.
+ * @param random - Optional seeded `RandomSource` for the GlobalId of any IFCPROXY
+ *   placeholder minted here; pass one when output must be byte-reproducible.
  * @param slots - This package's exporters pass one; it carries the owner
  *   history they reuse (#4686) and collects what they could not settle.
  *   Omitted, a throwaway stands in, so the generated table's own defaults are
  *   still written but the OwnerHistory reuse and both counts are lost.
- * @param ifc4Slots - Counts IFC4-required slots left `$` (#5202), only for IFC4X3/IFC5 →
- *   IFC4; see `schema-converter-ifc4-slots.ts` for why IFC2X3 → IFC4 is not.
+ * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4 only, #5202).
+ * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
@@ -313,10 +311,12 @@ export function convertStepLine(
   slots?: Ifc2x3SlotFill,
   withheldRefIds?: ReadonlySet<number>,
   ifc4Slots?: Ifc4SlotCheck,
+  enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  const converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
+  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds);
   if (converted === null) return null;
+  if (enums && toSchema !== 'IFC5') converted = enums.apply(converted, toSchema);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
   if (toSchema === 'IFC4' && (fromSchema === 'IFC4X3' || fromSchema === 'IFC5')) ifc4Slots?.apply(converted);
   return converted;

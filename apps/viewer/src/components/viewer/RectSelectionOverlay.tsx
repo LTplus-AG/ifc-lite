@@ -7,7 +7,16 @@
  * over the canvas in select mode). Renders an SVG outline whenever
  * `rect` is non-null; the parent supplies / clears the prop in step
  * with the mouse handler.
+ *
+ * On the shared scene-overlay kernel (#5486/#5512, charter #5478): the
+ * rect is already screen-space CSS px (the mouse handler reports it
+ * directly, nothing to project), so this portals straight into the
+ * kernel's SVG layer via `useSceneLayer` instead of mounting its own
+ * `<svg>` element with its own stacking context.
  */
+
+import { createPortal } from 'react-dom';
+import { useSceneLayer } from '@/components/viewport-ui/scene';
 
 export interface RectSelectionRect {
   x0: number;
@@ -21,28 +30,24 @@ export interface RectSelectionOverlayProps {
 }
 
 export function RectSelectionOverlay({ rect }: RectSelectionOverlayProps) {
-  if (!rect) return null;
+  const svgLayer = useSceneLayer('svg');
+  if (!svgLayer || !rect) return null;
   const left = Math.min(rect.x0, rect.x1);
   const top = Math.min(rect.y0, rect.y1);
   const width = Math.abs(rect.x1 - rect.x0);
   const height = Math.abs(rect.y1 - rect.y0);
   if (width < 1 || height < 1) return null;
-  return (
-    <svg
-      className="absolute inset-0 pointer-events-none"
-      style={{ width: '100%', height: '100%' }}
-      aria-hidden="true"
-    >
-      <rect
-        x={left}
-        y={top}
-        width={width}
-        height={height}
-        fill="rgba(20, 184, 166, 0.10)"
-        stroke="rgb(20, 184, 166)"
-        strokeWidth={1}
-        strokeDasharray="4 3"
-      />
-    </svg>
+  return createPortal(
+    <rect
+      data-scene-primitive="rect-selection"
+      x={left}
+      y={top}
+      width={width}
+      height={height}
+      className="fill-overlay-accent-soft stroke-overlay-accent"
+      strokeWidth={1}
+      strokeDasharray="4 3"
+    />,
+    svgLayer,
   );
 }

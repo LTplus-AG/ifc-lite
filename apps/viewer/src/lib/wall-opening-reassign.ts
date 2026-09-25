@@ -37,7 +37,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { IfcAttributeValue, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { asExpressIdRef, asCoordinateTriple, readAttributes, resolvePlacementChain } from './placement-core.js';
 
 export interface OpeningReassignSummary {
@@ -126,8 +126,7 @@ export function reassignWallOpenings(
   }
   const sourceWallPlacementId = sourceChain.localPlacementId;
 
-  const relIds = dataStore.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? [];
-  for (const relId of relIds) {
+  for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, ['IFCRELVOIDSELEMENT'])) {
     const relAttrs = readAttributes(dataStore, view, editor, relId);
     if (!relAttrs) {
       summary.skipped++;

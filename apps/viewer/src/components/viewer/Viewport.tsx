@@ -16,6 +16,7 @@ import { useViewerStore, resolveEntityRef, type CameraViewpoint } from '@/store'
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
+import { isTextEntryElement } from '@/lib/keyboard-event';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { composeLightingEnvironment } from '@/lib/compose-environment';
 import { sunDirectionForTimeOfDay } from '@/lib/sun-time-of-day';
@@ -33,8 +34,9 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
-import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
+import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
+import { typeNameOfGlobalId } from '@/store/globalId';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -43,12 +45,14 @@ import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
+import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
 import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
@@ -117,15 +121,8 @@ export function Viewport({
     if (!canvas) return;
 
     const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && activeElement !== canvas) {
-      const isEditable =
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.isContentEditable;
-
-      if (isEditable) {
-        activeElement.blur();
-      }
+    if (activeElement instanceof HTMLElement && activeElement !== canvas && isTextEntryElement(activeElement)) {
+      activeElement.blur();
     }
 
     if (document.activeElement !== canvas) {
@@ -455,7 +452,7 @@ export function Viewport({
     rendererRef.current?.requestRender();
   }, [environment]);
 
-  // Sun cast shadows (#2670) — driven by the Sun & Sky panel. Standalone
+  // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
   // (the renderer then skips the depth pre-pass entirely).
   const shadowsEnabled = useViewerStore((s) => s.envShadowsEnabled);
@@ -481,7 +478,7 @@ export function Viewport({
     if (!isInitialized) return;
     const scene = rendererRef.current?.getScene();
     if (!scene) return;
-    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    scene.setInstancedVisible(instancedPassDrawn({ hasTypeGeometry, typeViewMode }));
     rendererRef.current?.requestRender();
     // Depend on isInitialized so the instanced-visibility state is applied once
     // the renderer is ready, even if the view-mode inputs never change after the
@@ -596,12 +593,11 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer) return;
     if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
-      renderer.setClashContactLines({
-        vertices: anchorWorldLineVertices(clashContactLines.vertices),
-        color: clashContactLines.color,
-      });
+      // No colour: the renderer draws the overlap in its theme's
+      // `clashOverlap` and recolours it on a theme switch (#5490).
+      renderer.setClashContactLines({ vertices: anchorWorldLineVertices(clashContactLines.vertices) });
     } else if (showClashRegionBox && clashOverlapBox) {
-      renderer.setClashOverlapBox({ ...clashOverlapBox, color: CLASH_COLOR_OVERLAP });
+      renderer.setClashOverlapBox(clashOverlapBox);
     } else {
       renderer.setClashContactLines(null);
     }
@@ -635,7 +631,6 @@ export function Viewport({
       renderer.setClashIntersectionSolid({
         positions: clashSolidMesh.positions,
         indices: clashSolidMesh.indices,
-        color: CLASH_COLOR_OVERLAP,
       });
     } else {
       renderer.setClashIntersectionSolid(null);
@@ -768,7 +763,8 @@ export function Viewport({
     if (!canvas || !renderer) return;
 
     const camera = renderer.getCamera();
-    const viewportHeight = canvas.height;
+    const viewportHeight = canvas.clientHeight; // CSS px, like the 96px bar (#5383)
+    if (viewportHeight <= 0) return;
     const scaleBarPixels = 96; // w-24 = 6rem = 96px
 
     let worldSize: number;
@@ -813,27 +809,8 @@ export function Viewport({
     let resizeObserver: ResizeObserver | null = null;
     let unsubscribeViewportHealth: (() => void) | null = null;
 
-    // Helper to align canvas dimensions to WebGPU requirements
-    // WebGPU texture row pitch must be aligned to 256 bytes
-    // For RGBA (4 bytes/pixel), width should be multiple of 64 pixels
-    const alignToWebGPU = (size: number): number => {
-      return Math.max(64, Math.floor(size / 64) * 64);
-    };
-
-    // Cap at the conservative WebGPU floor; the renderer re-clamps using the actual
-    // adapter limit once the device is initialized. Without this, tall iframe layouts
-    // can ask for canvas dimensions that exceed 8192 and every texture creation fails.
-    const MAX_CANVAS_DIM = 8192;
-
-    // Use CSS pixel dimensions for canvas. The Renderer.render() method manages
-    // its own dimension alignment via getBoundingClientRect() — do NOT apply DPR
-    // here as it creates a mismatch that causes constant context reconfiguration.
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
-    const height = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
-    canvas.width = width;
-    canvas.height = height;
-
+    // The renderer owns the drawing-buffer size: `init()` and every frame size
+    // it to the element's device pixels (#5383), so nothing here sizes it.
     const renderer = new Renderer(canvas);
     rendererRef.current = renderer;
 
@@ -1039,10 +1016,12 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
-        fitAll: () => {
-          // Zoom to fit without changing view direction
-          camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-          calculateScale();
+        fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
+          const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
+            typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),
+            instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [], instancedDrawn: instancedPassDrawn(useViewerStore.getState()),
+            boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current } });
+          camera.zoomExtent(target.min, target.max, 300); calculateScale();
         },
         home: () => {
           // Adaptive home: compact buildings get the historical SE isometric
@@ -1053,7 +1032,7 @@ export function Viewport({
           // building to a railway picks the right pose on Home press.
           // See packages/renderer/src/camera-fit-policy.ts.
           const canvas = rendererRef.current?.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           camera.fitBoundsAdaptive(
             { min: geometryBoundsRef.current.min, max: geometryBoundsRef.current.max },
             { animate: true, duration: 500, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -1088,12 +1067,13 @@ export function Viewport({
         rotateRight: () => {
           animateHorizontalRotation(Math.PI / 2);
         },
-        frameSelection: (durationMs = 300) => {
-          // Frame the current selection. Prefer the full multi-selection set
-          // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
-          // selected element; fall back to the single primary id. The set is
-          // kept in sync with selection (cleared on a plain click), so the
-          // union is always an accurate frame of what's highlighted.
+        // The world AABB of the current selection — what `frameSelection`
+        // frames and what the section box fits to (#5513). Prefer the full
+        // multi-selection set (Ctrl-click, box-select, a clash pair) so it
+        // encloses EVERY selected element; fall back to the single primary id.
+        // The set is kept in sync with selection (cleared on a plain click),
+        // so the union is always an accurate frame of what's highlighted.
+        selectionBounds: () => {
           const geom = geometryRef.current;
           const set = selectedEntityIdsRef.current;
           const single = selectedEntityIdRef.current;
@@ -1107,10 +1087,8 @@ export function Viewport({
               : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
-            return false;
+            return null;
           }
-          let min: { x: number; y: number; z: number } | null = null;
-          let max: { x: number; y: number; z: number } | null = null;
           // One indexed, memoised lookup shared with the resolution pass below:
           // every id is asked twice — once to decide whether it needs expanding,
           // once to union its box — and the mesh reader behind it indexes the
@@ -1127,26 +1105,14 @@ export function Viewport({
           // unhighlighted, because the renderer highlights `selectedEntityIds`
           // directly and that set still held the geometry-less assembly id.
           const framedIds = resolveRenderableIds(ids, 'frameSelection', boundsOf);
-          for (const id of framedIds) {
-            const b = boundsOf(id);
-            if (!b) continue;
-            if (!min || !max) {
-              min = { x: b.min.x, y: b.min.y, z: b.min.z };
-              max = { x: b.max.x, y: b.max.y, z: b.max.z };
-            } else {
-              min.x = Math.min(min.x, b.min.x);
-              min.y = Math.min(min.y, b.min.y);
-              min.z = Math.min(min.z, b.min.z);
-              max.x = Math.max(max.x, b.max.x);
-              max.y = Math.max(max.y, b.max.y);
-              max.z = Math.max(max.z, b.max.z);
-            }
-          }
-          if (min && max) {
-            return frameSelectionBounds(camera, renderer, min, max, durationMs, calculateScale);
-          } else {
-            console.warn('[Viewport] frameSelection: Could not get bounds for selected element'); return false;
-          }
+          const bounds = unionEntityBounds(null, framedIds, boundsOf);
+          if (!bounds) console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
+          return bounds;
+        },
+        frameSelection: (durationMs = 300) => {
+          const bounds = useViewerStore.getState().cameraCallbacks.selectionBounds?.();
+          if (!bounds) return false;
+          return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);
         },
         // Resolve ids to what the renderer can actually highlight (the SAME
         // aggregation resolution frameSelection uses to decide what to frame),
@@ -1203,11 +1169,7 @@ export function Viewport({
           if (scene) {
             const state = useViewerStore.getState();
             for (const id of scene.getInstancedEntityIds()) {
-              const loc = state.fromGlobalId(id);
-              const store = loc
-                ? state.models.get(loc.modelId)?.ifcDataStore
-                : ifcDataStoreRef.current;
-              const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+              const type = typeNameOfGlobalId(state, id, ifcDataStoreRef.current);
               if (type && EXCLUDE.has(type)) continue;
               const b = scene.getInstancedEntityBounds(id);
               if (!b) continue;
@@ -1273,7 +1235,7 @@ export function Viewport({
           // Pass the real viewport short side (as the Home handler does) so the
           // fit is viewport-accurate for any policy.
           const canvas = rendererRef.current?.getCanvas();
-          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
           camera.fitBoundsAdaptive(
             { min, max },
             { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
@@ -1283,10 +1245,9 @@ export function Viewport({
         orbit: orbitCamera,
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
           // Project 3D world position to 2D CSS-pixel screen coordinates.
-          // projectToCssScreen rescales the drawing-buffer result (buffer width
-          // is alignToWebGPU-rounded *down* from the CSS width) so DOM overlays
-          // — gizmos, section visuals, the measure/snap indicator — sit under
-          // the cursor instead of drifting left (issue #1107).
+          // projectToCssScreen rescales the drawing-buffer result (device px)
+          // to CSS px so DOM overlays — gizmos, section visuals, the
+          // measure/snap indicator — sit under the cursor (#1107, #5383).
           const c = canvasRef.current;
           if (!c) return null;
           return projectToCssScreen(camera, c, worldPos);
@@ -1354,16 +1315,19 @@ export function Viewport({
       // one toast, one tagged capture, per failure.
       unsubscribeViewportHealth = subscribeViewportHealth(renderer);
 
-      // ResizeObserver — let renderer handle its own dimension alignment
+      // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
-        const rect = canvas.getBoundingClientRect();
-        const w = Math.min(MAX_CANVAS_DIM, alignToWebGPU(Math.max(1, Math.floor(rect.width))));
-        const h = Math.min(MAX_CANVAS_DIM, Math.max(1, Math.floor(rect.height)));
-        renderer.resize(w, h);
         renderCurrent();
       });
-      resizeObserver.observe(canvas);
+      // The device-pixel box also fires when only the pixel ratio changes (window
+      // moved to another display, browser zoom), which the CSS box does not.
+      try {
+        resizeObserver.observe(canvas, { box: 'device-pixel-content-box' });
+      } catch (err) {
+        console.debug('[Viewport] device-pixel-content-box unsupported; observing the CSS box', err);
+        resizeObserver.observe(canvas);
+      }
 
       // Initial render
       renderCurrent();
@@ -1659,14 +1623,7 @@ export function Viewport({
     calculateScale,
   });
 
-  useSpaceMouseControls({
-    rendererRef,
-    isInitialized,
-    geometryBoundsRef,
-    geometryRef,
-    selectedEntityIdRef,
-    calculateScale,
-  });
+  useSpaceMouseControls({ rendererRef, isInitialized, geometryRef, selectedEntityIdRef, calculateScale });
 
   useAnimationLoop({
     canvasRef,
@@ -1778,9 +1735,7 @@ export function Viewport({
   const canvasStyle = cesiumActive
     ? { opacity: 0 }
     : theme === 'colorful'
-      ? {
-          background: 'linear-gradient(180deg, #4a5a8a 0%, #6272a8 10%, #7e8dba 20%, #9aa3c8 32%, #b5b8d1 44%, #cdc3d4 56%, #dcccc8 68%, #e8d5be 80%, #f0ddb8 92%, #f5e2b6 100%)',
-        }
+      ? { background: COLORFUL_CANVAS_GRADIENT }
       : undefined;
 
   return (
@@ -1808,8 +1763,14 @@ export function Viewport({
         </div>
       )}
       {/* Rectangle-select drag visual. Pointer-events:none so the
-          canvas keeps receiving pointer events during the drag. */}
-      <RectSelectionOverlay rect={rectSelection} />
+          canvas keeps receiving pointer events during the drag. Its own
+          scene-overlay kernel instance (#5512): a stub-select drag has no
+          natural ancestor `SceneOverlayRoot` this close to the canvas, and
+          the rect is already screen-space so it needs only the shared SVG
+          layer/portal, not the projector. */}
+      <SceneOverlayRoot>
+        <RectSelectionOverlay rect={rectSelection} />
+      </SceneOverlayRoot>
     </div>
   );
 }

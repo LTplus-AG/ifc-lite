@@ -26,7 +26,7 @@ export interface LandXmlIfcDownloadInput {
 }
 
 export type LandXmlIfcDownloadResult =
-  | { status: 'exported'; filename: string; surfaces: number; surveyPoints: number }
+  | { status: 'exported'; filename: string; surfaces: number; surveyPoints: number; alignments: number }
   | { status: 'refused'; reason: string };
 
 /**
@@ -58,6 +58,7 @@ export function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): LandXmlIfc
     filename,
     surfaces: result.coverage.surfaces,
     surveyPoints: result.coverage.surveyPoints,
+    alignments: result.coverage.alignments ?? 0,
   };
 }
 
@@ -86,6 +87,7 @@ export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandX
     const records = [
       ...(result.surfaces > 0 ? [ui.t('exportDialog.landXml.convertSurfaces', { count: result.surfaces })] : []),
       ...(result.surveyPoints > 0 ? [ui.t('exportDialog.landXml.convertPoints', { count: result.surveyPoints })] : []),
+      ...(result.alignments > 0 ? [ui.t('exportDialog.landXml.convertAlignments', { count: result.alignments })] : []),
     ].join(', ');
     ui.setExportResult({ success: true, message: ui.t('exportDialog.landXml.exported', { records }) });
   } catch (error) {

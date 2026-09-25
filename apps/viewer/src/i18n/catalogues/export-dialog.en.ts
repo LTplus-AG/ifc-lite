@@ -70,6 +70,10 @@ export const exportDialogEn = {
     one: '{count} survey point',
     other: '{count} survey points',
   },
+  'exportDialog.landXml.convertAlignments': {
+    one: '{count} alignment',
+    other: '{count} alignments',
+  },
   'exportDialog.landXml.convertSummary': 'This is a one-way derived conversion, not a round trip. {records} will be written.',
   'exportDialog.landXml.excludedTitle': 'Not included in the IFC',
   'exportDialog.landXml.assumedUnit': 'Coordinates are scaled by an assumed linear unit ({unit}), not one the source declares. The geometry is at an operator-chosen scale.',

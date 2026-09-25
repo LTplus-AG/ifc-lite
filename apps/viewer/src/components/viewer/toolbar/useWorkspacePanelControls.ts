@@ -19,6 +19,7 @@ import {
 } from '@/services/analysis-extensions';
 import { closePanelWindow } from '@/services/panel-windows';
 import { BOTTOM_PANEL_IDS, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 
 /** Registry ids, deliberately. This hook used to spell the entity-list panel
  *  `'list'` while the registry and the store spell it `'lists'`, and the cost
@@ -40,7 +41,6 @@ export function useWorkspacePanelControls() {
   const setClashPanelVisible = useViewerStore((state) => state.setClashPanelVisible);
   const comparePanelVisible = useViewerStore((state) => state.comparePanelVisible);
   const setComparePanelVisible = useViewerStore((state) => state.setComparePanelVisible);
-  const listPanelVisible = useViewerStore((state) => state.listPanelVisible);
   const setListPanelVisible = useViewerStore((state) => state.setListPanelVisible);
   const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
@@ -48,12 +48,9 @@ export function useWorkspacePanelControls() {
   const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
   const sourcesPanelVisible = useViewerStore((state) => state.sourcesPanelVisible);
   const setSourcesPanelVisible = useViewerStore((state) => state.setSourcesPanelVisible);
-  const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
-  const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
-  const chartPanelVisible = useViewerStore((state) => state.chartPanelVisible);
-  const flowPanelVisible = useViewerStore((state) => state.flowPanelVisible);
-  const documentPanelVisible = useViewerStore((state) => state.documentPanelVisible);
+  // Every bottom-strip flag from the table, so a new bottom panel needs no row here.
+  const bottomFlags = useBottomPanelFlags();
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
@@ -241,7 +238,6 @@ export function useWorkspacePanelControls() {
     // activity bar never had the bug because it reads `panelLocation`.
     for (const panel of floatingPanels) panels.add(panel.id);
     for (const id of poppedOutIds) panels.add(id);
-    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible, flowPanelVisible };
     for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('validation');
@@ -268,16 +264,11 @@ export function useWorkspacePanelControls() {
     clashPanelVisible,
     comparePanelVisible,
     extensionsPanelVisible,
-    ganttPanelVisible,
-    chartPanelVisible,
-    flowPanelVisible,
-    documentPanelVisible,
+    bottomFlags,
     idsPanelVisible,
     lensPanelVisible,
-    listPanelVisible,
     floatingPanels,
     poppedOutIds,
-    scriptPanelVisible,
     sidebarActivePanel,
     sourcesPanelVisible,
   ]);
@@ -303,6 +294,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
     if (activeWorkspacePanels.has('cost')) return 'Cost';
     if (activeWorkspacePanels.has('flow')) return 'Flow';
+    if (activeWorkspacePanels.has('drawing')) return 'Drawing';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 

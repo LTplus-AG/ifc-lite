@@ -9,7 +9,11 @@
   "plugins": [
     "unicorn",
     "typescript",
-    "oxc"
+    "oxc",
+    // #5607: the plugin's correctness rules run at the default WARN, so none
+    // is a gate here. scripts/check-jsx-a11y.mjs ratchets their per-file
+    // counts against scripts/jsx-a11y-baseline.json instead.
+    "jsx-a11y"
   ],
   "categories": {},
   "rules": {
@@ -105,6 +109,32 @@
         "**/test/**"
       ],
       "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      // #5403: the raw capture methods throw InvalidStateError / NotFoundError
+      // in states a pointer handler cannot rule out (element detached, pointer
+      // lock held, pointer already released), aborting the drag. In the viewer
+      // `src/lib/pointer-capture.ts` is the one call site. Scoped to the viewer
+      // because examples/ are standalone and cannot import its helper.
+      "files": ["apps/viewer/src/**"],
+      "rules": {
+        "no-restricted-properties": ["error",
+          {
+            "property": "setPointerCapture",
+            "message": "Use capturePointer from apps/viewer/src/lib/pointer-capture.ts: the raw call throws when the pointer is no longer active (#5403)."
+          },
+          {
+            "property": "releasePointerCapture",
+            "message": "Use releasePointer from apps/viewer/src/lib/pointer-capture.ts: the raw call throws when the pointer is no longer active (#5403)."
+          }
+        ]
+      }
+    },
+    {
+      // Tests stub the raw capture methods on fakes and prototypes; they never
+      // drive a real pointer, so the #5403 throw cannot happen there.
+      "files": ["apps/viewer/src/**/*.test.ts", "apps/viewer/src/**/*.test.tsx", "apps/viewer/src/test/**"],
+      "rules": { "no-restricted-properties": "off" }
     }
   ],
   "ignorePatterns": [

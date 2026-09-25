@@ -452,6 +452,24 @@ describe('CsvConnector.match: property strategy (#5167)', () => {
     expect(result.warnings?.some((w) => w.includes('Area') && w.includes('N/A'))).toBe(true);
   });
 
+  // #5427: every word parsed as `false`, so a Boolean property match on
+  // `ja` selected every entity whose flag was false.
+  it('does not match a word that is not a boolean against entities whose flag is false', () => {
+    const { connector } = makeConnectorWithProperties([1], {
+      1: [{ name: 'Pset_Common', properties: [{ name: 'IsExternal', type: PropertyValueType.Boolean, value: false }] }],
+    });
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'property', psetName: 'Pset_Common', propName: 'IsExternal', column: 'IsExternal' },
+      propertyMappings: [],
+    };
+
+    const [ja, no] = connector.match([{ IsExternal: 'ja' }, { IsExternal: 'no' }], mapping);
+
+    expect(ja.matchedEntityIds).toEqual([]);
+    expect(ja.warnings?.some((w) => w.includes('"ja"'))).toBe(true);
+    expect(no.matchedEntityIds).toEqual([1]);
+  });
+
   it('builds the index ONCE per match() call, not once per row (proves indexing, not a per-row scan)', () => {
     const { connector, view } = makeConnectorWithProperties([1, 2, 3], {
       1: [{ name: 'Pset_Common', properties: [{ name: 'Mark', type: PropertyValueType.String, value: 'A' }] }],
@@ -615,6 +633,30 @@ describe('CsvConnector.generateMutations: malformed numeric cells', () => {
     expect(view.getPropertyValue(1, 'Pset_BuildingCommon', 'NumberOfStoreys')).toBeNull();
   });
 
+  // #5427: `parseFloat` read the numeric PREFIX, so a European CSV's `12,5`
+  // wrote 12 and reported nothing. Each such cell is now reported and skipped.
+  it('reports and skips a Real or Integer cell that is only a numeric prefix', () => {
+    const { connector, view } = makeConnector([{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }]);
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        { sourceColumn: 'Width', targetPset: 'Pset_WallCommon', targetProperty: 'Width', valueType: PropertyValueType.Real },
+        { sourceColumn: 'Height', targetPset: 'Pset_WallCommon', targetProperty: 'Height', valueType: PropertyValueType.Real },
+        { sourceColumn: 'Storeys', targetPset: 'Pset_BuildingCommon', targetProperty: 'NumberOfStoreys', valueType: PropertyValueType.Integer },
+      ],
+    };
+    const rows = connector.parse('GlobalId;Width;Height;Storeys\nguid-a;12,5;60abc;2.7', { delimiter: ';' });
+    const warnings: string[] = [];
+    const mutations = connector.generateMutations(connector.match(rows, mapping), mapping, warnings);
+
+    expect(mutations).toEqual([]);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'Width')).toBeNull();
+    expect(warnings).toHaveLength(3);
+    expect(warnings[0]).toContain('could not parse "12,5" in column "Width" as Real');
+    expect(warnings[1]).toContain('could not parse "60abc" in column "Height" as Real');
+    expect(warnings[2]).toContain('could not parse "2.7" in column "Storeys" as Integer');
+  });
+
   it('still writes a genuine 0 for Real and Integer cells', () => {
     const { connector, view } = makeConnector([
       { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
@@ -750,9 +792,17 @@ describe('CsvConnector.generateMutations: boolean columns', () => {
     });
   }
 
-  for (const raw of ['false', 'FALSE', 'no', '0', 'maybe']) {
+  for (const raw of ['false', 'FALSE', 'no', '0']) {
     it(`reads ${raw} as false`, () => {
       expect(importCell(raw, PropertyValueType.Boolean)).toBe(false);
+    });
+  }
+
+  // #5427: any other word used to become `false`, so a German `ja` column
+  // wrote the opposite of what it said. It is now left unwritten.
+  for (const raw of ['maybe', 'ja', 'wahr', 'unknown']) {
+    it(`writes nothing for ${raw}`, () => {
+      expect(importCell(raw, PropertyValueType.Boolean)).toBeUndefined();
     });
   }
 
@@ -761,6 +811,9 @@ describe('CsvConnector.generateMutations: boolean columns', () => {
     // separately: a change that splits them would leave Logical unpinned.
     expect(importCell('yes', PropertyValueType.Logical)).toBe(true);
     expect(importCell('no', PropertyValueType.Logical)).toBe(false);
+    // IFC LOGICAL's UNKNOWN has no boolean to land on; `false` would be a
+    // fact the sheet did not state (#5427).
+    expect(importCell('UNKNOWN', PropertyValueType.Logical)).toBeUndefined();
   });
 });
 
@@ -1188,5 +1241,78 @@ describe('CsvConnector.match: overlay-created entities are candidates (#5198, #5
     const mutations = connector.generateMutations(matches, MAPPING);
     expect(mutations).toHaveLength(1);
     expect(view.getPropertyValue(created, 'Pset_WallCommon', 'FireRating')).toBe('EI60');
+  });
+});
+
+/**
+ * #5958: `generateMutations` used to collect its mutations in a local array
+ * returned only at the end, while writing each one to the view as it went.
+ * A transform (or `setProperty`) that threw partway left the earlier writes
+ * in the view but out of `stats.mutations`, so the host could not record
+ * them for undo.
+ */
+describe('CsvConnector: a mid-import throw keeps the applied writes (#5958)', () => {
+  const rows = [1, 2, 3].map((n) => ({ expressId: n, globalId: `guid-${n}`, name: `Wall ${n}` }));
+  const content = 'GlobalId,Code\nguid-1,A\nguid-2,BOOM\nguid-3,C';
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [{
+      sourceColumn: 'Code',
+      targetPset: 'Pset_Test',
+      targetProperty: 'Code',
+      valueType: PropertyValueType.Label,
+      transform: (value) => {
+        if (value === 'BOOM') throw new Error('transform failed');
+        return value;
+      },
+    }],
+  };
+
+  it("['import'] reports every write that reached the view", () => {
+    const { connector, view } = makeConnector(rows);
+    const stats = connector['import'](content, mapping);
+
+    expect(stats.errors).toEqual(['transform failed']);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Code')).toBe('A');
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(stats.mutationsCreated).toBe(1);
+  });
+
+  it('importAsync reports them and hands each batch to onApplied, the failing one included', async () => {
+    const { connector, view } = makeConnector(rows);
+    const applied: number[][] = [];
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 1,
+      onApplied: (mutations) => { applied.push(mutations.map((m) => m.entityId)); },
+    });
+
+    expect(stats.errors).toEqual(['transform failed']);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Code')).toBe('A');
+    expect(view.getPropertyValue(3, 'Pset_Test', 'Code')).toBeNull();
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(stats.mutationsCreated).toBe(1);
+    expect(applied).toEqual([[1]]);
+  });
+
+  it('a throwing onApplied is reported and does not hide the import error', async () => {
+    const { connector } = makeConnector(rows);
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 10,
+      onApplied: () => { throw new Error('recorder failed'); },
+    });
+    expect(stats.errors).toEqual(['onApplied: recorder failed', 'transform failed']);
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+  });
+
+  it('a partial batch before the throw still reaches onApplied', async () => {
+    const { connector } = makeConnector(rows);
+    const applied: number[][] = [];
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 10,
+      onApplied: (mutations) => { applied.push(mutations.map((m) => m.entityId)); },
+    });
+
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(applied).toEqual([[1]]);
   });
 });

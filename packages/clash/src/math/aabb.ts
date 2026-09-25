@@ -165,3 +165,18 @@ export function boundsOfPoints(a: Vec3, b: Vec3): AABB {
 export function aabbContains(outer: AABB, inner: AABB): boolean {
   return G.aabbContains(outer, inner);
 }
+
+/**
+ * Precision floor of a depth measured along the UNIT direction `axis`: the
+ * pair's per-axis f32 noise projected onto it (#5405). The same noise rule as
+ * the tri-tri contact band, from the single-source generated kernel.
+ */
+export function depthFloor(axis: Vec3, a: AABB, b: AABB): number {
+  return G.depthFloor(axis, a, b);
+}
+
+/** Precision floor of the AABB estimate `-signedGap(a, b)`: the noise of the
+ *  world axis that estimate is measured along. */
+export function estimateFloor(a: AABB, b: AABB): number {
+  return G.estimateFloor(a, b);
+}

@@ -85,8 +85,8 @@ describe('idsToRuleSet — simple specifications (#5225)', () => {
     assert.deepEqual(req, [
       { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'matches', value: '/^(?:REI60|REI90)$/u', setNameKind: 'literal', propertyNameKind: 'literal' },
       { kind: 'attribute', name: 'Name', op: 'matches', value: '/^(?:W-\\p{Nd}{3})$/u' },
-      { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance', op: 'gte', value: '0.1', setNameKind: 'literal', propertyNameKind: 'literal' },
-      { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance', op: 'lt', value: '0.3', setNameKind: 'literal', propertyNameKind: 'literal' },
+      { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance', op: 'gte', value: '0.1', setNameKind: 'literal', propertyNameKind: 'literal', valueUnit: 'si' },
+      { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance', op: 'lt', value: '0.3', setNameKind: 'literal', propertyNameKind: 'literal', valueUnit: 'si' },
       { kind: 'material', op: 'matches', value: '.', valueKind: 'regex' },
       { kind: 'classification', system: 'Uniclass 2015', op: 'isSet', value: '' },
     ]);
@@ -100,7 +100,7 @@ describe('idsToRuleSet — simple specifications (#5225)', () => {
       '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="0.2"/></xs:restriction></value></property>',
     ))), { newId: () => 'q' });
     const rules = result.file!.rules[0].requirement.kind === 'element' ? result.file!.rules[0].requirement.block.groups[0].rules : [];
-    assert.deepEqual(rules, [{ kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'gte', value: 0.2, setNameKind: 'literal', quantityNameKind: 'literal' }]);
+    assert.deepEqual(rules, [{ kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'gte', value: 0.2, setNameKind: 'literal', quantityNameKind: 'literal', valueUnit: 'si' }]);
   });
 
   it('notes that a version-limited specification now runs on every model', () => {
@@ -136,11 +136,27 @@ END-ISO-10303-21;
     assert.equal(evaluateFilterRules('m', store, rules, 'AND').length, 1, 'Pset_WallCommon matches the imported Pset_.*Common');
   });
 
-  it('notes that imported numeric bounds compare stored values, not SI values', () => {
+  it('imports a property facet with a dataType without that check, and lists each dropped one (#5225 decision)', () => {
     const result = idsToRuleSet(parseIDS(ids(spec(
-      '<property cardinality="required"><propertySet><simpleValue>Qto_WallBaseQuantities</simpleValue></propertySet><baseName><simpleValue>Width</simpleValue></baseName><value><xs:restriction base="xs:double"><xs:minInclusive value="0.2"/></xs:restriction></value></property>',
+      '<property cardinality="required" dataType="IFCLABEL"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><simpleValue>REI60</simpleValue></value></property>' +
+      '<property cardinality="required"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>IsExternal</simpleValue></baseName></property>',
+    ))), { newId: () => 'd' });
+    assert.deepEqual(result.refused, []);
+    const rules = result.file!.rules[0].requirement.kind === 'element' ? result.file!.rules[0].requirement.block.groups[0].rules : [];
+    assert.equal(rules.length, 2);
+    assert.deepEqual(rules[0], { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: 'REI60', setNameKind: 'literal', propertyNameKind: 'literal' });
+    assert.deepEqual(result.droppedChecks, ['S: Pset_WallCommon.FireRating: data type IFCLABEL not checked']);
+  });
+
+  it('imports numeric checks as SI comparisons, with no caveat note (#5225 decision)', () => {
+    const result = idsToRuleSet(parseIDS(ids(spec(
+      '<property cardinality="required"><propertySet><simpleValue>Pset_Dims</simpleValue></propertySet><baseName><simpleValue>Height</simpleValue></baseName><value><simpleValue>2.5</simpleValue></value></property>' +
+      '<property cardinality="required"><propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet><baseName><simpleValue>FireRating</simpleValue></baseName><value><simpleValue>REI60</simpleValue></value></property>',
     ))), { newId: () => 'q' });
-    assert.ok(result.notes.some((n) => /SI units/.test(n)));
+    const rules = result.file!.rules[0].requirement.kind === 'element' ? result.file!.rules[0].requirement.block.groups[0].rules : [];
+    assert.equal(rules[0].kind === 'property' && rules[0].valueUnit, 'si', 'a numeric value compares in SI');
+    assert.equal(rules[1].kind === 'property' && rules[1].valueUnit, undefined, 'a text value is not a measure');
+    assert.ok(!result.notes.some((n) => /SI units/.test(n)));
   });
 
   const blocked: Array<[string, string, RegExp]> = [
@@ -164,7 +180,6 @@ describe('idsToRuleSet — blocks what has no rule equivalent, with the reason (
     ['partOf', spec('<partOf relation="IFCRELAGGREGATES" cardinality="required"><entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity></partOf>'), /partOf facet/],
     ['prohibited facet', spec(property('', 'cardinality="prohibited"')), /prohibited property facet/],
     ['optional facet', spec(property('', 'cardinality="optional"')), /optional property facet/],
-    ['dataType', spec(property('', 'cardinality="required" dataType="IFCLABEL"')), /dataType check/],
     ['entity name pattern', spec('<attribute cardinality="required"><name><simpleValue>Description</simpleValue></name></attribute>',
       '<applicability><entity><name><xs:restriction base="xs:string"><xs:pattern value="IFCWALL.*"/></xs:restriction></name></entity></applicability>'),
     /entity name given as a pattern restriction/],

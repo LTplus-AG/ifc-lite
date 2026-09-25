@@ -2,6 +2,8 @@
 
 The viewer's construction-schedule (Gantt) panel can import a schedule authored in an external planning tool, instead of only extracting `IfcTask`/`IfcWorkSchedule` entities already in the model or generating one from the spatial hierarchy. Use **Import schedule…** in the Gantt panel's empty state or toolbar to pick a file.
 
+For a loaded IFC model, the Gantt panel and `bim.schedule.*` read pending task, calendar, and relationship edits from the same effective records that IFC export writes. Creating, deleting, or retyping those entities updates the schedule without reloading the file. The parser API `extractScheduleOnDemand(store, { overlay })` accepts the record overlay when a host maintains pending edits; omit it to read the source file as stored.
+
 This page covers the importer only — for the Gantt panel itself, see the in-app "Generate schedule" flow.
 
 ## Two limitations, up front

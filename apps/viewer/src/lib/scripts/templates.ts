@@ -41,9 +41,16 @@ export interface ScriptTemplate {
   code: string;
 }
 
-/** Strip the `export {}` module boundary line that enables type checking */
-function stripModuleLine(raw: string): string {
-  return raw.replace(/^export \{\}[^\n]*\n\n?/, '');
+/**
+ * Strip the `export {}` module boundary line that enables type checking.
+ *
+ * Multiline (`m`) on purpose: every template opens with the three-line MPL
+ * header, so the line is never at the start of the STRING, and without `m` the
+ * `^` never matched -- every template the user opened showed
+ * `export {} // module boundary (stripped by transpiler)` as its fifth line.
+ */
+export function stripModuleLine(raw: string): string {
+  return raw.replace(/^export \{\}[^\n]*\n\n?/m, '');
 }
 
 /**

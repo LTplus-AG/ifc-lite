@@ -99,6 +99,7 @@ export function writeOverlayCreatedEntities(
     ? ctx.mutationView.getEntityTypeMutation.bind(ctx.mutationView)
     : null;
   for (const entity of ctx.mutationView.getNewEntities()) {
+    if (pass.skipRelationshipIds.has(entity.expressId) || pass.skipPropertySetIds.has(entity.expressId)) continue;
     // A retyped overlay entity keeps its AUTHORED type on `entity.type`
     // (the overlay typeMutation is the source of truth for the effective
     // class). Resolve the effective class, then re-lay-out the authored
@@ -201,7 +202,7 @@ export function writeOverlayCreatedEntities(
       }
     }
     if (pass.converting) {
-      const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots);
+      const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);
       if (converted !== null) pass.entities.push(converted);
       pass.newEntityCount++;
     } else {

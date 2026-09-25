@@ -3,12 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Compact panel that exposes point cloud rendering controls (color mode,
- * size mode, point size, EDL). Renders only when point cloud assets are
- * loaded — sits over the canvas without affecting layout for IFC-only
- * models.
+ * Point cloud rendering controls (color mode, size mode, point size, EDL)
+ * plus the BIM↔scan deviation heatmap. Docked in the sidebar's `pointclouds`
+ * side panel (#5507) — renders only when point cloud assets are loaded; the
+ * activity bar hides the panel's rail icon otherwise. Used to be a floating
+ * card pinned at `bottom-4 left-4`, which collided with the axis/scale
+ * cluster in that corner.
  */
 
+import { Scan, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
@@ -41,9 +45,12 @@ export interface PointCloudPanelProps {
   /** Total triangle count across the scene (gates the BIM↔scan deviation
    *  compute button — useless without a BIM model loaded). */
   triangleCount: number;
+  /** Docked-panel close handler. Omitted in standalone/test renders, where
+   *  the header simply carries no close button. */
+  onClose?: () => void;
 }
 
-export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelProps) {
+export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointCloudPanelProps) {
   const { t } = useTranslation();
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
@@ -67,15 +74,21 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
   if (assetCount <= 0) return null;
 
   return (
-    <div className="absolute bottom-4 left-4 z-10 pointer-events-auto bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 min-w-[200px]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('pointCloudPanel.title')}
-        </span>
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b p-3">
+        <Scan className="h-4 w-4 text-teal-600" />
+        <span className="font-medium text-sm">{t('pointCloudPanel.title')}</span>
         <span className="text-[10px] text-muted-foreground">
           {t('pointCloudPanel.assetCount', { count: assetCount })}
         </span>
+        <span className="flex-1" />
+        {onClose && (
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
+      <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
 
       {/* Color mode */}
       <div className="flex flex-col gap-0.5">
@@ -252,6 +265,7 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
           and points are loaded. The panel renders nothing when there
           are no triangles in the scene. */}
       <DeviationPanel triangleCount={triangleCount} />
+      </div>
     </div>
   );
 }

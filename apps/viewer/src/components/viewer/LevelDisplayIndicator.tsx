@@ -11,8 +11,9 @@
  * user at a glance "you are isolated to storey X" / "levels are exploded",
  * with a one-click return to Stacked.
  *
- * Anchored top-left so it never covers the ViewCube (top-right) or the
- * Sun & Sky panel (top-32 right).
+ * Placed in the HUD's top-left region (#5504), like every other status
+ * chip: layout, not a hand-picked coordinate, is what keeps it clear of the
+ * ViewCube (top-right) and the Environment panel (top-32 right).
  */
 
 import { ChevronsUpDown, SquareStack, X } from 'lucide-react';
@@ -20,6 +21,7 @@ import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { useTranslation } from '@/i18n';
+import { HudChip, HudItem } from '@/components/viewport-ui/hud';
 
 export function LevelDisplayIndicator() {
   const { t } = useTranslation();
@@ -39,19 +41,23 @@ export function LevelDisplayIndicator() {
       ? t('levelDisplayIndicator.explodedLabel', { gap: explodedGap })
       : t('levelDisplayIndicator.soloLabel', { name: soloName ?? t('levelDisplayIndicator.storeyFallback') });
 
+  // A neutral HUD chip (#5490): the mode is status, not an action or an
+  // accent-worthy state, so it takes the shared surface and ink, not a hue.
+  // Order 1: after the edit-mode chip (`EditModeHudChip`, order 0).
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 rounded-md border border-purple-300/60 bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur dark:border-purple-500/40">
-      <Icon className="h-3.5 w-3.5 text-purple-500" />
-      <span className="tabular-nums">{label}</span>
-      <button
-        type="button"
-        onClick={() => applyLevelDisplayMode('stacked')}
-        title={t('levelDisplayIndicator.backToStackedTitle')}
-        aria-label={t('levelDisplayIndicator.backToStackedAriaLabel')}
-        className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+    <HudItem region="top-left" order={1}>
+      <HudChip
+        className="font-medium"
+        icon={<Icon className="h-3.5 w-3.5 text-muted-foreground" />}
+        dismiss={{
+          onClick: () => applyLevelDisplayMode('stacked'),
+          title: t('levelDisplayIndicator.backToStackedTitle'),
+          'aria-label': t('levelDisplayIndicator.backToStackedAriaLabel'),
+          icon: <X className="h-3 w-3" />,
+        }}
       >
-        <X className="h-3 w-3" />
-      </button>
-    </div>
+        {label}
+      </HudChip>
+    </HudItem>
   );
 }

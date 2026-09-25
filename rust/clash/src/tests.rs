@@ -564,58 +564,96 @@ fn a_plain_corner_overlap_at_a_generic_mutual_rotation_keeps_the_mesh_label() {
     assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
 }
 
+/// The AABB estimate of `parts[0]` vs `parts[1]` and its precision floor, as
+/// `depth_clash_result` sees them (from the f32-baked session AABBs).
+fn estimate_and_floor(parts: &[(Vec<f32>, Vec<u32>, Vec<f32>)]) -> (f64, f64) {
+    let aabb = |ab: &[f32]| {
+        let f = |i: usize| f64::from(ab[i]);
+        crate::aabb::Aabb::new([f(0), f(1), f(2)], [f(3), f(4), f(5)])
+    };
+    let (a, b) = (aabb(&parts[0].2), aabb(&parts[1].2));
+    (-crate::aabb::signed_gap(&a, &b), crate::aabb::estimate_floor(&a, &b))
+}
+
 #[test]
 fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Precedence pin (#2536 rebase over #2594): a pair can simultaneously be
     // a through-penetration (declines the box-exact `Mesh` label, falls back
     // to the AABB estimate) AND have that estimate at or below the f32
-    // precision floor for its coordinate magnitude — the two guards in
-    // `test_pair` fire on the same result. The floor wins: it is checked
-    // BEFORE the through-penetration guard decides `Mesh` vs `Estimate`, so
-    // this reports `Touch`, not a `Hard` clash labelled either way. Same
-    // wall/duct through-penetration shape as the aligned case above (true
-    // overlap 0.2 m), translated far enough from the origin (1,000,000
-    // units) that `precision_floor` grows past 0.2 m: floor = extent *
-    // 2^-22 ~ 1e6 * 2.384e-7 ~ 0.238 m > 0.2 m. Mirrors the TS fixture in
-    // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5),
-        box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    // precision floor — the two guards fire on the same result. The floor
+    // wins: it is checked BEFORE the through-penetration guard decides
+    // `Mesh` vs `Estimate`, so this reports `Touch`, not a `Hard` clash
+    // labelled either way. Same wall/duct shape as the aligned case above:
+    // the duct pierces the wall along Y, so the estimate (the wall's
+    // thickness) is measured along Y and its floor is the Y noise (#5405).
+    // The pair sits 1,500,000 out along Y, where that floor (~0.36 m) is
+    // above the f32-quantised thickness (0.25 m). Until #5405 this pin
+    // translated along X instead, and relied on the X magnitude inflating a
+    // floor it has nothing to do with — see the companion below. Mirrors
+    // the TS fixture in `engine-ts/depth-provenance.test.ts`.
+    let off = 1_500_000.0_f32;
+    let parts = [box_hxyz(0.0, off, 0.0, 2.5, 0.1, 1.5), box_hxyz(0.0, off, 0.0, 0.2, 1.0, 0.2)];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: estimate {estimate} within its Y floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
 }
 
 #[test]
-fn a_contained_non_box_pair_flush_at_f32_noise_scale_reports_touch_not_hard() {
-    // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
-    // an element authored FLUSH against a surface inside another element's
-    // AABB. The crossing exists (f32 rounding pushes the surfaces through
-    // each other by ~1 ULP), but every crossing vertex sits within f32 noise
-    // of the other surface — while the AABB estimate, the number the depth
-    // rework would report for this non-box contained pair, is the contained
-    // element's own extent (~0.475 m here, 4.084 m on the bridge), far above
-    // the floor. Floor-testing only the reported estimate promotes the pair
-    // to `Hard` at a number that measures nothing; the crossing-vertex
-    // evidence (`crossing_vertex_penetration`) must gate it back to `Touch`.
-    // Plate side-band vertices at 0.875 - 6e-8 / 0.875 + 1.2e-7 straddle the
-    // tub's recess floor (z = 0.875) by ~1-2 f32 ULP; the floor here is
-    // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence. Mirrors
-    // the TS fixture in `engine-ts/depth-provenance.test.ts`.
-    let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, 0.875 + 1.2e-7)]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+fn a_through_penetration_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The same pair 1,000,000 out along X — the old pin's placement. X is
+    // orthogonal to the Y-direction depth, so its magnitude says nothing
+    // about that depth's f32 noise; the old max-over-all-axes floor (~0.24 m
+    // from the X coordinate) swallowed the 0.2 m through-penetration here.
+    let off = 1_000_000.0_f32;
+    let parts = [box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5), box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2)];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
-    assert_eq!(result.records[0].status, ClashStatus::Touch);
-    assert_eq!(result.records[0].distance, 0.0);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert!((result.records[0].distance + 0.2).abs() < 1e-6, "{}", result.records[0].distance);
+}
+
+#[test]
+fn a_buried_plate_flush_with_a_recess_floor_does_not_flip_on_which_side_the_ulp_fell_5406() {
+    // The tub/plate shape of the eight Infra-Bridge pairs (#2536): a plate
+    // whose body sits INSIDE the tub's solid (z 0.4 up to the recess floor
+    // at z = 0.875), top authored flush with that floor. Where f32 rounding
+    // put the plate's top relative to the floor is noise, and it used to
+    // decide the verdict: straddling the floor by 1-2 ULP it read as a
+    // crossing, and the crossing-vertex evidence gated it to `Touch`; one ULP
+    // BELOW, or bit-identically ON the floor, there was no crossing, so the
+    // enclosed-solid test found the plate buried and reported `Hard` at the
+    // 0.475 m estimate. Measured on main before #5406: Touch / Hard / Hard.
+    //
+    // #5406 makes the three placements one case: the predicate reads a
+    // crossing within f32 noise as contact, so none of them crosses, and all
+    // three report what the geometry is — a plate buried in the tub (its
+    // vertices are 0.475 m inside it), labelled `Estimate` because the tub
+    // is not a box.
+    let placements: [(&str, f32); 3] = [
+        ("straddling by 1-2 ULP", 0.875 + 1.2e-7),
+        ("bit-identically on the floor", 0.875),
+        ("one ULP below", f32::from_bits(0.875f32.to_bits() - 1)),
+    ];
+    for (label, z_top) in placements {
+        let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, z_top)]);
+        let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(result.records.len(), 1, "{label}");
+        let rec = &result.records[0];
+        assert_eq!(rec.status, ClashStatus::Hard, "{label}: the plate is buried in the tub");
+        assert_eq!(rec.distance_kind, DistanceKind::Estimate, "{label}: the tub is not a box");
+        assert!((rec.distance + 0.475).abs() < 1e-6, "{label}: {}", rec.distance);
+    }
 }
 
 #[test]
 fn a_contained_non_box_pair_with_a_real_above_floor_crossing_stays_hard() {
-    // Discriminating companion to the flush pin above: the same tub/plate
-    // shape with the plate genuinely 10 mm through the recess floor. The
+    // Companion to the buried-plate test above: the same tub/plate shape
+    // with the plate genuinely 10 mm through the recess floor, far above the
+    // f32 noise, so it DOES cross (the flush placements above do not). The
     // crossing-vertex evidence (~0.01 m) clears the floor, so the gate must
     // NOT suppress it — the pair stays `Hard`, reported at the AABB estimate
     // with the honest `Estimate` label (non-box pair, no certified depth).
@@ -681,43 +719,78 @@ fn an_enclosed_layer_is_labelled_mesh_measured() {
 fn a_coincident_footprint_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Structural pin, not just a value pin: this branch (surfaces coincide,
     // no triangle crossing, AABB penetration beyond tolerance) built its
-    // `NarrowResult` directly and never checked `precision_floor` — unlike
-    // the crossing branch (`a_through_penetration_below_the_precision_floor_
-    // reports_touch_not_a_labelled_hard_clash` above), which does. Same
-    // shape and true depth (0.04 m) as `coincident_footprint_layers_are_
-    // labelled_mesh_measured` above, translated 1,000,000 units out where
-    // `precision_floor` grows to ~0.238 m (> 0.04 m): must report `Touch`,
-    // not `Hard`/`Mesh`/-0.04. Mirrors the TS fixture in
+    // `NarrowResult` directly and never checked the precision floor —
+    // unlike the crossing branch, which does. Same shape as
+    // `coincident_footprint_layers_are_labelled_mesh_measured` above (true
+    // depth 0.04 m along Z), placed 250,000 out along Z, where the Z floor
+    // (~0.06 m) is above the f32-quantised depth: must report `Touch`, not
+    // `Hard`/`Mesh`. Until #5405 this translated along X instead (see the
+    // companion below). Mirrors the TS fixture in
     // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
-        box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    let off = 250_000.0_f32;
+    let parts = [
+        box_hxyz(5.0, 5.0, off + 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(5.0, 5.0, off + 0.285, 5.0, 5.0, 0.125),
+    ];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: depth {estimate} within its Z floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
 }
 
 #[test]
+fn a_coincident_footprint_pair_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The old pin's placement, 1,000,000 out along X: a genuine 0.04 m
+    // Z-overlap whose Z coordinates are small and precise. The old floor
+    // (~0.24 m, from X) called it `Touch`.
+    let off = 1_000_000.0_f32;
+    let parts = [
+        box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
+    ];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+    assert!((result.records[0].distance + 0.04).abs() < 1e-6, "{}", result.records[0].distance);
+}
+
+#[test]
 fn an_enclosed_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
     // Same regression as above, for the enclosed-solid branch (one element's
     // AABB wholly inside the other's, no surface crossing at all): it also
-    // built its `NarrowResult` directly and never checked `precision_floor`.
-    // Same shape and true depth (0.04 m) as `an_enclosed_layer_is_labelled_
-    // mesh_measured` above, same 1,000,000-unit translation; must report
-    // `Touch`, not `Hard`. Mirrors the TS fixture in
-    // `engine-ts/depth-provenance.test.ts`.
-    let off = 1_000_000.0_f32;
-    let session = session_of_parts(&[
-        box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
-        box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
-    ]);
-    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+    // built its `NarrowResult` directly and never checked the floor. Same
+    // shape as `an_enclosed_layer_is_labelled_mesh_measured` above (0.04 m
+    // along Z), same 250,000-along-Z placement; must report `Touch`, not
+    // `Hard`. Mirrors the TS fixture in `engine-ts/depth-provenance.test.ts`.
+    let off = 250_000.0_f32;
+    let parts = [
+        box_hxyz(5.0, 5.0, off + 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(5.0, 5.0, off + 0.125, 5.0, 5.0, 0.125),
+    ];
+    let (estimate, floor) = estimate_and_floor(&parts);
+    assert!(estimate <= floor, "fixture premise: depth {estimate} within its Z floor {floor}");
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn an_enclosed_pair_far_out_on_an_orthogonal_axis_is_still_hard_5405() {
+    // The old pin's placement, 1,000,000 out along X.
+    let off = 1_000_000.0_f32;
+    let parts = [
+        box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
+    ];
+    let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
+    assert!((result.records[0].distance + 0.04).abs() < 1e-6, "{}", result.records[0].distance);
 }
 
 #[test]
@@ -1225,4 +1298,291 @@ fn a_non_box_is_still_not_a_box_5355() {
         crate::obb::detect_obb(&mesh).is_none(),
         "a triangular prism has a 4th face-normal family and is not a box"
     );
+}
+
+/// `(positions, indices, aabb)` rotated by `Rz(yaw) * Rx(roll)`, translated
+/// by `off`, re-baked through f32, with the AABB taken from the baked
+/// vertices.
+fn placed(
+    part: &(Vec<f32>, Vec<u32>, Vec<f32>),
+    yaw: f64,
+    roll: f64,
+    off: [f64; 3],
+) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let (cz, sz, cx, sx) = (yaw.cos(), yaw.sin(), roll.cos(), roll.sin());
+    let mut positions = Vec::with_capacity(part.0.len());
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for v in part.0.chunks_exact(3) {
+        let [x, y, z] = [f64::from(v[0]), f64::from(v[1]), f64::from(v[2])];
+        let (y, z) = (cx * y - sx * z, sx * y + cx * z);
+        let w = [cz * x - sz * y + off[0], sz * x + cz * y + off[1], z + off[2]];
+        for k in 0..3 {
+            let c = w[k] as f32;
+            positions.push(c);
+            min[k] = min[k].min(c);
+            max[k] = max[k].max(c);
+        }
+    }
+    (positions, part.1.clone(), vec![min[0], min[1], min[2], max[0], max[1], max[2]])
+}
+
+/// Placements of the L prism and its notch box. Rolled -0.7 rad about X
+/// the box's AABB stays inside the L's and the old probe vertex's ray
+/// parity reads "inside" (found by sweeping yaw/roll; most orientations
+/// happen to read "outside", which is what made the tie easy to miss).
+const NOTCH_PLACEMENTS: [(f64, f64, [f64; 3]); 6] = [
+    (0.0, 0.0, [0.0, 0.0, 0.0]),
+    (0.0, 0.0, [3.7, -12.9, 2.35]),
+    (0.0, -0.7, [0.0, 0.0, 0.0]),
+    (0.0, -0.7, [3.7, -12.9, 2.35]),
+    (0.0, -0.7, [123.456, -45.678, 9.1]),
+    (0.0, -0.7, [1000.0, 0.0, 0.0]),
+];
+
+#[test]
+fn a_box_exactly_filling_a_notch_is_a_touch_wherever_it_sits_5473() {
+    // A unit box filling the L prism's notch [1,2]x[1,2]x[0,1] exactly: its
+    // AABB lies inside the L's (at every placement here), no triangle
+    // crosses, and EVERY one of its vertices is on the L's surface. The
+    // enclosed-solid test used to ray-cast the box's vertex 0 — on that
+    // surface, so a coin flip that a rotation or translation re-rolls. The
+    // box's interior is outside the L; the probe is now chosen off the L's
+    // surface (the box's centroid here), so this is a touch at every
+    // placement, never a buried solid.
+    let notch_box = box_hxyz(1.5, 1.5, 0.5, 0.5, 0.5, 0.5);
+    for (yaw, roll, off) in NOTCH_PLACEMENTS {
+        let session = session_of_parts(&[placed(&l_part(), yaw, roll, off), placed(&notch_box, yaw, roll, off)]);
+        let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert!(
+            hard_only.records.is_empty(),
+            "yaw {yaw}, roll {roll}, offset {off:?}: {:?}",
+            hard_only.records.iter().map(|r| (r.status, r.distance)).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn a_box_buried_in_the_l_prism_is_still_hard_wherever_it_sits_5473() {
+    // Companion: a box inside the L's solid corner square, touching nothing
+    // — buried at every placement, or a probe that never said "inside"
+    // would pass above.
+    let buried = box_hxyz(0.5, 0.5, 0.5, 0.3, 0.3, 0.3);
+    for (yaw, roll, off) in NOTCH_PLACEMENTS {
+        let session = session_of_parts(&[placed(&l_part(), yaw, roll, off), placed(&buried, yaw, roll, off)]);
+        let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+/// An `[minx, miny, minz, maxx, maxy, maxz]` part AABB as an [`Aabb`].
+fn aabb_of(b: &[f32]) -> crate::aabb::Aabb {
+    let f = |i: usize| f64::from(b[i]);
+    crate::aabb::Aabb::new([f(0), f(1), f(2)], [f(3), f(4), f(5)])
+}
+
+#[test]
+fn a_duplicate_of_its_container_is_buried_in_it_5473() {
+    // Every vertex of an exact duplicate lies ON the container's surface, so
+    // no vertex can decide by ray parity: each reads inside or outside
+    // depending on where its ray leaves. Listing the corners max-first makes
+    // the first one read "outside" (its ray exits at once). The duplicate's
+    // own vertex centroid, inside it and away from every face, is what
+    // `contained_solid_is_buried` falls back on — and it is inside.
+    let (positions, indices, bounds) = box_hxyz(2.0, -1.0, 0.5, 0.5, 0.3, 0.2);
+    let bb = aabb_of(&bounds);
+    let reversed: Vec<f64> = positions.chunks_exact(3).rev().flatten().map(|&c| f64::from(c)).collect();
+    let remapped: Vec<u32> = indices.iter().map(|&i| 7 - i).collect();
+    let dup = TriMesh::new(reversed, remapped);
+    assert!(!dup.contains_point(dup.vertex(0)), "fixture premise: the first corner reads outside");
+    assert!(crate::depth::contained_solid_is_buried(&dup, &dup, &bb, &bb));
+}
+
+#[test]
+fn a_solid_resting_on_its_containers_face_from_outside_is_not_buried_5473() {
+    // Companion: a box standing on a slab's top face, outside the slab's
+    // solid, with its bottom corners ON that face. The farthest candidate
+    // (0.4 above the face) decides "outside"; an implementation that
+    // answered "buried" for every contact would pass the duplicate test
+    // above and fail here.
+    let (slab_positions, slab_indices, slab_bounds) = box_hxyz(0.0, 0.0, 0.0, 5.0, 5.0, 1.0);
+    let slab = TriMesh::new(slab_positions.iter().map(|&c| f64::from(c)).collect(), slab_indices);
+    let (positions, indices, bounds) = box_hxyz(0.0, 0.0, 1.2, 0.5, 0.5, 0.2);
+    let resting = TriMesh::new(positions.iter().map(|&c| f64::from(c)).collect(), indices);
+    assert!(!crate::depth::contained_solid_is_buried(&resting, &slab, &aabb_of(&bounds), &aabb_of(&slab_bounds)));
+}
+
+#[test]
+fn a_two_shell_element_with_one_shell_buried_is_hard_5473() {
+    // Review of #5564: an element may be several disconnected shells. Its
+    // first shell floats clear inside the L prism's notch (outside the L's
+    // solid, away from every face), its second is buried in the L's solid
+    // corner; neither touches the L, so nothing crosses. The notch shell's
+    // vertices come first and are clearly outside, which must not end the
+    // search: the buried shell makes the pair a hard clash.
+    let (notch_p, notch_i, _) = box_hxyz(1.5, 1.5, 0.5, 0.3, 0.3, 0.3);
+    let (buried_p, buried_i, _) = box_hxyz(0.5, 0.5, 0.5, 0.3, 0.3, 0.3);
+    let mut positions = notch_p;
+    positions.extend_from_slice(&buried_p);
+    let mut indices = notch_i;
+    indices.extend(buried_i.iter().map(|&i| i + 8));
+    let aabb = vec![0.2, 0.2, 0.2, 1.8, 1.8, 0.8];
+    let session = session_of_parts(&[l_part(), (positions, indices, aabb)]);
+    let result = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+}
+
+/// #5717: a genuine interpenetration must not be vetoed by a sampling probe
+/// taken on a face the two elements happen to SHARE.
+///
+/// A curtain-wall panel and a mullion authored to the same height are flush
+/// on their tops and bottoms while genuinely overlapping laterally. Rotate
+/// that pair off the world axes and the mullion's top corners bake, through
+/// f32, a noise-width inside the panel's top face. `crossing_vertex_penetration`
+/// reports them as a ~0 "penetration", which sat at-or-below its floor and
+/// took the whole pair to `Touch` — discarding a 20 mm overlap that the
+/// exact box MTD had already measured correctly, and (with `report_touch`
+/// off) dropping the clash from the report entirely.
+///
+/// The probe is explicitly not a depth metric, so it may only guard the
+/// fabricated AABB estimate, never a certified box depth. Two boxes that are
+/// genuinely flush still report `Touch` through the MTD term instead, which
+/// the companion assertion below pins — without it, a fix that simply
+/// stopped reporting `Touch` at all would pass.
+///
+/// Kills: dropping the `measured.is_none() &&` guard in `depth_clash_result`.
+#[test]
+fn a_shared_face_does_not_veto_a_genuine_overlap_5717() {
+    const PEN: f32 = 0.02;
+    // 0.0 and 0.1 always passed; from ~0.3 the baked corners land inside.
+    for rot in [0.0f32, 0.1, 0.3, 0.4, std::f32::consts::FRAC_PI_4] {
+        let (c, s) = (rot.cos(), rot.sin());
+        let mullion = rotated_box_hxyz(0.0, 0.0, 0.0, 0.1, 0.1, 1.5, rot);
+
+        // Coplanar tops/bottoms (hz equal), overlapping laterally by PEN.
+        let panel = rotated_box_hxyz((0.125 - PEN) * c, (0.125 - PEN) * s, 0.0, 0.025, 0.75, 1.5, rot);
+        let got = session_of_parts(&[mullion.clone(), panel])
+            .run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        let rec = got.records.first().unwrap_or_else(|| {
+            panic!("rotation {rot}: a 20 mm overlap must report at all")
+        });
+        assert_eq!(
+            rec.status,
+            ClashStatus::Hard,
+            "rotation {rot}: a 20 mm overlap is a hard clash, not a touch"
+        );
+        assert!(
+            (rec.distance + f64::from(PEN)).abs() < 1e-3,
+            "rotation {rot}: depth {} should be about -{PEN}",
+            rec.distance
+        );
+
+        // Companion: the SAME pair, moved out to exactly flush, is still a
+        // touch. This is what stops the assertions above being satisfied by
+        // a kernel that never reports `Touch`.
+        let flush = rotated_box_hxyz(0.125 * c, 0.125 * s, 0.0, 0.025, 0.75, 1.5, rot);
+        let got = session_of_parts(&[mullion, flush])
+            .run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(
+            got.records.first().map(|r| r.status),
+            Some(ClashStatus::Touch),
+            "rotation {rot}: a flush pair is still a touch"
+        );
+    }
+}
+
+/// The complement of `l_part` over [1,3]x[0,2]: the notch square
+/// [1,2]x[1,2] plus an arm [2,3]x[0,2], z 0..1, shifted `dy` along Y. At
+/// `dy = 0` it meets the L flush on three faces (y = 1 and x = 1 around the
+/// notch, x = 2 along the arm) and nowhere overlaps it. Their AABB overlap
+/// is [1,2]x[0,2]x[0,1], whose centre (1.5, 1, 0.5) lies exactly ON the
+/// shared face y = 1.
+fn complementary_l(dy: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let foot: [[f32; 2]; 6] = [[2.0, 0.0], [3.0, 0.0], [3.0, 2.0], [1.0, 2.0], [1.0, 1.0], [2.0, 1.0]];
+    let mut positions = Vec::with_capacity(36);
+    for z in [0.0f32, 1.0] {
+        for [x, y] in foot {
+            positions.extend_from_slice(&[x, y + dy, z]);
+        }
+    }
+    // Fan from the reflex vertex (2,1) = index 5 (bottom) / 11 (top).
+    let mut indices: Vec<u32> = vec![5, 1, 0, 5, 2, 1, 5, 3, 2, 5, 4, 3];
+    indices.extend_from_slice(&[11, 6, 7, 11, 7, 8, 11, 8, 9, 11, 9, 10]);
+    for k in 0..6u32 {
+        let n = (k + 1) % 6;
+        indices.extend_from_slice(&[k, n, n + 6, k, n + 6, k + 6]);
+    }
+    let aabb = vec![1.0, dy, 0.0, 3.0, 2.0 + dy, 1.0];
+    (positions, indices, aabb)
+}
+
+const INTERLOCK_PLACEMENTS: [(f64, f64, [f64; 3]); 8] = [
+    (0.0, 0.0, [0.0, 0.0, 0.0]),
+    (0.0, 0.0, [7.4, 0.0, 0.0]),
+    (0.0, 0.0, [3.7, -12.9, 2.35]),
+    (0.0, 0.0, [123.456, -45.678, 9.1]),
+    (0.0, 0.0, [1000.0, 0.0, 0.0]),
+    (0.3, 0.0, [0.0, 0.0, 0.0]),
+    (0.3, 0.0, [123.456, -45.678, 9.1]),
+    (1.1, -0.61, [1000.0, 0.0, 0.0]),
+];
+
+#[test]
+fn flush_interlocking_ls_are_a_touch_at_every_placement_not_the_aabb_estimate_5751() {
+    // Two L prisms interlocking flush: no triangle crosses, their AABBs
+    // overlap by 1 m, and the AABB-overlap probe sits ON the shared face.
+    // Its ray parity was a coin flip, and "inside both" reported the pair
+    // Hard at the AABB estimate (-1.0, the overlap width: an element
+    // dimension, not a depth), differently at different placements. A probe
+    // now counts only when clearly inside both solids.
+    for (yaw, roll, off) in INTERLOCK_PLACEMENTS {
+        let parts = [placed(&l_part(), yaw, roll, off), placed(&complementary_l(0.0), yaw, roll, off)];
+        let session = session_of_parts(&parts);
+        let hard_only = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert!(
+            hard_only.records.is_empty(),
+            "yaw {yaw}, roll {roll}, offset {off:?}: {:?}",
+            hard_only.records.iter().map(|r| (r.status, r.distance)).collect::<Vec<_>>()
+        );
+        let with_touch = session.run_rule(&[0, 1], None, HARD, 0.001, 0.0, true);
+        assert_eq!(with_touch.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(with_touch.records[0].status, ClashStatus::Touch, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+#[test]
+fn interlocking_ls_driven_20mm_into_each_other_are_hard_at_every_placement_5751() {
+    // Companion: the same pair with the complement pushed 20 mm into the L
+    // along -Y, a real shared volume. It must stay Hard everywhere, or a
+    // probe rule that never trusted anything would pass above.
+    for (yaw, roll, off) in INTERLOCK_PLACEMENTS {
+        let parts = [placed(&l_part(), yaw, roll, off), placed(&complementary_l(-0.02), yaw, roll, off)];
+        let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "yaw {yaw}, roll {roll}, offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "yaw {yaw}, roll {roll}, offset {off:?}");
+    }
+}
+
+#[test]
+fn a_1mm_aligned_overlap_through_the_probe_is_hard_far_out_on_an_orthogonal_axis_5751() {
+    // The probe path's genuine-volume case at a thin margin: a long and a
+    // short bar sharing all their side planes (so no triangle pair crosses)
+    // and overlapping 1 mm end to end. The AABB-overlap probe is 0.5 mm from
+    // the nearest surface along X. Placed 10 km out along Y — orthogonal to
+    // that clearance — it must still be trusted: the probe's own floor
+    // projected onto X is ~1e-6 m, where a max-over-all-axes floor (10,000 *
+    // 2^-22 ~ 2.4 mm) would call the 0.5 mm clearance "on the surface" and
+    // lose a real 1 mm clash.
+    for off in [[0.0, 0.0, 0.0], [0.0, 10_000.0, 0.0]] {
+        let parts = [
+            placed(&box_hxyz(0.0, 0.0, 0.0, 5.0, 0.5, 0.5), 0.0, 0.0, off),
+            placed(&box_hxyz(5.499, 0.0, 0.0, 0.5, 0.5, 0.5), 0.0, 0.0, off),
+        ];
+        let result = session_of_parts(&parts).run_rule(&[0, 1], None, HARD, 0.0001, 0.0, false);
+        assert_eq!(result.records.len(), 1, "offset {off:?}");
+        assert_eq!(result.records[0].status, ClashStatus::Hard, "offset {off:?}");
+        assert!((result.records[0].distance + 0.001).abs() < 1e-5, "offset {off:?}: {}", result.records[0].distance);
+    }
 }

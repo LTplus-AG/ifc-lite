@@ -33,7 +33,10 @@ export type LandXmlRefusedFamily =
   | 'surface-breaklines'
   | 'surface-contours'
   | 'non-rendered-surfaces'
-  | 'unlocated-cgpoints';
+  | 'unlocated-cgpoints'
+  | 'station-equations'
+  | 'cant'
+  | 'superelevation';
 
 export interface LandXmlRefusal {
   family: LandXmlRefusedFamily;
@@ -59,6 +62,18 @@ export interface LandXmlIfcCoverage {
   vertices: number;
   /** Triangles across all written surfaces. */
   triangles: number;
+  /**
+   * Horizontal alignments written as `IfcAlignment` (§11). `landXmlToIfc`
+   * always sets it; it is optional only so that adding it is not a breaking
+   * change to an interface v1.0 may already have published (#5370 review) —
+   * read it as `coverage.alignments ?? 0`.
+   */
+  alignments?: number;
+  /**
+   * Design profiles written as `IfcAlignmentVertical` (§12). Optional for the
+   * same reason as `alignments`: read it as `coverage.profiles ?? 0`.
+   */
+  profiles?: number;
 }
 
 /** What the produced file records about where it came from (§7). */

@@ -89,7 +89,7 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
-The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
+The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx` (now the HUD bar `MeasureToolbar.tsx`, `MeasureHudReadouts.tsx` and the `MeasurementsPanel.tsx` side panel, #5502),
 `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`, `MeasurementVisuals.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
@@ -114,10 +114,11 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
-The 2D-section workspace catalogue (#4918 viewer-panels slice) covers
-`Section2DPanel.tsx`: header controls and overflow menus, drawing modes,
-annotation tools and guidance, export/print prompts, generation/error states,
-empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
+The Drawing panel catalogue (#4918 viewer-panels slice, reshaped by #5494)
+covers `components/viewer/drawing/`: the header, toolbar row (markup tools,
+display chips, settings drawers, zoom), Export menu, status-line hints and
+facts, export/print prompts, generation/error and empty states
+(`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
 The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own
@@ -438,8 +439,8 @@ geometry-merge setting's reload banner), not the same feature under a new
 name.
 
 The Annotate tool catalogue (#4918 slice: annotations, `annotations.en.ts`)
-covers the canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer
-that projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
+covers the canvas-overlay pin (the shared `Pin` scene primitive, registered on
+the projector by `AnnotationLayer.tsx` — #5511), the read/edit
 popover for an existing pin (`AnnotationPopover.tsx`), and the inline
 commit-or-cancel input shown while dropping a fresh pin
 (`AnnotationDropInput.tsx`), including the relative-time phrasing
@@ -763,9 +764,9 @@ welcome/empty state, its WebGPU-unavailable banner, and the loaded-model
 "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
 cluster, the selected-storey count, and the per-model basepoint toggle),
 `Viewport.tsx`'s own renderer-init failure fallback, `FlySpeedIndicator.tsx`'s
-fly-mode HUD, and the Sun & Sky panel's own chrome plus its two sub-panels
-(`SunSkyPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
-`SunSkyPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
+fly-mode HUD, and the Environment panel's own chrome plus its two sub-panels
+(`EnvironmentPanel.tsx`, `ShadowControls.tsx`, `SunTimeControls.tsx`).
+`EnvironmentPanel.tsx`'s `CONTEXT_SOURCES`/`SWEEP_MODES` select-option tables
 moved their `label`/`hint` fields to `labelKey`/`hintKey`, the same
 data-table-plus-`labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and
 this sweep's other select tables use — component `label` props are not

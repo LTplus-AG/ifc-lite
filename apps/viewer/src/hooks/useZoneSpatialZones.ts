@@ -75,6 +75,7 @@ export interface ZoneEmitResult {
 /** Per-model handles the loop would otherwise re-derive. */
 interface ModelContext {
   editor: StoreEditor;
+  view: MutablePropertyView;
   store: IfcDataStore;
   name: string;
   rebased: boolean;
@@ -140,6 +141,7 @@ function contextFor(
 
   const context: ModelContext = {
     editor,
+    view,
     store,
     name: model?.name ?? modelId,
     rebased: model ? !geometryVolumesSurviveAlignment(model.federationAlignmentStatus) : false,
@@ -202,6 +204,7 @@ export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
     if (!context) continue;
     const result = emitSpatialZones(context.editor, context.store, zoneSet, members, context.frame, {
       rebased: context.rebased,
+      view: context.view,
     });
     outcomes.push({
       modelId,

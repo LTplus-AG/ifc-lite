@@ -17,6 +17,9 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
 import { customPlaneCenter } from '@/store';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
+import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
+import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
+import type { ThemeMode } from '@/store/slices/uiSlice';
 
 export interface UseRenderUpdatesParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -78,9 +81,19 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     showHiddenLines,
   } = params;
 
-  // Theme-aware clear color update
+  // Theme-aware clear color update, and the renderer's overlay theme (#5484):
+  // selection, section-plane preview, every overlay line channel (annotation /
+  // alignment / grid / DXF / LandXML lines and the section-cut outline, #5388)
+  // and the clash tints, all sourced from the same design tokens (#5483). Runs
+  // on theme change AND once the renderer finishes initializing (`isInitialized`
+  // flips), so a renderer created after this effect first ran still gets themed.
+  // `setOverlayTheme` writes its GPU uniforms only here, never per frame.
   useEffect(() => {
     clearColorRef.current = getThemeClearColor(theme as 'light' | 'dark' | 'colorful');
+    // App-side clash tints (#1277/#1339) follow the theme regardless of
+    // renderer readiness — they're plain JS state other code reads directly.
+    setClashColorsFromTheme(theme as ThemeMode);
+    if (isInitialized) rendererRef.current?.setOverlayTheme(rendererOverlayTheme(theme as ThemeMode));
     rendererRef.current?.requestRender();
   }, [theme, isInitialized]);
 

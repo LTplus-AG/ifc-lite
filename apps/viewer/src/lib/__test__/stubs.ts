@@ -52,6 +52,10 @@ export class StubStoreEditor {
     return this.overlay.get(id) ?? null;
   }
 
+  getEntityType(id: number): string | undefined {
+    return this.overlay.get(id)?.type;
+  }
+
   setPositionalAttribute(id: number, index: number, value: unknown): void {
     let entry = this.positional.get(id);
     if (!entry) {
@@ -78,6 +82,10 @@ export class StubStoreEditor {
  */
 export class StubView {
   private positional = new Map<number, Map<number, unknown>>();
+
+  isDeleted(_id: number): boolean { return false; }
+  getNewEntities(): OverlayEntity[] { return []; }
+  getTypeMutations(): Map<number, { newType: string }> { return new Map(); }
 
   getPositionalMutationsForEntity(id: number): Map<number, unknown> | null {
     return this.positional.get(id) ?? null;

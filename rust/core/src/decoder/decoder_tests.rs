@@ -686,3 +686,81 @@ fn issue_4697_an_index_span_past_the_content_is_refused_not_a_panic() {
     let named = decoder.decode_by_id(3).unwrap_err().to_string();
     assert!(named.contains("invalid byte span"), "{named}");
 }
+
+/// #5266: a dropped comma corrupts one STEP numeric literal into two, e.g.
+/// `1.52.3` for what was meant to be `1.52,3`. `fast_float2::parse_partial`
+/// happily parses the `1.52` prefix and reports it consumed, leaving `.3` to
+/// be read as the START of the next coordinate -- so every later component
+/// shifts by one position instead of the record being refused. The nom
+/// tokenizer's `float` combinator requires the whole token to match the STEP
+/// grammar, so `decode_by_id` already refuses the same input; this test pins
+/// that the raw-byte fast readers (`parse_next_float` under
+/// `get_cartesian_point_fast`, and its `fast_parse.rs` counterparts) must
+/// refuse it too instead of fabricating a shifted point.
+#[test]
+fn issue_5266_corrupted_literal_is_refused_not_split_into_two_coordinates() {
+    let content = "#1=IFCCARTESIANPOINT((1.52.3,4.0,5.0));\n";
+    let mut decoder = EntityDecoder::new(content);
+
+    // The full tokenizer already refuses a malformed record.
+    assert!(decoder.decode_by_id(1).is_err(), "the nom tokenizer should refuse the corrupted literal");
+
+    // The fast path must now agree, not fabricate `(1.52, 0.3, 4.0)`.
+    assert_eq!(
+        decoder.get_cartesian_point_fast(1),
+        None,
+        "the fast reader must refuse a corrupted literal instead of splitting it into two coordinates"
+    );
+}
+
+/// #5266, pinning the other raw-byte float reader independently:
+/// `get_polyloop_coords_cached` (`decoder/fast_buffers.rs`) reads each point
+/// through `parse_cartesian_point_inline`, which calls `parse_float_inline`
+/// -- a separate function from `parse_next_float` above, sharing the same
+/// missing-delimiter-check shape. A corrupted literal on the middle point of
+/// a loop must refuse that point instead of fabricating a shifted one.
+#[test]
+fn issue_5266_polyloop_cached_reader_also_refuses_a_corrupted_literal() {
+    let content = "\
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((1.52.3,4.0,5.0));
+#3=IFCCARTESIANPOINT((1.,1.,0.));
+#4=IFCPOLYLOOP((#1,#2,#3));
+";
+    let mut decoder = EntityDecoder::new(content);
+    assert_eq!(
+        decoder.get_polyloop_coords_cached(4),
+        None,
+        "a corrupted literal on one loop point must refuse the whole loop, not fabricate a shifted point"
+    );
+}
+
+/// #5266 follow-up: the fast point reader agrees with the full tokenizer on
+/// every edge the first fix left open. `nan`/`inf` are not STEP literals, a
+/// corrupt LAST value must refuse the point rather than default z to 0, a
+/// legal comment after z must keep z, and only a genuine 2D point (list
+/// closes after y) defaults z.
+#[test]
+fn issue_5266_fast_point_reader_matches_the_tokenizer_on_every_edge() {
+    type Point = Option<(f64, f64, f64)>;
+    let cases: &[(&str, Point)] = &[
+        ("(NaN,1.,2.)", None),
+        ("(inf,1.,2.)", None),
+        ("(1.,2.,infinity)", None),
+        ("(1.,2.,3.x)", None),
+        ("(1.,2.,1.52.3)", None),
+        ("(1.,2.,)", None),
+        ("(1.,2.,3.,4.)", None),
+        ("(1.52 .3,4.,5.)", None),
+        ("(1.52/* c */.3,4.,5.)", None),
+        ("(1.,2.,3./* c */)", Some((1.0, 2.0, 3.0))),
+        ("( 1. /* a */ , 2. ,3. )", Some((1.0, 2.0, 3.0))),
+        ("(1.,2.)", Some((1.0, 2.0, 0.0))),
+        ("(+1.5,.5,-1.E2)", Some((1.5, 0.5, -100.0))),
+    ];
+    for &(coords, expected) in cases {
+        let content = format!("#1=IFCCARTESIANPOINT({coords});\n");
+        let mut decoder = EntityDecoder::new(&content);
+        assert_eq!(decoder.get_cartesian_point_fast(1), expected, "{coords}");
+    }
+}

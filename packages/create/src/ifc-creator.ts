@@ -41,7 +41,7 @@ import type {
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   optStr, optEnum,
-  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
+  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes,
 } from './ifc-creator-math.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
 import {
@@ -53,7 +53,9 @@ import { emitElementQuantity, emitPropertySet, type DefinitionContext } from './
 import { createTerrainWriter, type TerrainContext, type TerrainWriter } from './ifc-creator-terrain.js';
 import { emitRelFillsElement, emitSpatialRelationships } from './ifc-creator-relationships.js';
 import { emitDefaultStyle, emitStyledItems } from './ifc-creator-styles.js';
+import { buildStepHeader } from './ifc-creator-header.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
+import { fileSchemaIdentifier } from '@ifc-lite/data';
 
 // ============================================================================
 // IfcCreator
@@ -107,6 +109,8 @@ export class IfcCreator {
   // survey annotations have no storey, and inventing one would put them on a
   // datum the source never declared.
   private siteElements: number[] = [];
+  /** Products aggregated by the project itself — `IfcAlignment` (§11 of the LandXML mapping). */
+  private projectElements: number[] = [];
   private georeferenced = false;
   /** The length `IfcNamedUnit` `IfcProjectedCRS.MapUnit` points at. */
   private lengthUnitId = 0;
@@ -1571,6 +1575,10 @@ export class IfcCreator {
       },
       lengthUnitRef: () => `#${this.lengthUnitId}`,
       siteId: () => this.siteId,
+      trackProjectProduct: (expressId, type, name) => {
+        this.projectElements.push(expressId);
+        this.entities.push({ expressId, type, Name: name });
+      },
       claimGeoreferencing: () => {
         if (this.georeferenced) {
           throw new Error('setGeoreferencing: already called — a file has at most one IfcMapConversion for its model context');
@@ -1588,6 +1596,7 @@ export class IfcCreator {
       ownerRef: `#${this.ownerHistoryId}`,
       modelContextRef: `#${this.contextId}`,
       bodyContextRef: `#${this.subContextBody}`,
+      axisContextRef: `#${this.subContextAxis}`,
       sitePlacementRef: `#${this.worldPlacementId}`,
       assertSchema: (feature: string) => {
         if (this.schema !== 'IFC4X3') {
@@ -2016,20 +2025,8 @@ export class IfcCreator {
   }
 
   private buildHeader(): string {
-    const now = new Date(this.nowMs()).toISOString().replace(/\.\d{3}Z$/, ''); // ISO 8601 time_stamp: keep '-'/':', drop only ms+'Z'
-    const desc = 'Created by ifc-lite';
-    const author = this.projectParams.Author ?? '';
-    const org = this.projectParams.Organization ?? '';
-    const app = 'ifc-lite';
-    const filename = 'created.ifc';
-
-    return `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('${esc(desc)}'),'2;1');
-FILE_NAME('${filename}','${now}',('${esc(author)}'),('${esc(org)}'),'${app}','${app}','');
-FILE_SCHEMA(('${this.schema}'));
-ENDSEC;
-`;
+    return buildStepHeader(this.nowMs(), this.projectParams.Author ?? '', this.projectParams.Organization ?? '',
+      fileSchemaIdentifier(this.schema));
   }
 
   // ============================================================================
@@ -2233,9 +2230,8 @@ ENDSEC;
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    const axisId = placement.Axis ? this.addDirection(placement.Axis) : undefined;
-    const refDirId = placement.RefDirection ? this.addDirection(placement.RefDirection) : undefined;
-    const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
+    const axes = completePlacementAxes(placement.Axis, placement.RefDirection); // both or neither (#5469)
+    const axis2Id = this.addAxis2Placement3D(originId, axes && this.addDirection(axes.Axis), axes && this.addDirection(axes.RefDirection));
 
     const id = this.id();
     this.line(id, 'IFCLOCALPLACEMENT', `#${relativeTo},#${axis2Id}`);
@@ -2766,6 +2762,7 @@ ENDSEC;
       storeyIds: this.storeyIds,
       storeyElements: this.storeyElements,
       siteElements: this.siteElements,
+      projectElements: this.projectElements,
     });
   }
 

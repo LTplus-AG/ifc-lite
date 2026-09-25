@@ -49,10 +49,11 @@ import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
 import { classifyLoadError } from '@/lib/load-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -65,8 +66,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const models = useViewerStore((s) => s.models);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
-  const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
   // Class-level visibility (IfcSpace / IfcOpeningElement / IfcSite) — these
   // are off by default and live OUTSIDE the per-entity hidden set, so a
   // visible-only export that only checks `hiddenEntities` would still ship
@@ -145,10 +144,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
    * `MeshData.expressId` carries the federated global ID (`local +
    * idOffset`, see `store/types.ts:365`), and the legacy / global store
    * sets (`hiddenEntities`, `isolatedEntities`) are also global —
-   * `basketVisibleSet.ts:405-412` is the canonical reference for which
-   * set lives in which space. Only the per-model `*ByModel` Maps store
-   * raw local IDs, so those need an offset added before they can match
-   * a mesh expressId. This is the opposite shape from the STEP exporter
+   * `basketVisibleSet.ts` is the canonical reference for which set lives
+   * in which space. This is the opposite shape from the STEP exporter
    * (which works in local entity space), so don't reuse ExportDialog's
    * helpers here.
    */
@@ -161,7 +158,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const getExportVisibility = useCallback(
     (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+    [models, hiddenEntities, isolatedEntities, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
   );
 
   const getGlobalHiddenIds = useCallback(
@@ -302,9 +299,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
-      const suffix = visibleOnly ? '_visible' : '';
-      downloadBlob(blob, `${baseName}${suffix}.glb`);
+      downloadBlob(blob, modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : ''));
 
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
@@ -367,8 +362,14 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     getGlobalIsolatedIds,
   ]);
 
+  const handleOpenChange = useExportDialogOpenGuard({
+    busy: isExporting,
+    setOpen,
+    onOpen: () => setExportResult(null),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -493,7 +494,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
             {t('geometryExport.glb.cancelButton')}
           </Button>
           <Button

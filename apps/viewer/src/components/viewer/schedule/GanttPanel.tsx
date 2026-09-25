@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { extractScheduleOnDemand } from '@ifc-lite/parser';
+import { createEffectiveRecordOverlay } from '@ifc-lite/sdk';
+import { getMutationViewForModel } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
 import { resolveScheduleSourceModelId } from '@/store/slices/schedule-edit-helpers';
 import { useIfc } from '@/hooks/useIfc';
@@ -31,15 +33,12 @@ import { useConstructionSequence } from './useConstructionSequence';
 import { useScheduleFileImport } from './useScheduleFileImport';
 import { useGanttSelection3DHighlight } from './useGanttSelection3DHighlight';
 
-interface GanttPanelProps {
-  onClose?: () => void;
-}
-
 const LEFT_PANE_WIDTH = 320;
 
-export function GanttPanel({ onClose }: GanttPanelProps) {
+export function GanttPanel() {
   const { t } = useTranslation();
   const { ifcDataStore, models, loading, activeModelId } = useIfc();
+  const mutationVersion = useViewerStore(s => s.mutationVersion);
 
   // Resolve the active model once; shared by extraction + canGenerate.
   const activeStore = useMemo(
@@ -90,7 +89,11 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       return;
     }
     try {
-      const extraction = extractScheduleOnDemand(activeStore);
+      const modelId = [...models].find(([, model]) => model.ifcDataStore === activeStore)?.[0]
+        ?? activeModelId ?? 'legacy';
+      const view = getMutationViewForModel(useViewerStore, modelId);
+      const extraction = extractScheduleOnDemand(activeStore, view
+        ? { overlay: createEffectiveRecordOverlay(view, activeStore) } : undefined);
 
       // CRITICAL guard: do NOT overwrite an in-memory user-edited /
       // generated schedule with null just because the underlying
@@ -124,7 +127,7 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       setExtractionError(message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStore]);
+  }, [activeStore, activeModelId, models, mutationVersion]);
 
   // Drive the 3D viewport's hidden-entity set from the playback clock.
   // Registers the 'animation' overlay layer; the single compositor mounted
@@ -262,7 +265,6 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
       />
 
       <GanttToolbar
-        onClose={onClose}
         onOpenGenerate={() => setGenerateOpen(true)}
         onOpenImport={() => importFileInputRef.current?.click()}
         canGenerate={canGenerate}
@@ -305,7 +307,6 @@ export function GanttPanel({ onClose }: GanttPanelProps) {
           selectedScheduleEmpty={selectedScheduleEmpty}
           onGenerate={() => setGenerateOpen(true)}
           onImport={() => importFileInputRef.current?.click()}
-          onClose={onClose}
         />
       ) : (
         <div className="flex-1 min-h-0 flex">

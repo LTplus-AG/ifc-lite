@@ -45,6 +45,12 @@ export interface SectionDrawContext {
     rteCamera?: readonly [number, number, number];
     /** The bounds this frame resolved the section slider against. */
     modelBounds: ModelBounds | null;
+    /**
+     * Drawing-buffer px per CSS px (default 1). The cap hatch is laid out in
+     * fragment coordinates, so its CSS-px spacing and width scale by this to
+     * look the same on a HiDPI buffer (#5383).
+     */
+    pixelRatio?: number;
 }
 
 /**
@@ -96,7 +102,7 @@ export function drawSectionOverlays(
             const o = options.sectionPlane;
             const showFills    = o.showCap !== false;
             const showOutlines = o.showOutlines !== false;
-            const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
+            const style = { ...DEFAULT_CAP_STYLE, ...o.capStyle };
             cap.draw(
                 pass,
                 {
@@ -114,9 +120,9 @@ export function drawSectionOverlays(
                         fillColor:   style.fillColor,
                         strokeColor: style.strokeColor,
                         patternId:   HATCH_PATTERN_IDS[style.pattern],
-                        spacingPx:   style.spacingPx,
+                        spacingPx:   style.spacingPx * (ctx.pixelRatio ?? 1),
                         angleRad:    style.angleRad,
-                        widthPx:     style.widthPx,
+                        widthPx:     style.widthPx * (ctx.pixelRatio ?? 1),
                         secondaryAngleRad: style.secondaryAngleRad,
                     } : undefined,
                 }

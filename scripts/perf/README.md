@@ -27,6 +27,61 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Derived swept-disk metrics (#5754)
+
+The length/bend calculations run only when an analytic description is
+requested or serialized, outside normal mesh production. Verdict: default mesh
+output is byte-identical (same ordered mesh hash on both revisions); a
+default-load probe cannot measure this code's cost, and timing on a contested
+host was unresolved. Measure opt-in analytic extraction on representative
+swept-disk models separately from ordinary mesh loading.
+
+## Opt-in swept-disk source descriptions (#5559)
+
+The analytic reader runs only when called explicitly; normal mesh loading does
+not traverse a directrix through this path. On AC20-FZK-Haus, five interleaved
+base/feature pairs of `perf_probe --iters 5 --json --fingerprint` (base
+`337aab4f4`, final feature stack) gave median parse/geometry/pipeline-total
+times of 6/20/27 ms versus 7/22/29 ms. The base's pipeline-total samples
+spanned 23–34 ms and the feature's 24–31 ms; the machine had other builds
+running, so the small median difference is not evidence of a speed change.
+Every run on both sides emitted 285 meshes, 35,940 vertices and 20,322
+triangles with ordered mesh FNV-1a64 `c4d504b83ff698ea`.
+
+Verdict: no mesh-output regression on this ordinary load, and no reliable
+performance claim from the contested host. The opt-in extraction's own cost
+needs a caller-level measurement on representative swept-disk models if it
+becomes a frequent operation; the default pipeline cannot measure that cost.
+
+## Raw-world RTC before f32 narrowing (#5698)
+
+Every built-in raw-coordinate processor now removes the model RTC offset in
+f64 through `process_in_rtc_frame`, and element walkers express that offset in
+the item frame. Interleaved native probes on a loaded host showed no stable
+timing change on AC20-FZK-Haus, ISSUE_129, ISSUE_098 or Holter: run-to-run
+spread exceeded any base-versus-branch difference. Only the output of
+`860_solid_stratum` changed across the fetched corpus: its national-grid TIN
+now keeps its surveyed vertices instead of a 0.5 m f32 grid. The rebase costs
+one extra first-vertex probe per raw-coordinate item on models with an RTC
+offset; the f64 coordinate parse runs only for items that are actually rebased.
+Measure A/B on a shared host by process CPU time and minima, not wall medians:
+wall medians swung 10-20% between identical binaries under load.
+Element-frame rebasing must go through the cached item path, keyed by its
+offset: a bespoke path silently drops content dedup and instancing.
+
+## LV95 site-local vertices and RTC frames (#5684)
+
+Interleaved base-versus-branch native probes on AC20-FZK-Haus and ISSUE_129
+showed no stable timing change across run orders. Both fixtures kept identical
+mesh, vertex and triangle counts and ordered mesh fingerprints. A private bridge
+IFC reproduced the intended geometry change: a site-local thin
+member recovered faces lost when the old path subtracted the national-grid RTC
+offset from already-f32 vertices. The lesson is to rebase early only when doing
+so reduces object-space coordinate magnitude. For genuine raw-world coordinates
+in millimetre files, the guarded subtraction must still precede f32 unit
+scaling or a small face can quantize at national-grid magnitude. Items
+processed in different RTC frames must receive placement before they are merged.
+
 ## LandXML credited-stream acceptance (#5050)
 
 The native, generated-source acceptance harness is deliberately independent of
@@ -269,6 +324,54 @@ its squared-matrix path lost thin but valid correspondence directions. The
 bounded direct decomposition and two retained counterexamples prevent repeating
 that failure. Small point-to-plane residuals remain no substitute for spatially
 distributed check correspondences, as the CRAS evidence demonstrates.
+
+## Incremental streaming finalize (#5358)
+
+**Won.** `Scene.finalizeStreaming` / `finalizeStreamingAsync` used to dissolve
+and rebuild every bucket in the scene, so each streamed federated add re-merged
+and re-uploaded the whole federation (O(N²) over N models) and briefly held two
+GPU copies of all of it. Finalize now rebuilds only the buckets that received
+streamed meshes since the last finalize (plus any key already pending); the
+in-place colour re-group it exists for only ever concerns those meshes.
+
+Measured with the real `Scene` streaming + finalize + merge/quantize/upload code
+over a byte-counting fake `GPUDevice` (10 synthetic models × 20,000 box pieces,
+24 colours, two interleaved base/branch runs): the finalize of the 10th add went
+from 645-819 ms to about 53 ms (flat per add; the 1st add is unchanged), and the
+transient GPU bytes above the resident set during a finalize went from "the
+whole federation" (155.7 MB at the 10th add) to "the new model" (15.6 MB). The
+final resident bytes and batch counts are identical. The lesson is that the fake
+device measures the CPU half exactly and the GPU half as bytes, not driver time.
+The viewer's own federated "Add" currently takes the non-streaming
+`appendToBatches` path and never reached this finalize, so the win is for
+`@ifc-lite/renderer` hosts that stream federated models, and for any finalize
+that runs with other models resident.
+
+## Cross-batch shared shapes on the Parquet stream (#5407)
+
+**Won, opt-in.** `?parquet_layout=shared-shapes&stream_shapes=cross-batch` on
+`/parse/parquet-stream` sends each distinct shape once per stream instead of once
+per batch. Across five fixtures (office, advanced_model, skolebygg, Holter
+Tower, and a 342 MB architectural model), the client payload dropped 2.2x to
+6.8x against the batch-local shared stream. It planned exactly the buffered
+route's vertex rows, and landed 8-43% above the buffered route's bytes, which is
+per-batch Parquet framing (17-132 batches). Peak server RSS stayed within
+run-to-run noise of the batch-local stream, and every unchanged mode was
+byte-identical to base.
+
+Two lessons, both found by measuring rather than by design:
+
+- **A content-hash registry alone is not enough.** Hash-only sharing across
+  batches recovered only a third of the gap on the office model (841k vs 295k
+  buffered vertices), because rotated repeats are not bit-identical. Stage 1
+  (the rotation-aware collator) had to reach across batches too. That means
+  keeping each instanced representation's first emitted mesh, not only
+  collator templates: a representation seen once per batch is never collated
+  inside any one batch.
+- **The stream needs the baked basis before its first batch.** Without it,
+  site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
+  buffered route run with no basis, 2-5x worse. The frame is chosen before
+  meshing, so `process_geometry_streaming_filtered_with_baked_basis` publishes it then.
 
 ## The native probe (`perf_probe`)
 
@@ -852,15 +955,18 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   not establish an end-to-end win. A production opt-out must be export-scoped
   and preserve public options compatibility. See the
   [source, observations and qualification limits](evidence/export-delivery-5357/README.md).
-- **Bounded GLB geometry replay** (PARKED after #5357 spike): disk-backed replay
-  through the existing writer removes the second meshing pass and preserved
-  tested whole artifacts across CSG, large-coordinate and heavy models, with
-  quantization on and off. It introduces scratch-disk I/O and failure modes;
-  the Linux prototype deliberately has no production error contract. Keep it as
-  the strongest native-export follow-up, requiring an explicit scratch policy,
-  typed errors and uncontended full-export timing/memory qualification before
-  shipping. It does not accelerate normal browser model loading. Evidence and
-  the unapplied patch are in the same archive above.
+- **Bounded GLB geometry replay** (NOT SHIPPED after #5557 screen): recording
+  the planning pass's meshes on native scratch and replaying them through the
+  existing writer avoided a second meshing pass, with complete artifact identity
+  in the controlled native screen. The prototype has no first-party native GLB
+  consumer: CLI, MCP and viewer source-byte export use WASM, and the viewer's
+  loaded-mesh export uses a different path. A replay cache large enough for the
+  heavy fixture would undermine the bounded WASM memory contract. Do not add a
+  native-only public API without an actual consumer; a future attempt needs a
+  consumer and a portable scratch/error policy, or a separately qualified
+  memory-bounded WASM design. No browser or CLI gain is established. See the
+  [#5557 screen and archived patches](../../docs/architecture/evidence/bounded-glb-replay-5557/README.md)
+  and the earlier #5357 archive above.
 - **Brotli quality 11 on the served bundle** (PARKED after #5357 observation):
   the actual deployed WASM response already negotiates Brotli and compiles in
   Chrome. Recompressing those same decoded bytes locally leaves potential
@@ -1893,6 +1999,27 @@ real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
 
+## Hole-wall winding and host-derived wall frames (#5410)
+
+Correctness change, no performance claim. Extruded profile holes now emit side
+walls wound into the void, so a voided host reaches the exact kernel as a
+consistently wound solid, and a plan-rotated wall whose cutters author no depth
+is cut in its own frame. Native `perf_probe` base `04dd98f96` vs branch, three
+interleaved rounds of best-of-3 per fixture, median parse / geometry / total ms:
+AC20-FZK-Haus 8 / 28 / 36 -> 9 / 24 / 33 (byte-identical ordered fingerprint),
+ISSUE_129 30 / 1,164 / 1,194 -> 30 / 1,157 / 1,182, Holter 463 / 945 / 1,409
+-> 465 / 598 / 1,146 (Holter's totals spread 977-1,711 ms on base, so its
+geometry delta is noise, not a win). Mesh, vertex, triangle and CSG-failure
+counts are identical on all three; ISSUE_129 and Holter fingerprints differ
+only in normals of holed extrusions, which the output orienter used to flip and
+recompute. The lesson: an extruder's winding is an input contract of the
+kernel, not a rendering detail the output orienter may repair afterwards.
+After review folded the three side-wall builders onto one shared orientation
+helper, a re-run against `ea4cc3718` (eight interleaved rounds) gave AC20 and
+ISSUE_129 byte-identical fingerprints to main; ISSUE_129 per-round best totals
+spread 1,178-1,951 ms on main and 1,143-1,873 ms on the branch on a loaded
+host, so the medians' order (1,391 vs 1,476 ms) is not a signal either way.
+
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 
 Native `perf_probe` comparison of base `0e8a42175` (merge-base with `origin/main`)
@@ -1979,6 +2106,24 @@ win. Preserve the rejected source, observer failures, completed functional check
 and every timing cohort in [the experiment record](evidence/multipart-5328/README.md).
 No runtime change from this prototype ships.
 
+## Physical summary membership scan (#5477)
+
+The viewer now visits candidate source type buckets when collecting physical
+entities, while retaining canonical overlay semantics, and memoizes metadata
+panel membership across geometry-only updates. The first two fresh-browser
+Holter cohorts were too noisy for a verdict and remain in the evidence. A
+third, more isolated alternating cohort cleared the existing base-spread noise
+limit, improved every paired browser-readiness comparison, and met the Holter
+browser gate on every candidate run. Geometry counts, visible metadata, GPU
+picking and selection remained consistent. Three post-result launcher races
+left missing method files; pre-load process/variant proofs and complete browser
+results survive for every sample. The result measures full model/index/canvas
+readiness, not worker geometry alone. AC20 and ISSUE_129 control medians stayed
+close to base, with matching output counts and functional checks. The lesson is to profile React
+publication work on large entity stores: repeated whole-store scans can
+dominate after worker geometry has finished. See the
+[sample-level browser evidence](evidence/physical-summary-5477/README.md).
+
 ## Edge-grazing half-space cap repair (#5314)
 
 The cap builder now ignores triangles that collapse after its section-vertex
@@ -1997,3 +2142,22 @@ The lesson is that a small boundary-accounting guard can repair many reused
 Boolean items. Full-load counts and ordered fingerprints reveal its reach
 where a single-element test cannot, while variable host timing should not be
 sold as a speed verdict.
+
+## Viewer ancestor subscriptions and transient-upload screen (#5555)
+
+A post-summary-fix production profile showed distributed React reconciliation
+and renderer staging rather than another dominant metadata panel. Narrowing
+subscriptions in the two viewer ancestors improved one interleaved Holter pair
+and regressed the other, so the bounded screen did not justify shipping it.
+A separate diagnostic retained only the first streaming preview and skipped
+later transient uploads before normal finalization; it improved both pairs but
+missed the predeclared investment gate for a larger renderer redesign. That
+diagnostic deliberately reduces progressive display and must not ship.
+
+Both patches remain unapplied in the [complete screen evidence](../../docs/architecture/evidence/viewer-ancestor-screen-5555/README.md).
+The experiment reused identical frozen WASM with current JavaScript, so it is
+an investment screen, not source-matched shipping qualification. All attempts
+and provenance are retained. Lesson: a large inclusive React sample bucket does
+not establish that removing a framework or a few subscriptions buys the same
+wall time; test the actual change, and measure the avoidable upload work before
+committing to permanent renderer pages.

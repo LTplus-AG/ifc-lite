@@ -29,13 +29,24 @@ function recordingGpu() {
   const device = {
     limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
     createBuffer({ size }: GPUBufferDescriptor) {
-      const buffer = { size, data: new ArrayBuffer(size), writes: 0,
-        getMappedRange() { return this.data; }, unmap() {}, destroy() {} };
+      const buffer = { size, data: new ArrayBuffer(size), writes: 0, destroy() {} };
       buffers.push(buffer);
       return buffer;
     },
     createBindGroup() { return {}; },
-    queue: { writeBuffer() { throw new Error('Flat translation must not upload vertices.'); } },
+    queue: {
+      // The ONLY write allowed is a new buffer's initial fill, issued right
+      // after its allocation (`createStaticGpuBuffer`, #5429). Rewriting any
+      // existing buffer is a vertex re-upload, which flat translation must
+      // never do.
+      writeBuffer(target: { data: ArrayBuffer; writes: number }, offset: number, data: ArrayBufferView) {
+        if (target !== buffers[buffers.length - 1] || target.writes > 0) {
+          throw new Error('Flat translation must not upload vertices.');
+        }
+        target.writes++;
+        new Uint8Array(target.data, offset).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+      },
+    },
   } as unknown as GPUDevice;
   const pipeline = { getUniformBufferSize: () => 512, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
   return { device, pipeline, buffers };
@@ -48,11 +59,10 @@ describe('whole-model renderer placement (#4226)', () => {
     const uploaded = new WeakMap<GPUBuffer, ArrayBuffer>();
     const device = {
       limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
-      createBuffer({ size, mappedAtCreation }: GPUBufferDescriptor) {
+      createBuffer({ size }: GPUBufferDescriptor) {
         const bytes = new ArrayBuffer(size);
-        const buffer = { size, getMappedRange: () => bytes, unmap() {}, destroy() {} } as unknown as GPUBuffer;
+        const buffer = { size, destroy() {} } as unknown as GPUBuffer;
         uploaded.set(buffer, bytes);
-        if (!mappedAtCreation) uploaded.set(buffer, bytes);
         return buffer;
       },
       createBindGroup() { return {}; },

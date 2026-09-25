@@ -124,6 +124,7 @@ export async function prepareShareSeed(
       const liveStore = item.store;
       item.store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer);
       item.liveStore = liveStore;
+      // @raw-entity-enumeration-ok item.store was reparsed from the effective exported STEP bytes immediately above
       if ((item.store.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0) > 0) {
         assertPortableSourceSize(bytes);
         const artifact = await packagePortableIfcAsync(item.modelId, bytes, serialized.resources);
@@ -136,6 +137,7 @@ export async function prepareShareSeed(
     }
     // Preserve native symbolic rows for an unchanged IFC that already carries
     // annotations. Ordinary models keep the lighter root-only room snapshot.
+    // @raw-entity-enumeration-ok no mutation view exists on this branch; item.store is the unchanged source snapshot
     if ((item.store.entityIndex.byType.get('IFCANNOTATION')?.length ?? 0) > 0) {
       assertPortableSourceSize(item.store.source);
       const serialized = prepareAppearanceSerialization(item.modelId, item.store, undefined);

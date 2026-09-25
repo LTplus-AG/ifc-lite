@@ -37,6 +37,7 @@ export {
   type PropertyFilter,
   type FilterOperator,
 } from './bulk-query-engine.js';
+export { BULK_WRITABLE_ATTRIBUTES } from './bulk-attribute-action.js';
 export {
   CsvConnector,
   type CsvRow,
@@ -48,6 +49,8 @@ export {
   type ImportProgress,
   type CsvParseOptions,
 } from './csv-connector.js';
+export { buildMatchContext, matchRowAgainstContext } from './csv-match.js';
+export { parseValue, PARSE_INVALID } from './csv-parse-value.js';
 export {
   changeSetToOps,
   deriveEntityIdentity,

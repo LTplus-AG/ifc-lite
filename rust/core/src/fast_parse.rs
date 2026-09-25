@@ -13,13 +13,14 @@
 #[path = "fast_parse_comments.rs"]
 mod comments;
 
-/// Check if byte is a digit, minus sign, or decimal point (start of number)
-#[inline(always)]
-fn is_number_start(b: u8) -> bool {
-    b.is_ascii_digit() || b == b'-' || b == b'.'
-}
+#[path = "fast_parse_coordinates.rs"]
+mod coordinates;
+
+pub use coordinates::{parse_coordinates_direct, parse_coordinates_direct_f64};
 
 /// Estimate number of floats in coordinate data
+///
+/// Shared with the split-out `coordinates` module.
 #[inline]
 fn estimate_float_count(bytes: &[u8]) -> usize {
     // Rough estimate: ~8 bytes per float on average (including delimiters)
@@ -31,70 +32,6 @@ fn estimate_float_count(bytes: &[u8]) -> usize {
 fn estimate_int_count(bytes: &[u8]) -> usize {
     // Rough estimate: ~4 bytes per integer on average
     bytes.len() / 4
-}
-
-/// Parse coordinate list directly from raw bytes to `Vec<f32>`
-///
-/// This parses IFC coordinate data like:
-/// `((0.,0.,150.),(0.,40.,140.),...)`
-///
-/// Returns flattened f32 array: [x0, y0, z0, x1, y1, z1, ...]
-///
-/// # Performance
-/// - Zero intermediate allocations (no Token, no AttributeValue)
-/// - Uses fast-float for SIMD-accelerated parsing
-/// - Pre-allocates result vector
-#[inline]
-pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates(bytes);
-    }
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let (mut pos, len) = (0, bytes.len());
-    while pos < len {
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-        match fast_float2::parse_partial::<f32, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
-}
-
-/// Parse coordinate list directly from raw bytes to `Vec<f64>`
-///
-/// Same as parse_coordinates_direct but with f64 precision.
-#[inline]
-pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
-    if comments::may_contain_step_comment(bytes) {
-        return comments::parse_coordinates_f64(bytes);
-    }
-    let mut result = Vec::with_capacity(estimate_float_count(bytes));
-    let (mut pos, len) = (0, bytes.len());
-    while pos < len {
-        while pos < len && !is_number_start(bytes[pos]) {
-            pos += 1;
-        }
-        if pos >= len {
-            break;
-        }
-        match fast_float2::parse_partial::<f64, _>(&bytes[pos..]) {
-            Ok((value, consumed)) if consumed > 0 => {
-                result.push(value);
-                pos += consumed;
-            }
-            _ => pos += 1,
-        }
-    }
-    result
 }
 
 /// Parse index list directly from raw bytes to `Vec<u32>`
@@ -154,9 +91,24 @@ fn parse_index_value(bytes: &[u8], pos: &mut usize, result: &mut Vec<u32>) {
 
 /// Parse a whole point-list record's `CoordList` (attribute 0), found by depth, not by the
 /// last `))`: an IFC4X3 `TagList` after it ends in `))` and its digits became phantom
-/// vertices (core review behind #4577, finding 6). `None` when attribute 0 is not a list.
+/// vertices (core review behind #4577, finding 6). `None` when attribute 0 is not a list
+/// or the list is refused as corrupt (#5266).
 #[inline]
 pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
+    coordinates::try_parse_coordinates_direct(coordinate_list_span(bytes)?)
+}
+
+/// [`extract_coordinate_list_from_entity`] at f64 precision. A caller that
+/// rebases national-grid coordinates must subtract its offset from these
+/// values: narrowing first can merge vertices that differ by less than one
+/// f32 ULP (0.25 m at 2,600 km) before the offset is removed (#5698).
+#[inline]
+pub fn extract_coordinate_list_from_entity_f64(bytes: &[u8]) -> Option<Vec<f64>> {
+    coordinates::try_parse_coordinates_direct_f64(coordinate_list_span(bytes)?)
+}
+
+/// The bytes of attribute 0's balanced list, including its outer parentheses.
+fn coordinate_list_span(bytes: &[u8]) -> Option<&[u8]> {
     let head = crate::parser::argument_list_start(bytes)?;
     let open = crate::parser::skip_step_trivia(bytes, head)?;
     if bytes.get(open) != Some(&b'(') {
@@ -171,7 +123,7 @@ pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
                 continue;
             }
             b'(' => depth += 1,
-            b')' if depth == 1 => return Some(parse_coordinates_direct(&bytes[open..=i])),
+            b')' if depth == 1 => return Some(&bytes[open..=i]),
             b')' => depth -= 1,
             _ => {}
         }

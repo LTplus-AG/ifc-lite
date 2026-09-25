@@ -90,7 +90,6 @@ export const chartsEn = {
   'chartsPanel.clearSliceTitle': 'Clear the chart selection and show the whole scope again',
   'chartsPanel.clearSliceButton': 'Clear slice ({count})',
   'chartsPanel.addChartButton': 'Add chart',
-  'chartsPanel.closeAriaLabel': 'Close charts',
   'chartsPanel.loadModelEmptyState': 'Load a model to chart it.',
   'chartsPanel.noChartsEmptyState': 'No charts yet.',
   'chartsPanel.addChartEmptyStateButton': 'Add a chart',

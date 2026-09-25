@@ -7,12 +7,15 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges, relationshipTypeName } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, IFC_ENTITY_NAMES, exactTypeName } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import { parquetSpatialRows } from './parquet-spatial-rows.js';
 import { columnsToParquet } from './columns-to-parquet.js';
 import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
 import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
 import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
+import { appendCreatedParquetEntityRows } from './parquet-created-entity-rows.js';
+import { parquetRelationshipRows } from './parquet-relationship-rows.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -32,18 +35,11 @@ export class ParquetExporter {
      * (README example, `tests/integration.test.ts`) keep working unchanged and
      * keep exporting the source model as parsed.
      *
-     * When supplied, entities the overlay tombstoned via
-     * `MutablePropertyView.deleteEntity()` — and every row that references
-     * one — are dropped from `Entities`, `Properties`, `Quantities`,
-     * `Relationships`, `SpatialHierarchy` and the geometry tables
-     * (`VertexBuffer`, `IndexBuffer`, `Meshes`) (#2046; geometry tables
-     * joined the set after they were found still emitting a deleted
-     * entity's mesh into an otherwise-filtered archive). Unlike
-     * `StepExporter`/`Ifc5Exporter`, this is deletion-only: unlike those
-     * two, the writers below column-copy typed arrays out of the store in
-     * one shot rather than looping per entity, so they cannot also apply
-     * the overlay's pset/quantity/attribute edits the way a per-entity
-     * emission pass can. That is a known, separate gap.
+     * When supplied, tombstoned entities and rows that reference them are
+     * dropped from every table (#2046), and overlay-created entities are
+     * appended to `Entities.parquet`. Relationship rows resolve authored
+     * records and edited endpoints; property and quantity rows resolve live
+     * overlays. Geometry payload edits remain a separate gap.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -76,9 +72,12 @@ export class ParquetExporter {
 
         // Non-geometry files
         files.set('Entities.parquet', await this.writeEntities());
-        files.set('Properties.parquet', await this.writeProperties());
+        let propertyCount = 0;
+        files.set('Properties.parquet', await this.writeProperties(count => { propertyCount = count; }));
         files.set('Quantities.parquet', await this.writeQuantities());
-        files.set('Relationships.parquet', await this.writeRelationships());
+        const effective = this.getEffective();
+        const relationshipRows = parquetRelationshipRows(this.store, this.mutationView, effective);
+        files.set('Relationships.parquet', await this.toParquet(relationshipRows));
         files.set('Strings.parquet', await this.writeStrings());
 
         // Geometry files (if available)
@@ -89,12 +88,12 @@ export class ParquetExporter {
         }
 
         // Spatial hierarchy
-        if (this.store.spatialHierarchy) {
-            files.set('SpatialHierarchy.parquet', await this.writeSpatialHierarchy());
+        if (this.store.spatialHierarchy || effective) {
+            files.set('SpatialHierarchy.parquet', await this.writeSpatialHierarchy(relationshipRows, effective));
         }
 
         // Metadata
-        files.set('Metadata.json', this.writeMetadata());
+        files.set('Metadata.json', this.writeMetadata(new Set(relationshipRows.RelId).size, propertyCount));
 
         return this.createZipArchive(files);
     }
@@ -125,12 +124,7 @@ export class ParquetExporter {
         const effective = this.getEffective();
 
         const expressId = Array.from(entities.expressId);
-        // Row i's identity IS expressId[i] (columnar layout, one row per
-        // parsed entity) — the same predicate every other column below is
-        // filtered by.
-        const keep = effective ? expressId.map((id) => !effective.isDeleted(id)) : null;
-
-        return this.toParquet(filterColumns({
+        const columns = {
             ExpressId: expressId,
             GlobalId: mapTypedArray(entities.globalId, i => strings.get(i)),
             Name: mapTypedArray(entities.name, i => strings.get(i)),
@@ -169,12 +163,27 @@ export class ParquetExporter {
             ContainedInStorey: Array.from(entities.containedInStorey),
             DefinedByType: Array.from(entities.definedByType),
             GeometryIndex: Array.from(entities.geometryIndex),
-        }, keep));
+        };
+        appendCreatedParquetEntityRows(columns, this.store, this.mutationView, effective);
+        // Source rows retain their columnar order; live creations follow in
+        // allocation order. Tombstones are filtered from both domains.
+        const keep = effective ? columns.ExpressId.map((id) => !effective.isDeleted(id)) : null;
+        return this.toParquet(filterColumns(columns, keep));
     }
 
-    private async writeProperties(): Promise<Uint8Array> {
+    private async writeProperties(onCount?: (count: number) => void): Promise<Uint8Array> {
         const { properties, strings } = this.store;
         const effective = this.getEffective();
+
+        if (this.mutationView) {
+            const onDemand = properties.entityId.length === 0;
+            return writePropertiesOnDemand(
+                this.store, effective, this.mutationView,
+                onDemand ? this.store.onDemandPropertyMap?.keys() ?? [] : properties.entityIndex.keys(),
+                onDemand ? id => this.store.getProperties(id) : id => properties.getForEntity(id),
+                onCount,
+            );
+        }
 
         // `IfcParser.parseColumnar` (the sole parse path every real caller of
         // this exporter goes through — `packages/parser`'s `parseLite`) never
@@ -190,13 +199,14 @@ export class ParquetExporter {
         // this file's own tests). Route through the on-demand path first;
         // fall back to the bulk table when it was actually populated.
         if (properties.entityId.length === 0 && this.store.onDemandPropertyMap && this.store.onDemandPropertyMap.size > 0) {
-            return writePropertiesOnDemand(this.store, effective);
+            return writePropertiesOnDemand(this.store, effective, null, undefined, undefined, onCount);
         }
 
         const entityId = Array.from(properties.entityId);
         // A property row belongs to the entity named in its own EntityId
         // column, not to its own row index — filter on that, not on ExpressId.
         const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+        onCount?.(keep ? keep.filter(Boolean).length : entityId.length);
 
         return this.toParquet(filterColumns({
             EntityId: entityId,
@@ -214,6 +224,15 @@ export class ParquetExporter {
     private async writeQuantities(): Promise<Uint8Array> {
         const { quantities, strings } = this.store;
         const effective = this.getEffective();
+
+        if (this.mutationView) {
+            const onDemand = quantities.entityId.length === 0;
+            return writeQuantitiesOnDemand(
+                this.store, effective, this.mutationView,
+                onDemand ? this.store.onDemandQuantityMap?.keys() ?? [] : quantities.entityIndex.keys(),
+                onDemand ? id => this.store.getQuantities(id) : id => quantities.getForEntity(id),
+            );
+        }
 
         // Same gap as `writeProperties`: `store.quantities` is only ever
         // populated when a caller bulk-builds it directly (this file's own
@@ -238,43 +257,7 @@ export class ParquetExporter {
     }
 
     private async writeRelationships(): Promise<Uint8Array> {
-        const { relationships } = this.store;
-        const effective = this.getEffective();
-
-        // One row per `IfcRel*` STEP record, including any collapsed into
-        // an edge's `shadowedRelationshipIds` (#3760/#3782) — not one row
-        // per deduped edge; see `flattenRelationshipEdges`'s doc comment.
-        const sourceIds: number[] = [];
-        const targetIds: number[] = [];
-        const relTypes: string[] = [];
-        const relIds: number[] = [];
-
-        for (const row of flattenRelationshipEdges(relationships.forward)) {
-            // An edge naming a tombstoned entity on either end no longer
-            // has a live entity to relate — drop the row rather than
-            // leave a dangling SourceId/TargetId in the export.
-            //
-            // `relationshipId` gets the same treatment: an `IfcRel*` record
-            // is itself a row in Entities.parquet (the columnar parser
-            // indexes it like any other line), so emitting a RelId for a
-            // deleted one leaves a dangling reference too. Because each
-            // shadowed id is its own row here, this drops exactly the
-            // deleted record and keeps a live sibling — the same rule
-            // `edgeSurvives` applies to the CLI/MCP `related()` path
-            // (#3782 review).
-            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId) || effective.isDeleted(row.relationshipId))) continue;
-            sourceIds.push(row.sourceId);
-            targetIds.push(row.targetId);
-            relTypes.push(relationshipTypeName(row.type));
-            relIds.push(row.relationshipId);
-        }
-
-        return this.toParquet({
-            SourceId: sourceIds,
-            TargetId: targetIds,
-            RelType: relTypes,
-            RelId: relIds,
-        });
+        return this.toParquet(parquetRelationshipRows(this.store, this.mutationView, this.getEffective()));
     }
 
     private async writeStrings(): Promise<Uint8Array> {
@@ -428,7 +411,21 @@ export class ParquetExporter {
         });
     }
 
-    private async writeSpatialHierarchy(): Promise<Uint8Array> {
+    private async writeSpatialHierarchy(
+        relationships: ReturnType<typeof parquetRelationshipRows>,
+        effective: EffectiveEntityIndex | null,
+    ): Promise<Uint8Array> {
+        if (effective) {
+            const rows = parquetSpatialRows(relationships, effective);
+            return this.toParquet({
+                ElementId: rows.map(r => r.ElementId),
+                StoreyId: rows.map(r => r.StoreyId),
+                BuildingId: rows.map(r => r.BuildingId),
+                SiteId: rows.map(r => r.SiteId),
+                SpaceId: rows.map(r => r.SpaceId),
+            });
+        }
+
         if (!this.store.spatialHierarchy) {
             throw new Error('Spatial hierarchy not available');
         }
@@ -442,7 +439,6 @@ export class ParquetExporter {
         }> = [];
 
         const { spatialHierarchy } = this.store;
-        const effective = this.getEffective();
 
         // Build lookup maps for fast parent access
         const storeyToBuilding = new Map<number, number>();
@@ -475,18 +471,6 @@ export class ParquetExporter {
             const siteId = buildingId >= 0 ? (buildingToSite.get(buildingId) ?? -1) : -1;
 
             for (const elementId of elementIds) {
-                // A tombstoned element is not a row in Entities.parquet either
-                // (see writeEntities) — leaving it here would point
-                // SpatialHierarchy.parquet at an id no other table has.
-                //
-                // Deletion-only, and only for the element itself: a deleted
-                // STOREY/BUILDING/SITE still surfaces as StoreyId/BuildingId/
-                // SiteId on a surviving element's row (spatialHierarchy is a
-                // source-parse snapshot with no overlay-aware re-parenting —
-                // the same class of problem Ifc5Exporter's re-parenting pass
-                // solves, #2047 — not addressed here).
-                if (effective?.isDeleted(elementId)) continue;
-
                 // Check if element is in a space by iterating bySpace
                 let spaceId = -1;
                 for (const [sid, spaceElementIds] of spatialHierarchy.bySpace) {
@@ -515,7 +499,7 @@ export class ParquetExporter {
         });
     }
 
-    private writeMetadata(): Uint8Array {
+    private writeMetadata(relationshipCount: number, propertyCount: number): Uint8Array {
         const metadata = {
             version: '2.0.0',
             generator: 'IFC-Lite',
@@ -532,8 +516,8 @@ export class ParquetExporter {
                 meshCount: this.geometryResult?.meshes.length ?? 0,
                 vertexCount: this.geometryResult ? this.geometryResult.totalVertices : 0,
                 triangleCount: this.geometryResult ? this.geometryResult.totalTriangles : 0,
-                propertyCount: this.store.properties.count,
-                relationshipCount: new Set([...this.store.relationships.forward.edgeRelIds, ...(this.store.relationships.forward.shadowedRelIds ?? [])]).size, // distinct IfcRel* records, not raw edges (#3760/#4205)
+                propertyCount,
+                relationshipCount, // distinct exported IfcRel records, not raw edges (#3760/#4205)
             },
         };
 
@@ -548,15 +532,14 @@ export class ParquetExporter {
         return columnsToParquet(columns, floatColumns, PARQUET_UINT32_COLUMNS);
     }
 
+    // fflate, not JSZip: JSZip writes "version needed to extract" 1.0 on
+    // DEFLATE entries, where the ZIP APPNOTE requires 2.0 (#3612).
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {
-        const JSZip = (await import('jszip')).default;
-        const zip = new JSZip();
-
-        for (const [name, data] of files) {
-            zip.file(name, data);
-        }
-
-        return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+        const { zipSync } = await import('fflate');
+        // Entry names are file names with an extension, never integer-like
+        // keys, so the object keeps the Map's insertion order. zipSync rather
+        // than async `zip`, which starts uncapped workers (see bcf writer-archive).
+        return zipSync(Object.fromEntries(files), { level: 6 });
     }
 }
 

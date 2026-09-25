@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/flow-nodes",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,12 +19,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/bcf-api": "workspace:^",
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/documents-api": "workspace:^",
+    "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
-    "@ifc-lite/sdk": "workspace:^"
+    "@ifc-lite/sdk": "workspace:^",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",

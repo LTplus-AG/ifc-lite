@@ -83,6 +83,7 @@ pub trait NumberExt
     fn OverlapStep(self, gap: f64, overlap: f64) -> f64;
     fn ClampedLo(self, hi: f64) -> f64;
     fn ClampedHi(self, hi: f64) -> f64;
+    fn AxisNoise(self, c1: f64, c2: f64, c3: f64, c4: f64, c5: f64) -> f64;
     fn Add(self, y: f64) -> f64;
     fn Subtract(self, y: f64) -> f64;
     fn Multiply(self, y: f64) -> f64;
@@ -109,6 +110,7 @@ impl NumberExt for f64
     fn OverlapStep(self, gap: f64, overlap: f64) -> f64 { if gap.GreaterThan(0.0) { self } else { self.FoldMin(overlap) } }
     fn ClampedLo(self, hi: f64) -> f64 { if hi.LessThan(self) { self.Add(hi).Divide(2.0) } else { self } }
     fn ClampedHi(self, hi: f64) -> f64 { if hi.LessThan(self) { self.Add(hi).Divide(2.0) } else { hi } }
+    fn AxisNoise(self, c1: f64, c2: f64, c3: f64, c4: f64, c5: f64) -> f64 { (1.0).FoldMax(self.Abs()).FoldMax(c1.Abs()).FoldMax(c2.Abs()).FoldMax(c3.Abs()).FoldMax(c4.Abs()).FoldMax(c5.Abs()).Multiply((1.0).Divide(4194304.0)) }
     fn Add(self, y: f64) -> f64 { self + y }
     fn Subtract(self, y: f64) -> f64 { self - y }
     fn Multiply(self, y: f64) -> f64 { self * y }
@@ -189,9 +191,13 @@ impl Vec3
     pub fn BoundsOfPoints(self, b: Vec3) -> Box3 { Box3::new(Vec3::new(self.X.Min2(b.X), self.Y.Min2(b.Y), self.Z.Min2(b.Z)), Vec3::new(self.X.Max2(b.X), self.Y.Max2(b.Y), self.Z.Max2(b.Z))) }
     pub fn MinDot(self, v0: Vec3, v1: Vec3, v2: Vec3) -> f64 { (1.0).Divide(0.0).FoldMin(v0.Dot(self)).FoldMin(v1.Dot(self)).FoldMin(v2.Dot(self)) }
     pub fn MaxDot(self, v0: Vec3, v1: Vec3, v2: Vec3) -> f64 { (1.0).Divide(0.0).Negative().FoldMax(v0.Dot(self)).FoldMax(v1.Dot(self)).FoldMax(v2.Dot(self)) }
-    pub fn SeparatedOn(self, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3) -> bool { self.MaxDot(a0, a1, a2).LessThanOrEquals(self.MinDot(b0, b1, b2)).Or(self.MaxDot(b0, b1, b2).LessThanOrEquals(self.MinDot(a0, a1, a2))) }
-    pub fn EdgeAxisSeparates(self, eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: f64) -> bool { if self.Cross(eb).Dot(self.Cross(eb)).GreaterThan(eps) { self.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2) } else { false } }
-    pub fn TriTriIntersectEps(self, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: f64) -> bool { if a1.Sub(self).Cross(a2.Sub(a1)).SeparatedOn(self, a1, a2, b0, b1, b2).Or(b1.Sub(b0).Cross(b2.Sub(b1)).SeparatedOn(self, a1, a2, b0, b1, b2).Or(a1.Sub(self).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, eps).Or(a1.Sub(self).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, eps).Or(a1.Sub(self).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, eps).Or(self.Sub(a2).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, eps).Or(self.Sub(a2).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, eps).Or(self.Sub(a2).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, eps))))))))))) { false } else { true } }
+    pub fn PairNoise(self, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3) -> Vec3 { Vec3::new(self.X.AxisNoise(a1.X, a2.X, b0.X, b1.X, b2.X), self.Y.AxisNoise(a1.Y, a2.Y, b0.Y, b1.Y, b2.Y), self.Z.AxisNoise(a1.Z, a2.Z, b0.Z, b1.Z, b2.Z)) }
+    pub fn DepthFloor(self, a: Box3, b: Box3) -> f64 { self.Band(a.BoxNoise(b)) }
+    pub fn Band(self, noise: Vec3) -> f64 { self.X.Abs().Multiply(noise.X).Add(self.Y.Abs().Multiply(noise.Y)).Add(self.Z.Abs().Multiply(noise.Z)) }
+    pub fn SeparatedOn(self, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3) -> bool { self.MaxDot(a0, a1, a2).Subtract(self.MinDot(b0, b1, b2)).LessThanOrEquals(self.Band(noise)).Or(self.MaxDot(b0, b1, b2).Subtract(self.MinDot(a0, a1, a2)).LessThanOrEquals(self.Band(noise))) }
+    pub fn EdgeAxisSeparates(self, eb: Vec3, a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3, eps: f64) -> bool { if self.Cross(eb).LenSq().GreaterThan(eps.Multiply(self.LenSq()).Multiply(eb.LenSq())) { self.Cross(eb).SeparatedOn(a0, a1, a2, b0, b1, b2, noise) } else { false } }
+    pub fn TriTriSat(self, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, noise: Vec3, eps: f64) -> bool { if a1.Sub(self).Cross(a2.Sub(a1)).SeparatedOn(self, a1, a2, b0, b1, b2, noise).Or(b1.Sub(b0).Cross(b2.Sub(b1)).SeparatedOn(self, a1, a2, b0, b1, b2, noise).Or(a1.Sub(self).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, noise, eps).Or(a1.Sub(self).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, noise, eps).Or(a1.Sub(self).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, noise, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, noise, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, noise, eps).Or(a2.Sub(a1).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, noise, eps).Or(self.Sub(a2).EdgeAxisSeparates(b1.Sub(b0), self, a1, a2, b0, b1, b2, noise, eps).Or(self.Sub(a2).EdgeAxisSeparates(b2.Sub(b1), self, a1, a2, b0, b1, b2, noise, eps).Or(self.Sub(a2).EdgeAxisSeparates(b0.Sub(b2), self, a1, a2, b0, b1, b2, noise, eps))))))))))) { false } else { true } }
+    pub fn TriTriIntersectEps(self, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, eps: f64) -> bool { self.TriTriSat(a1, a2, b0, b1, b2, self.PairNoise(a1, a2, b0, b1, b2), eps) }
     pub fn TriTriIntersect(self, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3) -> bool { self.TriTriIntersectEps(a1, a2, b0, b1, b2, 1E-12) }
 
     // Unimplemented interface functions
@@ -235,6 +241,9 @@ impl Box3
     pub fn MinOverlap(self, b: Box3) -> f64 { (1.0).Divide(0.0).OverlapStep(self.GapX(b), self.OverlapX(b)).OverlapStep(self.GapY(b), self.OverlapY(b)).OverlapStep(self.GapZ(b), self.OverlapZ(b)) }
     pub fn SignedGap(self, b: Box3) -> f64 { if self.Penetrating(b) { self.MinOverlap(b).Negative() } else { self.SquaredGap(b).Sqrt() } }
     pub fn OverlapBounds(self, b: Box3) -> Box3 { Box3::new(Vec3::new(self.Min.X.Max2(b.Min.X).ClampedLo(self.Max.X.Min2(b.Max.X)), self.Min.Y.Max2(b.Min.Y).ClampedLo(self.Max.Y.Min2(b.Max.Y)), self.Min.Z.Max2(b.Min.Z).ClampedLo(self.Max.Z.Min2(b.Max.Z))), Vec3::new(self.Min.X.Max2(b.Min.X).ClampedHi(self.Max.X.Min2(b.Max.X)), self.Min.Y.Max2(b.Min.Y).ClampedHi(self.Max.Y.Min2(b.Max.Y)), self.Min.Z.Max2(b.Min.Z).ClampedHi(self.Max.Z.Min2(b.Max.Z)))) }
+    pub fn Span(self) -> f64 { self.Max.X.Subtract(self.Min.X).Max2(self.Max.Y.Subtract(self.Min.Y)).Max2(self.Max.Z.Subtract(self.Min.Z)) }
+    pub fn BoxNoise(self, b: Box3) -> Vec3 { Vec3::new(self.Min.X.AxisNoise(self.Max.X, b.Min.X, b.Max.X, 0.0, 0.0).Add(self.Span().Add(b.Span()).Multiply((1.0).Divide(4194304.0))), self.Min.Y.AxisNoise(self.Max.Y, b.Min.Y, b.Max.Y, 0.0, 0.0).Add(self.Span().Add(b.Span()).Multiply((1.0).Divide(4194304.0))), self.Min.Z.AxisNoise(self.Max.Z, b.Min.Z, b.Max.Z, 0.0, 0.0).Add(self.Span().Add(b.Span()).Multiply((1.0).Divide(4194304.0)))) }
+    pub fn EstimateFloor(self, b: Box3) -> f64 { if (if self.GapZ(b).GreaterThan(0.0) { false } else { true }).And(self.OverlapZ(b).LessThan((1.0).Divide(0.0).OverlapStep(self.GapX(b), self.OverlapX(b)).OverlapStep(self.GapY(b), self.OverlapY(b)))) { self.BoxNoise(b).Z } else { if (if self.GapY(b).GreaterThan(0.0) { false } else { true }).And(self.OverlapY(b).LessThan((1.0).Divide(0.0).OverlapStep(self.GapX(b), self.OverlapX(b)))) { self.BoxNoise(b).Y } else { self.BoxNoise(b).X } } }
 
     // Unimplemented interface functions
 }

@@ -139,8 +139,9 @@ out of scope, and is called out as such:
 | System/group membership (`IfcRelAssignsToGroup`) | Covered: `group` rule kind (applicability and `element` requirements), optionally scoped to a group class such as `IfcSystem` (subclasses included) |
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
 | Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
-| Georeferencing (`IfcMapConversion`, CRS) | Deferred — model-level, not element-level |
-| Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
+| Georeferencing (`IfcMapConversion`, CRS), project units, header fields | Covered: a `modelFact` rule/subject (`georef.crs`, `georef.eastings`, `units.length`, `header.author`, …) that every value operator works on, read from the element's model (#5442) |
+| List, enumerated and table values | Covered: an element rule matches ANY member / cell, as IDS does for lists and tables; a negated op (`ne`, `notContains`, `notMatches`) holds only when NO member has the value (#5475) |
+| Complex properties, `IfcPropertyReferenceValue` | Deferred — a complex property reads as its members' joined text, a reference as `#<id>` (#5475 follow-up) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
 | OR logic in requirements | Covered: an `element` requirement is a `RuleBlock` with OR-ed groups |
 | Value-to-value comparison (`WarrantyEnd > WarrantyStart`) | Covered: `compare` requirement kind (number or date) |
@@ -148,7 +149,7 @@ out of scope, and is called out as such:
 | Case sensitivity (opt-in insensitive match) | Covered: per-rule `caseSensitive`, default `true` (IDS parity) |
 | Class inheritance (exact-type match, no subclass expansion) | Covered: `exactClass` on an `ifcType` rule, default `false` |
 | Float tolerance | Covered: per-rule `tolerance` (relative, default `1e-6`) |
-| Grouped/aggregated object info inheritance | Deferred |
+| Grouped/aggregated object info inheritance | Covered: `inherit: 'aggregation'` on a property/quantity rule, subject or list condition takes the nearest `IfcRelAggregates` ancestor's value when the element has none; `inherit: 'type'` adds the type's quantity sets (properties always read the type) (#5433) |
 | Dates | Covered: `compare` with `valueType: 'date'` (ISO-8601 only) |
 | Cardinality on applicability / counts | Covered: `cardinality.minApplicable`/`maxApplicable`, plus `aggregate count` without `groupBy` |
 
@@ -169,13 +170,14 @@ dropped without being reported.
 
 ```typescript
 import { parseIDS } from '@ifc-lite/ids';
-import { idsToRuleSet, ruleSetToIds, type RuleSetFile } from '@ifc-lite/rules';
+import { idsToRuleSet, ruleSetToIds, type EvaluatorModel, type RuleSetFile } from '@ifc-lite/rules';
 
 declare const ruleSet: RuleSetFile;
 declare const idsXml: string;
+declare const models: EvaluatorModel[]; // the models the rule set runs on
 
 // Rule set -> IDS 1.0: rules IDS can express become specifications.
-const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'] });
+const exported = ruleSetToIds(ruleSet, { ifcVersions: ['IFC4'], models });
 exported.xml;      // IDS XML, or null when no rule could be exported
 exported.refused;  // [{ ruleId, ruleName, reasons: string[] }]
 exported.notes;    // caveats for the exported set as a whole
@@ -184,6 +186,7 @@ exported.notes;    // caveats for the exported set as a whole
 const imported = idsToRuleSet(parseIDS(idsXml));
 imported.file;     // a RuleSetFile, or null when nothing imported
 imported.refused;  // [{ specificationName, reasons: string[] }]
+imported.droppedChecks; // ['<rule>: Pset.Prop: data type IFCLABEL not checked', ...]
 ```
 
 **Export** covers `element` requirements and applicability built from `eq`,
@@ -204,19 +207,29 @@ other rule is refused with each reason listed:
 - a regex that uses JavaScript-only syntax
 - applicable-count bounds IDS 1.0 can't state
 
-Two caveats are reported as notes. IDS compares measure values in SI units,
-while the rule engine compares the stored value. IDS matches property-set and
-property names case-sensitively, while the engine matches literal names
+**Units.** IDS states every measure value in SI units (metres, m², m³). A
+property or quantity rule can compare in SI too: `valueUnit: 'si'` (the
+**SI** toggle on the chip) converts each value with its own unit, meaning
+an explicit `Unit` on the property or quantity, else the project unit for its
+measure type, before comparing. Such a rule exports unchanged. A numeric
+rule without it compares the model's stored numbers. The export converts its
+operand to SI with the unit the given `models` store that value in, and
+refuses the rule when there are no models, when no model has the value, or
+when the models disagree. Import sets `valueUnit: 'si'` on every numeric
+property and quantity check, so an imported IDS gives the same verdicts on
+a millimetre model as on a metre one.
+
+One caveat is reported as a note. IDS matches property-set and property
+names case-sensitively, while the engine matches literal names
 case-insensitively.
 
 **Import** covers specifications whose facets are all entity, attribute,
 property, material or classification-presence facets, with simple values,
 patterns, enumerations or numeric bounds. A property set named `Qto_…` imports
-as a `quantity` rule. An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. Imported numeric checks carry the same SI-units note as the export. These block a specification, with the reason:
+as a `quantity` rule. A property facet's `dataType` has no rule equivalent, so it is imported without that check, and each dropped one is listed in `droppedChecks` (and in the panel's import summary). An entity facet enumerating several classes imports as one `ifcType` rule with `exactClass`. These block a specification, with the reason:
 
 - `partOf` facets
 - `optional` and `prohibited` facets
-- a property `dataType`
 - a pattern on an entity name, or a pattern or enumeration on an attribute name
 - a non-string enumeration on a PredefinedType or GlobalId, or a bound that is not a finite number
 - length or digit restrictions
@@ -240,6 +253,7 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 5. **Filter** - Show all entities, only failed, or only passed
 6. **Navigate** - Click a failed entity to zoom to it in 3D
 7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
+8. **Re-run** - After editing the model, the header's Re-run button repeats the check with the same IDS against the same model the report describes. **Clear results** returns to the pre-run card and keeps the IDS loaded; **Unload IDS** removes both
 
 Validation runs in a Web Worker so the UI stays responsive during large runs, with an automatic fallback to in-process validation if the worker is unavailable.
 

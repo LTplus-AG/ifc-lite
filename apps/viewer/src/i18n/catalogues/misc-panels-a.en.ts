@@ -7,10 +7,13 @@
  * five unrelated one-off dialogs/panels bundled purely for PR-count
  * efficiency, each under its own key prefix:
  *
- * - `basketPresentationDock.*` — `BasketPresentationDock.tsx`, the pinboard
- *   "Presentation" dock's own chrome (header counts, source/visibility/save/
- *   play-all controls, the saved-view strip and its rename/duration/delete
- *   actions, and the resize handle).
+ * - `presentationPanel.*` — `presentation/PresentationPanel.tsx`, the
+ *   `presentation` bottom panel's action row (counts, source/visibility/save/
+ *   play-all controls) and the saved-view strip's rename/duration/delete
+ *   actions. Formerly `BasketPresentationDock.tsx`'s own floating-card
+ *   chrome (drag-to-move, resize, its own title/Hide row) before it became a
+ *   bottom panel (#5508) and those moved to the strip's shared header
+ *   (#5498) — the drag/resize/hide keys retired with them.
  * - `deviationPanel.*` — `DeviationPanel.tsx`, the BIM/scan deviation
  *   heatmap controls (compute button, stats line, range slider, and the
  *   diverging-ramp legend).
@@ -21,7 +24,10 @@
  *   overlay panel on the 2D section view (toggle, thickness/opacity
  *   sliders, and the status footnote).
  * - `spaceMousePanel.*` — `SpaceMousePanel.tsx`, the 3Dconnexion device
- *   panel (connect/disconnect, sensitivity, and diagnostics readout).
+ *   settings (connect/disconnect, sensitivity, and diagnostics readout).
+ *   Rendered inside the Preferences tab's Navigation section
+ *   (`KeyboardShortcutsDialog.tsx`, #5509), not as a floating panel; its own
+ *   section heading is catalogued there, not here.
  *
  * Several counted-fragment JSX expressions were combined into single
  * templated messages per the house rule against fragmenting a translated
@@ -29,7 +35,7 @@
  * report line, etc.) rather than left split across raw JSX text and a
  * bare unit suffix.
  *
- * `spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton`
+ * `spaceMousePanel.deviceNameFallback` / `connectButton`
  * keep the literal English word `SpaceMouse` as their value: it is a
  * product/device name, not translated prose, per the house rule — routed
  * through `t()` only so the ending gate does not see it as an unconverted
@@ -38,32 +44,28 @@
  * is expected to leave unchanged.
  */
 export const miscPanelsAEn = {
-  // BasketPresentationDock
-  'basketPresentationDock.dragToMoveTitle': 'Drag to move',
-  'basketPresentationDock.presentationLabel': 'Presentation',
-  'basketPresentationDock.inBasketCount': '{count} in basket',
-  'basketPresentationDock.viewsCount': { one: '{count} view', other: '{count} views' },
-  'basketPresentationDock.setFromContextTitle': 'Set basket from current context',
-  'basketPresentationDock.addToBasketTitle': 'Add current context to basket',
-  'basketPresentationDock.removeFromBasketTitle': 'Remove current context from basket',
-  'basketPresentationDock.hideActiveBasketTitle': 'Hide active basket',
-  'basketPresentationDock.showActiveBasketTitle': 'Show active basket',
-  'basketPresentationDock.clearActiveBasketTitle': 'Clear active basket',
-  'basketPresentationDock.saveCurrentViewTitle': 'Save current basket as presentation view',
-  'basketPresentationDock.stopPlaybackTitle': 'Stop playback',
-  'basketPresentationDock.playAllTitle': 'Play all saved views (Shift+Click to loop)',
-  'basketPresentationDock.hideButton': 'Hide',
-  'basketPresentationDock.scrollLeftTitle': 'Scroll left',
-  'basketPresentationDock.emptyStripHint':
+  // PresentationPanel (`presentation` bottom panel, formerly BasketPresentationDock)
+  'presentationPanel.inBasketCount': '{count} in basket',
+  'presentationPanel.viewsCount': { one: '{count} view', other: '{count} views' },
+  'presentationPanel.setFromContextTitle': 'Set basket from current context',
+  'presentationPanel.addToBasketTitle': 'Add current context to basket',
+  'presentationPanel.removeFromBasketTitle': 'Remove current context from basket',
+  'presentationPanel.hideActiveBasketTitle': 'Hide active basket',
+  'presentationPanel.showActiveBasketTitle': 'Show active basket',
+  'presentationPanel.clearActiveBasketTitle': 'Clear active basket',
+  'presentationPanel.saveCurrentViewTitle': 'Save current basket as presentation view',
+  'presentationPanel.stopPlaybackTitle': 'Stop playback',
+  'presentationPanel.playAllTitle': 'Play all saved views (Shift+Click to loop)',
+  'presentationPanel.scrollLeftTitle': 'Scroll left',
+  'presentationPanel.emptyStripHint':
     'Save basket views here. Click any card to restore both visibility and viewpoint.',
-  'basketPresentationDock.activeBadge': 'Active',
-  'basketPresentationDock.objectsCount': { one: '{count} object', other: '{count} objects' },
-  'basketPresentationDock.transitionSuffix': ' · {duration}s',
-  'basketPresentationDock.renameViewTitle': 'Rename view',
-  'basketPresentationDock.setTransitionTitle': 'Set transition duration',
-  'basketPresentationDock.deleteViewTitle': 'Delete view',
-  'basketPresentationDock.scrollRightTitle': 'Scroll right',
-  'basketPresentationDock.resizeWidthTitle': 'Drag to resize width',
+  'presentationPanel.activeBadge': 'Active',
+  'presentationPanel.objectsCount': { one: '{count} object', other: '{count} objects' },
+  'presentationPanel.transitionSuffix': ' · {duration}s',
+  'presentationPanel.renameViewTitle': 'Rename view',
+  'presentationPanel.setTransitionTitle': 'Set transition duration',
+  'presentationPanel.deleteViewTitle': 'Delete view',
+  'presentationPanel.scrollRightTitle': 'Scroll right',
 
   // DeviationPanel
   'deviationPanel.sectionLabel': 'Deviation (BIM ↔ scan)',
@@ -123,8 +125,6 @@ export const miscPanelsAEn = {
   'exportChangesReviewDialog.exportButton': 'Export',
 
   // ScanSectionPanel
-  'scanSectionPanel.title': 'Scan Layer',
-  'scanSectionPanel.closeAriaLabel': 'Close scan layer panel',
   'scanSectionPanel.showScanPointsLabel': 'Show scan points',
   'scanSectionPanel.noPointCloudMessage':
     'No point cloud is loaded. Load a .laz/.las/.e57/.ply/.pcd scan and this layer will show the points within a thin band around the section plane.',
@@ -137,9 +137,9 @@ export const miscPanelsAEn = {
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
 
-  // SpaceMousePanel
-  'spaceMousePanel.dragToMoveTitle': 'Drag to move',
-  'spaceMousePanel.headerLabel': 'SpaceMouse',
+  // SpaceMousePanel — the Navigation section's own heading (#5509) comes
+  // from `keyboardShortcuts.preferences.spaceMouseSectionTitle`, so no
+  // header/drag-title strings live here any more.
   'spaceMousePanel.noWebHidMessage':
     'This browser has no WebHID support. Use a Chromium-based browser (Chrome or Edge) to navigate with a 3D mouse.',
   'spaceMousePanel.deviceNameFallback': 'SpaceMouse',

@@ -37,21 +37,18 @@
  */
 
 import {
-  extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
-  extractTypePropertiesOnDemand,
-  extractProjectUnits,
-  mergeInheritedPropertySets,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { RelationshipType, QuantityType, collectSpatialAncestors } from '@ifc-lite/data';
+import { RelationshipType, collectSpatialAncestors } from '@ifc-lite/data';
 import type { Subject } from '../rule-set/rule-set.js';
-import { nameMatches, stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
+import { stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
+import { readMeasureSubject } from './read-measure-subject.js';
 import { assignedGroupNames } from './filter-group-rule.js';
+import { readModelFact } from './filter-model-fact.js';
 
 /** What `readSubject` needs about the element it reads. No `mutationView` —
  *  the engine reads the model as loaded, not with live in-session edits
@@ -76,6 +73,31 @@ export interface SubjectValue {
    * untyped property).
    */
   valueUnits?: ReadonlyArray<string | undefined>;
+  /**
+   * Property and quantity subjects only, aligned with `values`: the factor
+   * that turns each value into SI base units, from the same unit as
+   * `valueUnits`; `undefined` for a value with no unit (#5225).
+   */
+  valueSiScales?: ReadonlyArray<number | undefined>;
+  /**
+   * Property subjects only: one value per matched property, a list, enumerated
+   * or table value as its joined display text, where `values` holds each
+   * member (#5475). The set checks (`unique`, `aggregate`, `compare`) read
+   * a property as ONE value, so they use these; element checks match members.
+   */
+  displayValues?: ReadonlyArray<string>;
+}
+
+/** `subject` read as whole values: each property once, as the set checks compare it (#5475). */
+export function readSubjectWhole(subject: Subject, ctx: ReadSubjectContext): SubjectValue {
+  const read = readSubject(subject, ctx);
+  if (!read.displayValues) return read;
+  // Per-member unit arrays no longer line up with one value per property; drop them.
+  return {
+    present: read.displayValues.some((v) => v.trim().length > 0),
+    values: read.displayValues,
+    ...(read.unit !== undefined ? { unit: read.unit } : {}),
+  };
 }
 
 function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {
@@ -83,56 +105,6 @@ function fromStrings(values: ReadonlyArray<string | undefined>): SubjectValue {
   return { present: defined.some((v) => v.trim().length > 0), values: defined };
 }
 
-/** Display unit SYMBOL for a `Quantity.type` (length/area/volume/mass/time),
- *  from the file's declared `IfcUnitAssignment` (falling back to the IFC SI
- *  default, e.g. `m²`) — the same resolver `packages/ids/src/bridge/units.ts`
- *  uses for property/quantity SCALING, here read only for its display
- *  SYMBOL. The raw `Quantity.value` is shown as-is (unscaled): quantity
- *  comparisons already read raw author-unit values with no conversion,
- *  matching `filter-match.ts`'s existing `matchQuantityRule` (search never
- *  scaled quantities either) — see `rule-engine-requirements.ts`'s quantity
- *  branch, which compares this same raw value. `Count`/`Number` quantities
- *  have no unit and return `undefined`. Memoised per store (module-level
- *  `WeakMap`) so repeated quantity reads on one model don't re-walk
- *  `IfcUnitAssignment` per element. */
-const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
-
-const QUANTITY_MEASURE_TYPE: Partial<Record<QuantityType, string>> = {
-  [QuantityType.Length]: 'IfcLengthMeasure',
-  [QuantityType.Area]: 'IfcAreaMeasure',
-  [QuantityType.Volume]: 'IfcVolumeMeasure',
-  [QuantityType.Weight]: 'IfcMassMeasure',
-  [QuantityType.Time]: 'IfcTimeMeasure',
-};
-
-/** The project's display unit for IFC measure type `measureType`, if any. */
-function projectUnitSymbol(store: IfcDataStore, measureType: string | undefined): string | undefined {
-  if (!measureType || !store.source?.length || !store.entityIndex) return undefined;
-  let units = projectUnitsCache.get(store);
-  if (!units) {
-    units = extractProjectUnits(store.source, store.entityIndex);
-    projectUnitsCache.set(store, units);
-  }
-  return units.unitForMeasure(measureType)?.symbol;
-}
-
-function quantityUnitSymbol(store: IfcDataStore, quantityType: number): string | undefined {
-  return projectUnitSymbol(store, QUANTITY_MEASURE_TYPE[quantityType as QuantityType]);
-}
-
-/** `expressId`'s type-level property sets via `IfcRelDefinesByType`, the
- *  on-demand-only twin of `filter-evaluate.ts`'s `getInheritedTypePsets`
- *  (no per-run cache / mutation overlay here — see the module doc). */
-function inheritedTypePsets(store: IfcDataStore, expressId: number) {
-  if (!store.relationships) return [];
-  const typeIds = store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
-  if (typeIds.length === 0) return [];
-  const typeId = typeIds[0];
-  if (store.source && store.source.length > 0) {
-    return extractTypePropertiesOnDemand(store, expressId)?.properties ?? [];
-  }
-  return (store.properties?.getForEntity?.(typeId) ?? []) as ReturnType<typeof extractPropertiesOnDemand>;
-}
 
 /** `expressId`'s relating TYPE object's Name, via `IfcRelDefinesByType` — the
  *  read-only twin of `filter-evaluate.ts`'s `relatingTypeNameOf`. */
@@ -157,38 +129,9 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const found = extractAllEntityAttributes(store, expressId).find((a) => a.name.toLowerCase() === wanted);
       return fromStrings([found === undefined ? undefined : stringifyValue(found.value)]);
     }
-    case 'property': {
-      const own = extractPropertiesOnDemand(store, expressId);
-      const merged = mergeInheritedPropertySets(own, inheritedTypePsets(store, expressId));
-      const values: string[] = [];
-      const valueUnits: Array<string | undefined> = [];
-      for (const set of merged) {
-        if (!nameMatches(subject.setName, set.name, subject.setNameKind)) continue;
-        for (const p of set.properties) {
-          if (!nameMatches(subject.propertyName, p.name, subject.propertyNameKind)) continue;
-          values.push(stringifyValue(p.value));
-          // Type-inherited rows are typed without `unit`; own rows carry it.
-          const explicit = 'unit' in p && typeof p.unit === 'string' ? p.unit : undefined;
-          valueUnits.push(explicit ?? projectUnitSymbol(store, p.dataType));
-        }
-      }
-      return { ...fromStrings(values), valueUnits };
-    }
-    case 'quantity': {
-      const values: number[] = [];
-      const valueUnits: Array<string | undefined> = [];
-      for (const qset of extractQuantitiesOnDemand(store, expressId)) {
-        if (!nameMatches(subject.setName, qset.name, subject.setNameKind)) continue;
-        for (const q of qset.quantities) {
-          if (!nameMatches(subject.quantityName, q.name, subject.quantityNameKind)) continue;
-          values.push(q.value);
-          // An explicit `IfcPhysicalSimpleQuantity.Unit` overrides the
-          // project assignment, for display as much as for the check.
-          valueUnits.push(q.explicitUnit ?? quantityUnitSymbol(store, q.type));
-        }
-      }
-      return { present: values.length > 0, values, unit: valueUnits.find((u) => u !== undefined), valueUnits };
-    }
+    case 'property':
+    case 'quantity':
+      return readMeasureSubject(subject, store, expressId);
     case 'classification': {
       const sys = subject.system?.trim().toLowerCase();
       const refs = extractClassificationsOnDemand(store, expressId).filter(
@@ -228,6 +171,8 @@ export function readSubject(subject: Subject, ctx: ReadSubjectContext): SubjectV
       const name = defaultStoreyName(store, expressId);
       return fromStrings([name.length > 0 ? name : undefined]);
     }
+    case 'modelFact':
+      return fromStrings(readModelFact(store, subject.fact).map(String));
     case 'group': {
       // Present = assigned to at least one such group, named or not (#5226):
       // membership is the fact, a group's Name is only what value ops read.

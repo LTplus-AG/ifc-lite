@@ -187,6 +187,8 @@ if (isValidIfcGuid(guid)) {
 
 `generateIfcGuid`, `generateUuid`, and `isValidUuid` are also re-exported.
 
+In the viewer, activating a viewpoint shows its clipping plane (or clears the cut when it has none). Closing the BCF panel gives back the section cut and tool you had before the first viewpoint, unless you moved the cut in the meantime.
+
 ## IDS Validation Reports as BCF
 
 Failed IDS validation results can be turned into a BCF project, one topic per failure group:

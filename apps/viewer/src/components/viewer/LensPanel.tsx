@@ -1407,13 +1407,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
   }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
 
-  // Safety net: if the lens got deactivated while the panel was unmounted
-  // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation
-  // has no owner anymore — release it so the model isn't stuck isolated.
-  useEffect(() => {
-    if (activeLensId === null) releaseRuleIsolation();
-  }, [activeLensId, releaseRuleIsolation]);
-
   const handleNewLens = useCallback(() => {
     setCreatingAutoColor(false);
     setEditingLens({

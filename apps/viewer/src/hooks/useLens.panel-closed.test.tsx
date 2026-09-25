@@ -104,6 +104,7 @@ afterEach(async () => {
     savedLenses: [], activeLensId: null, lensColorMap: new Map(), lensAppliedColors: null,
     lensHiddenIds: new Set(), lensAppliedHiddenIds: [], lensRuleCounts: new Map(),
     lensRuleEntityIds: new Map(), hiddenEntities: new Set(), isolatedEntities: null,
+    lensRuleIsolation: null,
   });
 });
 
@@ -140,6 +141,41 @@ for (const modelCount of [1, 3]) {
       await act(async () => { useViewerStore.setState({ activeLensId: null }); });
       assert.deepEqual(sorted(useViewerStore.getState().hiddenEntities), [],
         'deactivating the lens after Home restores every lens hide');
+    });
+
+    it('deactivating the lens releases the rule isolation it still owns', async () => {
+      await mountHost();
+      const walls: number[] = [];
+      for (let i = 0; i < modelCount; i++) walls.push(await loadModel(`m${i}`));
+      await activateLens();
+      // A rule-row click, recorded as the panel records it; then the panel closes.
+      await act(async () => {
+        useViewerStore.getState().isolateEntities(walls);
+        useViewerStore.getState().setLensRuleIsolation({ ruleId: 'walls', entityIds: walls });
+      });
+
+      // A flavor switch clears the active lens with no panel mounted.
+      await act(async () => { useViewerStore.setState({ activeLensId: null }); });
+      const after = useViewerStore.getState();
+      assert.equal(after.isolatedEntities, null, 'the orphaned lens isolation must be released');
+      assert.equal(after.lensRuleIsolation, null, 'and its ownership record dropped');
+    });
+
+    it('deactivating the lens leaves an isolation the user applied since', async () => {
+      await mountHost();
+      const walls: number[] = [];
+      for (let i = 0; i < modelCount; i++) walls.push(await loadModel(`m${i}`));
+      await activateLens();
+      const slab = useViewerStore.getState().toGlobalId(`m${modelCount - 1}`, 2);
+      await act(async () => {
+        useViewerStore.getState().setLensRuleIsolation({ ruleId: 'walls', entityIds: walls });
+        useViewerStore.getState().isolateEntities([slab]);
+      });
+
+      await act(async () => { useViewerStore.setState({ activeLensId: null }); });
+      const after = useViewerStore.getState();
+      assert.deepEqual(sorted(after.isolatedEntities ?? []), [slab], 'the user\'s isolation stays');
+      assert.equal(after.lensRuleIsolation, null, 'only the stale lens claim drops');
     });
   });
 }

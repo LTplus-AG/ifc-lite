@@ -165,6 +165,7 @@ for (const modelCount of [1, 2] as const) {
       const firstRules = ruleIds();
       assert.ok(!firstRules.includes('all-clashes'));
 
+      assert.equal(buttonByText('Re-run').getAttribute('title'), 'Re-run the duplicate scan');
       await clickAndSettle(buttonByText('Re-run'));
       const again = useViewerStore.getState().clashResult;
       assert.ok(again && again !== first, 'Re-run published a fresh result');
@@ -185,6 +186,19 @@ for (const modelCount of [1, 2] as const) {
       await clickAndSettle(reRun);
       assert.notEqual(useViewerStore.getState().clashResult, first, 'Re-run published a fresh result');
       assert.deepEqual(ruleIds(), [preset.id], 'Re-run repeated the preset, not "Detect all"');
+    });
+
+    it('repeats the enabled rule set after a rule-set run', async () => {
+      await seed(modelCount);
+      await clickAndSettle(buttonByText('Discipline matrix'));
+      const first = ruleIds();
+      assert.ok(first.length > 1, 'the rule set ran several rules');
+      const reRun = buttonByText('Re-run');
+      assert.equal(reRun.getAttribute('title'), 'Re-run the enabled rule set');
+      const firstResult = useViewerStore.getState().clashResult;
+      await clickAndSettle(reRun);
+      assert.notEqual(useViewerStore.getState().clashResult, firstResult);
+      assert.deepEqual(ruleIds(), first, 'Re-run repeated the rule set, not "Detect all"');
     });
 
     it('still repeats "Detect all" after a Detect-all run', async () => {

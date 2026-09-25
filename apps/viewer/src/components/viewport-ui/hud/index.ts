@@ -11,6 +11,7 @@ export { HudSegmented, type HudSegmentedOption, type HudSegmentedProps } from '.
 export { HudValueField, type HudValueFieldProps } from './HudValueField';
 export { HudChip, type HudChipAction, type HudChipProps } from './HudChip';
 export { HudHint } from './HudHint';
+export { HudToggle, HudDivider, type HudToggleProps } from './HudToggle';
 export { HudNotice, type HudNoticeTone, type HudNoticeAction, type HudNoticeDismiss, type HudNoticeProps } from './HudNotice';
 export {
   HudPopover,

@@ -1139,6 +1139,19 @@ jobs:
         run: node --test scripts/check-css-vars.test.mjs
       - name: Check for undefined CSS custom-property references
         run: node scripts/check-css-vars.mjs
+      # The #5478 audit found ~35 independently positioned viewport overlays,
+      # each with its own colour and z-index: violet `#9C6BDE` for the custom
+      # section plane, purple `#a855f7` for split/wall handles and edit mode,
+      # z-index from `z-10` to `z-[9999]`. #5483 shipped a token module and a
+      # z scale (`z-(--z-hud)`); this ratchet (#5487) stops a NEW hard-coded
+      # hex/rgb literal or raw z-index from landing in viewport code, and a
+      # new purple-family Tailwind utility anywhere in the viewer, without
+      # requiring the full colour-unification sweep (#5488-#5512) up front.
+      # Its own tests run first, same reason as every other gate here.
+      - name: Check overlay-palette gate's own tests
+        run: node --test scripts/check-overlay-palette.test.mjs
+      - name: Check for hard-coded viewport overlay colours and z-index
+        run: node scripts/check-overlay-palette.mjs
       # An entity can legitimately carry two distinct property/quantity sets
       # sharing the same name (type + occurrence). `sets.find(s => s.name ===
       # x)` only ever sees the first one -- fixed one call site at a time

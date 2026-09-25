@@ -151,7 +151,7 @@ describe('FlowPanel — a run records only its own mutations (#5634)', () => {
     useViewerStore.getState().importFlow(doc);
     const container = render(
       <BimProvider>
-        <FlowPanel onClose={() => {}} />
+        <FlowPanel />
       </BimProvider>,
     );
     click(byText(container, 'button', 'Player'));

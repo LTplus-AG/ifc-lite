@@ -66,3 +66,29 @@ describe('computeFloatingPanelStyle', () => {
     assert.equal(s.width, 5000); // unclamped without a region
   });
 });
+
+describe('free panels stay on screen (#5854)', () => {
+  const AREA = { width: 1280, height: 720 };
+
+  it('clamps a panel saved past the right / bottom edge back inside the window', () => {
+    // Saved on a 2560px screen, drawn on a 1280px one.
+    const s = computeFloatingPanelStyle(panel('free', { x: 2100, y: 1300 }), null, AREA);
+    assert.deepEqual(s, { left: 1280 - 360, top: 720 - 460, width: 360, height: 460 });
+  });
+
+  it('clamps a negative position to the top-left corner', () => {
+    const s = computeFloatingPanelStyle(panel('free', { x: -500, y: -40 }), null, AREA);
+    assert.equal(s.left, 0);
+    assert.equal(s.top, 0);
+  });
+
+  it('shrinks a panel larger than the window to fit', () => {
+    const s = computeFloatingPanelStyle(panel('free', { w: 2000, h: 1500 }), null, AREA);
+    assert.deepEqual(s, { left: 0, top: 0, width: 1280, height: 720 });
+  });
+
+  it('leaves an on-screen panel exactly where it was put', () => {
+    const s = computeFloatingPanelStyle(panel('free'), null, AREA);
+    assert.deepEqual(s, { left: 120, top: 200, width: 360, height: 460 });
+  });
+});

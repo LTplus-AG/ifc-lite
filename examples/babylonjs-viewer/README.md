@@ -33,10 +33,11 @@ in the side panel.
 `npm run build` typechecks and writes a production bundle to `dist/`
 (`npm run preview` serves it); `npm run typecheck` runs `tsc` alone.
 
-This folder is self-contained: it depends on the **published** `@ifc-lite/*`
-packages (not `workspace:*`), so you can copy it out of the monorepo and
-install it on its own. Inside the monorepo it installs those same published
-versions rather than the local sources.
+Inside the monorepo it builds against the local `@ifc-lite/*` sources
+(`workspace:*`), so it can never drift behind the packages it demonstrates. To
+use it on its own, copy the folder out and replace each `workspace:*` with the
+published version (`npm view @ifc-lite/parser version`), or start from
+`npx create-ifc-lite` instead.
 
 ## Key files
 

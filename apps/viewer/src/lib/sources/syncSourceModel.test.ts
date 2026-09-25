@@ -221,8 +221,6 @@ function seedStore(model = makeModel()): void {
     selectedEntityId: null,
     activeStorey: null,
     selectedModelId: null,
-    hiddenEntitiesByModel: new Map(),
-    isolatedEntitiesByModel: new Map(),
   });
 }
 

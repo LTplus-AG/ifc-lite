@@ -10,10 +10,10 @@
  * `useSceneLayer` (portals) and register their world point through
  * `useWorldAnchor` (the shared projector, `SceneProjectorProvider`).
  *
- * This PR ships the kernel with no consumers wired in yet — the five
- * hand-rolled rAF overlays it replaces (`SectionPlaneDragGizmo`,
- * `SectionPickPreviewOverlay`, `BasepointOverlay`, `PeerPresenceLayer`, the
- * BCF overlay renderer) migrate in #5510-#5512.
+ * Mounted once in `ViewportContainer`, wrapping `AnnotationLayer`,
+ * `CollabPresenceLayer` (`PeerPresenceLayer`) and `BCFOverlay` (#5511) — the
+ * remaining hand-rolled rAF overlays it replaces (`SectionPlaneDragGizmo`,
+ * `SectionPickPreviewOverlay`, `BasepointOverlay`) migrate in #5510/#5512.
  */
 
 import { useRef, type ReactNode } from 'react';

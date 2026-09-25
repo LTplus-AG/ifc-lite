@@ -81,9 +81,7 @@ describe('resolveExportVisibility', () => {
       useViewerStore.setState({
         models: new Map([['m1', model]]),
         hiddenEntities: new Set(),
-        hiddenEntitiesByModel: new Map(),
         isolatedEntities: null,
-        isolatedEntitiesByModel: new Map(),
         // Global ids 101, 102 belong to model m1 (offset 100); 999 belongs to
         // some other/nonexistent model and must be scoped out.
         classFilter: { ids: new Set([101, 102, 999]), label: 'IfcWallStandardCase' },

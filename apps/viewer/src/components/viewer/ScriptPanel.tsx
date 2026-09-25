@@ -63,11 +63,7 @@ import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { LogEntry } from '@/store/slices/scriptSlice';
 import { useScriptState, formatLogArgs } from './scriptPanelState';
 
-interface ScriptPanelProps {
-  onClose?: () => void;
-}
-
-export function ScriptPanel({ onClose }: ScriptPanelProps) {
+export function ScriptPanel() {
   const { t } = useTranslation();
   const {
     editorContent,
@@ -285,17 +281,6 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 : t('scriptPanel.header.showAiChat')}
             </TooltipContent>
           </Tooltip>
-
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={t('scriptPanel.header.closeAriaLabel')}
-              onClick={onClose}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
         </div>
 
         {/* Post-authoring "install as tool" banner — surfaces right

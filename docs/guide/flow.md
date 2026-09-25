@@ -439,6 +439,92 @@ Nothing the workflow uploads, comments, or logs can carry the raw value:
 comment, the job log — only ever sees `<secret:API_TOKEN>` if the value
 happened to surface at all.
 
+### Autodesk Platform Services (APS)
+
+Two nodes read Autodesk model data into a graph, so Revit or ACC properties
+can be joined to an IFC model:
+
+- `aps.token` gets an APS access token: a 2-legged client-credentials token
+  from `clientId` / `clientSecret` (`scope` defaults to
+  `data:read viewables:read`), or a ready 3-legged token passed as
+  `accessToken`. Its `token` output is an opaque handle. The token itself is
+  never an output value, a log line or part of `--json` output, because a
+  token minted from a secret is not a secret the redaction step knows about.
+- `aps.modelProperties` reads a translated model's Model Derivative
+  metadata, picks the master (else first) 3D view, and reads its properties.
+  The output is a table with one row per object: `objectid`, `externalId`
+  (for Revit, the element's UniqueId), `name`, `category`, `IfcGUID`, and
+  every property as a `Group.Property` column. The `key` param picks the
+  key column (default `externalId`). While APS is still extracting
+  properties it answers `202`. The node retries up to `maxAttempts` times,
+  waiting `retryDelayMs` between tries, then fails with a clear message.
+  Credentials come from a connected `token`, or from the same credential
+  params on the node itself. `region` sets the data centre (`US`, `EMEA`, …).
+
+Both nodes reach only `developer.api.autodesk.com`, through the same
+host-grant check as `http.request`. They are volatile, so every run fetches
+fresh data. Run them from the CLI or MCP: the viewer has no secrets, and
+APS's endpoints are not meant to be called from a browser page.
+
+This graph joins a Revit model's properties to the walls of the loaded IFC
+model through the `IfcGUID` that Revit's IFC exporter writes:
+
+```json
+{
+  "flowVersion": 1,
+  "id": "aps-join",
+  "name": "Revit properties onto IFC walls",
+  "capabilities": [
+    "model.read",
+    "network.fetch:developer.api.autodesk.com",
+    "secret.read:APS_CLIENT_ID",
+    "secret.read:APS_CLIENT_SECRET"
+  ],
+  "inputs": [],
+  "outputs": [{ "nodeId": "join", "port": "matched", "label": "matched" }],
+  "nodes": [
+    {
+      "id": "tok",
+      "type": "aps.token",
+      "params": { "clientId": "{{secret:APS_CLIENT_ID}}", "clientSecret": "{{secret:APS_CLIENT_SECRET}}" }
+    },
+    {
+      "id": "props",
+      "type": "aps.modelProperties",
+      "params": { "urn": "urn:adsk.wipprod:fs.file:vf.XXXXXXXX?version=3", "region": "US", "key": "IfcGUID" }
+    },
+    { "id": "walls", "type": "model.byType", "params": { "type": "IfcWall" } },
+    { "id": "join", "type": "table.joinByKey", "params": { "strategy": "globalId", "column": "IfcGUID" } }
+  ],
+  "edges": [
+    { "from": ["tok", "token"], "to": ["props", "token"] },
+    { "from": ["props", "table"], "to": ["join", "table"] },
+    { "from": ["walls", "entities"], "to": ["join", "entities"] }
+  ]
+}
+```
+
+```bash
+APS_CLIENT_ID=… APS_CLIENT_SECRET=… ifc-lite flow run aps-join.json model.ifc --json
+```
+
+**Getting a URN.** `urn` takes either form:
+
+- The version id of a Docs, ACC or BIM 360 file, such as
+  `urn:adsk.wipprod:fs.file:vf.…?version=N`. The Data Management API returns
+  it (`GET /data/v1/projects/{project}/items/{item}/versions`, the `id` of
+  each version). The node base64url-encodes it for you. An item id
+  (`…:dm.lineage:…`) names no version, so the node refuses it.
+- An already-encoded derivative URN, which the APS Viewer and translation
+  jobs print (the `urn:` prefix the viewer adds is accepted).
+
+The file must already be translated. Opening it once in ACC or Docs does
+that; for your own OSS bucket, start a Model Derivative job first. A
+2-legged token can read an ACC project only when the APS app has been added
+to the ACC account as a custom integration. Otherwise, pass a user's
+3-legged token as `accessToken: "{{secret:APS_TOKEN}}"` and declare
+`secret.read:APS_TOKEN`.
+
 ## Editing a graph
 
 In the viewer's Flow panel:

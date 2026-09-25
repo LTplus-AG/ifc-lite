@@ -52,16 +52,6 @@ function digestNumberSet(values: Iterable<number>): string {
   return `${count}:${xor >>> 0}:${sum >>> 0}`;
 }
 
-function digestModelEntityMap(map: Map<string, Set<number>>): string {
-  if (map.size === 0) return '0';
-  const parts: string[] = [];
-  for (const [modelId, ids] of map) {
-    parts.push(`${modelId}:${digestNumberSet(ids)}`);
-  }
-  parts.sort();
-  return parts.join('|');
-}
-
 function visibilityFingerprint(state: ViewerStateSnapshot): string {
   const tv = state.typeVisibility;
 
@@ -78,8 +68,6 @@ function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.isolatedEntities ? digestNumberSet(state.isolatedEntities) : 'none',
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
-    digestModelEntityMap(state.hiddenEntitiesByModel),
-    digestModelEntityMap(state.isolatedEntitiesByModel),
     digestNumberSet(state.selectedStoreys),
     tv.spaces ? 1 : 0,
     tv.spatialZones ? 1 : 0,
@@ -445,12 +433,6 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   for (const candidate of candidates) {
     if (globalIsolation !== null && !globalIsolation.has(candidate.globalId)) continue;
     if (globalHidden.has(candidate.globalId)) continue;
-
-    const modelHidden = state.hiddenEntitiesByModel.get(candidate.modelId);
-    if (modelHidden?.has(candidate.expressId)) continue;
-
-    const modelIsolated = state.isolatedEntitiesByModel.get(candidate.modelId);
-    if (modelIsolated && !modelIsolated.has(candidate.expressId)) continue;
 
     visible.add(candidate.globalId);
   }

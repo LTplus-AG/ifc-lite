@@ -643,7 +643,7 @@ The viewer app provides a **basket** — an incremental isolation set that lets 
 | **Set** | `I` | `=` button | Set as Basket (=) | Replace basket with current selection |
 | **Add** | `+` | `+` button | Add to Basket (+) | Add current selection to basket |
 | **Remove** | `-` | `-` button | Remove from Basket (-) | Remove current selection from basket |
-| **Show All** | `A` | Eye icon | Show All | Clear hidden/isolated state |
+| **Show All** | `A` | Eye icon | Show All | Clear every filter; see below |
 
 **Workflow example:**
 
@@ -660,8 +660,24 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 |----------|--------|
 | `Del` / `Backspace` | Hide selected entity |
 | `Space` | Hide selected entity (viewport-focused only) |
-| `A` | Show all (reset hidden, isolation and basket) |
+| `A` | Show all (see below for what it clears and what it keeps) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
+
+**What Show All clears.** Show All, the `A` key, the Home button and the context menu's Show all all run the same reset, driven by one table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). At 1 model and at N models alike, it clears:
+
+- manual hides;
+- isolation (and leaves the basket view);
+- X-ray ghosting;
+- the Class filter;
+- the storey filter (Solo returns to Stacked);
+- hidden federated models.
+
+It deliberately **keeps** four settings that are preferences rather than filters on this view:
+
+- the active lens, with its colours and its hides;
+- the class-type toggles (Spaces, Openings, Site, …), which are remembered between sessions;
+- the Model/Types view mode;
+- classes an embedding page hid.
 
 ## Render Options
 

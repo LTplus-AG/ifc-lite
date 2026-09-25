@@ -87,7 +87,7 @@ export function LocalTab() {
   const delta = preview?.delta ?? [0, 0, 0];
 
   return (
-    <div role="region" aria-label={t('repositionPanel.title')} className="flex flex-col gap-3 text-xs">
+    <section aria-label={t('repositionPanel.title')} className="flex flex-col gap-3 text-xs">
       <div className="flex items-center justify-between gap-2">
         <p className="text-muted-foreground">{t('repositionPanel.subtitle')}</p>
         <Button size="sm" variant="outline" aria-label={t('repositionPanel.cancelAriaLabel')} onClick={() => useViewerStore.getState().closeReposition()}>
@@ -149,7 +149,7 @@ export function LocalTab() {
           <span>{t('repositionPanel.snapLabel')}</span>
         </label>
       </div>
-      <p role="status">
+      <p aria-live="polite" aria-atomic="true">
         {runtime.role ? t('repositionPanel.pickPrompt', { role: t(PICK_ROLE_KEYS[runtime.role]) }) : t('repositionPanel.previewPrompt')}
         {runtime.hover ? ` ${t('repositionPanel.hoverDetail', { kind: t(HOVER_KIND_KEYS[runtime.hover.kind]), name: models.get(runtime.hover.modelId)?.name ?? '' })}` : ''}
       </p>
@@ -225,6 +225,6 @@ export function LocalTab() {
       </div>
 
       <PlacementFiles />
-    </div>
+    </section>
   );
 }

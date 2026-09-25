@@ -122,6 +122,7 @@ import {
 } from './measure-modes/geo-readout';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
+import { overlayColor } from '@/lib/viewport-ui/overlay-theme';
 
 /**
  * Which expandable section the panel is showing. `null` is collapsed, which is
@@ -616,16 +617,12 @@ export function MeasureOverlay() {
         </div>
       </div>
 
-      {/* Instruction hint - brutalist style with snap-colored shadow */}
+      {/* Instruction hint; its shadow turns accent while snapped (#5490: snap kinds share one hue) */}
       <div
         className={`pointer-events-auto absolute ${hintBottomClass} left-1/2 -translate-x-1/2 z-30 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150`}
         style={{
           boxShadow: snapTarget
-            ? `4px 4px 0px 0px ${
-                snapTarget.type === 'vertex' ? '#FFEB3B' :
-                snapTarget.type === 'edge' ? '#FF9800' :
-                snapTarget.type === 'face' ? '#03A9F4' : '#00BCD4'
-              }`
+            ? `4px 4px 0px 0px ${overlayColor('overlay-accent')}`
             : '3px 3px 0px 0px rgba(0,0,0,0.3)'
         }}
       >

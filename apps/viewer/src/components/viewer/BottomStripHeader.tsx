@@ -14,10 +14,11 @@
  * shell chrome rather than a bespoke widget.
  */
 
-import { Grip, Maximize2, Minimize2, X } from 'lucide-react';
+import { Grip, Maximize2, Minimize2, PanelBottom, PanelRight, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { getPanelDef } from '@/lib/panels/registry';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import type { BottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 
 const ICON_BUTTON_CLASS =
@@ -49,6 +50,13 @@ export interface BottomStripHeaderProps {
   onCloseTab: (id: BottomPanelId) => void;
   isMaximized: boolean;
   onToggleMaximize: () => void;
+  /** Current dock side — only meaningful together with `onToggleOrientation`
+   *  below; the control that reads/sets this is Drawing-only (#5515). */
+  orientation?: BottomStripOrientation;
+  /** Present only when the active panel can go side-by-side with the 3D view
+   *  (Drawing, #5515) — its presence alone gates the toggle button, so no
+   *  extra "which panel" prop is needed here. */
+  onToggleOrientation?: () => void;
 }
 
 export function BottomStripHeader({
@@ -58,6 +66,8 @@ export function BottomStripHeader({
   onCloseTab,
   isMaximized,
   onToggleMaximize,
+  orientation = 'bottom',
+  onToggleOrientation,
 }: BottomStripHeaderProps) {
   const { t } = useTranslation();
   return (
@@ -107,6 +117,17 @@ export function BottomStripHeader({
       </div>
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <DetachGrip id={activePanel} />
+        {activePanel === 'drawing' && onToggleOrientation && (
+          <button
+            type="button"
+            onClick={onToggleOrientation}
+            aria-label={orientation === 'side' ? t('bottomStrip.dockBelow') : t('bottomStrip.dockBeside')}
+            title={orientation === 'side' ? t('bottomStrip.dockBelow') : t('bottomStrip.dockBeside')}
+            className={ICON_BUTTON_CLASS}
+          >
+            {orientation === 'side' ? <PanelBottom className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+          </button>
+        )}
         <button
           type="button"
           onClick={onToggleMaximize}

@@ -96,4 +96,13 @@ export const section2dEn = {
   'section2d.pdf.paperAuto': 'Sized to fit the drawing plus a margin',
   'section2d.pdf.cancel': 'Cancel',
   'section2d.pdf.export': 'Export',
+  'section2d.savedCuts.menuLabel': 'Section source: {label}',
+  'section2d.savedCuts.saveCurrent': 'Save current cut as…',
+  'section2d.savedCuts.savePrompt': 'Name this section cut',
+  'section2d.savedCuts.savedGroup': 'Saved cuts',
+  'section2d.savedCuts.empty': 'No saved cuts yet',
+  'section2d.savedCuts.applyTitle': 'Use this saved cut as the drawing’s source',
+  'section2d.savedCuts.renameTitle': 'Rename saved cut',
+  'section2d.savedCuts.renamePrompt': 'Rename this section cut',
+  'section2d.savedCuts.deleteTitle': 'Delete saved cut',
 } as const satisfies Record<string, TranslationValue>;

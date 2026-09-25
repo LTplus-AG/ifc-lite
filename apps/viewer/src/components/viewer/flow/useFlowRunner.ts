@@ -13,11 +13,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { MemoCache } from '@ifc-lite/flow';
 import { useBim } from '@/sdk/BimProvider';
+import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
 import { invalidateForExternalChange, runFlowInViewer } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
+import { createViewerOpenModel } from '@/lib/flow/open-model';
 
 /** Ids of every pending mutation, on every model. */
 function pendingMutationIds(): Set<string> {
@@ -32,6 +34,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
   const setFlowLastRun = useViewerStore((s) => s.setFlowLastRun);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const models = useViewerStore((s) => s.models);
+  const { addModel } = useIfc();
 
   const caches = useRef(new Map<string, MemoCache>());
   const running = useRef(false);
@@ -80,6 +83,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     try {
       const result = await runFlowInViewer({
         doc: flowDoc, bim, pin, cache, inputs, tables: viewerTableAccess(useViewerStore),
+        openModel: createViewerOpenModel(addModel, (id) => useViewerStore.getState().models.has(id)),
       });
       if (stillOpen()) setFlowLastRun(result, undefined, record());
       else setFlowRunning(false);
@@ -90,7 +94,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       capture.close();
       running.current = false;
     }
-  }, [flowDoc, activeModelId, models, bim, setFlowRunning, setFlowLastRun]);
+  }, [flowDoc, activeModelId, models, bim, addModel, setFlowRunning, setFlowLastRun]);
 
   return { run, canRun };
 }

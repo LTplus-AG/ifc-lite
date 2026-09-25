@@ -76,8 +76,8 @@ import {
   resolveSecretValues,
   usableSecretNames,
   validateSecretReferences,
-  type FlowHost,
 } from '@ifc-lite/flow-nodes';
+import { createMcpFlowHost } from './flow-host.js';
 import type { Tool } from './types.js';
 import { okResult, paginate, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -272,20 +272,9 @@ const runFlowTool: Tool = {
 
 
     const model = resolveModel(ctx, input.model_id as string | undefined);
-    // `tables()` gives `table.joinByKey`'s tag/property strategies the entity
-    // table, as the CLI and viewer hosts do — without it those strategies fail
-    // at run time over MCP only. The mutation view is the one `bim.mutate`
-    // writes through, so a join sees what an earlier node in the run wrote.
-    const host: FlowHost = {
-      bim: model.bim,
-      networkGrants: capsResult.value,
-      defaultModelId: model.id,
-      tables: () => ({
-        entities: model.store.entities,
-        mutationView: model.backend.getOrCreateMutationView(),
-        strings: model.store.strings ?? null,
-      }),
-    };
+    // `networkGrants` is the graph's own declared capabilities (module doc);
+    // `model.openFromSource` can switch the host to a model it opened.
+    const host = createMcpFlowHost(model, ctx.registry, capsResult.value);
     const result = await runFlow(runDoc, {
       host,
       registry,

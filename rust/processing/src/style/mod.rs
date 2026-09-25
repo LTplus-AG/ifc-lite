@@ -75,25 +75,17 @@ pub struct GeometryStyleInfo {
     /// has no GLB consumer yet).
     pub shading_color: Option<[f32; 4]>,
     pub material_name: Option<String>,
-    /// Metallic/roughness pair from `IfcSurfaceStyleRendering.SpecularColour`
-    /// / `.SpecularHighlight` / `.ReflectanceMethod` (#5582), via
-    /// [`extract_surface_style_specular`]. Either field of the inner
-    /// [`SpecularMaterial`] may be `None` when the file authored no evidence
-    /// for it; `None` here means neither field was authored.
-    pub metallic_roughness: Option<SpecularMaterial>,
 }
 
 impl GeometryStyleInfo {
     /// Lift a bare RGBA colour (e.g. from the browser prepass's flat
     /// `styleIds`/`styleColors` wire arrays) into the rich form. No shading
-    /// colour, no material name, no specular evidence — exactly the fidelity
-    /// the wire carries.
+    /// colour, no material name — exactly the fidelity the wire carries.
     pub fn from_color(color: [f32; 4]) -> Self {
         Self {
             color,
             shading_color: None,
             material_name: None,
-            metallic_roughness: None,
         }
     }
 }

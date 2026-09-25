@@ -47,7 +47,6 @@ fn find_color_in_representation_follows_nested_mapped_items() {
             color: [1.0, 0.0, 0.0, 1.0],
             shading_color: None,
             material_name: None,
-            metallic_roughness: None,
         },
     );
 
@@ -118,7 +117,6 @@ fn find_color_in_representation_resolves_exactly_at_the_depth_cap() {
             color: red,
             shading_color: None,
             material_name: None,
-            metallic_roughness: None,
         },
     );
     let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH);
@@ -141,7 +139,6 @@ fn find_color_in_representation_stops_one_hop_past_the_depth_cap() {
             color: red,
             shading_color: None,
             material_name: None,
-            metallic_roughness: None,
         },
     );
     let content = nested_mapped_chain(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH + 1);

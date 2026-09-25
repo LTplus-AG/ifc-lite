@@ -5,5 +5,4 @@
 //! Shared type definitions for IFC processing.
 
 pub mod mesh;
-pub mod mesh_texture;
 pub mod response;

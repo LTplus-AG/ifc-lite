@@ -385,7 +385,11 @@ impl MeshDataJs {
         self.shading_color = shading;
     }
 
-    /// Attach the metallic/roughness pair (#5582). Call after `new`.
+    /// Attach the IFC-authored metallic/roughness pair (#5582). Call after
+    /// `new`. `MeshData` carries no finish, so [`MeshDataJs::from_mesh_data`]
+    /// leaves both `None`; the wasm batch stamps them from the prepass
+    /// finishes installed by `setStyleFinishes`, keyed by the mesh's
+    /// `geometry_item_id`.
     pub fn set_material(&mut self, metallic: Option<f32>, roughness: Option<f32>) {
         self.metallic = metallic;
         self.roughness = roughness;
@@ -464,7 +468,6 @@ impl MeshDataJs {
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
         js.set_source_ids(m.geometry_item_id, m.material_id);
-        js.set_material(m.metallic, m.roughness);
         if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
             if let Some(rgba) = tex.rgba {
                 // Rust-decoded blob/pixel texture (#961): the Arc is shared

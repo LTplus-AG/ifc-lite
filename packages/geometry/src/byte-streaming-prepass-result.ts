@@ -14,6 +14,9 @@ export interface ByteStreamingPrePassResult {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  /** #5582 `[metallic, roughness]` per style id, NaN when unauthored.
+   *  Absent from an older wasm; install via `setStyleFinishes`. */
+  styleFinishes?: Float32Array;
   /** Prepass-resolved plane-angle→radians scale (additive wire field). */
   planeAngleToRadians?: number;
   /** #407/#913 §2.3 per-element material colour lists (flat encoding). */

@@ -30,11 +30,6 @@ pub(super) fn build_mesh_data(
     // or `material_id` by `with_style_metadata`, never both (#3199).
     source_id: Option<u32>,
     id_is_material: bool,
-    // IFC-authored metallic/roughness (#5582), resolved by the caller from
-    // the same `GeometryStyleInfo` that produced `color`/`material_name`.
-    // `None` where the caller never looked up a per-item style (the palette
-    // split and single-mesh fallback paths) or the style authored neither field.
-    specular: Option<crate::style::SpecularMaterial>,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
     // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
@@ -107,8 +102,7 @@ pub(super) fn build_mesh_data(
     .with_origin(mesh_origin)
     .with_instance(instance)
     .with_local_bounds(local_bounds)
-    .with_local_to_world(local_to_world)
-    .with_specular_material(specular);
+    .with_local_to_world(local_to_world);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

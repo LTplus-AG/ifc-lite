@@ -15,7 +15,8 @@
 //! ineligible has nothing to instance against), and two copies is how they stop
 //! agreeing.
 
-use crate::zero_copy::{MeshCollection, MeshDataJs};
+use super::style_finishes::{mesh_js_with_finish, StyleFinishes};
+use crate::zero_copy::MeshCollection;
 use ifc_lite_processing::MeshData;
 use rustc_hash::FxHashMap;
 
@@ -243,11 +244,13 @@ pub(super) fn take_back_rejected(
     instanced: Vec<MeshData>,
     rejected: &[usize],
     collection: &mut MeshCollection,
+    finishes: Option<&StyleFinishes>,
 ) -> usize {
     let mut pushed = 0;
     for (i, mesh_data) in instanced.into_iter().enumerate() {
         if rejected.binary_search(&i).is_ok() {
-            collection.add(MeshDataJs::from_mesh_data(mesh_data));
+            // Drawn flat after all, so it gets its #5582 finish like any flat mesh.
+            collection.add(mesh_js_with_finish(mesh_data, finishes));
             pushed += 1;
         }
     }

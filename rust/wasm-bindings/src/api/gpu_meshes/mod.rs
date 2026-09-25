@@ -16,6 +16,7 @@ pub(crate) mod prepass;
 mod prepass_discovery;
 mod prepass_sharded;
 mod source_fingerprint;
+mod style_finishes;
 mod prepass_from_source;
 mod void_index;
 mod prepass_affinity;

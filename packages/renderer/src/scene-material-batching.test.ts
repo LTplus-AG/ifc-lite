@@ -64,7 +64,7 @@ describe('batching folds IFC-authored material into the colour key (#5582)', () 
 
     const batches = scene.getBatchedMeshes();
     assert.equal(batches.length, 2, 'same colour, different metallic -> must not share a batch');
-    const materials = batches.map((b) => b.material?.metallic).sort();
+    const materials = batches.map((b) => b.finish?.metallic).sort();
     assert.deepEqual(materials, [0, 1]);
   });
 
@@ -107,7 +107,7 @@ describe('batching folds IFC-authored material into the colour key (#5582)', () 
 
     const overlays = scene.getOverrideBatches();
     assert.equal(overlays.length, 2, 'one override colour over two finishes -> two overlay batches');
-    assert.deepEqual(overlays.map((b) => b.material?.metallic).sort(), [0, 1]);
+    assert.deepEqual(overlays.map((b) => b.finish?.metallic).sort(), [0, 1]);
     assert.deepEqual(overlays.map((b) => b.colorKey).sort(), ['1000|0|0|1000|0|900', '1000|0|0|1000|1000|200'],
       'the overlay label carries its finish, like the bucket key it came from');
   });

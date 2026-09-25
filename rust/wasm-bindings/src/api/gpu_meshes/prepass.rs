@@ -85,10 +85,12 @@ impl IfcAPI {
 
         // Flat wire encodings from the shared resolver: styles (layered
         // precedence), voids, and the #407 material colour lists.
-        let (style_ids_vec, style_colors_vec) = ifc_lite_processing::prepass::flat_styles_rgba8(
-            &pre_pass.resolved,
-            &mut decoder,
-        );
+        let (style_ids_vec, style_colors_vec, style_finishes_vec) =
+            ifc_lite_processing::prepass::flat_styles_with_finishes(
+                &pre_pass.resolved,
+                &pre_pass.geometry_finishes,
+                &mut decoder,
+            );
         let (void_keys_vec, void_counts_vec, void_values_vec) = ifc_lite_processing::prepass::flat_voids(&pre_pass.resolved.void_index);
         let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
             ifc_lite_processing::prepass::flat_material_colors(
@@ -117,6 +119,8 @@ impl IfcAPI {
         crate::api::set_js_prop(&result, "voidValues", &void_values);
         crate::api::set_js_prop(&result, "styleIds", &style_ids);
         crate::api::set_js_prop(&result, "styleColors", &style_colors);
+        // #5582: `[metallic, roughness]` per style id, NaN when unauthored.
+        crate::api::set_js_prop(&result, "styleFinishes", &js_sys::Float32Array::from(style_finishes_vec.as_slice()));
         // #407/#913 §2.3: per-element material colour lists so the batch path
         // can run the transparent/opaque sub-mesh alternation.
         crate::api::set_js_prop(&result, "materialElementIds", &material_element_ids);
@@ -547,7 +551,14 @@ impl IfcAPI {
                     defer_attached_styles: false,
                 },
             );
-            let styles_event = super::prepass_sharded::styles_payload(&resolved, &mut decoder);
+            // #5582: the finishes walk the same styled-item spans; this path
+            // never runs in defer mode, so no styled item is skipped.
+            let geometry_finishes = ifc_lite_processing::prepass::resolve_geometry_finishes(
+                &prepass_spans.styled_items,
+                &mut decoder,
+            );
+            let styles_event =
+                super::prepass_sharded::styles_payload(&resolved, &geometry_finishes, &mut decoder);
             crate::api::set_js_prop(&styles_event, "type", &"styles".into());
             on_event.call1(&JsValue::NULL, &styles_event.into())?;
         }

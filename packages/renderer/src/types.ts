@@ -33,6 +33,9 @@ export interface Material {
   transparency?: number;
 }
 
+/** IFC-authored metallic/roughness (#5582); an absent field keeps the renderer's default. */
+export type MeshFinish = Partial<Pick<Material, 'metallic' | 'roughness'>>;
+
 export interface Mesh {
   expressId: number;
   modelIndex?: number;  // Index of the model this mesh belongs to (for multi-model federation)
@@ -45,12 +48,8 @@ export interface Mesh {
    * reintroduce national-grid rounding after their source batch was rebased. */
   rteOrigin?: [number, number, number];
   color: [number, number, number, number];
-  /** IFC-authored finish. `metallic`/`roughness` (#5582) feed
-   *  `packMeshMaterial`; `transparency` feeds `shouldRouteMeshTransparent`'s
-   *  opaque/transparent routing. `baseColor` is not read off a per-mesh
-   *  material anywhere — `color` above is the mesh's colour — so every field
-   *  is optional here rather than the full `Material` shape. */
-  material?: Partial<Material>;
+  material?: Material;
+  finish?: MeshFinish; // IFC-authored (#5582); packMeshMaterial prefers it over `material`
   // Per-mesh GPU resources for unique colors
   uniformBuffer?: GPUBuffer;
   bindGroup?: GPUBindGroup;
@@ -84,13 +83,8 @@ export interface BatchedMesh {
   indexBuffer: GPUBuffer;
   indexCount: number;
   color: [number, number, number, number];
-  /** IFC-authored metallic/roughness shared by every piece in this batch
-   *  (#5582) — the colour key folds material in (quantized to the same
-   *  1/1000 precision as colour, see `chunk-grid.ts`'s `colorKey`), so a
-   *  batch never mixes pieces whose metallic or roughness differ by 0.001 or
-   *  more. Absent means none of them authored one; `packMeshMaterial` then
-   *  keeps its own default. */
-  material?: Partial<Material>;
+  /** Finish shared by every piece: `colorKey` folds it in at 1/1000, so a batch never mixes finishes (#5582). */
+  finish?: MeshFinish;
   expressIds: number[];  // For picking - all expressIds in this batch
   /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
    *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,

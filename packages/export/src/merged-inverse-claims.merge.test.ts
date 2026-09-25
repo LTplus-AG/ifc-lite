@@ -28,8 +28,13 @@ async function model(id: string, lines: string[], schema = 'IFC2X3'): Promise<Me
   return { id, name: id, dataStore };
 }
 
+async function mergeWithStats(models: MergeModelInput[], options: Partial<MergeExportOptions> = {}): Promise<{ content: string; warnings: string[] }> {
+  const result = new MergedExporter(models).export({ schema: 'IFC2X3', ...options });
+  return { content: new TextDecoder().decode(result.content), warnings: result.stats.warnings };
+}
+
 async function merge(models: MergeModelInput[], options: Partial<MergeExportOptions> = {}): Promise<string> {
-  return new TextDecoder().decode(new MergedExporter(models).export({ schema: 'IFC2X3', ...options }).content);
+  return (await mergeWithStats(models, options)).content;
 }
 
 /** Final id of the line whose GlobalId is `globalId`. */
@@ -39,9 +44,9 @@ function idOf(content: string, globalId: string): number {
   return Number(/^#(\d+)=/.exec(line!)![1]);
 }
 
-/** Every written IfcRelDefinesByProperties, as its RelatedObjects and RelatingPropertyDefinition. */
+/** Every written IfcRelDefinesByProperties or IfcRelOverridesProperties, as its RelatedObjects and RelatingPropertyDefinition. */
 function definers(content: string): Array<{ objects: number[]; pset: number }> {
-  return [...content.matchAll(/^#\d+=IFCRELDEFINESBYPROPERTIES\('[^']*',[^,]*,[^,]*,[^,]*,\(([^)]*)\),#(\d+)\);$/gm)].map(m => ({
+  return [...content.matchAll(/^#\d+=IFCREL(?:DEFINESBY|OVERRIDES)PROPERTIES\('[^']*',[^,]*,[^,]*,[^,]*,\(([^)]*)\),#(\d+)[,)]/gm)].map(m => ({
     objects: [...m[1].matchAll(/#(\d+)/g)].map(r => Number(r[1])),
     pset: Number(m[2]),
   }));
@@ -49,12 +54,14 @@ function definers(content: string): Array<{ objects: number[]; pset: number }> {
 
 const proxy = (id: number, tag: string) => `#${id}=IFCBUILDINGELEMENTPROXY('${guid(tag)}',$,'${tag}',$,$,$,$,$,$);`;
 /** A property set with GlobalId `pset` defining the proxies `objects` (ids from 10). */
-const DEFINED = (project: string, objects: string[], relTag: string) => [
+const DEFINED = (project: string, objects: string[], relTag: string, override = false) => [
   `#1=IFCPROJECT('${guid(project)}',$,'P',$,$,$,$,$,$);`,
   ...objects.map((tag, i) => proxy(10 + i, tag)),
   "#2=IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER('R'),$);",
   `#3=IFCPROPERTYSET('${guid('pset')}',$,'Pset_Test',$,(#2));`,
-  `#4=IFCRELDEFINESBYPROPERTIES('${guid(relTag)}',$,$,$,(${objects.map((_, i) => `#${10 + i}`).join(',')}),#3);`,
+  override
+    ? `#4=IFCRELOVERRIDESPROPERTIES('${guid(relTag)}',$,$,$,(${objects.map((_, i) => `#${10 + i}`).join(',')}),#3,(#2));`
+    : `#4=IFCRELDEFINESBYPROPERTIES('${guid(relTag)}',$,$,$,(${objects.map((_, i) => `#${10 + i}`).join(',')}),#3);`,
 ];
 
 describe('MergedExporter keeps one IfcRelDefinesByProperties per property set in IFC2X3 (#5774)', () => {
@@ -106,6 +113,20 @@ describe('MergedExporter keeps one IfcRelDefinesByProperties per property set in
     expect(content).not.toContain(guid('ra'));
     const pset = idOf(content, guid('pset'));
     expect(definers(content).filter(rel => rel.pset === pset)).toEqual([{ objects: [idOf(content, guid('door'))], pset }]);
+  });
+
+  it.each([
+    ['an IfcRelOverridesProperties, whose WR1 allows one object', true],
+    ['a definer of another relationship type', false],
+  ])('does not fold into %s, and reports the object that lost its definition', async (_, ownerOverrides) => {
+    const { content, warnings } = await mergeWithStats([
+      await model('a', DEFINED('pa', ['wall'], 'ra', ownerOverrides)),
+      await model('b', DEFINED('pb', ['door'], 'rb', true)),
+    ]);
+    const pset = idOf(content, guid('pset'));
+    expect(definers(content).filter(rel => rel.pset === pset)).toEqual([{ objects: [idOf(content, guid('wall'))], pset }]);
+    expect(content).not.toContain(guid('rb'));
+    expect(warnings.filter(w => w.includes('lost that relationship'))).toHaveLength(1);
   });
 
   it('IFC4: keeps both, since DefinesOccurrence is SET [0:?] there', async () => {

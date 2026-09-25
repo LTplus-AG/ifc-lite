@@ -35,6 +35,8 @@ export interface InverseRule {
   claimed: number;
   /** Attribute index of the other side: what the claimed entity is related to. */
   partner: number;
+  /** A WHERE rule bounds the partner list to one, so nothing can be folded into it. */
+  onePartner?: true;
 }
 
 const DECOMPOSES: InverseRule = { inverse: 'Decomposes', claimed: 5, partner: 4 };
@@ -59,7 +61,8 @@ const IFC2X3_RULES: ReadonlyMap<string, readonly InverseRule[]> = new Map([
   ['IFCRELAGGREGATES', [DECOMPOSES]],
   ['IFCRELNESTS', [DECOMPOSES]],
   ['IFCRELDEFINESBYPROPERTIES', [PROPERTY_DEFINITION_OF]],
-  ['IFCRELOVERRIDESPROPERTIES', [PROPERTY_DEFINITION_OF]],
+  // `IfcRelOverridesProperties.WR1`: `SIZEOF(RelatedObjects) = 1`.
+  ['IFCRELOVERRIDESPROPERTIES', [{ ...PROPERTY_DEFINITION_OF, onePartner: true }]],
 ]);
 const IFC4_RULES: ReadonlyMap<string, readonly InverseRule[]> = new Map([
   ['IFCRELAGGREGATES', [DECOMPOSES]],
@@ -96,6 +99,8 @@ export class InverseClaims {
   private readonly owners = new Map<string, Map<number, Owner>>();
   /** Final rel id → partner ids a later, folded rel adds to its partner list. */
   readonly folds = new Map<number, { partnerIndex: number; ids: number[] }>();
+  /** Later rels withheld with partners no owner could take: final rel id → how many. */
+  readonly unfolded = new Map<number, number>();
 
   /** `only` narrows the claimed relationship types (the #5725 drop planner's view). */
   constructor(outputSchema: IfcSchemaVersion, only: (relType: string) => boolean = () => true) {
@@ -174,7 +179,9 @@ interface Side {
  *   If its partner side is a list naming objects the owning rel does not, those
  *   are folded into the owning rel ({@link InverseClaims.fold}, written by
  *   {@link applyInverseFolds}), so the entity keeps one rel and loses no member.
- *   A single partner cannot be folded; the first rel wins.
+ *   Where no fold is possible (a single partner, an owner of another rel type,
+ *   or a partner list a WHERE rule bounds to one) the first rel wins, and
+ *   {@link applyInverseFolds} reports the objects that lost the relationship.
  */
 export function claimInverses(
   input: InverseClaimInput,
@@ -218,7 +225,9 @@ export function claimInverses(
           else if (dedupe) {
             skip = true;
             const fresh = [...new Set(live(rule.partner).map(finalId))].filter(id => !owner.partners.has(id));
-            if (fresh.length > 0 && sides.get(rule.partner)?.list && owner.relType === relType) fold = { owner, ids: fresh };
+            const foldable = sides.get(rule.partner)?.list && owner.relType === relType && !rule.onePartner;
+            if (fresh.length > 0 && foldable) fold = { owner, ids: fresh };
+            else if (fresh.length > 0) claims.unfolded.set(finalId(relId), fresh.length);
           }
         }
         if (skip) break;
@@ -303,11 +312,15 @@ export function applyRelMemberStrip(
  * owning rel's partner list gains the members of the later rels folded into
  * it. Runs once, on the final lines (final id space), after every model is
  * rendered, since an owner may be written before the rel that folds into it.
- * Returns a warning per fold it could not write (an owner that did not reach
- * the output as a line with a partner list), whose members then keep no rel.
+ * Returns a warning per later rel whose objects lost the relationship: one
+ * no owner could take (a different rel type, or a partner list bounded to
+ * one), and one folded into an owner that did not reach the output as a line
+ * with a partner list.
  */
 export function applyInverseFolds(lines: string[], claims: InverseClaims): string[] {
-  if (claims.folds.size === 0) return [];
+  const lost = [...claims.unfolded].map(([rel, count]) =>
+    `A later model's relationship (merged id #${rel}) was not written: an earlier model already wrote one for the same merged entity, and it could not take the ${count} other object(s) the later one named, so those objects lost that relationship.`);
+  if (claims.folds.size === 0) return lost;
   const pending = new Map(claims.folds);
   for (let i = 0; i < lines.length && pending.size > 0; i++) {
     const rel = Number(/^#(\d+)=/.exec(lines[i])?.[1]);
@@ -322,6 +335,6 @@ export function applyInverseFolds(lines: string[], claims: InverseClaims): strin
     lines[i] = next;
     pending.delete(rel);
   }
-  return [...pending].map(([rel, { ids }]) =>
-    `Could not add ${ids.length} object(s) to relationship #${rel}, which a later model's duplicate relationship was merged into; those objects lost that relationship.`);
+  return [...lost, ...[...pending].map(([rel, { ids }]) =>
+    `Could not add ${ids.length} object(s) to relationship #${rel}, which a later model's duplicate relationship was merged into; those objects lost that relationship.`)];
 }

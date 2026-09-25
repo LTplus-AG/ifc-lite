@@ -29,6 +29,7 @@ import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel, RunningState } from './ValidationPanel.js';
 import { IdsSummary } from './ValidationPanel.idsSummary.js';
+import { resetValidationPanelFixture } from './validation-test-fixture.js';
 
 type Key = keyof typeof validationPanelEn;
 const ALL_KEYS = Object.keys(validationPanelEn) as Key[];
@@ -141,14 +142,6 @@ function reportFixture(): ValidationReport {
   };
 }
 
-function resetReport(): void {
-  // Each locale fixture starts a new validation flow. A draft now survives
-  // unmounts (#5825), so explicitly discard it between these scenarios.
-  useViewerStore.getState().clearValidationRuleSetDraft();
-  useViewerStore.setState({ idsValidationReport: null, validationSource: null });
-  setValidationSourceChoice(null);
-}
-
 /**
  * Mounts, in turn, every state reachable without a live engine run — the
  * empty state (with a seeded "Recent" entry), authoring (via a real
@@ -170,7 +163,7 @@ async function mountAll(): Promise<Set<string>> {
   const found = new Set<string>();
   const collect = () => { for (const s of readableStrings(document.body)) found.add(s); };
 
-  resetReport();
+  resetValidationPanelFixture();
   addRecentRuleSet('Recent fixture', JSON.stringify({ version: 1, name: 'Recent fixture', rules: [] }));
   render(<ValidationPanel />);
   collect();
@@ -188,7 +181,7 @@ async function mountAll(): Promise<Set<string>> {
     'fixture.rules.json',
     { type: 'application/json' },
   );
-  resetReport();
+  resetValidationPanelFixture();
   const authoringHost = render(<ValidationPanel />);
   const input = authoringHost.querySelector('input[type="file"]');
   assert.ok(input, 'expected the "Open .rules.json" hidden file input in the empty state');
@@ -221,7 +214,7 @@ async function mountAll(): Promise<Set<string>> {
   collect();
   cleanup();
 
-  resetReport();
+  resetValidationPanelFixture();
   useViewerStore.setState({ idsValidationReport: reportFixture(), validationSource: 'rules' });
   const resultsHost = render(<ValidationPanel />);
   // Set-level rows live inside the card's Collapsible content — expand it so
@@ -238,7 +231,7 @@ async function mountAll(): Promise<Set<string>> {
   }
   collect();
   cleanup();
-  resetReport();
+  resetValidationPanelFixture();
 
   return found;
 }

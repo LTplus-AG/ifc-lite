@@ -100,7 +100,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
-  const targetGroups = useBulkTargets(targetSource, models);
+  const targetGroups = useBulkTargets(open, targetSource, models);
 
   // Selection criteria
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -569,15 +569,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const mutations: import('@ifc-lite/mutations').BulkQueryResult['mutations'] = [];
       const errors: string[] = [];
       const failures: BulkRuntimeFailure[] = [];
-
       let processed = 0;
       // The engine writes straight to the view: record each chunk as it lands (#5861, #5958).
       const batchId = newMutationBatchId();
       const recorders = new Map<string, ReturnType<typeof recordRun>>();
-      const firstModelId = targets[0]?.modelId;
-      const state = useViewerStore.getState();
-      if (firstModelId && !targets.some(({ modelId }) => modelId === state.activeModelId)
-        && state.models.has(firstModelId)) state.setActiveModel(firstModelId);
+      const activeModelIdAtStart = useViewerStore.getState().activeModelId;
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         if (executeCancelRef.current) break;
 
@@ -621,7 +617,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         // Yield to browser so progress bar and spinner update
         await new Promise(r => setTimeout(r, 0));
       }
-
+      const state = useViewerStore.getState();
+      const firstRecordedModelId = recorders.keys().next().value;
+      if (firstRecordedModelId && state.activeModelId === activeModelIdAtStart
+        && (!state.activeModelId || !recorders.has(state.activeModelId))
+        && state.models.has(firstRecordedModelId)) state.setActiveModel(firstRecordedModelId);
       const cancelled = executeCancelRef.current && processed < total; // a cancel in the last yield stopped nothing (#5958)
       if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
       const result: BulkQueryResult = {

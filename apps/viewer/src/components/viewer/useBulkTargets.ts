@@ -12,6 +12,7 @@ import { groupBulkTargets, searchedBulkTargets, selectedBulkTargets, type BulkTa
 
 /** The source snapshot shown beside Run. Execute takes a fresh snapshot. */
 export function useBulkTargets(
+  open: boolean,
   source: BulkTargetSource,
   models: ReadonlyMap<string, FederatedModel>,
 ): Map<string, number[]> {
@@ -25,7 +26,7 @@ export function useBulkTargets(
   const searchModelFilter = useViewerStore((s) => s.searchModelFilter);
 
   return useMemo(() => {
-    if (source === 'query') return new Map();
+    if (!open || source === 'query') return new Map();
     if (source === 'selection') {
       const ids = selectedEntityIds.size ? selectedEntityIds : selectedEntityId === null ? [] : [selectedEntityId];
       return groupBulkTargets(selectedBulkTargets(ids, resolveEntityRef)
@@ -40,6 +41,6 @@ export function useBulkTargets(
         && (!searchModelFilter || searchModelFilter.has(result.modelId)));
     return groupBulkTargets(searchedBulkTargets(results)
       .filter(({ modelId }) => models.get(modelId)?.ifcDataStore));
-  }, [source, models, selectedEntityIds, selectedEntityId, searchQuery, searchIndexes,
+  }, [open, source, models, selectedEntityIds, selectedEntityId, searchQuery, searchIndexes,
     searchModalTab, searchFilterResult, searchFieldFilter, searchModelFilter]);
 }

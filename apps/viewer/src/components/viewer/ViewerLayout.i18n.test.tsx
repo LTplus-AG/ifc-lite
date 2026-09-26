@@ -105,7 +105,7 @@ describe('ViewerLayout localization (#4918)', () => {
     renderViewerLayout();
     const english = bodyText();
     assert.ok(
-      english.includes('Safe mode: extensions and the active flavor are not loaded for this session.'),
+      english.includes('Safe mode: extensions and the active profile are not loaded for this session.'),
       'expected the safe-mode banner in English',
     );
     assert.ok(english.includes('?safe=0'));

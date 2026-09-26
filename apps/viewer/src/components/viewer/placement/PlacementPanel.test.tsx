@@ -51,12 +51,13 @@ describe('PlacementPanel (#5505)', () => {
     assert.equal(tab(ui, 'Local').getAttribute('data-state'), 'active');
   });
 
-  it('closes via the header close button', () => {
+  it('#5811 gives the header close button an accessible name and closes on activation', () => {
     useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc')), modelPlacement: emptyPlacementState(), repositionOpen: false });
     let closed = false;
     const ui = render(<PlacementPanel onClose={() => { closed = true; }} />);
-    const closeButton = ui.querySelector('button[title="Close placement panel"]');
+    const closeButton = ui.querySelector('button[aria-label="Close placement panel"]');
     assert.ok(closeButton, 'expected a close button');
+    assert.equal(closeButton.getAttribute('title'), null, 'tooltip text is separate from the accessible name');
     click(closeButton!);
     assert.equal(closed, true);
   });

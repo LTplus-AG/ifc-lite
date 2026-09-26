@@ -38,7 +38,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { measureEn as MeasureEnType } from '@/i18n/catalogues/measure.en';
 import type { TranslationValue } from '@/i18n/types';
@@ -589,6 +589,24 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     addReadable(document.body, after);
 
     assertStaticCoverage(english, after);
+  });
+
+  it('#5811 names the point-reference actions and lets both controls change the datum', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: mp(0, 0, 0), end: mp(5, 6, 7), distance: 10.6 }],
+    });
+    const container = renderMeasure();
+    openSection(container, 'Point');
+
+    const setButton = container.querySelector('button[aria-label="Set this point as the relative-coordinate reference"]');
+    assert.ok(setButton, 'the reference action has an accessible name');
+    click(setButton);
+    assert.deepEqual(useViewerStore.getState().measureReferencePoint, { x: 5, y: 6, z: 7 });
+
+    const clearButton = container.querySelector('button[aria-label="Clear the reference point"]');
+    assert.ok(clearButton, 'the clear action has an accessible name');
+    click(clearButton);
+    assert.equal(useViewerStore.getState().measureReferencePoint, null);
   });
 
   it('point section: live point (an in-progress drag)', () => {

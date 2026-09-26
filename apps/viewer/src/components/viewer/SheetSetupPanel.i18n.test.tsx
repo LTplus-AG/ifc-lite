@@ -202,10 +202,16 @@ describe('SheetSetupPanel localization (#4918)', () => {
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
-      [{ key: 'sheetsPdf.sheetSetup.templateNamePlaceholder' }],
+      [
+        { key: 'sheetsPdf.sheetSetup.templateNamePlaceholder' },
+        { key: 'sheetsPdf.sheetSetup.loadTemplate', params: { name: 'My Template' } },
+        { key: 'sheetsPdf.sheetSetup.deleteTemplate', params: { name: 'My Template' } },
+      ],
       englishDom,
       afterDom,
     );
+    assert.ok(container.querySelector('button[aria-label="Load template My Template"]'));
+    assert.ok(container.querySelector('button[aria-label="Delete template My Template"]'));
     // The saved template's own NAME is user data, not a catalogue key.
     assert.ok(englishDom.has('My Template'), 'the template name must render as-is');
     assert.ok(afterDom.has('My Template'), 'the template name must not be marked by the pseudo-locale');

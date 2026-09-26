@@ -273,7 +273,6 @@ export function PdfViewExportDialog({ surface = 'classic', trigger, exportViewPd
     // is honoured correctly one layer down. `PdfViewExportDialog.test.tsx`
     // drives the real dialog through the `exportViewPdf` seam for exactly this.
   }, [source, camera, scaleFactor, showHiddenEdges, renderMode, showScaleStamp, exportViewPdf, surface]);
-
   const displayedLabel = displayedScale
     ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
     : t('sheetsPdf.pdfView.displayedScaleUnavailable');

@@ -21,11 +21,13 @@ import {
 import { GeneralSection } from './GeneralSection';
 import { DisplaySection } from './DisplaySection';
 import { PrivacyPanel } from '@/components/extensions/PrivacyPanel';
+import { CollaborationSection } from './CollaborationSection';
 
 const SECTIONS: Record<SettingsSection, { label: TranslationKey; Body: ComponentType }> = {
   general: { label: 'settings.sections.general', Body: GeneralSection },
   display: { label: 'settings.sections.display', Body: DisplaySection },
   privacy: { label: 'settings.sections.privacy', Body: PrivacyPanel },
+  collaboration: { label: 'settings.sections.collaboration', Body: CollaborationSection },
 };
 
 export interface SettingsDialogProps {

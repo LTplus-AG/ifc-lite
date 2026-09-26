@@ -39,6 +39,7 @@ function rawTypeOf(ref: unknown): string | undefined {
 export function resolveEntityTypeName(store: IfcDataStore, expressId: number): string {
   const fromTable = store.entities.getTypeName(expressId);
   if (fromTable !== 'Unknown') return fromTable;
+  // @raw-entity-enumeration-ok this source-index point lookup supplies the class of records absent from the product table; live adapters apply retypes after reading it.
   const raw = rawTypeOf(store.entityIndex.byId.get(expressId));
   return raw === undefined ? fromTable : normalizeIfcTypeName(raw);
 }

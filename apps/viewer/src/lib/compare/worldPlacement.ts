@@ -125,6 +125,7 @@ const extractorByStore = new WeakMap<IfcDataStore, EntityExtractor>();
  *  table only carries rooted/relevant entities and answers 'Unknown' for the
  *  resource-level placement chain this module spends its whole life in. */
 function entityOf(store: IfcDataStore, expressId: number): IfcEntity | null {
+  // @raw-entity-enumeration-ok Compare passes an effectiveCompareStore snapshot; source placement refs and bytes already include live edits.
   const ref = store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
   if (!ref) return null;
   let extractor = extractorByStore.get(store);

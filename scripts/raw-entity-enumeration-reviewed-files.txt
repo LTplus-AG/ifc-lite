@@ -63,6 +63,7 @@ packages/parser/src/spatial-hierarchy-attributes.ts
 packages/parser/src/spatial-hierarchy-builder.ts
 packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
+packages/query/src/resolve-type-name.ts
 packages/query/src/duckdb-integration.ts
 packages/query/src/entity-query.ts
 packages/rules/src/engine/rule-engine.ts
@@ -77,6 +78,7 @@ apps/viewer/src/components/viewer/hierarchy/effectiveGroupEntities.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/components/viewer/properties/effectiveSelectedClass.ts
+apps/viewer/src/components/viewer/properties/RawStepCard.tsx
 apps/viewer/src/hooks/has-entity-type.ts
 apps/viewer/src/hooks/useIfcFederation.ts
 apps/viewer/src/hooks/ingest/viewerModelIngest.ts
@@ -86,6 +88,8 @@ apps/viewer/src/lib/collab/owner-seed-paths.ts
 apps/viewer/src/lib/collab/room-step-source.ts
 apps/viewer/src/lib/collab/step-seed.ts
 apps/viewer/src/lib/compare/compareScope.ts
+apps/viewer/src/lib/compare/typeObjectTag.ts
+apps/viewer/src/lib/compare/worldPlacement.ts
 apps/viewer/src/lib/drawing2d-markup/drawing-markup-restore.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
 apps/viewer/src/lib/linear-element-edit.ts

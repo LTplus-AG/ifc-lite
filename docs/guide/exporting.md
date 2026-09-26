@@ -804,6 +804,30 @@ All four take `undefined` for "no isolation filter" and an empty
 exports nothing rather than everything. Pass `undefined`, not
 `new Uint32Array()`, when you do not want to filter.
 
+## Saving Edits Through the Rust Writer
+
+`StepExporter` needs the whole file as one buffer in the JS heap, which fails
+past V8's ArrayBuffer ceiling (~2 GB). `exportStep` takes the session's edits
+as the mutation log `MutablePropertyView.exportMutations()` returns and writes
+them natively, streaming every record the log does not touch:
+
+```typescript
+// `view` is the session's MutablePropertyView, `bytes` the source file.
+const saved = gp.exportStep(bytes, '', undefined, view.exportMutations());
+```
+
+The output is byte-identical to `new StepExporter(store, view).export(...)`
+for the same edits, except the GlobalIds of the records the export generates
+(regenerated property and quantity sets and their relationships), which the
+Rust writer derives instead of drawing at random. The shared parity fixture
+`rust/export/tests/fixtures/step_log_parity_vectors.json` pins this from both
+sides. The log applies property and quantity edits (create, update, delete, whole-set
+deletion) and root-attribute edits. A log carrying a kind the writer does not
+apply yet, a mutation `type` it does not recognise, or an attribute edit whose
+value is `null` (clear an attribute with `''`) is refused with an error rather
+than exported without that edit; `importMutations` would skip the last two. A log does
+not combine with an isolation set.
+
 ## Export Pipeline
 
 Chain multiple exports:

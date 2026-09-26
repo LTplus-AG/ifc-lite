@@ -60,11 +60,11 @@ function search(ui: HTMLElement): HTMLInputElement {
 }
 
 function status(ui: HTMLElement): string {
-  return ui.querySelector('[role="status"]')?.textContent ?? '';
+  return ui.querySelector('output')?.textContent ?? '';
 }
 
 function checkboxes(ui: HTMLElement): HTMLInputElement[] {
-  return [...ui.querySelectorAll<HTMLInputElement>('[role="group"] input[type="checkbox"]')];
+  return [...ui.querySelectorAll<HTMLInputElement>('fieldset input[type="checkbox"]')];
 }
 
 afterEach(() => {
@@ -77,9 +77,9 @@ it('renders English member search, range, pagination and accessibility text (#47
   openReview(ui);
 
   const input = search(ui);
-  assert.match(input.closest('label')?.textContent ?? '', /Find an object/);
+  assert.match(input.getAttribute('aria-label') ?? '', /Find an object/);
   assert.equal(input.placeholder, 'Name or GlobalId');
-  assert.ok(ui.querySelector('[role="group"][aria-label="Objects in this assignment"]'));
+  assert.ok(ui.querySelector('fieldset[aria-label="Objects in this assignment"]'));
   assert.equal(status(ui), '1–50 of 51');
   assert.equal(checkboxes(ui).length, 50);
   const previous = ui.querySelector<HTMLButtonElement>('[aria-label="Previous objects"]');
@@ -103,9 +103,9 @@ it('uses translated controls and a locale-reordered range while paging (#4785)',
   const ui = render(<Harness />);
   openReview(ui);
 
-  assert.match(search(ui).closest('label')?.textContent ?? '', /Trouver un objet/);
+  assert.match(search(ui).getAttribute('aria-label') ?? '', /Trouver un objet/);
   assert.equal(search(ui).placeholder, 'Nom ou GlobalId');
-  assert.ok(ui.querySelector('[role="group"][aria-label="Objets de cette affectation"]'));
+  assert.ok(ui.querySelector('fieldset[aria-label="Objets de cette affectation"]'));
   assert.equal(status(ui), '51 au total : 1 à 50');
   const next = ui.querySelector<HTMLButtonElement>('[aria-label="Objets suivants"]');
   assert.ok(next);
@@ -156,10 +156,10 @@ it('combines a partial locale with exact English fallback messages (#4785)', () 
   const ui = render(<Harness />);
   openReview(ui);
 
-  assert.match(search(ui).closest('label')?.textContent ?? '', /Localized search/);
+  assert.match(search(ui).getAttribute('aria-label') ?? '', /Localized search/);
   assert.equal(search(ui).placeholder, 'Name or GlobalId');
   assert.equal(status(ui), '1–50 of 51');
-  assert.ok(ui.querySelector('[role="group"][aria-label="Objects in this assignment"]'));
+  assert.ok(ui.querySelector('fieldset[aria-label="Objects in this assignment"]'));
   assert.equal(ui.querySelector('[aria-label="Next objects"]')?.textContent, 'Localized next');
 });
 

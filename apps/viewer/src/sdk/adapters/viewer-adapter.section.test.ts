@@ -3,11 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `bim.viewer.getSection()` / `setSection()` agree with the viewport (#4910).
+ * `bim.viewer.getSection()` / `setSection()` agree with the viewport (#4910,
+ * revised by #5893).
  *
- * The renderer draws a cut only while the Section tool is active. After the
- * user cut the model and switched to Select, `getSection()` still reported
- * the cut, and `setSection({ enabled: true })` stored a cut nobody could see.
+ * #4910: the renderer used to draw a cut only while the Section tool was
+ * active. After the user cut the model and switched to Select,
+ * `getSection()` still reported the cut, and `setSection({ enabled: true })`
+ * stored a cut nobody could see.
+ *
+ * #5893 makes the cut lasting scene state: leaving the Section tool no
+ * longer hides it (`store/section-active.ts`'s `activeSectionPlane()` now
+ * gates on `sceneState.section.visible`, not `activeTool`), so
+ * `getSection()` keeps reporting the same cut across a tool switch, and
+ * `setSection({ enabled: true })` puts it on screen immediately regardless
+ * of tool.
  */
 
 import '@/test/setup-dom.js';
@@ -25,8 +34,8 @@ beforeEach(() => {
   useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, custom: undefined } });
 });
 
-describe('SDK viewer section (#4910)', () => {
-  it('getSection() reports no section after the user leaves the Section tool', () => {
+describe('SDK viewer section (#4910, #5893)', () => {
+  it('getSection() keeps reporting the cut after the user leaves the Section tool (#5893)', () => {
     const s = useViewerStore.getState();
     s.setActiveTool('section');
     s.setSectionPlaneAxis('front');
@@ -34,10 +43,11 @@ describe('SDK viewer section (#4910)', () => {
     assert.deepEqual(viewer.getSection(), { axis: 'z', position: 35, enabled: true, flipped: false });
 
     useViewerStore.getState().setActiveTool('select');
-    assert.equal(viewer.getSection(), null, 'BUG: getSection() reports a cut that is not on screen');
+    assert.deepEqual(viewer.getSection(), { axis: 'z', position: 35, enabled: true, flipped: false },
+      'BUG (pre-#5893): getSection() reported a cut that was not on screen — now it IS on screen, lasting scene state');
 
     useViewerStore.getState().setActiveTool('section');
-    assert.deepEqual(viewer.getSection(), { axis: 'z', position: 35, enabled: true, flipped: false }, 'reopening restores it');
+    assert.deepEqual(viewer.getSection(), { axis: 'z', position: 35, enabled: true, flipped: false }, 'reopening shows the same cut');
   });
 
   it('setSection({ enabled: true }) puts the cut on screen, and getSection() reads it back', () => {

@@ -38,7 +38,9 @@ export type VisibilityReasonId =
   | 'lens'
   | 'typeVisibility'
   | 'typeViewMode'
-  | 'hostTypes';
+  | 'hostTypes'
+  | 'section'
+  | 'measurements';
 
 export type VisibilityResetPolicy = 'cleared' | 'kept';
 
@@ -177,6 +179,24 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
     // Set by an embedding page, not the user: no chip × clears it either.
     isActive: (s) => (s.hostHiddenIfcTypes?.size ?? 0) > 0,
     clear: () => {},
+  },
+  {
+    id: 'section',
+    labelKey: 'visibilityReasons.section',
+    resetPolicy: 'cleared',
+    // The cut itself (`sectionPlane.enabled`) and the toggle are independent
+    // (#5893) — either can be off with the other on; only both together put
+    // it on screen.
+    isActive: (s) => s.sectionPlane.enabled && s.sceneState.section.visible,
+    clear: (store) => store.getState().setSectionVisible(false),
+  },
+  {
+    id: 'measurements',
+    labelKey: 'visibilityReasons.measurements',
+    resetPolicy: 'cleared',
+    isActive: (s) =>
+      (s.measurements.length > 0 || s.polylineMeasurements.length > 0) && s.sceneState.measurements.visible,
+    clear: (store) => store.getState().setMeasurementsVisible(false),
   },
 ];
 

@@ -26,6 +26,7 @@ import { MeasureGeoReadout, MeasureHint } from './MeasureHudReadouts';
 
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
+  const finishedVisible = useViewerStore((s) => s.sceneState.measurements.visible);
   const pendingMeasurePoint = useViewerStore((s) => s.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const snapTarget = useViewerStore((s) => s.snapTarget);
@@ -90,7 +91,7 @@ export function MeasureOverlay() {
       <MeasureGeoReadout />
       <MeasureHint />
       <MeasurementOverlays
-        measurements={measurements}
+        measurements={finishedVisible ? measurements : []}
         pending={pendingMeasurePoint}
         activeMeasurement={activeMeasurement}
         snapTarget={snapTarget}
@@ -103,7 +104,7 @@ export function MeasureOverlay() {
         constraintEdge={measurementConstraintEdge}
         unitDisplayOverrides={unitDisplayOverrides}
         activePolyline={activePolyline}
-        polylineMeasurements={polylineMeasurements}
+        polylineMeasurements={finishedVisible ? polylineMeasurements : []}
       />
     </>
   );

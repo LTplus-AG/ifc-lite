@@ -59,7 +59,24 @@ const ACTIVATE: Record<VisibilityReasonId, (offset: number) => Partial<ViewerSta
   typeVisibility: () => ({ typeVisibility: { ...state().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
+  // #5893: deliberately NOT rendered here, see SKIP_ROWS below.
+  section: () => ({ sectionPlane: { ...state().sectionPlane, enabled: true } }),
+  measurements: () => ({
+    measurements: [{ id: 'm', start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, end: { x: 1, y: 0, z: 0, screenX: 1, screenY: 0 }, distance: 1 }],
+  }),
 };
+
+/**
+ * `section` / `measurements` (#5893) are deliberately absent from
+ * `VisibilityChips`: they already have their own richer chips
+ * (`SectionParkedChip`, `MeasurementsVisibilityChip` — a visibility toggle
+ * plus resume/clear, not just clear), fully covered by
+ * `SectionParkedChip.test.tsx` / `MeasurementsVisibilityChip.test.tsx`. They
+ * stay in `VISIBILITY_REASONS` (Show all / Home / "Reset everything" below
+ * still clear them via `resetVisibilityReasons`), so this generic loop must
+ * skip asserting a chip FOR them, not skip activating/resetting them.
+ */
+const SKIP_ROWS: readonly VisibilityReasonId[] = ['section', 'measurements'];
 
 async function mount() {
   // The old indicator is the observable pre-change UI. On a production
@@ -82,6 +99,15 @@ it('shows no status chip or reset action when nothing hides geometry (#5882)', a
 for (const modelCount of [1, 3]) {
   describe(`visibility chips at ${modelCount} model(s) (#5882)`, () => {
     for (const reason of VISIBILITY_REASONS) {
+      if (SKIP_ROWS.includes(reason.id)) {
+        it(`does not show a generic chip for ${reason.id} — it has its own richer chip (#5893)`, async () => {
+          const offset = seedModels(modelCount);
+          act(() => useViewerStore.setState(ACTIVATE[reason.id](offset)));
+          await mount();
+          assert.deepEqual(chipIds(), [], 'no generic chip for a row with its own dedicated chip');
+        });
+        continue;
+      }
       it(`shows ${reason.id} alone and ${reason.resetPolicy === 'kept' ? 'explains it is kept' : 'clears only it'}`, async () => {
         const offset = seedModels(modelCount);
         act(() => useViewerStore.setState(ACTIVATE[reason.id](offset)));

@@ -6,10 +6,15 @@
  * #5829: a BCF viewpoint replaces the user's section cut (shows its own clip
  * plane, or clears the cut when it has none, #4910) and nothing gave the
  * user's cut back. With `restoreSectionOnUnmount` (the BCF panel's option),
- * closing the panel restores the cut and tool from before the first
- * viewpoint, unless the user changed the section meanwhile. Other `useBCF`
- * callers (the Clash panel's topic creation) restore nothing. Two models are
- * loaded, as in a federation.
+ * closing the panel restores the cut, its visibility and the tool from
+ * before the first viewpoint, unless the user changed the section
+ * meanwhile. Other `useBCF` callers (the Clash panel's topic creation)
+ * restore nothing. Two models are loaded, as in a federation.
+ *
+ * #5893 review: the cut is lasting scene state now, not tool-coupled — the
+ * restore hands back `sceneState.section.visible` (`hooks/bcf/
+ * section-restore.ts`) alongside the plane, so "restored" means visible
+ * immediately, not merely remembered until the Section tool reopens.
  */
 
 import '@/test/setup-dom.js';
@@ -77,7 +82,8 @@ async function unmount(): Promise<void> {
   if (current) await act(async () => current.unmount());
 }
 
-/** The user's own cut: front at 30 %, then back to the Select tool (the cut parks). */
+/** The user's own cut: front at 30 %, then back to the Select tool (stays
+ *  visible there — lasting scene state, #5893). */
 async function userCut(position = 30): Promise<void> {
   await act(async () => {
     s().setActiveTool('section');
@@ -126,7 +132,10 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
       assert.equal(s().activeTool, 'select');
       assert.equal(s().sectionPlane.axis, before.axis);
       assert.equal(s().sectionPlane.position, before.position);
-      assert.equal(s().sectionPlane.parked, true, "the user's cut is parked again, ready for the Section tool");
+      // #5893: restored means visible, not "parked ready for the tool" — the
+      // cut is lasting scene state, not tool-coupled.
+      assert.equal(s().sectionPlane.enabled, true, "the user's cut is restored and visible");
+      assert.ok(activeSectionPlane(s()), 'the renderer receives the restored cut');
     });
   }
 
@@ -141,7 +150,7 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
     assert.equal(s().sectionPlane.position, 55);
   });
 
-  it('parks the restored cut if the user left the Section tool after the viewpoint (#5829)', async () => {
+  it('the restored cut stays visible after the user leaves the Section tool (#5829, revised by #5893)', async () => {
     await mount(true);
     const vp = await sideViewpoint();
     await act(async () => {
@@ -154,18 +163,21 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
     await act(async () => api!.applyViewpoint(vp, false));
     assert.equal(s().sectionPlane.axis, 'side');
     await act(async () => s().setActiveTool('select'));
-    assert.equal(s().sectionPlane.parked, true, 'the viewpoint cut is parked on tool switch');
+    // #5893: leaving the tool no longer parks the viewpoint's cut — it stays
+    // on screen, lasting scene state.
+    assert.equal(s().sectionPlane.enabled, true, 'the viewpoint cut stays visible after the tool switch');
+    assert.ok(activeSectionPlane(s()));
 
     await unmount();
     assert.equal(s().activeTool, 'select', 'closing BCF keeps the tool chosen by the user');
     assert.equal(s().sectionPlane.axis, 'front');
     assert.equal(s().sectionPlane.position, 30);
-    assert.equal(s().sectionPlane.enabled, false, 'the restored cut stays off screen outside Section');
-    assert.equal(s().sectionPlane.parked, true, 'the restored cut can resume later');
-    assert.equal(activeSectionPlane(s()), null);
+    assert.equal(s().sectionPlane.enabled, true, 'the restored cut is visible, not parked (#5893)');
+    assert.equal(s().sectionPlane.parked, false);
+    assert.ok(activeSectionPlane(s()), 'the renderer receives the restored cut immediately, no Section-tool reopen needed');
 
     await act(async () => s().setActiveTool('section'));
-    assert.equal(activeSectionPlane(s())?.position, 30, 'reopening Section resumes the original cut');
+    assert.equal(activeSectionPlane(s())?.position, 30, 'reopening Section still shows the same cut');
   });
 
   it('restores nothing for a useBCF caller without the option', async () => {
@@ -193,6 +205,10 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
     assert.equal(s().activeTool, 'select');
     assert.equal(s().sectionPlane.axis, nextUserCut.axis);
     assert.equal(s().sectionPlane.position, 65);
-    assert.equal(s().sectionPlane.parked, true);
+    // #5893: the second panel's restore returns the second user cut visible,
+    // not parked — a stale first-panel snapshot would show up as position
+    // 30 above, which the assertion already rules out.
+    assert.equal(s().sectionPlane.enabled, true);
+    assert.ok(activeSectionPlane(s()));
   });
 });

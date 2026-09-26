@@ -13,7 +13,6 @@ import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
-import { registerSectionVisibility } from './section-active.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
@@ -28,6 +27,7 @@ import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createValidationDraftSlice, type ValidationDraftSlice } from './slices/validationDraftSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
+import { createSceneStateSlice, type SceneStateSlice } from './slices/sceneStateSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createChartSlice, type ChartSlice } from './slices/chartSlice.js';
 import { createFlowSlice, type FlowSlice } from './slices/flowSlice.js';
@@ -184,7 +184,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   LevelDisplaySlice &
   PointCloudSlice & ModelPlacementSlice &
   UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
-  ExtensionsSlice & SourcesSlice & {
+  ExtensionsSlice & SourcesSlice & SceneStateSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -287,7 +287,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createZonesSlice(...args),
   ...createModelTagsSlice(...args),
   ...createExtensionsSlice(...args),
-  ...createSourcesSlice(...args),
+  ...createSourcesSlice(...args), ...createSceneStateSlice(...args),
   ...createAppearanceSlice(...args),
 
   // Reset all viewer state when loading new file
@@ -482,7 +482,6 @@ export function getViewerStoreApi() {
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);
-  registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
   registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
   reconcileInitialStoreSync(store);
   return store;

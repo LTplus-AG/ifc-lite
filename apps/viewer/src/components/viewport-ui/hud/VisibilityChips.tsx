@@ -56,7 +56,14 @@ export function VisibilityChips() {
   })));
   const { reasons, counts } = useMemo(() => {
     const state = useViewerStore.getState();
-    return { reasons: activeVisibilityReasons(state), counts: reasonCounts(state) };
+    // `section` and `measurements` (#5893) already have their own richer
+    // chips (`SectionParkedChip`, `MeasurementsVisibilityChip`: a visibility
+    // toggle plus resume/clear, not just clear) — showing them here too
+    // would duplicate the same reason as two chips with different actions.
+    // They stay in the registry (Show all / Home / "Reset everything" below
+    // still cover them via `resetVisibilityReasons`), just not in this list.
+    const reasons = activeVisibilityReasons(state).filter((r) => r.id !== 'section' && r.id !== 'measurements');
+    return { reasons, counts: reasonCounts(state) };
   }, [visibilityInputs]);
 
   if (reasons.length === 0) return null;

@@ -12,18 +12,27 @@
  * applies, and the state each viewpoint left behind. On close it puts the
  * user's cut back, but only when the section is still what the last
  * viewpoint made it: a cut the user moved meanwhile is theirs, not ours.
+ *
+ * The restore returns `visible` too (#5893 review): the cut's on-screen
+ * state is `sceneState.section.visible` now, not `sectionPlane.enabled`
+ * alone, so restoring only the plane could hand back a cut the user could
+ * not see (or vice versa) if the toggle had been flipped in between.
  */
 
 import type { SectionPlane } from '@/store/types';
+import type { SceneVisibilityState } from '@/store/slices/sceneStateSlice';
 
 interface SectionState {
   sectionPlane: SectionPlane;
+  sceneState: SceneVisibilityState;
   activeTool: string;
 }
 
 interface Snapshot {
   /** The user's section before the first viewpoint. */
   plane: SectionPlane;
+  /** The user's visibility toggle before the first viewpoint (#5893). */
+  visible: boolean;
   tool: string;
   /** The section as the most recent viewpoint left it. */
   applied: SectionPlane;
@@ -42,7 +51,9 @@ export class SectionRestoreSession {
 
   /** Remember the user's cut once, before this panel applies its first viewpoint. */
   noteBeforeViewpoint(state: SectionState): void {
-    if (!this.snapshot) this.snapshot = { plane: state.sectionPlane, tool: state.activeTool, applied: state.sectionPlane };
+    if (!this.snapshot) {
+      this.snapshot = { plane: state.sectionPlane, visible: state.sceneState.section.visible, tool: state.activeTool, applied: state.sectionPlane };
+    }
   }
 
   noteAfterViewpoint(state: SectionState): void {
@@ -52,17 +63,20 @@ export class SectionRestoreSession {
   /** Restore only if the current cut still matches this panel's last viewpoint. */
   restore(
     getState: () => SectionState & { setActiveTool: (tool: string) => void },
-    setState: (partial: { sectionPlane: SectionPlane }) => void,
+    setState: (partial: { sectionPlane: SectionPlane; sceneState: SceneVisibilityState }) => void,
   ): boolean {
     const snap = this.snapshot;
     this.snapshot = null;
     if (!snap) return false;
     const state = getState();
     if (!sameCut(state.sectionPlane, snap.applied)) return false;
-    // Leave the Section tool only if a viewpoint opened it; the store parks or
-    // resumes the restored cut for whichever tool ends up active.
+    // Leave the Section tool only if a viewpoint opened it; the cut's own
+    // visibility (restored below) no longer follows the tool (#5893).
     if (state.activeTool === 'section' && snap.tool !== 'section') state.setActiveTool(snap.tool);
-    setState({ sectionPlane: snap.plane });
+    setState({
+      sectionPlane: snap.plane,
+      sceneState: { ...state.sceneState, section: { visible: snap.visible } },
+    });
     return true;
   }
 }

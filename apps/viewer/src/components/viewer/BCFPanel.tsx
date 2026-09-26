@@ -105,7 +105,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   const setBcfError = useViewerStore((s) => s.setBcfError);
   const models = useViewerStore((s) => s.models);
 
-  const { createViewpointFromState, headerFilesForViewpoints, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF();
+  const { createViewpointFromState, headerFilesForViewpoints, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF({ restoreSectionOnUnmount: true });
   const sectionCapture = useSectionViewpointCapture(createViewpointFromState);
   // Local state
   const [statusFilter, setStatusFilter] = useState('all');

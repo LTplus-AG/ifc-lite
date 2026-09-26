@@ -11,7 +11,7 @@
  * - Applying viewpoints to the viewer (camera, selection, visibility)
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { BCFTopic, BCFViewpoint, BCFHeaderFile } from '@ifc-lite/bcf';
 import {
@@ -41,6 +41,7 @@ import { capturedSectionPlaneInput, type CapturedSectionPlane } from './bcf/sect
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { focusedClashComponents } from './bcf/focused-clash-components';
 import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, showSectionCut } from '@/store/section-active';
+import { SectionRestoreSession } from './bcf/section-restore';
 
 // ============================================================================
 // Types
@@ -51,6 +52,8 @@ interface UseBCFOptions {
   canvasRef?: React.RefObject<HTMLCanvasElement | null>;
   /** Ref to the renderer for camera access */
   rendererRef?: React.RefObject<Renderer | null>;
+  /** The BCF panel only: on unmount, give back the section cut viewpoints replaced (#5829). */
+  restoreSectionOnUnmount?: boolean;
 }
 
 interface CreateViewpointOptions {
@@ -188,6 +191,9 @@ function applyCameraState(
 // ============================================================================
 
 export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
+  const restoreSection = options.restoreSectionOnUnmount === true;
+  const [sectionRestore] = useState(() => new SectionRestoreSession());
+  useEffect(() => restoreSection ? () => { sectionRestore.restore(useViewerStore.getState, useViewerStore.setState); } : undefined, [restoreSection, sectionRestore]);
   const localCanvasRef = useRef<React.RefObject<HTMLCanvasElement | null> | null>(
     options.canvasRef ?? null
   );
@@ -575,11 +581,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       // A viewpoint with clipping planes shows its cut (opening the Section
       // tool — the renderer draws a cut nowhere else); one without clears any
       // cut, parked ones included, so the view matches the topic (#4910).
+      if (restoreSection) sectionRestore.noteBeforeViewpoint(useViewerStore.getState());
       if (viewpointSectionPlane?.enabled) {
         showSectionCut(useViewerStore.getState, viewpointSectionPlane);
       } else {
         clearSectionCut(useViewerStore.getState);
       }
+      if (restoreSection) sectionRestore.noteAfterViewpoint(useViewerStore.getState());
 
       // Apply selection from BCF components. A federated viewpoint can select
       // elements across several models, so drive BOTH selection channels:
@@ -687,6 +695,8 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       clearEntitySelection,
       setHiddenEntities,
       setIsolatedEntities,
+      restoreSection,
+      sectionRestore,
     ]
   );
 

@@ -16,6 +16,7 @@ export const settingsEn = {
   'settings.description': 'Saved in this browser.',
   'settings.sections.general': 'General',
   'settings.sections.display': 'Display',
+  'settings.sections.performance': 'Performance',
   'settings.sections.privacy': 'Privacy',
   'settings.sections.collaboration': 'Collaboration',
 
@@ -42,6 +43,18 @@ export const settingsEn = {
   'settings.display.performanceTitle': 'Performance',
   'settings.display.performanceStats': 'Show performance stats',
   'settings.display.performanceStatsHint': 'Show FPS, memory use and triangle count in the status bar.',
+
+  'settings.performance.overridesTitle': 'Sticky geometry overrides',
+  'settings.performance.overridesHint': 'These values affect the next model load. Reset returns to automatic selection.',
+  'settings.performance.noOverrides': 'No overrides are active.',
+  'settings.performance.geometryTier': 'Geometry detail',
+  'settings.performance.geometryWorkers': 'Geometry workers',
+  'settings.performance.tierIgnoredInExact': 'Low detail is ignored in Exact mode.',
+  'settings.performance.workersMayClamp': 'Changes apply on the next model load. The engine may lower this count to fit memory.',
+  'settings.performance.sourceUrl': 'From this URL',
+  'settings.performance.sourceSaved': 'Saved in this browser',
+  'settings.performance.reset': 'Reset',
+  'settings.performance.resetNamed': 'Reset {name}',
 
   'settings.privacy.analyticsTitle': 'Product analytics',
   'settings.privacy.analyticsDisclosure': 'The hosted viewer sends anonymous usage and error events, such as the command used, model schema, counts and build version.',

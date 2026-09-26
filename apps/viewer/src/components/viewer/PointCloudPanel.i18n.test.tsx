@@ -32,7 +32,7 @@ it('renders the English catalogue value by default (#4918)', () => {
   assert.ok(container.textContent?.includes('RGB'));
   assert.ok(container.textContent?.includes('Classification'));
   assert.ok(container.textContent?.includes('Size'));
-  assert.ok(container.textContent?.includes('EDL'));
+  assert.ok(container.textContent?.includes('Edge shading'));
 });
 
 it('pluralizes the asset-count readout (#4918)', () => {

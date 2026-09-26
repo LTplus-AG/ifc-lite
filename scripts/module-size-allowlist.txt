@@ -81,7 +81,7 @@
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    552 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
-  1692 apps/viewer/src/components/viewer/LensPanel.tsx
+  1660 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    539 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx
@@ -156,7 +156,7 @@
    638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
    562 apps/viewer/src/store/basketVisibleSet.ts
-   485 apps/viewer/src/store/constants.ts
+   444 apps/viewer/src/store/constants.ts
    494 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts

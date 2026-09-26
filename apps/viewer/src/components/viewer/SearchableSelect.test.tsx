@@ -147,7 +147,10 @@ describe('SearchableSelect popup portal (#1924, #5817)', () => {
     // wrapper (`[data-radix-popper-content-wrapper]`), not `<body>` itself
     // — that wrapper is what's actually appended to the portal target.
     assert.equal(document.body.contains(popup), true, 'popup portals under <body> by default');
-    assert.equal(popup?.closest('[data-radix-popper-content-wrapper]')?.parentElement, document.body);
+    assert.ok(
+      popup?.closest('[data-radix-popper-content-wrapper]')?.parentElement === document.body,
+      'the Radix positioning wrapper is portaled under <body>',
+    );
 
     openPopup(trigger); // close before the root unmounts, see the portal-container test's note
   });

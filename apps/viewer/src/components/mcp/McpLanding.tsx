@@ -199,7 +199,7 @@ function Hero(): ReactNode {
             <div className="mt-10 flex flex-wrap items-center gap-3">
               <a
                 href="/mcp/playground"
-                className="group relative inline-flex items-center gap-2 px-7 py-4 text-base font-semibold tracking-tight"
+                className="group relative inline-flex items-center gap-2 px-7 py-4 text-sm font-semibold tracking-tight sm:text-base"
                 style={{ background: ACCENT, color: NIGHT, borderRadius: 6 }}
               >
                 <Play size={14} fill={NIGHT} />
@@ -213,7 +213,7 @@ function Hero(): ReactNode {
               </a>
               <button
                 onClick={() => scrollToAnchor('install')}
-                className="inline-flex items-center gap-2 px-6 py-4 text-base font-medium tracking-tight transition-colors hover:bg-white/5"
+                className="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium tracking-tight transition-colors hover:bg-white/5 sm:text-base"
                 style={{ border: `1px solid ${PAPER}40`, color: PAPER, borderRadius: 6 }}
               >
                 <Terminal size={14} />

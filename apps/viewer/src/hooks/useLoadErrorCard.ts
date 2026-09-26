@@ -26,15 +26,16 @@ export interface LoadErrorCardState {
   canRetry: boolean;
   /** Re-runs the load that set `error`, same File or URL, through `loadFile`. */
   retry: () => void;
-  /** Clears `error` without retrying. */
+  /** Clears `error` and releases the captured retry source. */
   dismiss: () => void;
 }
 
 export function useLoadErrorCard(): LoadErrorCardState {
-  const { error, lastLoadRetry, setError } = useViewerStore(useShallow((s) => ({
+  const { error, lastLoadRetry, setError, setLastLoadRetry } = useViewerStore(useShallow((s) => ({
     error: s.error,
     lastLoadRetry: s.lastLoadRetry,
     setError: s.setError,
+    setLastLoadRetry: s.setLastLoadRetry,
   })));
 
   const retry = useCallback(() => {
@@ -43,7 +44,8 @@ export function useLoadErrorCard(): LoadErrorCardState {
 
   const dismiss = useCallback(() => {
     setError(null);
-  }, [setError]);
+    setLastLoadRetry(null);
+  }, [setError, setLastLoadRetry]);
 
   return { error, canRetry: lastLoadRetry !== null, retry, dismiss };
 }

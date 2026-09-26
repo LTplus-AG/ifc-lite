@@ -65,6 +65,7 @@ describe('ViewportLoadErrorCard (#5851)', () => {
     const container = render(<ViewportLoadErrorCard />);
     click(findButton(container, 'Dismiss'));
     assert.equal(useViewerStore.getState().error, null);
+    assert.equal(useViewerStore.getState().lastLoadRetry, null, 'dismiss releases the captured load source');
     assert.equal(retried, 0);
   });
 });

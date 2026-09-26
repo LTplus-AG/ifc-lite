@@ -94,6 +94,7 @@ export const shellChromeEn = {
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
   'shellChrome.layout.propertiesLabel': 'Properties',
   'shellChrome.layout.openPropertiesAriaLabel': 'Open Properties',
+  'shellChrome.layout.closePanelsAriaLabel': 'Close panels',
   'shellChrome.layout.analysisFallback': 'Analysis',
   'shellChrome.layout.addElementLabel': 'Add element',
   'shellChrome.layout.informationFallback': 'Information',

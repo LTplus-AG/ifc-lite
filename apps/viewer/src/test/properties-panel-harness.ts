@@ -92,7 +92,7 @@ export async function addPropertyThroughDialog(container: HTMLElement, psetName:
 export async function openInlineEditor(container: HTMLElement, propKey: string): Promise<HTMLElement> {
   const row = container.querySelector(`[data-prop-key="${propKey}"]`);
   assert.ok(row, `row ${propKey} must render`);
-  const value = row.querySelector('span[title="Click to edit"]');
+  const value = row.querySelector('button[title="Click to edit"]');
   assert.ok(value, `row ${propKey} must be editable`);
   click(value);
   await advance(0);

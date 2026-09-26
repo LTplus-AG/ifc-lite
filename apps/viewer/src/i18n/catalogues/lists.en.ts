@@ -101,7 +101,7 @@ export const listsEn = {
   // ListScheduleTable
   'lists.scheduleTable.count': 'Count',
   'lists.scheduleTable.countAggregateTitle': 'Count aggregate — the default sort order',
-  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.scheduleTable.totalGroups': { one: 'Total · {countDisplay} group', other: 'Total · {countDisplay} groups' },
   'lists.scheduleTable.sumIcon': 'Σ',
 
@@ -118,7 +118,7 @@ export const listsEn = {
   'lists.resultsTable.exportFailed': 'Export failed: {message}',
   'lists.resultsTable.groupedAriaLabel': 'grouped',
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
-  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.resultsTable.totalCount': 'Total · {count}',
   'lists.resultsTable.sumIcon': 'Σ',
 

@@ -526,20 +526,20 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   // Drag-and-drop handlers
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   }, []);
 
   const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
+    (e: DragEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
@@ -641,7 +641,6 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 </p>
               )}
             </div>
-
             {/* File Upload - Drag and Drop Zone */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">{t('dataConnector.csvFileLabel')}</Label>
@@ -653,27 +652,28 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 className="hidden"
               />
               {!fileName ? (
-                <div
+                <button
+                  type="button"
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                  className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                     isDragging
                       ? 'border-primary bg-primary/5'
                       : 'border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50'
                   }`}
                 >
                   <Upload className={`h-8 w-8 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <div className="text-center">
-                    <p className="text-sm font-medium">
+                  <span className="text-center">
+                    <span className="block text-sm font-medium">
                       {isDragging ? t('dataConnector.dropHereText') : t('dataConnector.dragDropText')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    </span>
+                    <span className="block text-xs text-muted-foreground mt-1">
                       {t('dataConnector.clickToBrowseText')}
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
               ) : (
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1.5">

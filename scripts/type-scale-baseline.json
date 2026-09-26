@@ -53,7 +53,7 @@
   "apps/viewer/src/components/viewer/IDSResultRows.tsx": 2,
   "apps/viewer/src/components/viewer/InheritSelect.tsx": 1,
   "apps/viewer/src/components/viewer/LandXmlUnitsRefusalPrompt.tsx": 2,
-  "apps/viewer/src/components/viewer/LensPanel.tsx": 17,
+  "apps/viewer/src/components/viewer/LensPanel.tsx": 13,
   "apps/viewer/src/components/viewer/LightingTrimControls.tsx": 1,
   "apps/viewer/src/components/viewer/LoadReportPanel.tsx": 6,
   "apps/viewer/src/components/viewer/MainToolbar.tsx": 9,

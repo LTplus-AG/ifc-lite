@@ -12,7 +12,7 @@
  * rows), so 100K+ rows stay smooth.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,7 @@ import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu'; import { formatLocaleCount } from './formatLocaleCount';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
+import { ColumnResizeHandle } from './ColumnResizeHandle';
 import { formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
   buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
   type DisplayItem, type Totals, type ScheduleRow } from './list-table-utils';
@@ -253,21 +254,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     setExpandedGroups(allExpanded ? new Set() : new Set(groupKeys));
   }, [allExpanded, groupKeys]);
 
-  // `startWidth` is passed in (rather than looked up here) so the SAME
-  // resize handler works for both the normal column header and the schedule
-  // (pivot) header, which index into different width arrays.
-  const startResize = useCallback((e: React.MouseEvent, colId: string, startWidth: number) => {
-    e.preventDefault(); e.stopPropagation();
-    const startX = e.clientX;
-    const onMove = (ev: MouseEvent) => setWidthOverrides((p) => ({ ...p, [colId]: Math.max(56, startWidth + (ev.clientX - startX)) }));
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = ''; document.body.style.userSelect = '';
-    };
-    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
-  }, []);
-
   // Export honours the on-screen columns, grouping, sums, and totals.
   const handleExport = useCallback((format: ExportFormat) => {
     const model = buildExportModel({
@@ -385,7 +371,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           totals={totals}
           widthOverrides={widthOverrides}
           setWidthOverrides={setWidthOverrides}
-          startResize={startResize}
           onHeaderClick={handleHeaderClick}
           virtualizer={virtualizer}
         />
@@ -433,17 +418,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                       onColorBy={() => handleColorByColumn(col, colIdx)}
                     />
                   )}
-                  {/* A focusable column resizer needs pointer and arrow-key controls. */}
-                  {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-                  <div role="separator" aria-orientation="vertical" aria-label={t('lists.resultsTable.dragToResizeTitle')} tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setWidthOverrides((p) => ({ ...p, [col.id]: Math.max(56, (p[col.id] ?? columnWidths[colIdx]) + (e.key === 'ArrowRight' ? 10 : -10)) })); }
-                    }}
-                    onMouseDown={(e) => startResize(e, col.id, columnWidths[colIdx])}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
-                    title={t('lists.resultsTable.dragToResizeTitle')}
+                  <ColumnResizeHandle
+                    columnId={col.id}
+                    width={columnWidths[colIdx]}
+                    title={`${col.label ?? col.propertyName}: ${t('lists.resultsTable.dragToResizeTitle')}`}
+                    setWidthOverrides={setWidthOverrides}
                   />
                 </div>
               );
@@ -459,17 +438,17 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
               if (item.kind === 'group') {
                 const expanded = expandedGroups.has(item.key);
-                // Virtualized group rows contain block cells, which are invalid inside a button.
-                // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-                return (<div role="button" tabIndex={0} aria-expanded={expanded}
+                return (
+                  <button
                     key={vRow.key}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupExpand(item.key); } }}
-                    className="absolute left-0 top-0 flex w-full cursor-pointer border-b border-border/40 bg-muted/50 hover:bg-muted/70"
+                    type="button"
+                    aria-expanded={expanded}
+                    className="absolute left-0 top-0 flex w-full cursor-pointer border-b border-border/40 bg-muted/50 text-left hover:bg-muted/70"
                     style={{ transform }}
                     onClick={() => toggleGroupExpand(item.key)}
                   >
                     {columns.map((col, colIdx) => (
-                      <div
+                      <span
                         key={col.id}
                         className="flex items-center gap-1 border-r border-border/20 px-2 py-1 text-xs font-medium shrink-0"
                         // Sub-groups indent one step per nesting level (#1790).
@@ -485,26 +464,29 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                         {sumColumnIds.includes(col.id) && (
                           <span className="ml-auto font-mono tabular-nums">{formatCellValue(item.sums[col.id])}</span>
                         )}
-                      </div>
+                      </span>
                     ))}
-                  </div>
+                  </button>
                 );
               }
 
               const row = item.row;
               const globalId = toGlobalIdFromModels(models, row.modelId, row.entityId);
               const isSelected = selectedEntityIds.has(globalId) || globalId === selectedEntityId;
-              // Virtualized result rows contain block cells, which are invalid inside a button.
-              // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-              return (<div role="button" tabIndex={0} aria-pressed={isSelected}
+              return (
+                <button
                   key={vRow.key}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(row, e); } }}
-                  className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 hover:bg-muted/40', isSelected && 'bg-primary/10')}
+                  type="button"
+                  aria-pressed={isSelected}
+                  className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 text-left hover:bg-muted/40', isSelected && 'bg-primary/10')}
                   style={{ transform }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleRowClick(row, event); }
+                  }}
                   onClick={(e) => handleRowClick(row, e)}
                 >
                   {row.values.map((value, colIdx) => (
-                    <div
+                    <span
                       key={colIdx}
                       className={cn('border-r border-border/20 px-2 py-1 text-xs truncate shrink-0', numericCols[colIdx] && 'text-right font-mono tabular-nums')}
                       // Member rows sit one indent step past the deepest group header.
@@ -512,9 +494,9 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                       title={value !== null ? String(value) : ''}
                     >
                       {formatCellValue(value)}
-                    </div>
+                    </span>
                   ))}
-                </div>
+                </button>
               );
             })}
           </div>

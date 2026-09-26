@@ -59,6 +59,10 @@ export function ModelHeaderRow({
       }}
     >
       <div
+        role="treeitem"
+        tabIndex={0}
+        aria-level={node.depth + 1}
+        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
         className={cn(
           'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group',
           'hover:bg-zinc-50 dark:hover:bg-zinc-900',
@@ -67,7 +71,15 @@ export function ModelHeaderRow({
           node.hasChildren && 'cursor-pointer'
         )}
         style={{ paddingLeft: '8px' }}
-        onClick={() => onModelHeaderClick(modelId, node.id, node.hasChildren)}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button,[data-model-row-tags]')) return;
+          onModelHeaderClick(modelId, node.id, node.hasChildren);
+        }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          onModelHeaderClick(modelId, node.id, node.hasChildren);
+        }}
       >
         {/* Expand/collapse chevron */}
         {node.hasChildren ? (

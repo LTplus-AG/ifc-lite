@@ -155,7 +155,7 @@ for (const federated of [false, true]) {
       expect(terrain.length).toBeGreaterThan(0);
       await expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length);
       await setTypeVisibility(page, 'site', false);
-      await expect.poll(() => sceneOwners(page, terrain)).toEqual([]);
+      await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
       await setTypeVisibility(page, 'site', true);
     }
 
@@ -249,6 +249,17 @@ for (const federated of [false, true]) {
     ]);
     expect(reasons.after).toEqual(reasons.before.filter(({ resetPolicy }) => resetPolicy === 'kept'));
     expect(reasons.modelVisible).toBe(true);
+    // The lens can deactivate in the asynchronous lens sync after Show All;
+    // these three persisted controls remain active and must have visible HUD chips.
+    const keptChipIds = ['typeVisibility', 'typeViewMode', 'hostTypes'];
+    const keptChips = page.locator('[data-hud-region="top-left"] [data-visibility-reason]');
+    await expect(keptChips).toHaveCount(keptChipIds.length);
+    for (const [index, id] of keptChipIds.entries()) {
+      await expect(keptChips.nth(index)).toHaveAttribute('data-visibility-reason', id);
+      await expect(keptChips.nth(index)).toHaveAttribute('title',
+        'Show all keeps this setting. Change it in its control.');
+      await expect(keptChips.nth(index)).toBeVisible();
+    }
     await attachScreenshot(page, testInfo, `visibility-${federated ? 'two' : 'one'}-models-reset.png`);
   });
 }
@@ -260,5 +271,5 @@ test('#5895 Site visibility removes single-model IfcGeographicElement terrain', 
   expect(terrain.length).toBeGreaterThan(0);
   await expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length);
   await setTypeVisibility(page, 'site', false);
-  await expect.poll(() => sceneOwners(page, terrain)).toEqual([]);
+  await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
 });

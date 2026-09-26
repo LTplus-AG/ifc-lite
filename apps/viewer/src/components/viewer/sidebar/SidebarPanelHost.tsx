@@ -8,7 +8,7 @@
  * Renders the active workspace panel, and, when the user splits it, a SECOND
  * panel stacked beneath it with a draggable divider (Blender-style). Both halves
  * reserve real layout space (the pane is a flex sibling of the viewport), so a
- * split is "model | Information / IDS", never an overlay. Floating (#1201) stays
+ * split is "model | Properties / IDS", never an overlay. Floating (#1201) stays
  * a separate overlay channel.
  *
  * Each panel ships its own header (title + close), so the sidebar adds only a
@@ -24,7 +24,7 @@
  *
  * Render precedence preserves the pre-existing right-slot behavior:
  *   right-placed analysis extension, then Add Element tool, then active panel,
- *   then Information.
+ *   then Properties.
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -302,9 +302,9 @@ export function SidebarPanelHost() {
     );
   }
 
-  // Information fallback (or empty when Information is detached).
+  // Properties fallback (or empty when Properties is detached).
   if (shown === null || shown === 'properties') {
-    // Empty (Information detached) or no split: render single.
+    // Empty (Properties detached) or no split: render single.
     if (shown === null || !secondaryActive) {
       return (
         <div data-detach-root className="h-full flex flex-col panel-container">
@@ -316,7 +316,7 @@ export function SidebarPanelHost() {
         </div>
       );
     }
-    // Information on top, a second panel below (the canonical example).
+    // Properties on top, a second panel below (the canonical example).
     return (
       <SplitContainer
         containerRef={containerRef}

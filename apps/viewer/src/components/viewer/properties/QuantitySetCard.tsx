@@ -7,6 +7,7 @@
  */
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { QuantitySet } from './encodingUtils';
 import type { ProjectUnits } from '@ifc-lite/parser';
@@ -14,6 +15,8 @@ import { resolveQuantityDisplay } from '@/lib/units/display';
 import { setDisplayName } from './setDisplayName';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { PropertySearchHighlight } from './PropertySearchHighlight';
+import { usePersistentDisclosure } from './usePersistentDisclosure';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
@@ -31,10 +34,12 @@ export interface QuantitySetCardProps {
   /** Per-unit-type display-unit overrides (issue #1573 proposal 2). See
    *  `PropertySetCardProps.unitDisplayOverrides`. */
   unitDisplayOverrides?: Record<string, string>;
+  searchQuery?: string;
 }
 
-export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: QuantitySetCardProps) {
+export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, searchQuery }: QuantitySetCardProps) {
   const { t, locale } = useTranslation();
+  const [open, setOpen] = usePersistentDisclosure(`qset:${qset.name}`);
   const formatValue = (value: number, type: number): string => {
     if (isNaN(value)) return '\u2014'; // em-dash for empty values
     const disp = resolveQuantityDisplay(value, type, projectUnits, unitDisplayOverrides ?? {});
@@ -45,10 +50,11 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
   };
 
   return (
-    <Collapsible defaultOpen className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
-        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{setDisplayName(qset.name, t('properties.quantitySet.unnamed'))}</span>
+    <Collapsible open={open || !!searchQuery} onOpenChange={searchQuery ? undefined : setOpen} className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
+        <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0"><PropertySearchHighlight text={setDisplayName(qset.name, t('properties.quantitySet.unnamed'))} query={searchQuery} /></span>
         <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{formatLocaleNumber(locale, qset.quantities.length)}</span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-blue-200 dark:border-blue-800 divide-y divide-blue-100 dark:divide-blue-900/30">
@@ -64,7 +70,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-zinc-500 dark:text-zinc-400 font-medium cursor-help break-words">
-                        {q.name}
+                          <PropertySearchHighlight text={q.name} query={searchQuery} />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[10px]">
@@ -76,12 +82,12 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                   </Tooltip>
                 ) : (
                   <span className="text-zinc-500 dark:text-zinc-400 font-medium break-words">
-                    {q.name}
+                    <PropertySearchHighlight text={q.name} query={searchQuery} />
                   </span>
                 )}
                 {/* Quantity value */}
                 <span className="font-mono text-blue-700 dark:text-blue-400 select-all break-words">
-                  {formatValue(q.value, q.type)}
+                  <PropertySearchHighlight text={formatValue(q.value, q.type)} query={searchQuery} />
                 </span>
               </div>
             );

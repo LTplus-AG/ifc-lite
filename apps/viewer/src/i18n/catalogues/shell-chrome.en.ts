@@ -92,12 +92,10 @@ export const shellChromeEn = {
     'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
-  'shellChrome.layout.propertiesLabel': 'Properties',
   'shellChrome.layout.openPropertiesAriaLabel': 'Open Properties',
   'shellChrome.layout.closePanelsAriaLabel': 'Close panels',
   'shellChrome.layout.analysisFallback': 'Analysis',
   'shellChrome.layout.addElementLabel': 'Add element',
-  'shellChrome.layout.informationFallback': 'Information',
   'shellChrome.layout.dragToResizeAriaLabel': 'Drag to resize or dismiss',
 
   // StatusBar.tsx

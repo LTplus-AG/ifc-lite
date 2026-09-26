@@ -4,7 +4,7 @@
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
-import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box } from 'lucide-react';
+import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
@@ -61,43 +61,11 @@ import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
-type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
-type DisplayPropertySet = {
-  name: string;
-  properties: DisplayProperty[];
-  isNewPset: boolean;
-  source?: PropertySet['source'];
-};
-
-function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayPropertySet[]): DisplayPropertySet[] {
-  const merged = base.map(pset => ({
-    ...pset,
-    properties: [...pset.properties],
-  }));
-  const psetMap = new Map(merged.map(pset => [pset.name, pset]));
-
-  for (const incomingPset of incoming) {
-    const existing = psetMap.get(incomingPset.name);
-    if (!existing) {
-      const copy = {
-        ...incomingPset,
-        properties: [...incomingPset.properties],
-      };
-      merged.push(copy);
-      psetMap.set(copy.name, copy);
-      continue;
-    }
-
-    const existingPropMap = new Map(existing.properties.map(prop => [prop.name, prop]));
-    for (const prop of incomingPset.properties) {
-      if (!existingPropMap.has(prop.name)) {
-        existing.properties.push(prop as DisplayProperty);
-      }
-    }
-  }
-
-  return merged;
-}
+import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
+import { filterPropertySets, filterQuantitySets, matchesPropertySearch } from './properties/propertySearch';
+import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
+import { PersistentCollapsible } from './properties/PersistentCollapsible';
+import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
 export function PropertiesPanel() {
   const { t } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -170,7 +138,8 @@ export function PropertiesPanel() {
   // Copy feedback state - must be before any early returns (Rules of Hooks)
   const [copied, setCopied] = useState(false);
   const [coordCopied, setCoordCopied] = useState<string | null>(null);
-  const [coordOpen, setCoordOpen] = useState(false);
+  const [coordOpen, setCoordOpen] = usePersistentDisclosure('coordinates', false);
+  const [find, setFind] = useState('');
 
   // Inline property editing is gated by the global edit-mode pill in
   // the main toolbar (see `uiSlice.editEnabled`). Reading it from the
@@ -793,7 +762,7 @@ export function PropertiesPanel() {
   // unconditionally.
   const scheduleData = useViewerStore((s) => s.scheduleData);
   // Single-task selection from the Gantt triggers the Task edit card —
-  // pull the set and its size so the Inspector can react to any change.
+  // pull the set and its size so Properties can react to any change.
   const selectedTaskGlobalIds = useViewerStore((s) => s.selectedTaskGlobalIds);
   const singleSelectedTaskGlobalId = useMemo(() => {
     if (selectedTaskGlobalIds.size !== 1) return null;
@@ -813,7 +782,7 @@ export function PropertiesPanel() {
     return (dataStore as IfcDataStore | null)?.entities?.getGlobalId?.(selectedEntity.expressId) ?? null;
   }, [selectedEntity, model, ifcDataStore]);
   /** True when at least one task in the current schedule controls this entity —
-   *  used to keep the Inspector's empty-state from hiding a populated card.
+   *  used to keep the Properties empty-state from hiding a populated card.
    *  Federation-aware: matches globalId first (see `ScheduleCard`). */
   const hasScheduleForSelection = useMemo(() => {
     if (!selectedEntity || !scheduleData || scheduleData.tasks.length === 0) return false;
@@ -864,7 +833,7 @@ export function PropertiesPanel() {
   }, [model, ifcDataStore]);
 
   // The hierarchy retains model-relative elevations for level operations.
-  // Resolve the selected model's effective georeference only for Inspector
+  // Resolve the selected model's effective georeference only for Properties
   // display so a federated selection never borrows the anchor model's height.
   const effectiveGeoref = useMemo(() => {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
@@ -1146,6 +1115,37 @@ export function PropertiesPanel() {
   const renderedSpatialContainment = spatialContainment;
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
+  const findQuery = find.trim().toLocaleLowerCase();
+  const foundAttributes = renderedAttributes.filter((attr) => matchesPropertySearch(attr.name, findQuery) || matchesPropertySearch(attr.value, findQuery));
+  const foundStructure = renderedSpatialContainment?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
+  const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
+  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery);
+  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery);
+  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery);
+  const foundMaterialProperties = renderedMaterialProperties.flatMap((group) => {
+    const psets = filterPropertySets(group.psets.map((pset) => ({
+      name: pset.name,
+      properties: pset.properties.map((property) => ({
+        name: property.name, value: property.value, dataType: property.dataType,
+      })),
+    })), findQuery);
+    return psets.length > 0 ? [{ ...group, psets }] : [];
+  });
+  const hasPropertyHits = foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
+    + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0;
+  // A query can match a quantity while the Properties tab is selected (and
+  // vice versa). Keep the hit visible instead of leaving the user on an empty
+  // tab with no empty-state message.
+  useEffect(() => {
+    if (!findQuery) return;
+    if (propertiesActiveTab === 'quantities' && foundQuantities.length === 0 && hasPropertyHits) {
+      setPropertiesActiveTab('properties');
+    } else if (propertiesActiveTab !== 'quantities' && foundQuantities.length > 0 && !hasPropertyHits) {
+      setPropertiesActiveTab('quantities');
+    } else if (propertiesActiveTab !== 'properties' && propertiesActiveTab !== 'quantities' && hasPropertyHits) {
+      setPropertiesActiveTab('properties');
+    }
+  }, [findQuery, propertiesActiveTab, foundQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
   // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
   const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
     typeId: renderedTypeProperties.typeId, typeName: renderedTypeProperties.typeName,
@@ -1423,20 +1423,33 @@ export function PropertiesPanel() {
         )}
       </div>
 
+      <div className="flex items-center gap-2 border-b px-3 py-2 text-muted-foreground">
+        <Search className="size-4 shrink-0" aria-hidden="true" />
+        <input type="text" role="searchbox" value={find} onChange={(event) => setFind(event.target.value)}
+          aria-label={t('properties.panel.findLabel')} placeholder={t('properties.panel.findPlaceholder')}
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground" />
+        {find && <IconButton label={t('properties.panel.clearFindLabel')} size="icon-xs" className="size-6 shrink-0" onClick={() => setFind('')}><X className="size-3" /></IconButton>}
+      </div>
+      {findQuery && foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
+        + foundOccurrence.length + foundInherited.length + foundQuantities.length + foundMaterialProperties.length === 0 && (
+        <output className="block border-b p-3 text-sm text-muted-foreground">{t('properties.panel.findEmpty')}</output>
+      )}
+
       {/* IFC Attributes */}
-      {renderedAttributes.length > 0 && (
-        <Collapsible defaultOpen className="border-b">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+      {foundAttributes.length > 0 && (
+        <PersistentCollapsible id="attributes" forceOpen={!!findQuery} className="border-b">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Tag className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-sm">{t('properties.panel.attributesHeading')}</span>
             {editMode && <PenLine className="h-3 w-3 text-overlay-accent ml-1" />}
-            <span className="text-xs text-muted-foreground ml-auto">{renderedAttributes.length}</span>
+            <span className="text-xs text-muted-foreground ml-auto">{foundAttributes.length}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="divide-y border-t">
-              {renderedAttributes.map((attr) => (
+              {foundAttributes.map((attr) => (
                 <div key={attr.name} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
-                  <span className="text-muted-foreground truncate" title={attr.name}>{attr.name}</span>
+                  <span className="text-muted-foreground truncate" title={attr.name}><PropertySearchHighlight text={attr.name} query={findQuery} /></span>
                   {editMode && selectedEntity ? (
                     <AttributeEditorField
                       modelId={selectedEntity.modelId}
@@ -1447,7 +1460,7 @@ export function PropertiesPanel() {
                   ) : (
                     <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
                       <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
-                        {String(attr.value)}
+                        <PropertySearchHighlight text={String(attr.value)} query={findQuery} />
                       </span>
                     </div>
                   )}
@@ -1455,47 +1468,49 @@ export function PropertiesPanel() {
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
 
       {/* Spatial Containment - for spatial containers (Project, Site, Building, Storey) */}
-      {renderedSpatialContainment && (
-        <Collapsible defaultOpen className="border-b">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+      {foundStructure && foundStructure.length > 0 && (
+        <PersistentCollapsible id="structure" forceOpen={!!findQuery} className="border-b">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Layers className="h-4 w-4 text-emerald-600" />
             <span className="font-medium text-sm">{t('properties.panel.structureHeading')}</span>
-            <span className="text-xs text-muted-foreground ml-auto">{renderedSpatialContainment.length}</span>
+            <span className="text-xs text-muted-foreground ml-auto">{foundStructure.length}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="divide-y border-t">
-              {renderedSpatialContainment.map((item) => (
+              {foundStructure.map((item) => (
                 <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
-                  <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
-                  <span className="font-medium font-mono">{item.value}</span>
+                  <span className="text-muted-foreground truncate" title={item.label}><PropertySearchHighlight text={item.label} query={findQuery} /></span>
+                  <span className="font-medium font-mono"><PropertySearchHighlight text={String(item.value)} query={findQuery} /></span>
                 </div>
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
 
       {/* Location zones (issue #1810) — which user-defined zone box(es) this
           element falls in, per zone set. Read-only: editing zones happens in
           the Zones panel, not here. */}
-      {zoneMembership && (
-        <Collapsible defaultOpen className="border-b">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+      {foundZones && foundZones.length > 0 && (
+        <PersistentCollapsible id="zones" forceOpen={!!findQuery} className="border-b">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
             <Box className="h-4 w-4 text-amber-600" />
             <span className="font-medium text-sm">{t('properties.panel.zonesHeading')}</span>
-            <span className="text-xs text-muted-foreground ml-auto">{zoneMembership.length}</span>
+            <span className="text-xs text-muted-foreground ml-auto">{foundZones.length}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="divide-y border-t">
-              {zoneMembership.map((item) => (
+              {foundZones.map((item) => (
                 <div key={item.setId}>
                   <div className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
-                    <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
-                    <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
+                    <span className="text-muted-foreground truncate" title={item.label}><PropertySearchHighlight text={item.label} query={findQuery} /></span>
+                    <span className="font-medium font-mono truncate" title={item.value}><PropertySearchHighlight text={item.value} query={findQuery} /></span>
                   </div>
                   {/* Only a straddler has anything to apportion (#2508): an
                       element wholly inside one zone contributes its whole
@@ -1513,7 +1528,7 @@ export function PropertiesPanel() {
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
 
       {/* Tabs */}
@@ -1592,18 +1607,15 @@ export function PropertiesPanel() {
                 />
               </>
             )}
-            {renderedMergedProperties.length === 0
-              && renderedClassifications.length === 0
-              && renderedMaterialInfos.length === 0
-              && renderedMaterialProperties.length === 0
-              && renderedDocuments.length === 0
-              && !renderedEntityRelationships
-              && !hasScheduleForSelection && !hasStructuralForSelection ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
+            {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
+              && (findQuery || (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
+                && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0
+                && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
+              findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {/* Occurrence/Type Properties (based on whether entity itself is a type) */}
-                {renderedOccurrenceProperties.length > 0 && (
+                {foundOccurrence.length > 0 && (
                   <>
                     {(renderedIsTypeEntity || (renderedTypeProperties && renderedTypeProperties.psets.length > 0)) && (
                       <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold">
@@ -1615,7 +1627,7 @@ export function PropertiesPanel() {
                         ) : t('properties.panel.occurrencePropertiesHeading')}
                       </div>
                     )}
-                    {renderedOccurrenceProperties.map((pset: PropertySet, index: number) => (
+                    {foundOccurrence.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
                         key={`occ-${pset.name}-${index}`}
                         pset={pset}
@@ -1625,6 +1637,7 @@ export function PropertiesPanel() {
                         isTypeProperty={renderedIsTypeEntity}
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                         focusedPropKey={focusedPropKey}
+                        searchQuery={findQuery} sectionScope="occurrence"
                         projectUnits={renderedProjectUnits}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
@@ -1633,16 +1646,16 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Inherited Type Properties */}
-                {renderedInheritedTypeProperties.length > 0 && renderedTypeProperties && (
+                {foundInherited.length > 0 && renderedTypeProperties && (
                   <>
-                    {renderedOccurrenceProperties.length > 0 && (
+                    {foundOccurrence.length > 0 && (
                       <div className="border-t border-indigo-200 dark:border-indigo-800/50 pt-2 mt-2" />
                     )}
                     <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider font-semibold">
                       <Building2 className="h-3 w-3 shrink-0" />
                       <span className="truncate">{t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}</span>
                     </div>
-                    {renderedInheritedTypeProperties.map((pset: PropertySet, index: number) => (
+                    {foundInherited.map((pset: PropertySet, index: number) => (
                       <PropertySetCard
                         key={`type-${pset.name}-${index}`}
                         pset={pset}
@@ -1652,6 +1665,7 @@ export function PropertiesPanel() {
                         isTypeProperty
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                         focusedPropKey={focusedPropKey}
+                        searchQuery={findQuery} sectionScope="inherited"
                         projectUnits={renderedProjectUnits}
                         unitDisplayOverrides={unitDisplayOverrides}
                       />
@@ -1660,7 +1674,7 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Classifications */}
-                {renderedClassifications.length > 0 && (
+                {!findQuery && renderedClassifications.length > 0 && (
                   <>
                     {renderedMergedProperties.length > 0 && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
@@ -1672,7 +1686,7 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Materials — one card per IfcRelAssociatesMaterial */}
-                {renderedMaterialInfos.length > 0 && (
+                {!findQuery && renderedMaterialInfos.length > 0 && (
                   <>
                     {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
@@ -1686,12 +1700,12 @@ export function PropertiesPanel() {
                 {/* Material Property Sets (Pset_Material* attached to the
                     IfcMaterial via IfcMaterialProperties). Grouped per material,
                     mirroring the Type Properties block. */}
-                {renderedMaterialProperties.length > 0 && (
+                {foundMaterialProperties.length > 0 && (
                   <>
                     {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0) && (
                       <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
                     )}
-                    {renderedMaterialProperties.map((group) => (
+                    {foundMaterialProperties.map((group) => (
                       <div key={`matpset-${group.materialId}`} className="space-y-3">
                         <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
                           <Layers className="h-3 w-3 shrink-0" />
@@ -1700,10 +1714,8 @@ export function PropertiesPanel() {
                         {group.psets.map((pset, index) => (
                           <PropertySetCard
                             key={`matpset-${group.materialId}-${pset.name}-${index}`}
-                            pset={{
-                              name: pset.name,
-                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
-                            }}
+                            pset={pset}
+                            searchQuery={findQuery} sectionScope={`material:${group.materialId}`}
                             projectUnits={renderedProjectUnits}
                             unitDisplayOverrides={unitDisplayOverrides}
                           />
@@ -1714,7 +1726,7 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Documents */}
-                {renderedDocuments.length > 0 && (
+                {!findQuery && renderedDocuments.length > 0 && (
                   <>
                     {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0 || renderedMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
@@ -1726,7 +1738,7 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Relationships */}
-                {renderedEntityRelationships && (
+                {!findQuery && renderedEntityRelationships && (
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <RelationshipsCard
@@ -1740,7 +1752,7 @@ export function PropertiesPanel() {
                 {/* 4D / Construction schedule — controlling tasks for this entity.
                     Gated on `hasScheduleForSelection` so the separator above
                     doesn't render on its own when ScheduleCard would return null. */}
-                {selectedEntity && scheduleData && hasScheduleForSelection && (
+                {!findQuery && selectedEntity && scheduleData && hasScheduleForSelection && (
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <ScheduleCard
@@ -1756,7 +1768,7 @@ export function PropertiesPanel() {
                     applied loads for a selected IfcStructuralMember. Gated
                     on `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
-                {selectedEntity && structuralData && hasStructuralForSelection && (
+                {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     <StructuralCard
@@ -1771,12 +1783,12 @@ export function PropertiesPanel() {
           </TabsContent>
 
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
-            {renderedQuantities.length === 0 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
+            {foundQuantities.length === 0 ? (
+              findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
-                {renderedQuantities.map((qset: QuantitySet, index: number) => (
-                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
+                {foundQuantities.map((qset: QuantitySet, index: number) => (
+                  <QuantitySetCard key={`${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
                 ))}
               </div>
             )}
@@ -2070,11 +2082,12 @@ function EntityDataSection({
 
       {/* Attributes */}
       {attributes.length > 0 && (
-        <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
+        <PersistentCollapsible id="multi-attributes" className="border-b border-zinc-200 dark:border-zinc-800">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Tag className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.attributesHeading')}</span>
             <span className="text-[10px] text-zinc-400 ml-auto">{attributes.length}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="divide-y divide-zinc-100 dark:divide-zinc-900 border-t border-zinc-100 dark:border-zinc-900">
@@ -2088,16 +2101,17 @@ function EntityDataSection({
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
 
       {/* Properties */}
       {properties.length > 0 && (
-        <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
+        <PersistentCollapsible id="multi-properties" className="border-b border-zinc-200 dark:border-zinc-800">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <FileText className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.propertiesHeading')}</span>
             <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
@@ -2106,16 +2120,17 @@ function EntityDataSection({
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
 
       {/* Quantities */}
       {quantities.length > 0 && (
-        <Collapsible defaultOpen className="border-b border-zinc-200 dark:border-zinc-800">
-          <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
+        <PersistentCollapsible id="multi-quantities" className="border-b border-zinc-200 dark:border-zinc-800">
+          <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Calculator className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.quantitiesHeading')}</span>
             <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
+            <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
@@ -2124,7 +2139,7 @@ function EntityDataSection({
               ))}
             </div>
           </CollapsibleContent>
-        </Collapsible>
+        </PersistentCollapsible>
       )}
     </div>
   );

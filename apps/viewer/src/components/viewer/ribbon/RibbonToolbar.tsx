@@ -233,18 +233,20 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
       </div>
 
       {/* ── Band ── */}
-      <TabsContent value={activeTab} className={cn('mt-0 flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1', ribbonCollapsed && 'hidden')}>
-        {!ribbonCollapsed && (
-          <>
+      {!ribbonCollapsed && (
+        <TabsContent
+          value={activeTab}
+          aria-label={t('ribbon.bandAriaLabel', { tab: t(`ribbon.tab.${activeTab}`) })}
+          className="mt-0 flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1"
+        >
           {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
           {activeTab === 'home' && <HomeTab />}
           {activeTab === 'view' && <ViewTab />}
           {activeTab === 'elements' && <ElementsTab />}
           {activeTab === 'analyze' && <AnalyzeTab />}
           {activeTab === 'author' && <AuthorTab />}
-          </>
-        )}
-      </TabsContent>
+        </TabsContent>
+      )}
 
       {/* One-time "the toolbar changed" line, with the way back. Sits under
           the band so it never displaces a command the user is reaching for. */}

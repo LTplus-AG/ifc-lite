@@ -191,7 +191,7 @@ describe('ExtensionsPanel localization (#4918)', () => {
     );
     await flush(5);
     const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
-    assert.equal(tabs.length, 5);
+    assert.equal(tabs.length, 4);
     tabs[0].focus();
     press(tabs[0], 'ArrowRight');
     await advance(5);

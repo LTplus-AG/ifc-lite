@@ -148,6 +148,8 @@ export function DrawingPanel(): React.ReactElement {
             onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
             displayedScale={displayOptions.scale || 100}
             sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
+            markupCounts={vm.markupCounts}
+            visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
           />
         </div>
       </div>

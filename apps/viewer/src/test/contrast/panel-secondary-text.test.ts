@@ -376,7 +376,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'MeasurePointReadout CoordRow hint',
       file: MEASURE_POINT_READOUT,
-      anchor: '<span className="font-mono text-[11px] tabular-nums">{value}</span>\n      {hint && <span ',
+      anchor: '{hint && <span ',
       surface: 'bg-background',
     },
     {

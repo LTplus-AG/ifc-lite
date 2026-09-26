@@ -207,7 +207,6 @@ describe('ExtensionsPanel localization (#4918)', () => {
       { key: 'extensionsFlavors.extensionsPanel.tab.ideas' },
       { key: 'extensionsFlavors.extensionsPanel.tab.repair' },
       { key: 'extensionsFlavors.extensionsPanel.tab.audit' },
-      { key: 'extensionsFlavors.extensionsPanel.tab.privacy' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.intro' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.tabStripInfo' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.gettingStarted' },

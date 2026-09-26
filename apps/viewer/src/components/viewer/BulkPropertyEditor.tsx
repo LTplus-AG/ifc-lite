@@ -8,19 +8,10 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  Search,
-  Play,
-  Eye,
-  Filter,
-  Plus,
-  Trash2,
-  Loader2,
-  Building2,
-  Layers,
-  Tag,
-} from 'lucide-react';
+import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +43,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
+  BULK_WRITABLE_ATTRIBUTES,
   BulkQueryEngine,
   MutablePropertyView,
   type SelectionCriteria,
@@ -64,7 +56,8 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_ATTRIBUTE_LABELS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
+import { FILTER_OPERATORS, IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
+import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -90,7 +83,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const recordMutationBatch = useViewerStore((s) => s.recordMutationBatch);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // Collab role gate, two layers deep. (1) canCollabEdit is injected into
@@ -157,10 +149,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return list;
   }, [open, models, legacyIfcDataStore, t, locale, revision]);
 
-  // Auto-select first model when dialog opens
+  // Default to the active model: Undo replays the active model's history (#5958).
   useEffect(() => {
     if (open && modelList.length > 0 && !selectedModelId) {
-      setSelectedModelId(modelList[0].id);
+      setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
   }, [open, modelList, selectedModelId]);
 
@@ -233,13 +225,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
       const nameToEnums = new Map<string, number[]>();
       const presentTypes: { ifcType: string; label: string }[] = [];
-      for (const [ifcType, { labelKey, pattern }] of Object.entries(IFC_TYPE_MAP)) {
-        const enums: number[] = [];
-        for (const [typeEnum, typeName] of enumToTypeName) {
-          if (typeName.includes(pattern)) {
-            enums.push(typeEnum);
-          }
-        }
+      for (const [ifcType, { labelKey }] of Object.entries(IFC_TYPE_MAP)) {
+        const enums = classTargetEnums(ifcType, enumToTypeName);
         if (enums.length > 0) {
           nameToEnums.set(ifcType, enums);
           presentTypes.push({ ifcType, label: t(labelKey) });
@@ -289,7 +276,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       dataStore.spatialHierarchy || null,
       dataStore.properties || null,
       dataStore.strings || null,
-      canCollabEdit
+      canCollabEdit,
+      dataStore.schemaVersion,
     );
   }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
 
@@ -484,7 +472,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     } else if (actionType === 'DELETE_PROPERTY') {
       action = { type: 'DELETE_PROPERTY', psetName: targetPset, propName: targetProp };
     } else {
-      action = { type: 'SET_ATTRIBUTE', attribute: targetProp as 'name' | 'description' | 'objectType', value: targetValue };
+      action = { type: 'SET_ATTRIBUTE', attribute: targetProp, value: targetValue };
     }
     return { ok: true, action };
   }, [actionType, targetPset, targetProp, targetValue, valueType, t]);
@@ -551,14 +539,17 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const failures: BulkRuntimeFailure[] = [];
 
       let processed = 0;
+      // The engine writes straight to the view: record each chunk as it lands (#5861, #5958).
+      const record = recordRun(useViewerStore.getState, selectedModelId);
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         if (executeCancelRef.current) break;
 
         const end = Math.min(i + CHUNK_SIZE, total);
+        const chunk: typeof mutations = [];
         for (let j = i; j < end; j++) {
           try {
             const mutation = queryEngine.applyAction(entityIds[j], action);
-            if (mutation) mutations.push(mutation);
+            if (mutation) chunk.push(mutation);
           } catch (error) {
             const detail = error instanceof Error ? error.message : undefined;
             errors.push(t('bulkPropertyEditor.entityError', {
@@ -569,13 +560,16 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
           }
         }
 
+        mutations.push(...chunk);
+        record(chunk);
+
         processed = end;
         setExecuteProgress({ done: end, total });
         // Yield to browser so progress bar and spinner update
         await new Promise(r => setTimeout(r, 0));
       }
 
-      const cancelled = executeCancelRef.current;
+      const cancelled = executeCancelRef.current && processed < total; // a cancel in the last yield stopped nothing (#5958)
       if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
       const result: BulkQueryResult = {
         mutations,
@@ -586,10 +580,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
-
-      // The engine wrote straight to the view: record the run (a cancelled
-      // run's applied part included) as ONE undo step (#5861).
-      if (selectedModelId) recordMutationBatch(selectedModelId, mutations);
     } catch (error) {
       console.error('Execute failed:', error);
       setExecuteResult({
@@ -604,7 +594,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, recordMutationBatch, selectedModelId, t]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, selectedModelId, t]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -675,7 +665,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
         {isInitializing ? (
           <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner size="lg" />
             <span className="text-sm">{t('bulkPropertyEditor.loading')}</span>
           </div>
         ) : (
@@ -705,7 +695,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 {t('bulkPropertyEditor.selectionCriteria')}
               </Label>
               <Badge variant={liveMatchCount > 0 ? 'default' : 'secondary'} className="text-xs">
-                {isComputing && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                {isComputing && <Spinner size="xs" className="mr-1" />}
                 {t('bulkPropertyEditor.matched', {
                   count: liveMatchCount,
                   countDisplay: formatLocaleNumber(locale, liveMatchCount),
@@ -830,9 +820,9 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                       className="h-8 text-xs w-20"
                     />
                   )}
-                  <Button aria-label={t('bulkPropertyEditor.removeFilter')} variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
+                  <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
+                  </IconButton>
                 </div>
               ))}
             </div>
@@ -850,7 +840,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.actionType')}</Label>
-                <Select value={actionType} onValueChange={(v) => setActionType(v as ActionType)}>
+                <Select value={actionType} onValueChange={(v) => { if ((v === 'SET_ATTRIBUTE') !== (actionType === 'SET_ATTRIBUTE')) setTargetProp(''); setActionType(v as ActionType); }}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -903,9 +893,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                       <SelectValue placeholder={t('bulkPropertyEditor.selectAttribute')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="name">{IFC_ATTRIBUTE_LABELS.name}</SelectItem>
-                      <SelectItem value="description">{IFC_ATTRIBUTE_LABELS.description}</SelectItem>
-                      <SelectItem value="objectType">{IFC_ATTRIBUTE_LABELS.objectType}</SelectItem>
+                      {/* Exact EXPRESS names, never translated or aliased; the engine's own list (#5867). */}
+                      {BULK_WRITABLE_ATTRIBUTES.map((attribute) => (
+                        <SelectItem key={attribute} value={attribute}>{attribute}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 ) : (

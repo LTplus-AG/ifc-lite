@@ -17,13 +17,15 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { cancelCompareRun } from './analysisRunCancellation';
+import { stampAnalysisReport } from './useAnalysisStaleness';
 import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
 import { effectiveComparePair } from '@/lib/compare/effectiveCompareStore';
-import { useClearCompareOnEdit } from './compare/useClearCompareOnEdit';
+import { useInvalidateCompareCacheOnEdit } from './compare/useInvalidateCompareCacheOnEdit';
 import { fallbackPairDuplicateAuthoredKeys } from '@/lib/compare/authoredKeys';
 import {
   geometryVolumesSurviveAlignment,
@@ -167,7 +169,10 @@ function publishCompareResult(built: BuiltPair): {
     comparedStores: built.comparedStores.size > 0 ? built.comparedStores : undefined,
     mutationVersion: built.mutationVersion,
   };
-  store.setCompareResult(result);
+  store.setCompareResult(stampAnalysisReport(result, {
+    mutationVersion: built.mutationVersion,
+    geometryContentVersion: built.contentVersion,
+  }));
   // Completed-comparison signal for baseline consumers (compare tour). An
   // option change re-diffing the cached fingerprints is a completed comparison
   // too, so it bumps the same counter.
@@ -210,10 +215,8 @@ export function useCompare() {
    *   already in the air when the user cleared must not resurrect the result
    *   they just dismissed.
    *
-   * Bumped at the start of every `runComparison()` call and by `clearCompare`
-   * below (the ONLY two events that make an in-flight run's eventual answer
-   * unwanted). Each run captures the epoch value once, and every place that
-   * writes to the store re-checks it immediately before writing - never
+   * Bumped on run, clear and cancel. Every post-await store write re-checks
+   * its captured epoch immediately before writing - never
    * earlier, so nothing can supersede between the check and the write.
    */
   const epochRef = useRef(0);
@@ -227,6 +230,8 @@ export function useCompare() {
     epochRef.current += 1;
     useViewerStore.getState().clearCompare();
   }, []);
+
+  const cancelComparison = useCallback(() => cancelCompareRun(epochRef), []);
 
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
@@ -407,19 +412,14 @@ export function useCompare() {
     }
   }, []);
 
-  // Federation re-alignment re-frames vertices and their world boxes IN PLACE
-  // (#1891), so a comparison published before it describes geometry that has
-  // since moved and the cached fingerprints hold pre-alignment boxes. Retire
-  // both. Clearing the RESULT as well as the cache is what keeps
-  // `publishCompareResult`'s invariant intact: leaving a result on screen with
-  // no usable fingerprints behind it would make the effect below early-return
-  // on an option change, and the panel would disagree with its own controls -
-  // exactly the staleness that function exists to prevent.
+  // A geometry re-alignment invalidates cached fingerprints. Keep the result
+  // visible with a stale banner until the user re-runs; the option re-diff
+  // below refuses to reuse the retired cache.
   //
   // Declared BEFORE the re-diff effect so a commit that changes both the
-  // version and an option clears first. Seeded with the mounted value so a
-  // remount is not mistaken for a bump; a re-align while this panel is
-  // unmounted leaves no cache to reuse, and `runComparison` re-extracts.
+  // version and an option invalidates the cache first. Seeded with the mounted
+  // value so a remount is not mistaken for a bump; a re-align while unmounted
+  // leaves no cache to reuse, and `runComparison` re-extracts.
   const lastContentVersionRef = useRef(geometryContentVersion);
   // The accepted list a published result was diffed with. `appliedKeyAliases`
   // cannot stand in for it: an accepted pair the engine ignored (key not in
@@ -429,10 +429,8 @@ export function useCompare() {
     if (lastContentVersionRef.current === geometryContentVersion) return;
     lastContentVersionRef.current = geometryContentVersion;
     builtRef.current = null;
-    clearCompare();
-  }, [geometryContentVersion, clearCompare]);
-  // An edit makes a published comparison describe a model that no longer exists.
-  useClearCompareOnEdit(builtRef, clearCompare);
+  }, [geometryContentVersion]);
+  useInvalidateCompareCacheOnEdit(builtRef);
 
   // Scope, blacklist, content-matching OR accepted-identity change with an
   // existing result for the same pair -> re-diff from the cached fingerprints
@@ -467,5 +465,5 @@ export function useCompare() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, excludedTypes, matchByContent, acceptedIdentity]);
 
-  return { baseModelId, headModelId, scope, running, result, error, runComparison, clearCompare };
+  return { baseModelId, headModelId, scope, running, result, error, runComparison, cancelComparison, clearCompare };
 }

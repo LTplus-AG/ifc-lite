@@ -297,7 +297,7 @@ pub(super) fn build_plan(
             }
         }
         // Unify spatial containers. Aggregations they make redundant are
-        // stripped at emit time, on the final line (`aggregates`, #5727).
+        // stripped at emit time, on the final line (`single_parents`, #5727).
         unify_spatial(
             ctx.spatial_lookup,
             index,

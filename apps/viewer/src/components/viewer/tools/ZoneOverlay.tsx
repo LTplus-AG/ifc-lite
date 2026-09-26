@@ -5,11 +5,15 @@
 /**
  * 3D display + interactive editing for location zones (issue #1810 v1).
  *
- * Follows the SAME hand-rolled SVG-overlay technique as `GizmoOverlay.tsx`
- * (the renderer has no react-three-fiber/drei — see that file's header):
- * `projectToScreen` turns world points into screen pixels, and per-axis drag
- * math reduces to a dot product against the cursor's screen delta because a
- * probe at +1 world unit gives "screen pixels per metre" directly.
+ * On the shared scene-overlay kernel (#5486/#5512, charter #5478): mounted
+ * inside `ViewportContainer`'s `<SceneOverlayRoot>`, so `useProjectorTick`
+ * re-renders this component once per dirty tick of the ONE shared
+ * `SceneProjector` loop instead of running its own unconditional
+ * `requestAnimationFrame` poll (`useCameraTickSubscription`, deleted here).
+ * `projectToScreen` still turns world points into screen pixels directly
+ * (there's no react-three-fiber/drei layer to do it for us), and per-axis
+ * drag math reduces to a dot product against the cursor's screen delta
+ * because a probe at +1 world unit gives "screen pixels per metre" directly.
  *
  * Picking contract: the root `<svg>` is `pointer-events: none` always (so
  * zone boxes never intercept clicks on model elements). Only the currently
@@ -19,7 +23,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
 import { zoneColorForIndex, zoneWorldCorners, type Zone } from '@/lib/zones';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
@@ -163,14 +167,14 @@ export function ZoneOverlay() {
   const editingZone = useViewerStore((s) => s.editingZone);
   const updateZone = useViewerStore((s) => s.updateZone);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
   const anyVisible = zoneSets.some((zs) => zs.visible && zs.zones.length > 0);
   // The returned frame tick MUST participate in the projection memo below:
   // `projectToScreen` is a stable callback, so without the tick an orbit/pan/
   // zoom re-render would reuse the memoized screen coordinates and the boxes
-  // would visibly detach from the model (PR #1869 review, P1).
-  const frameTick = useCameraTickSubscription(getViewpoint, anyVisible);
+  // would visibly detach from the model (PR #1869 review, P1). Sourced from
+  // the shared `SceneProjector`'s dirty tick, not a private rAF poll.
+  const frameTick = useProjectorTick(anyVisible);
 
   const dragRef = useRef<DragState | null>(null);
 

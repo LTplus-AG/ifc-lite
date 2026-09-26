@@ -10,8 +10,8 @@
  * `MutablePropertyView` wired by `configureMutationView`, exactly as the
  * Properties panel registers it. B starts identical to A. Then, in B, one wall
  * is deleted, one renamed and one created, all unsaved. Compare must report
- * the deletion, the rename and the addition, and it must stop showing that
- * answer once a later edit makes it stale.
+ * the deletion, the rename and the addition. A later edit keeps the old
+ * answer visible with a stale stamp until the user re-runs (#5820).
  */
 
 import '@/test/setup-dom.js';
@@ -25,6 +25,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { useCompare } from './useCompare.js';
+import { analysisStampOf } from './useAnalysisStaleness.js';
 
 const WALLS = [
   "#1=IFCWALL('0WallA0000000000000001',$,'Wall A',$,$,$,$,$,.STANDARD.);",
@@ -140,19 +141,22 @@ describe('useCompare compares the edited model (#5312)', () => {
     assert.equal(headStore.entities.getName(1), 'Wall A', 'the loaded store itself is untouched');
   });
 
-  it('a later edit retires the published comparison instead of leaving a stale answer on screen', async () => {
-    await run();
+  it('#5820 keeps a later-edited result visible and re-run publishes a current result', async () => {
+    const { result: previous } = await run();
     await act(async () => {
       useViewerStore.getState().setAttribute('B', 3, 'Name', 'Wall C renamed', 'Wall C');
     });
-    assert.equal(useViewerStore.getState().compareResult, null);
+    assert.equal(useViewerStore.getState().compareResult, previous, 'old counts remain visible for review');
+    assert.notEqual(analysisStampOf(previous)?.mutationVersion, useViewerStore.getState().mutationVersion);
 
-    const { byKey } = await run();
+    const { result, byKey } = await run();
+    assert.notEqual(result, previous);
+    assert.equal(analysisStampOf(result)?.mutationVersion, useViewerStore.getState().mutationVersion);
     assert.equal(byKey.get('0WallC0000000000000003')?.state, 'modified', 'the re-run sees the new edit');
   });
 
-  it('an edit made while the Compare panel is closed still retires the result when it reopens', async () => {
-    await run();
+  it('#5820 keeps a stale result on reopening after an edit made while Compare was closed', async () => {
+    const { result: previous } = await run();
     await act(async () => root!.unmount());
     root = null;
     useViewerStore.getState().setAttribute('B', 3, 'Name', 'Wall C renamed', 'Wall C');
@@ -164,6 +168,7 @@ describe('useCompare compares the edited model (#5312)', () => {
     await act(async () => {
       root!.render(<Probe />);
     });
-    assert.equal(useViewerStore.getState().compareResult, null, 'reopening must not show the pre-edit comparison');
+    assert.equal(useViewerStore.getState().compareResult, previous, 'reopening preserves the pre-edit comparison for the stale banner');
+    assert.notEqual(analysisStampOf(previous)?.mutationVersion, useViewerStore.getState().mutationVersion);
   });
 });

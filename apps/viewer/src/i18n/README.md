@@ -373,7 +373,7 @@ literals, and stay out of the catalogue. `ChartCard.tsx`'s computed
 aggregation subtitle (`subtitleFor`, `describeAggregation`, `EMPTY_HINTS`),
 the `TYPE_LABELS`/`SOURCE_LABELS`/`FOCUS_LABEL`/`SCOPE_LABEL`/
 `FAMILY_LABELS` select-option data tables, and `DashboardMenu.tsx`'s
-`window.prompt`/toast copy and `ReportExportDialog.tsx`'s toast/error copy
+toast copy and `ReportExportDialog.tsx`'s toast/error copy
 and title-block field table are out of scope for this slice — none of them
 are hardcoded JSX text or a policed attribute the ending gate below flags —
 and remain for a later slice.
@@ -677,8 +677,8 @@ and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
 table and per-entity summary line); `GeometryModeBanner.tsx` (the
 reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
 shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
-(the Geometry edit card's X/Y/Z nudge row); `LevelDisplayIndicator.tsx` (the
-Exploded/Solo viewport chip); `TextAnnotationEditor.tsx` (the 2D-drawing
+(the Geometry edit card's X/Y/Z nudge row); `VisibilityChips.tsx` (the
+viewport visibility reasons); `TextAnnotationEditor.tsx` (the 2D-drawing
 text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
 collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
 `SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two

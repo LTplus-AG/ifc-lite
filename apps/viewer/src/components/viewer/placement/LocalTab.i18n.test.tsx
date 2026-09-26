@@ -34,6 +34,7 @@ import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { LocalTab } from './LocalTab';
 
 const CATALOGUE: Catalogue = Object.fromEntries(
@@ -141,7 +142,7 @@ afterEach(() => {
 
 describe('LocalTab localization (#4918, #5505)', () => {
   it('translates the model pickers, framing shortcuts, and the idle prompt', async () => {
-    const container = render(<><ToolOverlays /><LocalTab /></>);
+    const container = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
     // The `ui/select` (Radix) coordinate-input-mode dropdown portals its item
     // list to `document.body` and only mounts it while open — open it once
     // and leave it open so its two item labels are in the scanned DOM both
@@ -203,7 +204,7 @@ describe('LocalTab localization (#4918, #5505)', () => {
       activeTool: 'select',
     });
     useViewerStore.getState().openReposition(['a']);
-    const container = render(<><ToolOverlays /><LocalTab /></>);
+    const container = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate([{ key: 'repositionPanel.chooseReferenceOption' }], englishDom, afterDom);
@@ -212,7 +213,7 @@ describe('LocalTab localization (#4918, #5505)', () => {
   it('translates the lock toggle action and status for the moving model', async () => {
     // `beforeEach` already opened a session moving model 'a' — the lock
     // action/status render for any moving model, no interaction required.
-    const container = render(<><ToolOverlays /><LocalTab /></>);
+    const container = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(

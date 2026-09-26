@@ -10,6 +10,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
@@ -26,18 +27,6 @@ interface KeyboardShortcutsOptions {
   enabled?: boolean;
 }
 
-/** Get all selected global IDs — multi-select if available, else single selectedEntityId */
-function getAllSelectedGlobalIds(): number[] {
-  const state = useViewerStore.getState();
-  if (state.selectedEntityIds.size > 0) {
-    return Array.from(state.selectedEntityIds);
-  }
-  if (state.selectedEntityId !== null) {
-    return [state.selectedEntityId];
-  }
-  return [];
-}
-
 /** Double-escape threshold in milliseconds */
 const DOUBLE_ESCAPE_MS = 500;
 
@@ -46,10 +35,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
   const lastEscapeRef = useRef<number>(0);
 
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const hideEntities = useViewerStore((s) => s.hideEntities);
   const toggleTheme = useViewerStore((s) => s.toggleTheme);
   const toggleEditEnabled = useViewerStore((s) => s.toggleEditEnabled);
 
@@ -72,6 +59,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore keys an input-like target consumes (inputs, <select>, ARIA widgets).
     if (isTextEntryTarget(e)) return;
+    // A key another layer already handled is not a shortcut: a Radix popover
+    // (the Section bar's Cap, #5499) dismisses itself on Escape and marks the
+    // event handled from a document-capture listener, which runs before this
+    // window listener — without this, the same Escape also closed the tool.
+    if (e.defaultPrevented) return;
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
@@ -119,7 +111,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       const shortcutPanel = workspacePanelForShortcutCode(e.code);
       if (shortcutPanel) {
         e.preventDefault();
-        useViewerStore.getState().openPanelInHome(shortcutPanel);
+        useViewerStore.getState().openPanelInHome(shortcutPanel, 'shortcut');
         return;
       }
       // Alt+\\ — toggle the sidebar (expand ⇄ collapse to icons; the rail stays).
@@ -213,7 +205,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // it stays mutually exclusive with Script/Schedule/Lists/etc.)
     if (key === 'd' && !ctrl && !shift) {
       e.preventDefault();
-      useViewerStore.getState().toggleBottomPanel('presentation');
+      useViewerStore.getState().toggleBottomPanel('presentation', 'shortcut');
     }
 
     // B Save current basket as presentation view with thumbnail
@@ -227,23 +219,20 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
     }
 
-    if ((key === 'delete' || key === 'backspace') && !ctrl && !shift && selectedEntityId) {
-      e.preventDefault();
-      const ids = getAllSelectedGlobalIds();
-      hideEntities(ids);
+    // Hide selection (#5852): the same command every surface runs.
+    if ((key === 'delete' || key === 'backspace') && !ctrl && !shift) {
+      if (hideSelectionFromStore()) e.preventDefault();
     }
     // Space to hide — skip when focused on buttons/selects/links where Space has native behavior
-    if (key === ' ' && !ctrl && !shift && selectedEntityId) {
+    if (key === ' ' && !ctrl && !shift) {
       const tag = document.activeElement?.tagName;
-      if (tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A') {
+      if (tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A' && hideSelectionFromStore()) {
         e.preventDefault();
-        const ids = getAllSelectedGlobalIds();
-        hideEntities(ids);
       }
     }
     if (key === 'a' && !ctrl && !shift) {
       e.preventDefault();
-      resetVisibilityForHomeFromStore();
+      resetVisibilityForHomeFromStore('a');
     }
 
     // Split tool — Esc exits Split and returns to Select. We catch
@@ -253,7 +242,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       e.preventDefault();
       const state = useViewerStore.getState();
       state.clearSplitHover();
-      state.setActiveTool('select');
+      state.setActiveTool('select', 'esc');
       return;
     }
 
@@ -390,7 +379,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       }
 
       if (activeTool !== 'select') {
-        setActiveTool('select');
+        setActiveTool('select', 'esc');
       } else {
         useViewerStore.getState().clearEntitySelection();
       }
@@ -405,10 +394,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // Help - handled by KeyboardShortcutsDialog hook
     // The dialog hook listens for '?' key globally
   }, [
-    selectedEntityId,
     activeTool,
     setActiveTool,
-    hideEntities,
     toggleTheme,
     activeMeasurement,
     cancelMeasurement,

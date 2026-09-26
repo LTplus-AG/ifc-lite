@@ -20,14 +20,17 @@
  * Spec: docs/architecture/ai-customization/02-security.md §12.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useState } from 'react';
 import { Download, Trash2, FileText, Filter, X } from 'lucide-react';
 import type { AuditEvent, AuditEventKind } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
@@ -106,11 +109,12 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
   const handleExport = () => {
     const json = host.audit.exportJson();
     downloadFile(json, `ifclite-audit-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'extension_panel' });
     toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 
-  const handleClear = () => {
-    if (!confirm(t('extensionsPanels.auditLogPanel.clearConfirm'))) return;
+  const handleClear = async () => {
+    if (!await confirmDialog({ description: t('extensionsPanels.auditLogPanel.clearConfirm'), destructive: true })) return;
     host.audit.clear();
     // Wipe the IDB mirror too — otherwise reload resurrects what the
     // user just asked to forget.
@@ -127,7 +131,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
           <h2 className="text-sm font-semibold">{t('extensionsPanels.auditLogPanel.title')}</h2>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {t('extensionsPanels.auditLogPanel.eventCount', {
               count: events.length,
               filtered: formatLocaleNumber(locale, filtered.length),
@@ -154,9 +158,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
             {t('extensionsPanels.auditLogPanel.clearButton')}
           </Button>
           {onClose && (
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.auditLogPanel.closeAriaLabel')}>
+            <IconButton label={t('extensionsPanels.auditLogPanel.closeAriaLabel')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -179,7 +183,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           Lets the user narrow "show only events for this extension". */}
       {!extensionId && distinctExtensionIds.length > 1 && (
         <div className="flex items-center gap-1 border-b px-4 py-2 overflow-x-auto">
-          <span className="text-[10px] text-muted-foreground shrink-0">{t('extensionsPanels.auditLogPanel.extensionFilterLabel')}</span>
+          <span className="text-2xs text-muted-foreground shrink-0">{t('extensionsPanels.auditLogPanel.extensionFilterLabel')}</span>
           <FilterChip
             label={t('extensionsPanels.auditLogPanel.filterAll')}
             active={extensionFilter === undefined}
@@ -209,8 +213,8 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
                   {t(KIND_LABEL_KEYS[event.kind])}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[11px] break-all">{event.extensionId}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="font-mono text-2xs break-all">{event.extensionId}</div>
+                  <div className="text-2xs text-muted-foreground">
                     {auditMetadata(event, t, locale)}
                   </div>
                 </div>
@@ -228,7 +232,7 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+      className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${
         active
           ? 'bg-primary text-primary-foreground'
           : 'bg-muted text-muted-foreground hover:bg-muted/70'

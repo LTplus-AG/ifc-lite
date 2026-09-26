@@ -1,5 +1,23 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.13
+
+### Patch Changes
+
+- Updated dependencies [[`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114), [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc), [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a), [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b), [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6)]:
+  - @ifc-lite/flow-nodes@0.5.0
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/sandbox@2.8.0
+  - @ifc-lite/mcp@0.22.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/wasm@10.1.2
+  - @ifc-lite/bcf-api@0.2.4
+  - @ifc-lite/clash@2.4.2
+  - @ifc-lite/sdk@7.1.3
+  - @ifc-lite/rules@0.4.1
+
 ## 1.15.12
 
 ### Patch Changes

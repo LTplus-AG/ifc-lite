@@ -69,6 +69,11 @@ export interface LandXmlIfcCoverage {
    * read it as `coverage.alignments ?? 0`.
    */
   alignments?: number;
+  /**
+   * Design profiles written as `IfcAlignmentVertical` (§12). Optional for the
+   * same reason as `alignments`: read it as `coverage.profiles ?? 0`.
+   */
+  profiles?: number;
 }
 
 /** What the produced file records about where it came from (§7). */

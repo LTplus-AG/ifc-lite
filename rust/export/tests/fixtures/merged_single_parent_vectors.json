@@ -1,9 +1,10 @@
 {
  "about": [
-  "Shared cross-language pin for the merged exporters' one-IfcRelAggregates-parent rule (#5471 TypeScript, #5727 Rust).",
-  "Each case merges `models` (DATA lines of IFC4 files, merged in order, schema IFC4) with both MergedExporter (packages/export/src/merged-single-parent.parity.test.ts) and export_merged_models (rust/export/tests/merged_single_parent_parity.rs).",
-  "`parents` maps an entity's GlobalId to the GlobalIds of its IfcRelAggregates parents in the output, sorted. Written from IFC's Decomposes SET [0:1] and each case's source, not copied from either exporter's output.",
-  "Both exporters must also write no object as a RelatedObjects member of two IfcRelAggregates."
+  "Shared cross-language pin for the merged exporters' one-decomposition-parent rule (#5471/#5726/#5725 TypeScript, #5727/#5802 Rust).",
+  "Each case merges `models` (DATA lines, merged in order) with both MergedExporter (packages/export/src/merged-single-parent.parity.test.ts) and export_merged_models (rust/export/tests/merged_single_parent_parity.rs), with the models' FILE_SCHEMA `schema` (default IFC4), written as `outputSchema` (default `schema`) with `options` (dropEmptyContainers, mergeSites 'by-name').",
+  "`rels` (default [IFCRELAGGREGATES]) are the relationship types whose RelatedObjects fill ONE single-valued inverse in the OUTPUT schema (IFC2X3: IfcRelAggregates and IfcRelNests share Decomposes; IFC4: Nests is its own).",
+  "`parents` maps an entity's GlobalId to the GlobalIds of its parents through those rels in the output, sorted; `absent` lists GlobalIds the output must not contain. Written from the schema's inverse and each case's source, not copied from either exporter's output.",
+  "Both exporters must also write no object as a member of two of those rels."
  ],
  "cases": [
   {
@@ -61,6 +62,142 @@
      "pa00000000000000000000"
     ]
    }
+  },
+  {
+   "name": "ifc2x3_nest_on_an_aggregated_part_5726",
+   "why": "IFC2X3: IfcRelNests and IfcRelAggregates both fill Decomposes. B repeats A's two stair members by GlobalId and nests one under the other; A already aggregates both under the stair, so the nest would be a second parent.",
+   "schema": "IFC2X3",
+   "rels": [
+    "IFCRELAGGREGATES",
+    "IFCRELNESTS"
+   ],
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSTAIR('st00000000000000000000',$,'Stair',$,$,$,$,$,.STRAIGHT_RUN_STAIR.);",
+     "#3=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$);",
+     "#4=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$);",
+     "#5=IFCRELAGGREGATES('ra00000000000000000000',$,$,$,#2,(#3,#4));"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$);",
+     "#3=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$);",
+     "#4=IFCRELNESTS('rn00000000000000000000',$,$,$,#3,(#2));"
+    ]
+   ],
+   "parents": {
+    "m100000000000000000000": [
+     "st00000000000000000000"
+    ],
+    "m200000000000000000000": [
+     "st00000000000000000000"
+    ]
+   },
+   "absent": [
+    "rn00000000000000000000"
+   ]
+  },
+  {
+   "name": "drop_after_claim_5725",
+   "why": "B's own Site (by-name, so it does not unify) aggregates only a Building that unifies with A's, which already has a parent. That edge is withheld, Site B is left empty and dropEmptyContainers must drop it with its Project aggregation.",
+   "options": {
+    "dropEmptyContainers": true,
+    "mergeSites": "by-name"
+   },
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSITE('sa00000000000000000000',$,'Site A',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+     "#3=IFCBUILDING('ba00000000000000000000',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#4=IFCRELAGGREGATES('ra10000000000000000000',$,$,$,#1,(#2));",
+     "#5=IFCRELAGGREGATES('ra20000000000000000000',$,$,$,#2,(#3));",
+     "#6=IFCBUILDINGELEMENTPROXY('px00000000000000000000',$,'P',$,$,$,$,$,$);",
+     "#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('rc00000000000000000000',$,$,$,(#6),#3);"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCSITE('sb00000000000000000000',$,'Site B',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+     "#3=IFCBUILDING('bb00000000000000000000',$,'House',$,$,$,$,$,.ELEMENT.,$,$,$);",
+     "#4=IFCRELAGGREGATES('rb10000000000000000000',$,$,$,#1,(#2));",
+     "#5=IFCRELAGGREGATES('rb20000000000000000000',$,$,$,#2,(#3));"
+    ]
+   ],
+   "parents": {
+    "ba00000000000000000000": [
+     "sa00000000000000000000"
+    ],
+    "sa00000000000000000000": [
+     "pa00000000000000000000"
+    ]
+   },
+   "absent": [
+    "sb00000000000000000000",
+    "rb10000000000000000000",
+    "rb20000000000000000000"
+   ]
+  },
+  {
+   "name": "ifc4_nest_on_an_aggregated_part_is_kept_5726",
+   "why": "The same merge as the IFC2X3 case, from IFC4 sources written as IFC4: Nests is its own SET [0:1], so the unified stringer keeps its Stair (Decomposes) and gets its one nesting parent.",
+   "rels": [
+    "IFCRELNESTS"
+   ],
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSTAIR('st00000000000000000000',$,'Stair',$,$,$,$,$,.STRAIGHT_RUN_STAIR.);",
+     "#3=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$,.STRINGER.);",
+     "#4=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$,.STRINGER.);",
+     "#5=IFCRELAGGREGATES('ra00000000000000000000',$,$,$,#2,(#3,#4));"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$,.STRINGER.);",
+     "#3=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$,.STRINGER.);",
+     "#4=IFCRELNESTS('rn00000000000000000000',$,$,$,#3,(#2));"
+    ]
+   ],
+   "parents": {
+    "m100000000000000000000": [
+     "m200000000000000000000"
+    ]
+   }
+  },
+  {
+   "name": "ifc4_nest_on_an_aggregated_part_written_as_ifc2x3_5726",
+   "why": "The same IFC4 sources written as IFC2X3: the OUTPUT schema decides, and there the nest would be a second Decomposes parent.",
+   "outputSchema": "IFC2X3",
+   "rels": [
+    "IFCRELAGGREGATES",
+    "IFCRELNESTS"
+   ],
+   "models": [
+    [
+     "#1=IFCPROJECT('pa00000000000000000000',$,'A',$,$,$,$,$,$);",
+     "#2=IFCSTAIR('st00000000000000000000',$,'Stair',$,$,$,$,$,.STRAIGHT_RUN_STAIR.);",
+     "#3=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$,.STRINGER.);",
+     "#4=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$,.STRINGER.);",
+     "#5=IFCRELAGGREGATES('ra00000000000000000000',$,$,$,#2,(#3,#4));"
+    ],
+    [
+     "#1=IFCPROJECT('pb00000000000000000000',$,'B',$,$,$,$,$,$);",
+     "#2=IFCMEMBER('m100000000000000000000',$,'M1',$,$,$,$,$,.STRINGER.);",
+     "#3=IFCMEMBER('m200000000000000000000',$,'M2',$,$,$,$,$,.STRINGER.);",
+     "#4=IFCRELNESTS('rn00000000000000000000',$,$,$,#3,(#2));"
+    ]
+   ],
+   "parents": {
+    "m100000000000000000000": [
+     "st00000000000000000000"
+    ],
+    "m200000000000000000000": [
+     "st00000000000000000000"
+    ]
+   },
+   "absent": [
+    "rn00000000000000000000"
+   ]
   }
  ]
 }

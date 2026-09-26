@@ -160,6 +160,7 @@ beforeEach(async () => {
     selectedStoreys: new Set<number>([FIXTURE_STOREY_2]),
     activeStorey: null,
     selectedEntities: [],
+    showPerformanceStats: false,
   });
 });
 
@@ -256,6 +257,7 @@ describe('StatusBar — federation-space storey element count', () => {
       selectedStoreys: new Set<number>(),
       activeStorey: null,
       selectedEntities: [],
+      showPerformanceStats: true,
     });
 
     const container = render();

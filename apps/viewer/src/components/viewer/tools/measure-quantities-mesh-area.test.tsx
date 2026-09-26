@@ -59,7 +59,7 @@ function openSection(container: HTMLElement, label: string): void {
   );
   assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
-    button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
   });
 }
 

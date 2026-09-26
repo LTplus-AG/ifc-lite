@@ -55,8 +55,9 @@ describe('IDSExportDialog localization (#4918)', () => {
     assert.match(text, /Create BCF topics from IDS validation failures\./);
     assert.doesNotMatch(text, /failing entit(y|ies) found/, 'no failing-entities-found clause when failedCount is 0');
     assert.match(text, /Topic Grouping/);
-    assert.match(text, /Per Entity \(recommended\)/);
-    assert.match(text, /One topic per failing entity\. Failed requirements listed as comments\./);
+    // Per specification is the default since #5824 (per entity scales with the model).
+    assert.match(text, /Per Specification \(recommended\)/);
+    assert.match(text, /One topic per failing specification\. Entities listed as comments\./);
     assert.match(text, /Include Passing Entities/);
     assert.match(text, /Add topics for entities that passed validation/);
     assert.match(text, /Per-Entity Camera/);
@@ -133,7 +134,7 @@ describe('IDSExportDialog localization (#4918)', () => {
     assert.match(text, /⟦idsPanel\.export\.title⟧/);
     assert.match(text, /⟦idsPanel\.export\.description⟧/);
     assert.match(text, /⟦idsPanel\.export\.topicGrouping⟧/);
-    assert.match(text, /⟦idsPanel\.export\.grouping\.perEntity⟧/);
+    assert.match(text, /⟦idsPanel\.export\.grouping\.perSpecification⟧/);
     assert.match(text, /⟦idsPanel\.export\.includePassing⟧/);
     assert.match(text, /⟦idsPanel\.export\.perEntityCamera⟧/);
     assert.match(text, /⟦idsPanel\.export\.captureSnapshots⟧/);

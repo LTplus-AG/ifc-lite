@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
@@ -43,6 +44,22 @@ export function resolveBaseAttributeValue(
   }
 }
 
+const typeObjectByClass = new Map<string, boolean>();
+
+/**
+ * Whether `typeName` is an IfcTypeObject subtype, whose own sets sit in
+ * `HasPropertySets`. By schema ancestry, not by an "ends in Type" name test,
+ * which missed IFC2X3's `IfcDoorStyle` / `IfcWindowStyle` (#5966).
+ */
+function isTypeObjectClass(typeName: string): boolean {
+  let known = typeObjectByClass.get(typeName);
+  if (known === undefined) {
+    known = getInheritanceChainAcrossSchemas(typeName).includes('IfcTypeObject');
+    typeObjectByClass.set(typeName, known);
+  }
+  return known;
+}
+
 /**
  * The store each view's base readers were last pointed at by
  * {@link configureMutationView}. Weak, so it never keeps a view or a store
@@ -75,7 +92,7 @@ export function configureMutationView(
   if (dataStore.source?.length > 0) {
     mutationView.setOnDemandExtractor((entityId: number) => {
       const typeName = dataStore.entities?.getTypeName(entityId) ?? '';
-      if (typeName.endsWith('Type')) {
+      if (isTypeObjectClass(typeName)) {
         return extractTypeEntityOwnProperties(dataStore, entityId);
       }
       return extractPropertiesOnDemand(dataStore, entityId);

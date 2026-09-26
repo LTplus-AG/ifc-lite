@@ -494,6 +494,41 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(a.clashes[0]!.distance).toBeCloseTo(-0.02, 3);
   });
 
+  it('agrees on a through-penetration tie, at the same depth wherever the pair sits (#5742)', async () => {
+    // A member overlapping a 26 mm plate by 26 mm pokes out of the far face
+    // by microns, so `through` is decided per placement by f32 noise. The
+    // through side used to report the rotated boxes' 0.786 m AABB estimate
+    // and the other side the certified 0.026 m MTD. Capped by the MTD, both
+    // kernels report the 26 mm on both sides of the tie.
+    const r = rotationZyx(1.5800129994571253, 3.5225093160578957, 1.8017834383956415);
+    const h0: Vec3 = [0.013013728003234151, 0.9714054867418568, 1.3767230571852422];
+    const h1: Vec3 = [0.23902077510958353, 0.7165054118524359, 0.26588907459338434];
+    const sep = -0.02604616601887833;
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcPlate', b: 'IfcMember', mode: 'hard' }];
+    for (const t of [[0, 0, 0], [0, 1000, 0], [10_000, 0, 0]] as Vec3[]) {
+      const shift = (el: ClashElement): ClashElement => {
+        const p = new Float32Array(el.positions.length);
+        for (let i = 0; i < p.length; i += 1) p[i] = Math.fround(el.positions[i]! + t[i % 3]!);
+        const min: Vec3 = [Infinity, Infinity, Infinity];
+        const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+        for (let i = 0; i < p.length; i += 1) {
+          const k = i % 3;
+          if (p[i]! < min[k]!) min[k] = p[i]!;
+          if (p[i]! > max[k]!) max[k] = p[i]!;
+        }
+        return { ...el, positions: p, bounds: { min, max } };
+      };
+      const els = [
+        shift(rotatedBox('P', 'IfcPlate', r, [0, 0, 0], h0)),
+        shift(rotatedBox('M', 'IfcMember', r, [h0[0] + h1[0] + sep, 0, 0], h1)),
+      ];
+      const a = await ts.run(els, rules);
+      assertParity(a, await wasm.run(els, rules));
+      expect(a.clashes, `translated by ${t}`).toHaveLength(1);
+      expect(a.clashes[0]!.distance, `translated by ${t}`).toBeCloseTo(sep, 3);
+    }
+  });
+
   it('agrees that flush interlocking L prisms are a touch, not the AABB estimate (#5751)', async () => {
     // Their AABB-overlap centre lies ON the shared face y = 1: the probe
     // there used to decide Hard by a coin-flip ray parity. Both kernels now

@@ -1,5 +1,13 @@
 # @ifc-lite/clash
 
+## 2.4.2
+
+### Patch Changes
+
+- Updated dependencies [[`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a), [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6)]:
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/wasm@10.1.2
+
 ## 2.4.1
 
 ### Patch Changes

@@ -23,13 +23,18 @@
  *     aligned rectangle with the diagonal, plus W/D readouts
  *   - slab polygon: pending edges + closing-edge ghost back to start
  *     when ≥3 points exist (so the user can preview the close)
+ *
+ * On the shared scene-overlay kernel (#5486/#5512, charter #5478): mounted
+ * inside `ToolOverlays`' `<SceneOverlayRoot>`. `useProjectorTick`
+ * re-renders this component off the ONE shared `SceneProjector` dirty tick
+ * instead of running its own unconditional `requestAnimationFrame` poll.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import type { AddElementVec3 } from '@/store/slices/addElementSlice';
-import { OVERLAY_GLOW_FILTER, WorldLabel } from '../../viewport-ui/scene';
+import { OVERLAY_GLOW_FILTER, WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
 import { formatDistance } from './formatDistance';
 import { formatArea } from './computePolygonArea';
 
@@ -57,76 +62,26 @@ export function AddElementOverlay() {
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Camera realtime updates intentionally bypass React renders for
-  // performance (see `updateCameraRotationRealtime`), so we drive our
-  // own RAF tick while the tool is active to re-project pending +
-  // hover points each frame. The tick state is just a number that
-  // forces a re-render; the projection itself is read fresh from the
-  // store callback.
-  //
-  // Two perf gates:
-  //  1. Skip the loop entirely when there's nothing to project.
-  //     pendingPoints / hoverPoint / autoSpacePreview already trigger
-  //     React re-renders via the store, so the only reason we'd need
-  //     a per-frame tick is to track the camera while content exists.
-  //  2. Only re-render when the camera actually moved since last tick.
-  //     A held tool with a static camera does ~0 work.
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
+  // performance (see `updateCameraRotationRealtime`), so we need a tick to
+  // re-project pending + hover points on camera motion. Sourced from the
+  // ONE shared `SceneProjector` dirty tick (`useProjectorTick`)
+  // instead of a private `requestAnimationFrame` poll: it already skips
+  // work while idle (static camera) and while there's nothing to project
+  // — `hasOverlayContent` below gates registration the same way the old
+  // loop gated itself.
   const hasOverlayContent =
     pendingPoints.length > 0 ||
     hoverPoint !== null ||
     (autoSpacePreview != null && autoSpacePreview.outlines.length > 0);
-  const [frameTick, setFrameTick] = useState(0);
-  const rafRef = useRef<number | null>(null);
-  const lastViewpointRef = useRef<{
-    px: number; py: number; pz: number;
-    tx: number; ty: number; tz: number;
-    fov: number;
-  } | null>(null);
-  useEffect(() => {
-    if (activeTool !== 'addElement') return;
-    if (!hasOverlayContent) return;
-    let mounted = true;
-    const loop = () => {
-      if (!mounted) return;
-      const vp = getViewpoint?.();
-      if (vp) {
-        const last = lastViewpointRef.current;
-        const moved =
-          !last ||
-          last.px !== vp.position.x || last.py !== vp.position.y || last.pz !== vp.position.z ||
-          last.tx !== vp.target.x  || last.ty !== vp.target.y  || last.tz !== vp.target.z  ||
-          last.fov !== vp.fov;
-        if (moved) {
-          lastViewpointRef.current = {
-            px: vp.position.x, py: vp.position.y, pz: vp.position.z,
-            tx: vp.target.x,   ty: vp.target.y,   tz: vp.target.z,
-            fov: vp.fov,
-          };
-          setFrameTick((t) => (t + 1) & 0xffff);
-        }
-      } else {
-        // Fallback for environments without getViewpoint — preserves the
-        // pre-fix behaviour of an unconditional tick so the projection
-        // can't get stuck stale.
-        setFrameTick((t) => (t + 1) & 0xffff);
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      mounted = false;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      lastViewpointRef.current = null;
-    };
-  }, [activeTool, hasOverlayContent, getViewpoint]);
+  const frameTick = useProjectorTick(activeTool === 'addElement' && hasOverlayContent);
 
   const projection = useMemo(
     () => makeProjection(projectToScreen),
     // Re-creating the memoized projection on every tick is wasted —
-    // the underlying function reference rarely changes. We only
-    // depend on `projectToScreen` itself; the RAF tick triggers the
-    // re-render that calls the projection again with current camera.
+    // the underlying function reference rarely changes. We only depend on
+    // `projectToScreen` itself; the shared-projector frame tick below
+    // triggers the re-render that calls the projection again with current
+    // camera.
     [projectToScreen],
   );
 

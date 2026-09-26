@@ -3,15 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** The Space Sketch disclosure popovers' BODIES — Options (set-once
- *  settings) and Help (the full gesture legend). `SpaceSketchBar` mounts
- *  each inside a `HudPopoverContent` (#5503), which owns the card surface
- *  and placement; nothing here positions itself. */
+ *  settings), Help (the full gesture legend) and More (#5975: history, snap
+ *  and Help collapsed together below the bar's compact width threshold).
+ *  `SpaceSketchBar` mounts each inside a `HudPopoverContent` (#5503), which
+ *  owns the card surface and placement; nothing here positions itself. */
 
+import { Undo2, Redo2, Magnet } from 'lucide-react';
 import type { BoundaryMode } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { HudSegmented } from '../../../viewport-ui/hud';
+
+const MORE_ROW = 'flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-foreground hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent';
+const MORE_ICON = 'h-3.5 w-3.5 shrink-0 text-muted-foreground';
 
 export interface OptionsPopoverProps {
   boundaryMode: BoundaryMode;
@@ -62,7 +67,7 @@ export function OptionsPopover(props: OptionsPopoverProps) {
     label: <span title={!hasWallData && m !== 'center' ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{t(BOUNDARY_MODE_SHORT_LABEL_KEY[m])}</span>,
   }));
   return (
-    <div className="space-y-3 text-[11px] text-muted-foreground">
+    <div className="space-y-3 text-2xs text-muted-foreground">
       <div className="space-y-1.5">
         <div className="font-medium text-foreground">{t('spaceSketch.options.boundaryHeading')}</div>
         <HudSegmented<BoundaryMode>
@@ -118,7 +123,7 @@ const HELP_ROWS: [TranslationKey, TranslationKey][] = [
 export function HelpPopover() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-1.5 text-[11px]">
+    <div className="space-y-1.5 text-2xs">
       <div className="mb-1 font-medium text-foreground">{t('spaceSketch.help.heading')}</div>
       {HELP_ROWS.map(([k, v]) => (
         <div key={k} className="flex gap-2">
@@ -126,6 +131,43 @@ export function HelpPopover() {
           <span className="text-muted-foreground">— {t(v)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+export interface MorePopoverProps {
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  snapToBuilding: boolean;
+  onToggleSnap: () => void;
+}
+
+/** History + snap + the Help legend, together, behind the bar's compact-mode
+ *  `MoreHorizontal` trigger (#5975) — the same actions the full bar shows
+ *  inline, just stacked instead of laid out in a row. */
+export function MorePopover(p: MorePopoverProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2 text-2xs">
+      <div className="space-y-0.5">
+        <button type="button" className={MORE_ROW} onClick={p.onUndo} disabled={!p.canUndo}>
+          <Undo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.undoTitle')}
+        </button>
+        <button type="button" className={MORE_ROW} onClick={p.onRedo} disabled={!p.canRedo}>
+          <Redo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.redoTitle')}
+        </button>
+        <label className={cn(MORE_ROW, 'cursor-pointer justify-between')}>
+          <span className="flex items-center gap-2">
+            <Magnet aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.snapLabel')}
+          </span>
+          <input type="checkbox" className="accent-overlay-accent" checked={p.snapToBuilding} onChange={p.onToggleSnap} />
+        </label>
+      </div>
+      <div className="border-t border-border pt-2">
+        <HelpPopover />
+      </div>
     </div>
   );
 }

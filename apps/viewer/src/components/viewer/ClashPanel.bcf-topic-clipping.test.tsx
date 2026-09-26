@@ -26,6 +26,7 @@ import type { FederatedModel } from '@/store/types';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF.js';
 import { ClashPanel } from './ClashPanel.js';
+import { Toaster } from '@/components/ui/toast.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 400 });
@@ -64,7 +65,7 @@ function result(): ClashResult {
   };
 }
 
-function seed(activeTool: string, enabled: boolean): void {
+function seed(activeTool: string, enabled: boolean, modelCount = 1): void {
   const geometryResult: GeometryResult = {
     meshes: [],
     totalVertices: 0,
@@ -73,13 +74,14 @@ function seed(activeTool: string, enabled: boolean): void {
   };
   const model = { ...fixtureModel('model.ifc'), loadedAt: 1, geometryResult } as FederatedModel;
   useViewerStore.setState({
-    ...fixtureModels(model),
+    ...fixtureModels(model, ...(modelCount === 2 ? [fixtureModel('other.ifc', { idOffset: 1_000_000 })] : [])),
     geometryResult: null,
     hiddenEntities: new Set(),
     isolatedEntities: null,
     selectedEntityId: null,
     selectedEntityIds: new Set(),
     bcfProject: null,
+    bcfPanelVisible: false,
     activeTopicId: null,
     clashResult: result(),
     clashGroups: null,
@@ -95,6 +97,8 @@ let root: Root | null = null;
 let container: HTMLElement | null = null;
 
 afterEach(async () => {
+  const dismiss = container?.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notification"]');
+  if (dismiss) await act(async () => dismiss.click());
   const current = root;
   root = null;
   if (current) await act(async () => current.unmount());
@@ -112,7 +116,7 @@ async function clickBcfTopic(): Promise<string> {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root!.render(<ClashPanel />);
+    root!.render(<><ClashPanel /><Toaster /></>);
   });
   const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'BCF topic');
   assert.ok(button, 'the Clash panel offers "BCF topic"');
@@ -142,3 +146,18 @@ describe('Clash panel "BCF topic" clipping planes (#4806)', () => {
     assert.equal(xml.match(/<ClippingPlane>/g)?.length, 1, 'exactly one clipping plane');
   });
 });
+
+for (const modelCount of [1, 2]) {
+  it('keeps Clash open after creating a BCF topic with ' + modelCount + ' model(s) (#5827)', async () => {
+    seed('select', false, modelCount);
+    await clickBcfTopic();
+    assert.equal(useViewerStore.getState().bcfPanelVisible, false);
+    assert.ok([...container!.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'BCF topic'),
+      'Clash panel remains mounted');
+    assert.ok(container?.textContent?.includes('Topic created'), 'success toast is shown');
+    const open = [...(container?.querySelectorAll('button') ?? [])].find((button) => button.textContent === 'Open BCF');
+    assert.ok(open, 'toast offers an Open BCF action');
+    await act(async () => open.click());
+    assert.equal(useViewerStore.getState().bcfPanelVisible, true);
+  });
+}

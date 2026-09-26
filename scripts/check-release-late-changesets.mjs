@@ -21,7 +21,7 @@
  * Packages entry followed by an entry that adds a changeset publishes nothing
  * either. Hence `--base`: the comparison spans everything one push can carry.
  *
- * Two callers, one verdict:
+ * Three callers, one verdict:
  *
  *   - `.github/workflows/test.yml`, `changes` job (feeds the required
  *     `Build + WASM + Rust + Node` context). On `merge_group` the tentative
@@ -29,6 +29,11 @@
  *     Packages PR, or a changeset entry queued behind a Version Packages
  *     entry, is kicked from the queue instead of landing. `--context merge`
  *     (`push` on a push to main, where it can only report).
+ *   - `.github/workflows/release-pr-freshness.yml` (#5951). Merges normally
+ *     bypass the queue, so on every push to `main` or `changeset-release/main`
+ *     it squashes the open Version Packages PR onto the current `main` tip and
+ *     runs this check (`--context merge`, `--base <main tip>`); a stale PR is
+ *     converted to a draft, which not even an admin bypass can merge.
  *   - `.github/workflows/release.yml`, the backstop: a release commit that
  *     reaches `main` anyway turns its Release run red instead of silently
  *     opening a version PR. `--context release`.

@@ -15,15 +15,25 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         let point = match item.ifc_type {
-            IfcType::IfcFacetedBrep | IfcType::IfcFacetedBrepWithVoids => {
-                self.brep_first_vertex(item, decoder)
-            }
+            IfcType::IfcFacetedBrep
+            | IfcType::IfcFacetedBrepWithVoids
+            | IfcType::IfcAdvancedBrep
+            | IfcType::IfcAdvancedBrepWithVoids => self.brep_first_vertex(item, decoder),
             IfcType::IfcFaceSurface | IfcType::IfcAdvancedFace => {
                 self.face_first_vertex(item, decoder)
             }
             IfcType::IfcTriangulatedFaceSet
             | IfcType::IfcTriangulatedIrregularNetwork
             | IfcType::IfcPolygonalFaceSet => self.tessellated_first_vertex(item, decoder),
+            // First control point: a B-spline surface lies in its net's hull,
+            // so the net's magnitude is the surface's (#5698). Rebase probe
+            // only; RTC detection deliberately abstains on these (#1526).
+            IfcType::IfcBSplineSurfaceWithKnots
+            | IfcType::IfcRationalBSplineSurfaceWithKnots => {
+                let rows = item.get(2)?.as_list()?;
+                let point_id = rows.first()?.as_list()?.first()?.as_entity_ref()?;
+                decoder.get_cartesian_point_fast(point_id)
+            }
             IfcType::IfcFaceBasedSurfaceModel | IfcType::IfcShellBasedSurfaceModel => {
                 let shells = item.get(0)?.as_list()?;
                 let shell_id = shells.first()?.as_entity_ref()?;

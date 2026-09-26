@@ -24,15 +24,18 @@
  * anchored on the cut point.
  *
  * The guide geometry itself (a perpendicular through the cut point, which
- * needs the projected axis direction, not just a point) keeps the
- * camera-tick RAF trick the GizmoOverlay uses, so the preview tracks the
- * element through orbit / zoom without re-rendering on every camera frame.
+ * needs the projected axis direction, not just a point) is re-projected off
+ * the shared scene-overlay kernel's dirty tick (#5486/#5512, charter
+ * #5478): `useProjectorTick` re-renders this component once per tick
+ * of the ONE shared `SceneProjector` loop instead of running its own
+ * `requestAnimationFrame` poll (`useCameraTickSubscription`), so the
+ * preview tracks the element through orbit/zoom without re-rendering on
+ * every camera frame regardless of motion.
  */
 
 import { useViewerStore } from '@/store';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { formatSplitHoverLabel } from './formatDistance';
-import { WorldLabel } from '../../viewport-ui/scene';
+import { WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -64,17 +67,16 @@ export function SplitOverlay() {
   const slabCutStoreyElevation = useViewerStore((s) => s.slabCutStoreyElevation);
   const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
-  // Camera-tick subscription — wakes the overlay when the camera
-  // moves so the preview tracks the element through orbit / zoom.
-  // Skipped when nothing is hovered (idle Split tool with no cursor
-  // over an element is free of per-frame work).
+  // Shared-projector frame tick — wakes the overlay when the camera moves
+  // so the preview tracks the element through orbit / zoom. Skipped when
+  // nothing is hovered (idle Split tool with no cursor over an element is
+  // free of per-frame work).
   const active =
     activeTool === 'split' &&
     (splitMode === 'aiming' || splitMode === 'first-anchor') &&
     splitHoverPoint !== null;
-  void useCameraTickSubscription(getViewpoint, active);
+  void useProjectorTick(active);
 
   if (!active || !projectToScreen) return null;
 

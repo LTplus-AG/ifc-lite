@@ -1,5 +1,13 @@
 # @ifc-lite/wasm
 
+## 10.1.2
+
+### Patch Changes
+
+- [#6018](https://github.com/LTplus-AG/ifc-lite/pull/6018) [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a) Thanks [@louistrue](https://github.com/louistrue)! - The native (Rust) merged exporter now matches the TypeScript `MergedExporter` on decomposition parents ([#5802](https://github.com/LTplus-AG/ifc-lite/issues/5802), the Rust twin of [#5726](https://github.com/LTplus-AG/ifc-lite/issues/5726) and [#5725](https://github.com/LTplus-AG/ifc-lite/issues/5725)). `IfcRelNests` now counts against the one-parent rule, per output schema: in IFC2X3 a nest and an aggregation share `Decomposes : SET [0:1]`, so a unified part that is already aggregated no longer gets a nesting parent too. In IFC4 and later `Nests` is its own `SET [0:1]`, so a second nesting parent is refused. `drop_empty_containers` now also drops a container that the one-parent pass empties, for example a later model's Site whose only child is a Building that unified with one already parented.
+
+- [#5943](https://github.com/LTplus-AG/ifc-lite/pull/5943) [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6) Thanks [@louistrue](https://github.com/louistrue)! - Plan-rotated walls whose openings are cut in the wall's own frame no longer come back with T-junction seams. When that cut returns an open mesh, it is retried on operands whose coincident planes (scattered by the f32 world quantum) are snapped back onto one value. The retry is kept only if it is closed and consistently wound. Walls whose cut was already closed are unchanged.
+
 ## 10.1.1
 
 ### Patch Changes

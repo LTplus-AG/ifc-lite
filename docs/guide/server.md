@@ -729,14 +729,14 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-v5          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v7          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v5 # Metadata header
-{SHA256}-{filter}-datamodel-v7        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v3         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
 # a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v2.
-# It shares the flat route's -datamodel-v7 above rather than having a data
+# It shares the flat route's -datamodel-v8 above rather than having a data
 # model of its own: since #5129 this route writes one too, gated on
 # has_current_data_model before a replay (the same #3869 rule the flat route
 # already applied, now also checked by the ?sha256= probe below) so a hit

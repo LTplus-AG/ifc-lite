@@ -19,6 +19,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
+import { routeMeasureTap } from './touchRouting.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -208,7 +209,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const panDx = centerX - touchState.lastCenter.x;
         const panDy = centerY - touchState.lastCenter.y;
 
-        const zoomDelta = distance - touchState.lastDistance;
+        // Positive when the fingers close. `Camera.zoom` reads a positive
+        // delta as zoom OUT (as the wheel's scroll-down), so spreading the
+        // fingers zooms in, the mobile convention (#5777).
+        const zoomDelta = touchState.lastDistance - distance;
 
         // Determine dominant gesture if not yet locked
         if (touchState.twoFingerGesture === 'none') {
@@ -285,21 +289,24 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         // - Was a single-finger touch (not after multi-touch gesture)
         // - Tap was quick (< 300ms)
         // - Didn't move significantly
-        // - Tool supports selection (not pan/walk/measure)
+        // - Tool acts on a tap (not pan/walk)
         if (
           previousTouchCount === 1 &&
           !wasMultiTouch &&
           tapDuration < 300 &&
           !touchState.didMove &&
           tool !== 'pan' &&
-          tool !== 'walk' &&
-          tool !== 'measure'
+          tool !== 'walk'
         ) {
           const rect = canvas.getBoundingClientRect();
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (tool === 'appearance-face') {
+          if (tool === 'measure') {
+            // The measure logic lives with the mouse controls; touchstart's
+            // preventDefault suppresses the compatibility click, so hand the tap over (#5856).
+            routeMeasureTap(canvas, x, y);
+          } else if (tool === 'appearance-face') {
             // Touchend owns this tap. Record it before routing the exact hit so
             // the browser's compatibility click cannot toggle the same face a
             // second time through handleSelectionClick (#4555).

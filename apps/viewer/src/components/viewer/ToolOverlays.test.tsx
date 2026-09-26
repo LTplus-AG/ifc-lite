@@ -5,10 +5,17 @@
 /**
  * `ToolOverlays` places the active tool's `TOOL_HUD` row through the HUD
  * (#5503): the bar lands in the top-center region, the hint in the
- * bottom-center region, and the scene layer under one `SceneOverlayRoot`.
- * Asserted through the HUD's real region nodes — a bar that rendered
- * anywhere else (its own `absolute` card, say) would leave the region empty
- * and fail here.
+ * bottom-center region, and the scene layer under the ambient
+ * `SceneOverlayRoot`. Asserted through the HUD's real region nodes — a bar
+ * that rendered anywhere else (its own `absolute` card, say) would leave
+ * the region empty and fail here.
+ *
+ * `ToolOverlays` no longer mounts its own `SceneOverlayRoot` (#5512):
+ * `ViewportContainer` mounts ONE root for the whole viewport (every sibling
+ * overlay migrated onto the kernel by #5511/#5512), so this test supplies
+ * one itself, the way `ViewportContainer` does in production, and asserts
+ * there is exactly one — not the zero a missing ancestor would leave, and
+ * not the two a reverted consolidation would produce.
  */
 
 import '@/test/setup-dom.js';
@@ -19,6 +26,7 @@ import { cleanup, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { en } from '@/i18n/en';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
+import { SceneOverlayRoot } from '../viewport-ui/scene';
 import { ToolOverlays } from './ToolOverlays.js';
 
 const region = (name: string) => document.querySelector(`[data-hud-region="${name}"]`) as HTMLElement;
@@ -39,17 +47,20 @@ afterEach(() => {
 });
 
 describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
-  it('mounts one scene overlay root and leaves the HUD regions empty for the Select tool', () => {
+  it('renders under exactly one ambient scene overlay root and leaves the HUD regions empty for the Select tool', () => {
     render(<ViewportHud />);
-    const ui = render(<ToolOverlays />);
+    const ui = render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
     assert.equal(ui.querySelectorAll('[data-scene-overlay-root]').length, 1);
     assert.equal(region('top-center').querySelectorAll('[data-hud-item]').length, 0);
     assert.equal(region('bottom-center').querySelectorAll('[data-hud-item]').length, 0);
+    // Mutation check: reverting `ToolOverlays` to mount its own inner
+    // `SceneOverlayRoot` (pre-#5512) would leave TWO
+    // `[data-scene-overlay-root]` nodes here, not one.
   });
 
   it('places the Split bar top-center and its hint bottom-center, and removes both when the tool changes', () => {
     render(<ViewportHud />);
-    render(<ToolOverlays />);
+    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
     act(() => useViewerStore.setState({ activeTool: 'split' }));
 
     const bar = region('top-center').querySelector('[data-hud-item]');
@@ -66,7 +77,7 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
 
   it('places the Space Sketch bar top-center and its plan card as the next top-center item', () => {
     render(<ViewportHud />);
-    render(<ToolOverlays />);
+    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
     act(() => useViewerStore.setState({ activeTool: 'spaceSketch' }));
 
     const items = Array.from(region('top-center').querySelectorAll(':scope > [data-hud-item]'));
@@ -80,7 +91,7 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
 
   it('parks a minimized Space Sketch as a top-left chip and empties top-center', () => {
     render(<ViewportHud />);
-    render(<ToolOverlays />);
+    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
     act(() => useViewerStore.setState({ activeTool: 'spaceSketch' }));
     act(() => useViewerStore.getState().setSpaceSketchMinimized(true));
 

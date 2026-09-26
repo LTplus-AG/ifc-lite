@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+
+
 import { Progress } from '@/components/ui/progress';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -14,7 +16,7 @@ export function BulkExecutionProgress({ done, total }: { done: number; total: nu
   const percentage = safeTotal > 0 ? (safeDone / safeTotal) * 100 : 0;
   return <div className="space-y-2">
     <div className="flex items-center justify-between text-sm text-muted-foreground">
-      <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />{t('bulkPropertyEditor.applying')}</span>
+      <span className="flex items-center gap-2"><Spinner size="md" />{t('bulkPropertyEditor.applying')}</span>
       <span>{t('bulkPropertyEditor.progress', {
         count: safeTotal,
         done: formatLocaleNumber(locale, safeDone),

@@ -70,12 +70,11 @@ function touch(type, spread) {
   }, { type, spread, x: target.x, y: target.y });
 }
 
-/** One zoom-in pinch: finger half-spread 200 px closing to 20 in 20 px steps.
- *  Closing the fingers zooms in today, the reverse of the mobile convention
- *  (#5777); a fix there flips this to an opening pinch. */
+/** One zoom-in pinch: finger half-spread 20 px opening to 200 in 20 px steps
+ *  (spreading the fingers zooms in, #5777). */
 async function pinch() {
-  await touch('touchstart', 200);
-  for (let s = 180; s >= 20; s -= 20) await touch('touchmove', s);
+  await touch('touchstart', 20);
+  for (let s = 40; s <= 200; s += 20) await touch('touchmove', s);
   await touch('touchend', null);
   await page.waitForTimeout(150);
 }

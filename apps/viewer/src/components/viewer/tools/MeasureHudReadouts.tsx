@@ -58,7 +58,7 @@ export function MeasureGeoReadout() {
       <HudSurface className="max-w-[92vw] px-2.5 py-1.5 text-xs" data-testid="measure-geo-readout">
         <div className="flex items-baseline gap-2 whitespace-nowrap">
           <Globe aria-hidden className="h-3 w-3 shrink-0 self-center text-overlay-accent" />
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             {activeMeasurement ? t('measure.readout.live') : t('measure.readout.last')}
           </span>
           <span className="font-mono tabular-nums">
@@ -68,7 +68,7 @@ export function MeasureGeoReadout() {
             <span className="ml-1 text-muted-foreground">{t('measure.geo.unitMeters')}</span>
           </span>
         </div>
-        <div className="mt-0.5 pl-5 text-[10px] tabular-nums text-muted-foreground">
+        <div className="mt-0.5 pl-5 text-2xs tabular-nums text-muted-foreground">
           {anchor.eff.projectedCRS.name}
           {latLon && (
             <span className="ml-2">

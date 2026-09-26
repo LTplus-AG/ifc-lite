@@ -29,6 +29,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store/index.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { render, cleanup } from '@/test/render.js';
 
 /** One placed polyline point at renderer origin, screen-anchored at (10, 20). */
@@ -74,7 +75,7 @@ describe('polyline rubber band without a snap target', () => {
     // snapTarget is null — exactly what handleMeasureHover leaves behind when
     // the 40px-radius raycast misses. The segment must still track the cursor.
     useViewerStore.setState({ snapEnabled: true });
-    const container = render(<ToolOverlays />);
+    const container = render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
 
     moveMouse(123, 45);
 
@@ -91,7 +92,7 @@ describe('polyline rubber band without a snap target', () => {
     // snapTarget stays null for the whole session — the cursor fallback is
     // the only thing that can drive the segment.
     useViewerStore.setState({ snapEnabled: false });
-    const container = render(<ToolOverlays />);
+    const container = render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
 
     assert.equal(rubberBand(container), null, 'no segment before the mouse has moved');
     moveMouse(300, 200);
@@ -108,7 +109,7 @@ describe('polyline rubber band without a snap target', () => {
     // must leave the rubber band on the snapped position A. This passed
     // before the fix too — it pins that the fix did not regress snapping.
     useViewerStore.setState({ snapEnabled: true });
-    const container = render(<ToolOverlays />);
+    const container = render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
 
     moveMouse(100, 50);
     act(() => {
@@ -128,7 +129,7 @@ describe('polyline rubber band without a snap target', () => {
     // Finish/cancel clears the tracked cursor; a new polyline must show no
     // rubber band until the mouse actually moves again.
     useViewerStore.setState({ snapEnabled: false });
-    const container = render(<ToolOverlays />);
+    const container = render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
 
     moveMouse(123, 45);
     assert.ok(rubberBand(container), 'precondition: segment tracked the first polyline');

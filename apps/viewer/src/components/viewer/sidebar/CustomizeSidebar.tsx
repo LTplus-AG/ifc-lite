@@ -19,11 +19,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { GripVertical, Eye, EyeOff, RotateCcw, Lock, ChevronUp, ChevronDown, Plus } from 'lucide-react';
+import { GripVertical, EyeOff, RotateCcw, Lock, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resetLayout } from '@/store/layoutReset';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -31,7 +32,6 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const setShown = useViewerStore((s) => s.setPanelShownInSidebar);
-  const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
   const hidden = new Set(hiddenIds);
   const ref = useRef<HTMLDivElement>(null);
@@ -123,6 +123,8 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 setOverId(null);
               }}
               onDragOver={(e) => {
+                // Only a row reorder claims the drag; a file is the window's (#5845).
+                if (!dragId) return;
                 e.preventDefault();
                 if (overId !== id) setOverId(id);
               }}

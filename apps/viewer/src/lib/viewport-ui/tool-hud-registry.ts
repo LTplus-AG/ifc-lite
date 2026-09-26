@@ -5,6 +5,7 @@
 import type { ComponentType } from 'react';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel';
 import { SectionOverlay } from '@/components/viewer/tools/SectionPanel';
+import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar';
 import { AddElementOverlay } from '@/components/viewer/tools/AddElementOverlay';
 import { SelectEditScene } from '@/components/viewer/tools/SelectEditScene';
 import { SplitBar, SplitScene } from '@/components/viewer/tools/SplitHud';
@@ -75,11 +76,13 @@ export interface ToolHudEntry {
 export const TOOL_HUD: Record<ToolId, ToolHudEntry> = {
   // Edit mode's move gizmo + wall endpoint handles; both self-gate.
   select: { Scene: SelectEditScene },
-  // Measure and Section still carry their own card (#5510 / #5511 split
-  // each into a Bar + Scene). Registered as the scene slot so they render
-  // exactly as before, without keeping a bespoke branch in `ToolOverlays`.
+  // Measure still carries its own bar inside its scene component (#5510
+  // splits it into a Bar + Scene). Registered as the scene slot so it
+  // renders exactly as before, without a bespoke branch in `ToolOverlays`.
   measure: { Scene: MeasureOverlay },
-  section: { Scene: SectionOverlay },
+  // The Section bar (#5499); its hint is dynamic (pick / cut / off), so the
+  // scene side renders it rather than this table's static `hint` key.
+  section: { Bar: SectionToolbar, Scene: SectionOverlay },
   addElement: { Scene: AddElementOverlay },
   split: { Bar: SplitBar, Scene: SplitScene, hint: 'splitTool.hint' },
   spaceSketch: { Bar: SpaceSketchOverlay },

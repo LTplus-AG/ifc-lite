@@ -25,6 +25,7 @@ import { useViewerStore } from '@/store';
 import { renderScene } from '../../viewport-ui/scene/test/scene-test-support.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SplitBar, SplitScene } from './SplitHud.js';
 
 // Guarded dynamic import (#4918 revert-oracle): a static `import { splitToolEn }
@@ -133,7 +134,7 @@ describe('Split tool localization (#4918)', { skip: !HAS_CATALOGUE && 'split-too
       cameraCallbacks: { projectToScreen: () => null, getViewpoint: () => null },
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
     render(<ViewportHud />);
-    render(<ToolOverlays />);
+    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
     const region = document.querySelector('[data-hud-region="bottom-center"]');
     assert.ok(region, 'the HUD bottom-center region exists');
     assertTranslates(region, ['splitTool.hint'], 'split-hint-pseudo');

@@ -54,12 +54,13 @@ export function useCesiumPlacementController({
   // Bootstrap a real draft in the store as soon as editing starts. Without
   // this, `activeDraft` below falls into its ELSE branch (a fresh object
   // literal every render, since there is no stored draft to reuse) and never
-  // stabilizes — the gizmo's screen-projection effect depends on values
-  // derived from it, so an unstable `activeDraft` free-runs that effect into
-  // an infinite render loop (caught the hard way by
-  // `CesiumPlacementGizmo.i18n.test.tsx` timing out at "Maximum update depth
-  // exceeded", #5505). Two independent callers of this hook (the gizmo and
-  // the Georeference tab) both run this effect; it is idempotent per model.
+  // stabilizes — other hooks/memos derived from it (the gizmo's screen
+  // projection, `guardConversion`) never stabilize either, so an unstable
+  // `activeDraft` free-runs downstream renders into an infinite loop (caught
+  // the hard way by `CesiumPlacementGizmo.i18n.test.tsx` timing out at
+  // "Maximum update depth exceeded", #5505). Two independent callers of this
+  // hook (the gizmo and the Georeference tab) both run this effect; it is
+  // idempotent per model.
   useEffect(() => {
     if (!editMode) return;
     if (draftModelId !== modelId || !draft) beginDraft(modelId, baseMapConversion);

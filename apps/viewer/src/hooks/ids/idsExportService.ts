@@ -10,7 +10,7 @@
  */
 
 import type { ValidationReport, SupportedLocale } from '@ifc-lite/ids';
-import { posthog } from '../../lib/analytics';
+import { posthog, trackExportCompleted } from '../../lib/analytics';
 import { downloadFile } from '../../lib/export/download';
 
 // ============================================================================
@@ -37,13 +37,13 @@ export function buildReportJSON(report: ValidationReport): Record<string, unknow
 export function downloadReportJSON(report: ValidationReport): void {
   const exportData = buildReportJSON(report);
   downloadFile(JSON.stringify(exportData, null, 2), `ids-report-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'ids_panel' });
   posthog.capture('ids_report_exported', { format: 'json', total_specifications: report.summary.totalSpecifications });
 }
 
 // ============================================================================
 // HTML Export
 // ============================================================================
-
 /** HTML escape helper to prevent XSS */
 function escapeHtml(str: string | undefined | null): string {
   if (str == null) return '';
@@ -830,7 +830,6 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
         });
       }
     });
-
     filterAll();
   </script>
 </body>
@@ -843,5 +842,6 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
 export function downloadReportHTML(report: ValidationReport, locale: SupportedLocale): void {
   const html = buildReportHTML(report, locale);
   downloadFile(html, `ids-report-${new Date().toISOString().split('T')[0]}.html`, 'text/html');
+  trackExportCompleted({ format: 'html', surface: 'ids_panel' });
   posthog.capture('ids_report_exported', { format: 'html', locale, total_specifications: report.summary.totalSpecifications });
 }

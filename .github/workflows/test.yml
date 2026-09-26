@@ -971,6 +971,8 @@ jobs:
         run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      - name: Check export completion calls
+        run: node scripts/check-export-event-calls.mjs
       # Executable proof the wiring gate cannot pass vacuously — the failure
       # mode it exists to catch is exactly the one it could have itself. Its
       # first fixture reconstructs #3062's pre-wiring state (a gate script and
@@ -1184,6 +1186,13 @@ jobs:
       # it used to be the one non-executable case in frameWait.test.ts (#2434).
       - name: Check for unbounded animation-frame waits
         run: node scripts/check-unbounded-frame-wait.mjs
+      # Icon-only buttons go through IconButton, which requires a label (#5811).
+      # A per-file two-way ratchet over the components tree: an absence claim
+      # with nothing to drive, so a lint rather than a unit test.
+      - name: Check icon-only buttons use IconButton
+        run: node scripts/check-icon-button-adoption.mjs
+      - name: Check icon-button adoption gate's own tests
+        run: node --test scripts/check-icon-button-adoption.test.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the
@@ -1549,6 +1558,13 @@ jobs:
       # the workflow back to that spelling reddens these tests.
       - name: Check the release version-bump gate sees non-root bumps and fails open
         run: node --test scripts/release-version-changed.test.mjs
+      # Release's credential-quota preflight (#5693) runs on main only, like
+      # the gate above, so on a PR only its tests exercise it: the verdict and
+      # the CLI against a stub `gh`, including the drained-GraphQL reading that
+      # killed Release run 36009885836. (The `scripts/*.test.mjs` sweep below
+      # runs them too; this named step says what broke.)
+      - name: Check the release credential quota preflight
+        run: node --test scripts/check-release-credential-quota.test.mjs
       # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
       # publishes. If its package discovery ever returns nothing — packages/
       # moved, or the publishable filter stops matching — the smoke loop has

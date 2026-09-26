@@ -64,16 +64,28 @@ export function FloatingPanelHost() {
     };
   }, [hasSnapped]);
 
-  // The window size free panels are clamped into (#5854), tracked only while
-  // a panel floats so the empty state stays listener-free.
+  // The window free panels are clamped into (#5854), tracked only while a
+  // panel floats so the empty state stays listener-free. Its `top` is the
+  // viewport region's top, i.e. the toolbar bottom, so a clamped panel's title
+  // bar never lands under the z-50 toolbar (#5957).
   const hasPanels = floatingPanels.length > 0;
   const [area, setArea] = useState<FloatingArea | null>(null);
   useLayoutEffect(() => {
     if (!hasPanels) return;
-    const measure = () => setArea({ width: window.innerWidth, height: window.innerHeight });
+    const el = document.querySelector(SNAP_BOUNDS_SELECTOR) as HTMLElement | null;
+    const measure = () => setArea({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      top: Math.max(0, el?.getBoundingClientRect().top ?? 0),
+    });
     measure();
+    const ro = el ? new ResizeObserver(measure) : null;
+    ro?.observe(el as HTMLElement);
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, [hasPanels]);
 
   if (!hasPanels) return null;

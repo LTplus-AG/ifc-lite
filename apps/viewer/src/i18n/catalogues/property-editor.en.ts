@@ -50,6 +50,8 @@ export const propertyEditorEn = {
   'propertyEditor.property.trigger': 'Add property',
   'propertyEditor.property.title': 'Add Property',
   'propertyEditor.property.description': 'Add a property to this {entityType} element.',
+  'propertyEditor.property.inheritedOverride': '{psetName} is inherited from {typeName}. Adding here creates {psetName} on this element with a copy of the type\'s current values; the type itself is unchanged.',
+  'propertyEditor.property.inheritedNotCopyable': 'Nothing added: {psetName} on {typeName} holds {names}, which cannot be copied to this element exactly (multi-valued, or with its own unit). Add the property on {typeName}, or use another set name.',
   'propertyEditor.property.available': {
     one: '{schema} schema: {count} standard property set available',
     other: '{schema} schema: {count} standard property sets available',
@@ -69,6 +71,12 @@ export const propertyEditorEn = {
 
   'propertyEditor.classification.trigger': 'Add classification',
   'propertyEditor.classification.title': 'Add Classification',
+  'propertyEditor.association.readOnly': 'Editing requires editor access in this shared session',
+  'propertyEditor.association.noModel': 'No model is loaded for this element',
+  'propertyEditor.association.noOwnerHistory': 'This IFC2X3 model has no IfcOwnerHistory, which IFC2X3 requires on the new relationship',
+  'propertyEditor.association.hasMaterial': 'This element already has a material. An element carries one material association',
+  'propertyEditor.association.invalidRelatedObjects': 'The existing material relationship has invalid related objects; no association was changed',
+  'propertyEditor.association.stepToken': 'Enter plain text, not a STEP token such as $, #12 or .ENUM.',
   'propertyEditor.classification.description': 'Assign a classification reference to this {entityType}.',
   'propertyEditor.classification.system': 'Classification System',
   'propertyEditor.classification.selectSystem': 'Select system...',

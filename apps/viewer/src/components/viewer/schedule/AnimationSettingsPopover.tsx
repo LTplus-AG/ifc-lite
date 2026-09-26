@@ -22,6 +22,7 @@
 import { useCallback } from 'react';
 import { Sparkles, RotateCcw, Paintbrush, Palette, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,20 +146,16 @@ export function AnimationSettingsPopover({
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant={animationEnabled ? 'default' : 'ghost'}
-              aria-label={t('schedule.animation.settingsAriaLabel')}
-            >
-              <Sparkles className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t('schedule.animation.settingsTooltip')}</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t('schedule.animation.settingsAriaLabel')}
+          tooltip={t('schedule.animation.settingsTooltip')}
+          size="icon-sm"
+          variant={animationEnabled ? 'default' : 'ghost'}
+        >
+          <Sparkles className="h-4 w-4" />
+        </IconButton>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[360px] p-3 max-h-[min(80vh,700px)] overflow-y-auto">
         {/* ── Master toggle ────────────────────────────────────────── */}
         <div className="flex items-center justify-between gap-3 pb-2">

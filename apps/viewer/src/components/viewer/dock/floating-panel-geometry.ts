@@ -30,17 +30,25 @@ export interface SnapBounds {
   height: number;
 }
 
-/** Size of the area free-floating panels are positioned in (the window). */
+/** The area free-floating panels are positioned in (the window). */
 export interface FloatingArea {
   width: number;
   height: number;
+  /**
+   * px from the window top that a free panel's top edge may not rise above:
+   * the bottom of the z-50 toolbar (the viewport region's top). A panel at
+   * `top: 0` would hide its whole title bar (drag handle, dock, close) under
+   * the toolbar, with no way to grab it back (#5957, the #1245 class).
+   */
+  top: number;
 }
 
 /**
  * Absolute-position style for a floating panel.
  *
  * - `free` panels sit at their stored window coordinates, clamped into `area`
- *   when it is known (#5854): a position saved on a bigger screen, or before
+ *   when it is known (#5854), never above the toolbar bottom `area.top`
+ *   (#5957): a position saved on a bigger screen, or before
  *   the window shrank, would otherwise leave the panel (and its close button)
  *   off screen for good. Only the drawn rect is clamped; the stored position
  *   is left alone until the user drags, so growing the window back restores
@@ -59,10 +67,10 @@ export function computeFloatingPanelStyle(
   if (p.snap === 'free') {
     if (!area) return { left: p.x, top: p.y, width: p.w, height: p.h };
     const width = Math.min(p.w, area.width);
-    const height = Math.min(p.h, area.height);
+    const height = Math.min(p.h, Math.max(0, area.height - area.top));
     return {
       left: Math.min(Math.max(0, p.x), area.width - width),
-      top: Math.min(Math.max(0, p.y), area.height - height),
+      top: Math.min(Math.max(area.top, p.y), area.height - height),
       width,
       height,
     };

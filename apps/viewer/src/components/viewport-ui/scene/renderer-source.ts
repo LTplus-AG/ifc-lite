@@ -7,7 +7,7 @@
  * (#5486). Kept out of `projector.ts` so the core projector stays
  * renderer-free and unit-testable with a stub; this is the one file that
  * knows how to find the real camera and canvas, the way `BasepointOverlay`
- * and `SectionPlaneDragGizmo` do today (`container.closest('[data-viewport]')`).
+ * did before #5501 moved the section gizmo here (`container.closest('[data-viewport]')`).
  *
  * `isDirty()` compares a camera-pose snapshot (position, rotation, distance,
  * canvas size) tick to tick — the exact fields and shape `useAnimationLoop`

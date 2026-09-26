@@ -20,8 +20,8 @@ import { LayerCheckEvidence } from './LayerCheckEvidence';
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-1.5">
-      <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="min-w-0 flex-1 text-[11px]">{children}</span>
+      <span className="w-16 shrink-0 text-2xs uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="min-w-0 flex-1 text-2xs">{children}</span>
     </div>
   );
 }
@@ -55,7 +55,7 @@ function ChecksList({ manifest }: { manifest: ProvenanceManifest }) {
                   <button
                     type="button"
                     onClick={() => setOpenReport((prev) => (prev === check.report ? null : check.report ?? null))}
-                    className="inline-flex items-center gap-0.5 rounded bg-muted px-1 font-mono text-[10px] hover:bg-muted/60"
+                    className="inline-flex items-center gap-0.5 rounded bg-muted px-1 font-mono text-2xs hover:bg-muted/60"
                     aria-expanded={openReport === check.report}
                   >
                     {openReport === check.report ? (
@@ -66,7 +66,7 @@ function ChecksList({ manifest }: { manifest: ProvenanceManifest }) {
                     {shortContentId(check.report)}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="font-mono text-[10px]">
+                <TooltipContent side="top" className="font-mono text-2xs">
                   {t('layersPanel.provenance.checkReportTooltip', { report: check.report })}
                 </TooltipContent>
               </Tooltip>
@@ -84,7 +84,7 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
   const manifest = getProvenance(file);
   if (!manifest) {
     return (
-      <p className="px-1 py-1 text-[11px] text-muted-foreground">
+      <p className="px-1 py-1 text-2xs text-muted-foreground">
         {t('layersPanel.provenance.noManifest')}
       </p>
     );
@@ -99,7 +99,7 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
   }
   if (manifestErrors.length > 0) {
     return (
-      <p className="px-1 py-1 text-[11px] text-muted-foreground">
+      <p className="px-1 py-1 text-2xs text-muted-foreground">
         {t('layersPanel.provenance.malformedManifest', {
           count: manifestErrors.length,
           countDisplay: String(manifestErrors.length),
@@ -117,7 +117,7 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
       <Field label={t('layersPanel.provenance.createdField')}>{manifest.created}</Field>
       <Field label={t('layersPanel.provenance.baseField')}>
         {manifest.base ? (
-          <span className="font-mono text-[10px]">{`${manifest.base.kind}:${shortContentId(manifest.base.id)}`}</span>
+          <span className="font-mono text-2xs">{`${manifest.base.kind}:${shortContentId(manifest.base.id)}`}</span>
         ) : (
           <span className="text-muted-foreground">{t('layersPanel.provenance.baseNone')}</span>
         )}
@@ -126,7 +126,7 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
         {manifest.scope_claim.length > 0 ? (
           <span className="flex flex-wrap gap-1">
             {manifest.scope_claim.map((claim) => (
-              <span key={claim} className="rounded bg-muted px-1 font-mono text-[10px]">
+              <span key={claim} className="rounded bg-muted px-1 font-mono text-2xs">
                 {claim}
               </span>
             ))}
@@ -142,7 +142,7 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
         <Field label={t('layersPanel.provenance.mergeField')}>
           <span className="flex flex-col gap-0.5">
             <span>
-              <span className="font-mono text-[10px]">{shortContentId(manifest.merge.candidate)}</span>
+              <span className="font-mono text-2xs">{shortContentId(manifest.merge.candidate)}</span>
               {t('layersPanel.provenance.mergeIntoBy', {
                 into: manifest.merge.into,
                 resolver: manifest.merge.resolver,

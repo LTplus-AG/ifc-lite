@@ -38,8 +38,8 @@ export interface UseSpaceSketchKeysOptions {
   closePopovers: () => boolean;
   /** Abort the in-progress op (rect / draw / cut / drag). Returns true if it did. */
   abortCurrentOp: () => boolean;
-  /** Leave the tool without creating anything. */
-  closeNow: () => void;
+  /** Leave the tool without creating anything; `esc` names the exit route (#5618). */
+  closeNow: (via: 'esc') => void;
   /** There are unconfirmed drafts, so the double-tap prompt says so. */
   needsConfirm: boolean;
   setStatus: (status: string) => void;
@@ -95,7 +95,7 @@ export function useSpaceSketchKeys({
         if (abortCurrentOp()) { escTimeRef.current = 0; return; }
         // Double-tap Esc cancels (close without creating); the Confirm button is
         // the only create path.
-        if (now - escTimeRef.current <= DOUBLE_ESC_MS) { escTimeRef.current = 0; closeNow(); }
+        if (now - escTimeRef.current <= DOUBLE_ESC_MS) { escTimeRef.current = 0; closeNow('esc'); }
         else {
           escTimeRef.current = now;
           setStatus(needsConfirm

@@ -6,8 +6,10 @@
  * `useProjectorTick`: wakes a React re-render on the shared `SceneProjector`'s
  * dirty tick, replacing a component's own private `requestAnimationFrame`
  * polling loop (the `useCameraTickSubscription` pattern `GizmoOverlay`,
- * `WallEndpointOverlay` and `PlacementGizmo` each ran independently) with a
- * subscription to the ONE loop the kernel already runs (#5486, #5510).
+ * `WallEndpointOverlay` and `PlacementGizmo` each ran independently, #5510;
+ * `ZoneOverlay`, `SplitOverlay` and `AddElementOverlay` followed, #5512 —
+ * `useCameraTickSubscription` itself is deleted once every consumer is off
+ * it) with a subscription to the ONE loop the kernel already runs (#5486).
  *
  * A dirty tick fires on real camera motion (the projector's
  * `ProjectorSource.isDirty()`) or any anchor registering/unregistering

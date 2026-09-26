@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
@@ -16,14 +16,17 @@ import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, addHierarchyStoreyToRule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
 import { toast } from '@/components/ui/toast';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { HierarchySearchEmptyState } from './hierarchy/HierarchySearchEmptyState';
 import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { useModelRowSize } from './hierarchy/ModelRowTags';
@@ -103,11 +106,9 @@ export function HierarchyPanel() {
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 
-  // Resizable panel split (percentage for storeys section, 0.5 = 50%)
-  const [splitRatio, setSplitRatio] = useState(0.5);
-  const [isDragging, setIsDragging] = useState(false);
   const [syncingSourceModelIds, setSyncingSourceModelIds] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const { splitRatio, isDragging, handleResizeStart, handleResizeKeyDown } = useHierarchySplit(containerRef);
 
   // Check if we have multiple models loaded
   const isMultiModel = models.size > 1;
@@ -130,21 +131,15 @@ export function HierarchyPanel() {
     getNodeElements,
   } = useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult });
 
-  // Issue #540: when the user has the merge-layers load setting on,
-  // hide `IfcBuildingElementPart` rows from the tree — the Rust layer
-  // suppresses their meshes, so leaving the rows visible would lead
-  // to dead-clicks. Filter at the consumer (this panel) rather than
-  // in `spatialHierarchy.ts` per the agent coordination plan.
+  // #540: merged parts have no meshes; hide their dead rows here.
+  // Keep the spatial hierarchy itself intact for other consumers.
   const mergeLayersHidesParts = useViewerStore((s) => s.mergeLayers);
   const PART_TYPE_KEY = 'ifcbuildingelementpart';
   const stripPartNodes = useCallback(
     (nodes: TreeNode[]): TreeNode[] => {
       if (!mergeLayersHidesParts) return nodes;
       return nodes.filter((node) => {
-        // Only element rows carry an `ifcType` we can compare. Class
-        // grouping ("IfcBuildingElementPart (N)") and ifc-type nodes
-        // also expose an `ifcType`; we strip those too because they
-        // would expand to empty groups after merge.
+        // Class and IFC-type groups also expose ifcType; hide empty groups.
         const t = node.ifcType?.toLowerCase();
         if (!t) return true;
         return t !== PART_TYPE_KEY;
@@ -155,6 +150,11 @@ export function HierarchyPanel() {
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
   const modelsNodes = useModelTagView(useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes])); // #4215 tag filter / By tag: rows only
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const searchEmptyState = normalizedSearch && !filteredNodes.some((node) =>
+    node.name.toLowerCase().includes(normalizedSearch) || node.secondaryName?.toLowerCase().includes(normalizedSearch))
+    ? <HierarchySearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
+    : null;
 
   // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
   // toggles, Shift selects the contiguous range in the visible order. Built
@@ -216,39 +216,6 @@ export function HierarchyPanel() {
     estimateSize: () => 36,
     overscan: 10,
   });
-
-  // Resize handler for draggable divider
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const relativeY = e.clientY - containerRect.top;
-      // Account for the search header height (~70px)
-      const headerHeight = 70;
-      const availableHeight = containerRect.height - headerHeight;
-      const newRatio = Math.max(0.15, Math.min(0.85, (relativeY - headerHeight) / availableHeight));
-      setSplitRatio(newRatio);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
 
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
@@ -346,7 +313,7 @@ export function HierarchyPanel() {
   );
 
   // Handle node click - for selection/isolation or expand/collapse
-  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
+  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;
@@ -774,15 +741,12 @@ export function HierarchyPanel() {
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('hierarchy.panel.title')}</h2>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
-          <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
-            <LayoutTemplate className="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
-          </div>
-          <p className="font-bold uppercase text-zinc-900 dark:text-zinc-100 mb-2">{t('hierarchy.panel.noModelTitle')}</p>
-          <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400 max-w-[150px]">
-            {t('hierarchy.panel.noModelHint')}
-          </p>
-        </div>
+        <EmptyState
+          className="flex-1 bg-white dark:bg-black"
+          icon={<LayoutTemplate className="size-8" />}
+          title={t('hierarchy.panel.noModelTitle')}
+          description={t('hierarchy.panel.noModelHint')}
+        />
       </div>
     );
   }
@@ -824,6 +788,7 @@ export function HierarchyPanel() {
         nodeHidden={nodeHidden}
         isMultiModel={isMultiModel}
         modelsCount={models.size}
+        searchActive={Boolean(searchQuery.trim())}
         modelVisible={modelVisible}
         onNodeClick={handleNodeClick}
         onToggleExpand={toggleExpand}
@@ -942,12 +907,12 @@ export function HierarchyPanel() {
         </div>
 
         {/* Resizable content area */}
-        <div className="flex-1 flex flex-col min-h-0">
+        {searchEmptyState ?? <div className="flex-1 flex flex-col min-h-0">
           {/* Storeys Section */}
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
             <StoreyDisplayControls />
-            <div ref={storeysRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={storeysRef} role="tree" aria-label={t('hierarchy.panel.buildingStoreysTitle')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${storeysVirtualizer.getTotalSize()}px`,
@@ -964,12 +929,21 @@ export function HierarchyPanel() {
           </div>
 
           {/* Resizable Divider */}
-          <div
+          {/* The focusable resize widget contains a grip icon; hr cannot contain children. */}
+          {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+          <div role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('shellChrome.sidebarPanelHost.resizeSplitAriaLabel')}
+            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuemin={15}
+            aria-valuemax={85}
+            tabIndex={0}
             className={cn(
               'flex items-center justify-center h-2 cursor-ns-resize border-y border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors',
               isDragging && 'bg-primary/20'
             )}
             onMouseDown={handleResizeStart}
+            onKeyDown={handleResizeKeyDown}
           >
             <GripHorizontal className="h-3 w-3 text-zinc-400" />
           </div>
@@ -977,7 +951,7 @@ export function HierarchyPanel() {
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
             <ModelsSectionHeader count={models.size} />
-            <div ref={modelsRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={modelsRef} role="tree" aria-label={t('hierarchy.modelsSection.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${modelsVirtualizer.getTotalSize()}px`,
@@ -992,7 +966,7 @@ export function HierarchyPanel() {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Footer status */}
         {hasActiveFilters ? (
@@ -1078,7 +1052,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-label={t('hierarchy.panel.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -1091,7 +1065,7 @@ export function HierarchyPanel() {
             return renderNode(node, virtualRow);
           })}
         </div>
-      </div>
+      </div>}
 
       {/* Footer status */}
       {hasActiveFilters ? (

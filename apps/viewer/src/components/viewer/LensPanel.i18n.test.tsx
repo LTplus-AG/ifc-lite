@@ -56,6 +56,8 @@ const LENS_PANEL_EN = {
   'lensPanel.closeAriaLabel': 'Close',
   'lensPanel.newRuleLensButton': 'New Rule Lens',
   'lensPanel.newAutoColorLensButton': 'New Auto-Color Lens',
+  'lensPanel.emptyTitle': 'No lenses yet',
+  'lensPanel.emptyDescription': 'Create a lens to color or focus model elements.',
   'lensPanel.footer.active': 'Active · {colored} colored · {hidden}',
   'lensPanel.footer.hiddenCount': { one: '{count} hidden', other: '{count} hidden' },
   'lensPanel.footer.ghosted': 'ghosted',
@@ -94,14 +96,6 @@ const LENS_PANEL_EN = {
   'lensPanel.ruleEditor.classificationSystemPlaceholder': 'System...',
   'lensPanel.ruleEditor.classificationCodePlaceholder': 'Code...',
   'lensPanel.ruleEditor.valuePlaceholder': 'Value...',
-  'lensPanel.operator.exists': 'Exists',
-  'lensPanel.operator.equals': 'Equals',
-  'lensPanel.operator.contains': 'Contains',
-  'lensPanel.operator.notEqual': 'Not Equal',
-  'lensPanel.operator.gt': '>',
-  'lensPanel.operator.gte': '>=',
-  'lensPanel.operator.lt': '<',
-  'lensPanel.operator.lte': '<=',
   'lensPanel.action.colorize': 'Color',
   'lensPanel.action.transparent': 'Transp',
   'lensPanel.action.hide': 'Hide',
@@ -169,7 +163,20 @@ function markValue(key: LensPanelKey, value: TranslationValue): TranslationValue
   for (const [category, text] of Object.entries(value)) wrapped[category] = `⟦${key}|${text}⟧`;
   return wrapped as TranslationValue;
 }
-const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(key, lensPanelEn[key])])) as Catalogue;
+const SHARED_OPERATOR_EN = {
+  'filterOperators.isSet': 'is set',
+  'filterOperators.eq': '=',
+  'filterOperators.contains': 'contains',
+  'filterOperators.ne': '≠',
+  'filterOperators.gt': '>',
+  'filterOperators.gte': '≥',
+  'filterOperators.lt': '<',
+  'filterOperators.lte': '≤',
+} as const;
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(KEYS.map((key) => [key, markValue(key, lensPanelEn[key])])),
+  ...Object.fromEntries(Object.entries(SHARED_OPERATOR_EN).map(([key, value]) => [key, `⟦${key}|${value}⟧`])),
+} as Catalogue;
 const PSEUDO_LOCALE = 'lens-panel-pseudo';
 
 function expectedMarked(key: LensPanelKey, params: Record<string, string | number> = {}): string {
@@ -266,6 +273,7 @@ describe('Lens panel localization (#4918)', () => {
     for (const key of [
       'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
       'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.emptyTitle', 'lensPanel.emptyDescription',
       'lensPanel.footer.clickToActivate',
     ] as LensPanelKey[]) {
       assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible before switching locale`);
@@ -277,6 +285,7 @@ describe('Lens panel localization (#4918)', () => {
     for (const key of [
       'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
       'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.emptyTitle', 'lensPanel.emptyDescription',
       'lensPanel.footer.clickToActivate',
     ] as LensPanelKey[]) {
       assertMarked(after, key);
@@ -438,28 +447,27 @@ describe('Lens panel localization (#4918)', () => {
     }
   });
 
-  it('rule editor (attribute): value placeholder and operator labels (Exists/Equals/Contains/Not Equal)', () => {
+  it('rule editor (attribute): value placeholder and shared operator labels (#5892)', () => {
     const rule = ifcRule({ criteria: { type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: '' } });
     const container = render(
       <RuleEditor rule={rule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
     );
     const english = chromeStrings(container);
-    for (const key of [
-      'lensPanel.ruleEditor.attributeValuePlaceholder', 'lensPanel.operator.exists', 'lensPanel.operator.equals',
-      'lensPanel.operator.contains', 'lensPanel.operator.notEqual', 'lensPanel.operator.gt', 'lensPanel.operator.gte',
-      'lensPanel.operator.lt', 'lensPanel.operator.lte',
-    ] as LensPanelKey[]) {
+    for (const key of ['lensPanel.ruleEditor.attributeValuePlaceholder'] as LensPanelKey[]) {
       assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
+    }
+    for (const value of Object.values(SHARED_OPERATOR_EN)) {
+      assert.ok(english.has(value), `expected shared operator label "${value}" visible`);
     }
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
     act(() => setLocale(PSEUDO_LOCALE));
     const after = chromeStrings(container);
-    for (const key of [
-      'lensPanel.ruleEditor.attributeValuePlaceholder', 'lensPanel.operator.exists', 'lensPanel.operator.equals',
-      'lensPanel.operator.contains', 'lensPanel.operator.notEqual',
-    ] as LensPanelKey[]) {
+    for (const key of ['lensPanel.ruleEditor.attributeValuePlaceholder'] as LensPanelKey[]) {
       assertMarked(after, key);
+    }
+    for (const [key, value] of Object.entries(SHARED_OPERATOR_EN)) {
+      assert.ok(after.has(`⟦${key}|${value}⟧`), `expected translated shared operator ${key}`);
     }
   });
 

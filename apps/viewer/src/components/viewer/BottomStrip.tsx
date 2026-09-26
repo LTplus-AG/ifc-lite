@@ -25,6 +25,7 @@ import {
   persistBottomStripHeight,
   loadBottomStripTabs,
   persistBottomStripTabs,
+  type BottomStripOrientation,
 } from '@/lib/panels/bottom-strip-persistence';
 
 export interface BottomStripProps {
@@ -35,9 +36,16 @@ export interface BottomStripProps {
   /** The layout container the strip is resized against (its max height is a ratio of it). */
   containerRef: RefObject<HTMLDivElement | null>;
   closePanel: (id: BottomPanelId) => void;
+  /** Which edge the strip docks to (#5515). Defaults to `'bottom'` — its own
+   *  drag-to-resize edge and fixed height. `'side'` means `ViewerLayout` has
+   *  already placed this instance inside a horizontal split beside the 3D
+   *  view, so the strip fills its host `Panel` instead of sizing itself. */
+  orientation?: BottomStripOrientation;
+  /** Present only when the active panel can go side-by-side (Drawing). */
+  onToggleOrientation?: () => void;
 }
 
-export function BottomStrip({ dockedPanel, analysisExtension, containerRef, closePanel }: BottomStripProps) {
+export function BottomStrip({ dockedPanel, analysisExtension, containerRef, closePanel, orientation = 'bottom', onToggleOrientation }: BottomStripProps) {
   const { openInHome } = usePanelControls();
   // Pixel height, persisted; kept in local state during the drag to avoid
   // writing to localStorage on every pointer move (#1208's rect debounce
@@ -49,11 +57,13 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
   const cleanupRef = useRef<(() => void) | null>(null);
 
   // "Reset layout" (#5854) restores the default height (and un-maximizes,
-  // #5498). The epoch starts at 0 and only moves on a reset, so this never
-  // fires on mount.
+  // #5498). Only a reset made while the strip is mounted counts: the epoch
+  // stays non-zero after the first reset, so comparing against 0 re-ran the
+  // reset on every later mount and threw away the persisted height (#5957).
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch);
+  const mountEpochRef = useRef(layoutResetEpoch);
   useEffect(() => {
-    if (layoutResetEpoch === 0) return;
+    if (layoutResetEpoch === mountEpochRef.current) return;
     setBottomHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
     setIsMaximized(false);
     persistBottomStripHeight(BOTTOM_STRIP_DEFAULT_HEIGHT);
@@ -144,20 +154,27 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
 
   if (!dockedPanel && !analysisExtension) return null;
 
+  // Side docking (#5515) is sized by the host `Panel`/resize-handle in
+  // ViewerLayout, not by this component's own height + row-resize drag —
+  // those are 'bottom'-only, same as the maximize overlay already was.
+  const isSide = orientation === 'side' && !isMaximized;
+
   return (
     <div
       data-detach-root
-      style={isMaximized ? undefined : { height: bottomHeight, flexShrink: 0 }}
-      className={isMaximized ? 'absolute inset-0 z-20 bg-background' : 'relative'}
+      data-bottom-strip
+      style={isMaximized || isSide ? undefined : { height: bottomHeight, flexShrink: 0 }}
+      className={isMaximized ? 'absolute inset-0 z-20 bg-background' : isSide ? 'relative h-full w-full' : 'relative'}
     >
-      {/* Drag handle (resize height) — hidden while maximized: restore first. */}
-      {!isMaximized && (
+      {/* Drag handle (resize height) — 'bottom' only, and hidden while
+          maximized: restore first. */}
+      {!isMaximized && !isSide && (
         <div
           className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
           onMouseDown={handleResizeStart}
         />
       )}
-      <div className="h-full w-full overflow-hidden border-t pt-1.5 flex flex-col">
+      <div className={`h-full w-full overflow-hidden pt-1.5 flex flex-col ${isSide ? 'border-l' : 'border-t'}`}>
         {/* Hidden for analysis extensions, which own their chrome. */}
         {!analysisExtension && dockedPanel && (
           <BottomStripHeader
@@ -167,9 +184,16 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
             onCloseTab={handleCloseTab}
             isMaximized={isMaximized}
             onToggleMaximize={handleToggleMaximize}
+            orientation={orientation}
+            onToggleOrientation={onToggleOrientation}
           />
         )}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div
+          className="flex-1 min-h-0 overflow-hidden"
+          role={!analysisExtension && dockedPanel ? 'tabpanel' : undefined}
+          id={!analysisExtension && dockedPanel ? `bottom-strip-panel-${dockedPanel}` : undefined}
+          aria-labelledby={!analysisExtension && dockedPanel ? `bottom-strip-tab-${dockedPanel}` : undefined}
+        >
           {analysisExtension
             ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
             : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}

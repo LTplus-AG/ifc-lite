@@ -22,15 +22,8 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Info,
-  Loader2,
-} from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { IDSAuditIssue, IDSAuditReport, IDSAuditSeverity } from '@ifc-lite/ids';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -160,7 +153,7 @@ export function IDSAuditSummary({
         role="status"
         aria-live="polite"
       >
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <Spinner size="sm" />
         <span>{t('idsPanel.audit.auditing')}</span>
       </div>
     );

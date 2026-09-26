@@ -10,7 +10,7 @@
  * `saveDrawingMarkupToModel` writes into the model's `StoreEditor` overlay
  * only — the same overlay `ExportChangesButton` already reads from. Nothing
  * touches disk here. Every toast this component shows says "into the
- * model" / "use Export Changes to save it to a file" rather than "Saved" on
+ * model" / "use Export modified IFC… to save it to a file" rather than "Saved" on
  * its own, so a user cannot read a successful click as "my markup is now on
  * disk" when it is only staged for the next export.
  */
@@ -72,8 +72,8 @@ function useSaveDrawingMarkupHandler() {
       const saved = outcome.measuresSaved + outcome.polygonsSaved + outcome.textsSaved + outcome.cloudsSaved;
       toast.success(
         saved > 0
-          ? `Added ${saved} markup annotation${saved === 1 ? '' : 's'} to the model — use Export Changes to save it to a file.`
-          : 'Cleared previously saved markup from the model — use Export Changes to save it to a file.',
+          ? `Added ${saved} markup annotation${saved === 1 ? '' : 's'} to the model — use Export modified IFC… to save it to a file.`
+          : 'Cleared previously saved markup from the model — use Export modified IFC… to save it to a file.',
       );
     } catch (error) {
       // eslint-disable-next-line no-console

@@ -64,14 +64,6 @@ import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawi
 /** The preview's placement-cache ref, as this file passes it in. */
 type CacheRef = { current: CachedSheetTransform | null };
 
-// happy-dom has no `window.alert` — the production error path calls it on
-// failure, which would otherwise throw `ReferenceError: alert is not
-// defined` inside the fire-and-forget async IIFE and hang this test's
-// `addImageCalled` promise forever with no visible cause.
-(globalThis as unknown as { alert: (msg?: string) => void }).alert = (msg) => {
-  // eslint-disable-next-line no-console -- test-only diagnostic for a swallowed export error
-  console.error('[handleExportPDF alert]', msg);
-};
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console -- test-only diagnostic
   console.error('[unhandledRejection]', reason);

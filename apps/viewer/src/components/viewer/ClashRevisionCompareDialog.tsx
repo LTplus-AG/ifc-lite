@@ -27,6 +27,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { GitCompare, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -157,9 +158,9 @@ export function ClashRevisionCompareDialog() {
   return (
     <Dialog onOpenChange={(open) => { if (!open) setComparison(null); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashTools.revisionCompare.triggerTooltip')}>
+        <IconButton label={t('clashTools.revisionCompare.triggerTooltip')} className="h-7 w-7">
           <GitCompare className="h-4 w-4" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>

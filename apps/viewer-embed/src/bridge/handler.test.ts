@@ -184,7 +184,6 @@ function makeState() {
     setSectionPlaneEnabled: rec('setSectionPlaneEnabled'),
     flipSectionPlane: rec('flipSectionPlane'),
     setActiveTool: rec('setActiveTool'),
-    setSuppressNextSection2DPanelAutoOpen: rec('setSuppressNextSection2DPanelAutoOpen'),
     toggleTypeVisibility: rec('toggleTypeVisibility'),
     resolveGlobalIdFromModels: (id: number) =>
       id === 1005 ? { modelId: 'm1', expressId: 5 }
@@ -1120,7 +1119,8 @@ describe('camera and section commands', () => {
     expect(argsOf(state, 'setSectionPlaneAxis')).toEqual(['front']);
     expect(argsOf(state, 'setSectionPlanePosition')).toEqual([1.5]);
     expect(argsOf(state, 'setSectionPlaneEnabled')).toEqual([true]);
-    expect(argsOf(state, 'setActiveTool')).toEqual(['section']);
+    // A host-driven cut is not a viewer UI action, so it is not counted as a tool pick (#5618).
+    expect(argsOf(state, 'setActiveTool')).toEqual(['section', 'programmatic']);
     expect(called(state, 'flipSectionPlane')).toBe(false);
   });
 

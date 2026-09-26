@@ -82,6 +82,8 @@ view.clear();
 
 > **Note:** Undo/redo is handled by the viewer's store (mutationSlice), not directly on MutablePropertyView. In the viewer, use Ctrl+Z / Ctrl+Shift+Z.
 
+Whole-set edits (`createPropertySet`, `deletePropertySet`, `createQuantitySet`, `deleteQuantitySet`, `deleteQuantity`) record the set's overlay rows before and after the edit on the returned mutation's `setOverlay`. A host with its own undo history reverts or re-applies one of them with `view.restoreSetOverlay(mutation.setOverlay.before)` / `(...after)`, which is what the viewer does.
+
 ### Enumerating the live entity set
 
 The parsed store's type index describes the file as loaded. After a session
@@ -173,7 +175,16 @@ console.log(`Will update ${preview.matchedCount} entities`);
 // Apply
 const result = engine.execute(query);
 console.log(`Updated ${result.affectedEntityCount} properties`);
+
+// Root attributes: one of BULK_WRITABLE_ATTRIBUTES (Name, Description, ObjectType, Tag)
+const retagged = engine.execute({
+  select: { expressIds: [42, 43] },
+  action: { type: 'SET_ATTRIBUTE' as const, attribute: 'ObjectType', value: 'Partition' },
+});
+console.log(retagged.success ? 'ObjectType set' : retagged.errors);
 ```
+
+`SET_ATTRIBUTE` takes the exact EXPRESS attribute name. An entity whose class does not declare the attribute (for example `ObjectType` on a type object) is reported in `errors` rather than skipped. Pass the model's `schemaVersion` as the engine's last constructor argument to judge that against the file's own schema.
 
 ## CSV Import
 
@@ -204,7 +215,16 @@ const mapping = {
 // Import (takes CSV string directly, not pre-parsed rows)
 const stats = connector.import(csvString, mapping);
 console.log(`Matched: ${stats.matchedRows}, Updated: ${stats.mutationsCreated}, Skipped: ${stats.unmatchedRows}`);
+
+// Async variant: yields between batches and reports each applied batch
+const asyncStats = await connector.importAsync(csvString, mapping, (progress) => {
+  console.log(`${progress.phase}: ${Math.round(progress.percent * 100)}%`);
+}, {
+  onApplied: (mutations) => console.log(`Applied ${mutations.length} writes`),
+});
 ```
+
+The importer writes straight to the view. `stats.mutations` lists every write that landed, including those applied before an error ended the import (`stats.errors`), so a host with undo history can revert them. `onApplied` lets it record that history batch by batch as the import goes.
 
 ## Viewer Integration
 
@@ -286,7 +306,7 @@ On submit, the dialog calls `bim.store.addColumn`, selects the newly-added colum
 |-------|-------------|
 | Modified entities | Count of entities with property changes |
 | Dirty models | Models with unsaved mutations |
-| Undo stack | Per-model undo history (covers properties, quantities, attributes, positional args, entity create/delete) |
+| Undo stack | Per-model undo history (covers properties, whole property and quantity sets, quantities, attributes, positional args, entity create/delete) |
 | Redo stack | Per-model redo history |
 | Change sets | Named groups of mutations for export |
 | Store editors | Per-model `StoreEditor` cache (created lazily on first store-level edit) |

@@ -16,7 +16,10 @@ afterEach(() => {
 /** A controlled harness: `HudValueField` is controlled, so the test owns
  *  the value and re-renders on every `onChange`, the way a real caller
  *  (a store-backed distance field) would. */
-function Harness({ onChange, ...rest }: { onChange: (next: number) => void; value: number; step?: number; min?: number; max?: number; unit?: string }) {
+function Harness({ onChange, ...rest }: {
+  onChange: (next: number) => void; value: number; step?: number; min?: number; max?: number; unit?: string;
+  snaps?: readonly number[]; snapTolerance?: number; onScrubStart?: () => void; onScrubEnd?: () => void;
+}) {
   return (
     <HudValueField
       {...rest}
@@ -147,5 +150,45 @@ describe('HudValueField (#5485)', () => {
     assert.equal(field.getAttribute('aria-valuenow'), '1.2');
     assert.equal(field.getAttribute('aria-valuetext'), '1.20 m');
     assert.equal(field.getAttribute('aria-label'), 'Distance');
+  });
+
+  it('a scrub snaps onto a snap point inside its catchment; arrow keys and typing never snap (#5499)', () => {
+    const values: number[] = [];
+    const ui = render(<Harness value={10} step={1} snaps={[12.4]} snapTolerance={0.5} onChange={(v) => values.push(v)} />);
+    const field = ui.querySelector('[role="spinbutton"]')!;
+    Object.defineProperty(field, 'setPointerCapture', { configurable: true, value: () => {} });
+
+    pointerDown(field, 100);
+    pointerMove(field, 112); // +2 steps = 12, within 0.5 of 12.4
+    pointerMove(field, 130); // +5 steps = 15, outside the catchment
+    pointerUp(field, 130);
+    assert.deepEqual(values, [12.4, 15]);
+
+    values.length = 0;
+    press(field, 'ArrowUp');
+    press(field, 'ArrowUp');
+    assert.deepEqual(values, [11, 11], 'a keyboard step is exact even when a snap is within reach');
+  });
+
+  it('reports the start and end of a scrub, but not of a click', () => {
+    const events: string[] = [];
+    const ui = render(
+      <Harness value={10} step={1} onChange={() => {}} onScrubStart={() => events.push('start')} onScrubEnd={() => events.push('end')} />,
+    );
+    const field = ui.querySelector('[role="spinbutton"]')!;
+    Object.defineProperty(field, 'setPointerCapture', { configurable: true, value: () => {} });
+
+    pointerDown(field, 50);
+    pointerUp(field, 50);
+    assert.deepEqual(events, [], 'a click opens type-to-set without a scrub lifecycle');
+
+    press(ui.querySelector('input')!, 'Escape');
+    const again = ui.querySelector('[role="spinbutton"]')!;
+    Object.defineProperty(again, 'setPointerCapture', { configurable: true, value: () => {} });
+    pointerDown(again, 50);
+    pointerMove(again, 60);
+    pointerMove(again, 70);
+    pointerUp(again, 70);
+    assert.deepEqual(events, ['start', 'end'], 'one start per scrub, one end on release');
   });
 });

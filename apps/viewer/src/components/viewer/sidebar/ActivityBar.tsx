@@ -162,7 +162,8 @@ export function ActivityBar() {
                       setOverId(null);
                     }}
                     onDragOver={(e) => {
-                      if (!customizing) return;
+                      // Only an icon reorder claims the drag; a file is the window's (#5845).
+                      if (!customizing || !dragId) return;
                       e.preventDefault();
                       if (overId !== id) setOverId(id);
                     }}
@@ -173,7 +174,13 @@ export function ActivityBar() {
                     }}
                     onClick={() => (customizing ? setPanelShownInSidebar(id, false) : onIconClick(id))}
                     className={cn(
-                      'relative h-9 w-9 inline-flex items-center justify-center rounded-md transition-colors',
+                      // `shrink-0`: this sits in a `flex flex-col` rail with more
+                      // icons than fit some viewports (`overflow-y-auto` on the
+                      // rail). Without it the default flex-shrink squeezed every
+                      // icon's height well under its own `h-9`, down to ~16px in
+                      // a full rail (#5826) — flexbox shrinks fixed-size items to
+                      // fit the cross axis before overflow ever gets a say.
+                      'relative h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md transition-colors',
                       active
                         ? 'bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',

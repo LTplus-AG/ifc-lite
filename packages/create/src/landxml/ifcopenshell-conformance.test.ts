@@ -18,14 +18,23 @@
  *   (#5351). Our parser treats the two identifiers alike, so parse(write(x))
  *   could never see it.
  *
- * Two external checks, both from `tools/ifcopenshell_reference/`:
+ * Four external checks, all from `tools/ifcopenshell_reference/`:
  * - `validate_export.py` — `ifcopenshell.validate(express_rules=True)`;
  * - `check_alignment.py` — IfcOpenShell regenerates every `IfcCurveSegment`
  *   from our `IfcAlignmentHorizontalSegment` through its own mapping and must
  *   get ours back, then evaluates our curve and must land every segment
  *   boundary on the point the fixture AUTHORED. The fixture comes from
  *   `make_alignment_fixture.py`, which integrates the geometry independently of
- *   our TypeScript.
+ *   our TypeScript;
+ * - `check_vertical.py` — the same for the vertical layout (§12): IfcOpenShell
+ *   regenerates every gradient-curve segment from our
+ *   `IfcAlignmentVerticalSegment` and must get ours back, agrees with every
+ *   transition code, and evaluates our `IfcGradientCurve` to the heights the
+ *   fixture generator computed from each LandXML profile definition;
+ * - `check_referents.py` — IfcOpenShell reads the stationing referents back
+ *   (start station and station equations, §14): their `Pset_Stationing`
+ *   values, their order in the referent nest, and the point its kernel
+ *   evaluates at each `DistanceAlong`, against the same generator's points.
  *
  * Requires `ifcopenshell` (pinned in `tools/ifcopenshell_reference/
  * requirements.lock`, plus `pytest`); set `IFCOPENSHELL_PYTHON` or have it on
@@ -45,7 +54,10 @@ import type { LandXmlIfcAlignment, LandXmlIfcSource } from './source-types.js';
 const TOOL_DIR = resolve(__dirname, '../../../../tools/ifcopenshell_reference');
 const VALIDATE_SCRIPT = resolve(TOOL_DIR, 'validate_export.py');
 const ALIGNMENT_SCRIPT = resolve(TOOL_DIR, 'check_alignment.py');
+const REFERENT_SCRIPT = resolve(TOOL_DIR, 'check_referents.py');
 const ALIGNMENT_FIXTURE = resolve(TOOL_DIR, 'alignment_fixture.json');
+const VERTICAL_SCRIPT = resolve(TOOL_DIR, 'check_vertical.py');
+const CANT_PROBE_SCRIPT = resolve(TOOL_DIR, 'probe_cant_mapping.py');
 const PYTHON = process.env.IFCOPENSHELL_PYTHON || 'python3';
 
 const canRun = spawnSync(PYTHON, ['-c', 'import ifcopenshell, ifcopenshell.validate'], { stdio: 'ignore' }).status === 0;
@@ -88,8 +100,13 @@ const TERRAIN_SOURCE: LandXmlIfcSource = {
 };
 
 function alignmentSource(): LandXmlIfcSource {
-  const fixture = JSON.parse(readFileSync(ALIGNMENT_FIXTURE, 'utf8')) as { alignments: LandXmlIfcAlignment[] };
-  return { schema: 'LandXML-1.2', version: '1.2', units: UNITS, surfaces: [], alignments: fixture.alignments };
+  const fixture = JSON.parse(readFileSync(ALIGNMENT_FIXTURE, 'utf8')) as {
+    alignments: LandXmlIfcAlignment[]; profiles: unknown[];
+  };
+  return {
+    schema: 'LandXML-1.2', version: '1.2', units: UNITS, surfaces: [],
+    alignments: fixture.alignments, profiles: fixture.profiles,
+  };
 }
 
 function writeConverted(source: LandXmlIfcSource, name: string, mutate: (step: string) => string = (s) => s): string {
@@ -123,7 +140,7 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(code).toBe(0);
   }, TIMEOUT_MS);
 
-  it('is schema-conformant: horizontal alignments', () => {
+  it('is schema-conformant: horizontal alignments with vertical profiles', () => {
     const [code, stdout] = run(VALIDATE_SCRIPT, [writeConverted(alignmentSource(), 'alignment')]);
     expect(stdout, stdout).toContain('0 issues');
     expect(code).toBe(0);
@@ -153,6 +170,69 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     expect(stdout).toMatch(/from the authored/);
   }, TIMEOUT_MS);
 
+  it('writes vertical geometry IfcOpenShell derives identically, and every authored height is on it (§12.7)', () => {
+    const [code, stdout] = run(VERTICAL_SCRIPT, [writeConverted(alignmentSource(), 'vertical'), ALIGNMENT_FIXTURE]);
+    expect(stdout, stdout).toContain('2 vertical layout(s) checked, 0 problems');
+    expect(code).toBe(0);
+  }, TIMEOUT_MS);
+
+  it('has teeth: a flipped parabola coefficient is caught by the mapping and height checks', () => {
+    // Negate every IfcPolynomialCurve's quadratic term: a crest written as a
+    // sag. IfcOpenShell regenerates the coefficient from our (unchanged)
+    // design parameters, and the evaluated heights leave the authored profile.
+    const corrupt = (step: string): string => step.replace(
+      /(IFCPOLYNOMIALCURVE\(#\d+,\(0\.,1\.\),\([^,]+,[^,]+,)(-?)([^)]+\))/g,
+      (_all, head: string, minus: string, tail: string) => `${head}${minus ? '' : '-'}${tail}`,
+    );
+    // One export, before and after: two exports under different names always
+    // differ (the name seeds GlobalIds), so comparing those could never fail.
+    const clean = readFileSync(writeConverted(alignmentSource(), 'vertical-corrupt'), 'utf8');
+    expect(corrupt(clean), 'the fault was actually injected').not.toBe(clean);
+    const path = writeConverted(alignmentSource(), 'vertical-corrupt', corrupt);
+    const [code, stdout] = run(VERTICAL_SCRIPT, [path, ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/IfcPolynomialCurve parameters .* != IfcOpenShell/);
+    expect(stdout).toMatch(/the LandXML profile gives/);
+  }, TIMEOUT_MS);
+
+  it('does not pass vacuously: an authored profile missing from the file fails the vertical check', () => {
+    const source = alignmentSource();
+    const partial = { ...source, profiles: (source.profiles ?? []).slice(1) };
+    const [code, stdout] = run(VERTICAL_SCRIPT, [writeConverted(partial, 'vertical-partial'), ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/authored profile of alignment '.+' is not in the file/);
+  }, TIMEOUT_MS);
+
+  it('refuses cant only while its premise holds: the pinned IfcOpenShell cannot regenerate cant geometry (§13.2)', () => {
+    // The refusal rests on a measured fact about the oracle, so the fact is
+    // measured here. If a pinned-version bump fixes IfcOpenShell's cant
+    // mapping, this goes red: re-examine mapping spec §13.2, because cant
+    // geometry may then be provable and the refusal no longer justified.
+    const [code, stdout] = run(CANT_PROBE_SCRIPT, []);
+    expect(code, stdout).toBe(0);
+    const probe = JSON.parse(stdout) as {
+      mirror_distinguished: boolean; centre_rotation_tilted: boolean; centre_linear_transition: string;
+    };
+    const premise = 'IfcOpenShell\'s cant mapping changed — revisit the cant refusal in mapping spec §13.2';
+    expect(probe.mirror_distinguished, premise).toBe(false);
+    expect(probe.centre_rotation_tilted, premise).toBe(false);
+    expect(probe.centre_linear_transition, premise).toBe('ZeroDivisionError');
+
+    // And the alignment carrying that cant is still written, horizontal only,
+    // as a schema-conformant file.
+    const source = alignmentSource();
+    const [first, ...rest] = (source.alignments ?? []) as LandXmlIfcAlignment[];
+    const withCant = {
+      ...source,
+      alignments: [{ ...first, cant: { name: 'Rail', gauge: 1.435 }, cantStations: [{ station: 0, appliedCant: 150 }] }, ...rest],
+    };
+    const path = writeConverted(withCant, 'alignment-with-cant');
+    expect(readFileSync(path, 'utf8')).not.toMatch(/IFCALIGNMENTCANT|IFCSEGMENTEDREFERENCECURVE/);
+    const [validCode, validOut] = run(VALIDATE_SCRIPT, [path]);
+    expect(validOut, validOut).toContain('0 issues');
+    expect(validCode).toBe(0);
+  }, TIMEOUT_MS);
+
   it('does not pass vacuously: an authored alignment missing from the file fails the check', () => {
     // Before, only alignments IN the file were compared, and the count printed
     // was the authored one: a refused alignment read as "3 checked" (#5370 review).
@@ -161,5 +241,27 @@ describe.skipIf(!canRun)('LandXML→IFC4X3 output, checked by IfcOpenShell', () 
     const [code, stdout] = run(ALIGNMENT_SCRIPT, [writeConverted(partial, 'alignment-partial'), ALIGNMENT_FIXTURE]);
     expect(code, stdout).toBe(1);
     expect(stdout).toMatch(/authored alignment '.+' is not in the file/);
+  }, TIMEOUT_MS);
+
+  it('writes station-equation referents IfcOpenShell reads back at their authored stations and points (§14)', () => {
+    // 3 start referents + 4 station equations in the fixture. The expected
+    // points are integrated by make_alignment_fixture.py, not by our mapping.
+    const [code, stdout] = run(REFERENT_SCRIPT, [writeConverted(alignmentSource(), 'referents'), ALIGNMENT_FIXTURE]);
+    expect(stdout, stdout).toContain('7 referent(s) checked, 0 problems');
+    expect(code).toBe(0);
+  }, TIMEOUT_MS);
+
+  it('has teeth: a station-equation referent placed at the wrong distance is caught', () => {
+    // Shift every non-zero DistanceAlong by 1 km: the start referents (0.)
+    // stay put, every equation referent moves along the curve.
+    const shift = (step: string): string => step.replace(
+      /IFCPOINTBYDISTANCEEXPRESSION\(IFCLENGTHMEASURE\(([1-9]\d*\.\d*)\)/g,
+      (_all, value: string) => `IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(${Number(value) + 1000}.)`,
+    );
+    const path = writeConverted(alignmentSource(), 'referents-shifted', shift);
+    const [code, stdout] = run(REFERENT_SCRIPT, [path, ALIGNMENT_FIXTURE]);
+    expect(code, stdout).toBe(1);
+    expect(stdout).toMatch(/A-Left referent 2 \(station equation 1\): DistanceAlong 1200(\.0)? != authored 200/);
+    expect(stdout).toMatch(/is \d+\.\d+ from the authored/);
   }, TIMEOUT_MS);
 });

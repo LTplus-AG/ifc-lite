@@ -805,10 +805,10 @@ export function SpaceSketchOverlay() {
 
   // Cancel: drop ghosts, restore the prior view (X-ray off, isolation and
   // spaces visibility as they were), and leave WITHOUT creating anything.
-  const closeNow = useCallback(() => {
+  const closeNow = useCallback((via?: import('@/lib/analytics-ui-events').ToolExitVia) => {
     clearGhosts();
     restoreScene({ keepSpacesVisible: false });
-    setActiveTool('select');
+    setActiveTool('select', via);
   }, [clearGhosts, restoreScene, setActiveTool]);
 
   // The single confirm: create EVERY storey's draft as IfcSpace at once. On
@@ -1365,7 +1365,7 @@ export function SpaceSketchOverlay() {
         pendingRooms={pendingRooms}
         pendingStoreys={pendingStoreys}
         onConfirm={confirmCreate}
-        onClose={closeNow}
+        onClose={() => closeNow()}
         onMinimize={() => setMinimized(true)}
       />
 

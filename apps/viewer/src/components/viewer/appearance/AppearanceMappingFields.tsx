@@ -15,7 +15,7 @@ function NumberField({ name, label, value, positive, onChange, onInvalid }: {
   const invalid = text.trim() === '' || !Number.isFinite(Number(text)) || (positive === true && Number(text) <= 0);
   useEffect(() => { setText(String(value)); onInvalid(name, false); }, [value, name, onInvalid]);
   useEffect(() => () => onInvalid(name, false), [name, onInvalid]);
-  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{label}</span>
+  return <label className="block space-y-1 text-2xs text-muted-foreground"><span>{label}</span>
     <Input type="number" step="any" min={positive ? 0.000001 : undefined} value={text} aria-label={label} aria-invalid={invalid}
       className="h-8 text-xs aria-[invalid=true]:border-destructive" onChange={event => {
         const next = event.currentTarget.value;
@@ -46,8 +46,8 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
       <option value="planar">{t('appearance.mapping.kindPlanar')}</option>
       <option value="box">{t('appearance.mapping.kindBox')}</option>
     </select>}
-    <p className="text-[10px] leading-relaxed text-muted-foreground">{calibrated ? t('appearance.mapping.hintCalibrated') : uv ? t('appearance.mapping.hintUv') : t('appearance.mapping.hintTile')}</p>
-    {(calibrated || s.kind === 'planar') && <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.mapping.projectionPlaneLabel')}</span>
+    <p className="text-2xs leading-relaxed text-muted-foreground">{calibrated ? t('appearance.mapping.hintCalibrated') : uv ? t('appearance.mapping.hintUv') : t('appearance.mapping.hintTile')}</p>
+    {(calibrated || s.kind === 'planar') && <label className="block space-y-1 text-2xs text-muted-foreground"><span>{t('appearance.mapping.projectionPlaneLabel')}</span>
       <select aria-label={t('appearance.mapping.projectionPlaneLabel')} className={appearanceSelectClass} value={s.plane} onChange={event => {
         const plane = event.target.value;
         if (plane === 'xy' || plane === 'xz' || plane === 'yz') onChange({ plane });
@@ -58,14 +58,14 @@ export function AppearanceMappingFields({ settings: s, onChange, disabled, onInv
         <>{field('tileWidth', box ? t('appearance.mapping.tileXm') : t('appearance.mapping.tileWidthM'), true)}{field('tileHeight', box ? t('appearance.mapping.tileYm') : t('appearance.mapping.tileHeightM'), true)}{box && field('tileDepth', t('appearance.mapping.tileZm'), true)}</>}
     </div>}
     <details className="rounded-md border px-2.5 py-2">
-      <summary className="cursor-pointer text-[11px] font-medium">{calibrated ? t('appearance.mapping.alignment') : t('appearance.mapping.alignmentAndTiling')}</summary>
+      <summary className="cursor-pointer text-2xs font-medium">{calibrated ? t('appearance.mapping.alignment') : t('appearance.mapping.alignmentAndTiling')}</summary>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {!box && field('rotationDegrees', t('appearance.mapping.rotationDegrees'))}
         {field('offsetU', calibrated ? t('appearance.mapping.pointAX') : uv ? t('appearance.mapping.offsetUUv') : box ? t('appearance.mapping.offsetXm') : t('appearance.mapping.offsetUm'))}
         {field('offsetV', calibrated ? t('appearance.mapping.pointAY') : uv ? t('appearance.mapping.offsetVUv') : box ? t('appearance.mapping.offsetYm') : t('appearance.mapping.offsetVm'))}
         {(box || calibrated) && field('offsetW', calibrated ? t('appearance.mapping.pointAZ') : t('appearance.mapping.offsetZm'))}
       </div>
-      {!calibrated && <div className="mt-3 flex gap-4 text-[11px]">
+      {!calibrated && <div className="mt-3 flex gap-4 text-2xs">
         <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatS} onChange={event => onChange({ repeatS: event.target.checked })} />{t('appearance.mapping.tileU')}</label>
         <label className="flex items-center gap-1.5"><input type="checkbox" checked={s.repeatT} onChange={event => onChange({ repeatT: event.target.checked })} />{t('appearance.mapping.tileV')}</label>
       </div>}

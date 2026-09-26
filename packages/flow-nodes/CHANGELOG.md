@@ -1,5 +1,30 @@
 # @ifc-lite/flow-nodes
 
+## 0.5.0
+
+### Minor Changes
+
+- [#5933](https://github.com/LTplus-AG/ifc-lite/pull/5933) [`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114) Thanks [@louistrue](https://github.com/louistrue)! - Add Autodesk Platform Services receive nodes for flow graphs ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634)): `aps.token` mints a 2-legged client-credentials token (or wraps a provided 3-legged one) as an opaque handle that is never output, logged or serialised, and `aps.modelProperties` reads Model Derivative metadata and properties of a translated model (derivative URN or Docs/ACC version id) into a table keyed by `externalId`, with `category`, `IfcGUID` and every property as a `Group.Property` column, ready for `table.joinByKey`. All requests go through the gated `coreNetworkRequest` (`network.fetch:developer.api.autodesk.com`), and APS's `202` "still processing" answer is retried a bounded number of times.
+
+- [#5935](https://github.com/LTplus-AG/ifc-lite/pull/5935) [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenCDE Documents API flow nodes and `model.openFromSource` ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634), [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.4).
+  
+  `@ifc-lite/flow-nodes` gains `documents.queryVersions` (polls `POST /document-versions` with the previous ETag; outputs a versions table, the new ETag and `changed`, which is `false` on a 304), `documents.download` (downloads a version's file as base64 with its name, size and content type) and `model.openFromSource` (opens downloaded bytes as a model through the new optional `FlowHost.openModel`, gated by the `openModel` backend feature). Every Documents API request goes through `coreNetworkRequest` with the graph's `network.fetch:<host>` grants; the bearer token param takes `{{secret:NAME}}`. `model.select` and `model.byType` gain an optional `modelId` input, so a read can be wired to run after, and on, an opened model.
+  
+  `@ifc-lite/sandbox`: `coreNetworkRequest` accepts `responseType: 'bytes'` and then returns the capped body as `NetworkResponse.bytes`, unmangled by a text decode. A new `allowNotModified: true` option returns a 304 Not Modified as a response; without it a 304 is still refused like every other 3xx, so existing `http.request` and `bim.network.fetch` behaviour is unchanged.
+  
+  `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`) implement `openModel` with their own loaders: the opened model becomes the one the rest of the run (and the CLI's `--out`) works on, and MCP registers it for later tool calls. The viewer loads it through `addModel`, the same path as a dropped file.
+
+- [#5925](https://github.com/LTplus-AG/ifc-lite/pull/5925) [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b) Thanks [@louistrue](https://github.com/louistrue)! - Add the `speckle.receive` flow node: fetches a Speckle model version (modern `/projects/<p>/models/<m>[@<v>]` URLs and legacy stream commit/object URLs) through the gated network request path, and writes its walls, floors, flat roofs, columns and beams into a target storey with Revit parameters as property sets. Anything the v1 mapping cannot reproduce is reported by type, reason and count. Display meshes are not written, and bodies are rebuilt parametrically.
+
+### Patch Changes
+
+- Updated dependencies [[`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc)]:
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/sandbox@2.8.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/bcf-api@0.2.4
+  - @ifc-lite/sdk@7.1.3
+
 ## 0.4.0
 
 ### Minor Changes

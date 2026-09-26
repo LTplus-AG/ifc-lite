@@ -10,6 +10,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
@@ -89,7 +90,6 @@ interface GeorefRowProps {
   /** Extra inline content rendered after the value (e.g. terrain height button) */
   children?: React.ReactNode;
 }
-
 function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false), [editValue, setEditValue] = useState('');
@@ -188,12 +188,12 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
                     autoFocus
                   />
                 )}
-                <button onClick={() => commitEdit()} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
+                <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                   <Check className="h-3 w-3" />
-                </button>
-                <button onClick={cancelEdit} className="p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
+                </IconButton>
+                <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
                   <X className="h-3 w-3" />
-                </button>
+                </IconButton>
               </div>
               {/* Suggestion chips for fields with common values */}
               {hint.suggestions && !hint.isSelect && (
@@ -302,12 +302,12 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 autoFocus
               />
               <span className="text-[10px] text-zinc-400">{t('properties.georef.degUnit')}</span>
-              <button onClick={commitEdit} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
+              <IconButton label={t('properties.georef.saveField', { field: t('properties.georef.angleToGridNorth') })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                 <Check className="h-3 w-3" />
-              </button>
-              <button onClick={cancelEdit} className="p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
+              </IconButton>
+              <IconButton label={t('properties.georef.cancelField', { field: t('properties.georef.angleToGridNorth') })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </div>
             <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>
@@ -705,7 +705,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0">
+            <button className="relative flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.epsgButton')}
             </button>

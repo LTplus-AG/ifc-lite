@@ -33,7 +33,6 @@ import { getEntityBounds } from '../../utils/viewportUtils.js';
 export interface UseSpaceMouseControlsParams {
   rendererRef: MutableRefObject<Renderer | null>;
   isInitialized: boolean;
-  geometryBoundsRef: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
   geometryRef: MutableRefObject<MeshData[] | null>;
   selectedEntityIdRef: MutableRefObject<number | null>;
   calculateScale: () => void;
@@ -43,7 +42,6 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
   const {
     rendererRef,
     isInitialized,
-    geometryBoundsRef,
     geometryRef,
     selectedEntityIdRef,
     calculateScale,
@@ -87,9 +85,9 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
           return;
         }
       }
-      void camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
+      // Nothing selected: the one Fit All, framing what is visible (#5884).
+      state.cameraCallbacks.fitAll?.();
       renderer.requestRender();
-      calculateScale();
     };
 
     const stopLoop = () => {

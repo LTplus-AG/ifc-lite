@@ -20,6 +20,7 @@ import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { createViewerAdapter } from '@/sdk/adapters/viewer-adapter.js';
 import { ToolOverlays } from '../ToolOverlays.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 
 const s = () => useViewerStore.getState();
 
@@ -33,7 +34,7 @@ beforeEach(() => {
     drawing2DPanelVisible: false,
     drawing2D: null,
   });
-  render(<ToolOverlays />);
+  render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
 });
 
 afterEach(() => {

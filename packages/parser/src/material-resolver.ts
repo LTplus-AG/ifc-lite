@@ -13,6 +13,8 @@ import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
 import { resolveEntityLengthUnitScale } from './unit-extractor.js';
+import { resolveAllMaterialDefIds, resolveMaterialOwnerAndDefIds, resolveOwnMaterialDefIds } from './material-associations.js';
+export { resolveAllMaterialDefIds } from './material-associations.js';
 
 export interface MaterialInfo {
     type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
@@ -66,63 +68,6 @@ export interface MaterialConstituentInfo {
 }
 
 /**
- * Resolve the OCCURRENCE-LEVEL material definition ids directly associated
- * with an entity (no type fallback): every IfcRelAssociatesMaterial that
- * targets it, deduped and ordered by the rel's express id — the same rule
- * that decides the single-entry `onDemandMaterialMap` winner, so index 0
- * always equals the map's entry. Falls back to the map when no relationship
- * graph is available (minimal/test stores).
- */
-function resolveOwnMaterialDefIds(store: IfcDataStore, entityId: number): number[] {
-    if (store.relationships) {
-        // Prefer getEdges (carries relationshipId for deterministic ordering);
-        // facade graphs (server data model, test mocks) may implement only
-        // getRelated, whose order is best-effort.
-        if (typeof store.relationships.inverse?.getEdges === 'function') {
-            const edges = store.relationships.inverse.getEdges(entityId, RelationshipType.AssociatesMaterial);
-            if (edges.length > 0) {
-                const sorted = [...edges].sort((a, b) => a.relationshipId - b.relationshipId);
-                const out: number[] = [];
-                for (const e of sorted) {
-                    if (!out.includes(e.target)) out.push(e.target);
-                }
-                return out;
-            }
-        } else {
-            const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
-            if (related.length > 0) return [...new Set(related)];
-        }
-    }
-    // Map values are LISTS (all associations, file order) since #1773.
-    const mapped = store.onDemandMaterialMap?.get(entityId);
-    return mapped !== undefined ? [...mapped] : [];
-}
-
-/**
- * Resolve ALL material definition ids for an entity: every occurrence-level
- * IfcRelAssociatesMaterial (elements may legally carry more than one), or —
- * when the occurrence has none — the associations of its type
- * (IfcRelDefinesByType), matching {@link extractMaterialsOnDemand}'s
- * occurrence-overrides-type precedence. Ordered by rel express id, so
- * index 0 is the entity's deterministic "primary" material definition.
- */
-export function resolveAllMaterialDefIds(store: IfcDataStore, entityId: number): number[] {
-    const own = resolveOwnMaterialDefIds(store, entityId);
-    if (own.length > 0) return own;
-
-    // Type fallback: first type with any association wins (mirrors the
-    // single-def lookup's `break`).
-    if (store.relationships) {
-        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
-        for (const typeId of typeIds) {
-            const typeDefs = resolveOwnMaterialDefIds(store, typeId);
-            if (typeDefs.length > 0) return typeDefs;
-        }
-    }
-    return [];
-}
-
-/**
  * Extract EVERY material association for an entity ON-DEMAND, resolved to
  * full material structures (layers, profiles, constituents, lists). Most
  * entities carry one; exporters that attach e.g. a layer set *and* a plain
@@ -134,13 +79,15 @@ export function extractAllMaterialsOnDemand(
     store: IfcDataStore,
     entityId: number
 ): MaterialInfo[] {
-    const defIds = resolveAllMaterialDefIds(store, entityId);
+    const { ownerId, defIds } = resolveMaterialOwnerAndDefIds(store, entityId);
     if (defIds.length === 0) return [];
     if (!store.source?.length) {
-        // Server-parsed: the graph proved the association, but decoding the
-        // definition needs source bytes. A marker per association, never `[]`,
-        // which would read as "no material" (#5227, as #3948 for classifications).
-        return defIds.map((): MaterialInfo => ({ type: 'Material', unresolved: true }));
+        const resolved = store.resolvedMaterials?.get(ownerId);
+        // A missing or older wire row stays unverified. Never let a partial
+        // forwarding payload convert an unknown value into a confident mismatch.
+        return defIds.map((id): MaterialInfo =>
+            resolved?.get(id) ?? { type: 'Material', unresolved: true },
+        );
     }
     const extractor = new EntityExtractor(store.source);
     const out: MaterialInfo[] = [];
@@ -166,7 +113,10 @@ export function extractMaterialsOnDemand(
 ): MaterialInfo | null {
     const materialId = resolveAllMaterialDefIds(store, entityId)[0];
     if (materialId === undefined) return null;
-    if (!store.source?.length) return null;
+    if (!store.source?.length) {
+        const info = extractAllMaterialsOnDemand(store, entityId)[0];
+        return info?.unresolved ? null : info ?? null;
+    }
 
     const extractor = new EntityExtractor(store.source);
     return resolveMaterial(store, extractor, materialId, new Set(), entityId);
@@ -359,7 +309,8 @@ function resolveMaterial(
                 if (!matRef) continue;
                 const matEntity = extractor.extractEntity(matRef);
                 if (matEntity) {
-                    const name = typeof matEntity.attributes?.[0] === 'string' ? matEntity.attributes[0] : `Material #${matId}`;
+                    const name = typeof matEntity.attributes?.[0] === 'string'
+                        ? matEntity.attributes[0] : `Material #${matId}`;
                     const category = typeof matEntity.attributes?.[2] === 'string' ? matEntity.attributes[2] : undefined;
                     materials.push({ name, ...(category ? { category } : {}) });
                 }

@@ -98,7 +98,7 @@ const IDS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 
 const SLOW_COUNT = 6000;
 
-function model(id: string, store: IfcDataStore): FederatedModel {
+function model(id: string, store: IfcDataStore, idOffset = 0): FederatedModel {
   return {
     id,
     name: `${id}.ifc`,
@@ -109,7 +109,7 @@ function model(id: string, store: IfcDataStore): FederatedModel {
     schemaVersion: 'IFC4',
     loadedAt: 0,
     fileSize: 0,
-    idOffset: 0,
+    idOffset,
     maxExpressId: SLOW_COUNT,
   };
 }
@@ -124,9 +124,10 @@ function Probe(): null {
 
 let root: Root | null = null;
 
-async function seed(): Promise<void> {
+async function seed(modelCount: 1 | 2 = 1): Promise<void> {
   const slowStore = await parse(wallsBody(SLOW_COUNT, 'sA'));
   const models = new Map<string, FederatedModel>([['Slow', model('Slow', slowStore)]]);
+  if (modelCount === 2) models.set('Other', model('Other', slowStore, 1_000_000));
   const idsDoc = parseIDS(IDS_XML);
   useViewerStore.setState({
     models,
@@ -157,6 +158,26 @@ afterEach(async () => {
 });
 
 describe('useIDS — clearing during an in-flight runValidation (PR #2837 review)', () => {
+  for (const modelCount of [1, 2] as const) {
+    it(`cancelValidation() discards an in-flight report with ${modelCount} model(s) (#5831)`, async () => {
+      await seed(modelCount);
+      const target = modelCount === 1 ? 'Slow' : 'Other';
+      let pending: Promise<unknown> | undefined;
+      await act(async () => { pending = api!.runValidation(target); });
+      assert.equal(useViewerStore.getState().idsLoading, true);
+
+      await act(async () => { api!.cancelValidation(); });
+      assert.equal(useViewerStore.getState().idsLoading, false);
+      assert.equal(useViewerStore.getState().idsProgress, null);
+      assert.equal(useViewerStore.getState().idsValidationReport, null);
+
+      let resolved: unknown;
+      await act(async () => { resolved = await pending; });
+      assert.equal(resolved, null, 'a cancelled run must not return an unpublished report');
+      assert.equal(useViewerStore.getState().idsValidationReport, null, 'late completion must not publish');
+    });
+  }
+
   it('clearIDS() does not leave idsLoading stuck once the superseded run lands', async () => {
     await seed();
 

@@ -1,5 +1,12 @@
 # @ifc-lite/bcf-api
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8)]:
+  - @ifc-lite/bcf@5.0.0
+
 ## 0.2.3
 
 ### Patch Changes

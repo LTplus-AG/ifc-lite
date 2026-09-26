@@ -17,10 +17,16 @@
  * common case (a mutation view with no pending edits) falls straight through
  * to the original file bytes. There are no per-export settings beyond the
  * model name, so the dialog is a picker + a short description.
+ *
+ * Chrome (open/busy/result state, the Dialog shell, the result alert, the
+ * guarded Cancel/Export footer) lives in `ExportDialogShell.tsx` (#5848);
+ * this component keeps only its own options and export logic.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Download, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Download, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -31,41 +37,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { useTranslation } from '@/i18n';
-import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
+import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 interface UsdExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
+export function UsdExportDialog({ surface = 'classic', trigger }: UsdExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
-  const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Only STEP-backed IFC models can be exported — USD is rebuilt from the
   // source, not the tessellated geometry. `isUsdExportableModel` also excludes
@@ -95,11 +86,10 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
     [modelList, selectedModelId],
   );
 
-  const handleExport = useCallback(async () => {
-    if (!selectedModel?.sourceFile) return;
-
-    setIsExporting(true);
-    setExportResult(null);
+  const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!selectedModel?.sourceFile) {
+      return { success: false, message: t('geometryExport.usd.noSourceDescription') };
+    }
 
     try {
       // Mutation-aware, format-safe source resolution shared with the command
@@ -128,134 +118,99 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
       // text is downloaded — there is no registered USD mime in the codebase).
       const blob = new Blob([usd as BlobPart], { type: 'text/plain' });
       downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), 'usda'));
+      trackExportCompleted({ format: 'usda', surface, size_kb: Math.round(blob.size / 1024) });
 
       const msg = t('geometryExport.usd.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
-      setExportResult({ success: true, message: msg });
       toast.success(msg);
+      return { success: true, message: msg };
     } catch (err) {
       console.error('USD export failed:', err);
       const errMsg = t('geometryExport.usd.failedMessage', {
         reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
       });
-      setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
-    } finally {
-      setIsExporting(false);
+      return { success: false, message: errMsg };
     }
-  }, [selectedModel, getMutationView, t]);
+  }, [selectedModel, getMutationView, t, surface]);
 
-  const handleOpenChange = useExportDialogOpenGuard({
-    busy: isExporting,
-    setOpen,
-    onOpen: () => setExportResult(null),
-  });
+  const filenamePreview = selectedModel
+    ? buildExportFilename(stripExtension(selectedModel.name), 'usda')
+    : undefined;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
+    <ExportDialogShell
+      trigger={
+        trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             {t('geometryExport.usd.triggerButton')}
           </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            {t('geometryExport.usd.dialogTitle')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('geometryExport.usd.dialogDescription', { usdaExt: '.usda' })}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-          {/* Model selector — only shown when multiple are loaded */}
-          {modelList.length > 1 && (
-            <div className="flex items-center gap-4">
-              <Label className="w-32">{t('geometryExport.usd.modelLabel')}</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('geometryExport.usd.selectModelPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelList.map((m) => {
-                    const maxLen = 32;
-                    const displayName =
-                      m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
-                    return (
-                      <SelectItem key={m.id} value={m.id} title={m.name}>
-                        {displayName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Output format indicator */}
-          <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">{t('geometryExport.usd.outputLabel')}</Label>
-            <Badge variant="secondary">{t('geometryExport.usd.outputFormat')}</Badge>
-            <span className="text-xs text-muted-foreground">{t('geometryExport.usd.fileExtension')}</span>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            {t('geometryExport.usd.blurb', {
-              upAxis: 'upAxis = "Z"',
-              metersPerUnit: 'metersPerUnit = 1',
-              xform: 'Xform',
-              usdGeomMesh: 'UsdGeomMesh',
-              usdPreviewSurface: 'UsdPreviewSurface',
-              purposeGuide: 'purpose = "guide"',
-            })}
-          </p>
-
-          {!selectedModel && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{t('geometryExport.usd.noSourceTitle')}</AlertTitle>
-              <AlertDescription>
-                {t('geometryExport.usd.noSourceDescription')}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {exportResult && (
-            <Alert variant={exportResult.success ? 'default' : 'destructive'}>
-              {exportResult.success ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>{exportResult.success ? t('geometryExport.usd.successTitle') : t('geometryExport.usd.errorTitle')}</AlertTitle>
-              <AlertDescription>{exportResult.message}</AlertDescription>
-            </Alert>
-          )}
+        )
+      }
+      icon={<Download className="h-5 w-5" />}
+      title={t('geometryExport.usd.dialogTitle')}
+      description={t('geometryExport.usd.dialogDescription', { usdaExt: '.usda' })}
+      cancelLabel={t('geometryExport.usd.cancelButton')}
+      exportLabel={t('geometryExport.usd.exportButton')}
+      exportingLabel={t('geometryExport.usd.exportingButton')}
+      exportIcon={<Download className="h-4 w-4 mr-2" />}
+      successTitle={t('geometryExport.usd.successTitle')}
+      errorTitle={t('geometryExport.usd.errorTitle')}
+      filenamePreview={filenamePreview}
+      exportDisabled={!selectedModel}
+      onExport={handleExport}
+    >
+      {/* Model selector — only shown when multiple are loaded */}
+      {modelList.length > 1 && (
+        <div className="flex items-center gap-4">
+          <Label className="w-32">{t('geometryExport.usd.modelLabel')}</Label>
+          <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+            <SelectTrigger>
+              <SelectValue placeholder={t('geometryExport.usd.selectModelPlaceholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              {modelList.map((m) => {
+                const maxLen = 32;
+                const displayName =
+                  m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
+                return (
+                  <SelectItem key={m.id} value={m.id} title={m.name}>
+                    {displayName}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
+      )}
 
-        <DialogFooter>
-          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
-            {t('geometryExport.usd.cancelButton')}
-          </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
-            {isExporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {t('geometryExport.usd.exportingButton')}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                {t('geometryExport.usd.exportButton')}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {/* Output format indicator */}
+      <div className="flex items-center gap-4">
+        <Label className="w-32 text-muted-foreground">{t('geometryExport.usd.outputLabel')}</Label>
+        <Badge variant="secondary">{t('geometryExport.usd.outputFormat')}</Badge>
+        <span className="text-xs text-muted-foreground">{t('geometryExport.usd.fileExtension')}</span>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        {t('geometryExport.usd.blurb', {
+          upAxis: 'upAxis = "Z"',
+          metersPerUnit: 'metersPerUnit = 1',
+          xform: 'Xform',
+          usdGeomMesh: 'UsdGeomMesh',
+          usdPreviewSurface: 'UsdPreviewSurface',
+          purposeGuide: 'purpose = "guide"',
+        })}
+      </p>
+
+      {!selectedModel && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>{t('geometryExport.usd.noSourceTitle')}</AlertTitle>
+          <AlertDescription>
+            {t('geometryExport.usd.noSourceDescription')}
+          </AlertDescription>
+        </Alert>
+      )}
+    </ExportDialogShell>
   );
 }

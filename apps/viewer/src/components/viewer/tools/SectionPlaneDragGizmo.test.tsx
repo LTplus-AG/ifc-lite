@@ -3,85 +3,85 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #5403 review: the section-plane handle took pointer capture before its
- * edge-on bail-out, so a press on an edge-on arrow held the pointer with no
- * drag state to release it. happy-dom tracks capture per element, so
- * `hasPointerCapture` is the observable.
+ * The section-plane drag gizmo on the scene kernel (#5501): drag behaviour
+ * is unchanged from the hand-rolled version — cursor pixels along the
+ * screen-projected normal become metres through `foot -> foot + normal`'s
+ * on-screen span — and the #5403 capture rule holds: an edge-on press
+ * takes no capture, a real press does. The stub camera is scaled to 2 px
+ * per world metre here, so a +X normal spans 2 px/m: 30 px = 15 m (a
+ * mutation that drops the px-per-metre division reads 30 m and fails).
  */
 
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { Renderer } from '@ifc-lite/renderer';
-import { cleanup, render } from '@/test/render.js';
-import { setGlobalRendererRef } from '@/hooks/useBCF.js';
+import { cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { SectionPlaneDragGizmo } from './SectionPlaneDragGizmo.js';
+import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
+import { renderScene } from '../../viewport-ui/scene/test/scene-test-support.js';
+import { SectionPlaneVisualization } from './SectionVisualization.js';
 
-let originalRaf: typeof requestAnimationFrame;
-let originalCaf: typeof cancelAnimationFrame;
-
-function mountWithProjection(p1: { x: number; y: number }) {
-  const canvas = document.createElement('canvas');
-  Object.defineProperties(canvas, {
-    clientWidth: { configurable: true, value: 800 },
-    clientHeight: { configurable: true, value: 600 },
-  });
-  const renderer = new Renderer(canvas);
-  const p0 = { x: 100, y: 100 };
-  let call = 0;
-  // Foot then tip, alternating: pins the on-screen span of the plane normal.
-  renderer.getCamera().projectToScreen = () => (call++ % 2 === 0 ? p0 : p1);
-  setGlobalRendererRef({ current: renderer });
-  act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [0, 0, 0]));
-  const custom = useViewerStore.getState().sectionPlane.custom;
-  assert.ok(custom);
-  const starts: number[] = [];
-  const ui = render(
-    <svg>
-      <SectionPlaneDragGizmo customPlane={custom} setDistance={() => {}}
-        onDragStart={() => starts.push(1)} onDragEnd={() => {}} />
-    </svg>,
-  );
-  const handle = ui.querySelector('circle');
-  assert.ok(handle);
-  return { handle, starts };
-}
-
-function press(target: Element): void {
-  act(() => target.dispatchEvent(new window.PointerEvent('pointerdown', {
-    bubbles: true, cancelable: true, pointerId: 7, clientX: 100, clientY: 100,
+function pointer(target: Element, type: string, x: number, y = 100): void {
+  act(() => target.dispatchEvent(new window.PointerEvent(type, {
+    bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y,
   })));
 }
 
+function mount(normal: [number, number, number]) {
+  act(() => useViewerStore.getState().setSectionPlaneFromFace(normal, [100, 100, 0]));
+  const custom = useViewerStore.getState().sectionPlane.custom;
+  assert.ok(custom);
+  const scene = renderScene(<SectionPlaneVisualization enabled />);
+  scene.source.camera.projectToScreen = (p) => ({ x: p.x * 2, y: p.y * 2 });
+  scene.source.dirty = true;
+  scene.flush();
+  const handle = scene.container.querySelector('[data-scene-primitive="handle"] circle');
+  assert.ok(handle);
+  return { ...scene, handle, start: custom.distance };
+}
+
 beforeEach(() => {
-  originalRaf = globalThis.requestAnimationFrame;
-  originalCaf = globalThis.cancelAnimationFrame;
-  // The gizmo projects once on mount; later frames are not needed.
-  globalThis.requestAnimationFrame = () => 1;
-  globalThis.cancelAnimationFrame = () => {};
+  useViewerStore.setState({ sectionPlane: getDefaultSectionPlane(), sectionPickMode: false, sectionPickPreview: null, pointCloudAssetCount: 1, pointCloudPreviewStride: 1 });
 });
+afterEach(cleanup);
 
-afterEach(() => {
-  cleanup();
-  setGlobalRendererRef({ current: null });
-  globalThis.requestAnimationFrame = originalRaf;
-  globalThis.cancelAnimationFrame = originalCaf;
-});
-
-describe('SectionPlaneDragGizmo pointer capture (#5403)', () => {
+describe('SectionPlaneDragGizmo on the kernel (#5501, #5403)', () => {
   it('an edge-on press starts no drag and leaves the pointer uncaptured', () => {
-    const { handle, starts } = mountWithProjection({ x: 100, y: 100 });
-    press(handle);
-    assert.equal(starts.length, 0, 'edge-on: the drag is refused');
+    // A +Z normal projects foot and tip to the same screen point on the stub camera.
+    const { handle, start } = mount([0, 0, 1]);
+    pointer(handle, 'pointerdown', 100);
     assert.equal(handle.hasPointerCapture(7), false, 'nothing would ever release this capture');
+    assert.equal(useViewerStore.getState().pointCloudPreviewStride, 1, 'no drag started');
+    pointer(handle, 'pointermove', 130);
+    assert.equal(useViewerStore.getState().sectionPlane.custom?.distance, start);
   });
 
-  it('a normal press starts the drag and captures the pointer', () => {
-    const { handle, starts } = mountWithProjection({ x: 160, y: 100 });
-    press(handle);
-    assert.equal(starts.length, 1);
+  it('a press captures, a move along the projected normal slides the plane by pixels / (px per metre), release restores the scan stride', () => {
+    const { handle, start } = mount([1, 0, 0]);
+    pointer(handle, 'pointerdown', 100);
     assert.equal(handle.hasPointerCapture(7), true);
+    assert.equal(useViewerStore.getState().pointCloudPreviewStride, 4, 'a scan is thinned while dragging');
+    pointer(handle, 'pointermove', 130);
+    assert.ok(Math.abs(useViewerStore.getState().sectionPlane.custom!.distance - (start + 15)) < 1e-9, '30 px along a 2 px/m normal is 15 m');
+    pointer(handle, 'pointermove', 100, 140);
+    assert.ok(Math.abs(useViewerStore.getState().sectionPlane.custom!.distance - start) < 1e-9, 'movement perpendicular to the normal does nothing');
+    pointer(handle, 'pointerup', 100, 140);
+    assert.equal(handle.hasPointerCapture(7), false);
+    assert.equal(useViewerStore.getState().pointCloudPreviewStride, 1);
+  });
+
+  it('the handle follows the LIVE plane as the distance changes, on the shared projector, without a loop of its own', () => {
+    const { container, handle, flush, projector, start } = mount([1, 0, 0]);
+    const g = handle.closest<SVGGElement>('[data-scene-primitive="handle"]')!;
+    // The pick insets the plane a hair off the face (#5480), hence the tolerance.
+    const x = () => Number(/translate\(([-\d.]+)px/.exec(g.style.transform)?.[1]);
+    assert.ok(Math.abs(x() - 200) < 0.01, `foot at the pick (2 px/m): ${g.style.transform}`);
+    const ticks = projector.dirtyTicks;
+    act(() => useViewerStore.getState().setSectionCustomDistance(start + 25));
+    flush();
+    assert.ok(Math.abs(x() - 250) < 0.01, `the foot is pickedAt projected onto the moved plane: ${g.style.transform}`);
+    assert.ok(projector.dirtyTicks > ticks, 'the value change woke the one projector');
+    assert.equal(container.querySelectorAll('[data-scene-primitive="axis-arrow"]').length, 1);
   });
 });

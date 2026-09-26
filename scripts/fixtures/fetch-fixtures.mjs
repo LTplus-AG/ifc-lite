@@ -22,12 +22,14 @@
 //   - No third-party dependencies.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fixtureDownloadUrl } from './download-url.mjs';
+import { fixtureDownloadUrl, pinnedBlobRawUrl } from './download-url.mjs';
 import { validateManifest } from './manifest-validation.mjs';
+import { extractZipMember } from './zip-member.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -182,6 +184,7 @@ async function fetchOne(entry) {
 
   mkdirSync(dirname(abs), { recursive: true });
   const tmp = abs + '.part';
+  const archiveTmp = abs + '.archive.part';
 
   let lastErr;
   let permanent = false;
@@ -191,7 +194,8 @@ async function fetchOne(entry) {
       // mid-download stall so the retry loop can move on instead of hanging.
       // AbortError/TimeoutError isn't a 4xx, so it flows through the normal
       // (retryable) path below.
-      const res = await fetch(fixtureDownloadUrl(baseUrl, entry), {
+      const archive = entry.upstream_archive;
+      const res = await fetch(archive ? pinnedBlobRawUrl(archive.blob_url) : fixtureDownloadUrl(baseUrl, entry), {
         redirect: 'follow',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -207,7 +211,23 @@ async function fetchOne(entry) {
         throw err;
       }
       if (!res.body) throw new Error('empty response body');
-      await pipeline(res.body, createWriteStream(tmp));
+      if (archive) {
+        let received = 0;
+        const limit = new Transform({
+          transform(chunk, _encoding, callback) {
+            received += chunk.length;
+            callback(received > archive.size ? new Error('upstream ZIP exceeds declared size') : null, chunk);
+          },
+        });
+        await pipeline(res.body, limit, createWriteStream(archiveTmp));
+        if (received !== archive.size || await sha256OfFile(archiveTmp) !== archive.sha256) {
+          throw new Error('upstream ZIP size or SHA-256 mismatch');
+        }
+        writeFileSync(tmp, extractZipMember(readFileSync(archiveTmp), archive.member, entry.size));
+        unlinkSync(archiveTmp);
+      } else {
+        await pipeline(res.body, createWriteStream(tmp));
+      }
       const got = await sha256OfFile(tmp);
       if (got !== entry.sha256) {
         unlinkSync(tmp);
@@ -219,6 +239,7 @@ async function fetchOne(entry) {
       lastErr = err;
       // cleanup — best-effort; tmp may not exist if fetch failed before write
       try { unlinkSync(tmp); } catch { /* ignore */ }
+      try { unlinkSync(archiveTmp); } catch { /* ignore */ }
       if (permanent || attempt >= RETRIES) break;
       // Exponential backoff capped at RETRY_MAX_MS, plus full-range jitter
       // (0..wait) so concurrent workers that all 502'd at the same instant

@@ -958,6 +958,29 @@ fn a_hard_result_reports_the_floor_of_the_depth_it_reports_5639() {
     let measured = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: false });
     assert_eq!(hard(measured, 0.5), (-0.1, x_floor), "certified MTD: its own axis's floor");
     let through = Some(crate::depth::BoxPenetration { mtd: 0.1, axis: x, through: true });
-    assert_eq!(hard(through, 0.5), (-0.5, est_floor), "through-penetration reports the estimate");
+    assert_eq!(hard(through, 0.5), (-0.1, x_floor), "through-penetration capped by its MTD (#5742): the MTD's floor");
+    let through_deep = Some(crate::depth::BoxPenetration { mtd: 0.9, axis: x, through: true });
+    assert_eq!(hard(through_deep, 0.5), (-0.5, est_floor), "through-penetration below its MTD: the estimate");
     assert_eq!(hard(None, 0.5), (-0.5, est_floor), "no box: the estimate");
+}
+
+#[test]
+fn a_through_penetration_is_capped_by_its_mtd_and_stays_an_estimate_5742() {
+    // The #5742 tie: a member overlapping a 26 mm plate by 26 mm pokes out of
+    // the far face by microns, so `through` is decided by f32 noise per
+    // placement. The partial side reported the certified 0.026 MTD, the
+    // through side the rotated boxes' 0.786 AABB estimate: a 30x swing.
+    // Capping by the MTD makes both sides report 0.026; only the label
+    // says which side of the tie the pair fell on. Mirrors the TS
+    // `never reports a through-penetration deeper than its MTD`.
+    let a = Aabb::new([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+    let b = Aabb::new([-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]);
+    let at = |through| {
+        let pen = crate::depth::BoxPenetration { mtd: 0.026078, axis: [1.0, 0.0, 0.0], through };
+        let r = crate::depth::depth_clash_result(Some(pen), 0.78598, None, &a, &b, true, [0.0; 3], a)
+            .expect("a result");
+        (r.status, r.distance, r.distance_kind)
+    };
+    assert_eq!(at(false), (ClashStatus::Hard, -0.026078, crate::narrow::DistanceKind::Mesh));
+    assert_eq!(at(true), (ClashStatus::Hard, -0.026078, crate::narrow::DistanceKind::Estimate));
 }

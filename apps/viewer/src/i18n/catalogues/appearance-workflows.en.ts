@@ -108,11 +108,11 @@ export const appearanceWorkflowsEn = {
   'appearance.assignments.status.reviewMembership': 'Review the membership differences, then accept this scope explicitly.',
   'appearance.assignments.status.recipeTooLarge': 'The assignment recipe exceeds 4 MiB.',
   'appearance.assignments.status.recipeRestored': 'Recipe restored. Choose each loaded model and original source, then review its membership.',
-  'appearance.assignments.status.leaveRoom': 'Leave the shared room before editing assignments.',
+  'appearance.assignments.status.leaveRoom': 'Leave the shared session before editing assignments.',
 
   // useAppearancePanel / useReferenceAppearance controller messages
   'appearance.controller.adjustMapping': 'Adjust the mapping to preview another appearance.',
-  'appearance.controller.leaveRoom': 'Leave the shared room to edit appearance, then share the finished model.',
+  'appearance.controller.leaveRoom': 'Leave the shared session to edit appearance, then share the finished model.',
   'appearance.controller.openIfc': 'Open an IFC model to apply appearance.',
   'appearance.controller.requiresIfc4': 'Appearance authoring currently needs an IFC4 or IFC4X3 model.',
   'appearance.controller.waitForModel': 'Wait for the model to finish loading.',
@@ -146,7 +146,7 @@ export const appearanceWorkflowsEn = {
   'appearance.reference.placing': 'Placing reference…',
   'appearance.reference.saved': 'Registration saved. Undo is available.',
   'appearance.reference.placed': 'Reference placed. Undo is available.',
-  'appearance.reference.leaveRoom': 'Leave the shared room to place drawing references.',
+  'appearance.reference.leaveRoom': 'Leave the shared session to place drawing references.',
   'appearance.reference.discarded': 'Reference preview discarded.',
 
   // AppearanceSourceFields
@@ -171,7 +171,7 @@ export const appearanceWorkflowsEn = {
   'appearance.sourceFields.reuseImage': 'Reuse an image',
   'appearance.sourceFields.chooseSourceOption': 'Choose a source',
   'appearance.sourceFields.chooseImageOption': 'Choose an image',
-  'appearance.sourceFields.helpPdf': 'PNG or JPEG image, or one PDF page · PDF up to 64 MB',
+  'appearance.sourceFields.helpPdf': 'PNG/JPEG or one PDF page · PDF max 64 MB',
   'appearance.sourceFields.helpImage': 'PNG or JPEG · up to {maxMb} MB and {maxMegapixels} megapixels · maximum edge {maxDimension} px',
 
   // AppearanceScopeFields
@@ -277,7 +277,7 @@ export const appearanceWorkflowsEn = {
   'appearance.capture.nameAriaLabel': 'Captured object Name',
   'appearance.capture.step3Heading': '3. Create the IFC object',
   'appearance.capture.createIfcObject': 'Create IFC object',
-  'appearance.capture.leaveRoomNotice': 'Leave the shared room to create captured objects, then share the saved model.',
+  'appearance.capture.leaveRoomNotice': 'Leave the shared session to create captured objects, then share the saved model.',
   'appearance.capture.cancelled': 'Creation cancelled.',
   'appearance.capture.cancelCreation': 'Cancel creation',
 

@@ -32,12 +32,16 @@
  * this same guard).
  */
 
-import { Coins, X } from 'lucide-react';
+import { Coins, Download, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
+import { buildCostCsvReport } from '@/lib/analysis/export-csv';
 import type { EntityRefLike } from '@/lib/cost/cost-tree';
+import { downloadFile } from '@/lib/export/download';
+import { trackExportCompleted } from '@/lib/analytics';
 import { CostDetail } from './cost/CostDetail';
 import { CostTreeView } from './cost/CostTreeView';
 import { useCostBackend } from './cost/useCostBackend';
@@ -60,6 +64,19 @@ export function CostPanel({ onClose }: CostPanelProps) {
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
 
   const [selectedRef, setSelectedRef] = useState<EntityRefLike | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExport = useCallback(() => {
+    try {
+      const report = buildCostCsvReport(entries, backend.evaluateItem);
+      if (!report) return;
+      downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+      trackExportCompleted({ format: 'csv', surface: 'cost_panel', row_count: report.rows });
+      setExportError(null);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    }
+  }, [entries, backend]);
 
   const handleSelectItem = useCallback((_modelId: string, ref: EntityRefLike) => {
     setSelectedRef(ref);
@@ -97,12 +114,17 @@ export function CostPanel({ onClose }: CostPanelProps) {
       <div className="flex items-center gap-2 border-b p-3">
         <Coins className="h-4 w-4 text-amber-600" />
         <span className="flex-1 text-sm font-medium">{t('costPanel.title')}</span>
+        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={handleExport}
+          disabled={!entries.some((entry) => (entry.graph?.CostItems.length ?? 0) > 0)}>
+          <Download className="h-3.5 w-3.5" /> {t('costPanel.exportCsv')}
+        </Button>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('costPanel.close')}>
+          <IconButton label={t('costPanel.close')} className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
+      {exportError && <div role="alert" className="px-3 py-1 text-xs text-destructive">{exportError}</div>}
       <div className="flex flex-1 overflow-hidden">
         <div className="w-1/2 overflow-y-auto border-r">
           <CostTreeView entries={entries} selectedRef={selectedRef} onSelectItem={handleSelectItem} />

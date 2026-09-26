@@ -39,7 +39,12 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { measureTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { CountBadge, LISTED_STATES } from '../../components/viewer/compare/CompareResultsList';
+import { MeasurePointReadout } from '../../components/viewer/tools/MeasurePointReadout';
+import { useViewerStore } from '../../store';
+import { measureTextContrastOnSurface, measureRenderedTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
 import { extractClassNameAfter, extractFirstStringLiteralAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -63,10 +68,9 @@ const IDS_AUDIT_SUMMARY = join(VIEWER_DIR, 'IDSAuditSummary.tsx');
 const ENTITY_CONTEXT_MENU = join(VIEWER_DIR, 'EntityContextMenu.tsx');
 const ROOM_PANEL = join(VIEWER_DIR, 'RoomPanel.tsx');
 const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
-const SECTION_PANEL = join(VIEWER_DIR, 'tools/SectionPanel.tsx');
+const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
 const RIBBON_PRIMITIVES = join(VIEWER_DIR, 'ribbon/primitives.tsx');
 const CHANGE_DETAIL_VIEW = join(VIEWER_DIR, 'compare/ChangeDetailView.tsx');
-const COMPARE_RESULTS_LIST = join(VIEWER_DIR, 'compare/CompareResultsList.tsx');
 const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 
 // Post-merge audit of #4792/#4794 (this file's own remaining `/NN` grep
@@ -284,10 +288,13 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-popover',
     },
     {
-      name: 'SectionPanel axis prompt',
-      file: SECTION_PANEL,
-      anchor: "{sectionPickMode ? t('sectionTool.pick.activeLabel') : isCustom ? t('sectionTool.pick.customLabel') : t('sectionTool.pick.label')}\n                </span>\n              </Button>\n              <div ",
-      surface: 'bg-background',
+      name: 'SectionToolbar heading caption',
+      file: SECTION_TOOLBAR,
+      anchor: '2D + close — never inside one. */}\n      <span className={GROUP}>\n        <span ',
+      // The caption replaced the Section panel's axis prompt (#5991) and sits
+      // on the HUD toolbar (`HudSurface`); measured on the opaque `bg-popover`
+      // proxy like the other HUD sites here.
+      surface: 'bg-popover',
     },
     {
       name: 'ribbon/primitives RibbonGroup label',
@@ -323,12 +330,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       name: 'compare/ChangeDetailView before/after arrow',
       file: CHANGE_DETAIL_VIEW,
       anchor: "<span className=\"text-muted-foreground line-through truncate max-w-[45%]\">{delta.before ?? '—'}</span>\n        <span ",
-      surface: 'bg-background',
-    },
-    {
-      name: 'compare/CompareResultsList CountBadge hint',
-      file: COMPARE_RESULTS_LIST,
-      anchor: '<span className="text-[10px] text-muted-foreground">{label}</span>\n      {hint && <span ',
       surface: 'bg-background',
     },
     {
@@ -375,12 +376,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-popover',
     },
     {
-      name: 'MeasurePointReadout CoordRow hint',
-      file: MEASURE_POINT_READOUT,
-      anchor: '<span className="font-mono text-[11px] tabular-nums">{value}</span>\n      {hint && <span ',
-      surface: 'bg-background',
-    },
-    {
       name: 'geo-readout EnhLine label',
       file: GEO_READOUT,
       anchor: 'text-muted-foreground whitespace-nowrap">\n      {label && <span ',
@@ -401,6 +396,49 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       });
     }
   }
+
+  for (const theme of THEMES) {
+    it(`MeasurePointReadout rendered CoordRow hint clears AA in ${theme} theme`, async () => {
+      // React's server renderer reads useSyncExternalStore's initial snapshot.
+      // Populate that snapshot only for this render, then restore it exactly.
+      const initial = useViewerStore.getInitialState();
+      const before = {
+        activeMeasurement: initial.activeMeasurement,
+        measurements: initial.measurements,
+        geoReadoutEnabled: initial.geoReadoutEnabled,
+        measureReferencePoint: initial.measureReferencePoint,
+      };
+      try {
+        Object.assign(initial, {
+          activeMeasurement: null,
+          measurements: [{ id: 'contrast-point', start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, end: { x: 1, y: 2, z: 3, screenX: 1, screenY: 2 }, distance: 3.74 }],
+          geoReadoutEnabled: false,
+          measureReferencePoint: null,
+        });
+        const markup = renderToStaticMarkup(createElement(MeasurePointReadout));
+        assert.match(markup, />m<\/span>/, 'the last-point row renders its unit hint');
+        const ratio = await measureRenderedTextContrastOnSurface(
+          theme, 'bg-background', markup, '#surface .overflow-x-auto > div:first-child span:last-child',
+        );
+        assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+          `rendered MeasurePointReadout unit hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+      } finally {
+        Object.assign(initial, before);
+      }
+    });
+
+    it(`compare/CompareResultsList CountBadge hint clears AA in ${theme} theme`, async () => {
+      const hint = '4 type objects';
+      const markup = renderToStaticMarkup(createElement(CountBadge, {
+        label: 'Changed', value: 4, color: LISTED_STATES[0].color, hint,
+      }));
+      const ratio = await measureRenderedTextContrastOnSurface(
+        theme, 'bg-background', markup, '#surface span:nth-of-type(3)',
+      );
+      assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+        `rendered CountBadge hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+    });
+  }
 });
 
 describe('non-vacuousness proof: reintroducing the old opacity tiers reddens in every theme', () => {
@@ -414,7 +452,7 @@ describe('non-vacuousness proof: reintroducing the old opacity tiers reddens in 
     { name: 'ClashPanel mode label (pre-#4792, /60)', surface: 'bg-background', className: 'normal-case tracking-normal text-muted-foreground/60' },
     { name: 'TourStepCard / HoverTooltip / MeasurePanel (pre-#4792, /80)', surface: 'bg-popover', className: 'text-[11px] text-muted-foreground/80' },
     { name: 'MeasureQuantities / MeasurePointReadout (pre-#4792, /70)', surface: 'bg-background', className: 'font-mono text-[9px] leading-tight text-muted-foreground/70' },
-    { name: 'ChunkErrorBoundary / IDSAuditSummary / EntityContextMenu / RoomPanel / CustomizeSidebar / SectionPanel / ribbon-primitives / compare-panels / LayersPanel (pre-follow-up, /70)', surface: 'bg-background', className: 'text-[10px] text-muted-foreground/70' },
+    { name: 'ChunkErrorBoundary / IDSAuditSummary / EntityContextMenu / RoomPanel / CustomizeSidebar / ribbon-primitives / compare-panels / LayersPanel (pre-follow-up, /70)', surface: 'bg-background', className: 'text-[10px] text-muted-foreground/70' },
     { name: 'compare/ChangeDetailView before/after arrow (pre-follow-up, /60)', surface: 'bg-background', className: 'text-muted-foreground/60 shrink-0' },
     { name: 'ChatPanel empty-state hint / BulkPropertyEditor / MeasurePointReadout / geo-readout (pre-audit-fix, /60)', surface: 'bg-background', className: 'text-xs text-muted-foreground/60' },
     { name: 'LearnTab "X min" (pre-audit-fix, /70)', surface: KEYBOARD_SHORTCUTS_DIALOG_SURFACE, className: 'shrink-0 text-[11px] tabular-nums text-muted-foreground/70' },

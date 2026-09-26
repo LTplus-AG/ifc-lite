@@ -8,9 +8,16 @@
  * titles and their button aria-labels. The docked `placement` panel's
  * Georeference tab chrome (deltas, nudge/rotate, apply/reset) is covered
  * separately, in `GeoreferenceTab.i18n.test.tsx` (#5505).
+ *
+ * #5995: the gizmo used to run its own `requestAnimationFrame` loop, which
+ * forced this file to stub it globally so mounting settled synchronously.
+ * It now computes its projection directly in the render body (woken by the
+ * scene kernel's shared `SceneProjector` via `useProjectorTick`, following
+ * #5510), so a single synchronous `render()` already reflects the final
+ * projected geometry and no rAF stub is needed.
  */
 import '@/test/setup-dom.js';
-import { describe, it, before, after, afterEach, beforeEach } from 'node:test';
+import { describe, it, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -92,14 +99,6 @@ const mapConversion: MapConversion = {
   eastings: 100, northings: 200, orthogonalHeight: 10,
   xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1, factorZ: 1,
 };
-
-// The gizmo re-projects every animation frame via a self-scheduling
-// `requestAnimationFrame` loop that keeps running for as long as `editMode`
-// is true — same reasoning `CesiumPlacementGizmo.heightScale.test.tsx`
-// documents for stubbing it module-wide rather than per test.
-const originalRaf = globalThis.requestAnimationFrame;
-before(() => { globalThis.requestAnimationFrame = () => 0; });
-after(() => { globalThis.requestAnimationFrame = originalRaf; });
 
 const originalState = useViewerStore.getState();
 

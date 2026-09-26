@@ -35,6 +35,8 @@ import {
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
+import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
+import { typeNameOfGlobalId } from '@/store/globalId';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
@@ -50,6 +52,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
@@ -475,7 +478,7 @@ export function Viewport({
     if (!isInitialized) return;
     const scene = rendererRef.current?.getScene();
     if (!scene) return;
-    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    scene.setInstancedVisible(instancedPassDrawn({ hasTypeGeometry, typeViewMode }));
     rendererRef.current?.requestRender();
     // Depend on isInitialized so the instanced-visibility state is applied once
     // the renderer is ready, even if the view-mode inputs never change after the
@@ -1013,10 +1016,12 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
-        fitAll: () => {
-          // Zoom to fit without changing view direction
-          camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-          calculateScale();
+        fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
+          const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
+            typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),
+            instancedIds: rendererRef.current?.getScene().getInstancedEntityIds() ?? [], instancedDrawn: instancedPassDrawn(useViewerStore.getState()),
+            boundsOf: createRenderableBoundsLookup(), visibility: { hidden: hiddenEntitiesRef.current, isolated: isolatedEntitiesRef.current } });
+          camera.zoomExtent(target.min, target.max, 300); calculateScale();
         },
         home: () => {
           // Adaptive home: compact buildings get the historical SE isometric
@@ -1062,12 +1067,13 @@ export function Viewport({
         rotateRight: () => {
           animateHorizontalRotation(Math.PI / 2);
         },
-        frameSelection: (durationMs = 300) => {
-          // Frame the current selection. Prefer the full multi-selection set
-          // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
-          // selected element; fall back to the single primary id. The set is
-          // kept in sync with selection (cleared on a plain click), so the
-          // union is always an accurate frame of what's highlighted.
+        // The world AABB of the current selection — what `frameSelection`
+        // frames and what the section box fits to (#5513). Prefer the full
+        // multi-selection set (Ctrl-click, box-select, a clash pair) so it
+        // encloses EVERY selected element; fall back to the single primary id.
+        // The set is kept in sync with selection (cleared on a plain click),
+        // so the union is always an accurate frame of what's highlighted.
+        selectionBounds: () => {
           const geom = geometryRef.current;
           const set = selectedEntityIdsRef.current;
           const single = selectedEntityIdRef.current;
@@ -1081,10 +1087,8 @@ export function Viewport({
               : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
-            return false;
+            return null;
           }
-          let min: { x: number; y: number; z: number } | null = null;
-          let max: { x: number; y: number; z: number } | null = null;
           // One indexed, memoised lookup shared with the resolution pass below:
           // every id is asked twice — once to decide whether it needs expanding,
           // once to union its box — and the mesh reader behind it indexes the
@@ -1101,26 +1105,14 @@ export function Viewport({
           // unhighlighted, because the renderer highlights `selectedEntityIds`
           // directly and that set still held the geometry-less assembly id.
           const framedIds = resolveRenderableIds(ids, 'frameSelection', boundsOf);
-          for (const id of framedIds) {
-            const b = boundsOf(id);
-            if (!b) continue;
-            if (!min || !max) {
-              min = { x: b.min.x, y: b.min.y, z: b.min.z };
-              max = { x: b.max.x, y: b.max.y, z: b.max.z };
-            } else {
-              min.x = Math.min(min.x, b.min.x);
-              min.y = Math.min(min.y, b.min.y);
-              min.z = Math.min(min.z, b.min.z);
-              max.x = Math.max(max.x, b.max.x);
-              max.y = Math.max(max.y, b.max.y);
-              max.z = Math.max(max.z, b.max.z);
-            }
-          }
-          if (min && max) {
-            return frameSelectionBounds(camera, renderer, min, max, durationMs, calculateScale);
-          } else {
-            console.warn('[Viewport] frameSelection: Could not get bounds for selected element'); return false;
-          }
+          const bounds = unionEntityBounds(null, framedIds, boundsOf);
+          if (!bounds) console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
+          return bounds;
+        },
+        frameSelection: (durationMs = 300) => {
+          const bounds = useViewerStore.getState().cameraCallbacks.selectionBounds?.();
+          if (!bounds) return false;
+          return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);
         },
         // Resolve ids to what the renderer can actually highlight (the SAME
         // aggregation resolution frameSelection uses to decide what to frame),
@@ -1177,11 +1169,7 @@ export function Viewport({
           if (scene) {
             const state = useViewerStore.getState();
             for (const id of scene.getInstancedEntityIds()) {
-              const loc = state.fromGlobalId(id);
-              const store = loc
-                ? state.models.get(loc.modelId)?.ifcDataStore
-                : ifcDataStoreRef.current;
-              const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+              const type = typeNameOfGlobalId(state, id, ifcDataStoreRef.current);
               if (type && EXCLUDE.has(type)) continue;
               const b = scene.getInstancedEntityBounds(id);
               if (!b) continue;
@@ -1635,14 +1623,7 @@ export function Viewport({
     calculateScale,
   });
 
-  useSpaceMouseControls({
-    rendererRef,
-    isInitialized,
-    geometryBoundsRef,
-    geometryRef,
-    selectedEntityIdRef,
-    calculateScale,
-  });
+  useSpaceMouseControls({ rendererRef, isInitialized, geometryRef, selectedEntityIdRef, calculateScale });
 
   useAnimationLoop({
     canvasRef,
@@ -1782,8 +1763,14 @@ export function Viewport({
         </div>
       )}
       {/* Rectangle-select drag visual. Pointer-events:none so the
-          canvas keeps receiving pointer events during the drag. */}
-      <RectSelectionOverlay rect={rectSelection} />
+          canvas keeps receiving pointer events during the drag. Its own
+          scene-overlay kernel instance (#5512): a stub-select drag has no
+          natural ancestor `SceneOverlayRoot` this close to the canvas, and
+          the rect is already screen-space so it needs only the shared SVG
+          layer/portal, not the projector. */}
+      <SceneOverlayRoot>
+        <RectSelectionOverlay rect={rectSelection} />
+      </SceneOverlayRoot>
     </div>
   );
 }

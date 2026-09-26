@@ -29,7 +29,7 @@ import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
-import { propertiesEn } from '@/i18n/catalogues/properties.en';
+import { propertiesPanelEn as propertiesEn } from '@/i18n/catalogues/properties-panel.en';
 import { useViewerStore } from '@/store';
 import { PropertiesPanel } from './PropertiesPanel.js';
 

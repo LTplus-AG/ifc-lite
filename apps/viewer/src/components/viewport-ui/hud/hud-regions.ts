@@ -54,6 +54,26 @@ export function getHudRegionNode(name: HudRegionName): HTMLDivElement | null {
   return nodes.get(name) ?? null;
 }
 
+/**
+ * The top-center lane ruler (#5975): an invisible, childless `width: 100%`
+ * box carrying the SAME classes as the `top-center` region, so its laid-out
+ * width is exactly the lane's cap. The region itself shrinks to fit its
+ * children, and `getComputedStyle(region).maxWidth` comes back as the raw
+ * `calc(100% - 448px)` string in Chromium, so neither can say how wide the
+ * lane is. Published through the same listeners as the region nodes.
+ */
+let laneRulerNode: HTMLDivElement | null = null;
+
+export function setHudLaneRulerNode(node: HTMLDivElement | null): void {
+  if (laneRulerNode === node) return;
+  laneRulerNode = node;
+  notify();
+}
+
+export function getHudLaneRulerNode(): HTMLDivElement | null {
+  return laneRulerNode;
+}
+
 /** Subscribe to region-node changes (`useSyncExternalStore`'s `subscribe`). */
 export function subscribeHudRegions(listener: () => void): () => void {
   listeners.add(listener);

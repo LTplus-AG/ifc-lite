@@ -103,11 +103,11 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   return <div className="space-y-2" aria-busy={busy}>
-    <p className="text-[11px] text-muted-foreground">{t('appearance.pdfAnnotation.description')}</p>
-    <label className="block text-[11px]">{t('appearance.pdfAnnotation.toleranceLabel')}<Input aria-label={t('appearance.pdfAnnotation.toleranceAriaLabel')} value={tolerance} disabled={busy || disabled}
+    <p className="text-2xs text-muted-foreground">{t('appearance.pdfAnnotation.description')}</p>
+    <label className="block text-2xs">{t('appearance.pdfAnnotation.toleranceLabel')}<Input aria-label={t('appearance.pdfAnnotation.toleranceAriaLabel')} value={tolerance} disabled={busy || disabled}
       onChange={event => setTolerance(event.target.value)} className="h-8 text-xs" /></label>
     {report && <PdfFidelityReportView report={report.verdict} userUnit={report.userUnit} />}
-    {partial && <label className="flex items-start gap-1.5 text-[11px]"><input type="checkbox" aria-label={t('appearance.pdfAnnotation.acceptPartialAriaLabel')} className="mt-0.5" checked={accepted} disabled={busy || disabled}
+    {partial && <label className="flex items-start gap-1.5 text-2xs"><input type="checkbox" aria-label={t('appearance.pdfAnnotation.acceptPartialAriaLabel')} className="mt-0.5" checked={accepted} disabled={busy || disabled}
       onChange={event => { setAccepted(event.target.checked); dropPrepared(); }} />{t('appearance.pdfAnnotation.acceptPartialLabel')}</label>}
     <Button type="button" variant="outline" size="sm" disabled={!valid || busy || disabled || !!room || !!report?.verdict.rasterOnly || (partial && !accepted)} onClick={() => { void prepare(); }}>
       {partial ? t('appearance.pdfAnnotation.preparePartial') : t('appearance.pdfAnnotation.prepareVector')}</Button>
@@ -118,6 +118,6 @@ export function PdfAnnotationFields({ referenceId, modelId, containerId, Name, d
       <Button type="button" size="sm" disabled={!ready || busy || disabled || !!room} onClick={() => { void create(); }}>{t('appearance.pdfAnnotation.createAnnotation')}</Button>
     </>}
     {busy && <Button type="button" size="sm" variant="ghost" onClick={() => { cancel(); dropAll(); setError(false); setMessage({ key: 'appearance.pdfAnnotation.cancelled' }); }}>{t('appearance.pdfAnnotation.cancel')}</Button>}
-    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key, message.params) : message.text}</p>}
+    {message && <p role={error ? 'alert' : 'status'} className={`text-2xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key, message.params) : message.text}</p>}
   </div>;
 }

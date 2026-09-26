@@ -1,5 +1,13 @@
 # @ifc-lite/export
 
+## 4.7.4
+
+### Patch Changes
+
+- [#5706](https://github.com/LTplus-AG/ifc-lite/pull/5706) [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc) Thanks [@louistrue](https://github.com/louistrue)! - Export live spatial containment and hierarchy in BOS archives
+- Updated dependencies [[`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9)]:
+  - @ifc-lite/mutations@2.8.0
+
 ## 4.7.3
 
 ### Patch Changes

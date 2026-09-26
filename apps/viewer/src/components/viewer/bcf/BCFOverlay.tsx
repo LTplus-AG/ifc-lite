@@ -43,10 +43,10 @@ import { Pin, AnchoredCard, useSceneLayer, useWorldAnchor, type Vec3, type Scree
 // ============================================================================
 
 const STATUS_FILL_VAR: Record<string, string> = {
-  open: 'var(--overlay-status-danger, #f52a65)',
-  'in progress': 'var(--overlay-status-warn, #8c6c3e)',
-  resolved: 'var(--overlay-status-ok, #587539)',
-  closed: 'var(--overlay-ink-muted, #5a6aa4)',
+  open: 'var(--overlay-status-danger)',
+  'in progress': 'var(--overlay-status-warn)',
+  resolved: 'var(--overlay-status-ok)',
+  closed: 'var(--overlay-ink-muted)',
 };
 
 function statusFill(status: string, active: boolean): string {

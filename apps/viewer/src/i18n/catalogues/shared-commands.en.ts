@@ -54,8 +54,8 @@ export const sharedCommandsEn = {
   'exportCommands.csv.item.spatial': 'Spatial Hierarchy',
 
   'exportCommands.json.label': 'JSON',
-  'exportCommands.json.menuLabel': 'Export JSON (All Data)',
-  'exportCommands.json.tooltip': 'Export JSON (all data)',
+  'exportCommands.json.menuLabel': 'Export JSON (active model)',
+  'exportCommands.json.tooltip': 'Export the active model as JSON',
 
   'exportCommands.screenshot.label': 'Screenshot',
   'exportCommands.screenshot.menuLabel': 'Screenshot',
@@ -64,6 +64,15 @@ export const sharedCommandsEn = {
   'exportCommands.pdf.label': 'PDF',
   'exportCommands.pdf.menuLabel': 'Export PDF (to-scale 3D view)',
   'exportCommands.pdf.tooltip': 'Export PDF (to-scale 3D view)',
+
+  'exportCommands.modifiedIfc.label': 'Modified IFC',
+  'exportCommands.modifiedIfc.menuLabel': 'Export modified IFC…',
+  'exportCommands.modifiedIfc.tooltip': 'Export every model with unexported edits, edits applied',
+
+  // Extension-contributed exporters: the row text is the exporter's own name.
+  'exportCommands.extension.groupLabel': 'From extensions',
+  'exportCommands.extension.exportedToast': 'Exported with {name}',
+  'exportCommands.extension.failedToast': '"{name}" failed: {error}',
 
   'cameraCommands.group.camera': 'Camera',
   'cameraCommands.group.preset': 'Preset views',
@@ -138,7 +147,7 @@ export const sharedCommandsEn = {
   'classVisibility.fastGeometry.descriptionExact': 'Exact: full cuts + density · on reload',
 
   'classVisibility.pinnedDetail.label': 'Detail pinned: {tier}',
-  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · from a ?geomTier= link',
-  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · from a ?geomTier= link',
-  'classVisibility.clear': 'Clear',
+  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · manage in Performance settings',
+  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · manage in Performance settings',
+  'classVisibility.performanceSettings': 'Performance settings',
 } as const satisfies Record<string, TranslationValue>;

@@ -30,6 +30,10 @@ use super::spatial::{nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMerg
 use super::units::ModelUnitMode;
 use super::{MergedModel, MergedOptions};
 
+#[path = "empty_claims.rs"]
+mod claims;
+use claims::StructureClaims;
+
 /// Spatial container types that are dropped when they end up empty. `IfcProject`
 /// is deliberately absent: it is the file's root, never a candidate.
 const CONTAINER_TYPES: [&str; 4] =
@@ -108,6 +112,7 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
     // soon as each model's contribution to the graph is recorded.
     let mut per_model_containers: Vec<Vec<(u32, Node)>> = Vec::with_capacity(models.len());
     let mut offset: u32 = 0;
+    let mut claims = StructureClaims::default();
 
     for (i, model) in models.iter().enumerate() {
         let index = ModelIndex::build(model.content);
@@ -122,7 +127,7 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
         // nothing in the output actually fills — and report it as surviving.
         // Same rule, one home (`plan::next_offset`), so the two cannot disagree.
         let Some(next) = next_offset(offset, &included) else { break };
-        offset = next;
+        let base = std::mem::replace(&mut offset, next);
         let compatible = ctx.compatible.get(i).copied().unwrap_or(false);
         let mut remap: HashMap<u32, u32> = HashMap::new();
         if i > 0 && compatible {
@@ -141,7 +146,8 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
 
         let canon = canonical_containers(&index, &included, &remap, compatible, i, &mut guid_node);
         graph.nodes.extend(canon.values().copied());
-        record_edges(&index, &included, &canon, &mut graph);
+        let withheld = claims.withheld(&index, &included, &remap, base, i > 0 && compatible);
+        record_edges(&index, &included, &canon, &withheld, &mut graph);
         record_blocks(&index, &included, &canon, &mut graph);
         per_model_containers.push(canon.into_iter().collect());
     }
@@ -210,11 +216,13 @@ fn canonical_containers(
 
 /// Record what this model contributes to each container: contained elements and
 /// aggregated objects become content; aggregated spatial children become upward
-/// edges, so a non-empty storey keeps its building and site.
+/// edges, so a non-empty storey keeps its building and site. An edge the
+/// one-parent pass withholds is never written, so it counts for nothing.
 fn record_edges(
     index: &ModelIndex,
     included: &HashSet<u32>,
     canon: &HashMap<u32, Node>,
+    withheld: &HashSet<(u32, u32)>,
     graph: &mut Graph,
 ) {
     for &id in &index.order {
@@ -239,7 +247,7 @@ fn record_edges(
             continue;
         };
         for child_local in nth_attr(&line, related).map(ref_list).unwrap_or_default() {
-            if !included.contains(&child_local) {
+            if !included.contains(&child_local) || withheld.contains(&(id, child_local)) {
                 continue;
             }
             match canon.get(&child_local) {

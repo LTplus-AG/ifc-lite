@@ -4,7 +4,7 @@
 
 /**
  * The live set of models with pending, unexported changes: the one source the
- * Export Changes badge counts and the unexported-edits guards read (#5604), so
+ * Export modified IFC… badge counts and the unexported-edits guards read (#5604), so
  * a guard can never disagree with the number the user sees on the button.
  */
 

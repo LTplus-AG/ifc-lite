@@ -19,14 +19,17 @@ import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
-import { BasepointOverlay } from './BasepointOverlay';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
+import { OrbitPivotMarker } from './OrbitPivotMarker';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
 // zero-net addition since this already lives inside the same viewport panel.
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { EditModeHudChip } from './EditModeHudChip';
+import { ViewportLoadingCard } from './ViewportLoadingCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
+import { SectionParkedChip } from './tools/SectionParkedChip';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -49,6 +52,11 @@ export function ViewportOverlays({
   hideAxis = false,
   hideScale = false,
 }: { hideViewCube?: boolean; hideAxis?: boolean; hideScale?: boolean } = {}) {
+  // Exactly one of the loading/error cards ever renders (#5851 nit): a
+  // failure can land while `loading` has not yet flipped false for an
+  // unrelated concurrent load, and the two must never occupy the same
+  // centered viewport slot at once. Error wins.
+  const hasLoadError = useViewerStore((s) => s.error !== null);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
@@ -99,7 +107,7 @@ export function ViewportOverlays({
   useEffect(() => {
     if (pointCloudAssetCount > 0 && !pointCloudPanelIntroducedRef.current) {
       pointCloudPanelIntroducedRef.current = true;
-      useViewerStore.getState().openWorkspacePanel('pointclouds');
+      useViewerStore.getState().openWorkspacePanel('pointclouds', 'programmatic');
     } else if (pointCloudAssetCount === 0) {
       pointCloudPanelIntroducedRef.current = false;
     }
@@ -171,7 +179,10 @@ export function ViewportOverlays({
           anything below portals in. */}
       <ViewportHud />
       <EditModeHudChip />
+      {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
+      <SectionParkedChip />
       <FlySpeedIndicator />
+      <OrbitPivotMarker />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list
           (`toolbar/CameraCommands`) — when this guard first narrowed to
@@ -196,7 +207,7 @@ export function ViewportOverlays({
                 <ZoomIn className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomInTooltip')}</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomInAria')}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -205,7 +216,7 @@ export function ViewportOverlays({
                 <ZoomOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomOutTooltip')}</TooltipContent>
+            <TooltipContent side="left">{t('viewportLighting.overlays.mobileNav.zoomOutAria')}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -223,10 +234,7 @@ export function ViewportOverlays({
           off-palette accent. The 3D overlays along the bottom edge are
           deliberately plain, and this sits in that row. */}
       {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
-        <div
-          className="absolute right-4 bottom-4 flex flex-col items-end gap-1"
-          role="status"
-        >
+        <output className="absolute right-4 bottom-4 flex flex-col items-end gap-1">
           <span className="text-xs text-foreground/80 tabular-nums">
             {[
               objectCounts.hidden > 0 && t('shellChrome.statusBar.hiddenCount', { count: objectCounts.hidden }),
@@ -235,7 +243,7 @@ export function ViewportOverlays({
               .filter(Boolean)
               .join(' · ')}
           </span>
-        </div>
+        </output>
       )}
 
       {/* Context Info — Storey names. Desktop shows this in `StatusBar`
@@ -300,8 +308,10 @@ export function ViewportOverlays({
       )}
 
       {/* Per-model IFC (0,0,0) markers — toggled via BasepointToggleButton.
-          Hidden by default; component returns null when the toggle is off. */}
-      <BasepointOverlay />
+          Mounted on the shared scene-overlay kernel in `ViewportContainer`
+          (#5512), not here: it returns null when the toggle is off, so
+          `<BasepointOverlay />` living outside this component's own
+          render tree changes nothing about when the marker shows. */}
     </>
   );
 }

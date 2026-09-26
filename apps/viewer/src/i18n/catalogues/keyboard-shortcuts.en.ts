@@ -7,12 +7,11 @@ import type { TranslationValue } from '../types';
 /**
  * The Info dialog (#4918 slice: keyboard shortcuts, `KeyboardShortcutsDialog.tsx`,
  * exported under that name for backward compatibility though it renders all
- * five Info tabs, not only Shortcuts) covers its own header/footer chrome,
+ * four Info tabs, not only Shortcuts) covers its own header/footer chrome,
  * the About tab (privacy banner, links, license, package-count disclosure),
  * the What's New tab (release timeline and its legend), the Shortcuts tab's
- * own "Learn more" row, the Preferences tab's section headings (#5509 —
- * the SpaceMouse settings under it come from `spaceMousePanel.*` in
- * `misc-panels-a.en.ts`, which owns that component), and the tab strip.
+ * own "Learn more" row, and the tab strip. (Preferences moved to the
+ * Settings dialog, `settings.en.ts`, #5857.)
  * Shortcut CATEGORY names,
  * DESCRIPTIONS, and key-combination glyphs come from `KEYBOARD_SHORTCUTS`
  * (`@/hooks/keyboard-shortcuts-list`) and stay out of the catalogue — model
@@ -30,13 +29,7 @@ export const keyboardShortcutsEn = {
   'keyboardShortcuts.tabs.about': 'About',
   'keyboardShortcuts.tabs.whatsNew': "What's New",
   'keyboardShortcuts.tabs.shortcuts': 'Shortcuts',
-  'keyboardShortcuts.tabs.preferences': 'Preferences',
   'keyboardShortcuts.tabs.learn': 'Learn',
-
-  // Preferences tab (#5509): today just Navigation → SpaceMouse, grows as
-  // more settings move out of floating panels.
-  'keyboardShortcuts.preferences.navigationSectionTitle': 'Navigation',
-  'keyboardShortcuts.preferences.spaceMouseSectionTitle': 'SpaceMouse',
 
   // Footer
   'keyboardShortcuts.footer.pressPrefix': 'Press',

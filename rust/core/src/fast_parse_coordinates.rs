@@ -103,10 +103,15 @@ pub fn parse_coordinates_direct(bytes: &[u8]) -> Vec<f32> {
 /// Same as parse_coordinates_direct but with f64 precision.
 #[inline]
 pub fn parse_coordinates_direct_f64(bytes: &[u8]) -> Vec<f64> {
-    let parsed = if comments::may_contain_step_comment(bytes) {
-        comments::parse_coordinates_f64(bytes)
-    } else {
-        read_coordinate_list::<f64, false>(bytes)
-    };
-    parsed.unwrap_or_default()
+    try_parse_coordinates_direct_f64(bytes).unwrap_or_default()
+}
+
+/// [`try_parse_coordinates_direct`] at f64 precision, for callers that must
+/// subtract a large offset before narrowing (#5698).
+#[inline]
+pub(super) fn try_parse_coordinates_direct_f64(bytes: &[u8]) -> Option<Vec<f64>> {
+    if comments::may_contain_step_comment(bytes) {
+        return comments::parse_coordinates_f64(bytes);
+    }
+    read_coordinate_list::<f64, false>(bytes)
 }

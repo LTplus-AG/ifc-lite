@@ -180,7 +180,7 @@ describe('LandXML→IFC round trip (#4937, mapping §8.1)', () => {
         .map((id) => store.getEntity!(id)!)
         .map((property) => [property.attributes[0] as string, property.attributes[2] as [string, string]]),
     );
-    expect(byName.get('MappingVersion')).toEqual(['IFCLABEL', '1.1']);
+    expect(byName.get('MappingVersion')).toEqual(['IFCLABEL', '1.3']);
     expect(byName.get('LandXmlSchema')).toEqual(['IFCLABEL', 'LandXML-1.2']);
     expect(byName.get('SourceFileName')).toEqual(['IFCLABEL', 'eg.xml']);
     expect(byName.get('CoordinateOrderSwapped')).toEqual(['IFCLABEL', 'false']);

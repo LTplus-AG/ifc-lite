@@ -403,9 +403,9 @@ export interface MutationSlice extends CostUndoMethods {
   /**
    * Record mutations a bulk writer already applied to the model's view
    * (Bulk editor, CSV import) as ONE undo step: one batch id, redo cleared,
-   * model marked dirty, one store update. Returns the batch id (null if empty).
+   * model marked dirty, one store update. Returns the batch id (null if empty); pass it back for a later chunk.
    */
-  recordMutationBatch: (modelId: string, mutations: readonly Mutation[]) => string | null;
+  recordMutationBatch: (modelId: string, mutations: readonly Mutation[], batchId?: string) => string | null;
   /**
    * Tombstone an entity (existing source entity) or forget it (overlay-only).
    * Returns true if the entity was known to the store or overlay.
@@ -1567,7 +1567,7 @@ export const createMutationSlice: StateCreator<
     return batchId;
   },
 
-  recordMutationBatch: (modelId, mutations) => recordMutationBatch(set, modelId, mutations),
+  recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),
 
   tagMutationBatch: (mutationIds, batchId) => {
     if (mutationIds.length === 0) return;

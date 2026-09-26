@@ -140,6 +140,7 @@ nav:
   - Getting Started:
     - Installation: guide/installation.md
     - Quick Start: guide/quickstart.md
+    - Web Viewer Controls: guide/web-viewer-controls.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md

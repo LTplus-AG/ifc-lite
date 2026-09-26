@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions';
+import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName } from './hud-regions';
 
 /**
  * Per-region layout: anchor corner/edge, stack alignment, and a safe-area
@@ -29,7 +29,9 @@ import { HUD_REGIONS, setHudRegionNode, type HudRegionName } from './hud-regions
  * outgrow the lane), the right lane the ViewCube. A tool bar wider than what
  * is left wraps (`HudToolbar` is `flex-wrap`) and a card shrinks, instead of
  * sliding under either — the Space Sketch bar and plan card did exactly that
- * at 1600px / 1280px with both side panels open.
+ * at 1600px / 1280px with both side panels open. Wrapping is the fallback: a
+ * bar with lower-priority controls steps down to a narrower one-row form
+ * first (`useHudBarTier`, measured against the lane ruler rendered below).
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
@@ -74,6 +76,13 @@ export function ViewportHud() {
       {HUD_REGIONS.map((name) => (
         <HudRegionSlot key={name} name={name} />
       ))}
+      {/* The top-center lane ruler (#5975): same classes as the region, but
+          `w-full` and childless, so its width IS the lane cap. */}
+      <div
+        ref={setHudLaneRulerNode}
+        aria-hidden="true"
+        className={cn('pointer-events-none invisible absolute h-0 w-full', REGION_CLASSNAME['top-center'])}
+      />
     </div>
   );
 }

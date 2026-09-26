@@ -51,6 +51,9 @@ export {
   type PointResolver, type RefusedAlignment,
 } from './landxml/alignment-mapping.js';
 export type { AlignmentParams, AlignmentResult } from './ifc-creator-alignment.js';
+export type { AlignmentVerticalParams } from './ifc-creator-alignment-vertical.js';
+export type { VerticalSegment, VerticalSegmentType } from './landxml/profile-geometry.js';
+export type { StationEquationParams } from './ifc-creator-alignment-referents.js';
 export type * from './landxml/source-types.js';
 export type * from './landxml/result-types.js';
 

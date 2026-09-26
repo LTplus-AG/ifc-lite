@@ -151,8 +151,8 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
           if (bounds) camera.frameBounds(bounds.min, bounds.max, 300);
           calculateScale();
         } else {
-          camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-          calculateScale();
+          // Nothing selected: Fit All, framing what is visible (#5884).
+          state.cameraCallbacks.fitAll?.();
         }
       }
 
@@ -161,10 +161,10 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         goHomeFromStore();
       }
 
-      // Fit all / Zoom extents (Z)
+      // Fit all / Zoom extents (Z): the one Fit All, which frames what is
+      // visible rather than the load-time bounds (#5884).
       if (e.key === 'z' || e.key === 'Z') {
-        camera.zoomExtent(geometryBoundsRef.current.min, geometryBoundsRef.current.max, 300);
-        calculateScale();
+        useViewerStore.getState().cameraCallbacks.fitAll?.();
       }
     };
 

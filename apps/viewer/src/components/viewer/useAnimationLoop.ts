@@ -20,6 +20,7 @@ import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@i
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
+import { sectionRenderClip } from '@/lib/section/section-render-clip';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
@@ -274,26 +275,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             contributionCull,
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
-            sectionPlane: activeToolRef.current === 'section' ? {
-              axis: sectionPlaneRef.current.axis,
-              position: sectionPlaneRef.current.position,
-              enabled: sectionPlaneRef.current.enabled,
-              flipped: sectionPlaneRef.current.flipped,
-              // Cap rendering settings — the renderer reads these to draw the
-              // filled, hatched cut surfaces.
-              showCap: sectionPlaneRef.current.showCap,
-              showOutlines: sectionPlaneRef.current.showOutlines,
-              capStyle: sectionPlaneRef.current.capStyle,
-              min: sectionRangeRef.current?.min,
-              max: sectionRangeRef.current?.max,
-              // Custom (face-picked) plane override (issue #243). When set
-              // the renderer uses these verbatim and ignores axis/position/
-              // min/max for the clip math; cap polygons are still emitted
-              // through the same Section2DOverlayRenderer with a custom
-              // basis so the silhouette lands on the tilted plane.
-              normal:   sectionPlaneRef.current.custom?.normal,
-              distance: sectionPlaneRef.current.custom?.distance,
-            } : undefined,
+            // The cut: a plane (cap settings, cardinal range, face-picked
+            // normal) or, in box mode, the clip box (#5513).
+            ...sectionRenderClip(activeToolRef.current, sectionPlaneRef.current, sectionRangeRef.current),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {
@@ -314,8 +298,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             // else, rethrowing on NEITHER branch — so reaching here means the
             // throw was never contained by the renderer at all. It also may
             // never have entered `render()`: the try covers the argument
-            // literal above, whose ~25 ref reads (`sectionPlaneRef.current.axis`
-            // and friends) run before the call.
+            // literal above, whose ref reads (`sectionRenderClip(...)` and
+            // friends) run before the call.
             console.warn(
               '[useAnimationLoop] render() threw (keeping the loop alive). ' +
               'render() is contracted never to throw, so this escaped renderer ' +

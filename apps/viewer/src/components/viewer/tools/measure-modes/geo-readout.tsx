@@ -49,7 +49,7 @@ export function projectedEnh(point: Vec3Like, anchor: AnchorGeoreference): Enh {
 export function EnhLine({ label, enh }: { label?: string; enh: Enh }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+    <div className="flex items-center gap-2 font-mono text-2xs leading-tight text-muted-foreground whitespace-nowrap">
       {label && <span className="text-muted-foreground w-3 shrink-0">{label}</span>}
       <span>{t('measure.geo.easting')} {enh.e}</span>
       <span>{t('measure.geo.northing')} {enh.n}</span>

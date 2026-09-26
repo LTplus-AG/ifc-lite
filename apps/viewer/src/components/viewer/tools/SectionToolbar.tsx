@@ -164,7 +164,7 @@ export function SectionToolbar() {
           between groups — caption + axis, flip + distance, Cap + Cut,
           2D + close — never inside one. */}
       <span className={GROUP}>
-        <span className="flex items-center gap-1 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           <Scissors aria-hidden className="h-3.5 w-3.5 text-overlay-accent" />
           {t('sectionTool.heading')}
         </span>

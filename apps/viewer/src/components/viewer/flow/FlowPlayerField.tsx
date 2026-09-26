@@ -111,7 +111,7 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
     <label className="block">
       <span className="text-muted-foreground">{field.input.label}</span>
       {widget}
-      {error && <div className="text-[10px] text-red-400">{t(error.labelKey, error.params)}</div>}
+      {error && <div className="text-2xs text-red-400">{t(error.labelKey, error.params)}</div>}
     </label>
   );
 }

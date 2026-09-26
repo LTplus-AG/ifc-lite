@@ -49,7 +49,7 @@ export function FlowCodeParam({ def, value, nodeTitle, inputNames, outputName, o
     <div>
       <div className="relative">
         <textarea
-          className="w-full min-w-0 resize-y rounded border border-border bg-transparent px-1.5 py-1 pr-6 font-mono text-[11px] leading-snug"
+          className="w-full min-w-0 resize-y rounded border border-border bg-transparent px-1.5 py-1 pr-6 font-mono text-2xs leading-snug"
           rows={5}
           spellCheck={false}
           value={code}
@@ -66,7 +66,7 @@ export function FlowCodeParam({ def, value, nodeTitle, inputNames, outputName, o
           <Maximize2 className="h-3 w-3" />
         </button>
       </div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground">{hint}</div>
+      <div className="mt-0.5 text-2xs text-muted-foreground">{hint}</div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex h-[80vh] max-w-4xl flex-col gap-2">

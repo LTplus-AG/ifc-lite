@@ -61,11 +61,11 @@ import { projectedEnh, useProjectedLatLon, type Vec3Like } from './measure-modes
 function CoordRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex items-baseline gap-2 whitespace-nowrap">
-      <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+      <span className="w-[4.5rem] shrink-0 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
-      <span className="font-mono text-[11px] tabular-nums">{value}</span>
-      {hint && <span className="font-mono text-[9px] text-muted-foreground">{hint}</span>}
+      <span className="font-mono text-2xs tabular-nums">{value}</span>
+      {hint && <span className="font-mono text-2xs text-muted-foreground">{hint}</span>}
     </div>
   );
 }
@@ -118,7 +118,7 @@ export function MeasurePointReadout() {
   return (
     <div className="space-y-1.5 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-foreground">
+        <span className="flex items-center gap-1 font-mono text-2xs uppercase tracking-wider text-foreground">
           <Crosshair className="h-3 w-3" />
           {activeMeasurement ? t('measure.point.live') : t('measure.point.last')}
         </span>
@@ -192,7 +192,7 @@ export function MeasurePointReadout() {
       </div>
 
       {frame.rebased && (
-        <div className="font-mono text-[9px] leading-tight text-muted-foreground">
+        <div className="font-mono text-2xs leading-tight text-muted-foreground">
           {t('measure.point.rebasedNote', {
             name: frame.anchorName ? frame.anchorName : t('measure.point.anchorModelFallback'),
           })}
@@ -200,7 +200,7 @@ export function MeasurePointReadout() {
       )}
 
       {enh && anchor && (
-        <div className="flex items-center gap-1 font-mono text-[9px] text-muted-foreground">
+        <div className="flex items-center gap-1 font-mono text-2xs text-muted-foreground">
           <Globe className="h-2.5 w-2.5" />
           {anchor.eff.projectedCRS.name}
         </div>

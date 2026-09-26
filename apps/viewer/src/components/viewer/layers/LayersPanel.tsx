@@ -71,7 +71,7 @@ function AuthorBadge({ kind, principal }: { kind?: LayerAuthorKind; principal?: 
   const { t } = useTranslation();
   if (!kind) {
     return (
-      <span className="shrink-0 rounded-full border border-dashed px-1.5 py-px text-[10px] leading-none text-muted-foreground">
+      <span className="shrink-0 rounded-full border border-dashed px-1.5 py-px text-2xs leading-none text-muted-foreground">
         {t('layersPanel.panel.unsigned')}
       </span>
     );
@@ -81,7 +81,7 @@ function AuthorBadge({ kind, principal }: { kind?: LayerAuthorKind; principal?: 
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-medium leading-none ${m.cls}`}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-2xs font-medium leading-none ${m.cls}`}
         >
           <m.Icon className="size-2.5" aria-hidden />
           {t(m.labelKey)}
@@ -136,7 +136,7 @@ function LayerStratum({
         aria-label={t('layersPanel.panel.provenanceAriaLabel', { name: entry.name })}
       >
         <div className="flex items-center gap-1.5">
-          <span className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] leading-4 text-muted-foreground">
+          <span className="shrink-0 rounded bg-muted px-1 font-mono text-2xs leading-4 text-muted-foreground">
             {total - position + 1}
           </span>
           <span className="truncate text-xs font-medium" title={entry.name}>
@@ -156,11 +156,11 @@ function LayerStratum({
           <AuthorBadge kind={entry.authorKind} principal={entry.authorPrincipal} />
         </div>
         {entry.intent && (
-          <div className="truncate text-[11px] italic text-muted-foreground" title={entry.intent}>
+          <div className="truncate text-2xs italic text-muted-foreground" title={entry.intent}>
             {entry.intent}
           </div>
         )}
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
           <span className="truncate">{subParts.join(' · ')}</span>
           {entry.checksTotal !== undefined && (
             <span
@@ -180,7 +180,7 @@ function LayerStratum({
                   {shortContentId(entry.contentId)}
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="top" className="font-mono text-[10px]">
+              <TooltipContent side="top" className="font-mono text-2xs">
                 {entry.contentId}
               </TooltipContent>
             </Tooltip>
@@ -190,7 +190,7 @@ function LayerStratum({
       <Button
         variant="ghost"
         size="sm"
-        className="h-6 shrink-0 self-center px-1.5 text-[11px] opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+        className="h-6 shrink-0 self-center px-1.5 text-2xs opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
         disabled={busy}
         onClick={onInspect}
       >
@@ -245,13 +245,13 @@ export function LayersPanel(_props: LayersPanelProps) {
         <div className="flex flex-col items-center gap-2 p-6 pt-10 text-center">
           <Layers className="size-8 text-muted-foreground/50" aria-hidden />
           <p className="text-xs font-medium">{t('layersPanel.panel.heroTitle')}</p>
-          <p className="max-w-[30ch] text-[11px] text-muted-foreground">
+          <p className="max-w-[30ch] text-2xs text-muted-foreground">
             {t('layersPanel.panel.heroDescription')}
           </p>
           <div className="flex flex-col gap-1.5 pt-2">
             <Button
               size="sm"
-              className="h-7 gap-1.5 px-3 text-[11px]"
+              className="h-7 gap-1.5 px-3 text-2xs"
               onClick={() => void loadDemo()}
               disabled={demoBusy}
               {...tourAnchor(TOUR_ANCHORS.layersDemo)}
@@ -262,7 +262,7 @@ export function LayersPanel(_props: LayersPanelProps) {
             <Button
               size="sm"
               variant="outline"
-              className="h-7 gap-1.5 px-3 text-[11px]"
+              className="h-7 gap-1.5 px-3 text-2xs"
               onClick={() => stackInputRef.current?.click()}
             >
               <FolderOpen className="size-3.5" aria-hidden />
@@ -281,7 +281,7 @@ export function LayersPanel(_props: LayersPanelProps) {
               }}
             />
           </div>
-          <p className="max-w-[30ch] pt-1 text-[10px] text-muted-foreground">
+          <p className="max-w-[30ch] pt-1 text-2xs text-muted-foreground">
             {t('layersPanel.panel.dropHint')}
           </p>
           {/* Local candidates from earlier sessions stay actionable even
@@ -303,7 +303,7 @@ export function LayersPanel(_props: LayersPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-2xs text-muted-foreground">
         <Layers className="size-3.5" aria-hidden />
         <span>
           {t('layersPanel.panel.layerCountHeader', {
@@ -338,7 +338,7 @@ export function LayersPanel(_props: LayersPanelProps) {
           ))}
           </div>
           {layerDiffBusy && (
-            <p className="px-1 py-2 text-center text-[11px] text-muted-foreground">
+            <p className="px-1 py-2 text-center text-2xs text-muted-foreground">
               {t('layersPanel.panel.computingChanges')}
             </p>
           )}

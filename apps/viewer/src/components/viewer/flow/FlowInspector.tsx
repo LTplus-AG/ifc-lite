@@ -61,7 +61,7 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
             }}
             onBlur={() => setJsonText(null)}
           />
-          {invalid && <div className="text-[10px] text-red-400">{invalidLabel}</div>}
+          {invalid && <div className="text-2xs text-red-400">{invalidLabel}</div>}
         </div>
       );
     }
@@ -92,11 +92,11 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
     <div className="flex w-64 shrink-0 flex-col gap-2 overflow-y-auto border-l border-border p-2 text-xs" data-flow-inspector>
       <div>
         <div className="font-medium">{def?.title ?? node.type}</div>
-        <div className="font-mono text-[10px] text-muted-foreground">{node.id} · {node.type}</div>
+        <div className="font-mono text-2xs text-muted-foreground">{node.id} · {node.type}</div>
         {!def && <div className="text-red-400">{t('flowPanel.inspector.unknownType', { type: node.type })}</div>}
         {/* The palette only shows the doc as a tooltip, which is unreachable once the node is on the canvas. */}
-        {def?.doc && <div className="mt-1 text-[10px] leading-snug text-muted-foreground">{def.doc}</div>}
-        {def && def.capabilities.length > 0 && <div className="text-[10px] text-muted-foreground">{t('flowPanel.inspector.capabilities')}: {def.capabilities.join(', ')}</div>}
+        {def?.doc && <div className="mt-1 text-2xs leading-snug text-muted-foreground">{def.doc}</div>}
+        {def && def.capabilities.length > 0 && <div className="text-2xs text-muted-foreground">{t('flowPanel.inspector.capabilities')}: {def.capabilities.join(', ')}</div>}
       </div>
 
       <label className="block">
@@ -113,7 +113,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
               <div key={p.name} className="mt-1">
                 <div className="flex items-center justify-between">
                   <span title={p.doc}>{p.name}</span>
-                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={t('flowPanel.inspector.isInput')}>
+                  <label className="inline-flex items-center gap-1 text-2xs text-muted-foreground" title={t('flowPanel.inspector.isInput')}>
                     <input type="checkbox" checked={isInput} onChange={() => onDocChange(toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#e0af68]" />▸
                   </label>
                 </div>
@@ -159,9 +159,9 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
                 <div className="flex items-center gap-1">
                   <span className="inline-block h-2 w-2 rounded-full" style={{ background: KIND_COLOR[p.type.kind] }} />
                   <span>{p.name}</span>
-                  <span className="text-[10px] text-muted-foreground">{p.type.kind}/{p.type.access}</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">{describeData(data)}</span>
-                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={t('flowPanel.inspector.isOutput')}>
+                  <span className="text-2xs text-muted-foreground">{p.type.kind}/{p.type.access}</span>
+                  <span className="ml-auto text-2xs text-muted-foreground">{describeData(data)}</span>
+                  <label className="inline-flex items-center gap-1 text-2xs text-muted-foreground" title={t('flowPanel.inspector.isOutput')}>
                     <input type="checkbox" checked={isOutput} onChange={() => onDocChange(toggleOutput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#9ece6a]" />▪
                   </label>
                 </div>
@@ -173,7 +173,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
       )}
 
       {report && (
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           <div>{t('flowPanel.inspector.lastRun')}: {t(`flowPanel.status.${report.status}` as const)} · {t('flowPanel.inspector.lanes', { count: report.lanes })}{report.laneErrors > 0 ? ` · ${t('flowPanel.inspector.laneErrors', { count: report.laneErrors })}` : ''}</div>
           {report.tracking && <div>{t('flowPanel.inspector.tracked', report.tracking)}</div>}
           {report.error && <div className="text-red-400">{report.error}</div>}

@@ -52,12 +52,14 @@ export interface LoadingSlice {
    */
   landXmlUnitsRefusal: { fileName: string; retry: (assumedLinearUnit: string) => void } | null;
   /**
-   * Re-runs the load that most recently set `error` (#5851), same File or
-   * URL, through the same `loadFile` call. Set unconditionally at the start
-   * of every load attempt (primary, federated, or the `?model=` autoload),
-   * so it is ready before that attempt can fail; `null` only before the
-   * first load of a session. The load-error card's Retry button is the one
-   * caller. Follows `error`'s lifecycle, same as `landXmlUnitsRefusal`.
+   * Re-runs the load that most recently set `error` (#5851), same File,
+   * URL, or buffers, through the same call. Set ONLY by
+   * `lib/analytics.ts`'s `showLoadError`, alongside the message it sets —
+   * never independently, and `setError` clears it whenever `error` is
+   * cleared (see `setError` below), so a stale retry from a PREVIOUS,
+   * unrelated failure can never survive to sit next to a new one. `null`
+   * when nothing can usefully be retried; the card then renders without a
+   * Retry button. The load-error card's Retry button is the one reader.
    */
   lastLoadRetry: (() => void) | null;
 
@@ -95,7 +97,11 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setProgress: (progress) => set({ progress }),
   setGeometryProgress: (geometryProgress) => set({ geometryProgress }),
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
-  setError: (error) => set({ error }),
+  // Clearing `error` always clears `lastLoadRetry` with it (#5851 review):
+  // the only other writer of `lastLoadRetry` is `showLoadError`, which sets
+  // both together, so this is the one place a stale retry could otherwise
+  // survive its error and attach itself to whatever sets a new one next.
+  setError: (error) => set(error === null ? { error, lastLoadRetry: null } : { error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
   setLoadingFileName: (loadingFileName) => set({ loadingFileName }),

@@ -14,7 +14,6 @@
 
 import { useCallback } from 'react';
 import { useTranslation } from '@/i18n';
-import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
 import { useWebGPU, type WebGPUStatus } from './useWebGPU';
 
@@ -35,12 +34,7 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
   const guard = useCallback((retry?: () => void): boolean => {
     if (webgpu.supported) return true;
     if (webgpu.checking) return false; // not resolved yet — a caller on a timer should wait for it, not fail
-    useViewerStore.getState().setLastLoadRetry(retry ?? null);
-    showLoadError(
-      useViewerStore.getState().setError,
-      t('viewportLighting.container.loadErrorCard.webgpuUnsupported'),
-      'webgpu_unsupported',
-    );
+    showLoadError(t('viewportLighting.container.loadErrorCard.webgpuUnsupported'), 'webgpu_unsupported', retry ?? null);
     return false;
   }, [webgpu, t]);
 

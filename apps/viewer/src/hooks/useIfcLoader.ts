@@ -450,10 +450,12 @@ export function useIfcLoader() {
       return true;
     };
 
-    // Every load failure the user sees goes through here, so `error_shown`
-    // (#5618) covers each path once; `code` is a fixed id, never the message.
-    // Delegates to the one shared helper every load path uses (#5851).
-    const showLoadError = (message: string, code: string) => reportLoadError(setError, message, code);
+    // Every load failure the user sees goes through here (#5618). `retry` is
+    // fixed to THIS call, so no call site below can omit a Retry decision or
+    // leave a stale one (#5851 review); `setError(null)` clears any retry a
+    // previous attempt left.
+    const retryThisLoad = () => { void loadFile(file, target, options); };
+    const showLoadError = (message: string, code: string) => reportLoadError(message, code, retryThisLoad);
 
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -464,8 +466,6 @@ export function useIfcLoader() {
         // A non-federated load has no layer stack behind it (#1717).
         useViewerStore.getState().clearLayerStack();
       }
-      // Retry re-runs THIS call (#5851); set AFTER the reset above, which clears it.
-      useViewerStore.getState().setLastLoadRetry(() => { void loadFile(file, target, options); });
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();

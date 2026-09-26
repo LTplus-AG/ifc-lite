@@ -22,7 +22,6 @@ import { useEffect, useRef } from 'react';
 import { useIfc } from './useIfc';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
-import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 export function useModelUrlAutoload(): void {
@@ -42,8 +41,12 @@ export function useModelUrlAutoload(): void {
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
 
-    const fail = (key: TranslationKey, code: string, values?: Record<string, string>) =>
-      showLoadError(useViewerStore.getState().setError, t(key, values), code);
+    // `retry` is required at every call (#5851 review): a malformed or
+    // cross-origin URL is the SAME url string on every attempt, so retrying
+    // it can never differ — null, no Retry button. A fetch failure may well
+    // be transient, so it gets a real retry over this same attempt.
+    const fail = (key: TranslationKey, code: string, retry: (() => void) | null, values?: Record<string, string>) =>
+      showLoadError(t(key, values), code, retry);
 
     const attempt = async () => {
       if (!guardWebGpu(() => { void attempt(); })) return;
@@ -52,14 +55,13 @@ export function useModelUrlAutoload(): void {
       try {
         resolvedUrl = new URL(modelUrl, window.location.href);
       } catch {
-        fail('viewportLighting.container.modelUrlAutoload.malformedUrl', 'model_url_malformed');
+        fail('viewportLighting.container.modelUrlAutoload.malformedUrl', 'model_url_malformed', null);
         return;
       }
       if (resolvedUrl.origin !== window.location.origin) {
-        fail('viewportLighting.container.modelUrlAutoload.crossOrigin', 'model_url_cross_origin');
+        fail('viewportLighting.container.modelUrlAutoload.crossOrigin', 'model_url_cross_origin', null);
         return;
       }
-      useViewerStore.getState().setLastLoadRetry(() => { void attempt(); });
       try {
         const res = await fetch(resolvedUrl.href);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -69,7 +71,8 @@ export function useModelUrlAutoload(): void {
         await addModel(file);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
-        fail('viewportLighting.container.modelUrlAutoload.fetchFailed', 'model_url_fetch_failed', { reason });
+        fail('viewportLighting.container.modelUrlAutoload.fetchFailed', 'model_url_fetch_failed',
+          () => { void attempt(); }, { reason });
       }
     };
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import posthogClient from 'posthog-js';
+import { useViewerStore } from '@/store';
 import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
@@ -199,15 +200,24 @@ export function trackUiEvent<E extends UiEventName>(event: E, properties: UiEven
 
 /**
  * The one path for surfacing a load failure to the user (#5618, #5851).
- * `setError` puts the full message on the store, where the in-viewport load-
- * error card reads it; `code` is a fixed id (never the message itself), so
- * `error_shown` stays a closed, scrubber-safe vocabulary. Every load path —
- * `useIfcLoader`, the federated IFCX paths in `useIfcFederation`, and the
- * `?model=` autoload in `ViewerLayout` — calls this one function so there is
- * never a second error path.
+ * `message` goes on the store, where the in-viewport load-error card reads
+ * it; `code` is a fixed id (never the message itself), so `error_shown`
+ * stays a closed, scrubber-safe vocabulary. Every load path — `useIfcLoader`,
+ * every federated IFCX path in `useIfcFederation`, and the `?model=`
+ * autoload — calls this one function, so there is never a second error path.
+ *
+ * `retry` is REQUIRED, not optional, on purpose (#5851 review): the card's
+ * Retry button is exactly `store.lastLoadRetry`, and a call site that could
+ * set an error without saying what Retry does would leave a STALE retry
+ * from whatever the previous error was — this is the bug the required
+ * parameter exists to make impossible. Pass a thunk that re-runs the same
+ * attempt (same File, URL, or buffers), or `null` when nothing can usefully
+ * be retried (the card then renders without a Retry button).
  */
-export function showLoadError(setError: (error: string) => void, message: string, code: string): void {
-  setError(message);
+export function showLoadError(message: string, code: string, retry: (() => void) | null): void {
+  const store = useViewerStore.getState();
+  store.setError(message);
+  store.setLastLoadRetry(retry);
   trackUiEvent('error_shown', { code, surface: 'load_error' });
 }
 

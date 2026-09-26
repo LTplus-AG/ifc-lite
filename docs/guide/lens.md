@@ -158,7 +158,7 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 
 | Export | Description |
 |--------|-------------|
-| `evaluateLens(lens, provider)` | Run rule-based lens, returns `LensEvaluationResult` |
+| `evaluateLens(lens, provider, matchedByRule?)` | Run rule-based lens, optionally using shared evaluator global-ID sets per rule; returns `LensEvaluationResult` |
 | `evaluateAutoColorLens(spec, provider)` | Group-by-value colorization with legend |
 | `matchesCriteria(criteria, globalId, provider)` | Test one entity against one criterion |
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |

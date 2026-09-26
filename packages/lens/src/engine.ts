@@ -29,6 +29,7 @@ import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
 export function evaluateLens(
   lens: Lens,
   provider: LensDataProvider,
+  matchedByRule?: ReadonlyMap<string, ReadonlySet<number>>,
 ): LensEvaluationResult {
   const startTime = performance.now();
 
@@ -50,19 +51,18 @@ export function evaluateLens(
   const ruleCounts = new Map<string, number>();
   const ruleEntityIds = new Map<string, number[]>();
 
-  // Initialize rule counts and entity ID lists
   for (const rule of enabledRules) {
     ruleCounts.set(rule.id, 0);
     ruleEntityIds.set(rule.id, []);
   }
 
-  // Evaluate all entities
   provider.forEachEntity((globalId) => {
     let matched = false;
 
     // First matching rule wins
     for (const rule of enabledRules) {
-      if (matchesCriteria(rule.criteria, globalId, provider)) {
+      const selected = matchedByRule?.get(rule.id);
+      if (selected ? selected.has(globalId) : matchesCriteria(rule.criteria, globalId, provider)) {
         matched = true;
         ruleCounts.set(rule.id, (ruleCounts.get(rule.id) ?? 0) + 1);
         ruleEntityIds.get(rule.id)!.push(globalId);

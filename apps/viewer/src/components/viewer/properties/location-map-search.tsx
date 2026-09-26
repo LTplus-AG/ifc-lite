@@ -21,6 +21,7 @@
  * `SearchableSelect`.
  */
 
+import { useRef } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent, PopoverPortal } from '@/components/ui/popover';
 import { usePortalContainer } from '@/components/ui/portal-container';
@@ -49,6 +50,7 @@ export function LocationMapSearchBar({
   onClose,
 }: LocationMapSearchBarProps) {
   const portalContainer = usePortalContainer();
+  const anchorRef = useRef<HTMLDivElement>(null);
   return (
     <div className="px-3 pb-1.5 relative">
       <div className="flex items-center gap-1">
@@ -57,7 +59,7 @@ export function LocationMapSearchBar({
           onOpenChange={(next) => { if (!next) onResultsChange([]); }}
         >
           <PopoverAnchor asChild>
-            <div className="flex-1 relative">
+            <div ref={anchorRef} className="flex-1 relative">
               <input
                 value={query}
                 onChange={e => onQueryChange(e.target.value)}
@@ -86,6 +88,10 @@ export function LocationMapSearchBar({
               onOpenAutoFocus={(e) => e.preventDefault()}
               onCloseAutoFocus={(e) => e.preventDefault()}
               onFocusOutside={(e) => e.preventDefault()}
+              onPointerDownOutside={(e) => {
+                const target = e.detail.originalEvent.target;
+                if (target instanceof Node && anchorRef.current?.contains(target)) e.preventDefault();
+              }}
               style={{ width: 'var(--radix-popper-anchor-width)' }}
               className="max-h-[160px] overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0 shadow-lg"
             >

@@ -38,6 +38,23 @@ function mount() {
 }
 
 describe('HelpHint popover (#5817)', () => {
+  it('does not wrap Tab inside a non-modal hint (#6110 review)', () => {
+    render(
+      <HelpHint label="Test hint" docLink={{ href: '/guide', label: 'Guide' }}>
+        <button type="button">First action</button>
+      </HelpHint>,
+    );
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+    click(trigger);
+    const guide = [...document.querySelectorAll<HTMLAnchorElement>('a')].find((link) => link.textContent === 'Guide')!;
+    const firstAction = [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'First action')!;
+    act(() => guide.focus());
+
+    press(guide, 'Tab');
+
+    assert.notEqual(document.activeElement, firstAction, 'Radix must not wrap focus to the first control');
+  });
+
   it('opens on trigger click and closes on Escape, returning focus to the trigger', async () => {
     const { trigger } = mount();
     click(trigger);

@@ -99,11 +99,8 @@ export function AnnotationDropInput({
           onSave(draft);
         }
       }
-      // Escape is NOT handled here: unlike the popover's edit mode (which
-      // must distinguish "cancel the edit" from "close the popover"),
-      // dropping a fresh pin has only one Escape meaning — cancel — so
-      // Radix's own Escape dismissal (`onOpenChange` below) already does
-      // the right thing without an `onEscapeKeyDown` override.
+      // Escape is handled by the popover below so a typed draft is cancelled
+      // rather than committed by the outside-click path.
     },
     [draft, onSave, onCancel],
   );
@@ -131,6 +128,7 @@ export function AnnotationDropInput({
         collisionBoundary={boundaryEl}
         avoidCollisions
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => { e.preventDefault(); onCancel(); }}
         asChild
       >
         <HudSurface

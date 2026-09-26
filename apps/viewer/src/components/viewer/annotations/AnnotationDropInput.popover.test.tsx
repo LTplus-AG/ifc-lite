@@ -51,6 +51,17 @@ describe('AnnotationDropInput dismissal (#5817)', () => {
     await waitFor(() => isCancelled(), 'Escape cancels the drop with no note typed');
   });
 
+  it('cancels a typed draft on Escape instead of saving it (#6110 review)', async () => {
+    const { host, savedNote, isCancelled } = mount();
+    const textarea = host.querySelector('textarea')!;
+    type(textarea, 'leak here');
+
+    press(textarea, 'Escape');
+
+    await waitFor(() => isCancelled(), 'Escape cancels the typed draft');
+    assert.equal(savedNote(), null);
+  });
+
   it('an outside click with a non-empty draft commits the note instead of cancelling', async () => {
     const { host, savedNote, isCancelled } = mount();
     const textarea = host.querySelector('textarea')!;

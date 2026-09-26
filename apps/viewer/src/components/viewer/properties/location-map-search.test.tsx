@@ -127,4 +127,16 @@ describe('LocationMapSearchBar results dropdown (#5817)', () => {
     assert.doesNotMatch(document.body.textContent ?? '', /Berlin, Germany/);
     assert.equal(document.activeElement, input, 'focus stays on the input');
   });
+
+  it('keeps results open when the anchored input is clicked (#6110 review)', async () => {
+    const container = render(<Harness initialResults={RESULTS} />);
+    const input = container.querySelector('input')!;
+    await advance(0);
+
+    act(() => {
+      input.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+
+    assert.match(document.body.textContent ?? '', /Berlin, Germany/);
+  });
 });

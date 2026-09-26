@@ -22,7 +22,7 @@ import { useViewerStore } from '@/store/index.js';
 import { resolveEntityRef } from '@/store/resolveEntityRef.js';
 import { pathForEntity, pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInput } from '@/test/render.js';
 import { AddMaterialDialog } from '@/components/viewer/PropertyEditor.js';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 
@@ -97,9 +97,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     const container = render(<AddMaterialDialog modelId="m" entityId={10} entityType="IfcWall" />);
     click([...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Add material')!);
     const input = [...document.body.querySelectorAll('input')].find((i) => i.placeholder === 'e.g., Concrete C30/37') as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
-    setter.call(input, 'Steel');
-    input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    typeInput(input, 'Steel');
     click([...document.body.querySelectorAll('button')].find((b) => b.textContent === 'Add Material')!);
     const { text, reparsed } = await exportAndReparse(store, 'IFC4');
     cleanup();

@@ -663,13 +663,14 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 | `A` | Show all (see below for what it clears and what it keeps) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
-**What Show All clears.** Show All, the `A` key, the Home button and the context menu's Show all all run the same reset, driven by one table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). At 1 model and at N models alike, it clears:
+**What Show All clears.** Show All, the `A` key, the Home button and the context menu's Show all all use one visibility-reason table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). At 1 model and at N models alike, it clears:
 
 - manual hides outside the active lens's hide set;
 - isolation (and leaves the basket view);
 - X-ray ghosting;
 - the Class filter;
-- the storey filter (Solo returns to Stacked);
+- the storey filter and Solo mode;
+- Exploded mode (levels return to Stacked);
 - hidden federated models.
 
 It deliberately **keeps** four settings that are preferences rather than filters on this view:

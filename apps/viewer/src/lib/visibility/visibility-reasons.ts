@@ -8,7 +8,7 @@
  * Before this, each reset (Show all, Home, the "A" key, the context menu)
  * hand-listed the channels it cleared, and every list missed a different
  * few: a hidden federated model, for one, survived all of them. A reset is now
- * "clear every row whose policy is `cleared`", and the rows it deliberately
+ * "clear every row whose resetPolicy is `cleared`", and the rows it deliberately
  * keeps are named here, so a chip (#5882) can say so instead of the user
  * wondering why Show all did not show everything.
  *
@@ -22,6 +22,7 @@
  */
 
 import type { ViewerState } from '@/store';
+import type { TranslationKey } from '@/i18n';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
 import type { TypeVisibility } from '@/store/types';
 import { hiddenChannelAfterReset } from './lens-reset';
@@ -32,6 +33,7 @@ export type VisibilityReasonId =
   | 'ghost'
   | 'classFilter'
   | 'storey'
+  | 'exploded'
   | 'modelHidden'
   | 'lens'
   | 'typeVisibility'
@@ -48,8 +50,9 @@ export interface VisibilityStore {
 
 export interface VisibilityReason {
   id: VisibilityReasonId;
+  labelKey: TranslationKey;
   /** What Show all / Home does with it. */
-  policy: VisibilityResetPolicy;
+  resetPolicy: VisibilityResetPolicy;
   isActive(state: ViewerState): boolean;
   /** Turn just this mechanism off (a chip's ×, or the reset for `cleared` rows). */
   clear(store: VisibilityStore): void;
@@ -68,7 +71,8 @@ function hiddenModelIds(state: ViewerState): string[] {
 export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   {
     id: 'hidden',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.hidden',
+    resetPolicy: 'cleared',
     // Hides matched by the active lens are attributed to the lens while it is
     // active. An overlapping manual hide keeps its ownership for teardown.
     isActive: (s) => {
@@ -86,7 +90,8 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   },
   {
     id: 'isolation',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.isolation',
+    resetPolicy: 'cleared',
     isActive: (s) => s.isolatedEntities !== null,
     // Leaving the basket view goes with it; the basket's CONTENTS are not a
     // visibility reason and survive (Home empties them separately). A lens
@@ -99,27 +104,42 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   },
   {
     id: 'ghost',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.ghost',
+    resetPolicy: 'cleared',
     isActive: (s) => s.ghostExceptEntities !== null,
     clear: (store) => store.getState().clearGhost(),
   },
   {
     id: 'classFilter',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.classFilter',
+    resetPolicy: 'cleared',
     isActive: (s) => s.classFilter !== null,
     clear: (store) => store.getState().clearClassFilter(),
   },
   {
     id: 'storey',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.storey',
+    resetPolicy: 'cleared',
     // Solo rides this channel too (`applyLevelDisplayMode`); the level-display
     // guard drops Solo back to Stacked once the selection empties.
-    isActive: (s) => s.selectedStoreys.size > 0,
-    clear: (store) => store.getState().clearStoreySelection(),
+    isActive: (s) => s.selectedStoreys.size > 0 || s.levelDisplayMode === 'solo',
+    clear: (store) => {
+      const s = store.getState();
+      s.clearStoreySelection();
+      if (s.levelDisplayMode === 'solo') s.setLevelDisplayMode('stacked');
+    },
+  },
+  {
+    id: 'exploded',
+    labelKey: 'visibilityReasons.exploded',
+    resetPolicy: 'cleared',
+    isActive: (s) => s.levelDisplayMode === 'exploded',
+    clear: (store) => store.getState().setLevelDisplayMode('stacked'),
   },
   {
     id: 'modelHidden',
-    policy: 'cleared',
+    labelKey: 'visibilityReasons.modelHidden',
+    resetPolicy: 'cleared',
     isActive: (s) => hiddenModelIds(s).length > 0,
     clear: (store) => {
       const s = store.getState();
@@ -128,13 +148,15 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   },
   {
     id: 'lens',
-    policy: 'kept',
+    labelKey: 'visibilityReasons.lens',
+    resetPolicy: 'kept',
     isActive: (s) => s.activeLensId !== null && s.lensHiddenIds.size > 0,
     clear: (store) => store.setState({ activeLensId: null }),
   },
   {
     id: 'typeVisibility',
-    policy: 'kept',
+    labelKey: 'visibilityReasons.typeVisibility',
+    resetPolicy: 'kept',
     isActive: (s) => hiddenTypeToggles(s.typeVisibility).length > 0,
     clear: (store) => {
       const s = store.getState();
@@ -143,13 +165,15 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   },
   {
     id: 'typeViewMode',
-    policy: 'kept',
+    labelKey: 'visibilityReasons.typeViewMode',
+    resetPolicy: 'kept',
     isActive: (s) => s.typeViewMode === 'types' && s.hasTypeGeometry,
     clear: (store) => store.getState().setTypeViewMode('model'),
   },
   {
     id: 'hostTypes',
-    policy: 'kept',
+    labelKey: 'visibilityReasons.hostTypes',
+    resetPolicy: 'kept',
     // Set by an embedding page, not the user: no chip × clears it either.
     isActive: (s) => (s.hostHiddenIfcTypes?.size ?? 0) > 0,
     clear: () => {},
@@ -166,6 +190,6 @@ export function resetVisibilityReasons(store: VisibilityStore): void {
   for (const reason of VISIBILITY_REASONS) {
     // The lens may have new matches before its sync effect hides them. Home
     // must still apply those matches, including their ownership (#5877).
-    if (reason.policy === 'cleared' && (reason.id === 'hidden' || reason.isActive(store.getState()))) reason.clear(store);
+    if (reason.resetPolicy === 'cleared' && (reason.id === 'hidden' || reason.isActive(store.getState()))) reason.clear(store);
   }
 }

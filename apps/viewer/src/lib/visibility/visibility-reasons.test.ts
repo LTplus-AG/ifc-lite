@@ -33,6 +33,7 @@ const ACTIVATE: Record<VisibilityReasonId, (lastModelOffset: number) => Partial<
   ghost: (o) => ({ ghostExceptEntities: new Set([o + 3]) }),
   classFilter: (o) => ({ classFilter: { ids: new Set([o + 4]), label: 'IfcWall' } }),
   storey: (o) => ({ selectedStoreys: new Set([o + 5]) }),
+  exploded: () => ({ levelDisplayMode: 'exploded' }),
   modelHidden: () => {
     const models = new Map(useViewerStore.getState().models);
     const [lastId, last] = [...models].at(-1)!;
@@ -68,6 +69,7 @@ function seedModels(count: number): number {
     selectedStoreys: new Set(), activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
     typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true },
     typeViewMode: 'model', hasTypeGeometry: false, hostHiddenIfcTypes: null,
+    levelDisplayMode: 'stacked',
   });
   return (count - 1) * OFFSET;
 }
@@ -124,7 +126,7 @@ for (const modelCount of [1, 3]) {
     });
 
     for (const reason of VISIBILITY_REASONS) {
-      it(`${reason.id}: reported while active; Home ${reason.policy === 'cleared' ? 'clears it' : 'keeps it'}`, () => {
+      it(`${reason.id}: reported while active; Home ${reason.resetPolicy === 'cleared' ? 'clears it' : 'keeps it'}`, () => {
         const lastOffset = seedModels(modelCount);
         useViewerStore.setState(ACTIVATE[reason.id](lastOffset));
         assert.deepEqual(ids(useViewerStore.getState()), [reason.id],
@@ -132,12 +134,23 @@ for (const modelCount of [1, 3]) {
 
         resetVisibilityForHomeFromStore('home');
         const after = ids(useViewerStore.getState());
-        if (reason.policy === 'cleared') {
+        if (reason.resetPolicy === 'cleared') {
           assert.deepEqual(after, [], `Home must clear ${reason.id}`);
         } else {
           assert.deepEqual(after, [reason.id], `Home keeps ${reason.id}, and the table must still name it`);
         }
       });
+
+      for (const action of ['showAll', 'showAllInAllModels'] as const) {
+        it(`${action} applies the table policy to ${reason.id}`, () => {
+          const lastOffset = seedModels(modelCount);
+          useViewerStore.setState(ACTIVATE[reason.id](lastOffset));
+          assert.deepEqual(ids(useViewerStore.getState()), [reason.id]);
+
+          useViewerStore.getState()[action]();
+          assert.deepEqual(ids(useViewerStore.getState()), reason.resetPolicy === 'kept' ? [reason.id] : []);
+        });
+      }
 
       it(`${reason.id}: its own clear turns off only that mechanism`, () => {
         const lastOffset = seedModels(modelCount);

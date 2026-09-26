@@ -125,6 +125,15 @@ for (const modelCount of [1, 3]) {
       assert.deepEqual(ids(useViewerStore.getState()), []);
     });
 
+    it('Show All resets Solo mode together with its storey isolation (#5869)', () => {
+      const offset = seedModels(modelCount);
+      useViewerStore.setState({ levelDisplayMode: 'solo', selectedStoreys: new Set([offset + 5]) });
+      assert.deepEqual(ids(useViewerStore.getState()), ['storey']);
+      useViewerStore.getState().showAllInAllModels();
+      assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
+      assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set());
+    });
+
     for (const reason of VISIBILITY_REASONS) {
       it(`${reason.id}: reported while active; Home ${reason.resetPolicy === 'cleared' ? 'clears it' : 'keeps it'}`, () => {
         const lastOffset = seedModels(modelCount);

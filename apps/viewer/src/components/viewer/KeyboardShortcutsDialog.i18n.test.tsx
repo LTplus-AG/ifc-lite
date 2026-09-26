@@ -92,56 +92,66 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
   });
 
   it('renders the English catalogue by default across the header, tab strip, footer, and each tab', async () => {
-    const about = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
-    assert.match(about.textContent ?? '', /Info/);
-    assert.match(about.textContent ?? '', /About/);
-    assert.match(about.textContent ?? '', /What's New/);
-    assert.match(about.textContent ?? '', /Shortcuts/);
-    assert.match(about.textContent ?? '', /Learn/);
-    assert.match(about.textContent ?? '', /Drive from any LLM/);
-    assert.match(about.textContent ?? '', /to toggle this panel/);
-    assert.match(about.textContent ?? '', /ifc-lite/);
-    assert.match(about.textContent ?? '', /v0\.0\.0-test/);
-    assert.match(about.textContent ?? '', /GitHub/);
-    assert.match(about.textContent ?? '', /Report issue/);
-    assert.match(about.textContent ?? '', /MPL-2\.0/);
-    assert.match(about.textContent ?? '', /1 package/);
-    assert.match(about.textContent ?? '', /Your IFC data never leaves your device\./);
+    // The dialog shell is Radix `Dialog` (#5817), which portals its content
+    // straight to `document.body` rather than into `render()`'s own
+    // container div — so every assertion below reads from the document,
+    // not from the (now effectively empty) container each `render()` returns.
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
+    const aboutText = () => document.body.textContent ?? '';
+    assert.match(aboutText(), /Info/);
+    assert.match(aboutText(), /About/);
+    assert.match(aboutText(), /What's New/);
+    assert.match(aboutText(), /Shortcuts/);
+    assert.match(aboutText(), /Learn/);
+    assert.match(aboutText(), /Drive from any LLM/);
+    assert.match(aboutText(), /to toggle this panel/);
+    assert.match(aboutText(), /ifc-lite/);
+    assert.match(aboutText(), /v0\.0\.0-test/);
+    assert.match(aboutText(), /GitHub/);
+    assert.match(aboutText(), /Report issue/);
+    assert.match(aboutText(), /MPL-2\.0/);
+    assert.match(aboutText(), /1 package/);
+    assert.match(aboutText(), /Your IFC data never leaves your device\./);
 
-    const whatsnew = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
     await flush();
-    assert.match(whatsnew.textContent ?? '', /You’re on viewer v0\.0\.0-test/);
-    assert.match(whatsnew.textContent ?? '', /rows below are per-package releases/);
-    assert.match(whatsnew.textContent ?? '', /1 change/);
-    assert.match(whatsnew.textContent ?? '', /Feature/);
-    assert.match(whatsnew.textContent ?? '', /Fix/);
-    assert.match(whatsnew.textContent ?? '', /Perf/);
+    assert.match(document.body.textContent ?? '', /You’re on viewer v0\.0\.0-test/);
+    assert.match(document.body.textContent ?? '', /rows below are per-package releases/);
+    assert.match(document.body.textContent ?? '', /1 change/);
+    assert.match(document.body.textContent ?? '', /Feature/);
+    assert.match(document.body.textContent ?? '', /Fix/);
+    assert.match(document.body.textContent ?? '', /Perf/);
 
-    const shortcuts = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="shortcuts" />);
-    assert.match(shortcuts.textContent ?? '', /Learn more:/);
-    assert.match(shortcuts.textContent ?? '', /docs/);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="shortcuts" />);
+    assert.match(document.body.textContent ?? '', /Learn more:/);
+    assert.match(document.body.textContent ?? '', /docs/);
   });
 
   it('translates every catalogue key rendered across the header/footer, tab strip, and the About/What\'s New/Shortcuts tabs', async () => {
-    const about = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
     // Expand the privacy disclosure BEFORE the locale switch so its strings
-    // (intro/wasm link/outro/verify line) are in the DOM to observe.
-    const privacyToggle = Array.from(about.querySelectorAll('button')).find((b) =>
+    // (intro/wasm link/outro/verify line) are in the DOM to observe. Found
+    // document-wide (#5817): the dialog shell is Radix `Dialog`, which
+    // portals its content to `document.body` rather than into the
+    // container `render()` returns.
+    const privacyToggle = Array.from(document.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Your IFC data never leaves your device.'),
     );
     assert.ok(privacyToggle, 'expected the privacy disclosure toggle');
     act(() => privacyToggle.click());
 
-    const whatsnew = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="whatsnew" />);
     await flush();
-    const shortcuts = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="shortcuts" />);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="shortcuts" />);
 
-    const renders = [about, whatsnew, shortcuts];
-    const english = renders.map((c) => c.textContent ?? '').join('\n');
+    // All three dialogs stay mounted (this test never closes one before
+    // opening the next) and all three portal into the same `document.body`,
+    // so one read after all three renders covers every tab.
+    const english = document.body.textContent ?? '';
 
     registerLocale('keyboard-shortcuts-pseudo', PSEUDO);
     act(() => setLocale('keyboard-shortcuts-pseudo'));
-    const after = renders.map((c) => c.textContent ?? '').join('\n');
+    const after = document.body.textContent ?? '';
 
     for (const key of ALL_KEYS) {
       const text = String(keyboardShortcutsEn[key]);
@@ -155,9 +165,9 @@ describe('KeyboardShortcutsDialog localization (#4918)', () => {
       'keyboardShortcuts.header.title': 'INFO (fr)',
     } as Catalogue);
     setLocale('keyboard-shortcuts-partial');
-    const container = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
-    assert.match(container.textContent ?? '', /INFO \(fr\)/);
+    render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
+    assert.match(document.body.textContent ?? '', /INFO \(fr\)/);
     // 'keyboardShortcuts.tabs.about' was not overridden: still English.
-    assert.match(container.textContent ?? '', /About/);
+    assert.match(document.body.textContent ?? '', /About/);
   });
 });

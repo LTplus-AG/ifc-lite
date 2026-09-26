@@ -251,6 +251,8 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     assert.ok(count);
     click(count);
     assert.equal(useViewerStore.getState().activeLensId, LENS.id, 'the rule-count area must reactivate the lens');
+    click(card);
+    assert.equal(useViewerStore.getState().activeLensId, null, 'empty card space must still toggle the lens');
   });
 
   it('leaves a geometry-bearing rule alone, so the fix does not broaden every isolation', () => {

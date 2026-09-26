@@ -966,6 +966,8 @@ function LensCard({
     : legendSort === 'name-asc' ? t('lensPanel.card.sortNameAsc') : t('lensPanel.card.sortNameDesc');
 
   return (
+    /* Nested legend and action buttons prevent a native wrapper button; the header button supplies keyboard activation. */
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       className={cn(
         'border-2 transition-colors group rounded-sm',
@@ -973,6 +975,10 @@ function LensCard({
           ? 'border-primary bg-white dark:bg-zinc-900'
           : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-500',
       )}
+      onClick={(event) => {
+        if ((event.target as Element).closest('button')) return;
+        onToggle(lens.id);
+      }}
       {...tourAnchor(lensCardAnchor(lens.id))}
     >
       {/* Header */}

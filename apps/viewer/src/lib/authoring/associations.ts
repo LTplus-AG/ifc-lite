@@ -80,6 +80,7 @@ function effectiveAttributes(target: Target, id: number): IfcAttributeValue[] | 
 function entityNamed(target: Target, type: string, name: string, nameSlot: number): number | null {
   // The source is immutable, so this index walk happens only when the user
   // presses Add; no per-element attribute reparsing on the render path.
+  // @raw-entity-enumeration-ok source Name candidates are paired with overlay entities; effectiveAttributes applies tombstones and edits before matching.
   for (const id of target.store.entityIndex.byType.get(type) ?? []) {
     if (effectiveAttributes(target, id)?.[nameSlot] === name) return id;
   }

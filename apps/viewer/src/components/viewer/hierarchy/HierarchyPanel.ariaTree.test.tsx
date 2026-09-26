@@ -179,10 +179,12 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
     press(tree, 'ArrowDown'); // Building
     press(tree, 'ArrowDown'); // Storey
     assert.equal(useViewerStore.getState().selectedStoreys.size, 0);
+    const beforeRevision = useViewerStore.getState().selectionRevision;
 
-    press(tree, 'Enter');
+    press(byName(tree, 'Storey 1'), 'Enter');
 
     assert.equal(useViewerStore.getState().selectedStoreys.has(4), true, 'Enter selects the focused storey, like a click');
+    assert.equal(useViewerStore.getState().selectionRevision, beforeRevision + 1, 'Enter activates the row once');
   });
 
   it('leaves Enter on a nested chevron button to that button', () => {

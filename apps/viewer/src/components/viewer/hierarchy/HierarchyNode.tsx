@@ -215,11 +215,6 @@ export function HierarchyNode({
             onNodeClick(node, e);
           }
         }}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
-          e.preventDefault();
-          onNodeClick(node, e);
-        }}
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();

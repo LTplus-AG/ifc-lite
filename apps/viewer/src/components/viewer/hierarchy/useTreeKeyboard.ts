@@ -142,6 +142,9 @@ export function useTreeKeyboard({
     // The first row is tabbable on mount, but focus stays wherever the user
     // left it until they actually navigate or focus a tree row.
     if (activeNodeId == null || requestedActiveId == null) return;
+    // Filtering or collapsing can remove the requested row. The fallback is
+    // the first visible node, which may be outside the virtualizer window.
+    if (requestedActiveId !== activeNodeId) virtualizer.scrollToIndex(0, { align: 'auto' });
     let cancelled = false;
     let frame = 0;
     const tryFocus = () => {
@@ -158,7 +161,7 @@ export function useTreeKeyboard({
     return () => {
       cancelled = true;
     };
-  }, [activeNodeId, requestedActiveId]);
+  }, [activeNodeId, requestedActiveId, virtualizer]);
 
   const moveTo = useCallback(
     (index: number) => {

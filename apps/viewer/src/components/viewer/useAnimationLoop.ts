@@ -244,17 +244,13 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // interaction throttle still caps the cadence via `throttled`.
       const willRender =
         (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
-
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
         const appliedColors = scene.getColorOverrides();
         const selection = preserveClashPaintInSelection(
-          chartAwareRendererSelectionFromStore(
-            selectedEntityIdRef.current, selectedEntityIdsRef.current, appliedColors),
-          clashHighlightColorsRef.current,
-          appliedColors,
-        );
+          chartAwareRendererSelectionFromStore(selectedEntityIdRef.current, selectedEntityIdsRef.current, appliedColors),
+          clashHighlightColorsRef.current, appliedColors);
         // Belt for the renderer's own device-loss latch (#2229). render()
         // contains its failures and degrades to a quiet skip, but this loop
         // must survive even a render-path throw it does not yet contain:

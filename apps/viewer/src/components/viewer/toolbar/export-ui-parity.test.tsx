@@ -69,7 +69,6 @@ import { useViewerStore } from '@/store/index.js';
 // watch an object nothing calls.
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
-import type { UiSurface } from '@/lib/analytics-ui-events';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
@@ -106,24 +105,6 @@ function readSource(relativePath: string): string {
 }
 
 /** Import statements (including multi-line named imports), matched as a unit. */
-const IMPORT_STATEMENT =
-  /^import\b[\s\S]*?from\s*['"][^'"]*['"];?[ \t]*$|^import\s+['"][^'"]*['"];?[ \t]*$/gm;
-
-/**
- * The part of a module that actually *does* something. An import is not reach:
- * deleting `<ClassicExportMenuItems />` from `MainToolbar` while leaving the
- * import line behind is exactly the regression the surface test below exists to
- * catch, and matching against the whole file would let it through.
- */
-function bodyWithoutImports(source: string): string {
-  return source.replace(IMPORT_STATEMENT, '');
-}
-
-/** True when `name` is referenced somewhere other than an import statement. */
-function usedOutsideImports(source: string, name: string): boolean {
-  return new RegExp(`\\b${name}\\b`).test(bodyWithoutImports(source));
-}
-
 /**
  * The ribbon's real icons come from `@/icons`, which resolves through
  * `unplugin-icons` and cannot be loaded by the node test runner; the component
@@ -351,13 +332,14 @@ describe('export UI parity (ifc-lite#2511)', () => {
   });
 
   it('forwards the initiating surface to every registered dialog (#5844)', () => {
-    const seen = new Map<string, Set<UiSurface>>();
+    const seen = new Map<string, Set<string>>();
     const dialogs = EXPORT_COMMANDS.filter((command) => command.kind === 'dialog');
     const originals = dialogs.map((command) => ({ command, Dialog: command.Dialog }));
     try {
       for (const { command, Dialog } of originals) {
         Reflect.set(command, 'Dialog', (props: React.ComponentProps<typeof Dialog>) => {
-          const surfaces = seen.get(command.id) ?? new Set<UiSurface>();
+          const surfaces = seen.get(command.id) ?? new Set<string>();
+          assert.ok(props.surface, 'registry dialogs must carry a surface');
           surfaces.add(props.surface);
           seen.set(command.id, surfaces);
           return <Dialog {...props} />;

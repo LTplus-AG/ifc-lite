@@ -115,6 +115,7 @@ export const listsEn = {
   'lists.resultsTable.showingAllObjects': 'Showing all objects',
   'lists.resultsTable.exportAriaLabel': 'Export',
   'lists.resultsTable.exportEllipsis': 'Export…',
+  'lists.resultsTable.exportFailed': 'Export failed: {message}',
   'lists.resultsTable.groupedAriaLabel': 'grouped',
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
   'lists.resultsTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',

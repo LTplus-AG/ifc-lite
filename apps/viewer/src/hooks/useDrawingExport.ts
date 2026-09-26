@@ -1253,7 +1253,7 @@ function useDrawingExport({
         // re-deriving it.
         const stem = `section-${sectionPlane.axis}-${sectionPlane.position}-1-${formatScaleFactorLabel(effectiveScale)}`;
         downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
-          trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
+        trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
         posthog.capture('drawing_exported', {
           format: 'pdf',
           axis: sectionPlane.axis,

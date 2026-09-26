@@ -26,7 +26,7 @@ export function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps)
   const { t } = useTranslation();
   return (
     <div
-      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm dark:border-zinc-800 dark:bg-zinc-950 z-40"
+      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-2xs text-muted-foreground shadow-sm dark:border-zinc-800 dark:bg-zinc-950 z-40"
       role="status"
       aria-live="polite"
     >
@@ -37,9 +37,9 @@ export function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps)
         <span className="opacity-70">{t('searchModal.inline.cyclingPrefix')}</span>
         <span className="font-mono">&quot;{query}&quot;</span>
         <span className="opacity-70">{t('searchModal.inline.cyclingPressHint')}</span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cycleNextKey')}</kbd>
+        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cycleNextKey')}</kbd>
         <span className="opacity-70"> / </span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cyclePrevKey')}</kbd>
+        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cyclePrevKey')}</kbd>
       </span>
       <button
         type="button"
@@ -69,14 +69,14 @@ export function RecentsPopoverBody({ recents, onPick, onClear }: RecentsPopoverP
   const { t } = useTranslation();
   return (
     <div className="py-1">
-      <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1 text-2xs uppercase tracking-wider text-muted-foreground">
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
           {t('searchModal.inline.recentSearches')}
         </span>
         <button
           type="button"
-          className="text-[10px] normal-case hover:underline"
+          className="text-2xs normal-case hover:underline"
           onMouseDown={(e) => {
             e.preventDefault();
             onClear();
@@ -161,25 +161,25 @@ export function SearchPopoverBody({
               : 'hover:bg-zinc-50 dark:hover:bg-zinc-900',
           )}
         >
-          <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-2xs uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
             {r.typeName}
           </span>
           <span className="min-w-0 flex-1 truncate font-medium">
             {r.name || <span className="italic text-muted-foreground">{t('searchModal.inline.unnamed')}</span>}
           </span>
           {r.globalId && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+            <span className="shrink-0 font-mono text-2xs text-muted-foreground">
               {r.globalId.slice(0, 8)}…
             </span>
           )}
           {modelsCount > 1 && (
-            <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-700">
+            <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-2xs text-muted-foreground dark:border-zinc-700">
               {r.modelId.slice(0, 6)}
             </span>
           )}
         </button>
       ))}
-      <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-1 text-[10px] text-muted-foreground dark:border-zinc-800">
+      <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-1 text-2xs text-muted-foreground dark:border-zinc-800">
         <span>
           {t('searchModal.inline.resultCountHint', { count: results.length })}
           {indexingCount > 0 && <span className="ml-2 opacity-80">{t('searchModal.inline.indexingCountHint', { count: indexingCount })}</span>}
@@ -192,7 +192,7 @@ export function SearchPopoverBody({
             onOpenAdvanced();
           }}
         >
-          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[9px] dark:border-zinc-700 dark:bg-zinc-900">⌘↵</kbd>
+          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">⌘↵</kbd>
         </button>
       </div>
     </div>

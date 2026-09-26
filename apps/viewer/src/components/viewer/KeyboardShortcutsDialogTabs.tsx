@@ -73,8 +73,8 @@ export function PrivacyBanner() { // exported for ViewportWelcomeCard.privacy.te
             </a>
             {' '}{t('keyboardShortcuts.privacy.outro')}
           </p>
-          <p className="text-[11px] italic">
-            {t('keyboardShortcuts.privacy.verifyIntro')} <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-[10px]">{t('keyboardShortcuts.privacy.verifyKey')}</kbd> {t('keyboardShortcuts.privacy.verifyOutro')}
+          <p className="text-2xs italic">
+            {t('keyboardShortcuts.privacy.verifyIntro')} <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-2xs">{t('keyboardShortcuts.privacy.verifyKey')}</kbd> {t('keyboardShortcuts.privacy.verifyOutro')}
           </p>
         </div>
       )}
@@ -146,7 +146,7 @@ export function AboutTab() {
         ].map((tag) => (
           <span
             key={tag}
-            className="px-2 py-0.5 text-[11px] rounded-full bg-muted/60 text-muted-foreground"
+            className="px-2 py-0.5 text-2xs rounded-full bg-muted/60 text-muted-foreground"
           >
             {tag}
           </span>

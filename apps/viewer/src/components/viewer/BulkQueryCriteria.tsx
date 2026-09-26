@@ -146,38 +146,46 @@ export function BulkQueryCriteria(props: Props) {
               </div>
               {filters.map((filter) => (
                 <div key={filter.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
-                  <Input
-                    placeholder={t('bulkPropertyEditor.psetOptional')}
-                    value={filter.psetName}
-                    onChange={(e) => updateFilter(filter.id, 'psetName', e.target.value)}
-                    className="h-8 text-xs w-28"
-                  />
-                  <Input
-                    placeholder={t('bulkPropertyEditor.propertyName')}
-                    value={filter.propName}
-                    onChange={(e) => updateFilter(filter.id, 'propName', e.target.value)}
-                    className="h-8 text-xs flex-1"
-                  />
-                  <Select
-                    value={filter.operator}
-                    onValueChange={(v) => updateFilter(filter.id, 'operator', v)}
-                  >
-                    <SelectTrigger className="h-8 w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FILTER_OPERATORS.map((op) => (
-                        <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {filter.operator !== 'IS_NULL' && filter.operator !== 'IS_NOT_NULL' && (
+                  <Field label={t('bulkPropertyEditor.psetOptional')} labelClassName="text-xs">
                     <Input
-                      placeholder={t('bulkPropertyEditor.value')}
-                      value={filter.value}
-                      onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                      className="h-8 text-xs w-20"
+                      placeholder={t('bulkPropertyEditor.psetOptional')}
+                      value={filter.psetName}
+                      onChange={(e) => updateFilter(filter.id, 'psetName', e.target.value)}
+                      className="h-8 text-xs w-28"
                     />
+                  </Field>
+                  <Field label={t('bulkPropertyEditor.propertyName')} labelClassName="text-xs">
+                    <Input
+                      placeholder={t('bulkPropertyEditor.propertyName')}
+                      value={filter.propName}
+                      onChange={(e) => updateFilter(filter.id, 'propName', e.target.value)}
+                      className="h-8 text-xs flex-1"
+                    />
+                  </Field>
+                  <Field label={t('bulkPropertyEditor.filterOperator')} labelClassName="text-xs">
+                    <Select
+                      value={filter.operator}
+                      onValueChange={(v) => updateFilter(filter.id, 'operator', v)}
+                    >
+                      <SelectTrigger className="h-8 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FILTER_OPERATORS.map((op) => (
+                          <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  {filter.operator !== 'IS_NULL' && filter.operator !== 'IS_NOT_NULL' && (
+                    <Field label={t('bulkPropertyEditor.value')} labelClassName="text-xs">
+                      <Input
+                        placeholder={t('bulkPropertyEditor.value')}
+                        value={filter.value}
+                        onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                        className="h-8 text-xs w-20"
+                      />
+                    </Field>
                   )}
                   <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />

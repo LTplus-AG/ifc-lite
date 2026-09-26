@@ -15,6 +15,7 @@ export async function resolveBulkQueryIds(
   groups: readonly FilterGroup[],
   signal?: AbortSignal,
 ): Promise<number[]> {
+  signal?.throwIfAborted();
   const model = evaluatorModelsFromState(state).find((entry) => entry.id === modelId);
   const legacy: EvaluatorModel | undefined = modelId === '__legacy__' && state.ifcDataStore
     ? { id: modelId, store: state.ifcDataStore, mutationView: state.mutationViews.get(modelId) }
@@ -39,7 +40,7 @@ export async function resolveBulkQueryIds(
 }
 
 /** The count beside Run always belongs to the current editor/model snapshot. */
-export function useBulkQueryTargets(open: boolean, modelId: string, groups: readonly FilterGroup[]) {
+export function useBulkQueryTargets(open: boolean, suspended: boolean, modelId: string, groups: readonly FilterGroup[]) {
   const mutationVersion = useViewerStore((state) => state.mutationVersion);
   const [ids, setIds] = useState<number[]>([]);
   const [computing, setComputing] = useState(false);
@@ -53,6 +54,9 @@ export function useBulkQueryTargets(open: boolean, modelId: string, groups: read
       setError(null);
       return () => controller.abort();
     }
+    // A Bulk run increments mutationVersion after every written chunk. Keep
+    // its displayed snapshot until the run ends, then refresh it once.
+    if (suspended) return () => controller.abort();
     setIds([]);
     setComputing(true);
     setError(null);
@@ -69,7 +73,7 @@ export function useBulkQueryTargets(open: boolean, modelId: string, groups: read
         if (!controller.signal.aborted) setComputing(false);
       });
     return () => controller.abort();
-  }, [open, modelId, groups, mutationVersion]);
+  }, [open, suspended, modelId, groups, mutationVersion]);
 
   return { ids, computing, error };
 }

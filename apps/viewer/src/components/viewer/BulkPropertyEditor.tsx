@@ -55,7 +55,7 @@ import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEdi
 import { emptyFilterGroup } from '@ifc-lite/rules';
 import { resolveBulkQueryIds, useBulkQueryTargets } from './useBulkQueryTargets';
 
-import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
+import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -63,7 +63,7 @@ import { BulkActionConfig } from './bulk-property-editor-action-config';
 import { Field } from '@/components/ui/field';
 import { useBulkTargets } from './useBulkTargets';
 import type { BulkTargetSource } from './bulk-targets';
-import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
+import { runBulkTargetBatches } from './bulk-target-run';
 
 
 export { parseBulkSetPropertyValue } from './bulk-property-value';
@@ -116,6 +116,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const [isExecuting, setIsExecuting] = useState(false);
   const [executeProgress, setExecuteProgress] = useState<{ done: number; total: number } | null>(null);
   const executeCancelRef = useRef(false);
+  const executeAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => { executeCancelRef.current = true; executeAbortRef.current?.abort(); }, []);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [previewResult, setPreviewResult] = useState<BulkQueryPreview | null>(null);
   const [executeResult, setExecuteResult] = useState<BulkQueryResult | null>(null);
@@ -234,7 +236,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   }, [open, targetSource, targetGroups, models, mutationViews, canCollabEdit]);
 
   const { ids: queryIds, computing: isComputing, error: queryError } = useBulkQueryTargets(
-    open && targetSource === 'query', selectedModelId, queryGroups,
+    open && targetSource === 'query', isExecuting, selectedModelId, queryGroups,
   );
   const [discoveredProperties, setDiscoveredProperties] = useState<{
     psets: Map<string, Set<string>>; allProps: Set<string>;
@@ -352,6 +354,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     setRuntimeFailures([]);
     setExecuteProgress({ done: 0, total: 0 });
     executeCancelRef.current = false;
+    const controller = new AbortController();
+    executeAbortRef.current = controller;
 
     // Yield to paint the initial "Applying..." state
     await new Promise(r => setTimeout(r, 0));
@@ -359,7 +363,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     try {
       // Step 1: select matching IDs
       const ids = targetSource === 'query'
-        ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups)
+        ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups, controller.signal)
         : null;
       const targets = ids
         ? ids.map((id) => ({ modelId: selectedModelId, id }))
@@ -367,76 +371,26 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const total = targets.length;
       setExecuteProgress({ done: 0, total });
 
-      // Step 2: chunked mutation — process CHUNK_SIZE entities then yield to browser
-      const CHUNK_SIZE = 500;
-      const mutations: import('@ifc-lite/mutations').BulkQueryResult['mutations'] = [];
-      const errors: string[] = [];
-      const failures: BulkRuntimeFailure[] = [];
-      let processed = 0;
-      // The engine writes straight to the view: record each chunk as it lands (#5861, #5958).
-      const batchId = newMutationBatchId();
-      const recorders = new Map<string, ReturnType<typeof recordRun>>();
-      const activeModelIdAtStart = useViewerStore.getState().activeModelId;
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        if (executeCancelRef.current) break;
-
-        const end = Math.min(i + CHUNK_SIZE, total);
-        const chunk: typeof mutations = [];
-        const byModel = new Map<string, typeof mutations>();
-        for (let j = i; j < end; j++) {
-          const { modelId, id } = targets[j];
-          try {
-            const engine = targetSource === 'query' ? queryEngine : targetEngines.get(modelId);
-            if (!engine) throw new Error(t('bulkPropertyEditor.modelUnavailable', { modelId }));
-            const mutation = engine.applyAction(id, action);
-            if (mutation) {
-              chunk.push(mutation);
-              const group = byModel.get(modelId) ?? [];
-              group.push(mutation);
-              byModel.set(modelId, group);
-            }
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : undefined;
-            errors.push(t('bulkPropertyEditor.entityError', {
-              id,
-              detail: detail ?? t('bulkPropertyEditor.unknownError'),
-            }));
-            failures.push({ kind: 'entity', id, detail });
-          }
-        }
-
-        mutations.push(...chunk);
-        for (const [modelId, group] of byModel) {
-          let record = recorders.get(modelId);
-          if (!record) {
-            record = recordRun(useViewerStore.getState, modelId, batchId);
-            recorders.set(modelId, record);
-          }
-          record(group);
-        }
-
-        processed = end;
-        setExecuteProgress({ done: end, total });
-        // Yield to browser so progress bar and spinner update
-        await new Promise(r => setTimeout(r, 0));
-      }
-      const state = useViewerStore.getState();
-      const firstRecordedModelId = recorders.keys().next().value;
-      if (firstRecordedModelId && state.activeModelId === activeModelIdAtStart
-        && (!state.activeModelId || !recorders.has(state.activeModelId))
-        && state.models.has(firstRecordedModelId)) state.setActiveModel(firstRecordedModelId);
-      const cancelled = executeCancelRef.current && processed < total; // a cancel in the last yield stopped nothing (#5958)
-      if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
-      const result: BulkQueryResult = {
-        mutations,
-        affectedEntityCount: mutations.length,
-        success: errors.length === 0 && !cancelled,
-        errors: errors.length > 0 ? errors : undefined,
-      };
+      const { result, failures } = await runBulkTargetBatches({
+        targets,
+        action,
+        getEngine: (modelId) => targetSource === 'query' ? queryEngine : targetEngines.get(modelId),
+        isCancelled: () => executeCancelRef.current,
+        onProgress: (done, count) => setExecuteProgress({ done, total: count }),
+        modelUnavailable: (modelId) => t('bulkPropertyEditor.modelUnavailable', { modelId }),
+        entityError: (id, detail) => t('bulkPropertyEditor.entityError', {
+          id, detail: detail ?? t('bulkPropertyEditor.unknownError'),
+        }),
+      });
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
     } catch (error) {
+      if (controller.signal.aborted) {
+        setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
+        setRuntimeFailures([{ kind: 'cancelled', done: 0, total: 0 }]);
+        return;
+      }
       console.error('Execute failed:', error);
       setExecuteResult({
         mutations: [],
@@ -447,6 +401,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setValidationFailure(null);
       setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
     } finally {
+      if (executeAbortRef.current === controller) executeAbortRef.current = null;
       setIsExecuting(false);
       setExecuteProgress(null);
     }
@@ -498,6 +453,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => {
       setOpen(nextOpen);
+      if (!nextOpen) { executeCancelRef.current = true; executeAbortRef.current?.abort(); }
       if (nextOpen) {
         const selection = useViewerStore.getState();
         setTargetSource(selection.models.size > 0
@@ -562,14 +518,14 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               </Badge>
               {queryError && <span role="alert" className="text-sm text-destructive">{queryError}</span>}
             </div>
-            <FilterGroupEditor
+            {isExecuting ? <p className="text-xs text-muted-foreground">{t('bulkPropertyEditor.applying')}</p> : <FilterGroupEditor
               groups={queryGroups}
               activeGroup={queryFilterState.activeGroup}
               onChange={setQueryFilterState}
               models={modelList}
               optionModelId={selectedModelId === '__legacy__' ? undefined : selectedModelId}
               schemaVersion={selectedModel?.ifcDataStore?.schemaVersion}
-            />
+            />}
           </div>}
 
           {targetSource !== 'query' && <Badge variant={liveMatchCount ? 'default' : 'secondary'}>
@@ -633,7 +589,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
         <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2">
           {isExecuting ? (
-            <Button variant="destructive" onClick={() => { executeCancelRef.current = true; }}>
+            <Button variant="destructive" onClick={() => { executeCancelRef.current = true; executeAbortRef.current?.abort(); }}>
               {t('bulkPropertyEditor.cancel')}
             </Button>
           ) : (

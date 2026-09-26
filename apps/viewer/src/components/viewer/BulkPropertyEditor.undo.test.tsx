@@ -156,6 +156,52 @@ describe('BulkPropertyEditor — the run is one undo step Ctrl+Z can reach (#595
     assert.equal(views.get('model-b')!.getPropertyValue(1, PSET, PROP), 'EXISTING');
   });
 
+  it('#5898: a chunked Query write does not rediscover rule suggestions per chunk', async () => {
+    const views = seed(1001);
+    const original = useViewerStore.getState().setFilterSchema;
+    let discoveries = 0;
+    useViewerStore.setState({ setFilterSchema: (...args) => {
+      discoveries++;
+      original(...args);
+    } });
+    try {
+      const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+      await openDialog(container);
+      setNativeValue(input('e.g., Pset_WallCommon')!, PSET);
+      setNativeValue(input('e.g., FireRating')!, PROP);
+      setNativeValue(input('Value')!, 'CHUNKED');
+      await advance(250);
+      const beforeRun = discoveries;
+      const apply = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Apply to'));
+      assert.ok(apply);
+      click(apply!);
+      await advance(150);
+      assert.equal(views.get('model-a')!.getPropertyValue(1001, PSET, PROP), 'CHUNKED');
+      assert.ok(discoveries - beforeRun <= 1, 'schema discovery runs at most once after three write chunks');
+    } finally {
+      useViewerStore.setState({ setFilterSchema: original });
+    }
+  });
+
+  it('#5898: Cancel before Query preselection writes nothing and reports cancellation', async () => {
+    const views = seed(1001);
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    setNativeValue(input('e.g., Pset_WallCommon')!, PSET);
+    setNativeValue(input('e.g., FireRating')!, PROP);
+    setNativeValue(input('Value')!, 'NEVER');
+    await advance(250);
+    const apply = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Apply to'));
+    assert.ok(apply);
+    click(apply!);
+    const cancel = [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Cancel');
+    assert.ok(cancel, 'the running Query exposes Cancel during preselection');
+    click(cancel!);
+    await advance(100);
+    assert.equal(views.get('model-a')!.getPropertyValue(1, PSET, PROP), null);
+    assert.match(document.body.textContent ?? '', /Cancelled after 0 of 0 entities/);
+  });
+
   it('#5890: Search result targets only the displayed one-model filter rows', async () => {
     const views = seed();
     useViewerStore.setState({

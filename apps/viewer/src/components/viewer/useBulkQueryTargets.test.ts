@@ -40,6 +40,10 @@ describe('#5898 Bulk Rule targets over parsed IFC', () => {
     const state = useViewerStore.getState();
     assert.ok((await resolveBulkQueryIds(state, 'a', [emptyFilterGroup()])).includes(1),
       'an untouched Query keeps the prior whole-model default');
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await assert.rejects(resolveBulkQueryIds(state, 'a', [emptyFilterGroup()], cancelled.signal),
+      { name: 'AbortError' }, 'Cancel stops preselection before the effective-candidate walk');
     assert.deepEqual(await resolveBulkQueryIds(state, 'a', group('IfcWall')), [1]);
     assert.deepEqual(await resolveBulkQueryIds(state, 'a', group('IfcCurtainWall')), [3]);
     assert.deepEqual(await resolveBulkQueryIds(state, 'a', group('IfcStair')), [5]);

@@ -56,8 +56,11 @@ export async function readDeviationAssetStats(
                     max = Math.max(max, value);
                 }
             } finally {
-                if (mapped) staging.unmap();
-                staging.destroy();
+                try {
+                    if (mapped) staging.unmap();
+                } finally {
+                    staging.destroy();
+                }
             }
         }
         if (count === 0) continue;

@@ -4,8 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readDeviationAssetStats } from './deviation-readback.js';
-import type { PointCloudNode } from '../pointcloud/point-cloud-node.js';
+import { readDeviationAssetStats } from './deviation/deviation-readback.js';
+import type { PointCloudNode } from './pointcloud/point-cloud-node.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = { COPY_DST: 8, MAP_READ: 1 };
 (globalThis as Record<string, unknown>).GPUMapMode = { READ: 1 };
@@ -24,7 +24,7 @@ function buffer(values: number[], mapFails = false): TestBuffer {
   return {
     data: new Float32Array(values), unmapped: 0, destroyed: 0,
     async mapAsync() { if (mapFails) throw new Error('device lost'); },
-    getMappedRange() { return this.data.buffer; },
+    getMappedRange() { return this.data.buffer as ArrayBuffer; },
     unmap() { this.unmapped++; },
     destroy() { this.destroyed++; },
   };
@@ -37,11 +37,12 @@ function node(expressId: number, modelIndex: number, sources: TestBuffer[]): Poi
   } as unknown as PointCloudNode;
 }
 
-function gpu(mapFails = false) {
+function gpu(mapFails = false, unmapFails = false) {
   const staging: TestBuffer[] = [];
   const device = {
     createBuffer: ({ size }: { size: number }) => {
       const target = buffer(new Array(size / 4).fill(0), mapFails);
+      if (unmapFails) target.unmap = () => { throw new Error('unmap failed'); };
       staging.push(target);
       return target;
     },
@@ -66,7 +67,7 @@ describe('on-demand signed-distance readback (#5832)', () => {
     const rows = await readDeviationAssetStats(device, [
       node(7, 1, [a1, a2, uncomputed]),
       node(8, 2, [b]),
-    ], (candidate) => candidate !== uncomputed);
+    ], (candidate) => candidate !== (uncomputed as unknown as GPUBuffer));
 
     assert.deepEqual(rows, [
       { expressId: 7, modelIndex: 1, pointsProcessed: 4, finitePoints: 3,
@@ -83,6 +84,13 @@ describe('on-demand signed-distance readback (#5832)', () => {
     const { device, staging } = gpu(true);
     await assert.rejects(readDeviationAssetStats(device, [node(7, 0, [source])], () => true), /device lost/);
     assert.equal(staging[0].unmapped, 0);
+    assert.equal(staging[0].destroyed, 1);
+  });
+
+  it('destroys the staging buffer when unmap fails after reading', async () => {
+    const source = buffer([1]);
+    const { device, staging } = gpu(false, true);
+    await assert.rejects(readDeviationAssetStats(device, [node(7, 0, [source])], () => true), /unmap failed/);
     assert.equal(staging[0].destroyed, 1);
   });
 });

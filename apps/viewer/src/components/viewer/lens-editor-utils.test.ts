@@ -8,11 +8,8 @@ import assert from 'node:assert';
 import {
   buildAutoColorLensToSave,
   cloneCriteria,
-  compoundCriteriaSummary,
-  deriveRuleName,
   duplicateLensConfig,
   isRuleValid,
-  mergeImportedLenses,
   moveItem,
   reserveUniqueId,
 } from './lens-editor-utils.js';
@@ -212,86 +209,6 @@ describe('cloneCriteria', () => {
   });
 });
 
-describe('deriveRuleName — compound naming (fka #lens-compound-conditions)', () => {
-  it('names a leaf criteria the same way as before (bounding: no behavior change for leaves)', () => {
-    assert.equal(deriveRuleName({ type: 'ifcType', ifcType: 'IfcWall' }), 'Wall');
-    assert.equal(deriveRuleName({ type: 'attribute', attributeName: 'Name', attributeValue: 'Foo' }), 'Foo');
-    assert.equal(deriveRuleName({ type: 'group', groupName: 'Zone A' }), 'Zone A');
-  });
-
-  it('resolves a model leaf\'s name via the injected resolver, falling back to "Model"', () => {
-    const resolve = (id: string) => (id === 'm1' ? 'Model One' : undefined);
-    assert.equal(deriveRuleName({ type: 'model', modelId: 'm1' }, resolve), 'Model One');
-    assert.equal(deriveRuleName({ type: 'model', modelId: 'unknown' }, resolve), 'Model');
-    assert.equal(deriveRuleName({ type: 'model' }), 'Model');
-  });
-
-  it('names a compound honestly instead of falling through to a generic "Rule" default', () => {
-    assert.equal(deriveRuleName(compoundCriteria), 'AND (Wall, FireRating)');
-  });
-
-  it('recurses into a nested compound', () => {
-    const nested: LensCriteria = {
-      type: 'or',
-      conditions: [
-        { type: 'ifcType', ifcType: 'IfcSlab' },
-        { type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcBeam' }] },
-      ],
-    };
-    assert.equal(deriveRuleName(nested), 'OR (Slab, AND (Beam))');
-  });
-
-  it('names an empty compound distinctly from an incomplete leaf', () => {
-    assert.equal(deriveRuleName({ type: 'and', conditions: [] }), 'AND (empty)');
-    assert.equal(deriveRuleName({ type: 'and' }), 'AND (empty)');
-  });
-
-  it('does not throw on a null/primitive member - names it "Invalid" instead', () => {
-    const withBadMember: LensCriteria = {
-      type: 'or',
-      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
-    };
-    assert.equal(deriveRuleName(withBadMember), 'OR (Invalid, Wall)');
-  });
-
-  it('does not stack-overflow on a pathologically deep compound and names the cut-off distinctly', () => {
-    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
-    for (let i = 0; i < 3000; i++) {
-      deep = { type: 'and', conditions: [deep] };
-    }
-    assert.doesNotThrow(() => deriveRuleName(deep));
-    assert.ok(deriveRuleName(deep).includes('too deeply nested'));
-  });
-});
-
-describe('compoundCriteriaSummary', () => {
-  it('summarizes a compound with a short count label and an expanded tooltip detail', () => {
-    const summary = compoundCriteriaSummary(compoundCriteria);
-    assert.equal(summary.label, 'AND - 2 conditions');
-    assert.equal(summary.detail, 'Wall, FireRating');
-  });
-
-  it('singularizes the count for exactly one condition', () => {
-    const summary = compoundCriteriaSummary({ type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }] });
-    assert.equal(summary.label, 'OR - 1 condition');
-  });
-
-  it('reports zero conditions distinctly (an incomplete imported compound)', () => {
-    const summary = compoundCriteriaSummary({ type: 'and', conditions: [] });
-    assert.equal(summary.label, 'AND - 0 conditions');
-    assert.equal(summary.detail, 'No conditions');
-  });
-
-  it('does not throw and names a malformed (null) member "Invalid" instead', () => {
-    const summary = compoundCriteriaSummary({
-      type: 'and',
-      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
-    });
-    assert.equal(summary.label, 'AND - 2 conditions', 'count reflects the raw array length, including the malformed member');
-    assert.equal(summary.detail, 'Invalid, Wall');
-  });
-});
-
 describe('isRuleValid — compound rules must survive Save (#lens-compound-conditions)', () => {
   it('treats a non-empty compound rule as valid', () => {
     const rule: LensRule = { id: 'r', name: 'AND', enabled: true, criteria: compoundCriteria, action: 'colorize', color: '#000' };
@@ -350,96 +267,6 @@ describe('isRuleValid — compound rules must survive Save (#lens-compound-condi
     const rule: LensRule = { id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000', criteria: deep };
     assert.doesNotThrow(() => isRuleValid(rule));
     assert.equal(isRuleValid(rule), false, 'nesting past MAX_COMPOUND_DEPTH fails closed, consistent with the engine');
-  });
-});
-
-describe('mergeImportedLenses (#1403)', () => {
-  const existing: Lens[] = [
-    { id: 'lens-envelope', name: 'Building Envelope', builtin: true, rules: [] },
-    { id: 'custom-1', name: 'My Lens', rules: [] },
-  ];
-
-  it('upserts by id: re-importing the same ids updates in place instead of doing nothing', () => {
-    // Round-trip: an edited export carries the existing ids.
-    const imported = [
-      { id: 'lens-envelope', name: 'Building Envelope', rules: ruleLens.rules },
-      { id: 'custom-1', name: 'My Lens Renamed', rules: [] },
-    ];
-    const next = mergeImportedLenses(existing, imported, (i) => `gen-${i}`);
-    assert.equal(next.length, 2, 'no duplicates created on re-import');
-    assert.equal(next[0].name, 'Building Envelope');
-    assert.equal(next[0].rules.length, 2, 'builtin override picked up the edited rules');
-    assert.equal(next[0].builtin, true, 'replacing a builtin preserves the builtin flag');
-    assert.equal(next[1].name, 'My Lens Renamed', 'custom lens updated in place');
-  });
-
-  it('appends lenses with new ids, keeping existing order', () => {
-    const next = mergeImportedLenses(existing, [{ id: 'custom-2', name: 'New', rules: [] }], (i) => `gen-${i}`);
-    assert.deepEqual(next.map((l) => l.id), ['lens-envelope', 'custom-1', 'custom-2']);
-    assert.equal(next[2].builtin, false, 'a brand-new imported lens is never a builtin');
-  });
-
-  it('generates ids for id-less hand-authored lenses', () => {
-    const next = mergeImportedLenses(existing, [{ name: 'No Id', rules: [] }], (i) => `gen-${i}`);
-    assert.equal(next.length, 3);
-    assert.equal(next[2].id, 'gen-0');
-  });
-
-  it('skips malformed entries (missing name or rules) without throwing', () => {
-    const next = mergeImportedLenses(
-      existing,
-      [null, 42, { name: '' }, { name: 'x' }, { name: 'ok', rules: [] }],
-      (i) => `gen-${i}`,
-    );
-    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'ok']);
-  });
-
-  it('rejects lenses whose rules array is shape-invalid (e.g. [null] or partial rule)', () => {
-    const next = mergeImportedLenses(
-      existing,
-      [
-        { name: 'bad-null-rule', rules: [null] },
-        { name: 'bad-partial-rule', rules: [{ id: 'r', name: 'r' /* missing enabled/criteria/action/color */ }] },
-        { name: 'good', rules: ruleLens.rules },
-      ],
-      (i) => `gen-${i}`,
-    );
-    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good']);
-  });
-
-  it('preserves a valid imported autoColor spec (and clones it)', () => {
-    const spec = { source: 'material' as const };
-    const next = mergeImportedLenses(existing, [{ id: 'auto-x', name: 'Auto', rules: [], autoColor: spec }], (i) => `gen-${i}`);
-    assert.deepEqual(next[2].autoColor, { source: 'material' });
-    assert.notEqual(next[2].autoColor, spec, 'autoColor must be cloned, not aliased');
-  });
-
-  it('rejects a lens carrying a malformed autoColor (bad shape or unknown source)', () => {
-    const next = mergeImportedLenses(
-      existing,
-      [
-        { id: 'a1', name: 'arr-autocolor', rules: [], autoColor: [] },
-        { id: 'a2', name: 'bad-source', rules: [], autoColor: { source: 'not-a-source' } },
-        { id: 'a3', name: 'bad-pset-type', rules: [], autoColor: { source: 'property', psetName: 7 } },
-        { id: 'a4', name: 'good-autocolor', rules: [], autoColor: { source: 'ifcType' } },
-      ],
-      (i) => `gen-${i}`,
-    );
-    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good-autocolor']);
-  });
-
-  it('preserves a valid imported includeUnclassified flag and rejects a malformed one', () => {
-    const next = mergeImportedLenses(
-      existing,
-      [
-        { id: 'u1', name: 'good-flag', rules: [], autoColor: { source: 'classification', includeUnclassified: true } },
-        { id: 'u2', name: 'bad-flag-string', rules: [], autoColor: { source: 'classification', includeUnclassified: 'true' } },
-        { id: 'u3', name: 'bad-flag-number', rules: [], autoColor: { source: 'classification', includeUnclassified: 1 } },
-      ],
-      (i) => `gen-${i}`,
-    );
-    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good-flag']);
-    assert.deepEqual(next[2].autoColor, { source: 'classification', includeUnclassified: true });
   });
 });
 

@@ -78,7 +78,7 @@
    782 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
-  1533 apps/viewer/src/components/viewer/LensPanel.tsx
+  1013 apps/viewer/src/components/viewer/LensPanel.tsx
   1005 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    521 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx

@@ -79,7 +79,7 @@
   1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
-  1533 apps/viewer/src/components/viewer/LensPanel.tsx
+  1012 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    521 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx
@@ -246,9 +246,8 @@
    773 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
-   464 packages/lens/src/engine.ts
-   426 packages/lens/src/matching.ts
-   416 packages/lens/src/types.ts
+   463 packages/lens/src/engine.ts
+   406 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
    412 packages/lists/src/types.ts
    479 packages/mcp/src/backend-query.ts

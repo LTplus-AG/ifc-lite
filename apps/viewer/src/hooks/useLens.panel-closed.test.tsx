@@ -54,7 +54,7 @@ const HIDE_WALLS: Lens = {
     id: 'walls',
     name: 'Walls',
     enabled: true,
-    criteria: { type: 'ifcType', ifcType: 'IfcWall' },
+    groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }],
     action: 'hide',
     color: '#000000',
   }],

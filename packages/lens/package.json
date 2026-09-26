@@ -18,7 +18,9 @@
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@ifc-lite/rules": "workspace:^"
+  },
   "devDependencies": {
     "@ifc-lite/data": "workspace:^",
     "typescript": "^6.0.3",

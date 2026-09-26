@@ -6373,9 +6373,6 @@
     "ENTITY_ATTRIBUTE_NAMES: const",
     "GHOST_COLOR: const",
     "IFC_SUBTYPE_TO_BASE: const",
-    "LENS_COMPOUND_TYPES: const",
-    "LENS_CRITERIA_TYPES: const",
-    "LENS_OPERATORS: const",
     "LENS_PALETTE: const",
     "Lens: interface",
     "LensCriteria: interface",
@@ -6392,7 +6389,6 @@
     "evaluateLens: function",
     "hexToRgba: function",
     "isGhostColor: function",
-    "matchesCriteria: function",
     "rgbaToHex: function",
     "uniqueColor: function"
   ],

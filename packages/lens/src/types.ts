@@ -18,6 +18,8 @@
  * consumers can bridge any data source.
  */
 
+import type { FilterGroup } from '@ifc-lite/rules';
+
 // ============================================================================
 // Data Provider Interface
 // ============================================================================
@@ -172,11 +174,6 @@ export type LensOperator =
   | 'lt'
   | 'lte';
 
-/** All supported lens comparison operators, for rule-editor dropdowns. */
-export const LENS_OPERATORS = [
-  'equals', 'contains', 'exists', 'ne', 'gt', 'gte', 'lt', 'lte',
-] as const satisfies readonly LensOperator[];
-
 /**
  * Criteria for matching entities.
  *
@@ -243,7 +240,11 @@ export interface LensRule {
   id: string;
   name: string;
   enabled: boolean;
-  criteria: LensCriteria;
+  /** OR of groups, each with its own AND/OR rule combinator. */
+  groups: FilterGroup[];
+  /** An imported v1 criterion that could not be converted exactly. It remains
+   * inert but round-trips until the user replaces it in the editor. */
+  unreadableLegacy?: { criteria: unknown; reason: string };
   action: 'colorize' | 'hide' | 'transparent';
   /** Hex color for colorize/transparent actions (e.g. "#E53935") */
   color: string;
@@ -355,17 +356,6 @@ export interface AutoColorLegendEntry {
 export const AUTO_COLOR_SOURCES = [
   'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
-
-/** All supported LEAF criteria types for lens rules. Deliberately excludes the
- *  compound types (`and` / `or`) - rule editors use this list for the
- *  "what data does this condition read" dropdown, where a compound is a
- *  grouping construct, not a data source. See {@link LENS_COMPOUND_TYPES}. */
-export const LENS_CRITERIA_TYPES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
-] as const;
-
-/** The compound (grouping) criteria types, for rule-editor group controls. */
-export const LENS_COMPOUND_TYPES = ['and', 'or'] as const;
 
 /**
  * Maximum nesting depth the evaluator will follow through compound criteria

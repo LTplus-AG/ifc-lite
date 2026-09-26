@@ -62,7 +62,7 @@ const WALL_LENS: Lens = {
       id: 'rule-name',
       name: 'Renamed',
       enabled: true,
-      criteria: { type: 'attribute', attributeName: 'Name', operator: 'equals', attributeValue: 'Renamed' },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'name', op: 'eq', value: 'Renamed' }] }],
       action: 'colorize',
       color: '#ff0000',
     },

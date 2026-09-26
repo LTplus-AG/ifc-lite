@@ -210,8 +210,8 @@ interface EpsgLookupDialogProps {
   onSelect: (result: EpsgResult) => void;
   children?: React.ReactNode;
 }
-
 export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) {
+  const focusSearch = useCallback((node: HTMLInputElement | null) => { node?.focus(); }, []);
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -357,7 +357,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
         {children || (
           <button
             type="button"
-            className="flex items-center gap-1 text-[10px] font-mono text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50"
+            className="flex items-center gap-1 text-xs font-mono text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50"
           >
             <Search className="h-2.5 w-2.5" />
             {t('properties.epsgLookup.triggerButton')}
@@ -370,19 +370,19 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
             <Globe className="h-4 w-4 text-teal-500" />
             {t('properties.epsgLookup.title')}
           </DialogTitle>
-          <DialogDescription className="text-[11px] text-muted-foreground">
+          <DialogDescription className="text-xs text-muted-foreground">
             {t('properties.epsgLookup.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-4 pb-3">
           <Input
+            ref={focusSearch}
             placeholder={t('properties.epsgLookup.searchPlaceholder')}
             value={query}
             onChange={handleInputChange}
             leftIcon={loading ? <Spinner size="sm" /> : <Search className="h-3.5 w-3.5" />}
             className="h-8 text-xs"
-            autoFocus
           />
         </div>
 
@@ -397,13 +397,13 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
                 onClick={() => handleSelect(result)}
               >
                 <div className="flex items-baseline gap-2 min-w-0">
-                  <code className="text-[11px] font-bold text-teal-600 dark:text-teal-400 shrink-0">{result.code}</code>
-                  <span className="text-[11px] text-foreground truncate">{result.name}</span>
+                  <code className="text-xs font-bold text-teal-600 dark:text-teal-400 shrink-0">{result.code}</code>
+                  <span className="text-xs text-foreground truncate">{result.name}</span>
                   {result.kind && (
-                    <span className="text-[9px] text-muted-foreground shrink-0 ml-auto">{result.kind}</span>
+                    <span className="text-xs text-muted-foreground shrink-0 ml-auto">{result.kind}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                   {result.area && <span className="truncate">{result.area}</span>}
                   {result.datum && <span className="shrink-0">{result.datum}</span>}
                   {result.unit && <span className="shrink-0">{result.unit}</span>}

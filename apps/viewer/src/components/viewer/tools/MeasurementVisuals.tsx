@@ -35,7 +35,7 @@ const HALO = overlayColor('overlay-halo');
 // centred horizontally with its bottom edge 6 px above the point.
 const LABEL_OFFSET = { dx: 0, dy: -6 };
 const LABEL_CLASS = '-translate-x-1/2 -translate-y-full leading-tight';
-const SUB_CLASS = 'text-[10px] text-overlay-ink-muted';
+const SUB_CLASS = 'text-2xs text-overlay-ink-muted';
 
 type Point3 = { x: number; y: number; z: number };
 

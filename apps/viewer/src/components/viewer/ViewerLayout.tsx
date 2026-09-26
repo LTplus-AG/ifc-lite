@@ -28,6 +28,7 @@ import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomS
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
+import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { toast } from '@/components/ui/toast';
@@ -84,49 +85,10 @@ export function ViewerLayout() {
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
-  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
-  // a sample IFC into the viewer on first mount.
-  //
-  // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
-  // attacker-controllable (any link can set it), so honouring an arbitrary
-  // cross-origin URL is a drive-by model-injection vector. We resolve the param
-  // against the current document and require its origin to match
-  // window.location.origin; a cross-origin URL is refused, never fetched.
-  const { addModel: autoloadAddModel } = useIfc();
-  const autoloadDoneRef = useRef(false);
-  useEffect(() => {
-    if (autoloadDoneRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const modelUrl = params.get('model');
-    if (!modelUrl) return;
-    autoloadDoneRef.current = true;
-    // Resolve (supports relative paths) and enforce same-origin before fetching.
-    let resolvedUrl: URL;
-    try {
-      resolvedUrl = new URL(modelUrl, window.location.href);
-    } catch {
-      console.error('[viewer] autoload from ?model= refused: malformed URL');
-      return;
-    }
-    if (resolvedUrl.origin !== window.location.origin) {
-      console.error(
-        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
-      );
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(resolvedUrl.href);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const blob = await res.blob();
-        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
-        const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
-        await autoloadAddModel(file);
-      } catch (err) {
-        console.error('[viewer] autoload from ?model=… failed:', err);
-      }
-    })();
-  }, [autoloadAddModel]);
+  // Auto-load a model from ?model=<URL> (extracted to its own hook, #5851:
+  // a malformed/cross-origin/failed fetch now shows the load-error card
+  // instead of only `console.error`; see the hook's docblock).
+  useModelUrlAutoload();
 
   // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
   // joins the room; with seed-into-room the model hydrates from the Y.Doc, so

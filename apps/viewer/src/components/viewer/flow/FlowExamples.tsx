@@ -56,8 +56,8 @@ export function FlowExampleGallery({ onOpen }: FlowExamplesProps) {
             onClick={() => onOpen(doc)}
           >
             <div className="font-medium">{doc.name}</div>
-            <div className="mt-0.5 line-clamp-4 text-[11px] text-muted-foreground">{doc.description}</div>
-            <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+            <div className="mt-0.5 line-clamp-4 text-2xs text-muted-foreground">{doc.description}</div>
+            <div className="mt-1 font-mono text-2xs text-muted-foreground">
               {t('flowPanel.examples.size', { nodes: doc.nodes.length, edges: doc.edges.length })}
               {doc.capabilities.length > 0 ? ` · ${doc.capabilities.join(' ')}` : ''}
             </div>

@@ -15,13 +15,16 @@
  *     constructions.
  *   - DFJSON (Dragonfly): extruded Room2D floor plates + heights, the simpler target for
  *     mostly-vertical-wall models (recommended by Ladybug for that case).
+ *
+ * Chrome (open/busy/result state, the Dialog shell, the result alert, the
+ * guarded Cancel/Export footer) lives in `ExportDialogShell.tsx` (#5848);
+ * this component keeps only its own options and export logic.
  */
 
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Download, AlertCircle, Check } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
+import { Download, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -32,20 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -54,8 +44,8 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { resolveEnergyExportMutationSource } from './energy-export-source';
 import { useTranslation } from '@/i18n';
-import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import type { TranslationKey } from '@/i18n';
+import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 type EnergyFormat = 'hbjson' | 'dfjson';
 
@@ -89,11 +79,8 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
 
-  const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<EnergyFormat>('hbjson');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Any loaded IFC model can be exported — the energy model is rebuilt from the
   // model's analytic geometry (re-serialized with in-app edits applied), not the
@@ -117,11 +104,12 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
     [modelList, selectedModelId],
   );
 
-  const handleExport = useCallback(async () => {
-    if (!selectedModel) return;
+  const spec = FORMATS[format];
 
-    setIsExporting(true);
-    setExportResult(null);
+  const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!selectedModel) {
+      return { success: false, message: t('geometryExport.energy.noModelDescription') };
+    }
 
     const spec = FORMATS[format];
     try {
@@ -249,51 +237,47 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
         sizeKb: (blob.size / 1024).toFixed(0),
         skipNote: hbjsonSkipNote,
       });
-      setExportResult({ success: true, message: msg });
       toast.success(msg);
+      return { success: true, message: msg };
     } catch (err) {
       console.error(`${spec.label} export failed:`, err);
       const errMsg = t('geometryExport.energy.failedMessage', {
         formatLabel: spec.label,
         reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError'),
       });
-      setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
-    } finally {
-      setIsExporting(false);
+      return { success: false, message: errMsg };
     }
   }, [selectedModel, format, getMutationView, t, surface]);
 
-  const handleOpenChange = useExportDialogOpenGuard({
-    busy: isExporting,
-    setOpen,
-    onOpen: () => setExportResult(null),
-  });
-
-  const spec = FORMATS[format];
+  const filenamePreview = selectedModel ? modelExportFilename(selectedModel.name, spec.ext) : undefined;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
+    <ExportDialogShell
+      trigger={
+        trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             {t('geometryExport.energy.triggerButton')}
           </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            {t('geometryExport.energy.dialogTitle')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('geometryExport.energy.dialogDescription')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+        )
+      }
+      icon={<Download className="h-5 w-5" />}
+      title={t('geometryExport.energy.dialogTitle')}
+      description={t('geometryExport.energy.dialogDescription')}
+      contentClassName="sm:max-w-md overflow-hidden"
+      cancelLabel={t('geometryExport.energy.cancelButton')}
+      exportLabel={t('geometryExport.energy.exportButton', { formatLabel: spec.label })}
+      exportingLabel={t('geometryExport.energy.exportingButton')}
+      exportIcon={<Download className="h-4 w-4 mr-2" />}
+      successTitle={t('geometryExport.energy.successTitle')}
+      errorTitle={t('geometryExport.energy.errorTitle')}
+      filenamePreview={filenamePreview}
+      exportDisabled={!selectedModel}
+      onExport={handleExport}
+    >
+      {(state) => (
+        <>
           {/* Format selector — segmented control */}
           <div className="flex items-center gap-4">
             <span className="w-32">{t('geometryExport.energy.formatLabel')}</span>
@@ -302,7 +286,7 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
               value={format}
               options={(Object.keys(FORMATS) as EnergyFormat[]).map((f) => ({ value: f, label: FORMATS[f].label }))}
               onValueChange={setFormat}
-              disabled={isExporting}
+              disabled={state.isExporting}
             />
           </div>
 
@@ -310,7 +294,7 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
               <Label className="w-32">{t('geometryExport.energy.modelLabel')}</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={isExporting}>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={state.isExporting}>
                 <SelectTrigger>
                   <SelectValue placeholder={t('geometryExport.energy.selectModelPlaceholder')} />
                 </SelectTrigger>
@@ -348,39 +332,8 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
               </AlertDescription>
             </Alert>
           )}
-
-          {exportResult && (
-            <Alert variant={exportResult.success ? 'default' : 'destructive'}>
-              {exportResult.success ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>{exportResult.success ? t('geometryExport.energy.successTitle') : t('geometryExport.energy.errorTitle')}</AlertTitle>
-              <AlertDescription>{exportResult.message}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
-            {t('geometryExport.energy.cancelButton')}
-          </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
-            {isExporting ? (
-              <>
-                <Spinner size="md" className="mr-2" />
-                {t('geometryExport.energy.exportingButton')}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                {t('geometryExport.energy.exportButton', { formatLabel: spec.label })}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      )}
+    </ExportDialogShell>
   );
 }

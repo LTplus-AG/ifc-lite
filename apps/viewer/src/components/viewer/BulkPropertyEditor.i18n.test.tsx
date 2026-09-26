@@ -9,7 +9,7 @@ import { act } from 'react';
 import { advance, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkPropertyEditor, parseBulkSetPropertyValue } from './BulkPropertyEditor.js';
 import { appliedResultKey } from './bulk-property-editor-options.js';

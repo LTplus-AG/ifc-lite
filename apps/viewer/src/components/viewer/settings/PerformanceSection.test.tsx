@@ -20,7 +20,7 @@ afterEach(() => {
   localStorage.removeItem(GEOM_WORKERS_STORAGE_KEY);
   localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
   window.history.replaceState(null, '', '/');
-  useViewerStore.setState({ geomTierOverride: undefined, geometryModePendingReload: false });
+  useViewerStore.setState({ geomTierOverride: undefined, geometryMode: 'fast', geometryModePendingReload: false });
 });
 
 function openPerformance(): HTMLElement {
@@ -62,9 +62,10 @@ it('#5860 Reset removes the originating URL parameter so an override cannot retu
 it('#5860 geometry detail Reset uses the existing store action and removes its URL pin', () => {
   window.history.replaceState(null, '', '/?geomTier=low&other=keep');
   localStorage.setItem(GEOM_TIER_STORAGE_KEY, 'low');
-  useViewerStore.setState({ geomTierOverride: 'low' });
+  useViewerStore.setState({ geomTierOverride: 'low', geometryMode: 'exact' });
   const dialog = openPerformance();
   assert.match(dialog.textContent ?? '', /Geometry detail: low/);
+  assert.match(dialog.textContent ?? '', /Low detail is ignored in Exact mode/);
   reset(dialog, 'Geometry detail');
   assert.equal(useViewerStore.getState().geomTierOverride, undefined);
   assert.equal(window.location.search, '?other=keep');

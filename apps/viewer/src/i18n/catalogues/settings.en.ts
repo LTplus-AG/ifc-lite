@@ -49,6 +49,8 @@ export const settingsEn = {
   'settings.performance.noOverrides': 'No overrides are active.',
   'settings.performance.geometryTier': 'Geometry detail',
   'settings.performance.geometryWorkers': 'Geometry workers',
+  'settings.performance.tierIgnoredInExact': 'Low detail is ignored in Exact mode.',
+  'settings.performance.workersMayClamp': 'The engine may lower this count to fit memory.',
   'settings.performance.sourceUrl': 'From this URL',
   'settings.performance.sourceSaved': 'Saved in this browser',
   'settings.performance.reset': 'Reset',

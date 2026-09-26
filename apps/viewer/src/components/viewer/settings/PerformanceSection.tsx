@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { isPreviewTier } from '@/store/geometryFidelity';
 import { SettingsGroup } from './SettingsGroup';
 import { activeStickyOverrides } from './sticky-overrides';
 
@@ -13,6 +14,7 @@ import { activeStickyOverrides } from './sticky-overrides';
 export function PerformanceSection() {
   const { t } = useTranslation();
   const tier = useViewerStore((state) => state.geomTierOverride);
+  const geometryMode = useViewerStore((state) => state.geometryMode);
   const [, refresh] = useState(0);
   const overrides = activeStickyOverrides(tier);
 
@@ -27,6 +29,12 @@ export function PerformanceSection() {
             <p className="text-xs text-muted-foreground">
               {t(source === 'url' ? 'settings.performance.sourceUrl' : 'settings.performance.sourceSaved')}
             </p>
+            {definition.id === 'geomTier' && geometryMode === 'exact' && isPreviewTier(tier) && (
+              <p className="text-xs text-muted-foreground">{t('settings.performance.tierIgnoredInExact')}</p>
+            )}
+            {definition.id === 'geomWorkers' && (
+              <p className="text-xs text-muted-foreground">{t('settings.performance.workersMayClamp')}</p>
+            )}
           </div>
           <Button
             type="button"

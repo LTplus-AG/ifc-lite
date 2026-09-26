@@ -675,7 +675,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
           {/* Model selector */}
           <Field label={t('bulkPropertyEditor.model')}>
             <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-              <SelectTrigger aria-label={t('bulkPropertyEditor.model')}>
+              <SelectTrigger>
                 <SelectValue placeholder={t('bulkPropertyEditor.selectModel')} />
               </SelectTrigger>
               <SelectContent>

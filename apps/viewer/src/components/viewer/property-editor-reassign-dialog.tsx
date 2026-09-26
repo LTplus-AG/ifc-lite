@@ -5,9 +5,11 @@
 /**
  * `ReassignClassDialog` and `ReassignBadge`, extracted out of
  * `PropertyEditor.tsx` (#5812) so that file does not grow past its size
- * while `ReassignClassDialog`'s fields gain real labels (`Field` for the
- * `Select`'s `<label>`+`htmlFor`; `ComboInput` is a plain text input under
- * the hood so it gets the same treatment).
+ * while `ReassignClassDialog`'s fields gain real labels: `Field` wraps both
+ * the predefined-type `Select` (labelled via `FieldContext`, see
+ * `ui/select.tsx`) and `ComboInput` (a plain `<input>` under the hood, so
+ * `Field` labels it the same way it does `Input`/`Textarea`, by cloning
+ * `id`/`aria-*` directly onto it).
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -164,7 +166,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {predefinedOptions.length > 0 && (
             <Field label={t('propertyEditor.reassign.predefinedType')}>
               <Select value={predefinedType || '__none__'} onValueChange={(v) => setPredefinedType(v === '__none__' ? '' : v)}>
-                <SelectTrigger className="font-mono text-sm" aria-label={t('propertyEditor.reassign.predefinedType')}>
+                <SelectTrigger className="font-mono text-sm">
                   <SelectValue placeholder={t('propertyEditor.reassign.none')} />
                 </SelectTrigger>
                 <SelectContent>

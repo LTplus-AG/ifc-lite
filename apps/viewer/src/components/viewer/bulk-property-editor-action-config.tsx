@@ -5,10 +5,10 @@
 /**
  * The "Action Configuration" section of `BulkPropertyEditor`, extracted
  * (#5812) so that file does not grow past its size while these fields gain
- * real labels — same `Field`/`aria-label` split as
- * `bulk-property-editor-filter-row.tsx` (see that file's header, or
- * `property-editor-new-property-dialog.tsx`'s, for why `Select` gets
- * `aria-label` on its `SelectTrigger` rather than a `Field` wrap).
+ * real labels — every field, including its `Select`s, is wrapped in `Field`
+ * (see `property-editor-new-property-dialog.tsx`'s header for how `Field`
+ * labels a `Select` via `FieldContext` rather than by cloning props onto
+ * it).
  *
  * `targetProp`/`targetPset` use a native `<input list=...>` datalist (not
  * `Select`+`SelectContent`) because the option set comes from live model
@@ -76,7 +76,7 @@ export function BulkActionConfig({
               value={actionType}
               onValueChange={(v) => { if ((v === 'SET_ATTRIBUTE') !== (actionType === 'SET_ATTRIBUTE')) onTargetPropChange(''); onActionTypeChange(v as ActionType); }}
             >
-              <SelectTrigger aria-label={t('bulkPropertyEditor.actionType')}>
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -113,7 +113,7 @@ export function BulkActionConfig({
           <Field label={<>{propertyLabel}{actionType !== 'SET_ATTRIBUTE' && found(propOptions.length)}</>}>
             {actionType === 'SET_ATTRIBUTE' ? (
               <Select value={targetProp} onValueChange={onTargetPropChange}>
-                <SelectTrigger aria-label={propertyLabel}>
+                <SelectTrigger>
                   <SelectValue placeholder={t('bulkPropertyEditor.selectAttribute')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -162,7 +162,7 @@ export function BulkActionConfig({
               value={valueType.toString()}
               onValueChange={(v) => onValueTypeChange(parseInt(v) as PropertyValueType)}
             >
-              <SelectTrigger className="w-40" aria-label={t('bulkPropertyEditor.valueType')}>
+              <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

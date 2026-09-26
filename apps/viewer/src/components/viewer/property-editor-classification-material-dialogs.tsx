@@ -5,10 +5,10 @@
 /**
  * `AddClassificationDialog` and `AddMaterialDialog`, extracted out of
  * `PropertyEditor.tsx` (#5812) so that file does not grow past its size
- * while their fields gain real labels — same `Field`/`aria-label` split as
- * `property-editor-new-property-dialog.tsx` (see that file's header for why
- * `Select` gets `aria-label` on its `SelectTrigger` rather than a `Field`
- * wrap).
+ * while their fields gain real labels — every field, including its
+ * `Select`s, is wrapped in `Field` (see
+ * `property-editor-new-property-dialog.tsx`'s header for how `Field` labels
+ * a `Select` via `FieldContext` rather than by cloning props onto it).
  */
 
 import { useState, useCallback } from 'react';
@@ -103,7 +103,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
           <div className="space-y-2">
             <Field label={t('propertyEditor.classification.system')}>
               <Select value={system} onValueChange={setSystem}>
-                <SelectTrigger aria-label={t('propertyEditor.classification.system')}>
+                <SelectTrigger>
                   <SelectValue placeholder={t('propertyEditor.classification.selectSystem')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -256,7 +256,7 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
           {/* Category */}
           <Field label={t('propertyEditor.material.category')}>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger aria-label={t('propertyEditor.material.category')}>
+              <SelectTrigger>
                 <SelectValue placeholder={t('propertyEditor.material.selectCategory')} />
               </SelectTrigger>
               <SelectContent>

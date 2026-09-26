@@ -4,10 +4,10 @@
 
 /**
  * `AddQuantityDialog`, extracted out of `PropertyEditor.tsx` (#5812) so that
- * file does not grow past its size while its fields gain real labels — same
- * `Field`/`aria-label` split as `property-editor-new-property-dialog.tsx`
- * (see that file's header for why `Select` gets `aria-label` on its
- * `SelectTrigger` rather than a `Field` wrap).
+ * file does not grow past its size while its fields gain real labels — every
+ * field, including its `Select`s, is wrapped in `Field` (see
+ * `property-editor-new-property-dialog.tsx`'s header for how `Field` labels
+ * a `Select` via `FieldContext` rather than by cloning props onto it).
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -192,7 +192,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
             ) : (
               <Field label={t('propertyEditor.quantity.setLabel')} labelAction={setToggle}>
                 <Select value={qtoName} onValueChange={(v) => { setQtoName(v); setQuantityName(''); setCustomQuantityName(''); setValue(''); }}>
-                  <SelectTrigger className="font-mono text-sm" aria-label={t('propertyEditor.quantity.setLabel')}>
+                  <SelectTrigger className="font-mono text-sm">
                     <SelectValue placeholder={t('propertyEditor.quantity.selectSet')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -253,7 +253,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
               <div className="space-y-2">
                 <Field label={t('propertyEditor.quantity.label')}>
                   <Select value={quantityName} onValueChange={handleQuantitySelect}>
-                    <SelectTrigger className="font-mono text-sm" aria-label={t('propertyEditor.quantity.label')}>
+                    <SelectTrigger className="font-mono text-sm">
                       <SelectValue placeholder={t('propertyEditor.quantity.select')} />
                     </SelectTrigger>
                     <SelectContent>

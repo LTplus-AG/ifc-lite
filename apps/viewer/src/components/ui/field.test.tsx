@@ -16,6 +16,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Field } from './field.js';
 import { Input } from './input.js';
 import { Textarea } from './textarea.js';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select.js';
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -130,5 +131,63 @@ describe('Field', () => {
     const action = host.querySelector('button');
     assert.ok(action, 'labelAction renders');
     assert.equal(label!.contains(action), false, 'labelAction is a sibling of the label, not inside it');
+  });
+
+  it('labels a Select via FieldContext (a Select.Root renders no DOM node to clone props onto)', () => {
+    const host = render(
+      <Field label="Category">
+        <Select value="a" onValueChange={() => {}}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="a">A</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>,
+    );
+    const trigger = getByLabelText(host, 'Category');
+    assert.equal(trigger.getAttribute('role'), 'combobox');
+    const label = [...host.querySelectorAll('label')].find((el) => el.textContent === 'Category');
+    assert.ok(label, 'renders a <label>');
+    assert.equal(trigger.getAttribute('aria-labelledby'), label!.getAttribute('id'), 'named via aria-labelledby, not just htmlFor (a <button> ignores label-for for its accessible name)');
+  });
+
+  it('folds error/hint into a Select trigger\'s aria-describedby/aria-invalid via FieldContext', () => {
+    const host = render(
+      <Field label="Category" error="Required">
+        <Select value="" onValueChange={() => {}}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="a">A</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>,
+    );
+    const trigger = getByLabelText(host, 'Category');
+    assert.equal(trigger.getAttribute('aria-invalid'), 'true');
+    const describedBy = trigger.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'trigger has an aria-describedby');
+    assert.equal(document.getElementById(describedBy)?.textContent, 'Required');
+  });
+
+  it("an explicit id/aria-label on SelectTrigger wins over FieldContext's fallback", () => {
+    const host = render(
+      <Field label="Category">
+        <Select value="a" onValueChange={() => {}}>
+          <SelectTrigger id="explicit-trigger-id" aria-labelledby="explicit-labelledby">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="a">A</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>,
+    );
+    const trigger = host.querySelector('[role="combobox"]')!;
+    assert.equal(trigger.getAttribute('id'), 'explicit-trigger-id');
+    assert.equal(trigger.getAttribute('aria-labelledby'), 'explicit-labelledby');
   });
 });

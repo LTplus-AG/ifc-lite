@@ -4,11 +4,10 @@
 
 /**
  * BulkPropertyEditor's fields (#5812): every `Input`/`Select` is reachable
- * by `getByLabelText` (a real `<label for>`, via `Field`) or
- * `getByRole(..., { name })` (`aria-label` on the `Select`'s combobox
- * trigger, or directly on a datalist-backed `<input>` — see
- * `bulk-property-editor-action-config.tsx`'s header for why `Select` can't
- * use `Field`'s `htmlFor` directly).
+ * by `getByLabelText` — including every `Select`, whose `SelectTrigger`
+ * (see `ui/select.tsx`) now reads its `id`/`aria-labelledby` back out of
+ * `FieldContext` rather than needing a duplicated `aria-label` at each call
+ * site (#5812 review).
  */
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
@@ -28,6 +27,7 @@ function openDialog(): HTMLElement {
   return dialog as HTMLElement;
 }
 
+/** Resolves the same way `@testing-library`'s `getByLabelText` does for a `<label for>`. */
 function getByLabelText(container: ParentNode, text: string): HTMLElement {
   const label = [...container.querySelectorAll('label')].find((el) => el.textContent?.trim() === text || el.textContent?.startsWith(text));
   assert.ok(label, `no <label> matching "${text}"`);
@@ -38,22 +38,16 @@ function getByLabelText(container: ParentNode, text: string): HTMLElement {
   return control as HTMLElement;
 }
 
-function getByRoleName(container: ParentNode, role: string, name: string): HTMLElement {
-  const match = [...container.querySelectorAll(`[role="${role}"]`)].find((el) => el.getAttribute('aria-label') === name);
-  assert.ok(match, `no [role="${role}"] with accessible name "${name}"`);
-  return match as HTMLElement;
-}
-
 describe('BulkPropertyEditor accessibility (#5812)', () => {
-  it('the Model selector and Name Pattern fields are reachable by getByLabelText/getByRole', () => {
+  it('the Model selector and Name Pattern fields are reachable by getByLabelText', () => {
     const dialog = openDialog();
-    const modelSelect = getByRoleName(dialog, 'combobox', 'Model');
-    assert.ok(modelSelect);
+    const modelSelect = getByLabelText(dialog, 'Model');
+    assert.equal(modelSelect.getAttribute('role'), 'combobox');
     const namePattern = getByLabelText(dialog, 'Name Pattern (Regex)');
     assert.equal(namePattern.tagName, 'INPUT');
   });
 
-  it('a property-filter row: every field is reachable', () => {
+  it('a property-filter row: every field is reachable by getByLabelText', () => {
     const dialog = openDialog();
     const addFilter = [...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Filter'));
     assert.ok(addFilter);
@@ -63,8 +57,8 @@ describe('BulkPropertyEditor accessibility (#5812)', () => {
     assert.equal(psetInput.tagName, 'INPUT');
     const propInput = getByLabelText(dialog, 'Property name');
     assert.equal(propInput.tagName, 'INPUT');
-    const operatorSelect = getByRoleName(dialog, 'combobox', 'Filter operator');
-    assert.ok(operatorSelect);
+    const operatorSelect = getByLabelText(dialog, 'Filter operator');
+    assert.equal(operatorSelect.getAttribute('role'), 'combobox');
     const valueInput = getByLabelText(dialog, 'Value');
     assert.equal(valueInput.tagName, 'INPUT');
     const removeButton = [...dialog.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Remove property filter');
@@ -74,7 +68,7 @@ describe('BulkPropertyEditor accessibility (#5812)', () => {
   it('the "IS_NULL" operator hides the now-meaningless value field', () => {
     const dialog = openDialog();
     click([...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Filter'))!);
-    const operatorSelect = getByRoleName(dialog, 'combobox', 'Filter operator');
+    const operatorSelect = getByLabelText(dialog, 'Filter operator');
     click(operatorSelect);
     const isEmptyOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Is empty');
     assert.ok(isEmptyOption);
@@ -85,27 +79,26 @@ describe('BulkPropertyEditor accessibility (#5812)', () => {
 
   it('the Action Configuration fields are reachable for the default SET_PROPERTY action', () => {
     const dialog = openDialog();
-    const actionTypeSelect = getByRoleName(dialog, 'combobox', 'Action Type');
-    assert.ok(actionTypeSelect);
+    const actionTypeSelect = getByLabelText(dialog, 'Action Type');
+    assert.equal(actionTypeSelect.getAttribute('role'), 'combobox');
     const propertySetInput = getByLabelText(dialog, 'Property Set');
     assert.equal(propertySetInput.tagName, 'INPUT');
-    assert.equal(propertySetInput.getAttribute('aria-label'), 'Property Set');
     const propertyNameInput = getByLabelText(dialog, 'Property Name');
     assert.equal(propertyNameInput.tagName, 'INPUT');
     const newValueInput = getByLabelText(dialog, 'New Value');
     assert.equal(newValueInput.tagName, 'INPUT');
-    const valueTypeSelect = getByRoleName(dialog, 'combobox', 'Value Type');
-    assert.ok(valueTypeSelect);
+    const valueTypeSelect = getByLabelText(dialog, 'Value Type');
+    assert.equal(valueTypeSelect.getAttribute('role'), 'combobox');
   });
 
   it('SET_ATTRIBUTE swaps the property field to a labelled Select of exact EXPRESS attribute names', () => {
     const dialog = openDialog();
-    const actionTypeSelect = getByRoleName(dialog, 'combobox', 'Action Type');
+    const actionTypeSelect = getByLabelText(dialog, 'Action Type');
     click(actionTypeSelect);
     const setAttributeOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Set Attribute');
     assert.ok(setAttributeOption);
     click(setAttributeOption);
-    const attributeSelect = getByRoleName(dialog, 'combobox', 'Attribute');
-    assert.ok(attributeSelect);
+    const attributeSelect = getByLabelText(dialog, 'Attribute');
+    assert.equal(attributeSelect.getAttribute('role'), 'combobox');
   });
 });

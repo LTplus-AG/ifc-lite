@@ -4,13 +4,12 @@
 
 /**
  * One property-filter row in `BulkPropertyEditor`, extracted (#5812) so
- * that file does not grow past its size while this row's fields gain real
- * labels: `Field` for the two `Input`s (Pset/Property name/Value all
- * forward props onto a native `<input>`), `aria-label` on the operator
- * `Select`'s `SelectTrigger` (a Radix `Select.Root` is headless, so
- * `Field`'s generated id would not reach it — see
- * `property-editor-new-property-dialog.tsx`'s header for the fuller
- * explanation of this split).
+ * that file does not grow past its size while this row's fields gain real,
+ * sr-only labels (no visible label fits this compact row): `Field` for the
+ * three `Input`s and for the operator `Select` — see
+ * `property-editor-new-property-dialog.tsx`'s header for how `Field` labels
+ * a `Select` (via `FieldContext`, since a Radix `Select.Root` is headless
+ * and cloning props onto it directly would reach nothing).
  */
 
 import { Trash2 } from 'lucide-react';
@@ -58,19 +57,21 @@ export function BulkFilterRow({ filter, onUpdate, onRemove }: BulkFilterRowProps
           className="h-8 text-xs flex-1"
         />
       </Field>
-      <Select
-        value={filter.operator}
-        onValueChange={(v) => onUpdate(filter.id, 'operator', v)}
-      >
-        <SelectTrigger className="h-8 w-28" aria-label={t('bulkPropertyEditor.filterOperator')}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {FILTER_OPERATORS.map((op) => (
-            <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Field label={t('bulkPropertyEditor.filterOperator')} labelClassName="sr-only">
+        <Select
+          value={filter.operator}
+          onValueChange={(v) => onUpdate(filter.id, 'operator', v)}
+        >
+          <SelectTrigger className="h-8 w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FILTER_OPERATORS.map((op) => (
+              <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
       {!isValueless && (
         <Field label={t('bulkPropertyEditor.value')} labelClassName="sr-only">
           <Input

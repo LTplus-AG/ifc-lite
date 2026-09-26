@@ -6,12 +6,17 @@
  * `GeoreferencingPanel` labelling (#5812): every editable field's inline
  * `<input>`/`<select>` is reachable by `getByRole(..., { name })`, and the
  * "heights are ellipsoidal" checkbox (now the `Checkbox` primitive) is
- * reachable by `getByLabelText`. Also covers the row's click-to-edit control
- * staying a single, stable DOM node across the non-editing/editing switch —
- * a real regression this PR introduced and fixed (see `georef-rows.tsx`):
- * swapping the outer element to a `<button>` only while editing made React
- * remount the row, detaching any element reference captured before the
- * click that opens it.
+ * reachable by `getByLabelText`. Also covers:
+ * - the row's `<div>` staying a single, stable DOM node across the
+ *   non-editing/editing switch — a regression this PR introduced and fixed
+ *   (see `georef-rows.tsx`): swapping the row's host element type on
+ *   entering `editing` made React remount it, detaching any element
+ *   reference captured before the click that opens it;
+ * - the row `<div>` never being `role="button"` itself, even when it
+ *   renders a real nested `<button>` (`TerrainHeightButton`, on the
+ *   OrthogonalHeight row with Cesium terrain active) — a second regression
+ *   caught in review: a `role="button"` row around a real `<button>` nests
+ *   one interactive element inside another.
  */
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
@@ -64,10 +69,23 @@ function getByLabelText(container: ParentNode, text: string): HTMLElement {
   return control as HTMLElement;
 }
 
+function getByRoleButtonName(container: ParentNode, name: string): HTMLElement {
+  const match = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name || b.getAttribute('aria-label') === name);
+  assert.ok(match, `no <button> with accessible name "${name}"`);
+  return match;
+}
+
 function openCoordinateOperation(container: HTMLElement): void {
   const trigger = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Coordinate Operation'));
   assert.ok(trigger, 'Coordinate Operation trigger must render');
   click(trigger);
+}
+
+/** The row `<div>` is never interactive; its value-cell `<button>` (inside it) is. */
+function clickRow(rowEl: ParentNode): void {
+  const button = rowEl.querySelector('button');
+  assert.ok(button, 'row value-cell button must render to start editing');
+  click(button);
 }
 
 describe('GeoreferencingPanel accessibility (#5812)', () => {
@@ -84,7 +102,8 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement, 'Scale row renders');
     const row = scaleLabel.parentElement;
-    click(row);
+    assert.equal(row.getAttribute('role'), null, 'the row div itself is never interactive');
+    clickRow(row);
     const input = getByRoleTextbox(container, 'Scale');
     assert.equal(input, row.querySelector('input'), 'the labelled control is the one this same row now shows');
   });
@@ -102,7 +121,7 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     const row = scaleLabel?.parentElement;
     assert.ok(row);
-    click(row);
+    clickRow(row);
     // The SAME captured `row` reference must still be attached to the
     // document and must contain the editor: if the outer element had
     // swapped host type (e.g. div -> button) on entering edit mode, React
@@ -125,7 +144,7 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     click(trigger);
     const mapUnitLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'MapUnit');
     assert.ok(mapUnitLabel?.parentElement);
-    click(mapUnitLabel.parentElement);
+    clickRow(mapUnitLabel.parentElement);
     const select = getByRoleTextbox(container, 'MapUnit');
     assert.equal(select.tagName, 'SELECT');
   });
@@ -148,5 +167,50 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     const checkbox = getByLabelText(container, 'Heights are ellipsoidal');
     assert.equal(checkbox.tagName, 'INPUT');
     assert.equal((checkbox as HTMLInputElement).type, 'checkbox');
+  });
+
+  it('OrthogonalHeight row with an active Cesium terrain button nests no interactive element inside another (regression)', () => {
+    // Reviewer's exact repro: Cesium terrain ready AND this model is the
+    // active Cesium source, so `TerrainHeightButton` (a real <button>)
+    // renders as this row's `children` — inside the same row `<div>` the
+    // click-to-edit affordance lives in.
+    useViewerStore.setState({
+      cesiumEnabled: true,
+      cesiumSourceModelId: 'A',
+      cesiumTerrainHeight: 42.5,
+      cesiumTerrainSaveHeight: 40.1,
+    });
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    openCoordinateOperation(container);
+    const heightLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'OrthogonalHeight');
+    assert.ok(heightLabel?.parentElement, 'OrthogonalHeight row renders');
+    const row = heightLabel.parentElement as HTMLElement;
+
+    // The row itself must never be an interactive element...
+    assert.equal(row.getAttribute('role'), null, 'the row div is not role="button"');
+    assert.equal(row.tagName, 'DIV');
+
+    // ...and DOM structure must have no nested interactive elements: no
+    // <button> (or role="button") is itself inside another <button>/
+    // role="button" anywhere in this row.
+    for (const interactive of row.querySelectorAll('button, [role="button"]')) {
+      const ancestorInteractive = interactive.parentElement?.closest('button, [role="button"]');
+      assert.equal(ancestorInteractive, null, `${interactive.outerHTML} must not nest inside another interactive element`);
+    }
+
+    // Both the edit-value trigger and the terrain button are still
+    // separately reachable by getByRole('button', { name }).
+    const editButton = getByRoleButtonName(row, '12m');
+    assert.ok(editButton);
+    const terrainButton = getByRoleButtonName(row, '42.5 m');
+    assert.ok(terrainButton);
+    assert.notEqual(editButton, terrainButton);
   });
 });

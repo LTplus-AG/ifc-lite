@@ -4,10 +4,10 @@
 
 /**
  * PropertyEditor's dialogs (#5812): every `Input`/`Select`/`Switch`/
- * `ComboInput` field is reachable by `getByLabelText` (a real `<label
- * for>`, via `Field`) or `getByRole(..., { name })` (`aria-label` on the
- * `Select`'s combobox trigger — see `property-editor-new-property-dialog
- * .tsx`'s header for why `Select` can't use `Field`'s `htmlFor` directly).
+ * `ComboInput` field is reachable by `getByLabelText` — including every
+ * `Select`, whose `SelectTrigger` (see `ui/select.tsx`) now reads its
+ * `id`/`aria-labelledby` back out of `FieldContext` rather than needing a
+ * duplicated `aria-label` at each call site (#5812 review).
  */
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
@@ -28,6 +28,7 @@ function openDialog(host: HTMLElement): HTMLElement {
   return dialog as HTMLElement;
 }
 
+/** Resolves the same way `@testing-library`'s `getByLabelText` does for a `<label for>`. */
 function getByLabelText(container: ParentNode, text: string): HTMLElement {
   const label = [...container.querySelectorAll('label')].find((el) => el.textContent?.trim() === text || el.textContent?.startsWith(text));
   assert.ok(label, `no <label> matching "${text}"`);
@@ -36,12 +37,6 @@ function getByLabelText(container: ParentNode, text: string): HTMLElement {
   const control = container.querySelector(`#${forId}`);
   assert.ok(control, `no element with id "${forId}" for label "${text}"`);
   return control as HTMLElement;
-}
-
-function getByRoleName(container: ParentNode, role: string, name: string): HTMLElement {
-  const match = [...container.querySelectorAll(`[role="${role}"]`)].find((el) => el.getAttribute('aria-label') === name);
-  assert.ok(match, `no [role="${role}"] with accessible name "${name}"`);
-  return match as HTMLElement;
 }
 
 describe('PropertyEditor dialogs accessibility (#5812)', () => {
@@ -56,23 +51,23 @@ describe('PropertyEditor dialogs accessibility (#5812)', () => {
     assert.equal(setInput.tagName, 'INPUT');
     const propInput = getByLabelText(dialog, 'Property');
     assert.equal(propInput.tagName, 'INPUT');
-    const typeSelect = getByRoleName(dialog, 'combobox', 'Type');
-    assert.ok(typeSelect);
+    const typeSelect = getByLabelText(dialog, 'Type');
+    assert.equal(typeSelect.getAttribute('role'), 'combobox');
     const valueInput = getByLabelText(dialog, 'Value');
     assert.equal(valueInput.tagName, 'INPUT');
   });
 
-  it('NewPropertyDialog: the standard-pset Select is reachable by getByRole(..., { name })', () => {
+  it('NewPropertyDialog: the standard-pset Select is reachable by getByLabelText', () => {
     const host = render(<NewPropertyDialog modelId="model" entityId={1} entityType="IfcWall" existingPsets={[]} schemaVersion="IFC4" />);
     const dialog = openDialog(host);
-    const setSelect = getByRoleName(dialog, 'combobox', 'Property Set');
-    assert.ok(setSelect);
+    const setSelect = getByLabelText(dialog, 'Property Set');
+    assert.equal(setSelect.getAttribute('role'), 'combobox');
   });
 
   it('NewPropertyDialog: the boolean value field renders a labelled Switch', () => {
     const host = render(<NewPropertyDialog modelId="model" entityId={1} entityType="IfcWall" existingPsets={[]} />);
     const dialog = openDialog(host);
-    const typeSelect = getByRoleName(dialog, 'combobox', 'Type');
+    const typeSelect = getByLabelText(dialog, 'Type');
     click(typeSelect);
     const booleanOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Boolean');
     assert.ok(booleanOption);
@@ -84,8 +79,8 @@ describe('PropertyEditor dialogs accessibility (#5812)', () => {
   it('AddQuantityDialog: every field is reachable', () => {
     const host = render(<AddQuantityDialog modelId="model" entityId={1} entityType="IfcWall" existingQtos={[]} />);
     const dialog = openDialog(host);
-    const setSelect = getByRoleName(dialog, 'combobox', 'Quantity Set');
-    assert.ok(setSelect);
+    const setSelect = getByLabelText(dialog, 'Quantity Set');
+    assert.equal(setSelect.getAttribute('role'), 'combobox');
     const valueInput = getByLabelText(dialog, 'Value');
     assert.equal(valueInput.tagName, 'INPUT');
   });
@@ -93,8 +88,8 @@ describe('PropertyEditor dialogs accessibility (#5812)', () => {
   it('AddClassificationDialog: every field is reachable', () => {
     const host = render(<AddClassificationDialog modelId="model" entityId={1} entityType="IfcWall" />);
     const dialog = openDialog(host);
-    const systemSelect = getByRoleName(dialog, 'combobox', 'Classification System');
-    assert.ok(systemSelect);
+    const systemSelect = getByLabelText(dialog, 'Classification System');
+    assert.equal(systemSelect.getAttribute('role'), 'combobox');
     const codeInput = getByLabelText(dialog, 'Identification Code');
     assert.equal(codeInput.tagName, 'INPUT');
     assert.ok(codeInput.getAttribute('aria-describedby'), 'the code field has a description (codeHelp)');
@@ -107,8 +102,8 @@ describe('PropertyEditor dialogs accessibility (#5812)', () => {
     const dialog = openDialog(host);
     const nameInput = getByLabelText(dialog, 'Material Name');
     assert.equal(nameInput.tagName, 'INPUT');
-    const categorySelect = getByRoleName(dialog, 'combobox', 'Category');
-    assert.ok(categorySelect);
+    const categorySelect = getByLabelText(dialog, 'Category');
+    assert.equal(categorySelect.getAttribute('role'), 'combobox');
     const descInput = getByLabelText(dialog, 'Description (optional)');
     assert.equal(descInput.tagName, 'INPUT');
   });
@@ -123,7 +118,7 @@ describe('PropertyEditor dialogs accessibility (#5812)', () => {
     const targetInput = getByLabelText(dialog, 'Target class');
     assert.equal(targetInput.tagName, 'INPUT');
     type(targetInput as HTMLInputElement, 'IfcColumn');
-    const predefinedSelect = getByRoleName(dialog, 'combobox', 'Predefined type (optional)');
-    assert.ok(predefinedSelect);
+    const predefinedSelect = getByLabelText(dialog, 'Predefined type (optional)');
+    assert.equal(predefinedSelect.getAttribute('role'), 'combobox');
   });
 });

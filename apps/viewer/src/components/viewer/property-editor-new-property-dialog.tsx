@@ -7,14 +7,14 @@
  * file does not grow past its size while its fields gain real labels.
  *
  * Labelling (#5812): the "Property Set" and "Property" fields swap between
- * an `Input` (custom name) and a `Select` (standard picker) depending on
- * state. `Field` labels the `Input` branch directly (it clones its id onto
- * a native-like control); a Radix `Select` is headless (`SelectPrimitive
- * .Root` renders no DOM), so `Field`'s generated id would land nowhere
- * useful for that branch — those get `aria-label` directly on `SelectTrigger`
- * instead (its accessible name wins over any dangling `htmlFor`), reusing
- * the exact same label text either way via `Field`'s `labelAction` slot for
- * the shared "use custom/standard name" toggle button.
+ * an `Input` (custom name) and a `Select` (standard picker), both wrapped
+ * in the SAME `<Field>` either way — `Field` labels the `Input` branch by
+ * cloning its id directly onto it; for the `Select` branch, `SelectTrigger`
+ * (see `ui/select.tsx`) reads the label/id/describedby back out of
+ * `FieldContext`, since a Radix `Select` is headless and `Field` cloning
+ * props onto it directly would land on a component that never uses them.
+ * `Field`'s `labelAction` slot carries the shared "use custom/standard
+ * name" toggle button beside the one label used by both branches.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -196,7 +196,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
             ) : (
               <Field label={t('propertyEditor.property.setLabel')} labelAction={setToggle}>
                 <Select value={psetName} onValueChange={(v) => { setPsetName(v); setPropName(''); setCustomPropName(''); setValue(''); }}>
-                  <SelectTrigger className="font-mono text-sm" aria-label={t('propertyEditor.property.setLabel')}>
+                  <SelectTrigger className="font-mono text-sm">
                     <SelectValue placeholder={t('propertyEditor.property.selectSet')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -263,7 +263,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               <div className="space-y-2">
                 <Field label={t('propertyEditor.property.label')}>
                   <Select value={propName} onValueChange={handlePropertySelect}>
-                    <SelectTrigger className="font-mono text-sm" aria-label={t('propertyEditor.property.label')}>
+                    <SelectTrigger className="font-mono text-sm">
                       <SelectValue placeholder={t('propertyEditor.property.select')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -311,7 +311,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               value={valueType.toString()}
               onValueChange={(v) => setValueType(parseInt(v) as PropertyValueType)}
             >
-              <SelectTrigger aria-label={t('propertyEditor.shared.type')}>
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

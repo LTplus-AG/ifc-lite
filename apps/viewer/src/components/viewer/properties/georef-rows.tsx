@@ -7,16 +7,18 @@
  * `TerrainHeightButton`, extracted here so `GeoreferencingPanel.tsx` does not
  * grow past its size (#5812).
  *
- * #5812 labelling: the visible label renders whether or not the row is
- * editing, so wrapping the editor in `<Field label>` would duplicate that
- * text; `aria-label` on the `<select>`/`<input>` reusing the same string
- * gives it a name with no visual duplicate — what `getByLabelText`/
- * `getByRole(..., { name })` key off of. The clickable row keeps its `<div>`
- * (`clickToEditProps` adds `role="button"`/`tabIndex`/`onKeyDown` instead of
- * swapping to a real `<button>`, which would unmount/remount it on entering
- * `editing`). The editor's literal `autoFocus` is a `.focus()` effect on
- * entering edit mode instead: an intentional focus move after a user click,
- * not the initial-load pattern `jsx-a11y(no-autofocus)` warns about.
+ * #5812 labelling: the visible label renders regardless of editing state,
+ * so `<Field label>` around the editor would duplicate it; `aria-label` on
+ * the `<select>`/`<input>` (same string) names it with no visual dupe. The
+ * editor's literal `autoFocus` is a `.focus()` effect on entering edit mode
+ * instead, not the initial-load pattern `jsx-a11y(no-autofocus)` warns about.
+ *
+ * The row `<div>` is never itself interactive: `children` (e.g.
+ * `TerrainHeightButton`, a real `<button>`, on the OrthogonalHeight row)
+ * renders inside it, so `role="button"` on the row would nest one
+ * interactive element inside another (caught in review). Only the value
+ * cell — a `<button>` sibling of `children`, never its ancestor — is
+ * clickable; the row also never swaps host element type on `editing`.
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
@@ -28,16 +30,14 @@ import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { parseLocalizedRotationDegrees } from './georeference-angle';
 
-// ── Field-specific assistance data ─────────────────────────────────────
-
-/** Makes a row's `<div>` keyboard-clickable (Enter/Space) without swapping it for a `<button>`. */
-function clickToEditProps(active: boolean | undefined, activate: () => void) {
-  if (!active) return {};
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
-  };
-  return { role: 'button' as const, tabIndex: 0, onClick: activate, onKeyDown };
+/** The value cell: a `<button>` when `clickable` (sibling of `children`, never its ancestor), else a plain `<div>`. */
+function ValueCell({ clickable, onClick, children }: { clickable: boolean | undefined; onClick: () => void; children: React.ReactNode }) {
+  const className = 'group/valuecell flex items-start gap-1 min-w-0 text-right';
+  if (!clickable) return <div className={className}>{children}</div>;
+  return <button type="button" onClick={onClick} className={`${className} bg-transparent border-0 p-0 cursor-pointer`}>{children}</button>;
 }
+
+// ── Field-specific assistance data ─────────────────────────────────────
 
 const COMMON_DATUMS = ['WGS84', 'ETRS89', 'NAD83', 'NAD27', 'GRS80', 'Bessel 1841', 'Clarke 1866'];
 const COMMON_PROJECTIONS = ['Transverse Mercator', 'UTM', 'Lambert Conformal Conic', 'Mercator', 'Stereographic', 'Oblique Mercator'];
@@ -106,9 +106,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
     setEditing(true);
   }, [value, editable, isComputed, locale]);
 
-  // Replaces a literal `autoFocus` on the editor: focus moves to it once
-  // editing starts, but as an explicit side effect of the click that opened
-  // it rather than the initial-page-load pattern jsx-a11y(no-autofocus) flags.
+  // See the file header re: `autoFocus`.
   useEffect(() => {
     if (editing) editControlRef.current?.focus();
   }, [editing]);
@@ -149,9 +147,26 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
 
   const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
   const clickable = editable && !isComputed;
-  const rowClassName = `flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left ${
-    isMutated ? 'bg-overlay-accent-soft' : ''
-  } ${clickable ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`;
+  // See the file header: the row div itself is never interactive.
+  const rowClassName = `flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left ${isMutated ? 'bg-overlay-accent-soft' : ''}`;
+  const valueCellContent = (
+    <>
+      <span
+        className={`text-[11px] font-mono tabular-nums break-all text-right ${
+          isMutated
+            ? 'text-foreground font-semibold'
+            : 'text-teal-700 dark:text-teal-400'
+        }`}
+        title={displayValue}
+      >
+        {displayValue}
+        {suffix && <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{suffix}</span>}
+      </span>
+      {clickable && (
+        <PenLine className="h-3 w-3 opacity-0 group-hover/valuecell:opacity-100 transition-opacity text-zinc-400 shrink-0 mt-0.5" />
+      )}
+    </>
+  );
 
   const rowBody = (
     <>
@@ -174,7 +189,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
             </Badge>
           )}
           {editing ? (
-            <div className="flex flex-col gap-1 w-full">{/* no stopPropagation: only the non-editing <button> branch below has a click handler to bubble into */}
+            <div className="flex flex-col gap-1 w-full">{/* no stopPropagation needed: nothing above has a click handler */}
               <div className="flex items-center gap-1">
                 {hint.isSelect ? (
                   <select
@@ -225,22 +240,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
               )}
             </div>
           ) : (
-            <>
-              <span
-                className={`text-[11px] font-mono tabular-nums break-all text-right ${
-                  isMutated
-                    ? 'text-foreground font-semibold'
-                    : 'text-teal-700 dark:text-teal-400'
-                }`}
-                title={displayValue}
-              >
-                {displayValue}
-                {suffix && <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{suffix}</span>}
-              </span>
-              {editable && !isComputed && (
-                <PenLine className="h-3 w-3 opacity-0 group-hover/row:opacity-100 transition-opacity text-zinc-400 shrink-0 mt-0.5" />
-              )}
-            </>
+            <ValueCell clickable={clickable} onClick={startEdit}>{valueCellContent}</ValueCell>
           )}
         </div>
         {children}
@@ -248,11 +248,8 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
     </>
   );
 
-  // Stays a `<div>` in every state, never a `<button>`: swapping the host
-  // element type on entering `editing` would make React unmount/remount the
-  // whole row instead of updating it in place (losing focus, and any DOM
-  // reference held across the click that starts editing).
-  return <div className={rowClassName} {...clickToEditProps(clickable && !editing, startEdit)}>{rowBody}</div>;
+  // See the file header: always a plain, non-interactive `<div>`.
+  return <div className={rowClassName}>{rowBody}</div>;
 }
 
 // ── AngleRow: edit angle and auto-compute XAxisAbscissa/XAxisOrdinate ───
@@ -298,7 +295,18 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
     if (e.key === 'Escape') cancelEdit();
   }, [commitEdit, cancelEdit]);
 
-  const rowClassName = `flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left ${editable ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`;
+  const rowClassName = 'flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
+  const valueCellContent = (
+    <>
+      <span className="text-[11px] font-mono tabular-nums text-teal-700 dark:text-teal-400">
+        {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
+        <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
+      </span>
+      {editable && (
+        <PenLine className="h-3 w-3 opacity-0 group-hover/valuecell:opacity-100 transition-opacity text-zinc-400 shrink-0 mt-0.5" />
+      )}
+    </>
+  );
 
   const rowBody = (
     <>
@@ -313,7 +321,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
       </span>
       <div className="flex-1 flex items-start gap-1 min-w-0 justify-end">
         {editing ? (
-          <div className="flex flex-col gap-1">{/* no stopPropagation: see GeorefRow */}
+          <div className="flex flex-col gap-1">{/* no stopPropagation needed: see GeorefRow */}
             <div className="flex items-center gap-1">
               <input
                 ref={inputRef}
@@ -335,22 +343,14 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
             <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>
         ) : (
-          <>
-            <span className="text-[11px] font-mono tabular-nums text-teal-700 dark:text-teal-400">
-              {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
-              <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
-            </span>
-            {editable && (
-              <PenLine className="h-3 w-3 opacity-0 group-hover/row:opacity-100 transition-opacity text-zinc-400 shrink-0 mt-0.5" />
-            )}
-          </>
+          <ValueCell clickable={editable} onClick={startEdit}>{valueCellContent}</ValueCell>
         )}
       </div>
     </>
   );
 
-  // Same reasoning as GeorefRow: stays a <div> in every state, see there.
-  return <div className={rowClassName} {...clickToEditProps(editable && !editing, startEdit)}>{rowBody}</div>;
+  // Always a plain <div>: see GeorefRow's return for why.
+  return <div className={rowClassName}>{rowBody}</div>;
 }
 
 /** Small button to apply Cesium terrain height to OrthogonalHeight field */
@@ -367,9 +367,7 @@ export function TerrainHeightButton({ modelId, editable, onApply }: {
   const terrainSource = useViewerStore(s => s.cesiumTerrainSource);
   const sourceModelId = useViewerStore(s => s.cesiumSourceModelId);
 
-  // Only show when this panel's model is the active Cesium model and the
-  // geoid-corrected snap target is ready (#1456): never fall back to the raw
-  // ellipsoidal sample, which would skip the correction.
+  // Only the active Cesium model, once the geoid-corrected snap target is ready (#1456).
   if (!cesiumEnabled || terrainHeight === null || terrainSaveHeight === null || !editable || !modelId || modelId !== sourceModelId) return null;
 
   return (

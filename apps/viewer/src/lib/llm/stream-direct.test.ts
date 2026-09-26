@@ -254,7 +254,7 @@ test('sampling params are sent only for models flagged acceptsSamplingParams', a
   assert.equal('temperature' in unknown, false, 'an unknown model must not be sent sampling params');
 });
 
-test('OpenAI 429 reports the provider cause instead of always claiming a rate limit', async () => {
+test('OpenAI 429 reports the provider cause instead of always claiming a rate limit (#6097)', async () => {
   const cases = [
     { code: 'credit_balance_exhausted', message: 'credits exhausted', expected: /API credits are exhausted/ },
     { code: 'project_spend_limit_exceeded', message: 'project cap', expected: /project spend limit reached/ },

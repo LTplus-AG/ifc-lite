@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getPlaygroundModel } from './playground-model.js';
 
-test('playground defaults to the current Opus model and migrates a saved Opus 5 selection', () => {
+test('playground defaults to the current Opus model and migrates a saved Opus 5 selection (#6097)', () => {
   const key = 'ifc-lite:playground-model:v1';
   const prior = localStorage.getItem(key);
   try {

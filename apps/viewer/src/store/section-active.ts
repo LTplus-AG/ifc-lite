@@ -50,7 +50,13 @@ interface SectionVisibilityState {
 }
 
 export function activeSectionPlane(state: SectionVisibilityState): SectionPlane | null {
-  return state.sectionPlane.enabled && state.sceneState.section.visible ? state.sectionPlane : null;
+  // `sceneState?.section?.visible ?? true`: defaults to visible when absent
+  // rather than requiring every caller's state shape to carry it. The real
+  // store always has it (`sceneStateSlice.ts`'s initial state); this is for
+  // the narrow, hand-built `ViewerState`-shaped fixtures several test
+  // harnesses across the codebase construct without it.
+  const visible = state.sceneState?.section?.visible ?? true;
+  return state.sectionPlane.enabled && visible ? state.sectionPlane : null;
 }
 
 interface SectionWriterState extends SectionVisibilityState {
@@ -85,7 +91,11 @@ export function showSectionCut(
 export function revealSectionCut(getState: () => SectionWriterState): void {
   const state = getState();
   if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // hidden until now
-  if (!getState().sceneState.section.visible) getState().setSectionVisible(true);
+  // `sceneState?.section?.visible`: several older callers (embed bridge
+  // command handlers, their own hand-built mocks) predate #5893 and carry
+  // no `sceneState` / `setSectionVisible` at all — skip rather than throw;
+  // the real store always has both.
+  if (getState().sceneState?.section?.visible === false) getState().setSectionVisible?.(true);
   if (getState().activeTool !== 'section') {
     state.setActiveTool('section', 'programmatic');
   }

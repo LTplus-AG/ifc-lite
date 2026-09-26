@@ -115,10 +115,11 @@ describe('useBCF applyViewpoint — section cut (#4910)', () => {
     const viewpoint = await capture();
     assert.equal(viewpoint.clippingPlanes?.length, 1, 'the visible cut is captured');
 
-    // The user moves on: another tool, another cut remembered.
+    // The user moves on: another cut, still on screen after leaving the
+    // tool (#5893 — lasting scene state, not tool-coupled).
     await cutInSectionTool('side', 80);
     await act(async () => s().setActiveTool('select'));
-    assert.equal(activeSectionPlane(s()), null);
+    assert.equal(activeSectionPlane(s())?.axis, 'side', 'the moved cut is still on screen');
 
     await act(async () => api!.applyViewpoint(viewpoint, false));
     const shown = activeSectionPlane(s());

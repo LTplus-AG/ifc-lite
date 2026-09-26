@@ -76,10 +76,8 @@
    834 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
-   406 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
   1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
-   552 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1533 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
@@ -89,7 +87,7 @@
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
    985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
-   886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
+   855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
   2132 apps/viewer/src/components/viewer/PropertiesPanel.tsx
@@ -99,7 +97,7 @@
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
    614 apps/viewer/src/components/viewer/ScriptPanel.tsx
-   734 apps/viewer/src/components/viewer/SearchInline.tsx
+   578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
   1131 apps/viewer/src/components/viewer/selectionHandlers.ts

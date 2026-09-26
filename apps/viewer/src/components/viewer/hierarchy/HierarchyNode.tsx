@@ -182,7 +182,12 @@ export function HierarchyNode({
                 : t('hierarchy.node.expandAriaLabel', { name: node.name })
             }
             aria-expanded={node.isExpanded}
-            className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1"
+            // 14px icon, `p-[5px]` a side: 14 + 2*5 = 24, the WCAG 2.2 2.5.8
+            // minimum with no headroom to spare (#5826 review round) — grown
+            // via padding (part of the button's own box) rather than a
+            // pseudo-element slop, so normal flex flow keeps it from
+            // overlapping the type-icon slot that follows.
+            className="p-[5px] hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <ChevronRight
               className={cn(
@@ -233,7 +238,12 @@ export function HierarchyNode({
                       : t('hierarchy.node.showAriaLabel', { name: node.name })
                   }
                   className={cn(
-                    'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
+                    // The 14px slot itself is `inset-0`; `-inset-[5px]`
+                    // grows the button's own box to 14 + 2*5 = 24, the WCAG
+                    // 2.2 2.5.8 minimum (#5826). The type-icon slot's
+                    // neighbours (the chevron before, the name after) sit
+                    // >=8px away in normal flow, so this clears them.
+                    'absolute -inset-[5px] flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-opacity',
                     nodeHidden && 'opacity-100'
                   )}
                 >

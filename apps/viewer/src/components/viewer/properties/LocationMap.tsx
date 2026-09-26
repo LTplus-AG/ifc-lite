@@ -17,6 +17,7 @@
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Map as MapIcon, ExternalLink, MapPinOff, Globe2, Search, Mountain, MapPin, X, Check } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
@@ -650,13 +651,14 @@ export function LocationMap({
           </span>
         )}
         {editable && (
-          <button
+          <IconButton
+            label={t('properties.locationMap.searchTooltip')}
+            size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
-            className="p-0.5 text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-            title={t('properties.locationMap.searchTooltip')}
+            className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
           >
             <Search className="h-3 w-3" />
-          </button>
+          </IconButton>
         )}
       </div>
 

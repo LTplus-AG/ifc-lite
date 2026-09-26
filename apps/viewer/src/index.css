@@ -1142,6 +1142,27 @@ body {
   opacity: 0.3;
 }
 
+/* Panel-chrome button vocabulary (`data-chrome-btn`, PanelTourButton.tsx /
+   SidebarPanelHost.tsx): every one of these is `h-5 w-5` (20px), under the
+   WCAG 2.2 2.5.8 24x24 CSS px target-size minimum (#5826). One rule here
+   gives all of them (present and future) a >=24px hit area via an invisible
+   `::after` pulled outward by a negative inset, without touching their own
+   visual size, applied by attribute selector instead of by variant because
+   this vocabulary predates and sits outside `ui/button.tsx`. Sized to just
+   close the 4px gap (20 + 2*2 = 24), not beyond: these buttons sit `gap-1`
+   (4px) apart, and a bigger inset overlapped the neighbour (the defect a
+   uniform slop on every `buttonVariants` icon size caused, and was reverted
+   for, in this same review round). */
+[data-chrome-btn] {
+  position: relative;
+}
+
+[data-chrome-btn]::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
 /* Toolbar button styles */
 .toolbar-button {
   padding: 0.5rem;

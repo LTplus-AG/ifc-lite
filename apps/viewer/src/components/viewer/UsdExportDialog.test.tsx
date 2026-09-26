@@ -31,8 +31,14 @@ function makeModel(): FederatedModel {
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+function unmountAll(): void {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+}
 
-function renderDialog(surface: 'classic' | 'palette' = 'classic'): HTMLElement {
+function renderDialog(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -63,12 +69,7 @@ async function clickExport(container: HTMLElement): Promise<void> {
 
 describe('UsdExportDialog', () => {
   beforeEach(() => {
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    }
+    unmountAll();
     useViewerStore.setState({ models: new Map([['model-1', makeModel()]]) });
   });
 
@@ -83,13 +84,16 @@ describe('UsdExportDialog', () => {
       if (event === 'export_completed') completions.push(properties);
     });
     try {
-      const container = renderDialog('palette');
-      await clickExport(container);
-      assert.equal(exportMock.mock.callCount(), 1, 'exportUsd is called exactly once');
-      assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once on success');
-      assert.equal(completions.length, 1, '#5844: one completion for a successful USDA download');
-      assert.equal(completions[0].surface, 'palette');
-      assert.equal(completions[0].format, 'usda');
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        const container = renderDialog(surface);
+        await clickExport(container);
+        assert.equal(exportMock.mock.callCount(), index + 1, 'one exporter call per successful download');
+        assert.equal(disposeMock.mock.callCount(), index + 1, 'dispose runs once per successful download');
+        assert.equal(completions.length, index + 1, '#5844: one completion per successful USDA download');
+        assert.equal(completions[index].surface, surface);
+        assert.equal(completions[index].format, 'usda');
+        unmountAll();
+      }
     } finally {
       initMock.mock.restore();
       exportMock.mock.restore();

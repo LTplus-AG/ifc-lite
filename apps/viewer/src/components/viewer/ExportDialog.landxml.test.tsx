@@ -241,11 +241,15 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       if (event === 'export_completed') completions.push(properties);
     });
     try {
-      render(<ExportDialog surface="palette" />);
-      openDialog();
-      const { filename } = captureDownload(() => click(exportButton()));
-      assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
-      assert.deepEqual(completions, [{ format: 'ifc', surface: 'palette' }]);
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        render(<ExportDialog surface={surface} />);
+        openDialog();
+        const { filename } = captureDownload(() => click(exportButton()));
+        assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
+        assert.deepEqual(completions[index], { format: 'ifc', surface });
+        assert.equal(completions.length, index + 1, 'one completion per IFC file');
+        cleanup();
+      }
     } finally {
       analytics.mock.restore();
     }

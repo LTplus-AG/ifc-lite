@@ -130,7 +130,7 @@ function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
 
-function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' = 'classic'): void {
+function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' | 'palette' = 'classic'): void {
   const container = render(
     <PdfViewExportDialog surface={surface} trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
   );
@@ -406,22 +406,22 @@ describe('PdfViewExportDialog export input (#2042)', () => {
     const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
       if (event === 'export_completed') completions.push(properties);
     });
-    openDialog(exporter, 'ribbon');
-    chooseScale('1:100');
     try {
-      await runExport();
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        openDialog(exporter, surface);
+        chooseScale('1:100');
+        await runExport();
+        assert.equal(calls.length, index + 1, 'Export reaches the exporter once per surface');
+        assert.equal(calls[index].renderMode, 'shaded');
+        assert.equal(calls[index].scaleFactor, 100);
+        assert.equal(completions.length, index + 1, '#5844: one PDF completion per successful export');
+        assert.equal(completions[index].surface, surface);
+        assert.equal(completions[index].format, 'pdf-3d-view');
+        cleanup();
+      }
     } finally {
       analytics.mock.restore();
     }
-
-    assert.equal(calls.length, 1, 'Export must reach the exporter exactly once');
-    // The whole point of the feature: the sheet looks like the viewport, which
-    // is solid and coloured, unless the user opts out.
-    assert.equal(calls[0].renderMode, 'shaded');
-    assert.equal(calls[0].scaleFactor, 100);
-    assert.equal(completions.length, 1, '#5844: one PDF completion per successful export');
-    assert.equal(completions[0].surface, 'ribbon');
-    assert.equal(completions[0].format, 'pdf-3d-view');
   });
 
   it('sends the appearance the user picked, not the one the dialog mounted with', async () => {

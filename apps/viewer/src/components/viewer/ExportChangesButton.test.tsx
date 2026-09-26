@@ -48,6 +48,12 @@ function makeView(): MutablePropertyView {
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+function unmountAll(): void {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+}
 
 function renderButton(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
@@ -87,12 +93,7 @@ function dialogText(): string {
 describe('ExportChangesButton — review/export divergence (issue: detect-and-require re-review)', () => {
   beforeEach(() => {
     clearDownloads();
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    }
+    unmountAll();
     useViewerStore.setState({
       models: new Map([['model-1', makeModel()]]),
       mutationViews: new Map(),
@@ -120,13 +121,17 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
       if (event === 'export_completed') completions.push(properties);
     });
     try {
-      const container = renderButton('palette');
-      await act(async () => { findToolbarButton(container).click(); });
-      assert.ok(dialogText().includes('Reviewed edit'), 'the review displays the authored change');
-      await act(async () => { findDialogExportButton().click(); });
-      await waitFor(() => downloadedNames().length === 1, 'reviewed IFC file did not download');
-      assert.match(downloadedNames()[0], /\.ifc$/);
-      assert.deepEqual(completions, [{ format: 'ifc', surface: 'palette', model_count: 1, change_count: 1 }]);
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        const container = renderButton(surface);
+        await act(async () => { findToolbarButton(container).click(); });
+        assert.ok(dialogText().includes('Reviewed edit'), 'the review displays the authored change');
+        await act(async () => { findDialogExportButton().click(); });
+        await waitFor(() => downloadedNames().length === index + 1, 'reviewed IFC file did not download');
+        assert.match(downloadedNames()[index], /\.ifc$/);
+        assert.deepEqual(completions[index], { format: 'ifc', surface, model_count: 1, change_count: 1 });
+        assert.equal(completions.length, index + 1, 'one completion per browser download');
+        unmountAll();
+      }
     } finally {
       analytics.mock.restore();
     }

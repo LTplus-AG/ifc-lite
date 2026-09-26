@@ -66,6 +66,7 @@ import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, m
 import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
 import { PropertyFindBox } from './properties/PropertyFindBox';
 import { AssociationAttributeSearchCard, findAssociationAttributes } from './properties/associationAttributeSearch';
+import { associationDisclosureId } from './properties/associationDisclosureId';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
 import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
 export function PropertiesPanel() {
@@ -171,6 +172,7 @@ export function PropertiesPanel() {
     // focus for a different entity is left untouched (never consumed here).
     if (focus.modelId !== selectedEntity.modelId || focus.entityId !== selectedEntity.expressId) return;
     setEditEnabled(true);
+    setFind(''); // A prior query must not hide the row bSDD asked us to reveal.
     // entityId-qualified key so it can only ever highlight the occurrence row
     // (not an inherited type pset that happens to share the name).
     setFocusedPropKey(`${focus.entityId}:${focus.psetName}:${focus.propName}`);
@@ -1117,14 +1119,14 @@ export function PropertiesPanel() {
   const renderedSpatialContainment = spatialContainment;
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
-  const findQuery = find.trim().toLocaleLowerCase();
+  const findQuery = find.trim();
   const foundAttributes = renderedAttributes.filter((attr) => matchesPropertySearch(attr.name, findQuery) || matchesPropertySearch(attr.value, findQuery));
   const foundStructure = renderedSpatialContainment?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
   const foundZones = zoneMembership?.filter((item) => matchesPropertySearch(item.label, findQuery) || matchesPropertySearch(item.value, findQuery));
-  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery);
-  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery);
-  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery);
-  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery);
+  const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery, projectUnits, unitDisplayOverrides);
+  const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery, projectUnits, unitDisplayOverrides);
+  const foundQuantities = filterQuantitySets(renderedQuantities, findQuery, projectUnits, unitDisplayOverrides, locale);
+  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery, projectUnits, unitDisplayOverrides);
   const foundAssociations = findAssociationAttributes({
     classifications: renderedClassifications, materials: renderedMaterialInfos,
     documents: renderedDocuments, query: findQuery, t, locale,
@@ -1136,9 +1138,7 @@ export function PropertiesPanel() {
   const visiblePsetCount = findQuery ? foundOccurrence.length + foundInherited.length : renderedMergedProperties.length;
   const hasPropertyHits = foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
     + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0 || hasAssociationHits;
-  // A query can match a quantity while the Properties tab is selected (and
-  // vice versa). Keep the hit visible instead of leaving the user on an empty
-  // tab with no empty-state message.
+  // Switch tabs when the only search hits live on the other Properties tab.
   useEffect(() => {
     if (!findQuery) return;
     const next = searchTabForHits(propertiesActiveTab, foundQuantities.length > 0, hasPropertyHits);
@@ -1668,7 +1668,7 @@ export function PropertiesPanel() {
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {findQuery ? foundAssociations.classifications.map((card, i) => <AssociationAttributeSearchCard key={`class-${i}`} card={card} query={findQuery} />)
-                      : renderedClassifications.map((classification, i) => <ClassificationCard key={`class-${i}`} classification={classification} />)}
+                      : renderedClassifications.map((classification, i) => <ClassificationCard key={`class-${i}`} classification={classification} sectionId={associationDisclosureId('classification', classification, renderedClassifications, i)} />)}
                   </>
                 )}
 
@@ -1679,7 +1679,7 @@ export function PropertiesPanel() {
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {findQuery ? foundAssociations.materials.map((card, i) => <AssociationAttributeSearchCard key={`mat-${i}`} card={card} query={findQuery} />)
-                      : renderedMaterialInfos.map((info, i) => <MaterialCard key={i} material={info} />)}
+                      : renderedMaterialInfos.map((info, i) => <MaterialCard key={i} material={info} sectionId={associationDisclosureId('material', info, renderedMaterialInfos, i)} />)}
                   </>
                 )}
 
@@ -1718,7 +1718,7 @@ export function PropertiesPanel() {
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
-                      : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} />)}
+                      : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} sectionId={associationDisclosureId('document', doc, renderedDocuments, i)} />)}
                   </>
                 )}
 

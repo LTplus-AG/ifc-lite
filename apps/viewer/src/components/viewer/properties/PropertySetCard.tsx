@@ -6,21 +6,19 @@
  * Property set display component with edit support.
  */
 
-import { useEffect } from 'react';
 import { Sparkles, PenLine, Building2, ChevronDown } from 'lucide-react';
 import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
 import { setDisplayName } from './setDisplayName';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
 import { useTranslation } from '@/i18n';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
+import { propertyDisplayValue } from './propertyDisplayValue';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -57,12 +55,9 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   const keyFor = (propName: string) => `${entityId ?? ''}:${pset.name}:${propName}`;
   const containsFocused = focusedPropKey != null && pset.properties.some(p => keyFor(p.name) === focusedPropKey);
 
-  // Self-control the collapse so a focused row can't hide inside a pset the user
-  // previously collapsed — force it open when this card holds the focus target.
+  // Focus and search only override the rendered state. Neither gesture changes
+  // the user's saved disclosure preference (#5899).
   const [open, setOpen] = usePersistentDisclosure(`pset:${sectionScope}:${pset.name}`);
-  useEffect(() => {
-    if (containsFocused) setOpen(true);
-  }, [containsFocused]);
 
   // Dynamic styling based on mutation state and source
   const borderClass = isNewPset
@@ -82,7 +77,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
     : 'bg-white dark:bg-zinc-950';
 
   return (
-    <Collapsible open={open || !!searchQuery} onOpenChange={searchQuery ? undefined : setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
+    <Collapsible open={open || !!searchQuery || containsFocused} onOpenChange={searchQuery || containsFocused ? undefined : setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
       <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
         {isNewPset && (
           <Tooltip>
@@ -115,16 +110,14 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
-            const parsed = parsePropertyValue(prop.value);
+            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {});
+            const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time
             // collapses `\\` twice.
             const isMutated = prop.isMutated;
             const propKey = keyFor(prop.name);
             const isFocused = focusedPropKey != null && focusedPropKey === propKey;
-            const disp = resolveMeasureDisplay(prop.value, prop.dataType, projectUnits, unitDisplayOverrides ?? {});
-            const unit = disp.unit;
-
             return (
               <div
                 // A property set's own property list may repeat a name (the same
@@ -186,10 +179,10 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     />
                   ) : (
                     <span className={`font-mono select-all break-words ${isMutated ? 'text-foreground font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      <PropertySearchHighlight text={disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue} query={searchQuery} />
-                      {unit && parsed.displayValue !== '\u2014' && (
-                        <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>
-                      )}
+                      {searchQuery ? <PropertySearchHighlight text={display.full} query={searchQuery} /> : <>
+                        {display.value}
+                        {unit && <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>}
+                      </>}
                     </span>
                   )}
                 </div>

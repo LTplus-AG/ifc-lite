@@ -11,6 +11,7 @@ import { matchesPropertySearch } from './propertySearch';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { formatThickness, TYPE_LABEL_KEYS } from './MaterialCard';
+import { associationDisclosureId } from './associationDisclosureId';
 import {
   EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE,
   EXPRESS_INTENDED_USE_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_LOCATION_ATTRIBUTE,
@@ -31,7 +32,7 @@ function matchedCard(id: string, title: string, rows: SearchRow[], query: string
   return headingMatches || matches.length > 0 ? { id, title, rows: matches } : null;
 }
 
-function classificationCard(info: ClassificationInfo, query: string, t: Translate): AssociationSearchCard | null {
+function classificationCard(info: ClassificationInfo, id: string, query: string, t: Translate): AssociationSearchCard | null {
   if (info.unresolved) return null;
   const displayName = info.identification || info.name || t('properties.classification.unknown');
   const systemName = info.system || t('properties.classification.heading');
@@ -43,10 +44,10 @@ function classificationCard(info: ClassificationInfo, query: string, t: Translat
     ...row(t('properties.field.path'), info.path?.join(' > ')),
     ...row(EXPRESS_DESCRIPTION_ATTRIBUTE, info.description),
   ];
-  return matchedCard(`classification:${info.system}:${displayName}`, `${systemName} · ${displayName}`, rows, query);
+  return matchedCard(id, `${systemName} · ${displayName}`, rows, query);
 }
 
-function documentCard(info: DocumentInfo, query: string, t: Translate): AssociationSearchCard | null {
+function documentCard(info: DocumentInfo, id: string, query: string, t: Translate): AssociationSearchCard | null {
   const title = info.name || info.identification || t('properties.document.heading');
   const locationHref = info.location?.startsWith('https://') || info.location?.startsWith('http://') ? info.location : undefined;
   const rows = [
@@ -58,10 +59,10 @@ function documentCard(info: DocumentInfo, query: string, t: Translate): Associat
     ...row(EXPRESS_INTENDED_USE_ATTRIBUTE, info.intendedUse),
     ...row(EXPRESS_REVISION_ATTRIBUTE, info.revision),
   ];
-  return matchedCard(`document:${info.identification ?? title}`, info.revision ? `${title} · ${info.revision}` : title, rows, query);
+  return matchedCard(id, info.revision ? `${title} · ${info.revision}` : title, rows, query);
 }
 
-function materialCard(info: MaterialInfo, query: string, t: Translate, locale: string): AssociationSearchCard | null {
+function materialCard(info: MaterialInfo, id: string, query: string, t: Translate, locale: string): AssociationSearchCard | null {
   if (info.unresolved) return null;
   const typeLabel = t(TYPE_LABEL_KEYS[info.type]);
   const title = info.name || typeLabel;
@@ -86,7 +87,7 @@ function materialCard(info: MaterialInfo, query: string, t: Translate, locale: s
     rows.push(...row(EXPRESS_CATEGORY_ATTRIBUTE, constituent.category));
   });
   info.materials?.forEach((material, i) => rows.push(...row(t('properties.material.materialN', { n: i + 1 }), material.name)));
-  return matchedCard(`material:${info.type}:${info.name ?? ''}`, info.name ? `${title} · ${typeLabel}` : title, rows, query);
+  return matchedCard(id, info.name ? `${title} · ${typeLabel}` : title, rows, query);
 }
 
 /** Search the visible IFC attributes of associated classification, material and document entities (#5899). */
@@ -100,9 +101,9 @@ export function findAssociationAttributes({ classifications, materials, document
 }) {
   if (!query) return { classifications: [], materials: [], documents: [] };
   return {
-    classifications: classifications.flatMap((info) => classificationCard(info, query, t) ?? []),
-    materials: materials.flatMap((info) => materialCard(info, query, t, locale) ?? []),
-    documents: documents.flatMap((info) => documentCard(info, query, t) ?? []),
+    classifications: classifications.flatMap((info, index) => classificationCard(info, associationDisclosureId('classification', info, classifications, index), query, t) ?? []),
+    materials: materials.flatMap((info, index) => materialCard(info, associationDisclosureId('material', info, materials, index), query, t, locale) ?? []),
+    documents: documents.flatMap((info, index) => documentCard(info, associationDisclosureId('document', info, documents, index), query, t) ?? []),
   };
 }
 
@@ -114,7 +115,7 @@ export function AssociationAttributeSearchCard({ card, query }: { card: Associat
     </CollapsibleTrigger>
     <CollapsibleContent>
       <div className="divide-y border-t">
-        {card.rows.map((item, index) => <div key={`${item.label}-${index}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
+        {card.rows.map((item, index) => <div key={`${item.label}-${index}`} data-association-attribute={item.label} className="flex flex-col gap-0.5 px-3 py-2 text-xs">
           <span className="text-muted-foreground font-medium"><PropertySearchHighlight text={item.label} query={query} /></span>
           {item.href ? <a href={item.href} target="_blank" rel="noopener noreferrer" className="font-mono underline break-all"><PropertySearchHighlight text={item.value} query={query} /></a>
             : <span className="font-mono select-all break-words"><PropertySearchHighlight text={item.value} query={query} /></span>}

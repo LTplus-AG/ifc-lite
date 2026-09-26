@@ -12,7 +12,7 @@
  */
 
 import { Scan, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
@@ -83,9 +83,9 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
         </span>
         <span className="flex-1" />
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <IconButton label={t('pointCloudPanel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">

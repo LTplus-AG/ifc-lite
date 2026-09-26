@@ -17,7 +17,7 @@
 
 import { useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
@@ -56,22 +56,22 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
         <span className="flex-1 text-sm font-medium">{t('measure.panel.title')}</span>
         {count > 0 && <span className="text-xs tabular-nums text-muted-foreground">{count}</span>}
         {count > 0 && (
-          <Button
+          <IconButton
+            label={t('measure.clearAll')}
             variant="ghost"
             size="icon"
             className="h-6 w-6"
             onClick={async () => {
               if (await confirmDialog({ description: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
             }}
-            title={t('measure.clearAll')}
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('measure.panel.close')}>
+          <IconButton label={t('measure.panel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 

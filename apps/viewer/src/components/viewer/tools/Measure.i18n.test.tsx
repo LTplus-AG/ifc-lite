@@ -462,6 +462,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     assertMarked(after, 'measure.angle.apexSetSuffix');
     assertMarked(after, 'measure.radius.indexLabel', { index: 1 });
     assertMarked(after, 'measure.radius.inProgress', { count: 3 });
+    assertMarked(after, 'measure.list.deleteDistance', { index: 1 });
+    assertMarked(after, 'measure.list.deletePolyline', { index: 1 });
+    assertMarked(after, 'measure.list.deleteAngle', { index: 1 });
+    assertMarked(after, 'measure.list.deleteRadius', { index: 1 });
 
     coveredParams.add('measure.polyline.inProgress');
     coveredParams.add('measure.polyline.indexLabel');
@@ -470,6 +474,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     coveredParams.add('measure.angle.inProgress');
     coveredParams.add('measure.radius.indexLabel');
     coveredParams.add('measure.radius.inProgress');
+    coveredParams.add('measure.list.deleteDistance');
+    coveredParams.add('measure.list.deletePolyline');
+    coveredParams.add('measure.list.deleteAngle');
+    coveredParams.add('measure.list.deleteRadius');
     // Static, but sits beside a sibling {} expression in the same element
     // (see `assertMarked`'s own doc comment) so `assertStaticCoverage`'s
     // exact-match pass never finds it; checked explicitly above instead.

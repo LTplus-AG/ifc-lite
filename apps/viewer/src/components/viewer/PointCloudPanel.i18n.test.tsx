@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, click } from '@/test/render';
 import { registerLocale, setLocale } from '@/i18n';
 import { PointCloudPanel } from './PointCloudPanel';
 
@@ -39,6 +39,15 @@ it('pluralizes the asset-count readout (#4918)', () => {
   const single = render(<PointCloudPanel assetCount={1} triangleCount={0} />);
   assert.ok(single.textContent?.includes('1 asset'));
   assert.ok(!single.textContent?.includes('1 assets'));
+});
+
+it('#5811 names and activates the point cloud panel close control', () => {
+  let closed = 0;
+  const container = render(<PointCloudPanel assetCount={1} triangleCount={0} onClose={() => { closed += 1; }} />);
+  const close = container.querySelector('button[aria-label="Close point cloud panel"]');
+  assert.ok(close);
+  click(close);
+  assert.equal(closed, 1);
 });
 
 it('translates the title and a data-table label, while an untranslated key falls back to English (#4918)', () => {

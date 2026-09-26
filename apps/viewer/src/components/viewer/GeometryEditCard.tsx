@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Move as MoveIcon, RotateCw, Slice as KnifeIcon, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { GeometryAxisRow } from './GeometryAxisRow';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
@@ -294,48 +295,36 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
                   ? t('geometryExport.editCard.yawReadout', { degrees: yawDegrees.toFixed(1) })
                   : t('geometryExport.editCard.yawReadoutEmpty')}
               </span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="h-6 w-6 text-overlay-accent"
-                    onClick={() => rotateBy(-15)}
-                    aria-label={t('geometryExport.editCard.rotateMinus15AriaLabel')}
-                  >
-                    ⟲
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('geometryExport.editCard.rotateMinus15Tooltip')}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="h-6 w-6 text-overlay-accent"
-                    onClick={() => rotateBy(15)}
-                    aria-label={t('geometryExport.editCard.rotatePlus15AriaLabel')}
-                  >
-                    ⟳
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('geometryExport.editCard.rotatePlus15Tooltip')}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="h-6 w-6 text-overlay-accent"
-                    onClick={() => rotateBy(90)}
-                    aria-label={t('geometryExport.editCard.rotatePlus90AriaLabel')}
-                  >
-                    90
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('geometryExport.editCard.rotatePlus90Tooltip')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={t('geometryExport.editCard.rotateMinus15AriaLabel')}
+                tooltip={t('geometryExport.editCard.rotateMinus15Tooltip')}
+                variant="ghost"
+                size="icon-xs"
+                className="h-6 w-6 text-overlay-accent"
+                onClick={() => rotateBy(-15)}
+              >
+                ⟲
+              </IconButton>
+              <IconButton
+                label={t('geometryExport.editCard.rotatePlus15AriaLabel')}
+                tooltip={t('geometryExport.editCard.rotatePlus15Tooltip')}
+                variant="ghost"
+                size="icon-xs"
+                className="h-6 w-6 text-overlay-accent"
+                onClick={() => rotateBy(15)}
+              >
+                ⟳
+              </IconButton>
+              <IconButton
+                label={t('geometryExport.editCard.rotatePlus90AriaLabel')}
+                tooltip={t('geometryExport.editCard.rotatePlus90Tooltip')}
+                variant="ghost"
+                size="icon-xs"
+                className="h-6 w-6 text-overlay-accent"
+                onClick={() => rotateBy(90)}
+              >
+                90
+              </IconButton>
             </div>
           )}
 
@@ -391,4 +380,3 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     </div>
   );
 }
-

@@ -7,7 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   X,
   Play,
-  Loader2,
+  Square,
   Trash2,
   Crosshair,
   Copy,
@@ -281,6 +281,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     runMatrix,
     runPreset,
     runDuplicates,
+    cancelRun,
     focusClash,
     focusClashes,
     selectElement,
@@ -768,12 +769,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 variant="outline"
                 size="sm"
                 className="h-6 px-2 text-xs"
-                disabled={running}
-                onClick={() => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
-                title={rerunTooltip(t, runRequestOf(result))}
+                onClick={running ? cancelRun : () => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
+                title={running ? t('clashPanel.cancel') : rerunTooltip(t, runRequestOf(result))}
               >
-                {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
-                {running ? '' : t('clashPanel.rerun')}
+                {running ? <Square className="h-3.5 w-3.5 mr-1" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
+                {t(running ? 'clashPanel.cancel' : 'clashPanel.rerun')}
               </Button>
             )}
           </div>
@@ -822,9 +822,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               )}
             </div>
 
-            <Button className="w-full h-8" disabled={running} onClick={() => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
-              {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
-              {running ? t('clashPanel.detecting') : t('clashPanel.detectAll')}
+            <Button className="w-full h-8" onClick={running ? cancelRun : () => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
+              {running ? <Square className="h-4 w-4 mr-1.5" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
+              {t(running ? 'clashPanel.cancel' : 'clashPanel.detectAll')}
             </Button>
             <div className="flex gap-2">
               <Button

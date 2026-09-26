@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { beginAbortableRun, cancelClashRun, invalidateAbortableRun } from './analysisRunCancellation';
 import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { useViewerStore } from '@/store';
 import type { ClashFocusMode, ClashPreset } from '@/store/slices/clashSlice';
@@ -229,19 +230,15 @@ export function useClash() {
    * long as its geometry takes; nothing stopped an OLDER call from finishing
    * after a NEWER one and overwriting its (more current) answer.
    *
-   * Each `run()` / `runDuplicates()` invocation captures the epoch bumped
-   * here as its own, and `stillWanted` below is re-checked synchronously
-   * immediately before every store write that follows an `await` — the
-   * publish, the error path, and the `finally` that flips `clashRunning` /
-   * `clashProgress` back off. The `finally` check matters as much as the
-   * publish one: without it, an older call's `finally` running after a newer
-   * one has already started reports "not running" while the newer job is
-   * still genuinely in flight. `clearAll()` also bumps this, so a clear
-   * mid-run cannot be resurrected by the run it cleared landing afterwards.
+   * Each run owns an epoch checked before post-await writes, including
+   * `finally`; otherwise an older run could clear a newer run's busy state.
+   * Clear and cancel also bump it so late results cannot reappear.
    */
   const runEpochRef = useRef(0);
+  const runAbortRef = useRef<AbortController | null>(null);
   const stillWanted = useCallback((epoch: number): boolean => runEpochRef.current === epoch, []);
 
+  const cancelRun = useCallback((): void => cancelClashRun(runEpochRef, runAbortRef), []);
   // The intersection-solid staleness guard that used to live here (a
   // `createLatestWinsGuard()` ref) is gone: it was private to one `useClash()`
   // instance, so no teardown outside this hook could invalidate it. It is now
@@ -471,7 +468,7 @@ export function useClash() {
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
       // superseded — a no-op instead of clobbering the newer call (#2802).
-      const myEpoch = ++runEpochRef.current;
+      const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
       const state = useViewerStore.getState();
       discardSolidPresentation();
       state.setClashRunning(true);
@@ -494,6 +491,7 @@ export function useClash() {
         const res = await engine.run(elements, rules, {
           exclusions,
           tolerance: state.clashTolerance,
+          signal: abortController.signal,
           // The TS engine yields between chunks, so these updates actually paint.
           // A superseded run keeps reporting progress harmlessly — `clashProgress`
           // is re-armed by the call that superseded it and this write loses any
@@ -520,6 +518,7 @@ export function useClash() {
         state.setClashError(err instanceof Error ? err.message : String(err));
         posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
       } finally {
+        if (runAbortRef.current === abortController) runAbortRef.current = null;
         // A superseded call must not report itself as no-longer-running: the
         // call that superseded it is the one actually in flight, and this
         // would flip `clashRunning` off underneath it (#2802).
@@ -549,7 +548,7 @@ export function useClash() {
       // (#2802's ordering, which only holds while every start bumps). The
       // running flag is set for the same window, so the panel says it is
       // working instead of looking idle for the length of the scan.
-      const myEpoch = ++runEpochRef.current;
+      const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
       state.setClashError(null);
       state.setClashRunning(true);
       let resolved: ClashRule[];
@@ -615,7 +614,7 @@ export function useClash() {
     // other's trigger while it's the other one running — must not have its
     // OWN eventual completion, or the older call's, win by landing last
     // (#2802).
-    const myEpoch = ++runEpochRef.current;
+    const myEpoch = invalidateAbortableRun(runEpochRef, runAbortRef);
     const state = useViewerStore.getState();
     discardSolidPresentation();
     state.setClashRunning(true);
@@ -1262,7 +1261,7 @@ export function useClash() {
     // when the user clears must not be able to resurrect what they just
     // cleared once it lands — see `runEpochRef`'s doc above `elementsByRef`
     // (#2802).
-    runEpochRef.current += 1;
+    invalidateAbortableRun(runEpochRef, runAbortRef);
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();
@@ -1337,6 +1336,7 @@ export function useClash() {
     runMatrix,
     runPreset,
     runDuplicates,
+    cancelRun,
     focusClash,
     focusClashes,
     selectElement,

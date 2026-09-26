@@ -17,7 +17,7 @@
  * meant reloading the `.ids` file.
  */
 
-import { Eraser, Loader2, RotateCw, Trash2, Upload } from 'lucide-react';
+import { Eraser, RotateCw, Square, Trash2, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -48,20 +48,21 @@ interface IDSPanelHeaderActionsProps {
   reportModelId: string | null;
   loading: boolean;
   onRerun: (modelId: string) => void;
+  onCancel: () => void;
   onLoadNew: () => void;
   onClearResults: () => void;
   onUnload: () => void;
 }
 
 export function IDSPanelHeaderActions({
-  reportModelId, loading, onRerun, onLoadNew, onClearResults, onUnload,
+  reportModelId, loading, onRerun, onCancel, onLoadNew, onClearResults, onUnload,
 }: IDSPanelHeaderActionsProps) {
   const { t } = useTranslation();
   return (
     <>
       {reportModelId !== null && (
-        <HeaderAction label={t('idsPanel.rerun')} onClick={() => onRerun(reportModelId)} disabled={loading}>
-          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+        <HeaderAction label={t(loading ? 'idsPanel.cancel' : 'idsPanel.rerun')} onClick={loading ? onCancel : () => onRerun(reportModelId)}>
+          {loading ? <Square className="h-3 w-3" /> : <RotateCw className="h-3 w-3" />}
         </HeaderAction>
       )}
       <HeaderAction label={t('idsPanel.loadNew')} onClick={onLoadNew}>

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type React from 'react';
-import { FileText, Loader2, Play, Upload } from 'lucide-react';
+import { FileText, Loader2, Play, Square, Upload } from 'lucide-react';
 import type { UseIDSResult } from '@/hooks/useIDS';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -48,7 +48,7 @@ interface IDSPanelStatesProps {
 
 export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }: IDSPanelStatesProps) {
   const { t, locale } = useTranslation();
-  const { document, report, auditReport, auditing, loading, runValidation } = ids;
+  const { document, report, auditReport, auditing, loading, runValidation, cancelValidation } = ids;
   if (!document) {
     const hasAuditIssues = auditReport !== null && auditReport.issues.length > 0;
     return (
@@ -85,9 +85,9 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
         </div>
       </div>
       <IDSAuditSummary report={auditReport} auditing={auditing} />
-      <Button className="w-full" onClick={() => { void runValidation(); }} disabled={loading} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
-        {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-        {t('idsPanel.runValidation')}
+      <Button className="w-full" onClick={loading ? cancelValidation : () => { void runValidation(); }} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
+        {loading ? <Square className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+        {t(loading ? 'idsPanel.cancel' : 'idsPanel.runValidation')}
       </Button>
       {auditErrorCount > 0 && (
         <p className="text-xs text-muted-foreground">

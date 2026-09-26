@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { cancelCompareRun } from './analysisRunCancellation';
 import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
@@ -210,10 +211,8 @@ export function useCompare() {
    *   already in the air when the user cleared must not resurrect the result
    *   they just dismissed.
    *
-   * Bumped at the start of every `runComparison()` call and by `clearCompare`
-   * below (the ONLY two events that make an in-flight run's eventual answer
-   * unwanted). Each run captures the epoch value once, and every place that
-   * writes to the store re-checks it immediately before writing - never
+   * Bumped on run, clear and cancel. Every post-await store write re-checks
+   * its captured epoch immediately before writing - never
    * earlier, so nothing can supersede between the check and the write.
    */
   const epochRef = useRef(0);
@@ -227,6 +226,8 @@ export function useCompare() {
     epochRef.current += 1;
     useViewerStore.getState().clearCompare();
   }, []);
+
+  const cancelComparison = useCallback(() => cancelCompareRun(epochRef), []);
 
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
@@ -467,5 +468,5 @@ export function useCompare() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, excludedTypes, matchByContent, acceptedIdentity]);
 
-  return { baseModelId, headModelId, scope, running, result, error, runComparison, clearCompare };
+  return { baseModelId, headModelId, scope, running, result, error, runComparison, cancelComparison, clearCompare };
 }

@@ -329,4 +329,23 @@ describe('IDSPanel localization (#4918)', () => {
     assert.match(text, /НЕТ МОДЕЛИ/, 'the resolver error renders through the active locale catalogue, not hardcoded English');
     assert.doesNotMatch(text, /No IFC model loaded/, 'the English literal must not reach the DOM under a non-English locale');
   });
+
+  it('turns the first-run control into Cancel while validation is active (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null, idsLoading: true });
+    const ui = render(<IDSPanel />);
+    const cancel = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Cancel validation'));
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(useViewerStore.getState().idsLoading, false);
+  });
+
+  it('turns Re-run into Cancel and keeps the previous report (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true });
+    const ui = render(<IDSPanel />);
+    const cancel = ui.querySelector<HTMLButtonElement>('[aria-label="Cancel validation"]');
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(useViewerStore.getState().idsLoading, false);
+    assert.strictEqual(useViewerStore.getState().idsValidationReport, reportFixture);
+  });
 });

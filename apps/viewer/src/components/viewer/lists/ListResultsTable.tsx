@@ -421,7 +421,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   <ColumnResizeHandle
                     columnId={col.id}
                     width={columnWidths[colIdx]}
-                    title={`${col.label}: ${t('lists.resultsTable.dragToResizeTitle')}`}
+                    title={`${col.label ?? col.propertyName}: ${t('lists.resultsTable.dragToResizeTitle')}`}
                     setWidthOverrides={setWidthOverrides}
                   />
                 </div>

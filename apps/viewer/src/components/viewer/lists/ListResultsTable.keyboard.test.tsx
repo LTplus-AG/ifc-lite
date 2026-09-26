@@ -79,6 +79,18 @@ it('#5823 list resize grips adjust and reset widths from the keyboard', () => {
   assert.equal(Number.parseFloat(header.style.width), initialWidth);
 });
 
+it('#5823 an unlabeled list column announces its displayed property name on the resize grip', () => {
+  const unlabeled: ListResult = {
+    ...result,
+    columns: [result.columns[0]!, { ...result.columns[1]!, label: undefined }],
+  };
+  const ui = render(<ListResultsTable result={unlabeled} modelUnits={modelUnits} />);
+  const grip = ui.querySelectorAll<HTMLButtonElement>('button[aria-label*="arrow keys to adjust"]')[1];
+  assert.ok(grip);
+  assert.match(grip.getAttribute('aria-label') ?? '', /NetVolume/);
+  assert.doesNotMatch(grip.getAttribute('aria-label') ?? '', /undefined/);
+});
+
 it('#5823 schedule resize grips use the same keyboard controls', () => {
   const ui = render(<ListResultsTable result={result} grouping={{ ...grouping, view: 'schedule' }} modelUnits={modelUnits} />);
   const grip = ui.querySelector('button[aria-label*="arrow keys to adjust"]') as HTMLButtonElement;

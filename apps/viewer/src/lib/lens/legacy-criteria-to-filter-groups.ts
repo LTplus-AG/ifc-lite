@@ -68,6 +68,21 @@ function convertLeaf(criteria: LensCriteria): LegacyCriteriaConversion {
         }
         return unreadable('Name comparison has no exact equivalent filter chip');
       }
+      // The old viewer provider only reads these named attributes. Generic
+      // schema extraction can read more (for example IfcDoor.OverallHeight),
+      // so converting an unknown name would silently broaden a saved lens.
+      // Type is derived from getTypeName, not an IFC attribute; the canonical
+      // ifcType chip folds case while saved Lens equality preserves it.
+      if (!['Description', 'ObjectType', 'PredefinedType', 'Tag'].includes(criteria.attributeName)) {
+        return unreadable(`Saved Lens attribute ${criteria.attributeName} has no equivalent filter chip`);
+      }
+      // The old attribute matcher treats an empty source value as absent for
+      // every comparison. Generic attribute chips can compare that empty
+      // value, notably `ne`, `contains ''`, and `equals ''`.
+      if (criteria.operator === 'ne' ||
+          (criteria.operator !== 'exists' && criteria.attributeValue === '')) {
+        return unreadable('Empty attribute comparison has no equivalent filter chip');
+      }
       const result = legacyLensOperatorToFilterRule(valueOperator(criteria, criteria.attributeValue), {
         kind: 'attribute', name: criteria.attributeName, op: 'eq', value: criteria.attributeValue ?? '',
       });

@@ -21,13 +21,22 @@ const IFC = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('lens-5896','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
 DATA;
 #1=IFCPROJECT('0Proj000000000000000001',$,'P',$,$,$,$,$,$);
-#10=IFCWALL('0Wall000000000000000010',$,'Fire wall',$,$,$,$,$,$);
+#10=IFCWALL('0Wall000000000000000010',$,'Fire wall',$,$,$,$,'W-10',$);
 #11=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('60'),$);
 #12=IFCPROPERTYSET('0Pset000000000000000012',$,'Pset_WallCommon',$,(#11));
 #13=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000013',$,$,$,(#10),#12);
-#20=IFCDOOR('0Door000000000000000020',$,'Door',$,$,$,$,$,$,$,$,$,$,$);
+#14=IFCQUANTITYLENGTH('Height',$,$,2.4,$);
+#15=IFCELEMENTQUANTITY('0Qto00000000000000015',$,'Qto_WallBaseQuantities',$,$,(#14));
+#16=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000016',$,$,$,(#10),#15);
+#20=IFCDOOR('0Door000000000000000020',$,'Door',$,$,$,$,'',2.1,$,$,$,$);
 #30=IFCWALLSTANDARDCASE('0Wall000000000000000030',$,'Plain wall',$,$,$,$,$,$);
 #40=IFCCOLUMN('0Col000000000000000040',$,'Column',$,$,$,$,$,$);
+#50=IFCGROUP('0Group00000000000000050',$,'Fire crew',$,$);
+#51=IFCRELASSIGNSTOGROUP('0Rel000000000000000051',$,$,$,(#10,#20),$,#50);
+#52=IFCQUANTITYLENGTH('Height',$,$,3.2,$);
+#53=IFCELEMENTQUANTITY('0Qto00000000000000053',$,'Qto_WallBaseQuantities',$,$,(#52));
+#54=IFCWALLTYPE('0Type00000000000000054',$,'Tall wall type',$,$,(#53),$,$,$,.STANDARD.);
+#55=IFCRELDEFINESBYTYPE('0Rel000000000000000055',$,$,$,(#30),#54);
 ENDSEC;
 END-ISO-10303-21;`;
 const IDS = [10, 20, 30, 40];
@@ -45,7 +54,7 @@ async function fixture() {
       candidateExpressIds: IDS, limit: Number.POSITIVE_INFINITY,
     }).map((row) => row.expressId).sort((a, b) => a - b);
   };
-  return { before, after };
+  return { store, before, after };
 }
 
 describe('#5896 legacy lens criteria migration', () => {
@@ -85,6 +94,58 @@ describe('#5896 legacy lens criteria migration', () => {
     };
     assert.deepEqual(before(byName), [10]);
     assert.deepEqual(after(byName), before(byName));
+  });
+
+  it('preserves numeric quantity, type-inherited quantity, and group membership', async () => {
+    const { before, after } = await fixture();
+    for (const [criteria, expected] of [
+      [{ type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Height',
+        operator: 'gt', quantityValue: '2' }, [10, 30]],
+      [{ type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Height',
+        operator: 'gte', quantityValue: '3' }, [30]],
+      [{ type: 'group', groupName: 'FIRE' }, [10, 20]],
+      [{ type: 'group' }, [10, 20]],
+    ] as [LensCriteria, number[]][]) {
+      assert.deepEqual(before(criteria), expected, `legacy ${criteria.type}`);
+      assert.deepEqual(after(criteria), expected, `converted ${criteria.type}`);
+    }
+  });
+
+  it('preserves existence checks for a real property and a supported attribute', async () => {
+    const { before, after } = await fixture();
+    for (const criteria of [
+      { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'exists' },
+      { type: 'attribute', attributeName: 'Tag', operator: 'exists' },
+    ] as LensCriteria[]) {
+      assert.deepEqual(before(criteria), [10], `legacy ${criteria.type}`);
+      assert.deepEqual(after(criteria), [10], `converted ${criteria.type}`);
+    }
+  });
+
+  it('warns for derived Type and schema attributes absent from the old provider', async () => {
+    const { store, before } = await fixture();
+    const convert = await loadConverter();
+    const derivedType: LensCriteria = { type: 'attribute', attributeName: 'Type',
+      operator: 'equals', attributeValue: 'IfcDoor' };
+    const schemaAttribute: LensCriteria = { type: 'attribute', attributeName: 'OverallHeight',
+      operator: 'equals', attributeValue: '2.1' };
+    const emptyTag: LensCriteria = { type: 'attribute', attributeName: 'Tag',
+      operator: 'equals', attributeValue: '' };
+    const notTag: LensCriteria = { type: 'attribute', attributeName: 'Tag',
+      operator: 'ne', attributeValue: 'W-10' };
+    assert.deepEqual(before(derivedType), [20]);
+    assert.deepEqual(before(schemaAttribute), []);
+    assert.deepEqual(before(emptyTag), []);
+    assert.deepEqual(before(notTag), []);
+    const genericAttributeIds = evaluateFilterGroups('legacy', store, [{
+      rules: [{ kind: 'attribute', name: 'OverallHeight', op: 'eq', value: '2.1' }],
+      combinator: 'AND',
+    }], { candidateExpressIds: IDS, limit: Number.POSITIVE_INFINITY }).map((row) => row.expressId);
+    assert.deepEqual(genericAttributeIds, [20], 'generic schema reader would broaden the saved lens');
+    assert.equal(convert(derivedType).status, 'unreadable');
+    assert.equal(convert(schemaAttribute).status, 'unreadable');
+    assert.equal(convert(emptyTag).status, 'unreadable');
+    assert.equal(convert(notTag).status, 'unreadable');
   });
 
   it('warns for unrepresentable semantics and explosive DNF instead of changing matches', async () => {

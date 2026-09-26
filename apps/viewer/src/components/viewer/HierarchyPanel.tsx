@@ -151,7 +151,9 @@ export function HierarchyPanel() {
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
   const modelsNodes = useModelTagView(useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes])); // #4215 tag filter / By tag: rows only
-  const searchEmptyState = searchQuery.trim() && filteredNodes.length === 0
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const searchEmptyState = normalizedSearch && !filteredNodes.some((node) =>
+    node.name.toLowerCase().includes(normalizedSearch) || node.secondaryName?.toLowerCase().includes(normalizedSearch))
     ? <HierarchySearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
     : null;
 

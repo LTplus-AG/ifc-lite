@@ -8,6 +8,7 @@ installLayout();
 
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { cleanup, click, render, type } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -17,9 +18,12 @@ import { HierarchyPanel } from '../HierarchyPanel.js';
 
 afterEach(cleanup);
 
-function mountHierarchy(): { container: HTMLElement; input: HTMLInputElement } {
-  const model = fixtureModel('search-model', { entities: [{ expressId: 7, type: 'IfcWall', name: 'Target Wall' }] });
-  const secondStorey = { expressId: 5, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 2', children: [], elements: [7] };
+function mountHierarchy(withPart = false): { container: HTMLElement; input: HTMLInputElement } {
+  const model = fixtureModel('search-model', { entities: [
+    { expressId: 7, type: 'IfcWall', name: 'Target Wall' },
+    ...(withPart ? [{ expressId: 8, type: 'IfcBuildingElementPart', name: 'Hidden Part' }] : []),
+  ] });
+  const secondStorey = { expressId: 5, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 2', children: [], elements: withPart ? [7, 8] : [7] };
   const firstStorey = { expressId: 4, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 1', children: [], elements: [] };
   const building = { expressId: 3, type: IfcTypeEnum.IfcBuilding, name: 'Building', children: [firstStorey, secondStorey], elements: [] };
   const site = { expressId: 2, type: IfcTypeEnum.IfcSite, name: 'Site', children: [building], elements: [] };
@@ -27,20 +31,20 @@ function mountHierarchy(): { container: HTMLElement; input: HTMLInputElement } {
   Object.assign(model.ifcDataStore!, {
       spatialHierarchy: {
         project,
-        byStorey: new Map([[4, []], [5, [7]]]),
+        byStorey: new Map([[4, []], [5, withPart ? [7, 8] : [7]]]),
         byBuilding: new Map(),
         bySite: new Map(),
         bySpace: new Map(),
         storeyElevations: new Map(),
         storeyHeights: new Map(),
-        elementToStorey: new Map([[7, 5]]),
+        elementToStorey: new Map(withPart ? [[7, 5], [8, 5]] : [[7, 5]]),
         getStoreyElements: () => [],
         getStoreyByElevation: () => null,
         getContainingSpace: () => null,
         getPath: () => [],
       },
   });
-  useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial' });
+  useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial', mergeLayers: withPart });
   const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
   const input = container.querySelector('input[placeholder="Search..."]');
   assert.ok(input instanceof HTMLInputElement);
@@ -74,5 +78,16 @@ describe('HierarchyPanel search (#5880)', () => {
     type(input, '');
     assert.doesNotMatch(container.textContent ?? '', /Target Wall/);
     assert.ok([...container.querySelectorAll('button')].some(button => button.getAttribute('aria-label') === 'Expand Storey 2'));
+  });
+
+  it('shows no matches when merged layers hide the only matching part', () => {
+    const { container, input } = mountHierarchy(true);
+    type(input, 'Hidden Part');
+    assert.match(container.textContent ?? '', /No matches for “Hidden Part”/);
+    assert.doesNotMatch(container.textContent ?? '', /Storey 2/);
+
+    act(() => useViewerStore.setState({ mergeLayers: false }));
+    assert.match(container.textContent ?? '', /Hidden Part/);
+    assert.doesNotMatch(container.textContent ?? '', /No matches for/);
   });
 });

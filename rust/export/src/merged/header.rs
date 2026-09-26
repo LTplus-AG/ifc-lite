@@ -4,8 +4,18 @@
 
 //! The `HEADER` section the merged exporter writes, through `DATA;`.
 
-use super::MergedOptions;
+use super::{MergedModel, MergedOptions};
+use crate::schema_detect::detect_schema;
 use crate::step_text::escape;
+
+/// The schema a merge writes: the requested one, else the first model's own,
+/// else IFC4. One home for the emit loop and the drop plan.
+pub(super) fn output_schema(models: &[MergedModel], opts: &MergedOptions) -> String {
+    opts.schema
+        .clone()
+        .or_else(|| models.first().map(|m| detect_schema(m.content)))
+        .unwrap_or_else(|| "IFC4".to_string())
+}
 
 /// `schema` is the resolved target label. An explicit target family declares
 /// its file identifier (IFC4X3 is written as IFC4X3_ADD2, #5351); a label read

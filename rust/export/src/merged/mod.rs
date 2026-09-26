@@ -43,7 +43,7 @@ use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
-use units::{resolve_length_scale, resolve_model_modes};
+use units::resolve_model_modes;
 pub use units::UnitReconciliation;
 
 pub use spatial::{ContainerMergeStrategy, StoreyMergeStrategy};
@@ -152,11 +152,7 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
 /// visibility, spatial-merge strategies, and unit reconciliation.
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
-    let schema = opts
-        .schema
-        .clone()
-        .or_else(|| models.first().map(|m| detect_schema(m.content)))
-        .unwrap_or_else(|| "IFC4".to_string());
+    let schema = header::output_schema(models, opts);
 
     let mut out = header::merged_header(opts, &schema);
 
@@ -214,7 +210,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         &|id| first.line_str(id),
         &|id| first.type_of.get(&id).cloned(),
     );
-    let primary_scale = resolve_length_scale(models[0].content);
+    let primary_scale = units::primary_scale(models);
     drop(first);
 
     // Unit verdicts for every model, resolved once: the empty-container pre-pass

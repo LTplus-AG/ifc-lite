@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use super::super::plan::ModelIndex;
 use super::super::spatial::nth_attr;
 use super::ref_list;
+use super::super::single_parents::rules_of;
 
 /// The one-parent pass's view of the structure relationships, for the drop plan
 /// (#5725, #5802): the emit loop withholds an aggregation edge whose child
@@ -32,12 +33,26 @@ use super::ref_list;
 /// `claimParents` in `merged-empty-containers.ts`.
 #[derive(Default)]
 pub(super) struct StructureClaims {
-    decomposes: HashSet<u32>,
-    /// `ContainedInStructure : SET [0:1]` (#5923): an element's one containment.
-    contained: HashSet<u32>,
+    /// The output schema, canonical; empty reads as IFC4 (the same rows for both
+    /// relationships claimed here).
+    schema: &'static str,
+    /// Inverse (`Decomposes`, `ContainedInStructure`) → the final ids claimed.
+    claimed: HashMap<&'static str, HashSet<u32>>,
 }
 
+/// The structure relationships the plan claims through. `IfcRelNests` is left
+/// out on purpose (#5725): in IFC2X3 it shares `Decomposes`, and a nest under a
+/// dropped container would make the plan withhold an aggregation the emit loop
+/// writes. Which inverse each fills, and on which argument, is the emit loop's
+/// own table (`single_parents::rules_of`).
+const STRUCTURE_CLAIMS: [&str; 2] = ["IFCRELAGGREGATES", "IFCRELCONTAINEDINSPATIALSTRUCTURE"];
+
 impl StructureClaims {
+    /// The plan's claims for a merge written as `schema`.
+    pub(super) fn for_schema(schema: &str) -> Self {
+        Self { schema: crate::schema_convert::canon(schema), claimed: HashMap::new() }
+    }
+
     /// Record this model's aggregation members (final ids) and return the
     /// `(rel, child)` edges the emit loop will withhold, when `dedupe` (a later,
     /// unified model) makes an already-claimed child redundant.
@@ -55,11 +70,10 @@ impl StructureClaims {
                 continue;
             }
             // The claimed list and its claims: aggregation members, or contained elements (#5923).
-            let (members_at, claimed) = match index.type_of.get(&id).map(String::as_str) {
-                Some("IFCRELAGGREGATES") => (5, &mut self.decomposes),
-                Some("IFCRELCONTAINEDINSPATIALSTRUCTURE") => (4, &mut self.contained),
-                _ => continue,
-            };
+            let Some(ty) = index.type_of.get(&id).map(String::as_str).filter(|ty| STRUCTURE_CLAIMS.contains(ty)) else { continue };
+            let Some(rule) = rules_of(ty, self.schema).first() else { continue };
+            let members_at = rule.claimed;
+            let claimed = self.claimed.entry(rule.inverse).or_default();
             let Some(line) = index.line_str(id) else { continue };
             let children: Vec<(u32, u32)> = nth_attr(&line, members_at)
                 .map(ref_list)

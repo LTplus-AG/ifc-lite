@@ -27,6 +27,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Download, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import {
   Select,
   SelectContent,
@@ -279,22 +280,14 @@ export function EnergyModelExportDialog({ surface = 'classic', trigger }: Energy
         <>
           {/* Format selector — segmented control */}
           <div className="flex items-center gap-4">
-            <Label className="w-32">{t('geometryExport.energy.formatLabel')}</Label>
-            <div className="inline-flex rounded-md border p-0.5">
-              {(Object.keys(FORMATS) as EnergyFormat[]).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  disabled={state.isExporting}
-                  onClick={() => setFormat(f)}
-                  className={`rounded px-3 py-1 text-sm transition-colors ${
-                    format === f ? 'bg-primary text-primary-foreground' : 'hover:text-foreground text-muted-foreground'
-                  }`}
-                >
-                  {FORMATS[f].label}
-                </button>
-              ))}
-            </div>
+            <span className="w-32">{t('geometryExport.energy.formatLabel')}</span>
+            <SegmentedControl
+              label={t('geometryExport.energy.formatLabel')}
+              value={format}
+              options={(Object.keys(FORMATS) as EnergyFormat[]).map((f) => ({ value: f, label: FORMATS[f].label }))}
+              onValueChange={setFormat}
+              disabled={state.isExporting}
+            />
           </div>
 
           {/* Model selector — only shown when multiple are loaded */}

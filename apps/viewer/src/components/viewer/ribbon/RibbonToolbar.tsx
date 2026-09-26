@@ -23,6 +23,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
@@ -84,32 +85,30 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   };
 
   return (
-    <div className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black">
+    <Tabs value={activeTab} onValueChange={(value) => handleTabClick(value as RibbonTabId)} className="relative z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black">
       {fileCommands.fileInputs}
 
       {/* ── Tab strip ── */}
       <div className="flex h-10 items-center gap-0.5 border-b border-zinc-200/70 px-2 dark:border-zinc-800/70">
-        <div
-          role="tablist"
+        <TabsList
           aria-label={t('ribbon.tabsAriaLabel')}
-          className="flex h-full items-end gap-0.5"
+          className="flex h-full items-end justify-start gap-0.5 rounded-none bg-transparent p-0"
           {...tourAnchor(TOUR_ANCHORS.ribbonTabs)}
         >
           {RIBBON_TABS.map((tab) => {
             const isActive = tab.id === activeTab;
             return (
-              <button
+              <TabsTrigger
                 key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => handleTabClick(tab.id)}
+                value={tab.id}
+                onClick={() => { if (isActive && ribbonCollapsed) setRibbonCollapsed(false); }}
                 onDoubleClick={() => {
                   if (isActive) setRibbonCollapsed(!ribbonCollapsed);
                 }}
                 className={cn(
                   'relative flex h-8 select-none items-center rounded-t-md px-3 text-xs font-medium tracking-wide transition-colors',
                   'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  'bg-transparent shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none',
                   isActive
                     ? 'text-foreground'
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -121,10 +120,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                 {isActive && (
                   <span aria-hidden="true" className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
                 )}
-              </button>
+              </TabsTrigger>
             );
           })}
-        </div>
+        </TabsList>
 
         {/* Loading progress — lives in the strip so it survives collapse.
             Left of the spacer, next to the tabs: anything to the RIGHT of
@@ -235,10 +234,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
       {/* ── Band ── */}
       {!ribbonCollapsed && (
-        <div
-          role="tabpanel"
+        <TabsContent
+          value={activeTab}
           aria-label={t('ribbon.bandAriaLabel', { tab: t(`ribbon.tab.${activeTab}`) })}
-          className="flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1"
+          className="mt-0 flex h-[88px] items-stretch overflow-x-auto overflow-y-hidden px-1"
         >
           {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
           {activeTab === 'home' && <HomeTab />}
@@ -246,12 +245,12 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           {activeTab === 'elements' && <ElementsTab />}
           {activeTab === 'analyze' && <AnalyzeTab />}
           {activeTab === 'author' && <AuthorTab />}
-        </div>
+        </TabsContent>
       )}
 
       {/* One-time "the toolbar changed" line, with the way back. Sits under
           the band so it never displaces a command the user is reaching for. */}
       <RibbonSwitchNotice />
-    </div>
+    </Tabs>
   );
 }

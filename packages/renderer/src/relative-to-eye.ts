@@ -145,9 +145,47 @@ function validateRteSourcePoint(point: WorldPoint): void {
   for (let axis = 0; axis < 3; axis++) splitFloat64ForRte(point[axis]);
 }
 
+/** First axis on which `origin - cameraWorld` leaves the eye envelope, or -1. */
+function rteEyeEnvelopeViolation(origin: WorldPoint, cameraWorld: WorldPoint): number {
+  for (let axis = 0; axis < 3; axis++) {
+    const delta = origin[axis] - cameraWorld[axis];
+    if (!Number.isFinite(delta) || Math.abs(delta) > MAX_RTE_EYE_RELATIVE_METRES) return axis;
+  }
+  return -1;
+}
+
+/**
+ * Pack a drawable origin relative to a source f64 camera position, or return
+ * false without writing when the drawable lies outside this camera's eye
+ * envelope. Such a drawable cannot be rasterised in this frame, so passes that
+ * submit drawables without frustum culling (picking, instanced records) skip
+ * it. Source-envelope violations remain errors: they are invalid data, not a
+ * property of the current camera.
+ */
+export function tryPackRteDrawableDelta(
+  origin: WorldPoint,
+  cameraWorld: WorldPoint,
+  out: Float32Array,
+  floatOffset: number,
+): boolean {
+  validateRteSourcePoint(origin);
+  // A finite delta alone is not enough: without validating the camera in the
+  // same source envelope, two equally invalid large coordinates could cancel.
+  validateRteSourcePoint(cameraWorld);
+  if (rteEyeEnvelopeViolation(origin, cameraWorld) >= 0) return false;
+  packRteOrigin([
+    origin[0] - cameraWorld[0],
+    origin[1] - cameraWorld[1],
+    origin[2] - cameraWorld[2],
+  ], out, floatOffset);
+  return true;
+}
+
 /**
  * Pack a drawable origin relative to a source f64 camera position.  Shadow
  * submissions use this same boundary check/packing as colour and pick paths.
+ * Throws when the drawable is outside the camera-relative envelope; callers
+ * that may legitimately see such drawables use `tryPackRteDrawableDelta`.
  */
 export function packRteDrawableDelta(
   origin: WorldPoint,
@@ -155,20 +193,11 @@ export function packRteDrawableDelta(
   out: Float32Array,
   floatOffset: number,
 ): void {
-  validateRteSourcePoint(origin);
-  // A finite delta alone is not enough: without validating the camera in the
-  // same source envelope, two equally invalid large coordinates could cancel.
-  validateRteSourcePoint(cameraWorld);
-  const delta: [number, number, number] = [0, 0, 0];
-  for (let axis = 0; axis < 3; axis++) {
-    delta[axis] = origin[axis] - cameraWorld[axis];
-    if (!Number.isFinite(delta[axis]) || Math.abs(delta[axis]) > MAX_RTE_EYE_RELATIVE_METRES) {
-      throw new RangeError(
-        `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${axis}.`,
-      );
-    }
+  if (!tryPackRteDrawableDelta(origin, cameraWorld, out, floatOffset)) {
+    throw new RangeError(
+      `RTE drawable origin exceeds the ±${MAX_RTE_EYE_RELATIVE_METRES} m camera-relative envelope on axis ${rteEyeEnvelopeViolation(origin, cameraWorld)}.`,
+    );
   }
-  packRteOrigin(delta, out, floatOffset);
 }
 
 /**
@@ -308,6 +337,12 @@ export class RelativeToEyeFrame {
     packRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
   }
 
+  /** As `packDrawableOrigin`, but returns false for a drawable outside the eye envelope. */
+  tryPackDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): boolean {
+    this.requireAvailable();
+    return tryPackRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
+  }
+
   /**
    * CPU side of the contract for ray casting, snapping and measurement.
    * Keep this f64 subtraction separate from the f32 emulation helper below:
@@ -348,6 +383,11 @@ export class RelativeToEyeSnapshot {
 
   packDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): void {
     packRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
+  }
+
+  /** As `packDrawableOrigin`, but returns false for a drawable outside the eye envelope. */
+  tryPackDrawableOrigin(origin: WorldPoint, out: Float32Array, floatOffset = 0): boolean {
+    return tryPackRteDrawableDelta(origin, this.cameraWorld, out, floatOffset);
   }
 
   worldToRelative(world: WorldPoint): [number, number, number] {

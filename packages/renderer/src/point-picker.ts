@@ -294,9 +294,11 @@ fn fs_main(input: VOut) -> @location(0) u32 {
           entries: [{ binding: 0, resource: { buffer } }] }) };
         this.uniforms.push(uniform);
       }
-      this.writeUniforms(
+      // A node outside the snapshot's eye envelope cannot be rasterised in
+      // this frame; skip it rather than fail the whole pick (#6128).
+      if (!this.writeUniforms(
         uniform.buffer, node, viewProj, viewport, sizing, node.expressId >>> 0, section, relativeToEye, clipBox,
-      );
+      )) continue;
       pass.setBindGroup(0, uniform.bindGroup);
       for (const chunk of node.chunks) {
         if (chunk.pointCount === 0) continue;
@@ -316,7 +318,7 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     section?: { normal: [number, number, number]; distance: number; flipped: boolean } | null,
     relativeToEye?: RelativeToEyeSnapshot,
     clipBox?: ClipBox | null,
-  ): void {
+  ): boolean {
     const u = this.uniformScratch;
     const u32 = this.uniformU32;
     u.set((relativeToEye?.getViewProjection().m ?? viewProj).subarray(0, 16), 0);
@@ -349,12 +351,15 @@ fn fs_main(input: VOut) -> @location(0) u32 {
       // The point render path keeps translation out of the f32 matrix too.
       // Do the same for picking, otherwise its splats drift from visible ones.
       u[44] = 0; u[45] = 0; u[46] = 0;
-      relativeToEye.packDrawableOrigin(node.rteOrigin ?? [node.model?.[12] ?? 0, node.model?.[13] ?? 0, node.model?.[14] ?? 0], u, 48);
+      if (!relativeToEye.tryPackDrawableOrigin(
+        node.rteOrigin ?? [node.model?.[12] ?? 0, node.model?.[13] ?? 0, node.model?.[14] ?? 0], u, 48,
+      )) return false;
     } else {
       u.fill(0, 48, 56);
     }
     packRteClipBox(clipBox, relativeToEye?.getCameraWorld() ?? [0, 0, 0], u, 56);
     this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
+    return true;
   }
 
   destroy(): void {

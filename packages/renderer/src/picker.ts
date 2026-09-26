@@ -20,7 +20,7 @@ import {
 } from './picker-rte-uniforms.js';
 import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
-import { uploadInstancedRteDeltas } from './instanced-rte.js';
+import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -637,7 +637,7 @@ export class Picker {
       const mesh = meshes[i];
       if (!mesh) continue;
       if (pointRteSnapshot) {
-        writeFlatPickUniform(
+        const drawable = writeFlatPickUniform(
           this.device,
           this.uniformBuffer,
           this.uniformScratch,
@@ -647,6 +647,7 @@ export class Picker {
           clip,
           i,
         );
+        if (!drawable) continue;
       } else {
         // Compatibility for direct Picker callers that predate RTE snapshots.
         // Renderer/PickingManager always supplies one so production draws use
@@ -663,7 +664,7 @@ export class Picker {
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
     if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
-      uploadInstancedRteDeltas(this.device, instancedTemplates, pointRteSnapshot.getCameraWorld());
+      const instanceRuns = uploadInstancedRteDeltas(this.device, instancedTemplates, pointRteSnapshot.getCameraWorld());
       writeInstancedPickUniforms(
         this.device,
         this.instancedUniformBuffer,
@@ -674,11 +675,11 @@ export class Picker {
       );
       pass.setPipeline(this.instancedPickPipeline);
       pass.setBindGroup(0, this.instancedPickBindGroup);
-      for (const it of instancedTemplates) {
+      for (const [i, it] of instancedTemplates.entries()) {
         pass.setVertexBuffer(0, it.vertexBuffer);
         pass.setVertexBuffer(1, it.instanceBuffer);
         pass.setIndexBuffer(it.indexBuffer, 'uint32');
-        pass.drawIndexed(it.indexCount, it.instanceCount);
+        drawInstanceRuns(pass, it.indexCount, instanceRuns[i]!);
       }
     }
 

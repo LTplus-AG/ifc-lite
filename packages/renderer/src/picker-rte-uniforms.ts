@@ -24,6 +24,12 @@ export function writePickUniforms(
   device.queue.writeBuffer(buffer, 0, scratch);
 }
 
+/**
+ * Write one flat mesh's pick uniforms into dynamic slot `slot`. Returns false,
+ * writing nothing, for a mesh outside the snapshot's camera-relative envelope:
+ * the pick pass draws every visible mesh unculled, and such a mesh cannot be
+ * rasterised in this frame, so the caller must skip its draw (#6128).
+ */
 export function writeFlatPickUniform(
   device: GPUDevice,
   buffer: GPUBuffer,
@@ -33,16 +39,19 @@ export function writeFlatPickUniform(
   snapshot: RelativeToEyeSnapshot,
   clip: PickClipState | null | undefined,
   slot: number,
-): void {
+): boolean {
   scratch.fill(0);
+  if (!snapshot.tryPackDrawableOrigin(
+    mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]], scratch, 48,
+  )) return false;
   scratch.set(snapshot.getViewProjection().m, 0);
   scratch.set(mesh.transform.m, 16);
   packPickClip(clip, scratch, clipFlags, 32);
   const camera = snapshot.getCameraWorld();
   packRteClipBox(clip?.clipBox, camera, scratch, 32);
   if (clip?.sectionPlane) scratch[43] = rtePlaneDistance(clip.sectionPlane.distance, clip.sectionPlane.normal, camera);
-  snapshot.packDrawableOrigin(mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]], scratch, 48);
   device.queue.writeBuffer(buffer, slot * 256, scratch);
+  return true;
 }
 
 export function writeInstancedPickUniforms(

@@ -839,6 +839,44 @@ describe('hydrated selection meshes across renders', () => {
     });
 });
 
+describe('drawables outside the RTE eye envelope (#6128)', () => {
+    /**
+     * One mesh at the camera and one 3,000 km away (a stray element, or a
+     * second model on another grid). The far one cannot be represented in the
+     * camera's RTE frame; both passes must skip it rather than throw.
+     */
+    function seedNearAndFar(h: Harness): { near: Mesh; far: Mesh } {
+        h.renderer.createMeshFromData(triangle(21, GREY));
+        h.renderer.createMeshFromData({ ...triangle(22, RED), origin: [3_000_000, 0, 0] } as MeshData);
+        const meshes = sceneOf(h).getMeshes();
+        return {
+            near: meshes.find((m) => m.expressId === 21)!,
+            far: meshes.find((m) => m.expressId === 22)!,
+        };
+    }
+
+    it('pick() resolves instead of throwing a camera-relative envelope RangeError', async () => {
+        const h = makeHarness();
+        seedNearAndFar(h);
+        const picker = new Picker(h.renderer['device'], 256, 256);
+        (h.renderer as unknown as Record<string, unknown>)['picker'] = picker;
+        h.renderer['pickingManager'].setPicker(picker);
+
+        assert.strictEqual(await h.renderer.pick(10, 10), null);
+        assert.strictEqual(h.stats.mapAsync, 2, 'the pick pass ran to its readback');
+        assert.deepStrictEqual(await h.renderer.pickRect(0, 0, 8, 8), new Set());
+    });
+
+    it('the colour frame draws the near mesh, skips the far one, and does not degrade', () => {
+        const h = makeHarness();
+        const { near, far } = seedNearAndFar(h);
+        h.render();
+        assert.strictEqual(h.renderer['frameContainedThrow'], false, 'the frame completed');
+        assert.ok(h.stats.draws.includes(near.vertexBuffer), 'the near mesh is drawn');
+        assert.ok(!h.stats.draws.includes(far.vertexBuffer), 'the far mesh is skipped');
+    });
+});
+
 /**
  * Regression for #1901: an unhandled `AbortError` from `mapAsync` on every
  * click after the GPU device went away.

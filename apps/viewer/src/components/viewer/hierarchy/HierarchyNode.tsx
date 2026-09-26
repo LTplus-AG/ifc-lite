@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useState } from 'react';
 import { ChevronRight, Layers, Eye, EyeOff, FileBox } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,7 @@ import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
 import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
 import { ModelBadge } from '../ModelBadge';
+import { HierarchyRowActions, type HierarchyRowAction } from './HierarchyRowActions';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -49,6 +51,8 @@ export interface HierarchyNodeProps {
   onRemoveModel: (modelId: string, e: React.MouseEvent) => void;
   onSyncSourceModel?: (modelId: string, e: React.MouseEvent) => void;
   onModelHeaderClick: (modelId: string, nodeId: string, hasChildren: boolean) => void;
+  actions?: readonly HierarchyRowAction[];
+  onAction?: (node: TreeNode, action: HierarchyRowAction) => void;
   sourceBacked?: boolean;
   sourceSyncing?: boolean;
 }
@@ -69,10 +73,13 @@ export function HierarchyNode({
   onRemoveModel,
   onSyncSourceModel,
   onModelHeaderClick,
+  actions = [],
+  onAction,
   sourceBacked = false,
   sourceSyncing = false,
 }: HierarchyNodeProps) {
   const { t, locale } = useTranslation();
+  const [actionsOpen, setActionsOpen] = useState(false);
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
   const LucideIcon = NODE_TYPE_ICONS[node.type];
@@ -144,7 +151,7 @@ export function HierarchyNode({
         aria-expanded={node.hasChildren ? node.isExpanded : undefined}
         aria-selected={isSelected}
         className={cn(
-          'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'relative flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
           // No selection styling for spatial containers in multi-model mode
           isMultiModel && isSpatialContainer(node.type)
             ? 'border-transparent cursor-default'
@@ -168,6 +175,11 @@ export function HierarchyNode({
           }
         }}
         onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+            e.preventDefault();
+            setActionsOpen(true);
+            return;
+          }
           if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
           e.preventDefault();
           onNodeClick(node, e);
@@ -176,6 +188,11 @@ export function HierarchyNode({
           if ((e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();
           }
+        }}
+        onContextMenu={(e) => {
+          if (actions.length === 0) return;
+          e.preventDefault();
+          setActionsOpen(true);
         }}
       >
         {/* Expand/Collapse */}
@@ -343,6 +360,15 @@ export function HierarchyNode({
               <CountBadgeTooltip elementCount={node.elementCount} summary={node.countSummary} />
             </TooltipContent>
           </Tooltip>
+        )}
+        {onAction && (
+          <HierarchyRowActions
+            name={node.name}
+            actions={actions}
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            onAction={(action) => onAction(node, action)}
+          />
         )}
       </div>
     </div>

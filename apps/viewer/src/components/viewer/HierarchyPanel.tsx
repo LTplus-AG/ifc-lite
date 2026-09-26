@@ -11,16 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
-import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import { Rule, addHierarchyStoreyToRule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
+import { useEntityListMultiSelect } from '@/hooks/useEntityListMultiSelect';
+import { Rule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
 import { toast } from '@/components/ui/toast';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
-import { isSpatialContainer, type TreeNode } from './hierarchy/types';
+import type { TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
@@ -35,6 +34,9 @@ import { useModelRowSize } from './hierarchy/ModelRowTags';
 import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
+import { hierarchyRowSelection } from './hierarchy/rowSelection';
+import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 export function HierarchyPanel() {
@@ -51,18 +53,10 @@ export function HierarchyPanel() {
   const sourceHost = useSourceHost();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
-  const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
-  const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const setSelectedEntities = useViewerStore((s) => s.setSelectedEntities);
-  const toGlobalId = useViewerStore((s) => s.toGlobalId);
   const setSelectedModelId = useViewerStore((s) => s.setSelectedModelId);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
-  const activeStorey = useViewerStore((s) => s.activeStorey);
-  const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
-  const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
-  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
@@ -77,10 +71,7 @@ export function HierarchyPanel() {
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
   const sourceTags = useViewerStore((s) => s.sourceTags);
 
-  // Group-isolation needs the camera + the hidden-by-default class toggles
-  // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
-  // isolate action (#1622, pattern from #1075).
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  // Explicit group isolation reveals hidden-by-default spaces and zones.
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
 
@@ -125,7 +116,6 @@ export function HierarchyPanel() {
     setSortMode,
     groupFilter,
     setGroupFilter,
-    unifiedStoreys,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
     modelsNodes: rawModelsNodes,
@@ -141,37 +131,15 @@ export function HierarchyPanel() {
     ? <HierarchySearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
     : null;
 
-  // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
-  // toggles, Shift selects the contiguous range in the visible order. Built
-  // over the flattened, visible node list so ranges follow what's on screen.
-  // Assemblies keep their existing select-all-parts behaviour. (#1463)
-  const { select: onMultiSelect, setAnchor: setMultiSelectAnchor } = useEntityListMultiSelect();
-  const selectableNodeItems = useMemo<MultiSelectItem[]>(() => {
-    const out: MultiSelectItem[] = [];
-    for (const node of filteredNodes) {
-      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
-      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
-      const expressId = node.expressIds[0];
-      if (expressId == null) continue;
-      out.push({
-        globalId: node.globalIds[0] ?? expressId,
-        modelId: node.modelIds[0] || 'legacy',
-        expressId,
-      });
-    }
-    return out;
-  }, [filteredNodes]);
-  const selectableNodeIndexById = useMemo(() => {
-    const m = new Map<string, number>();
-    let idx = 0;
-    for (const node of filteredNodes) {
-      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
-      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
-      if (node.expressIds[0] == null) continue;
-      m.set(node.id, idx++);
-    }
-    return m;
-  }, [filteredNodes]);
+  // Use the same Explorer selection contract for every hierarchy grouping.
+  // A group row contributes all of its actual members to one logical row.
+  const { selectGroups, setAnchor: setMultiSelectAnchor } = useEntityListMultiSelect();
+  const anchorSection = useRef('');
+  const selectionRows = useMemo(() => ({
+    filtered: filteredNodes.map((node) => hierarchyRowSelection(node, models, resolveEntityRef)),
+    storeys: storeysNodes.map((node) => hierarchyRowSelection(node, models, resolveEntityRef)),
+    models: modelsNodes.map((node) => hierarchyRowSelection(node, models, resolveEntityRef)),
+  }), [filteredNodes, storeysNodes, modelsNodes, models]);
 
   // Refs for both scroll areas
   const storeysRef = useRef<HTMLDivElement>(null);
@@ -277,11 +245,7 @@ export function HierarchyPanel() {
     if (hasChildren) toggleExpand(nodeId);
   }, [setSelectedModelId, toggleExpand]);
 
-  // Mirror a hierarchy selection into the advanced filter as ONE rule per
-  // dimension (issue #1107). Upsert (not append): replace the existing rule of
-  // this kind so the filter tracks the current selection — appending singletons
-  // both leaves stale values behind and, under the default AND combinator,
-  // makes two ifcType rules match nothing. Pass `null` to clear the dimension.
+  // The explicit Filter by this action upserts one rule per dimension (#1107).
   const upsertSearchRule = useCallback(
     (matches: (r: FilterRule) => boolean, rule: FilterRule | null) => {
       const hs = useViewerStore.getState(); // targets the ACTIVE group only (#4904)
@@ -294,411 +258,113 @@ export function HierarchyPanel() {
       } else {
         addFilterRule(rule);
       }
-      // Arm the Filter to run itself: a hierarchy click shouldn't make the
-      // user open the modal and press Run to see what it matched. The Filter
-      // panel only mounts when the modal is open, so the flag waits there.
+      // The Filter panel may mount later, so keep this explicit action pending.
       setSearchFilterAutoRunPending(true);
     },
     [addFilterRule, updateFilterRule, removeFilterRule, setSearchFilterAutoRunPending],
   );
 
-  // Handle node click - for selection/isolation or expand/collapse
-  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => {
+  type SelectionSection = keyof typeof selectionRows;
+
+  // #5885: activation only selects. Every visibility or filter transition has
+  // its own row action, so Enter, click and modifier selection agree.
+  const handleNodeClick = useCallback((
+    node: TreeNode,
+    event: React.MouseEvent | React.KeyboardEvent,
+    section: SelectionSection,
+    index: number,
+  ) => {
+    const rows = selectionRows[section][index];
+    if (!rows?.length) return;
     try {
-    if (node.type === 'model-header' && node.id !== 'models-header') {
-      // Model header click handled by its own onClick (expand/collapse)
-      return;
+    const sectionKey = section === 'filtered' ? `filtered:${groupingMode}` : section;
+    if (anchorSection.current !== sectionKey) {
+      setMultiSelectAnchor(-1);
+      anchorSection.current = sectionKey;
     }
-
-    const hierarchyRefs: Array<{ modelId: string; expressId: number }> = [];
-    for (const globalId of getNodeElements(node)) {
-      const ref = resolveEntityRef(globalId);
-      if (ref) hierarchyRefs.push(ref);
+    selectGroups(selectionRows[section], index, event);
+    const refs = rows.map(({ modelId, expressId }) => ({ modelId, expressId }));
+    setHierarchyBasketSelection(refs);
+    if (node.type === 'unified-storey' && refs.length > 1 &&
+        !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      // Preserve the combined properties view for a multi-model storey.
+      setSelectedEntities(refs);
     }
-    if (hierarchyRefs.length > 0) {
-      setHierarchyBasketSelection(hierarchyRefs);
-    } else if (isSpatialContainer(node.type) && node.expressIds.length > 0) {
-      setHierarchyBasketSelection([{
-        modelId: node.modelIds[0] || 'legacy',
-        expressId: node.expressIds[0],
-      }]);
-    }
-
-    // Type group nodes - click to filter/isolate entities, expand via chevron only
-    if (node.type === 'type-group') {
-      const elements = getNodeElements(node);
-      if (elements.length > 0) {
-        // Clear multi-selection highlight
-        setSelectedEntityIds([]);
-        // Open the Properties panel on the class's own first MEMBER, not an
-        // arbitrary aggregated part of a decomposed one — `elements[0]` can be
-        // a part (e.g. an IfcColumn) when the first entity in the class is a
-        // geometry-less IfcElementAssembly, which would open the wrong
-        // properties for a row the user clicked expecting the assembly.
-        setSelectedEntity(resolveEntityRef(node.memberGlobalIds?.[0] ?? elements[0]));
-        if (groupingMode === 'type') {
-          const className = node.ifcType || node.name;
-          // Class tab → class filter (combinable with storey + type isolation)
-          setClassFilter(elements, className);
-          // Mirror to the advanced filter: sync the single ifcType rule to the
-          // current class (issue #1107). Replace, don't accumulate — the class
-          // tab is single-select, so the rule should be exactly the clicked
-          // class, not a pile-up of earlier clicks.
-          upsertSearchRule((r) => r.kind === 'ifcType' && r.op === 'in', Rule.ifcType([className], 'in'));
-          toast.success(`Filter → ${className}`);
-        } else {
-          // Type tab → type isolation (combinable with storey + class filter)
-          isolateEntities(elements);
-        }
-      }
-      return;
-    }
-
-    // Material group nodes (Materials tab) - select the material entity for the
-    // totals panel + isolate the elements that use it.
-    if (node.type === 'material-group') {
-      const modelId = node.modelIds[0];
-      const materialExpressId = node.entityExpressId;
-
-      // Clear multi-selection first (setSelectedEntityIds([]) resets selectedEntityId)
-      setSelectedEntityIds([]);
-
-      if (materialExpressId !== undefined) {
-        if (modelId && modelId !== 'legacy') {
-          setSelectedEntityId(toGlobalId(modelId, materialExpressId));
-          setSelectedEntity({ modelId, expressId: materialExpressId });
-          setActiveModel(modelId);
-        } else {
-          setSelectedEntityId(materialExpressId);
-          setSelectedEntity({ modelId: 'legacy', expressId: materialExpressId });
-        }
-      }
-
-      // Isolate the elements using this material
-      const elements = getNodeElements(node);
-      if (elements.length > 0) {
-        isolateEntities(elements);
-      }
-      // Mirror to the advanced filter (issue #1107).
-      upsertSearchRule((r) => r.kind === 'material', Rule.material('eq', node.name));
-      toast.success(`Filter → material ${node.name}`);
-      return;
-    }
-
-    // Group rows (Groups tab, #1622) - isolate + fit the group's resolved member
-    // geometry and select the GROUP entity so its system-level psets show.
-    if (node.type === 'group') {
-      const modelId = node.modelIds[0] || 'legacy';
-      const groupExpressId = node.entityExpressId;
-      if (!groupExpressId) return;
-      const dataStore = (models.get(modelId)?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null | undefined;
-      const groupGlobalId = modelId !== 'legacy'
-        ? toGlobalIdFromModels(models, modelId, groupExpressId)
-        : groupExpressId;
-
-      // Reveal hidden-by-default classes among the effective members before
-      // isolating; otherwise spaces or zones in an edited assignment stay invisible.
-      if (dataStore) {
-        const view = useViewerStore.getState().mutationViews.get(modelId);
-        const members = effectiveGroupMembers(dataStore, groupExpressId, view, effectiveGroupAssignments(dataStore, view));
-        if (!typeVisibility.spaces && members.some((m) => m.type === 'IfcSpace')) {
-          toggleTypeVisibility('spaces');
-        }
-        if (!typeVisibility.spatialZones && members.some((m) => m.type === 'IfcSpatialZone')) {
-          toggleTypeVisibility('spatialZones');
-        }
-      }
-
-      // node.globalIds carry the RESOLVED member geometry (ports folded into
-      // their nesting host elements) - see buildGroupTree (#1622).
-      const memberGlobalIds = node.globalIds;
-      if (memberGlobalIds.length > 0) {
-        isolateEntities(memberGlobalIds);
-        // Highlight members + frame them; the group goes last so it becomes the
-        // primary selection and its row reads selected (same trick as
-        // decomposing assemblies, #1133).
-        setSelectedEntityIds([...memberGlobalIds, groupGlobalId]);
-      } else {
-        setSelectedEntityIds([]);
-        setSelectedEntityId(groupGlobalId);
-      }
-      // Model-aware ref so the properties panel shows the group's own psets
-      // (e.g. Pset_DistributionSystemTypeCommon).
-      setSelectedEntity({ modelId, expressId: groupExpressId });
+    const owners = new Set(rows.map((row) => row.modelId));
+    if (owners.size === 1) {
+      const modelId = rows[0].modelId;
       if (modelId !== 'legacy') setActiveModel(modelId);
-      if (memberGlobalIds.length > 0 && cameraCallbacks.frameSelection) {
-        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-      }
-      if (node.hasChildren) {
-        toggleExpand(node.id);
-      }
-      return;
-    }
-
-    // Group member rows (Groups tab, #1622) - select + focus, like picking the
-    // element in 3D plus a camera frame (no-op frame for geometry-less members).
-    if (node.type === 'group-member') {
-      const memberExpressId = node.expressIds[0];
-      const modelId = node.modelIds[0] || 'legacy';
-      const globalId = node.globalIds[0] ?? memberExpressId;
-
-      setSelectedEntityIds([]);
-      setSelectedEntityId(globalId);
-      if (modelId !== 'legacy') {
-        setSelectedEntity({ modelId, expressId: memberExpressId });
-        setActiveModel(modelId);
-      } else {
-        setSelectedEntity(resolveEntityRef(globalId));
-      }
-      if (cameraCallbacks.frameSelection) {
-        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-      }
-      return;
-    }
-
-    // IFC type entity nodes (e.g. IfcWallType/W01) - select type entity for property panel + isolate instances
-    if (node.type === 'ifc-type') {
-      const modelId = node.modelIds[0];
-      const typeExpressId = node.entityExpressId;
-      if (!typeExpressId) return;
-
-      // Clear multi-selection first (before setting new selection, since
-      // setSelectedEntityIds([]) resets selectedEntityId to null)
-      setSelectedEntityIds([]);
-
-      if (modelId && modelId !== 'legacy') {
-        setSelectedEntityId(toGlobalId(modelId, typeExpressId));
-        setSelectedEntity({ modelId, expressId: typeExpressId });
-        setActiveModel(modelId);
-      } else {
-        setSelectedEntityId(typeExpressId);
-        setSelectedEntity({ modelId: 'legacy', expressId: typeExpressId });
-      }
-
-      // Isolate instances of this type
-      const elements = getNodeElements(node);
-      if (elements.length > 0) {
-        isolateEntities(elements);
-      }
-
-      // Toggle expand
-      if (node.hasChildren) {
-        toggleExpand(node.id);
-      }
-      return;
-    }
-
-    // Spatial container nodes (IfcProject/IfcSite/IfcBuilding) - select for property panel + expand
-    if (isSpatialContainer(node.type)) {
-      const entityId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-
-      if (modelId && modelId !== 'legacy') {
-        // Multi-model: convert to globalId for renderer, set entity for property panel
-        const globalId = toGlobalIdFromModels(models, modelId, entityId);
-        setSelectedEntityId(globalId);
-        setSelectedEntity({ modelId, expressId: entityId });
-        setActiveModel(modelId);
-      } else if (entityId) {
-        // Legacy single-model
-        setSelectedEntityId(entityId);
-        setSelectedEntity({ modelId: 'legacy', expressId: entityId });
-      }
-
-      // Also toggle expand if has children
-      if (node.hasChildren) {
-        toggleExpand(node.id);
-      }
-      return;
-    }
-
-    if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') {
-      // Storey click - select/isolate (unified or single)
-      const unified = node.type === 'unified-storey'
-        ? unifiedStoreys.find(u => `unified-${u.key}` === node.id)
-        : null;
-      const storeyIds = unified
-        ? unified.storeys.map(s => s.storeyId)
-        : node.expressIds;
-      const storeyRefs: Array<{ modelId: string; expressId: number }> = unified ? unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId })) : storeyIds.map((expressId, i) => ({ modelId: node.modelIds[i] ?? node.modelIds[0] ?? 'legacy', expressId }));
-
-      // Update the shared active storey (model-aware) so Space Sketch, the
-      // Solo level-display mode, and the floorplan all follow the storey the
-      // user just clicked. For a multi-model unified storey, pick the first
-      // constituent as the representative.
-      const activeRep = unified && unified.storeys.length > 0
-        ? { modelId: unified.storeys[0].modelId, expressId: unified.storeys[0].storeyId }
-        : { modelId: node.modelIds[0] || 'legacy', expressId: storeyIds[0] };
-      if (activeRep.expressId != null) setActiveStorey(activeRep);
-
-      // Set entity refs for property panel display
-      if (unified && unified.storeys.length > 1) {
-        // Multi-model unified storey: show all storeys combined in property panel
-        const entityRefs = unified.storeys.map(s => ({ modelId: s.modelId, expressId: s.storeyId }));
-        setSelectedEntities(entityRefs);
-        // Clear single entity selection (property panel will use selectedEntities)
-        setSelectedEntityId(null);
-      } else {
-        // Single storey: show in property panel like any entity
-        const storeyId = storeyIds[0];
-        const modelId = node.modelIds[0];
-        if (modelId && modelId !== 'legacy') {
-          const globalId = toGlobalIdFromModels(models, modelId, storeyId);
-          setSelectedEntityId(globalId);
-          setSelectedEntity({ modelId, expressId: storeyId });
-        } else {
-          setSelectedEntityId(storeyId);
-          setSelectedEntity({ modelId: 'legacy', expressId: storeyId });
-        }
-      }
-
-      if (e.ctrlKey || e.metaKey) {
-        // Add to storey filter selection
-        setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
-        // Mirror to the advanced filter's ACTIVE group — accumulate the storey name (issue #1107, #4904).
-        const cur = activeGroupRules(useViewerStore.getState().searchFilter.groups, useViewerStore.getState().searchFilterActiveGroup).find((r) => r.kind === 'storey' && r.op === 'in');
-        upsertSearchRule(
-          (r) => r.kind === 'storey' && r.op === 'in',
-          addHierarchyStoreyToRule(cur && cur.kind === 'storey' ? cur : undefined, node.name, storeyRefs),
-        );
-        toast.success(`Filter → storey ${node.name}`);
-      } else {
-        // Single selection - toggle if already selected
-        const allAlreadySelected = storeyIds.length > 0 &&
-          storeyIds.every(id => selectedStoreys.has(id)) &&
-          selectedStoreys.size === storeyIds.length;
-
-        if (allAlreadySelected) {
-          // Toggle off - clear selection to show all. The level-display guard
-          // (useLevelDisplayEffect) drops Solo → Stacked when no storey is
-          // isolated, so the mode flag follows.
-          clearStoreySelection();
-          // Clear the mirrored storey rule too (issue #1107).
-          upsertSearchRule((r) => r.kind === 'storey', null);
-          // Make the "click again to leave Solo" behaviour discoverable (#1265).
-          toast.success('Showing all storeys');
-        } else {
-          // Select this storey (replaces any existing selection). Isolating a
-          // single storey IS Solo, so reflect that in the level-display mode —
-          // keeps the storey-tab control + in-viewport chip in sync.
-          setStoreysSelection(storeyIds);
-          setLevelDisplayMode('solo');
-          // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
-          upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in', storeyRefs));
-          // Phrase it as Solo so the storey-row to Solo link is obvious (#1265).
-          toast.success(`Solo: showing only ${node.name}`);
-        }
-      }
-    } else if (node.type === 'IfcSpace') {
-      const spaceId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-      const globalId = node.globalIds[0] ?? spaceId;
-
-      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range). (#1463)
-      const multiIdx = selectableNodeIndexById.get(node.id);
-      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-        onMultiSelect(selectableNodeItems, multiIdx, e);
-        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
-        return;
-      }
-      // Plain click goes through the legacy single-select below, but still seed
-      // the multi-select anchor so a following Shift+click extends from here. (#1463)
-      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
-
-      setSelectedEntityIds([]);
-
-      if (modelId && modelId !== 'legacy') {
-        setSelectedEntityId(globalId);
-        setSelectedEntity({ modelId, expressId: spaceId });
-        setActiveModel(modelId);
-      } else {
-        setSelectedEntityId(globalId);
-        setSelectedEntity({ modelId: 'legacy', expressId: spaceId });
-      }
-
-      if (node.hasChildren) {
-        toggleExpand(node.id);
-      }
-    } else if (node.type === 'element') {
-      // Element click - select it
-      const elementId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-      const globalId = node.globalIds[0] ?? elementId;
-      const parts = node.assemblyChildGlobalIds;
-
-      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range) for plain
-      // elements. Assemblies aren't in the selectable map, so they fall through
-      // to their existing select-all-parts behaviour. (#1463)
-      const multiIdx = selectableNodeIndexById.get(node.id);
-      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-        onMultiSelect(selectableNodeItems, multiIdx, e);
-        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
-        return;
-      }
-      // Plain click uses the legacy single-select below, but still seed the
-      // multi-select anchor so a following Shift+click extends from here. (#1463)
-      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
-
-      if (parts && parts.length > 0) {
-        // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
-        // carries no geometry of its own — highlight + frame all its parts in
-        // one click. The assembly goes last so it becomes the primary selection
-        // (setSelectedEntityIds keys selectedEntityId off the final id), which
-        // keeps the assembly row highlighted in the tree (#1133).
-        setSelectedEntityIds([...parts, globalId]);
-        if (modelId !== 'legacy') {
-          setSelectedEntity({ modelId, expressId: elementId });
-          setActiveModel(modelId);
-        } else {
-          setSelectedEntity(resolveEntityRef(globalId));
-        }
-        return;
-      }
-
-      // Clear multi-selection (e.g. from a prior type-group click) so only
-      // this single element is highlighted, matching Viewport pick behavior
-      setSelectedEntityIds([]);
-
-      if (modelId !== 'legacy') {
-        setSelectedEntityId(globalId);
-        setSelectedEntity({ modelId, expressId: elementId });
-        setActiveModel(modelId);
-      } else {
-        setSelectedEntityId(globalId);
-        setSelectedEntity(resolveEntityRef(globalId));
-      }
     }
     } finally {
       markFromTreeClick();
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility, markFromTreeClick]);
+  }, [selectionRows, groupingMode, selectGroups, setMultiSelectAnchor, setHierarchyBasketSelection, setSelectedEntities, setActiveModel, markFromTreeClick]);
+
+  const handleRowAction = useCallback((node: TreeNode, action: HierarchyRowAction) => {
+    const isStorey = node.type === 'unified-storey' || node.type === 'IfcBuildingStorey';
+    const storeyRefs = isStorey
+      ? node.expressIds.map((expressId, index) => ({ modelId: node.modelIds[index] ?? 'legacy', expressId }))
+      : [];
+    if (action === 'solo') {
+      if (storeyRefs[0]) applyLevelDisplayMode('solo', storeyRefs[0]);
+      return;
+    }
+    if (action === 'isolate') {
+      const elements = getNodeElements(node);
+      if (elements.length === 0) return;
+      if (node.type === 'group') {
+        // Edited assignments may contain hidden-by-default spaces or zones.
+        const modelId = node.modelIds[0] ?? 'legacy';
+        const dataStore = (models.get(modelId)?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null | undefined;
+        if (dataStore && node.entityExpressId != null) {
+          const view = useViewerStore.getState().mutationViews.get(modelId);
+          const members = effectiveGroupMembers(
+            dataStore, node.entityExpressId, view, effectiveGroupAssignments(dataStore, view),
+          );
+          if (!typeVisibility.spaces && members.some((member) => member.type === 'IfcSpace')) {
+            toggleTypeVisibility('spaces');
+          }
+          if (!typeVisibility.spatialZones && members.some((member) => member.type === 'IfcSpatialZone')) {
+            toggleTypeVisibility('spatialZones');
+          }
+        }
+      }
+      isolateEntities(elements);
+      return;
+    }
+
+    if (action !== 'filter') return;
+    if (node.type === 'type-group') {
+      const className = node.ifcType ?? node.name;
+      setClassFilter(getNodeElements(node), className);
+      upsertSearchRule((rule) => rule.kind === 'ifcType' && rule.op === 'in', Rule.ifcType([className], 'in'));
+    } else if (node.type === 'ifc-type') {
+      upsertSearchRule((rule) => rule.kind === 'type', Rule.typeName('eq', node.name));
+    } else if (node.type === 'material-group') {
+      upsertSearchRule((rule) => rule.kind === 'material', Rule.material('eq', node.name));
+    } else if (node.type === 'group') {
+      upsertSearchRule((rule) => rule.kind === 'group', Rule.group('eq', node.name, node.ifcType));
+    } else if (isStorey) {
+      upsertSearchRule((rule) => rule.kind === 'storey', Rule.storey([node.name], 'in', storeyRefs));
+    }
+  }, [getNodeElements, models, ifcDataStore, typeVisibility, toggleTypeVisibility, isolateEntities, setClassFilter, upsertSearchRule]);
+
+  const rowActions = useCallback((node: TreeNode): HierarchyRowAction[] => {
+    if (node.type === 'model-header' || node.type === 'model-tag-group') return [];
+    if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') {
+      return ['solo', 'filter'];
+    }
+    const actions: HierarchyRowAction[] = [];
+    if (getNodeElements(node).length > 0) actions.push('isolate');
+    if (node.type === 'type-group' || node.type === 'ifc-type' ||
+        node.type === 'material-group' || node.type === 'group') actions.push('filter');
+    return actions;
+  }, [getNodeElements]);
 
   // Compute selection and visibility state for a node
-  const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
-    // `selectedStoreys` drops the modelId pairing (#3506/#3508) — guard with `activeStorey` below.
-    const storeyModelOk = (modelId?: string) => selectedStoreys.size !== 1 || modelId === activeStorey?.modelId;
-    const isSelected = node.type === 'unified-storey'
-      ? node.expressIds.some((id, i) => selectedStoreys.has(id) && storeyModelOk(node.modelIds[i]))
-      : node.type === 'IfcBuildingStorey'
-        ? selectedStoreys.has(node.expressIds[0]) && storeyModelOk(node.modelIds[0])
-        : node.type === 'IfcSpace' || node.type === 'element' || node.type === 'group-member'
-          ? (() => {
-              const gId = node.globalIds[0] ?? node.expressIds[0];
-              // Honour the multi-selection set so Ctrl/Shift-selected rows all read as highlighted, not just the primary (#1463);
-              // group-member rows highlight by globalId, so the same element under two groups lights up in both rows (#1622).
-              return selectedEntityId === gId || selectedEntityIds.has(gId);
-            })()
-          : node.type === 'ifc-type' || node.type === 'material-group' || node.type === 'group'
-            ? (() => {
-                const entityExpressId = node.entityExpressId;
-                if (!entityExpressId) return false;
-                const mId = node.modelIds[0];
-                const gId = mId && mId !== 'legacy'
-                  ? toGlobalId(mId, entityExpressId)
-                  : entityExpressId;
-                return selectedEntityId === gId;
-              })()
-            : false;
+  const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
+    const isSelected = rows.length > 0 && rows.every(({ globalId }) =>
+      selectedEntityId === globalId || selectedEntityIds.has(globalId));
 
     // Compute visibility inline - for elements check directly, for storeys use getNodeElements
     let nodeHidden = false;
@@ -727,7 +393,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, nodeHidden, modelVisible };
-  }, [selectedStoreys, activeStorey, selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models, toGlobalId]);
+  }, [selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models]);
 
   if (!ifcDataStore && models.size === 0) {
     return (
@@ -767,8 +433,8 @@ export function HierarchyPanel() {
   }
 
   // Helper to render a node via the extracted HierarchyNode component
-  const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }) => {
-    const { isSelected, nodeHidden, modelVisible } = computeNodeState(node);
+  const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }, section: SelectionSection) => {
+    const { isSelected, nodeHidden, modelVisible } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
     const modelId = node.type === 'model-header' && node.id.startsWith('model-')
       ? node.modelIds[0]
       : undefined;
@@ -784,7 +450,9 @@ export function HierarchyPanel() {
         modelsCount={models.size}
         searchActive={Boolean(searchQuery.trim())}
         modelVisible={modelVisible}
-        onNodeClick={handleNodeClick}
+        onNodeClick={(_, event) => handleNodeClick(node, event, section, virtualRow.index)}
+        actions={rowActions(node)}
+        onAction={handleRowAction}
         onToggleExpand={toggleExpand}
         onVisibilityToggle={handleVisibilityToggle}
         onModelVisibilityToggle={handleModelVisibilityToggle}
@@ -916,7 +584,7 @@ export function HierarchyPanel() {
               >
                 {storeysVirtualizer.getVirtualItems().map((virtualRow) => {
                   const node = storeysNodes[virtualRow.index];
-                  return renderNode(node, virtualRow);
+                  return renderNode(node, virtualRow, 'storeys');
                 })}
               </div>
             </div>
@@ -955,7 +623,7 @@ export function HierarchyPanel() {
               >
                 {modelsVirtualizer.getVirtualItems().map((virtualRow) => {
                   const node = modelsNodes[virtualRow.index];
-                  return renderNode(node, virtualRow);
+                  return renderNode(node, virtualRow, 'models');
                 })}
               </div>
             </div>
@@ -1056,7 +724,7 @@ export function HierarchyPanel() {
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const node = filteredNodes[virtualRow.index];
-            return renderNode(node, virtualRow);
+            return renderNode(node, virtualRow, 'filtered');
           })}
         </div>
       </div>}

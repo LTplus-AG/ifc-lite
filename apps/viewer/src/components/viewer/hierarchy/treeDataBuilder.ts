@@ -1279,6 +1279,7 @@ export function buildGroupTree(
       id: nodeId,
       expressIds: [entry.groupExpressId],
       globalIds: entry.isolationGlobalIds,
+      memberGlobalIds: entry.memberRows.map((member) => member.globalId),
       entityExpressId: entry.groupExpressId,
       modelIds: [entry.modelId],
       modelId: entry.modelId,

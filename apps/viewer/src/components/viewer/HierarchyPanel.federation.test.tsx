@@ -3,24 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `selectedStoreys` in the viewer store is a bare `Set<number>` of
- * model-LOCAL expressIds — the pairing with each storey's owning model,
- * which `treeDataBuilder` maintains on every tree node as `modelIds`
- * (index-aligned with `expressIds`), is discarded once the ids land in the
- * set (see #3506, #3508).
- *
- * `HierarchyPanel`'s `computeNodeState` reads that set back for
- * `unified-storey` rows with `node.expressIds.some(id => selectedStoreys.has(id))`
- * — no `modelId` check. `buildUnifiedStoreys` (treeDataBuilder.ts) groups
- * storeys into separate unified rows purely by ELEVATION, independent of id
- * collisions across models, so two different federated models can each
- * contribute a storey with the same local expressId to two DIFFERENT
- * unified-storey rows (routine: most IFC files number entities from #1).
- *
- * This test federates two models whose storeys share the local expressId 5
- * at two different elevations — "Level 1" (model m1, id 5, elevation 0) and
- * "Level 2" (model m2, id 5, elevation 10) — selects only Level 1, and
- * checks whether Level 2's row lights up too.
+ * #5885: hierarchy row activation selects renderer global IDs and model-aware
+ * EntityRefs without touching the Solo storey channel. Equal local express
+ * IDs in two federated models remain distinct selections; the explicit Solo
+ * action still uses the shared storey-isolation channel (#3506/#3508).
  */
 
 import '@/test/setup-dom.js';
@@ -71,7 +57,7 @@ function federatedModel(id: string, ifcDataStore: IfcDataStore): FederatedModel 
     schemaVersion: 'IFC4',
     loadedAt: 1,
     fileSize: 0,
-    idOffset: 0,
+    idOffset: id === 'm2' ? 1000 : 0,
     maxExpressId: 100,
   } as FederatedModel;
 }
@@ -107,6 +93,11 @@ function resetStore(): void {
     models: new Map(),
     ifcDataStore: null,
     selectedStoreys: new Set<number>(),
+    selectedEntityIds: new Set<number>(),
+    selectedEntityId: null,
+    selectedEntity: null,
+    selectedEntitiesSet: new Set<string>(),
+    levelDisplayMode: 'stacked',
   });
 }
 
@@ -179,15 +170,17 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     const level2 = storeyRow(container, 'Level 2');
     assert.notEqual(level1, level2, 'fixture sanity: Level 1 and Level 2 must be different rows');
 
-    // Click Level 1 — the real click path (handleNodeClick) writes its
-    // constituent local storey id (5, from model m1) into selectedStoreys.
+    // #5885: a row click selects its IFC entity, without entering Solo or
+    // changing the Advanced Filter. Distinct model offsets keep ids separate.
     act(() => { level1.click(); });
 
     assert.deepEqual(
-      useViewerStore.getState().selectedStoreys,
+      useViewerStore.getState().selectedEntityIds,
       new Set([5]),
-      'fixture sanity: clicking Level 1 must select local id 5',
+      'clicking Level 1 selects model m1 storey entity',
     );
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set());
+    assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
 
     const level1After = storeyRow(container, 'Level 1');
     const level2After = storeyRow(container, 'Level 2');
@@ -199,7 +192,7 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     assert.ok(
       !level2After.classList.contains('selected'),
       'Level 2 (model m2\'s own unrelated storey, which merely SHARES the local expressId 5 with model m1\'s Level 1) ' +
-      'must NOT be highlighted — computeNodeState must check modelIds, not just expressIds, against selectedStoreys',
+      'must NOT be highlighted — renderer global IDs preserve model ownership',
     );
   });
 
@@ -214,11 +207,19 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     const level1 = storeyRow(container, 'Level 1');
     assert.equal(level1.getAttribute('role'), 'treeitem');
     activate(level1, 'Enter');
-    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([5]));
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([5]));
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set());
 
     const level2 = storeyRow(container, 'Level 2');
     activate(level2, ' ');
-    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([6]));
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1006]));
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set());
+
+    const solo = container.querySelector<HTMLButtonElement>('button[aria-label="Solo storey Level 1"]');
+    assert.ok(solo);
+    act(() => { solo.click(); });
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([5]));
+    assert.equal(useViewerStore.getState().levelDisplayMode, 'solo');
 
     const modelRow = container.querySelector<HTMLElement>('button[aria-label="Edit tags for model m1.ifc"]')
       ?.closest<HTMLElement>('[role="treeitem"]');
@@ -230,6 +231,31 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     assert.ok(secondModelRow);
     activate(secondModelRow, ' ');
     assert.equal(useViewerStore.getState().selectedModelId, 'm2');
+  });
+
+  it('Ctrl/Cmd toggles and Shift extends storey entity selection across models (#5885)', () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['m1', federatedModel('m1', makeStore(5, 0, 'Level 1'))],
+        ['m2', federatedModel('m2', makeStore(6, 10, 'Level 2'))],
+      ]),
+    });
+    const container = renderPanel();
+    act(() => { storeyRow(container, 'Level 1').click(); });
+    act(() => {
+      storeyRow(container, 'Level 2').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([5, 1006]));
+    act(() => {
+      storeyRow(container, 'Level 1').dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }));
+    });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1006]));
+    act(() => { storeyRow(container, 'Level 1').click(); });
+    act(() => {
+      storeyRow(container, 'Level 2').dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([5, 1006]));
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set());
   });
 
   it('resizes the storeys and models split with arrow keys (#5823)', () => {

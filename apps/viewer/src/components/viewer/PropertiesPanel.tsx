@@ -62,13 +62,14 @@ import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
-import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch } from './properties/propertySearch';
+import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch, searchTabForHits } from './properties/propertySearch';
 import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
 import { PropertyFindBox } from './properties/PropertyFindBox';
+import { AssociationAttributeSearchCard, findAssociationAttributes } from './properties/associationAttributeSearch';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
 import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
 export function PropertiesPanel() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
   // here and threaded to every PropertySetCard/QuantitySetCard render site
   // below, plus the secondary EntityDataSection component.
@@ -1124,20 +1125,24 @@ export function PropertiesPanel() {
   const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery);
   const foundQuantities = filterQuantitySets(renderedQuantities, findQuery);
   const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery);
+  const foundAssociations = findAssociationAttributes({
+    classifications: renderedClassifications, materials: renderedMaterialInfos,
+    documents: renderedDocuments, query: findQuery, t, locale,
+  });
+  const hasAssociationHits = foundAssociations.classifications.length + foundAssociations.materials.length + foundAssociations.documents.length > 0;
+  const visibleClassificationCount = findQuery ? foundAssociations.classifications.length : renderedClassifications.length;
+  const visibleMaterialCount = findQuery ? foundAssociations.materials.length : renderedMaterialInfos.length;
+  const visibleDocumentCount = findQuery ? foundAssociations.documents.length : renderedDocuments.length;
+  const visiblePsetCount = findQuery ? foundOccurrence.length + foundInherited.length : renderedMergedProperties.length;
   const hasPropertyHits = foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
-    + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0;
+    + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0 || hasAssociationHits;
   // A query can match a quantity while the Properties tab is selected (and
   // vice versa). Keep the hit visible instead of leaving the user on an empty
   // tab with no empty-state message.
   useEffect(() => {
     if (!findQuery) return;
-    if (propertiesActiveTab === 'quantities' && foundQuantities.length === 0 && hasPropertyHits) {
-      setPropertiesActiveTab('properties');
-    } else if (propertiesActiveTab !== 'quantities' && foundQuantities.length > 0 && !hasPropertyHits) {
-      setPropertiesActiveTab('quantities');
-    } else if (propertiesActiveTab !== 'properties' && propertiesActiveTab !== 'quantities' && hasPropertyHits) {
-      setPropertiesActiveTab('properties');
-    }
+    const next = searchTabForHits(propertiesActiveTab, foundQuantities.length > 0, hasPropertyHits);
+    if (next) setPropertiesActiveTab(next);
   }, [findQuery, propertiesActiveTab, foundQuantities.length, hasPropertyHits, setPropertiesActiveTab]);
   // Sets the element only inherits: adding to one overrides it here, carrying the type's properties (#5966).
   const inheritedFrom = useMemo(() => renderedTypeProperties && !isTypeEntity ? {
@@ -1591,7 +1596,7 @@ export function PropertiesPanel() {
               </>
             )}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
-              && (findQuery || (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
+              && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
                 && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0
                 && !renderedEntityRelationships && !hasScheduleForSelection && !hasStructuralForSelection)) ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noPropertySets')}</p>
@@ -1657,26 +1662,24 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Classifications */}
-                {!findQuery && renderedClassifications.length > 0 && (
+                {visibleClassificationCount > 0 && (
                   <>
-                    {renderedMergedProperties.length > 0 && (
+                    {visiblePsetCount > 0 && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    {renderedClassifications.map((classification, i) => (
-                      <ClassificationCard key={`class-${i}`} classification={classification} />
-                    ))}
+                    {findQuery ? foundAssociations.classifications.map((card, i) => <AssociationAttributeSearchCard key={`class-${i}`} card={card} query={findQuery} />)
+                      : renderedClassifications.map((classification, i) => <ClassificationCard key={`class-${i}`} classification={classification} />)}
                   </>
                 )}
 
                 {/* Materials — one card per IfcRelAssociatesMaterial */}
-                {!findQuery && renderedMaterialInfos.length > 0 && (
+                {visibleMaterialCount > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0) && (
+                    {(visiblePsetCount > 0 || visibleClassificationCount > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    {renderedMaterialInfos.map((info, i) => (
-                      <MaterialCard key={i} material={info} />
-                    ))}
+                    {findQuery ? foundAssociations.materials.map((card, i) => <AssociationAttributeSearchCard key={`mat-${i}`} card={card} query={findQuery} />)
+                      : renderedMaterialInfos.map((info, i) => <MaterialCard key={i} material={info} />)}
                   </>
                 )}
 
@@ -1685,7 +1688,7 @@ export function PropertiesPanel() {
                     mirroring the Type Properties block. */}
                 {foundMaterialProperties.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0) && (
+                    {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0) && (
                       <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
                     )}
                     {foundMaterialProperties.map((group) => (
@@ -1709,14 +1712,13 @@ export function PropertiesPanel() {
                 )}
 
                 {/* Documents */}
-                {!findQuery && renderedDocuments.length > 0 && (
+                {visibleDocumentCount > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0 || renderedMaterialProperties.length > 0) && (
+                    {(visiblePsetCount > 0 || visibleClassificationCount > 0 || visibleMaterialCount > 0 || foundMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    {renderedDocuments.map((doc, i) => (
-                      <DocumentCard key={`doc-${i}`} document={doc} />
-                    ))}
+                    {findQuery ? foundAssociations.documents.map((card, i) => <AssociationAttributeSearchCard key={`doc-${i}`} card={card} query={findQuery} />)
+                      : renderedDocuments.map((doc, i) => <DocumentCard key={`doc-${i}`} document={doc} />)}
                   </>
                 )}
 

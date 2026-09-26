@@ -118,7 +118,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
         ><Download aria-hidden="true" /></IconButton>
       </div>
     </div>
-    {references.size === 0 && <p className="text-[11px] leading-relaxed text-muted-foreground">{t('appearance.referenceLibrary.emptyState')}</p>}
+    {references.size === 0 && <p className="text-2xs leading-relaxed text-muted-foreground">{t('appearance.referenceLibrary.emptyState')}</p>}
     <ul className="space-y-2">
       {[...references.values()].map((reference, index) => {
         const name = sources.find(source => source.id === reference.sourceId)?.name ?? t('appearance.referenceLibrary.defaultDrawingName', { n: index + 1 });
@@ -172,10 +172,10 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
           <ReferenceOpacity name={name} value={reference.opacity} disabled={editsDisabled || wrongFrame}
             onCommit={opacity => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { opacity }))} />
           <AppearanceAnnotationFields referenceId={reference.id} name={name} disabled={editsDisabled || missing || wrongFrame} />
-          {wrongFrame && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">{t('appearance.referenceLibrary.wrongFrameNotice')}</p>}
+          {wrongFrame && <p className="mt-1 text-2xs text-amber-700 dark:text-amber-400">{t('appearance.referenceLibrary.wrongFrameNotice')}</p>}
           {missing && <div className="mt-1 space-y-1">
-            <p className="text-[11px] text-muted-foreground">{t('appearance.referenceLibrary.missingImageNotice')}</p>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-[11px]" disabled={blocked}
+            <p className="text-2xs text-muted-foreground">{t('appearance.referenceLibrary.missingImageNotice')}</p>
+            <Button type="button" variant="outline" size="sm" className="h-7 text-2xs" disabled={blocked}
               aria-label={t('appearance.referenceLibrary.relinkAriaLabel', { name })} onClick={() => { relinkTarget.current = reference.id; relinkPicker.current?.click(); }}>{t('appearance.referenceLibrary.relinkButton')}</Button>
           </div>}
         </li>;
@@ -185,11 +185,11 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file && !blocked) importFile(file); }} />
     <input ref={relinkPicker} className="sr-only" tabIndex={-1} type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" aria-label={t('appearance.referenceLibrary.relinkFileAriaLabel')} disabled={blocked}
       onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file && !blocked) relinkFile(file); }} />
-    {busy && <div className="flex items-center justify-between text-[11px] text-muted-foreground" role="status">
+    {busy && <div className="flex items-center justify-between text-2xs text-muted-foreground" aria-live="polite" aria-atomic="true">
       <span>{t('appearance.referenceLibrary.openingFile')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { pending.current?.abort(); pending.current = undefined; setBusy(false); }}>{t('appearance.referenceLibrary.cancelFileOperation')}</Button>
     </div>}
-    {error && <p role="alert" className="text-[11px] leading-relaxed text-destructive">{'key' in error ? t(error.key) : error.text}</p>}
-    {noticeKey && <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">{t(noticeKey)}</p>}
+    {error && <p role="alert" className="text-2xs leading-relaxed text-destructive">{'key' in error ? t(error.key) : error.text}</p>}
+    {noticeKey && <output className="block text-2xs leading-relaxed text-muted-foreground">{t(noticeKey)}</output>}
   </section>;
 }
 
@@ -211,13 +211,13 @@ function ReferenceOpacity({ name, value, disabled, onCommit }: {
     if (percentage / 100 !== value) onCommit(percentage / 100);
   }
   return <div className="mt-1">
-    <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+    <label className="flex items-center gap-2 text-2xs text-muted-foreground">
       <span className="flex-1">{t('appearance.referenceLibrary.opacityLabel')}</span>
       <input type="number" min="0" max="100" step="1" className="h-7 w-16 rounded border bg-background px-2 text-xs tabular-nums"
         aria-label={t('appearance.referenceLibrary.opacityAriaLabel', { name })} aria-invalid={invalid} value={text} disabled={disabled}
         onChange={event => { setText(event.currentTarget.value); setInvalid(false); setDirty(true); }} onBlur={commit}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }} /><span>%</span>
     </label>
-    {invalid && <p className="mt-1 text-[11px] text-destructive" role="alert">{t('appearance.referenceLibrary.opacityInvalid')}</p>}
+    {invalid && <p className="mt-1 text-2xs text-destructive" role="alert">{t('appearance.referenceLibrary.opacityInvalid')}</p>}
   </div>;
 }

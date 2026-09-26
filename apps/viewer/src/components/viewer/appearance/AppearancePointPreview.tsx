@@ -61,6 +61,6 @@ export function AppearancePointPreview({ source, positions, disabled, onReady, o
         }} onPointerCancel={() => { preview.gesture.current = null; }} />
       <PreviewMarkers projected={preview.projected} />
     </div>
-    <p className="text-[11px] text-muted-foreground">{instruction ?? t('appearance.pointPreview.instruction')}</p>
+    <p className="text-2xs text-muted-foreground">{instruction ?? t('appearance.pointPreview.instruction')}</p>
   </div>;
 }

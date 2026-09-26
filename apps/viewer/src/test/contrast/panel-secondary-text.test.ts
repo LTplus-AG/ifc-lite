@@ -42,6 +42,8 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CountBadge, LISTED_STATES } from '../../components/viewer/compare/CompareResultsList';
+import { MeasurePointReadout } from '../../components/viewer/tools/MeasurePointReadout';
+import { useViewerStore } from '../../store';
 import { measureTextContrastOnSurface, measureRenderedTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
 import { extractClassNameAfter, extractFirstStringLiteralAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
@@ -367,12 +369,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-popover',
     },
     {
-      name: 'MeasurePointReadout CoordRow hint',
-      file: MEASURE_POINT_READOUT,
-      anchor: '<span className="font-mono text-[11px] tabular-nums">{value}</span>\n      {hint && <span ',
-      surface: 'bg-background',
-    },
-    {
       name: 'geo-readout EnhLine label',
       file: GEO_READOUT,
       anchor: 'text-muted-foreground whitespace-nowrap">\n      {label && <span ',
@@ -395,6 +391,35 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
   }
 
   for (const theme of THEMES) {
+    it(`MeasurePointReadout rendered CoordRow hint clears AA in ${theme} theme`, async () => {
+      // React's server renderer reads useSyncExternalStore's initial snapshot.
+      // Populate that snapshot only for this render, then restore it exactly.
+      const initial = useViewerStore.getInitialState();
+      const before = {
+        activeMeasurement: initial.activeMeasurement,
+        measurements: initial.measurements,
+        geoReadoutEnabled: initial.geoReadoutEnabled,
+        measureReferencePoint: initial.measureReferencePoint,
+      };
+      try {
+        Object.assign(initial, {
+          activeMeasurement: null,
+          measurements: [{ id: 'contrast-point', start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, end: { x: 1, y: 2, z: 3, screenX: 1, screenY: 2 }, distance: 3.74 }],
+          geoReadoutEnabled: false,
+          measureReferencePoint: null,
+        });
+        const markup = renderToStaticMarkup(createElement(MeasurePointReadout));
+        assert.match(markup, />m<\/span>/, 'the last-point row renders its unit hint');
+        const ratio = await measureRenderedTextContrastOnSurface(
+          theme, 'bg-background', markup, '#surface .overflow-x-auto > div:first-child span:last-child',
+        );
+        assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+          `rendered MeasurePointReadout unit hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+      } finally {
+        Object.assign(initial, before);
+      }
+    });
+
     it(`compare/CompareResultsList CountBadge hint clears AA in ${theme} theme`, async () => {
       const hint = '4 type objects';
       const markup = renderToStaticMarkup(createElement(CountBadge, {

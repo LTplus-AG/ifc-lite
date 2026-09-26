@@ -175,7 +175,8 @@
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
-      "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch"
+      "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
+      "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch"
     }
   }
 }

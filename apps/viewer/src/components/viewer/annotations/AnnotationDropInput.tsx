@@ -108,9 +108,10 @@ export function AnnotationDropInput({
   const overHardLimit = draft.length > MAX_NOTE_LEN;
 
   return (
-    <HudSurface
+    // HudSurface owns the shared HUD div; this annotation form adds dialog semantics.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <HudSurface role="dialog"
       ref={containerRef}
-      role="dialog"
       aria-label={t('annotations.dropInput.ariaLabel')}
       style={{ left, top, width: INPUT_WIDTH }}
       className={cn(
@@ -122,7 +123,7 @@ export function AnnotationDropInput({
       {/* Guiding label — explicit so the user knows what to type and
           establishes "this is for capturing intent, not chat". */}
       <div className="px-3 py-1.5 border-b border-border">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-popover-foreground">
+        <span className="font-mono text-xs uppercase tracking-wider text-popover-foreground">
           {t('annotations.dropInput.promptLabel')}
           {entityType && (
             <span className="ml-1.5 text-muted-foreground">
@@ -143,7 +144,7 @@ export function AnnotationDropInput({
           rows={3}
           maxLength={MAX_NOTE_LEN + 100}
           className={cn(
-            'w-full resize-none font-mono text-[11px] leading-relaxed',
+            'w-full resize-none font-mono text-xs leading-relaxed',
             'bg-background/60 text-popover-foreground',
             'border border-border rounded-sm',
             'px-2 py-1.5 outline-none focus:ring-1',
@@ -154,7 +155,7 @@ export function AnnotationDropInput({
           spellCheck
           autoCorrect="on"
         />
-        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono">
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-xs font-mono">
           <span className="text-zinc-400 dark:text-zinc-500">
             {t('annotations.dropInput.keyHints')}
           </span>
@@ -177,7 +178,7 @@ export function AnnotationDropInput({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px]"
+            className="h-7 px-2 text-xs"
             onClick={onCancel}
           >
             <X className="h-3 w-3 mr-1" />
@@ -185,7 +186,7 @@ export function AnnotationDropInput({
           </Button>
           <Button
             size="sm"
-            className="h-7 px-2 text-[11px] border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
+            className="h-7 px-2 text-xs border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
             onClick={() => {
               if (overHardLimit) return;
               if (draft.trim().length === 0) onCancel();

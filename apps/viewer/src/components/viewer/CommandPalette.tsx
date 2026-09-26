@@ -203,12 +203,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               autoComplete="off"
               spellCheck={false}
             />
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground">
               {t('commandPalette.escKey')}
             </kbd>
           </div>
 
           {/* Results */}
+          {/* The command palette implements a custom listbox with keyboard-managed button options. */}
+          {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
           <div ref={listRef} className="max-h-[min(420px,60vh)] overflow-y-auto py-1" role="listbox">
             {flatItems.length === 0 && (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -219,16 +221,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             {grouped.map((group) => (
               <div key={group.category || '__flat'}>
                 {group.category && (
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
+                  <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}
                   </div>
                 )}
                 {group.items.map(({ cmd, flatIdx }) => {
                   const Icon = cmd.icon;
                   return (
-                    <button
+                    // The option remains a button so Enter and click use the same command action.
+                    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                    <button role="option"
                       key={`${group.category}:${cmd.id}`}
-                      role="option"
                       data-index={flatIdx}
                       aria-selected={flatIdx === selectedIndex}
                       className={cn(
@@ -243,12 +246,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="flex-1 truncate">{cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label}</span>
                       {cmd.detail && (
-                        <span className="text-[11px] text-muted-foreground shrink-0">
+                        <span className="text-xs text-muted-foreground shrink-0">
                           {cmd.detailKey ? t(cmd.detailKey, cmd.detailKeyParams) : cmd.detail}
                         </span>
                       )}
                       {cmd.shortcut && (
-                        <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground shrink-0">
+                        <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
                           {cmd.shortcut}
                         </kbd>
                       )}
@@ -260,7 +263,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center gap-4 px-3 py-1.5 border-t text-[10px] text-muted-foreground select-none">
+          <div className="flex items-center gap-4 px-3 py-1.5 border-t text-xs text-muted-foreground select-none">
             <span><kbd className="font-mono">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
             <span><kbd className="font-mono">↵</kbd> {t('commandPalette.footer.run')}</span>
             <span><kbd className="font-mono">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>

@@ -14,10 +14,12 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
 import { useTranslation } from '@/i18n';
+import { formatLocaleDate } from '@/i18n/intlFormat';
 import { IconButton } from '@/components/ui/icon-button';
 import type { FlattenedTask } from './schedule-utils';
 import {
   computeTicks,
+  advanceCalendarTime,
   formatTickLabel,
   timeToX,
 } from './schedule-utils';
@@ -61,7 +63,7 @@ export const GanttTimeline = memo(function GanttTimeline({
   scrollTop,
   onScroll,
 }: GanttTimelineProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
 
@@ -192,6 +194,24 @@ export const GanttTimeline = memo(function GanttTimeline({
     onScrubSeek(range.start + pct * (range.end - range.start));
   }, [pixelWidth, range, onScrubSeek]);
 
+  const handleTimelineKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
+    let nextTime: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown': nextTime = advanceCalendarTime(playbackTime, scale, -1); break;
+      case 'ArrowRight':
+      case 'ArrowUp': nextTime = advanceCalendarTime(playbackTime, scale, 1); break;
+      case 'Home': nextTime = range.start; break;
+      case 'End': nextTime = range.end; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onScrubSeek(Math.min(range.end, Math.max(range.start, nextTime)));
+  }, [playbackTime, scale, range, onScrubSeek]);
+
+  const clampedPlaybackTime = Math.min(range.end, Math.max(range.start, playbackTime));
+
   return (
     <div
       ref={containerRef}
@@ -242,6 +262,14 @@ export const GanttTimeline = memo(function GanttTimeline({
         height={rowsHeight}
         className="block cursor-crosshair"
         onClick={handleTimelineClick}
+        onKeyDown={handleTimelineKeyDown}
+        role="slider"
+        tabIndex={0}
+        aria-label={t('schedule.toolbar.playbackPosition')}
+        aria-valuemin={range.start}
+        aria-valuemax={range.end}
+        aria-valuenow={clampedPlaybackTime}
+        aria-valuetext={formatLocaleDate(locale, clampedPlaybackTime, { dateStyle: 'medium', timeStyle: 'short' })}
       >
         {/* Non-working-day shading (#4830) — painted first so grid lines,
             row highlights and bars all draw on top of it. */}
@@ -359,4 +387,3 @@ export const GanttTimeline = memo(function GanttTimeline({
     </div>
   );
 });
-

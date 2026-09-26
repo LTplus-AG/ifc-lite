@@ -316,6 +316,7 @@ describe('GanttTaskTree localization (#4918)', () => {
         onToggleExpand={() => {}}
         onSelect={() => {}}
         onHover={() => {}}
+        onBackgroundClick={() => {}}
         calendarNamesByGlobalId={new Map([['cal-1', 'Standard']])}
         scrollTop={0}
         onScroll={() => {}}
@@ -332,11 +333,13 @@ describe('GanttTaskTree localization (#4918)', () => {
 
     assert.ok(after.has(mark('schedule.taskTree.columnTask')));
     assert.ok(after.has(mark('schedule.taskTree.columnDuration')));
+    assert.ok(after.has(mark('schedule.taskTree.clearSelectionAriaLabel')));
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.collapseAriaLabel|')), 'interpolated collapse aria-label not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.expandAriaLabel|')), 'interpolated expand aria-label not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.workCalendar|')), 'interpolated work-calendar label not marked');
     covered.add('schedule.taskTree.columnTask');
     covered.add('schedule.taskTree.columnDuration');
+    covered.add('schedule.taskTree.clearSelectionAriaLabel');
   });
 });
 

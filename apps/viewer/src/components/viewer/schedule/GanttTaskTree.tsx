@@ -28,7 +28,7 @@ interface GanttTaskTreeProps {
   hoveredGlobalId: string | null;
   onToggleExpand: (globalId: string) => void;
   onSelect: (globalId: string, multi: boolean) => void;
-  /** Click on empty-space below the rows clears the selection. */
+  /** Activate the empty-space control below the rows to clear the selection. */
   onBackgroundClick?: () => void;
   /** User finished a drag — move the source row to the index of the target row. */
   onReorder?: (sourceGlobalId: string, targetIndex: number) => void;
@@ -79,21 +79,11 @@ export const GanttTaskTree = memo(function GanttTaskTree({
     }
   }, [scrollTop]);
 
-  /**
-   * Click on the scroll container itself (not a row/cell/button) clears
-   * the Gantt selection. Uses `e.currentTarget === e.target` so clicks
-   * that bubble up from a row don't also fire deselect.
-   */
-  const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.currentTarget === e.target) onBackgroundClick?.();
-  }, [onBackgroundClick]);
-
   return (
     <div
       ref={containerRef}
-      className="h-full overflow-y-auto overflow-x-hidden border-r bg-background"
+      className="flex h-full flex-col overflow-y-auto overflow-x-hidden border-r bg-background"
       onScroll={handleScroll}
-      onClick={handleContainerClick}
       data-testid="gantt-task-tree"
     >
       {/*
@@ -102,13 +92,13 @@ export const GanttTaskTree = memo(function GanttTaskTree({
         lands on the same row.
       */}
       <div
-        className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
+        className="sticky top-0 z-10 shrink-0 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
         style={{ height: GANTT_HEADER_HEIGHT }}
       >
         <span>{t('schedule.taskTree.columnTask')}</span>
         <span>{t('schedule.taskTree.columnDuration')}</span>
       </div>
-      <div style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
+      <div className="shrink-0" style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
         {/*
           ARIA grid semantics: the table is a grid, each <tr> keeps its
           native/`row` role (so `aria-selected` is valid), and the focusable
@@ -282,6 +272,14 @@ export const GanttTaskTree = memo(function GanttTaskTree({
           </tbody>
         </table>
       </div>
+      {onBackgroundClick && (
+        <button
+          type="button"
+          className="min-h-6 w-full flex-1 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          aria-label={t('schedule.taskTree.clearSelectionAriaLabel')}
+          onClick={onBackgroundClick}
+        />
+      )}
     </div>
   );
 });

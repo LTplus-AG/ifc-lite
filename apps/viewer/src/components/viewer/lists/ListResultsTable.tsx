@@ -382,7 +382,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
-      {sortedRows.length === 0 ? (
+      {scheduleMode && sortedRows.length === 0 ? (
         <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />
       ) : scheduleMode ? (
         <ListScheduleTable
@@ -456,6 +456,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           </div>
 
           {/* Virtualized rows / group headers */}
+          {sortedRows.length === 0 && <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />}
           <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
             {virtualizer.getVirtualItems().map((vRow) => {
               const item = items[vRow.index];
@@ -519,7 +520,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
               );
             })}
           </div>
-
           {/* Grand-totals footer (sticky, aligned under columns) */}
           {showSumRow && (
             <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">

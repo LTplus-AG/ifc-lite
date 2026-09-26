@@ -31,7 +31,7 @@ import assert from 'node:assert/strict';
 import { useState, act } from 'react';
 import type { ListResult, ListGrouping } from '@ifc-lite/lists';
 import { ProjectUnits } from '@ifc-lite/parser';
-import { render, cleanup, click, type as typeInto } from '@/test/render.js';
+import { render, cleanup, click, press, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import type { listsEn as ListsEnType } from '@/i18n/catalogues/lists.en';
@@ -270,5 +270,19 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     const columnMenuKeys = STATIC_KEYS.filter((k) => k.startsWith('lists.columnMenu.'));
     const covered = assertCoverage(english, after, columnMenuKeys);
     assert.ok(covered.size > 0, 'expected at least one ColumnHeaderMenu item to be visible with the menu open');
+  });
+
+  it('#5814 keeps column sorting and options available when the result has no rows', () => {
+    const emptyResult = { ...buildResult(), rows: [], totalCount: 0 };
+    const container = render(
+      <ListResultsTable result={emptyResult} modelUnits={MODEL_UNITS} onGroupingChange={() => {}} />,
+    );
+    assert.ok(container.textContent?.includes('No matching rows'));
+    const nameHeader = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Name');
+    assert.ok(nameHeader, 'the Name column remains sortable');
+    const menuTrigger = container.querySelector('button[aria-label="Column options"]');
+    assert.ok(menuTrigger, 'column options remain available with zero rows');
+    press(menuTrigger, 'Enter');
+    assert.ok(document.body.textContent?.includes('Sort ascending'), 'the options menu still opens');
   });
 });

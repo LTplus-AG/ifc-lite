@@ -148,6 +148,7 @@
     {
       // #5814: keep the loading icon and accessibility behavior in Spinner.
       "files": ["apps/viewer/src/components/**/*.tsx"],
+      "excludeFiles": ["apps/viewer/src/components/**/*.test.tsx", "apps/viewer/src/components/**/test/**"],
       "rules": { "no-restricted-imports": ["error", {
         "paths": [
           { "name": "@ifc-lite/data", "importNames": ["ENTITIES_IFC4"], "message": "Import ENTITIES_IFC4_EXPRESS instead (#5204)." },

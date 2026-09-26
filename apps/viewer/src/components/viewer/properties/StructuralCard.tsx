@@ -93,21 +93,21 @@ export function StructuralCard({
         </span>
         {structuralData?.loadsTruncated && (
           <span
-            className="flex items-center gap-1 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
             title={t('properties.structural.loadsTruncatedTooltip')}
           >
             <TriangleAlert className="h-2.5 w-2.5" aria-hidden />
             {t('properties.structural.truncatedBadge')}
           </span>
         )}
-        <span className="text-[10px] font-mono bg-violet-100 dark:bg-violet-900/50 px-1.5 py-0.5 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 shrink-0">
+        <span className="text-2xs font-mono bg-violet-100 dark:bg-violet-900/50 px-1.5 py-0.5 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 shrink-0">
           {member.type.replace(/^Ifc/, '')}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-violet-200 dark:border-violet-800 divide-y divide-violet-100 dark:divide-violet-900/30">
           <div className="px-3 py-2 text-xs">
-            <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+            <div className="grid grid-cols-[minmax(70px,auto)_1fr] gap-x-2 gap-y-0.5 text-2xs">
               {member.predefinedType && (
                 <>
                   <span className="text-muted-foreground">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</span>
@@ -135,7 +135,7 @@ export function StructuralCard({
             <div className="px-3 py-2 text-xs">
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <Anchor className="h-3 w-3 shrink-0" />
-                <span className="font-semibold text-[11px]">
+                <span className="font-semibold text-2xs">
                   {t('properties.structural.connections', localeCount(locale, connections.length))}
                 </span>
               </div>
@@ -151,7 +151,7 @@ export function StructuralCard({
             <div className="px-3 py-2 text-xs">
               <div className="flex items-center gap-1.5 mb-1.5 text-violet-700 dark:text-violet-400">
                 <ArrowDownToLine className="h-3 w-3 shrink-0" />
-                <span className="font-semibold text-[11px]">
+                <span className="font-semibold text-2xs">
                   {t('properties.structural.appliedLoads', localeCount(locale, activities.length))}
                 </span>
               </div>
@@ -173,7 +173,7 @@ function ConnectionRow({ connection }: { connection: StructuralConnectionInfo })
   const condition = connection.appliedCondition;
   const summary = condition ? formatDofs(condition.components, t, locale) : '';
   return (
-    <div className="text-[11px]">
+    <div className="text-2xs">
       <div className="font-medium text-foreground/90 truncate" title={connection.name}>
         {connection.name || connection.type.replace(/^Ifc/, '')}
       </div>
@@ -191,7 +191,7 @@ function ActivityRow({ activity }: { activity: StructuralActivityInfo }) {
   const { t, locale } = useTranslation();
   const load = activity.appliedLoad;
   return (
-    <div className="text-[11px]">
+    <div className="text-2xs">
       <div className="font-medium text-foreground/90 truncate" title={activity.name}>
         {activity.name || activity.type.replace(/^Ifc/, '')}
         {activity.predefinedType && (

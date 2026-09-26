@@ -343,13 +343,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>{t('properties.materialTotals.noVolumeQuantities')}</span>
               </div>
             )}
             {totals.hasVolume && totals.elementsWithVolume < totals.elementCount && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
                   {t('properties.materialTotals.partialVolumeNote', { counted: formatLocaleNumber(locale, totals.elementsWithVolume), total: formatLocaleNumber(locale, totals.elementCount) })}
@@ -379,7 +379,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           {/* Material property sets */}
           {psetCount > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
+              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-2xs text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
                 <Layers className="h-3 w-3 shrink-0" />
                 <span className="truncate">{t('properties.materialTotals.materialPropertiesHeading')}</span>
               </div>

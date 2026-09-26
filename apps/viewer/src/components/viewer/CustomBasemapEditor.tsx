@@ -21,8 +21,8 @@ import {
   type TileAccessResult,
 } from '@/lib/geo/custom-basemap';
 
-const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]';
-const LABEL_CLASS = 'text-[9px] uppercase tracking-wider text-muted-foreground';
+const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-2xs';
+const LABEL_CLASS = 'text-2xs uppercase tracking-wider text-muted-foreground';
 
 export function CustomBasemapEditor() {
   const { t } = useTranslation();
@@ -126,7 +126,7 @@ export function CustomBasemapEditor() {
       {/* Privacy: a custom basemap sends the viewport to a third party on every
           pan. That is what a basemap is for, but it should be the pasting
           user's deliberate choice rather than something they discover. */}
-      <p className="text-[9px] leading-tight text-muted-foreground">
+      <p className="text-2xs leading-tight text-muted-foreground">
         {t('cesiumGeo.basemap.privacyNote')}
       </p>
 
@@ -135,7 +135,7 @@ export function CustomBasemapEditor() {
           type="button"
           onClick={onSave}
           disabled={checking}
-          className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-primary text-primary-foreground disabled:opacity-50"
+          className="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-primary text-primary-foreground disabled:opacity-50"
         >
           {checking ? t('cesiumGeo.basemap.checkingButton') : t('cesiumGeo.basemap.saveButton')}
         </button>
@@ -143,7 +143,7 @@ export function CustomBasemapEditor() {
           <button
             type="button"
             onClick={onRemove}
-            className="px-2 py-0.5 rounded text-[10px] uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="px-2 py-0.5 rounded text-2xs uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {t('cesiumGeo.shared.removeButton')}
           </button>
@@ -151,21 +151,21 @@ export function CustomBasemapEditor() {
       </div>
 
       {problem && (
-        <p role="alert" className="text-[9px] leading-tight text-red-400">{problem.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-red-400">{problem.message}</p>
       )}
       {probe?.status === 'blocked' && (
-        <p role="alert" className="text-[9px] leading-tight text-red-400">{probe.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-red-400">{probe.message}</p>
       )}
       {/* CORS passed, but the server still refused the tile (401/403). Calm
           `role="status"` wording would read as reassurance for a basemap that
           will never draw, so an actionable probe result gets alert treatment. */}
       {probe?.status === 'ok' && probe.concerning && (
-        <p role="alert" className="text-[9px] leading-tight text-amber-400">{probe.message}</p>
+        <p role="alert" className="text-2xs leading-tight text-amber-400">{probe.message}</p>
       )}
       {probe?.status === 'ok' && !probe.concerning && (
-        <p role="status" className="text-[9px] leading-tight text-muted-foreground">
+        <output className="block text-2xs leading-tight text-muted-foreground">
           {probe.message ?? t('cesiumGeo.basemap.okStatus')}
-        </p>
+        </output>
       )}
     </div>
   );

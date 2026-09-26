@@ -210,10 +210,10 @@ export function PresentationPanel() {
           controls that act on the basket. */}
       <div className="flex items-center justify-between gap-3 border-b px-3 py-1.5 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+          <span className="rounded-full border px-2 py-0.5 text-2xs text-muted-foreground">
             {t('presentationPanel.inBasketCount', { count: pinboardEntities.size })}
           </span>
-          <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
+          <span className="rounded-full border px-2 py-0.5 text-2xs text-muted-foreground">
             {t('presentationPanel.viewsCount', { count: basketViews.length })}
           </span>
         </div>

@@ -165,7 +165,7 @@ export function RelatedEntityList({
         <span className="truncate">{section.label}</span>
         <span className="ml-auto tabular-nums">{section.ids.length}</span>
         {locked && (
-          <span className="text-[10px] uppercase tracking-wide">
+          <span className="text-2xs uppercase tracking-wide">
             {t('anonymizedExport.relatedList.lockedBadge')}
           </span>
         )}

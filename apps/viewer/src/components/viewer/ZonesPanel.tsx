@@ -94,15 +94,14 @@ function NumberField({
         else setDraft(round(value));
       }}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      className={className ?? 'h-6 w-16 px-1 text-[11px]'}
+      className={className ?? 'h-6 w-16 px-1 text-2xs'}
     />
   );
 }
 
 function ZoneRow({
-  setId, zone, editing, exporting, exportProgress, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
+  zone, editing, exporting, exportProgress, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
 }: {
-  setId: string;
   zone: Zone;
   editing: boolean;
   /** A geometry export for THIS zone is running: the control is disabled and
@@ -156,9 +155,9 @@ function ZoneRow({
           <Scissors className={`h-3 w-3${exporting ? ' animate-pulse' : ''}`} />
         </IconButton>
         {exporting && exportProgress && (
-          <span className="text-[10px] tabular-nums text-muted-foreground" role="status" aria-live="polite">
+          <output className="text-2xs tabular-nums text-muted-foreground" aria-live="polite">
             {t('zonesPanel.zoneRow.cuttingProgress', { done: exportProgress.done, total: exportProgress.total })}
-          </span>
+          </output>
         )}
         <IconButton label={t('zonesPanel.zoneRow.deleteZoneTitle')} className="h-6 w-6 text-destructive" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
@@ -191,7 +190,7 @@ function ZoneRow({
               }}
             />
           </label>
-          <span className="self-end text-[10px] text-muted-foreground truncate" title={t('zonesPanel.zoneRow.footprintTitle')}>
+          <span className="self-end text-2xs text-muted-foreground truncate" title={t('zonesPanel.zoneRow.footprintTitle')}>
             {t('zonesPanel.zoneRow.prismPts', { count: zone.footprint.length })}
           </span>
         </div>
@@ -366,7 +365,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
             <div className="flex items-center gap-1 p-1.5">
               <CollapsibleTrigger className="flex-1 flex items-center gap-1.5 px-1 py-0.5 text-left">
                 <span className="font-medium text-xs">{zs.name}</span>
-                <span className="text-[10px] text-muted-foreground">{t('zonesPanel.zoneCount', { count: zs.zones.length })}</span>
+                <span className="text-2xs text-muted-foreground">{t('zonesPanel.zoneCount', { count: zs.zones.length })}</span>
               </CollapsibleTrigger>
               <IconButton
                 label={zs.visible ? t('zonesPanel.hideIn3dTitle') : t('zonesPanel.showIn3dTitle')}
@@ -394,13 +393,12 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
               <Input
                 value={zs.name}
                 onChange={(e) => renameZoneSet(zs.id, e.target.value)}
-                className="h-6 text-[11px] text-muted-foreground"
+                className="h-6 text-2xs text-muted-foreground"
                 placeholder={t('zonesPanel.setNamePlaceholder')}
               />
               {zs.zones.map((zone) => (
                 <ZoneRow
                   key={zone.id}
-                  setId={zs.id}
                   zone={zone}
                   editing={editingZone?.setId === zs.id && editingZone.zoneId === zone.id}
                   onEdit={() => setEditingZone(
@@ -488,7 +486,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
       </div>
 
       {zoneAssignmentTiming && (
-        <div className="border-t p-2 text-[10px] text-muted-foreground">
+        <div className="border-t p-2 text-2xs text-muted-foreground">
           {t('zonesPanel.assignmentTimingLine', {
             elementCount: zoneAssignmentTiming.elementCount.toLocaleString(),
             zoneSetCount: zoneAssignmentTiming.zoneSetCount, elapsedMs: zoneAssignmentTiming.elapsedMs.toFixed(1),

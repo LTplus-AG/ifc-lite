@@ -20,6 +20,7 @@
  * open/collapse state; the sidebar shows or hides the whole panel.
  */
 
+import { useId } from 'react';
 import { Play, Pause, Sun, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
@@ -63,6 +64,7 @@ interface EnvironmentPanelProps {
 }
 
 export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
+  const timeOfDayId = useId();
   const setSkyEnabled = useViewerStore((s) => s.setEnvSkyEnabled);
   const preset = useViewerStore((s) => s.envPreset);
   const setPreset = useViewerStore((s) => s.setEnvPreset);
@@ -134,7 +136,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                 onClick={() => setSkyEnabled(!skyEnabled)}
                 title={t('viewportLighting.sunSkyPanel.cesium.skyToggleTitle')}
               />
-              <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
+              <span className="flex-1 px-1 text-2xs leading-tight text-muted-foreground">
                 {t('viewportLighting.sunSkyPanel.cesium.lightingHint')}
               </span>
             </div>
@@ -143,13 +145,13 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                 alternative (#1744). Lives here (not just in the sun study)
                 so the choice is available whenever the world context is on. */}
             <label className="flex flex-col gap-0.5">
-              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.cesium.baseMapLabel')}</span>
+              <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.cesium.baseMapLabel')}</span>
               <select
                 aria-label={t('viewportLighting.sunSkyPanel.cesium.baseMapAria')}
                 value={dataSource}
                 onChange={(e) => setDataSource(e.target.value as CesiumDataSource)}
                 title={t(CONTEXT_SOURCES.find((s) => s.value === dataSource)?.hintKey ?? 'viewportLighting.sunSkyPanel.cesium.contextSources.osmMap.hint')}
-                className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
+                className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-2xs"
               >
                 {CONTEXT_SOURCES.map((src) => (
                   <option key={src.value} value={src.value}>{t(src.labelKey)}</option>
@@ -161,13 +163,13 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
           </>
         ) : (
           <label className="flex flex-col gap-0.5">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.standalone.environmentLabel')}</span>
+            <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.standalone.environmentLabel')}</span>
             <select
               aria-label={t('viewportLighting.sunSkyPanel.standalone.environmentAria')}
               value={preset}
               onChange={(e) => { if (isLightingPresetId(e.target.value)) setPreset(e.target.value); }}
               title={LIGHTING_PRESETS[preset].hint}
-              className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
+              className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-2xs"
             >
               {LIGHTING_PRESET_ORDER.map((id) => (
                 <option key={id} value={id}>
@@ -194,7 +196,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
         {cesiumAvailable && (
           <>
             <div className="flex items-center justify-between gap-2 pt-2 border-t">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.sunStudy.title')}</span>
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{t('viewportLighting.sunSkyPanel.sunStudy.title')}</span>
               <button
                 type="button"
                 aria-pressed={solarEnabled}
@@ -212,7 +214,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                   }
                 }}
                 className={cn(
-                  'px-2 py-0.5 rounded text-[10px] font-semibold uppercase transition-colors',
+                  'px-2 py-0.5 rounded text-2xs font-semibold uppercase transition-colors',
                   solarEnabled ? 'bg-amber-500 text-zinc-950' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
@@ -227,7 +229,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                   {/* Not a <label>: the tz toggle is interactive, so wrapping the
                       input in a label would forward tz clicks to the date picker. */}
                   <div className="flex flex-col gap-0.5 flex-1">
-                    <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+                    <span className="flex justify-between text-2xs uppercase tracking-wider text-muted-foreground">
                       <span>{t('viewportLighting.sunSkyPanel.sunStudy.dateLabel')}</span>
                       <button
                         type="button"
@@ -261,12 +263,17 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                 </div>
 
                 {/* Time of day */}
-                <label className="flex flex-col gap-0.5">
-                  <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+                <label
+                  htmlFor={timeOfDayId}
+                  aria-label={t('viewportLighting.sunSkyPanel.sunStudy.timeLabel')}
+                  className="flex flex-col gap-0.5"
+                >
+                  <span className="flex justify-between text-2xs uppercase tracking-wider text-muted-foreground">
                     <span>{t('viewportLighting.sunSkyPanel.sunStudy.timeLabel')}</span>
                     <span className="tabular-nums text-foreground">{formatSolarTime(dateMs, offsetMin)}</span>
                   </span>
                   <input
+                    id={timeOfDayId}
                     type="range"
                     min={0}
                     max={1439}
@@ -287,7 +294,7 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                       aria-pressed={sweepMode === m.value}
                       onClick={() => setSweepMode(m.value)}
                       className={cn(
-                        'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
+                        'flex-1 px-1.5 py-1 rounded text-2xs transition-colors',
                         sweepMode === m.value
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -310,14 +317,14 @@ export function EnvironmentPanel({ onClose }: EnvironmentPanelProps) {
                   <button
                     type="button"
                     onClick={() => setCesiumEnabled(true)}
-                    className="text-left text-[9px] leading-snug text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-left text-2xs leading-snug text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {t('viewportLighting.sunSkyPanel.sunStudy.enableWorldContextHint')}
                   </button>
                 )}
 
                 {!sunInfo && (
-                  <p className="text-[9px] leading-snug text-amber-600 dark:text-amber-500">
+                  <p className="text-2xs leading-snug text-amber-600 dark:text-amber-500">
                     {t('viewportLighting.sunSkyPanel.sunStudy.noSiteWarning')}
                   </p>
                 )}
@@ -354,7 +361,7 @@ function ToggleChip({ label, active, onClick, title, className }: {
       aria-pressed={active}
       title={title}
       className={cn(
-        'px-2 py-1 rounded text-[10px] font-semibold uppercase transition-colors',
+        'px-2 py-1 rounded text-2xs font-semibold uppercase transition-colors',
         active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         className,
       )}

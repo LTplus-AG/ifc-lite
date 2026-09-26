@@ -62,8 +62,8 @@ export function LocalTab() {
   if (!repositionOpen || !runtime) {
     return (
       <div className="flex flex-col gap-2 text-xs">
-        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('placementPanel.local.emptyTitle')}</p>
-        <p className="text-[9px] leading-snug text-muted-foreground">{t('placementPanel.local.emptyHint')}</p>
+        <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('placementPanel.local.emptyTitle')}</p>
+        <p className="text-2xs leading-snug text-muted-foreground">{t('placementPanel.local.emptyHint')}</p>
         <div className="space-y-1">
           {[...models].map(([id, model]) => (
             <label key={id} className="flex items-center justify-between gap-2">
@@ -122,7 +122,7 @@ export function LocalTab() {
       </fieldset>
 
       <label className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('repositionPanel.referenceModelLabel')}</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('repositionPanel.referenceModelLabel')}</span>
         <Select value={runtime.reference || undefined} onValueChange={runtime.setReference}>
           <SelectTrigger aria-label={t('repositionPanel.referenceModelLabel')}><SelectValue placeholder={t('repositionPanel.chooseReferenceOption')} /></SelectTrigger>
           <SelectContent>
@@ -155,7 +155,7 @@ export function LocalTab() {
       </output>
 
       <label className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('repositionPanel.constraintLabel')}</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('repositionPanel.constraintLabel')}</span>
         <Select value={preview?.constraint ?? 'free'} onValueChange={(value) => useViewerStore.getState().setMoveConstraint(value as MoveConstraint)}>
           <SelectTrigger aria-label={t('repositionPanel.movementConstraintAriaLabel')}><SelectValue /></SelectTrigger>
           <SelectContent>{CONSTRAINTS.map((value) => <SelectItem key={value} value={value}>{value.toUpperCase()}</SelectItem>)}</SelectContent>
@@ -163,7 +163,7 @@ export function LocalTab() {
       </label>
 
       <label className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('repositionPanel.inputLabel')}</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('repositionPanel.inputLabel')}</span>
         <Select value={runtime.mode} onValueChange={(value) => runtime.setMode(value as 'delta' | 'absolute')}>
           <SelectTrigger aria-label={t('repositionPanel.coordinateInputModeAriaLabel')}><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -188,7 +188,7 @@ export function LocalTab() {
       <Button size="sm" variant="outline" onClick={runtime.previewFields}>{t('repositionPanel.previewValuesButton')}</Button>
 
       <label className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('repositionPanel.distanceLabel')}</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('repositionPanel.distanceLabel')}</span>
         <Input aria-label={t('repositionPanel.moveDistanceAriaLabel')} className="w-24" value={runtime.distance}
           onChange={(e) => runtime.setDistance(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runtime.previewDistance(); } }} />
@@ -200,7 +200,7 @@ export function LocalTab() {
       </output>
 
       <label className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{t('repositionPanel.nudgeIncrementLabel')}</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">{t('repositionPanel.nudgeIncrementLabel')}</span>
         <Input aria-label={t('repositionPanel.nudgeIncrementLabel')} className="w-24" value={runtime.nudgeField}
           onChange={(e) => runtime.setNudgeField(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runtime.applyNudge(); } }}

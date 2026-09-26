@@ -36,14 +36,14 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
   return (
     <div className="flex flex-col gap-2 text-xs">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">
           {c.editMode ? t('placementPanel.georeference.editToggleOn') : t('placementPanel.georeference.editToggleOff')}
         </span>
         <Switch checked={c.editMode} onCheckedChange={(checked) => (checked ? c.beginEditing() : c.handleClose())} aria-label={t('cesiumGeo.placement.headerTitle')} />
       </div>
 
       {!c.editMode && (
-        <p className="text-[9px] leading-snug text-muted-foreground">{t('placementPanel.georeference.startHint')}</p>
+        <p className="text-2xs leading-snug text-muted-foreground">{t('placementPanel.georeference.startHint')}</p>
       )}
 
       {c.editMode && (
@@ -57,20 +57,20 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
 
           {c.mapAbsoluteActive && (
             <output data-testid="cesium-placement-map-absolute-warning"
-              className="block border border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] leading-snug text-amber-800 dark:text-amber-300">
+              className="block border border-amber-500 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-2xs leading-snug text-amber-800 dark:text-amber-300">
               {t('cesiumGeo.placement.mapAbsoluteWarning')}
             </output>
           )}
 
           <div className="space-y-1">
-            <div className="pb-1 text-[9px] leading-snug text-muted-foreground">{t('cesiumGeo.placement.dragHint')}</div>
+            <div className="pb-1 text-2xs leading-snug text-muted-foreground">{t('cesiumGeo.placement.dragHint')}</div>
             <PreviewRow label="Eastings" value={`${c.activeDraft.eastings.toFixed(2)} ${c.mapUnitSuffix}`} />
             <PreviewRow label="Northings" value={`${c.activeDraft.northings.toFixed(2)} ${c.mapUnitSuffix}`} />
             <PreviewRow label="OrthogonalHeight" value={`${c.activeDraft.orthogonalHeight.toFixed(2)} ${c.mapUnitSuffix}`} />
             <PreviewRow label={t('cesiumGeo.placement.xAxisAngleLabel')} value={`${c.activeAngle.toFixed(2)} deg`} />
           </div>
 
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-[9px]">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 text-2xs">
             <span className="text-muted-foreground uppercase tracking-wider">{t('cesiumGeo.placement.nudgeOneMeter')}</span>
             <NudgeButton onClick={() => c.nudge(0, c.nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeNorthAriaLabel')}>{t('cesiumGeo.placement.nudgeNorthLabel')}</NudgeButton>
             <span />
@@ -79,13 +79,13 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
             <NudgeButton onClick={() => c.nudge(0, -c.nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeSouthAriaLabel')}>{t('cesiumGeo.placement.nudgeSouthLabel')}</NudgeButton>
           </div>
 
-          <div className="flex items-center gap-1 text-[9px]">
+          <div className="flex items-center gap-1 text-2xs">
             <span className="mr-auto text-muted-foreground uppercase tracking-wider">{t('cesiumGeo.placement.heightLabel')}</span>
             <NudgeButton onClick={() => c.nudgeHeight(-c.nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeHeightDownAriaLabel')}>{t('cesiumGeo.placement.nudgeHeightDownLabel')}</NudgeButton>
             <NudgeButton onClick={() => c.nudgeHeight(c.nudgeStep)} aria-label={t('cesiumGeo.placement.nudgeHeightUpAriaLabel')}>{t('cesiumGeo.placement.nudgeHeightUpLabel')}</NudgeButton>
           </div>
 
-          <div className="flex items-center gap-1 text-[9px]">
+          <div className="flex items-center gap-1 text-2xs">
             <span className="mr-auto text-muted-foreground uppercase tracking-wider">{t('cesiumGeo.placement.rotateLabel')}</span>
             <NudgeButton onClick={() => c.nudgeRotation(-1)} aria-label={t('cesiumGeo.placement.rotateNegAriaLabel')}>{t('cesiumGeo.placement.rotateNegLabel')}</NudgeButton>
             <NudgeButton onClick={() => c.nudgeRotation(1)} aria-label={t('cesiumGeo.placement.rotatePosAriaLabel')}>{t('cesiumGeo.placement.rotatePosLabel')}</NudgeButton>
@@ -108,8 +108,8 @@ export function GeoreferenceTab(props: GeoreferenceTabProps) {
 function Metric({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
     <div>
-      <div className="text-[8px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className={cn('mt-0.5 whitespace-nowrap text-[10px] font-semibold', accent)}>{value}</div>
+      <div className="text-2xs uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className={cn('mt-0.5 whitespace-nowrap text-2xs font-semibold', accent)}>{value}</div>
     </div>
   );
 }

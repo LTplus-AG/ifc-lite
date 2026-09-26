@@ -7,6 +7,7 @@ import type { TranslationValue } from '../types';
 export const costPanelEn = {
   'costPanel.title': 'Cost',
   'costPanel.close': 'Close',
+  'costPanel.exportCsv': 'Export CSV',
   'costPanel.noModelsLoaded': 'No models loaded.',
   'costPanel.dataUnavailable': 'Cost data unavailable — load the IFC source to inspect costs.',
   'costPanel.dataUnavailableWithError': 'Cost data unavailable: {message}',

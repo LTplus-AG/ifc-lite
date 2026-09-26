@@ -187,6 +187,8 @@ if (isValidIfcGuid(guid)) {
 
 `generateIfcGuid`, `generateUuid`, and `isValidUuid` are also re-exported.
 
+In the viewer, activating a viewpoint shows its clipping plane (or clears the cut when it has none). Closing the BCF panel gives back the section cut and tool you had before the first viewpoint, unless you moved the cut in the meantime.
+
 ## IDS Validation Reports as BCF
 
 Failed IDS validation results can be turned into a BCF project, one topic per failure group:
@@ -199,6 +201,8 @@ const blob = await writeBCF(project);
 ```
 
 The viewer's Data validation panel (IDS validation entry) uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
+
+`createBCFFromIDSReport` stops at `maxTopics` (default 1,000) and adds one Info topic saying how many items were left out. The viewer's export dialog defaults to one topic per failing specification, because one topic per entity grows with the model. It also shows how many topics the chosen grouping makes and warns before an export would pass the cap. Snapshots are rendered for at most that many entities.
 
 Exporting `version: '3.0'` also needs `entityBounds`. BCF 3.0 requires exactly one camera per viewpoint, and `createBCFFromIDSReport` computes that camera only from the bounds you pass, keyed `"modelId:expressId"`. Bounds that are absent, or that cover only some of the entities a viewpoint frames, make the call throw and name the topic it could not frame, rather than write a partial view that leaves the rest off screen. With no bounds to hand, export `version: '2.1'`, or set an explicit camera on every viewpoint before writing 3.0.
 

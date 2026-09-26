@@ -17,6 +17,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
@@ -59,10 +60,9 @@ import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
+import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
 
-/** Technical query flag, not translated prose — kept as a plain constant
- *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
- *  styled `<code>` element `styleInterpolatedValues` substitutes in below. */
+/** Technical query flag rendered as code by the localized safe-mode notice. */
 const SAFE_MODE_QUERY_FLAG = '?safe=0';
 
 export function ViewerLayout() {
@@ -187,10 +187,10 @@ export function ViewerLayout() {
       else shortcutsDialog.toggle();
     };
 
-    window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
+    window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
-      window.removeEventListener('ifc-lite:open-command-palette', openCommandPalette);
+      window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
       window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
   }, [shortcutsDialog]);
@@ -290,7 +290,6 @@ export function ViewerLayout() {
   useMobileLayoutMode();
 
   useThemeDocumentClass();
-
   const safeMode = isSafeMode();
 
   return (
@@ -308,6 +307,7 @@ export function ViewerLayout() {
         )}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
+        <ConfirmDialogHost />
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
@@ -530,4 +530,3 @@ export function ViewerLayout() {
     </TooltipProvider>
   );
 }
-

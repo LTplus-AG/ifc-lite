@@ -10,6 +10,7 @@
 import { useRef } from 'react';
 import { Copy, Download, MoreHorizontal, Pencil, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
 import { DOCUMENT_FILE_SUFFIX, exportDocument, freshBlockId, freshDocumentId, importDocument } from '@/lib/document/persistence';
@@ -27,9 +28,9 @@ export function DocumentMenu({ document, onUpsert, onDelete, onActivate }: Docum
   const fileInput = useRef<HTMLInputElement | null>(null);
   const { t } = useTranslation();
 
-  const rename = (): void => {
+  const rename = async (): Promise<void> => {
     if (!document) return;
-    const name = window.prompt(t('documentMenu.namePrompt'), document.name)?.trim();
+    const name = (await promptDialog({ description: t('documentMenu.namePrompt'), defaultValue: document.name }))?.trim();
     if (name && name !== document.name) onUpsert({ ...document, name });
   };
   const duplicate = (): void => {

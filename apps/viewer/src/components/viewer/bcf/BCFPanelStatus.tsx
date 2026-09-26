@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { AlertCircle, Loader2, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
@@ -22,7 +23,7 @@ export function BCFPanelStatus() {
   if (bcfLoading) {
     return (
       <div role="status" className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <Spinner size="sm" />
         {t('bcf.panel.busy')}
       </div>
     );

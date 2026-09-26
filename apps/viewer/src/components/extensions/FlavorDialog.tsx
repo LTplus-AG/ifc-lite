@@ -22,6 +22,7 @@ import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
@@ -124,7 +125,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmDelete', { id }))) return;
+    if (!await confirmDialog({ description: t('extensionsFlavors.flavorDialog.confirmDelete', { id }), destructive: true })) return;
     setBusy(true);
     try {
       await host.flavors.delete(id);
@@ -286,7 +287,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleReset = async () => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmReset'))) return;
+    if (!await confirmDialog({ description: t('extensionsFlavors.flavorDialog.confirmReset'), destructive: true })) return;
     setBusy(true);
     try {
       await host.flavors.resetToDefaults();
@@ -389,7 +390,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
             />
           </>
         )}
-
         <FlavorMergeDialog
           open={!!mergeTarget}
           theirs={mergeTarget}

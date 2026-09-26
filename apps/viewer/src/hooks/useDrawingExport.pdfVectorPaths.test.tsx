@@ -60,14 +60,6 @@ import {
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
 
-// happy-dom has no `window.alert`; the production failure path calls it from
-// inside a fire-and-forget async IIFE, where a ReferenceError would hang the
-// completion promise below with no visible cause.
-(globalThis as unknown as { alert: (msg?: string) => void }).alert = (msg) => {
-  // eslint-disable-next-line no-console -- test-only diagnostic for a swallowed export error
-  console.error('[handleExportPDF alert]', msg);
-};
-
 /** A valid 1x1 PNG so jsPDF's own decoder accepts the stubbed raster. */
 const TINY_PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

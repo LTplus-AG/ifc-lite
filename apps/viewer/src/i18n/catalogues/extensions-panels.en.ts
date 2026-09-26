@@ -228,23 +228,22 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.helpIntro':
     'IFClite keeps a content-free action log of intents you perform (model loads, lens applies, exports) — used by the pattern miner to suggest one-click tools. The log never records model content, chat content, file names, or API keys.',
   'extensionsPanels.privacyPanel.helpOverlay':
-    'The prompt overlay on the active flavor is appended to every chat system prompt — use it for stable preferences. Extract from chat scans the current session for explicit preferences and proposes them.',
+    'The prompt overlay on the active profile is appended to every chat system prompt — use it for stable preferences. Extract from chat scans the current session for explicit preferences and proposes them.',
   'extensionsPanels.privacyPanel.extractFromChat': 'Extract from chat',
-  'extensionsPanels.privacyPanel.closeAriaLabel': 'Close',
   'extensionsPanels.privacyPanel.storeHeading': 'What we store locally',
   'extensionsPanels.privacyPanel.storeBody1':
     'ifc-lite keeps a content-free action log of the high-level intents you perform (model loads, lens applies, exports). We use it to mine recurring patterns and surface one-click tool suggestions. The log never records model content, chat content, file names, or API keys.',
   'extensionsPanels.privacyPanel.storeBody2':
-    "Suggestions, the audit log, the prompt overlay, and your flavor library are all stored in your browser's IndexedDB — nothing here is sent off device unless you explicitly export.",
+    "Suggestions, the audit log, the prompt overlay, and your profile library are all stored in your browser's IndexedDB — nothing here is sent off device unless you explicitly export.",
   'extensionsPanels.privacyPanel.actionLogHeading': 'Action log',
   'extensionsPanels.privacyPanel.actionLogStats': '{events} events · {kib} KiB',
   'extensionsPanels.privacyPanel.exportJsonButton': 'Export JSON',
   'extensionsPanels.privacyPanel.clearButton': 'Clear',
   'extensionsPanels.privacyPanel.overlayHeading': 'Prompt overlay',
   'extensionsPanels.privacyPanel.overlayIntro':
-    'Notes appended to the AI assistant’s system prompt for the active flavor. Use it for stable preferences ("write CSV exports with semicolons", "default to red color for IfcWall"). Capped at ~4000 tokens.',
+    'Notes appended to the AI assistant’s system prompt for the active profile. Use it for stable preferences ("write CSV exports with semicolons", "default to red color for IfcWall"). Capped at ~4000 tokens.',
   'extensionsPanels.privacyPanel.noActiveFlavor':
-    'No active flavor. Activate or import one to attach overlay notes to it.',
+    'No active profile. Activate or import one to attach overlay notes to it.',
   'extensionsPanels.privacyPanel.editingOverlayFor': 'Editing overlay for {name}',
   'extensionsPanels.privacyPanel.overlayPlaceholder':
     'e.g. Always export CSV with semicolon separators. Default lens for IfcWall: by-fire-rating.',
@@ -271,7 +270,7 @@ export const extensionsPanelsEn = {
     one: 'Added {countDisplay} preference to the overlay. Save to keep them.',
     other: 'Added {countDisplay} preferences to the overlay. Save to keep them.',
   },
-  'extensionsPanels.privacyPanel.noActiveFlavorError': 'No active flavor — switch to one before editing its overlay.',
+  'extensionsPanels.privacyPanel.noActiveFlavorError': 'No active profile — switch to one before editing its overlay.',
   'extensionsPanels.privacyPanel.overlayClampedToast': 'Overlay clamped to ~{tokens} tokens.',
   'extensionsPanels.privacyPanel.overlaySavedToast': 'Overlay saved ({tokens} tokens).',
   'extensionsPanels.privacyPanel.saveFailedToast': 'Save failed: {error}',

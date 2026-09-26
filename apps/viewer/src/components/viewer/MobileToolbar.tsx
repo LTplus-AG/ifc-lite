@@ -19,7 +19,6 @@ import {
   Home,
   Maximize2,
   Crosshair,
-  Loader2,
   MoreHorizontal,
   Plus,
   Download,
@@ -27,7 +26,9 @@ import {
   Sun,
   Moon,
   PersonStanding,
+  Search,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import {
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
@@ -51,6 +53,7 @@ import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -61,13 +64,11 @@ export function MobileToolbar() {
   const {
     loadFile,
     loading,
-    progress,
-    geometryProgress,
-    metadataProgress,
     geometryResult,
     models,
     loadFilesSequentially,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
@@ -179,7 +180,7 @@ export function MobileToolbar() {
         aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner size="md" />
         ) : (
           <FolderOpen className="h-4 w-4" />
         )}
@@ -252,11 +253,11 @@ export function MobileToolbar() {
       <div className="flex-1 min-w-2" />
 
       {/* Loading progress (compact) */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-16 h-1.5" />
+          <Progress value={activeProgress.percent} className="w-16 h-1.5" />
           <span className="text-[10px] text-muted-foreground tabular-nums">
-            {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
+            {Math.round(activeProgress.percent)}%
           </span>
         </div>
       )}
@@ -279,6 +280,11 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={emitOpenCommandPalette}>
+            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+            {t('shellChrome.mobileToolbar.commands')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
             checked={activeTool === 'walk'}

@@ -102,6 +102,22 @@ for (const modelCount of [1, 3]) {
         new Set([manualOverlap]), 'deactivating the lens must leave the manual hide in place');
     });
 
+    it('Home owns a new lens match even when no manual hidden reason is active (#5869)', () => {
+      const offset = seedModels(modelCount);
+      const newMatch = offset + 10;
+      useViewerStore.setState({
+        activeLensId: 'lens',
+        lensHiddenIds: new Set([newMatch]),
+        hiddenEntities: new Set(),
+        lensAppliedHiddenIds: [],
+      });
+
+      resetVisibilityForHomeFromStore('home');
+      const afterHome = useViewerStore.getState();
+      assert.deepEqual(afterHome.hiddenEntities, new Set([newMatch]));
+      assert.deepEqual(afterHome.lensAppliedHiddenIds, [newMatch]);
+    });
+
     it('a fresh federation has no active reason', () => {
       seedModels(modelCount);
       assert.deepEqual(ids(useViewerStore.getState()), []);

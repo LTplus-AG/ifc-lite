@@ -13,6 +13,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { useSelectAssembly } from './properties/useSelectAssembly';
@@ -1268,15 +1269,12 @@ export function PropertiesPanel() {
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
-          <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
-            <MousePointer2 className="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
-          </div>
-          <p className="font-bold uppercase text-zinc-900 dark:text-zinc-100 mb-2">{t('properties.panel.emptyTitle')}</p>
-          <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400 max-w-[150px]">
-            {models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
-          </p>
-        </div>
+        <EmptyState
+          className="flex-1 bg-white dark:bg-black"
+          icon={<MousePointer2 className="size-8" />}
+          title={t('properties.panel.emptyTitle')}
+          description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
+        />
       </div>
     );
   }

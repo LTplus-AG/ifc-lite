@@ -106,6 +106,8 @@ function resetStore(): void {
     clashResult: null,
     clashGroups: null,
     clashSelectedId: null,
+    clashRunning: false,
+    clashProgress: null,
     clashSortBy: 'severity',
     clashHideTouching: false,
     clashStatusFilter: new Set(['open', 'resolved', 'accepted']),
@@ -113,6 +115,15 @@ function resetStore(): void {
 }
 
 describe('ClashPanel surfaces the existing clash grouping as coordination issues', () => {
+  it('replaces Detect all with a working Cancel control during a run (#5831)', () => {
+    useViewerStore.setState({ clashRunning: true });
+    const container = renderPanel();
+    const cancel = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Cancel detection'));
+    assert.ok(cancel);
+    act(() => cancel.click());
+    assert.equal(useViewerStore.getState().clashRunning, false);
+  });
+
   beforeEach(() => {
     resetStore();
   });

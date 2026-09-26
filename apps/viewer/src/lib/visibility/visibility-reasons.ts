@@ -77,10 +77,11 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
       }
       return false;
     },
-    // Keep the lens's hides without claiming manually hidden overlaps.
+    // Keep the lens's hides without claiming manually hidden overlaps, while
+    // claiming any new match the lens has not synced into the channel yet.
     clear: (store) => {
-      const { activeLensId, lensHiddenIds, lensAppliedHiddenIds } = store.getState();
-      store.setState(hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds));
+      const { activeLensId, lensHiddenIds, lensAppliedHiddenIds, hiddenEntities } = store.getState();
+      store.setState(hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds, hiddenEntities));
     },
   },
   {
@@ -160,9 +161,11 @@ export function activeVisibilityReasons(state: ViewerState): VisibilityReason[] 
   return VISIBILITY_REASONS.filter((reason) => reason.isActive(state));
 }
 
-/** Show all / Home: clear every active `cleared` mechanism; `kept` ones stay. */
+/** Show all / Home: clear active resettable mechanisms; reconcile hides even when only the lens is active. */
 export function resetVisibilityReasons(store: VisibilityStore): void {
   for (const reason of VISIBILITY_REASONS) {
-    if (reason.policy === 'cleared' && reason.isActive(store.getState())) reason.clear(store);
+    // The lens may have new matches before its sync effect hides them. Home
+    // must still apply those matches, including their ownership (#5877).
+    if (reason.policy === 'cleared' && (reason.id === 'hidden' || reason.isActive(store.getState()))) reason.clear(store);
   }
 }

@@ -13,6 +13,7 @@
 import { useCallback } from 'react';
 import { Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
@@ -70,8 +71,8 @@ export function MeasureToolbar() {
     title: t(hintKey),
   }));
 
-  const handleClear = useCallback(() => {
-    if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+  const handleClear = useCallback(async () => {
+    if (await confirmDialog({ description: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
   }, [clearMeasurements, t]);
 
   return (

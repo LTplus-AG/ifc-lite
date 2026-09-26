@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,7 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
   return <section className="space-y-3 rounded-lg border p-3" aria-label={t('appearance.pdfFields.pageSettingsAriaLabel')} aria-busy={!!pdf.busy}>
     <div className="flex items-center justify-between gap-2">
       <h3 className="text-xs font-medium">{t('appearance.pdfFields.heading')}</h3>
-      {pdf.busy && <span role="status" className="flex items-center gap-1 text-[10px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />{t('appearance.pdfFields.updatingPage')}</span>}
+      {pdf.busy && <span role="status" className="flex items-center gap-1 text-[10px] text-muted-foreground"><Spinner size="xs" />{t('appearance.pdfFields.updatingPage')}</span>}
     </div>
     <p className="truncate text-[11px] text-muted-foreground" title={pdf.documentName}>{pdf.documentName}</p>
     <fieldset disabled={disabled} className="space-y-3">

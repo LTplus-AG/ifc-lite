@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { SourceFolderTree } from './SourceFolderTree';
 import { SourceFileRow } from './SourceFileRow';
 import { LoadMoreRow } from './SourceEntityList';
-import { Download, FolderOpen, Loader2, Search, Star, X } from 'lucide-react';
+import { Download, FolderOpen, Search, Star, X } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 
 interface SourceFolderStepProps {
@@ -192,7 +193,7 @@ export function SourceFolderStep({
               // then would discard its locally-owned `openIds`, collapsing
               // every already-expanded branch.
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+                <Spinner size="lg" className="text-muted-foreground" />
               </div>
             ) : (
               <>
@@ -299,7 +300,7 @@ export function SourceFolderStep({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {loadingFiles ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+                <Spinner size="lg" className="text-muted-foreground" />
               </div>
             ) : (
               <>
@@ -348,7 +349,7 @@ export function SourceFolderStep({
         <div className="shrink-0 border-t bg-background px-3 py-2">
           <Button className="w-full" onClick={onLoad} disabled={busy}>
             {busy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              <Spinner size="md" className="mr-2" />
             ) : (
               <Download className="mr-2 h-4 w-4" aria-hidden />
             )}

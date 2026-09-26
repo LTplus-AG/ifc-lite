@@ -72,14 +72,14 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shrink-0">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium border border-emerald-300/60 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shrink-0">
             <CheckCircle2 className="h-2.5 w-2.5" />
             {t('properties.precisionGrid.loadedBadge')}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs max-w-xs">
           <div>{t('properties.precisionGrid.loadedTooltip', { region: spec.region })}</div>
-          <div className="mt-1 text-[10px] opacity-80">
+          <div className="mt-1 text-2xs opacity-80">
             {t('properties.precisionGrid.loadedDetail', { filename: spec.filename })}
           </div>
         </TooltipContent>
@@ -91,14 +91,14 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-red-300/60 dark:border-red-700/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 shrink-0">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium border border-red-300/60 dark:border-red-700/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 shrink-0">
             <AlertTriangle className="h-2.5 w-2.5" />
             {t('properties.precisionGrid.failedBadge')}
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs max-w-xs">
           <div>{t('properties.precisionGrid.failedTooltip', { region: spec.region })}</div>
-          <div className="mt-1 text-[10px] opacity-80">
+          <div className="mt-1 text-2xs opacity-80">
             {t('properties.precisionGrid.failedDetail', { host: 'cdn.proj.org' })}
           </div>
         </TooltipContent>
@@ -109,14 +109,14 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-amber-300/60 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 shrink-0">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium border border-amber-300/60 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 shrink-0">
           <Spinner className="h-2.5 w-2.5" />
           {t('properties.precisionGrid.loadingBadge')}
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs max-w-xs">
         <div>{t('properties.precisionGrid.loadingTooltip', { region: spec.region })}</div>
-        <div className="mt-1 text-[10px] opacity-80">
+        <div className="mt-1 text-2xs opacity-80">
           {t('properties.precisionGrid.loadingDetail')}
         </div>
       </TooltipContent>

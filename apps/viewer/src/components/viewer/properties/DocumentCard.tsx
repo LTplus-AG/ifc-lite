@@ -33,7 +33,7 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           {displayName}
         </span>
         {document.revision && (
-          <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
+          <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
             {document.revision}
           </span>
         )}

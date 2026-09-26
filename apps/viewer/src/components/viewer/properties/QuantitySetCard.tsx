@@ -48,7 +48,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
     <Collapsible defaultOpen className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
         <span className="font-bold text-xs text-blue-700 dark:text-blue-400 truncate flex-1 min-w-0">{setDisplayName(qset.name, t('properties.quantitySet.unnamed'))}</span>
-        <span className="text-[10px] font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{formatLocaleNumber(locale, qset.quantities.length)}</span>
+        <span className="text-2xs font-mono bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shrink-0">{formatLocaleNumber(locale, qset.quantities.length)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-blue-200 dark:border-blue-800 divide-y divide-blue-100 dark:divide-blue-900/30">
@@ -67,7 +67,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides }: Qu
                         {q.name}
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="text-[10px]">
+                    <TooltipContent side="top" className="text-2xs">
                       {/* TooltipContent uses the neutral popover surface (#4767);
                           secondary text uses its semantic muted token instead
                           of a hardcoded primary-foreground opacity tier. */}

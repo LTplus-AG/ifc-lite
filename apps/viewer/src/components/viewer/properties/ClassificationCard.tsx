@@ -46,7 +46,7 @@ export function ClassificationCard({ classification }: { classification: Classif
         <span className="font-bold text-xs text-emerald-700 dark:text-emerald-400 truncate flex-1 min-w-0">
           {systemName || t('properties.classification.heading')}
         </span>
-        <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 shrink-0">
+        <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 shrink-0">
           {displayName}
         </span>
       </CollapsibleTrigger>

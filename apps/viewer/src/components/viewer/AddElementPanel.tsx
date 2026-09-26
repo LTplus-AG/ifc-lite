@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, Wand2, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { EntityNode } from '@ifc-lite/query';
@@ -153,20 +153,14 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
             {t('addElement.heading')}
           </h2>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onClose}
-              aria-label={t('addElement.closeAria')}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('addElement.closeTitle')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('addElement.closeAria')}
+          tooltip={t('addElement.closeTitle')}
+          className="h-6 w-6"
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </IconButton>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">

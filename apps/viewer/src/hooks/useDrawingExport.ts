@@ -4,9 +4,10 @@
 
 import { useCallback } from 'react';
 import type React from 'react';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -358,6 +359,7 @@ function useDrawingExport({
   isPinned = false,
   cachedSheetTransformRef,
 }: UseDrawingExportParams): UseDrawingExportResult {
+  const { t } = useTranslation();
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
   // id), not in `ifcDataStore`, and in a federation the georef frame is the
@@ -968,7 +970,6 @@ function useDrawingExport({
     // every fresh draw — neither of which this callback controls.
     // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
   }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned, ifcDataStore, storeModels]);
-
   // Export SVG
   const handleExportSVG = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -978,9 +979,9 @@ function useDrawingExport({
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
       : `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
+    trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
-
   // Export DXF (issue #1861). Unlike SVG, DXF has no paper space, so this
   // always exports the raw model-space drawing (sheet frame/title block are
   // not represented) — real-world metres, with a plan ('down') section
@@ -1026,6 +1027,7 @@ function useDrawingExport({
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
+    trackExportCompleted({ format: 'dxf', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', {
       format: 'dxf',
       axis: sectionPlane.axis,
@@ -1035,7 +1037,6 @@ function useDrawingExport({
     drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo,
     storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
   ]);
-
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
   // drawing extent + margin (via computePdfScaleLayout) rather than fit
@@ -1143,6 +1144,7 @@ function useDrawingExport({
 
           const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
           downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
           posthog.capture('drawing_exported', {
             format: 'pdf',
             axis: sectionPlane.axis,
@@ -1154,8 +1156,7 @@ function useDrawingExport({
             raster_capped: fit.capped,
           });
         } catch (err) {
-          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
-          alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+          toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
         }
       })();
       return;
@@ -1175,8 +1176,7 @@ function useDrawingExport({
     try {
       layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
     } catch (err) {
-      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
-      alert(err instanceof Error ? err.message : 'Could not export PDF: invalid scale.');
+      toast.error(err instanceof Error ? t('section2d.export.invalidScaleDetail', { error: err.message }) : t('section2d.export.invalidScale'));
       return;
     }
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
@@ -1245,7 +1245,6 @@ function useDrawingExport({
           doc.line(p0.x, p0.y, p1.x, p1.y);
         }
         doc.setLineDashPattern([], 0);
-
         // v1 has no title block, so this filename is the SOLE record of the
         // sheet's scale — round-tripping through Math.round() here would
         // file a 1:99.5 export as "…-1-100", silently misreporting it (same
@@ -1254,6 +1253,7 @@ function useDrawingExport({
         // re-deriving it.
         const stem = `section-${sectionPlane.axis}-${sectionPlane.position}-1-${formatScaleFactorLabel(effectiveScale)}`;
         downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+        trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
         posthog.capture('drawing_exported', {
           format: 'pdf',
           axis: sectionPlane.axis,
@@ -1261,16 +1261,11 @@ function useDrawingExport({
         });
       } catch (err) {
         // The dynamic `jspdf` import, PDF construction and download all run
-        // in this async IIFE, outside the synchronous try/catch above (which
-        // only guards the scale/layout arithmetic). A failed chunk load —
-        // the most likely failure here — used to surface as an unhandled
-        // promise rejection with no user feedback at all. Match the
-        // synchronous path's alert() rather than fail silently.
-        // eslint-disable-next-line no-alert -- matches the synchronous scale-validation alert above.
-        alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+        // in this async IIFE, outside the synchronous try/catch above.
+        toast.error(err instanceof Error ? t('section2d.export.pdfFailed', { error: err.message }) : t('section2d.export.pdfFailedGeneric'));
       }
     })();
-  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG]);
+  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG, t]);
 
   // Print handler
   const handlePrint = useCallback(() => {
@@ -1281,7 +1276,7 @@ function useDrawingExport({
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) {
-      alert('Please allow popups to print');
+      toast.error(t('section2d.export.allowPopups'));
       return;
     }
 
@@ -1338,7 +1333,7 @@ function useDrawingExport({
       </html>
     `);
     printWindow.document.close();
-  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
+  }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane, t]);
 
   return {
     formatDistance,

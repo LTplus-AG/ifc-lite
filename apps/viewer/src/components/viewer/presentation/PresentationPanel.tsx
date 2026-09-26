@@ -34,6 +34,7 @@ import {
   Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import {
@@ -181,14 +182,14 @@ export function PresentationPanel() {
     }
   }, [activateSavedView, basketViews, playingAll, toTransitionMs, wait]);
 
-  const setViewTransitionDuration = useCallback((viewId: string, currentTransitionMs: number | null) => {
+  const setViewTransitionDuration = useCallback(async (viewId: string, currentTransitionMs: number | null) => {
     const defaultSeconds = currentTransitionMs && currentTransitionMs > 0
       ? (currentTransitionMs / 1000).toFixed(1)
       : '';
-    const input = window.prompt(
-      'Transition duration in seconds (optional). Leave empty for default smooth transition.',
-      defaultSeconds,
-    );
+    const input = await promptDialog({
+      description: t('presentationPanel.transitionDurationPrompt'),
+      defaultValue: defaultSeconds,
+    });
     if (input === null) return;
 
     const trimmed = input.trim();
@@ -200,7 +201,7 @@ export function PresentationPanel() {
     const seconds = Number(trimmed);
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     setBasketViewTransitionMs(viewId, Math.round(seconds * 1000));
-  }, [setBasketViewTransitionMs]);
+  }, [setBasketViewTransitionMs, t]);
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">

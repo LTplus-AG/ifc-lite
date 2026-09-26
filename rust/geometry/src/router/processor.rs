@@ -33,13 +33,16 @@ pub trait GeometryProcessor {
     /// Process a raw-coordinate item in an element-local RTC frame.
     ///
     /// `rtc_file_units` is the relative-to-center offset in the file's own
-    /// length unit; a processor that reads its coordinates as `f64` subtracts
-    /// it BEFORE narrowing to `f32`, returns the rebased mesh and sets
+    /// length unit, already expressed in the item's coordinate frame; a
+    /// processor that reads its coordinates as `f64` subtracts it BEFORE
+    /// narrowing to `f32`, returns the rebased mesh and sets
     /// `Mesh::rtc_applied`. Default `None`: the processor has no such hook,
-    /// and the router falls back to [`Self::process`] followed by an f32
-    /// subtraction — which cannot recover sub-ULP detail at national-grid
-    /// magnitudes (#5026 review). Built-in face processors implement this;
-    /// a registered override that handles large coordinates must too.
+    /// and the router falls back to [`Self::process`], leaving RTC to the
+    /// final f64 world transform — which cannot recover detail its f32 output
+    /// already lost at national-grid magnitudes (#5026 review). Every
+    /// built-in raw-coordinate processor implements this (faces, faceted
+    /// Brep, tessellated face sets and surface models, #5698); a registered
+    /// override that handles large coordinates must too.
     fn process_in_rtc_frame(
         &self,
         _entity: &DecodedEntity,

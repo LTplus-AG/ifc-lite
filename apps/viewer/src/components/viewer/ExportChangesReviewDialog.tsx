@@ -29,7 +29,8 @@
  * count instead of silently dropping it from the review.
  */
 
-import { Download, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -235,7 +236,7 @@ export function ExportChangesReviewDialog({
           <Button onClick={onConfirm} disabled={isExporting || isEmpty}>
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('exportChangesReviewDialog.exportingLabel')}
               </>
             ) : (

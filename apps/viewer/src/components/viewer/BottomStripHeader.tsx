@@ -20,6 +20,7 @@ import { getPanelDef } from '@/lib/panels/registry';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { BottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const ICON_BUTTON_CLASS =
   'flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:bg-muted hover:text-foreground';
@@ -71,35 +72,29 @@ export function BottomStripHeader({
 }: BottomStripHeaderProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex shrink-0 items-stretch border-b bg-muted/10">
-      <div
-        role="tablist"
+    <Tabs value={activePanel} onValueChange={(value) => onSelectTab(value as BottomPanelId)} className="flex shrink-0 items-stretch border-b bg-muted/10">
+      <TabsList
         aria-label={t('bottomStrip.tabListAriaLabel')}
-        className="properties-tabs-list min-w-0 flex-1 justify-start overflow-x-auto"
+        className="properties-tabs-list min-w-0 h-auto flex-1 justify-start overflow-x-auto rounded-none bg-transparent p-0"
       >
         {tabs.map((id) => {
           const def = getPanelDef(id);
           const Icon = def?.Icon;
-          const active = id === activePanel;
           const label = def?.short ?? id;
           return (
             <div
               key={id}
-              role="tab"
-              tabIndex={active ? 0 : -1}
-              aria-selected={active}
-              data-state={active ? 'active' : 'inactive'}
-              className="properties-tab-trigger group flex shrink-0 cursor-pointer items-center gap-1.5"
-              onClick={() => onSelectTab(id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelectTab(id);
-                }
-              }}
+              className="group flex shrink-0 items-center"
             >
-              {Icon && <Icon className="panel-compact-icon h-3 w-3 shrink-0" />}
-              <span className="panel-compact-text whitespace-nowrap">{label}</span>
+              <TabsTrigger
+                value={id}
+                id={`bottom-strip-tab-${id}`}
+                aria-controls={`bottom-strip-panel-${id}`}
+                className="properties-tab-trigger flex shrink-0 cursor-pointer items-center gap-1.5 rounded-none bg-transparent shadow-none data-[state=active]:shadow-none"
+              >
+                {Icon && <Icon className="panel-compact-icon h-3 w-3 shrink-0" />}
+                <span className="panel-compact-text whitespace-nowrap">{label}</span>
+              </TabsTrigger>
               <button
                 type="button"
                 onClick={(e) => {
@@ -114,7 +109,7 @@ export function BottomStripHeader({
             </div>
           );
         })}
-      </div>
+      </TabsList>
       <div className="flex shrink-0 items-center gap-0.5 px-1">
         <DetachGrip id={activePanel} />
         {activePanel === 'drawing' && onToggleOrientation && (
@@ -145,6 +140,6 @@ export function BottomStripHeader({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-    </div>
+    </Tabs>
   );
 }

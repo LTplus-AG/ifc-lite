@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { X, Info, Keyboard, ExternalLink, Sparkles, ChevronDown, ChevronRight, Zap, Wrench, Plus, Package, ShieldCheck, GraduationCap, SlidersHorizontal } from 'lucide-react';
+import { X, Info, Keyboard, ExternalLink, Sparkles, ChevronDown, ChevronRight, Zap, Wrench, Plus, Package, ShieldCheck, GraduationCap } from 'lucide-react';
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -21,14 +21,13 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
 import { LearnTab } from '@/components/tours/LearnTab';
-import { PreferencesTab } from './PreferencesTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation } from '@/i18n';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
-export type InfoDialogTab = 'about' | 'whatsnew' | 'shortcuts' | 'preferences' | 'learn';
+export type InfoDialogTab = 'about' | 'whatsnew' | 'shortcuts' | 'learn';
 
 interface InfoDialogProps {
   open: boolean;
@@ -490,10 +489,6 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
                 <Keyboard className="h-3.5 w-3.5" />
                 {t('keyboardShortcuts.tabs.shortcuts')}
               </TabsTrigger>
-              <TabsTrigger value="preferences" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                {t('keyboardShortcuts.tabs.preferences')}
-              </TabsTrigger>
               <TabsTrigger value="learn" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
                 <GraduationCap className="h-3.5 w-3.5" />
                 {t('keyboardShortcuts.tabs.learn')}
@@ -506,7 +501,6 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           <TabsContent value="about" className="p-4 max-h-80 overflow-y-auto"><AboutTab /></TabsContent>
           <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto"><WhatsNewTab /></TabsContent>
           <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto"><ShortcutsTab /></TabsContent>
-          <TabsContent value="preferences" className="p-4 max-h-80 overflow-y-auto"><PreferencesTab /></TabsContent>
           <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto"><LearnTab onClose={onClose} /></TabsContent>
         </Tabs>
 

@@ -15,7 +15,8 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { X, Camera, RefreshCw, Loader2, ImageOff } from 'lucide-react';
+import { X, Camera, RefreshCw, ImageOff } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -186,7 +187,7 @@ export function BCFCreateTopicForm({
                 onClick={onCaptureSnapshot}
                 disabled={capturingSnapshot}
               >
-                {capturingSnapshot ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {capturingSnapshot ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 {t('bcf.createForm.recapture')}
               </Button>
             )}
@@ -194,7 +195,7 @@ export function BCFCreateTopicForm({
           {includeSnapshot && (
             <div className="rounded-md border border-border overflow-hidden bg-muted/40 aspect-video flex items-center justify-center">
               {capturingSnapshot && !snapshot ? (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Spinner size="lg" className="text-muted-foreground" />
               ) : snapshot ? (
                 <img src={snapshot} alt={t('bcf.createForm.snapshotAlt')} className="w-full h-full object-contain" />
               ) : (

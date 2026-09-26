@@ -6,6 +6,7 @@
  * Persistence for list definitions via localStorage
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
@@ -39,6 +40,7 @@ export function exportListDefinition(definition: ListDefinition): void {
   const json = JSON.stringify(definition, null, 2);
   const name = sanitizeFilename(definition.name, { fallback: 'list' });
   downloadFile(json, `${name}.list.json`, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'list_results' });
 }
 
 export function importListDefinition(file: File): Promise<ListDefinition> {

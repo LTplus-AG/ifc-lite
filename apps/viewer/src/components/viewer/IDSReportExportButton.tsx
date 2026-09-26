@@ -127,6 +127,7 @@ export function ReportExportButton({
       <IDSExportDialog
         hasReport={!!report}
         failedCount={report?.specificationResults.reduce((sum, s) => sum + s.failedCount, 0) ?? 0}
+        specificationResults={report?.specificationResults}
         onExport={onExportBCF}
         progress={bcfExportProgress}
         open={bcfDialogOpen}

@@ -19,6 +19,7 @@ import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react'
 import { AlertCircle, FileText, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIDS } from '@/hooks/useIDS';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
 import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
@@ -27,6 +28,7 @@ import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
 import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
 import { IDSPanelHeaderActions } from './IDSPanelHeaderActions';
+import { StaleResultBanner } from './StaleResultBanner';
 
 // ============================================================================
 // Types
@@ -62,9 +64,11 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     loadIDSFile,
     clearIDS,
     runValidation,
+    cancelValidation,
     clearValidation,
     focusEntity,
   } = ids;
+  const stale = useAnalysisStaleness(analysisStampOf(report));
 
   // Validation runs against one model at a time. When a federation is loaded,
   // surface which model the results reflect and let the user switch (#1591).
@@ -196,7 +200,9 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
                 <IDSPanelHeaderActions
                   reportModelId={report?.modelInfo[0]?.modelId ?? null}
                   loading={loading}
+                  validating={loading && progress !== null}
                   onRerun={(modelId) => { void runValidation(modelId); }}
+                  onCancel={cancelValidation}
                   onLoadNew={() => { void handleLoadIdsClick(); }}
                   onClearResults={clearValidation}
                   onUnload={() => {
@@ -230,6 +236,13 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
       {/* Progress */}
       {loading && progress && <IDSValidationProgress progress={progress} />}
 
+      {report && stale && (
+        <StaleResultBanner
+          disabled={loading}
+          onRerun={() => { void runValidation(report.modelInfo[0]?.modelId); }}
+        />
+      )}
+
       {/* Content */}
       <div className="flex-1 min-h-0 flex flex-col">
         <IDSPanelStates
@@ -238,19 +251,21 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
           onFileSelect={handleFileSelect}
           onLoadClick={() => { void handleLoadIdsClick(); }}
         />
-        <IDSPanelResults
-          results={ids}
-          runValidation={runValidation}
-          auditReport={ids.auditReport}
-          multiModel={idsMultiModel}
-          models={idsModelList}
-          pendingModelId={pendingModelId}
-          setPendingModelId={setPendingModelId}
-          validating={loading}
-          onEntityClick={handleEntityClick}
-          onCorrect={setCorrectionSpecId}
-          correctableSpecIds={correctableSpecIds}
-        />
+        <div className={`flex-1 min-h-0 flex flex-col${stale ? ' opacity-60' : ''}`}>
+          <IDSPanelResults
+            results={ids}
+            runValidation={runValidation}
+            auditReport={ids.auditReport}
+            multiModel={idsMultiModel}
+            models={idsModelList}
+            pendingModelId={pendingModelId}
+            setPendingModelId={setPendingModelId}
+            validating={loading}
+            onEntityClick={handleEntityClick}
+            onCorrect={setCorrectionSpecId}
+            correctableSpecIds={correctableSpecIds}
+          />
+        </div>
       </div>
 
       {report && correctionSpecResult && (

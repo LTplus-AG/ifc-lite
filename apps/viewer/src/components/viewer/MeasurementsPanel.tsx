@@ -18,10 +18,11 @@
 import { useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
-import { cn } from '@/lib/utils';
 import { MeasurementList } from './tools/MeasurementList';
 import { MeasurePointReadout } from './tools/MeasurePointReadout';
 import { MeasureQuantities } from './tools/MeasureQuantities';
@@ -47,7 +48,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <Tabs value={tab} onValueChange={(value) => setTab(value as PanelTab)} className="flex h-full flex-col">
       {/* House header — icon, title, close, the same shape as every other
           docked side panel (Environment, Point clouds, Cost). */}
       <div className="flex items-center gap-2 border-b p-3">
@@ -59,8 +60,8 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={() => {
-              if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+            onClick={async () => {
+              if (await confirmDialog({ description: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
             }}
             title={t('measure.clearAll')}
           >
@@ -74,31 +75,23 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      <div className="flex items-center gap-1 border-b px-3 py-1.5" role="tablist">
+      <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5" aria-label={t('measure.panel.title')}>
         {TABS.map(({ id, labelKey, titleKey, icon: Icon }) => (
-          <button
+          <TabsTrigger
             key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
+            value={id}
             title={t(titleKey)}
-            onClick={() => setTab(id)}
-            className={cn(
-              'inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
-              tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-            )}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
           >
             <Icon className="h-3 w-3" />
             {t(labelKey)}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
+      </TabsList>
 
-      <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
-        {tab === 'list' && <MeasurementList />}
-        {tab === 'point' && <MeasurePointReadout />}
-        {tab === 'quantities' && <MeasureQuantities />}
-      </div>
-    </div>
+      <TabsContent value="list" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasurementList /></TabsContent>
+      <TabsContent value="point" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasurePointReadout /></TabsContent>
+      <TabsContent value="quantities" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasureQuantities /></TabsContent>
+    </Tabs>
   );
 }

@@ -129,3 +129,33 @@ test('v1 regeneration refuses a new LandXML file without reviewed provenance', (
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('regeneration retains a source-hosted IFC only for the same extracted bytes', () => {
+  const bytes = Buffer.from('ISO-10303-21;\nEND-ISO-10303-21;\n');
+  const { root } = makeRoot(Buffer.from('<LandXML version="1.2"/>\n'), 1);
+  const path = 'buildingsmart/bridge.ifc';
+  const commit = '0123456789abcdef0123456789abcdef01234567';
+  try {
+    mkdirSync(join(root, 'tests', 'models', 'buildingsmart'));
+    writeFileSync(join(root, 'tests', 'models', path), bytes);
+    const manifestPath = join(root, 'tests', 'models', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const entry = {
+      path, sha256: sha256(bytes), size: bytes.length,
+      upstream_archive: {
+        blob_url: `https://github.com/example/models/blob/${commit}/bridge.zip`,
+        commit, sha256: 'a'.repeat(64), size: 128, member: 'bridge.ifc',
+      },
+    };
+    manifest.files.push(entry);
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.equal(build(root).status, 0);
+    assert.deepEqual(JSON.parse(readFileSync(manifestPath, 'utf8')).files.find((file) => file.path === path), entry);
+    writeFileSync(join(root, 'tests', 'models', path), Buffer.from('changed'));
+    const result = build(root);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}${result.stderr}`, /refusing to change upstream fixture/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

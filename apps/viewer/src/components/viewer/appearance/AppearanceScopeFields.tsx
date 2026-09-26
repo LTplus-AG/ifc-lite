@@ -27,7 +27,7 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
     : (props.faceMasks?.targets ?? []).map(target => ({ productId: target.productId, name: target.label }));
   return <section className="space-y-2" aria-labelledby={`${id}-heading`}>
     <h3 id={`${id}-heading`} className="text-xs font-medium">{t('appearance.scopeFields.heading')}</h3>
-    <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.scopeFields.modelLabel')}</span>
+    <label className="block space-y-1 text-2xs text-muted-foreground"><span>{t('appearance.scopeFields.modelLabel')}</span>
       <select aria-label={t('appearance.scopeFields.modelAriaLabel')} className={appearanceSelectClass} value={props.modelId ?? ''} disabled={props.disabled || !props.models.length} onChange={event => props.onModelChange(event.target.value)}>
         {!props.modelId && <option value="">{props.models.length ? t('appearance.scopeFields.chooseModel') : t('appearance.scopeFields.loadIfcModel')}</option>}
         {props.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
@@ -66,14 +66,14 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
       </select>
       {changed && latest && <Button type="button" size="sm" variant="outline" disabled={props.disabled}
         onClick={() => props.onScopeChange({ kind: 'filter', query: ownAppearanceQuery(latest) })}>{t('appearance.scopeFields.useUpdatedFilter')}</Button>}
-      <p className="text-[11px] text-muted-foreground">{t('appearance.scopeFields.filterNote')}</p>
+      <p className="text-2xs text-muted-foreground">{t('appearance.scopeFields.filterNote')}</p>
     </div>}
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-2xs text-muted-foreground">
       <span>{t('appearance.scopeFields.saveFiltersHint')}</span>
       <Button type="button" size="sm" variant="ghost" disabled={props.disabled}
         onClick={() => setFilters(loadSavedFilters(ownAppearanceQuery))}>{t('appearance.scopeFields.refreshFilters')}</Button>
     </div>
-    <label className="flex items-start gap-2 rounded-md border p-2 text-[11px]">
+    <label className="flex items-start gap-2 rounded-md border p-2 text-2xs">
       <input type="checkbox" className="mt-0.5" checked={props.settings.representationPolicy === 'evaluatedOccurrence'}
         disabled={props.disabled || !props.modelId || props.settings.kind === 'existingUv'}
         onChange={event => props.onSettingsChange({ representationPolicy: event.target.checked ? 'evaluatedOccurrence' : 'preserve' })} />
@@ -82,7 +82,7 @@ export function AppearanceScopeFields(props: Pick<AppearancePanelViewProps,
         {props.settings.kind === 'existingUv' && <span className="mt-1 block text-muted-foreground">{t('appearance.scopeFields.existingUvNote')}</span>}
       </span>
     </label>
-    <div className="rounded-md bg-muted/50 px-2.5 py-2 text-[11px]" aria-live="polite">
+    <div className="rounded-md bg-muted/50 px-2.5 py-2 text-2xs" aria-live="polite">
       <span className="font-medium">{t('appearance.scopeFields.affectedCount', {
         count: props.affectedCount,
         countDisplay: formatLocaleNumber(locale, props.affectedCount),

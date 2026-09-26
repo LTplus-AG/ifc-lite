@@ -276,6 +276,14 @@ In the IFClite viewer:
 6. **Graphic overrides** - Apply presets to change element appearance
 7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
 
+The PDF export dialog lists visible drawing content its writer cannot include. A
+vector PDF omits drawing markups and DXF reference underlays; a sheet PDF
+includes the underlays in its rasterized sheet image but still omits markups.
+When a sheet is active, its scale governs the PDF and the dialog explains why
+the scale cannot be changed there. DXF export asks for confirmation before it
+omits visible markups or reference underlays. Exports with none of those items
+continue directly.
+
 ### Annotation Tools
 
 | Tool | Description | Shortcuts |

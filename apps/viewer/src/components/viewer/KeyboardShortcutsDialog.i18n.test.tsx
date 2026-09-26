@@ -84,6 +84,13 @@ afterEach(() => {
 });
 
 describe('KeyboardShortcutsDialog localization (#4918)', () => {
+  it('has no Preferences tab: preferences live in the Settings dialog (#5857)', () => {
+    const dialog = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
+    const tabs = [...(dialog.ownerDocument.querySelectorAll('[role="tab"]'))].map((tab) => tab.textContent?.trim());
+    assert.ok(tabs.includes('About'), `Info dialog renders its tab strip, saw ${JSON.stringify(tabs)}`);
+    assert.ok(!tabs.includes('Preferences'), `Info dialog tabs must not include Preferences, saw ${JSON.stringify(tabs)}`);
+  });
+
   it('renders the English catalogue by default across the header, tab strip, footer, and each tab', async () => {
     const about = render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab="about" />);
     assert.match(about.textContent ?? '', /Info/);

@@ -125,6 +125,11 @@ export const sheetsPdfEn = {
   'sheetsPdf.pdfView.exportSuccessToast': 'Exported 1:{scale} PDF, page {width} x {height} mm',
   'sheetsPdf.pdfView.exportFailedWithMessage': 'PDF export failed: {message}',
   'sheetsPdf.pdfView.exportFailedGeneric': 'PDF export failed.',
+  // Dialog closes on success (`ExportDialogShell`'s `closeOnSuccess`, #5848),
+  // so `successTitle` is passed for prop-completeness but never actually
+  // renders; `errorTitle` does, alongside the existing toast.
+  'sheetsPdf.pdfView.successTitle': 'Success',
+  'sheetsPdf.pdfView.errorTitle': 'Error',
 
   // PdfViewPageNotices
   'sheetsPdf.pdfView.pageReadoutFits': 'Estimated page: {width} x {height} mm (fits {paperName}). The exported page is sized to the drawing itself and will never be larger.',
@@ -136,4 +141,6 @@ export const sheetsPdfEn = {
   'sheetsPdf.pdfView.perspectiveDescription': 'The PDF is an orthographic (parallel) projection along your current view direction, so near and far objects print at the same scale. That is the only way a printed drawing can carry a single scale. Switch to orthographic to see the same parallel projection on screen.',
   'sheetsPdf.pdfView.switchToOrthographicButton': 'Switch camera to orthographic',
   'sheetsPdf.pdfView.orthographicNote': 'Orthographic camera, so the printed scale is exact. The sheet covers everything currently visible, not only the part framed on screen: panning and zooming change what you look at, not what is printed.',
+  'sheetsPdf.titleBlock.removeFieldLabel': 'Remove field {label}',
+  'sheetsPdf.titleBlock.removeRevisionLabel': 'Remove revision {revision}',
 } as const satisfies Record<string, TranslationValue>;

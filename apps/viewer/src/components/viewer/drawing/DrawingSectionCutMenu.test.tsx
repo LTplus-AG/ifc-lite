@@ -12,7 +12,8 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInput, waitFor } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { useViewerStore } from '@/store';
 import { useSavedSectionCuts, saveCurrentSectionCut } from '@/store/savedSectionCutsStore';
 import { DrawingSectionCutMenu } from './DrawingSectionCutMenu.js';
@@ -77,31 +78,29 @@ describe('DrawingSectionCutMenu (#5514)', () => {
     assert.equal(useSavedSectionCuts.getState().cuts.length, 0);
   });
 
-  it('"Save current cut as..." names the live cut via the menu\'s own prompt', () => {
-    const originalPrompt = window.prompt;
-    window.prompt = () => 'From the menu';
-    try {
-      render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
-      openMenu();
-      click([...document.body.querySelectorAll('div')].find((el) => el.textContent === 'Save current cut as…')!);
-      assert.equal(useSavedSectionCuts.getState().cuts.map((c) => c.name).includes('From the menu'), true);
-    } finally {
-      window.prompt = originalPrompt;
-    }
+  it('"Save current cut as..." names the live cut via the menu\'s own prompt', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<><DrawingSectionCutMenu cutLabel="Down 50.0" /><ConfirmDialogHost /></>);
+    openMenu();
+    click([...document.body.querySelectorAll('div')].find((el) => el.textContent === 'Save current cut as…')!);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    typeInput(dialog.querySelector('input')!, 'From the menu');
+    click(dialog.querySelector('button[type="submit"]')!);
+    await waitFor(() => useSavedSectionCuts.getState().cuts.some((c) => c.name === 'From the menu'), 'named cut is saved');
   });
 
-  it('renames a saved cut via its row\'s prompt', () => {
+  it('renames a saved cut via its row\'s prompt', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
     const id = saveCurrentSectionCut('Before');
-    const originalPrompt = window.prompt;
-    window.prompt = () => 'After';
-    try {
-      render(<DrawingSectionCutMenu cutLabel="Down 50.0" />);
-      openMenu();
-      const row = rows().find((r) => r.textContent?.includes('Before'))!;
-      click(row.querySelector('button[title="Rename saved cut"]')!);
-      assert.equal(useSavedSectionCuts.getState().cuts.find((c) => c.id === id)?.name, 'After');
-    } finally {
-      window.prompt = originalPrompt;
-    }
+    render(<><DrawingSectionCutMenu cutLabel="Down 50.0" /><ConfirmDialogHost /></>);
+    openMenu();
+    const row = rows().find((r) => r.textContent?.includes('Before'))!;
+    click(row.querySelector('button[title="Rename saved cut"]')!);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    typeInput(dialog.querySelector('input')!, 'After');
+    click(dialog.querySelector('button[type="submit"]')!);
+    await waitFor(() => useSavedSectionCuts.getState().cuts.find((c) => c.id === id)?.name === 'After', 'saved cut is renamed');
   });
 });

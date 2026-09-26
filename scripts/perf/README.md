@@ -53,6 +53,22 @@ performance claim from the contested host. The opt-in extraction's own cost
 needs a caller-level measurement on representative swept-disk models if it
 becomes a frequent operation; the default pipeline cannot measure that cost.
 
+## Raw-world RTC before f32 narrowing (#5698)
+
+Every built-in raw-coordinate processor now removes the model RTC offset in
+f64 through `process_in_rtc_frame`, and element walkers express that offset in
+the item frame. Interleaved native probes on a loaded host showed no stable
+timing change on AC20-FZK-Haus, ISSUE_129, ISSUE_098 or Holter: run-to-run
+spread exceeded any base-versus-branch difference. Only the output of
+`860_solid_stratum` changed across the fetched corpus: its national-grid TIN
+now keeps its surveyed vertices instead of a 0.5 m f32 grid. The rebase costs
+one extra first-vertex probe per raw-coordinate item on models with an RTC
+offset; the f64 coordinate parse runs only for items that are actually rebased.
+Measure A/B on a shared host by process CPU time and minima, not wall medians:
+wall medians swung 10-20% between identical binaries under load.
+Element-frame rebasing must go through the cached item path, keyed by its
+offset: a bespoke path silently drops content dedup and instancing.
+
 ## LV95 site-local vertices and RTC frames (#5684)
 
 Interleaved base-versus-branch native probes on AC20-FZK-Haus and ISSUE_129
@@ -2145,3 +2161,23 @@ and provenance are retained. Lesson: a large inclusive React sample bucket does
 not establish that removing a framework or a few subscriptions buys the same
 wall time; test the actual change, and measure the avoidable upload work before
 committing to permanent renderer pages.
+
+## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
+
+Five interleaved native base-versus-branch runs covered AC20-FZK-Haus and the
+source-verified Viadotto Acerno fixture. AC20 emitted identical mesh, vertex,
+and triangle counts. Its parse, geometry, and total timings all fell within
+the wide run-to-run noise. Viadotto emitted additional meshes and triangles
+because the branch now generates its sectioned solids; its timing comparison
+is therefore not like-for-like. No measurable end-to-end speed verdict follows
+from either fixture. The numeric A/B evidence is in the PR.
+
+The incremental clothoid sampler avoids repeatedly integrating from the
+origin for each station. A follow-up review found that inverting 3D station
+length still rescanned every densely sampled horizontal segment and vertical
+profile segment at each integration point; those lookups now use their sorted
+station keys. The final interleaved A/B kept AC20's output counts identical
+and its phase timings within noise. Viadotto again emitted the intended extra
+geometry, so its timing remains non-comparable. The lesson is to check
+complete model output before interpreting alignment timings and to trace
+the lookup cost inside each repeated station evaluation.

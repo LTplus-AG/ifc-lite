@@ -89,11 +89,12 @@ export const shellChromeEn = {
 
   // ViewerLayout.tsx
   'shellChrome.layout.safeModeNotice':
-    'Safe mode: extensions and the active flavor are not loaded for this session. Append {flag} or reload without the flag to resume.',
+    'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
   'shellChrome.layout.propertiesLabel': 'Properties',
   'shellChrome.layout.openPropertiesAriaLabel': 'Open Properties',
+  'shellChrome.layout.closePanelsAriaLabel': 'Close panels',
   'shellChrome.layout.analysisFallback': 'Analysis',
   'shellChrome.layout.addElementLabel': 'Add element',
   'shellChrome.layout.informationFallback': 'Information',
@@ -102,7 +103,7 @@ export const shellChromeEn = {
   // StatusBar.tsx
   'shellChrome.statusBar.loadingFallback': 'Loading...',
   'shellChrome.statusBar.ready': 'Ready',
-  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the active point cloud stream',
+  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the model or point cloud that is loading',
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },
@@ -120,6 +121,10 @@ export const shellChromeEn = {
   'shellChrome.statusBar.ifcliteLinkLabel': 'ifclite.dev →',
 
   // MobileToolbar.tsx
+  'shellChrome.mobileToolbar.openFileAriaLabel': 'Open file',
+  'shellChrome.mobileToolbar.addModelAriaLabel': 'Add model',
+  'shellChrome.mobileToolbar.moreActionsAriaLabel': 'More actions',
+  'shellChrome.mobileToolbar.commands': 'Commands…',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
   'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',

@@ -5,6 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
+import { analysisStaleEn } from './catalogues/analysis-stale.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
@@ -30,6 +31,7 @@ import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { geometryExportDialogsEn } from './catalogues/geometry-export-dialogs.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
+import { filterOperatorsEn } from './catalogues/filter-operators.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
@@ -39,6 +41,7 @@ import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
 import { flowPanelEn } from './catalogues/flow-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
+import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
@@ -54,6 +57,7 @@ import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
+import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -62,6 +66,7 @@ import { section2dEn } from './catalogues/section-2d.en';
 import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
 import { searchFiltersEn } from './catalogues/search-filters.en';
+import { visibilityReasonsEn } from './catalogues/visibility-reasons.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { shellChromeEn } from './catalogues/shell-chrome.en';
 import { sourcesEn } from './catalogues/sources.en';
@@ -77,6 +82,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...analysisStaleEn,
   ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -97,6 +103,7 @@ export const en = {
   ...commandPaletteEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
+  ...filterOperatorsEn,
   ...chartsEn,
   ...listsEn,
   ...clashGroupsEn,
@@ -114,8 +121,10 @@ export const en = {
   ...documentMenuEn,
   ...drawingUnderlayEn,
   ...keyboardShortcutsEn,
+  ...settingsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...propertiesPanelEn,
   ...landXmlEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
@@ -138,6 +147,7 @@ export const en = {
   ...lensPanelEn,
   ...searchModalEn,
   ...searchFiltersEn,
+  ...visibilityReasonsEn,
   ...repositionPanelEn,
   ...placementPanelEn,
   ...webgpuTroubleshootingEn,

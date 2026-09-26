@@ -25,9 +25,13 @@ import { toast } from '@/components/ui/toast';
 import type { CsvExportType, ExportCommandId, ExportDialogComponent } from './toolbar/export-commands';
 import { useExportCommands } from './toolbar/useExportCommands';
 
-/** One palette export row's request: CSV names its table, every other format is just its id. */
+/**
+ * One palette export row's request: CSV names its table, an extension exporter
+ * its `<extensionId>:<exporterId>` key, every other format is just its id.
+ */
 export type PaletteExportRequest =
   | { id: 'csv'; table: CsvExportType }
+  | { id: 'extension'; key: string }
   | { id: Exclude<ExportCommandId, 'csv'> };
 
 /**
@@ -62,11 +66,18 @@ function AutoOpenTrigger({ ref, ...props }: React.ComponentProps<'button'>) {
 
 export function usePaletteExportRunner() {
   const { t } = useTranslation();
-  const { ifcDataStore, commands, handleExportCSV, runExportAction } = useExportCommands();
+  const {
+    ifcDataStore, commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
+  } = useExportCommands('palette');
   // `nonce` remounts the dialog so a repeat request opens it again.
   const [requested, setRequested] = useState<{ Dialog: ExportDialogComponent; nonce: number } | null>(null);
 
   const runExport = useCallback((request: PaletteExportRequest) => {
+    if (request.id === 'extension') {
+      if (extensionExportRunning) toast.info(t('commandPalette.export.unavailable'));
+      else void runExtensionExporter(request.key);
+      return;
+    }
     const resolved = commands.find(({ command }) => command.id === request.id);
     if (!resolved) throw new Error(`Unregistered export command: ${request.id}`);
     // The toolbars disable these rows; the palette cannot, so it says why instead.
@@ -85,11 +96,11 @@ export function usePaletteExportRunner() {
     } else {
       runExportAction(command.action);
     }
-  }, [ifcDataStore, commands, handleExportCSV, runExportAction, t]);
+  }, [ifcDataStore, commands, handleExportCSV, runExportAction, extensionExportRunning, runExtensionExporter, t]);
 
   const dialog = requested
-    ? <requested.Dialog key={requested.nonce} trigger={<AutoOpenTrigger />} />
+    ? <requested.Dialog key={requested.nonce} surface="palette" trigger={<AutoOpenTrigger />} />
     : null;
 
-  return { runExport, dialog };
+  return { runExport, dialog, extensionExporters };
 }

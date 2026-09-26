@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useState } from 'react';
-import { Check, Eye, Loader2 } from 'lucide-react';
+import { Check, Eye } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { AppearancePdfFields, AppearancePdfPassword } from './AppearancePdfFields.js';
 import { AppearanceSourceFields } from './AppearanceSourceFields.js';
@@ -69,7 +70,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"
         className={`flex max-h-24 items-start gap-2 overflow-y-auto text-[11px] leading-relaxed ${props.status === 'error' || invalidFields.size ? 'text-destructive' : 'text-muted-foreground'}`}>
-        {busy && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
+        {busy && <Spinner size="xs" className="mt-0.5 shrink-0" />}
         <span>{message}</span>
       </div>
       {!reference && <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}

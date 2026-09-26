@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { drawingExportOmissions, DRAWING_OMISSION_LABEL_KEYS, type DrawingExportContent } from '@/lib/export/drawing-export-omissions';
 import { SaveMarkupToModelMenuItem } from '../SaveMarkupToModelButton';
 import { DrawingPdfExportDialog } from './DrawingPdfExportDialog';
 
@@ -30,15 +32,38 @@ export interface DrawingExportMenuProps {
   displayedScale: number;
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
+  markupCounts: DrawingExportContent['markupCounts'];
+  visibleUnderlayCount: number;
 }
 
 export function DrawingExportMenu({
   hasDrawing, compact, onExportSvg, onExportDxf, onExportPdf, onPrint,
-  displayedScale, sheetEnabled, activeSheet,
+  displayedScale, sheetEnabled, activeSheet, markupCounts, visibleUnderlayCount,
 }: DrawingExportMenuProps) {
   const { t } = useTranslation();
   const label = t('section2d.export.menu');
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const content: DrawingExportContent = {
+    markupCounts,
+    visibleUnderlayCount,
+    sheetScale: sheetEnabled && activeSheet ? activeSheet.scale.factor : null,
+  };
+  const pdfOmissions = drawingExportOmissions(content, 'pdf');
+
+  const handleDxfExport = async () => {
+    const omissions = drawingExportOmissions(content, 'dxf');
+    if (omissions.length > 0) {
+      const confirmed = await confirmDialog({
+        title: t('section2d.export.omission.dxfTitle'),
+        description: t('section2d.export.omission.dxfDescription', {
+          items: omissions.map((omission) => t(DRAWING_OMISSION_LABEL_KEYS[omission])).join(', '),
+        }),
+        confirmLabel: t('section2d.export.omission.continue'),
+      });
+      if (!confirmed) return;
+    }
+    onExportDxf();
+  };
   return (
     <>
       <DropdownMenu>
@@ -64,7 +89,7 @@ export function DrawingExportMenu({
           <DropdownMenuItem onClick={onExportSvg} disabled={!hasDrawing}>
             <Download className="mr-2 h-4 w-4" />{t('section2d.export.svg')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onExportDxf} disabled={!hasDrawing}>
+          <DropdownMenuItem onClick={() => { void handleDxfExport(); }} disabled={!hasDrawing}>
             <FileDown className="mr-2 h-4 w-4" />{t('section2d.export.dxf')}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setPdfDialogOpen(true)} disabled={!hasDrawing}>
@@ -80,6 +105,7 @@ export function DrawingExportMenu({
       <DrawingPdfExportDialog
         open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}
         displayedScale={displayedScale} sheetEnabled={sheetEnabled} activeSheet={activeSheet}
+        omissions={pdfOmissions}
         onExport={onExportPdf}
       />
     </>

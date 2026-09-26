@@ -10,6 +10,7 @@
  * the same module but isolated from the formatters.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { escapeCsvCell as escapeCsvCellShared } from '@ifc-lite/export';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
@@ -87,6 +88,7 @@ export function downloadResult(
   const mime = format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8';
   const name = sanitizeFilename(filenameStem, { fallback: 'query' });
   downloadFile(content, `${name}.${format}`, mime);
+  trackExportCompleted({ format, surface: 'search_panel' });
 }
 
 /** Exposed for tests. */

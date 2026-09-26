@@ -13,7 +13,7 @@
  * (`emit-spatial-zones.ts`, `wall-edit.ts`, …): this writes into the
  * model's `StoreEditor` overlay and calls `markModelsDirty`, which is what
  * makes `ExportChangesButton` pick the model up — it does NOT write to
- * disk. A user must still run Export Changes (or the outer Export dialog)
+ * disk. A user must still run Export modified IFC… (or the outer Export dialog)
  * to get a file with this markup in it. `SaveMarkupToModelButton.tsx`'s
  * copy says so explicitly, so pressing this button never reads as "saved to
  * disk".

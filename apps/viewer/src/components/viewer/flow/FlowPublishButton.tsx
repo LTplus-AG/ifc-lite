@@ -142,7 +142,7 @@ export function FlowPublishButton({ registry, lastRun, lastError }: FlowPublishB
       >
         <UploadCloud className="h-3 w-3" aria-hidden="true" />{busy ? t('flowPanel.publish.publishing') : t('flowPanel.publish.publish')}
       </button>
-      {eligibility.reason && <span className="text-[10px] text-muted-foreground">{t(eligibility.reason)}</span>}
+      {eligibility.reason && <span className="text-2xs text-muted-foreground">{t(eligibility.reason)}</span>}
     </div>
   );
 }

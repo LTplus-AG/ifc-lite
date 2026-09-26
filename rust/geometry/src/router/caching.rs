@@ -153,13 +153,17 @@ impl GeometryRouter {
 }
 
 /// Byte-exact equality of two meshes for cache-collision disambiguation.
-/// Compares `positions` and `indices` only — `normals` are derived from
-/// `positions` and follow lock-step, and `rtc_applied` is a flag rather
-/// than geometry. Lengths are checked first so the slice compare is
+/// Compares `positions` and `indices` — `normals` are derived from
+/// `positions` and follow lock-step — plus the frame metadata a rebased
+/// mesh carries (#5698): equal rebased positions under different RTC
+/// offsets are different geometry, and a rebased mesh must never be served
+/// for an unshifted one. Lengths are checked first so the slice compare is
 /// short-circuited cheaply when shapes differ.
 #[inline]
 fn meshes_equal(a: &Mesh, b: &Mesh) -> bool {
-    a.positions.len() == b.positions.len()
+    a.rtc_applied == b.rtc_applied
+        && a.local_bounds == b.local_bounds
+        && a.positions.len() == b.positions.len()
         && a.indices.len() == b.indices.len()
         && a.positions == b.positions
         && a.indices == b.indices

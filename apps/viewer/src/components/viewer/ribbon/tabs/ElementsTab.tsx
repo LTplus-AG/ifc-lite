@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { useTranslation } from '@/i18n';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
@@ -26,8 +27,6 @@ export function ElementsTab() {
   const { t } = useTranslation();
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
-  const clearSelection = useViewerStore((state) => state.clearSelection);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
@@ -47,18 +46,6 @@ export function ElementsTab() {
     ? selectedEntityIds.size
     : (selectedEntityId !== null ? 1 : 0);
   const hasSelection = selectionCount > 0;
-
-  const handleHide = useCallback(() => {
-    // Hide ALL selected entities (multi-select or single)
-    const state = useViewerStore.getState();
-    const ids: number[] = state.selectedEntityIds.size > 0
-      ? Array.from(state.selectedEntityIds)
-      : selectedEntityId !== null ? [selectedEntityId] : [];
-    if (ids.length > 0) {
-      hideEntities(ids);
-      clearSelection();
-    }
-  }, [selectedEntityId, hideEntities, clearSelection]);
 
   const handleCopyGuid = useCallback(() => {
     if (selectedEntityId === null) return;
@@ -94,7 +81,7 @@ export function ElementsTab() {
           label={t('ribbon.elements.showAll')}
           tooltip={t('ribbon.elements.showAllTooltip')}
           shortcut="A"
-          onClick={resetVisibilityForHomeFromStore}
+          onClick={() => resetVisibilityForHomeFromStore('show_all')}
         />
         <RibbonLargeButton
           icon={ElementTooltips}
@@ -122,7 +109,7 @@ export function ElementsTab() {
           tooltip={t('ribbon.elements.hideTooltip')}
           shortcut={t('ribbon.elements.hideShortcut')}
           disabled={!hasSelection}
-          onClick={handleHide}
+          onClick={hideSelectionFromStore}
         />
         <RibbonSmallStack>
           <RibbonSmallButton

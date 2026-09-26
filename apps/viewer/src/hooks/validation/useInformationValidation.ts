@@ -83,8 +83,10 @@ export interface UseInformationValidationResult {
 
 export function useInformationValidation(): UseInformationValidationResult {
   const { t } = useTranslation();
-  const [file, setFileState] = useState<RuleSetFile | null>(null);
-  const [editing, setEditing] = useState(false);
+  const file = useViewerStore((s) => s.validationRuleSetDraft);
+  const editing = useViewerStore((s) => s.validationRuleSetEditing);
+  const setFileState = useViewerStore((s) => s.setValidationRuleSetDraft);
+  const setEditing = useViewerStore((s) => s.setValidationRuleSetEditing);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<RuleEngineProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export function useInformationValidation(): UseInformationValidationResult {
   const setFile = useCallback((next: RuleSetFile) => {
     setFileState(next);
     setError(null);
-  }, []);
+  }, [setFileState]);
 
   const newRuleSet = useCallback(() => {
     setFile(blankRuleSet());

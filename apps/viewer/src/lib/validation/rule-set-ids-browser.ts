@@ -9,6 +9,7 @@
  * IDS file. Mirrors `rule-set-io-browser.ts`.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import type { IFCVersion } from '@ifc-lite/ids';
 import { IDSParseError, parseIDS } from '@ifc-lite/ids';
 import {
@@ -54,6 +55,7 @@ export function exportRuleSetAsIds(
   if (result.xml !== null) {
     const name = sanitizeFilename(file.name, { fallback: 'ruleset' });
     downloadFile(result.xml, `${name}.ids`, 'application/xml');
+    trackExportCompleted({ format: 'ids', surface: 'ids_panel' });
   }
   return result;
 }

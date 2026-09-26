@@ -6,6 +6,8 @@
 
 use super::super::GeometryRouter;
 use super::walk::PlacementWalk;
+use crate::alignment::AlignmentCurve;
+use crate::alignment_arc_length::ArcLengthMap;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -42,12 +44,9 @@ impl GeometryRouter {
         };
 
         // Prefer the authored CartesianPosition (attr 2) when the exporter
-        // supplied one: it is the exact pre-computed placement. Our sampler
-        // reads an `IfcGradientCurve` through its BASE curve only — no
-        // vertical profile — so a computed frame can sit metres below the
-        // authored station (measured on a public IFC4x3 rail model: signal
-        // origins 2.5 m where the authored positions say 4.5 m and 7.4 m).
-        // Sample the curve only when no authored position exists.
+        // supplied one: it is the exact pre-computed placement. Sample the
+        // curve only when no authored position exists (an `IfcGradientCurve`
+        // is then evaluated with its vertical profile, see `gradient.rs`).
         let local = match self.try_resolve_cartesian_position(placement, decoder) {
             Some(m) => m,
             None => self
@@ -103,17 +102,22 @@ impl GeometryRouter {
         }
         let basis_curve = decoder.resolve_ref(basis_attr).ok().flatten()?;
 
-        // Sample the basis curve into a polyline. `ProfileProcessor::get_curve_points`
-        // already handles IfcCompositeCurve, IfcPolyline, IfcGradientCurve via its
-        // composite-curve walk, IfcTrimmedCurve, IfcIndexedPolyCurve, etc. — every
-        // curve type the alignment authors in #859's fixture eventually reduce to.
-        let processor = ProfileProcessor::new(IfcSchema::new());
-        let samples = processor
-            .get_curve_points(&basis_curve, decoder, TessellationQuality::Medium)
-            .ok()
-            .filter(|pts| pts.len() >= 2)?;
-
-        let (origin, tangent) = sample_polyline_at_distance(&samples, distance_along)?;
+        let (origin, tangent) = if basis_curve.ifc_type == IfcType::IfcGradientCurve {
+            // `DistanceAlong` is 3D arc length. Use the same mapping and
+            // authored-station rebase as sectioned solids and centerlines.
+            let alignment = AlignmentCurve::parse(&basis_curve, decoder).ok().flatten()?;
+            let station = ArcLengthMap::new(&alignment).horizontal_station(distance_along);
+            let station = station.max(0.0).min(alignment.horizontal_length());
+            let frame = alignment.evaluate(station);
+            (frame.origin, frame.tangent)
+        } else {
+            // Other basis curves retain the existing polyline sampler.
+            let samples = ProfileProcessor::new(IfcSchema::new())
+                .get_curve_points(&basis_curve, decoder, TessellationQuality::Medium)
+                .ok()
+                .filter(|pts| pts.len() >= 2)?;
+            sample_polyline_at_distance(&samples, distance_along)?
+        };
 
         // Build the curve-aligned frame with world-up. Railway alignments
         // are near-horizontal so this is well-conditioned; in the
@@ -235,9 +239,9 @@ mod cartesian_position_tests {
     /// An `IfcLinearPlacement` whose curve IS sampleable (a straight
     /// polyline; sampling would put the origin at (5, 0, 0)) but that also
     /// carries an authored `CartesianPosition` at (10, 20, 30). The authored
-    /// position wins: the sampler still reads gradient curves through their
-    /// base curve only (no vertical profile), so the exporter's pre-baked
-    /// answer is the more trustworthy of the two whenever it exists.
+    /// position wins: it is exact by construction, whereas the sampler is
+    /// bounded by its sampling density, so the exporter's pre-baked answer
+    /// stays the more trustworthy of the two whenever it exists.
     const AUTHORED_IFC: &str = "ISO-10303-21;\nHEADER;\n\
 FILE_DESCRIPTION((''),'2;1');\n\
 FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
@@ -271,6 +275,58 @@ ENDSEC;\nEND-ISO-10303-21;\n";
             m[(1, 3)],
             m[(2, 3)],
         );
+    }
+
+    /// Same precedence on an `IfcGradientCurve` basis. The 3D distance of
+    /// 5 m reaches x = 5 / sqrt(1 + grade²); the authored frame still wins.
+    #[test]
+    fn authored_position_wins_over_gradient_curve_elevation() {
+        let gradient = AUTHORED_IFC.replace(
+            "#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#3);",
+            "#20=IFCCARTESIANPOINT((0.,50.));\n#21=IFCDIRECTION((1.,0.1));\n#22=IFCAXIS2PLACEMENT2D(#20,#21);\n\
+#23=IFCDIRECTION((1.,0.));\n#24=IFCVECTOR(#23,1.);\n#25=IFCLINE(#20,#24);\n\
+#26=IFCCURVESEGMENT(.CONTINUOUS.,#22,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(100.),#25);\n\
+#27=IFCGRADIENTCURVE((#26),.F.,#3,$);\n\
+#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#27);",
+        );
+        let station = 5.0 / (1.0_f64 + 0.1_f64 * 0.1_f64).sqrt();
+        for (content, want) in [(gradient.clone(), (10.0, 20.0, 30.0)),
+            (gradient.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);"), (station, 0.0, 50.0 + station * 0.1))] {
+            let mut decoder = EntityDecoder::new(&content);
+            let placement = decoder.decode_by_id(8).expect("decode #8");
+            let m = GeometryRouter::new()
+                .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
+                .expect("resolve linear placement")
+                .transform;
+            let got = (m[(0, 3)], m[(1, 3)], m[(2, 3)]);
+            assert!((got.0 - want.0).abs() < 1e-6 && (got.1 - want.1).abs() < 1e-6 && (got.2 - want.2).abs() < 1e-6,
+                "expected {want:?}, got {got:?}");
+        }
+    }
+
+    /// #5327: authored vertical chainage can begin at 1000 while the
+    /// horizontal base curve begins at local station zero. Linear placement
+    /// and sectioned solids must invert the same 3D length and rebase the
+    /// same profile before placing an object without CartesianPosition.
+    #[test]
+    fn gradient_linear_placement_rebases_authored_station_and_3d_length() {
+        let content = AUTHORED_IFC.replace(
+            "#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#3);",
+            "#20=IFCCARTESIANPOINT((1000.,50.));\n#21=IFCDIRECTION((1.,0.1));\n#22=IFCAXIS2PLACEMENT2D(#20,#21);\n\
+#23=IFCDIRECTION((1.,0.));\n#24=IFCVECTOR(#23,1.);\n#25=IFCLINE(#20,#24);\n\
+#26=IFCCURVESEGMENT(.CONTINUOUS.,#22,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(100.),#25);\n\
+#27=IFCGRADIENTCURVE((#26),.F.,#3,$);\n\
+#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#27);",
+        ).replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);");
+        let mut decoder = EntityDecoder::new(&content);
+        let placement = decoder.decode_by_id(8).expect("decode placement");
+        let m = GeometryRouter::new()
+            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
+            .expect("resolve placement").transform;
+        let station = 5.0 / (1.0_f64 + 0.1_f64 * 0.1_f64).sqrt();
+        assert!((m[(0, 3)] - station).abs() < 1e-3, "horizontal station = {}", m[(0, 3)]);
+        assert!((m[(2, 3)] - (50.0 + 0.1 * station)).abs() < 1e-3,
+            "rebased elevation = {}", m[(2, 3)]);
     }
 
     /// With no authored position (`$`), the sampler still resolves the

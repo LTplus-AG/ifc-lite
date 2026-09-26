@@ -27,6 +27,21 @@ export interface LoadingSlice {
    */
   activeStreamCanceller: (() => void) | null;
   /**
+   * Cancel for the active primary or federated model load (#5849), published by
+   * `hooks/modelLoadCanceller.ts`. A slot of its own, NOT
+   * `activeStreamCanceller`: GPU device-loss recovery cancels whatever is in
+   * that slot (a scan must not publish a handle into a torn-down renderer),
+   * and a model load must survive a device loss. UI reads either slot through
+   * `selectLoadCanceller`.
+   */
+  activeLoadCanceller: (() => void) | null;
+  /**
+   * The file the most recently started load is reading (#5849), primary or
+   * federated. The loading card names it; a federated add registers no model
+   * record until it finalizes, so the models map cannot say which file it is.
+   */
+  loadingFileName: string | null;
+  /**
    * #5175: set exactly when a LandXML load fails because the source declares
    * no `<Units>` (the LXML009 refusal). Lets a banner offer the user a
    * linear-unit choice and retry the same load with it — the ONLY UI path
@@ -36,6 +51,17 @@ export interface LoadingSlice {
    * prompt from a previous failed load never survives into the next one.
    */
   landXmlUnitsRefusal: { fileName: string; retry: (assumedLinearUnit: string) => void } | null;
+  /**
+   * Re-runs the load that most recently set `error` (#5851), same File,
+   * URL, or buffers, through the same call. Set ONLY by
+   * `lib/analytics.ts`'s `showLoadError`, alongside the message it sets —
+   * never independently, and `setError` clears it whenever `error` is
+   * cleared (see `setError` below), so a stale retry from a PREVIOUS,
+   * unrelated failure can never survive to sit next to a new one. `null`
+   * when nothing can usefully be retried; the card then renders without a
+   * Retry button. The load-error card's Retry button is the one reader.
+   */
+  lastLoadRetry: (() => void) | null;
 
   // Actions
   setLoading: (loading: boolean) => void;
@@ -45,7 +71,10 @@ export interface LoadingSlice {
   setMetadataProgress: (progress: { phase: string; percent: number; indeterminate?: boolean } | null) => void;
   setError: (error: string | null) => void;
   setActiveStreamCanceller: (cancel: (() => void) | null) => void;
+  setActiveLoadCanceller: (cancel: (() => void) | null) => void;
+  setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
+  setLastLoadRetry: (retry: (() => void) | null) => void;
 }
 
 export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice> = (set) => ({
@@ -57,7 +86,10 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   metadataProgress: null,
   error: null,
   activeStreamCanceller: null,
+  activeLoadCanceller: null,
+  loadingFileName: null,
   landXmlUnitsRefusal: null,
+  lastLoadRetry: null,
 
   // Actions
   setLoading: (loading) => set({ loading }),
@@ -65,9 +97,16 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setProgress: (progress) => set({ progress }),
   setGeometryProgress: (geometryProgress) => set({ geometryProgress }),
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
-  setError: (error) => set({ error }),
+  // Clearing `error` always clears `lastLoadRetry` with it (#5851 review):
+  // the only other writer of `lastLoadRetry` is `showLoadError`, which sets
+  // both together, so this is the one place a stale retry could otherwise
+  // survive its error and attach itself to whatever sets a new one next.
+  setError: (error) => set(error === null ? { error, lastLoadRetry: null } : { error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
+  setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
+  setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
+  setLastLoadRetry: (lastLoadRetry) => set({ lastLoadRetry }),
 });
 
 /**
@@ -79,18 +118,20 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  *
  * `error` is THIS slice's field, not `chatSlice`'s — that one is `chatError`.
  *
- * `activeStreamCanceller` is deliberately absent from `owns`: no teardown path
+ * `activeStreamCanceller` and `activeLoadCanceller` are deliberately absent
+ * from `owns`: no teardown path
  * resets it today. It is a live cancellation hook owned by the loader hook
  * that registered it, and dropping it here would silently orphan an in-flight
  * stream's only stop button.
  *
- * `landXmlUnitsRefusal` follows `error`'s lifecycle: a session reset ends
- * whatever load prompted it, so the stale retry closure (and the `File` it
- * holds) goes with it rather than outliving the load it belongs to.
+ * `landXmlUnitsRefusal` and `lastLoadRetry` follow `error`'s lifecycle: a
+ * session reset ends whatever load prompted them, so the stale retry
+ * closures (and the `File` they hold) go with it rather than outliving the
+ * load they belong to.
  */
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
-  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'landXmlUnitsRefusal'],
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal', 'lastLoadRetry'],
   {
     'session-reset': () => ({
       loading: false,
@@ -99,9 +140,28 @@ export const loadingTeardown = defineSliceTeardown(
       geometryProgress: null,
       metadataProgress: null,
       error: null,
+      loadingFileName: null,
       landXmlUnitsRefusal: null,
+      lastLoadRetry: null,
     }),
     'model-removed': notApplicable,
     'all-models-cleared': notApplicable,
   },
 );
+
+type LoadProgressFields = Pick<LoadingSlice, 'progress' | 'geometryProgress' | 'metadataProgress'>;
+
+/**
+ * The one progress a load surface shows: geometry streaming, then metadata
+ * hydration, then the generic load phase. Every progress UI (ribbon, classic
+ * and mobile toolbars, the in-viewport loading card) reads this rather than
+ * repeating the fallback chain (#5849).
+ */
+export function selectActiveLoadProgress(state: LoadProgressFields): LoadingSlice['progress'] {
+  return state.geometryProgress ?? state.metadataProgress ?? state.progress;
+}
+
+/** The Cancel the load UI offers: the model load's, else a point-cloud stream's. */
+export function selectLoadCanceller(state: Pick<LoadingSlice, 'activeLoadCanceller' | 'activeStreamCanceller'>): (() => void) | null {
+  return state.activeLoadCanceller ?? state.activeStreamCanceller;
+}

@@ -308,21 +308,21 @@ test('the gate passes on the repo and states its counts', () => {
   assert.equal(r.status, 0, output);
   assert.match(
     output,
-    /check-source-text-assertions: OK \(\d+ allowlisted, \d+ marked, 0 new\)/,
+    /check-source-text-assertions: OK \(31 allowlisted, \d+ marked, 0 new\)/,
     'a pass must state the numbers, not merely exit 0',
   );
 });
 
-// The set the flat detector found, pinned so the narrowing cannot be shown to
-// have dropped a real instance. Every entry is allowlisted with a reason; this
-// asserts the DETECTOR still sees them, which the allowlist alone cannot.
+// The remaining set the flat detector found, pinned so the narrowing cannot
+// drop a real instance. #6064 removed aggregation.test.ts after its stale
+// source assertion was deleted. Every entry is allowlisted with a reason;
+// this asserts the DETECTOR still sees them, which the allowlist alone cannot.
 test('the narrowing kept every file the flat detector flagged', () => {
   const expected = [
     'apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts',
     'apps/viewer/src/components/viewer/toolbar-parity.test.ts',
     'apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx',
     'apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts',
-    'apps/viewer/src/utils/aggregation.test.ts',
     'packages/create-ifc-lite/test/config-fixers.test.ts',
     'packages/geometry/src/prepass-class-spans.test.ts',
   ];

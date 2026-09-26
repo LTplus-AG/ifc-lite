@@ -349,6 +349,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
   useEffect(() => () => {
     const s = useViewerStore.getState();
+    // Reparenting a still-open panel into a split, float or pop-out remounts it.
+    // The secondary panel can be open without the primary visibility flag.
+    // Preserve the pair until every host has released Clash (#5828).
+    if (s.clashPanelVisible || s.sidebarSecondaryPanel === 'clash' ||
+      s.floatingPanels.some((panel) => panel.id === 'clash') || s.poppedOutIds.includes('clash')) return;
     // Release only the isolation/ghost CLASH installed (#5829): a storey isolation
     // or X-ray set elsewhere survives, as for runs (`discardSolidPresentation`).
     s.clearEntitySelection();

@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Move3d, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -45,9 +45,9 @@ export function PlacementPanel({ onClose }: PlacementPanelProps) {
         <Move3d className="h-4 w-4 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium">{t('placementPanel.title')}</span>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('placementPanel.headerCloseTitle')}>
+          <IconButton variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} label={t('placementPanel.headerCloseTitle')}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 

@@ -40,7 +40,7 @@
  */
 
 import { Crosshair, Globe, MapPin, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 // Side-effect import: merges the measure catalogue into the runtime `en`
@@ -123,23 +123,23 @@ export function MeasurePointReadout() {
           {activeMeasurement ? t('measure.point.live') : t('measure.point.last')}
         </span>
         <div className="flex items-center gap-1">
-          <Button
+          <IconButton
             variant="ghost"
             size="icon-sm"
-            title={t('measure.point.setReferenceTitle')}
+            label={t('measure.point.setReferenceTitle')}
             onClick={() => setReferencePoint({ x: livePoint.x, y: livePoint.y, z: livePoint.z })}
           >
             <MapPin className="h-3 w-3" />
-          </Button>
+          </IconButton>
           {referencePoint && (
-            <Button
+            <IconButton
               variant="ghost"
               size="icon-sm"
-              title={t('measure.point.clearReferenceTitle')}
+              label={t('measure.point.clearReferenceTitle')}
               onClick={() => setReferencePoint(null)}
             >
               <XCircle className="h-3 w-3" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

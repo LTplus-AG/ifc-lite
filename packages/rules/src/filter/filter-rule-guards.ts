@@ -61,8 +61,9 @@ export function isFilterRule(value: unknown): value is FilterRule {
   }
   if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
   if (kind === 'property') {
-    const r = value as { nameCaseMode?: unknown };
+    const r = value as { nameCaseMode?: unknown; legacyListFirst?: unknown };
     if (r.nameCaseMode !== undefined && r.nameCaseMode !== 'exact') return false;
+    if (r.legacyListFirst !== undefined && r.legacyListFirst !== true) return false;
   }
   if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
   if (kind === 'modelFact') {

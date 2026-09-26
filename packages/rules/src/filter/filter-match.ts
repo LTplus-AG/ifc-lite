@@ -71,6 +71,9 @@ export interface PsetRow {
   value: string;
   /** Retain primitive type so a converted Bulk condition cannot match a different typed value. */
   valueType?: 'string' | 'number' | 'boolean' | 'null';
+  /** The scalar display value read by saved v1 Lists before multi-value
+   * expansion. `null` is different from an explicitly empty value. */
+  legacyListValue?: string | null;
 }
 export type PsetRows = ReadonlyArray<PsetRow>;
 
@@ -92,8 +95,18 @@ export function propertyCandidates(p: { value: unknown; values?: readonly string
   return [stringifyValue(p.value)];
 }
 
+function legacyListValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const display = parsePropertyValue(value).displayValue;
+  if (display === '\u2014') return null;
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value) && value.length === 2 && typeof value[1] === 'number') return String(value[1]);
+  return display;
+}
+
 export function flattenPsets(
   psets: ReturnType<typeof extractPropertiesOnDemand>,
+  includeLegacyListValues = false,
 ): PsetRows {
   const out: PsetRow[] = [];
   for (const set of psets) {
@@ -102,6 +115,7 @@ export function flattenPsets(
         : typeof p.value === 'string' ? 'string'
         : typeof p.value === 'number' ? 'number'
         : typeof p.value === 'boolean' ? 'boolean' : undefined;
+      const firstValue = includeLegacyListValues ? legacyListValue(p.value) : undefined;
       for (const value of propertyCandidates(p)) out.push({
         setName: set.name,
         propertyName: p.name,
@@ -115,6 +129,7 @@ export function flattenPsets(
         // for either the search chips or free-typed "true"/"false".
         value,
         valueType,
+        ...(includeLegacyListValues ? { legacyListValue: firstValue } : {}),
       });
     }
   }
@@ -145,6 +160,19 @@ export function stringifyValue(value: unknown): string {
 }
 
 export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
+  if (rule.legacyListFirst) {
+    const first = rows.find((r) =>
+      nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind, rule.nameCaseMode));
+    const value = first?.legacyListValue === undefined
+      ? first?.valueType === 'null' ? null : first?.value ?? null
+      : first.legacyListValue;
+    if (rule.op === 'isNonEmpty') return value !== null && value !== '';
+    if (value === null) return false;
+    return valueOpMatches(rule.op, value, rule.value, rule.valueKind, {
+      ...rule.comparison, candidateType: first?.valueType,
+    });
+  }
   const matching = rows.filter(
     (r) =>
       nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&

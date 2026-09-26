@@ -28,6 +28,12 @@ export function migrateLegacyListConditions(conditions: readonly PropertyConditi
       continue;
     }
     if (condition.source === 'property') {
+      // Subject inheritance has a separate Rules read path that does not
+      // preserve the v1 first-property scalar contract yet.
+      if (condition.inherit) {
+        unreadableConditions.push({ condition, reason: 'inherit' });
+        continue;
+      }
       // Rules' regex names have their own syntax; keep v1 `/regex/flags`
       // conditions on the old path until flags and first-match parity land.
       if (isNamePattern(condition.psetName ?? '') || isNamePattern(condition.propertyName)) {
@@ -36,7 +42,7 @@ export function migrateLegacyListConditions(conditions: readonly PropertyConditi
       }
       const converted = legacyListOperatorToFilterRule(condition.operator, {
         kind: 'property', setName: condition.psetName ?? '', propertyName: condition.propertyName,
-        nameCaseMode: 'exact', ...(condition.inherit ? { inherit: condition.inherit } : {}),
+        nameCaseMode: 'exact', legacyListFirst: true,
         op: 'eq', value: String(condition.value),
       });
       if (converted.status === 'readable') rules.push(converted.value);

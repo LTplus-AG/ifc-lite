@@ -32,6 +32,15 @@ DATA;
 #16=IFCPROPERTYSINGLEVALUE('Flag',$,IFCBOOLEAN(.T.),$);
 #14=IFCPROPERTYSET('0Pset000000000000000014',$,'Pset_Test',$,(#11,#12,#13,#16));
 #15=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000015',$,$,$,(#10),#14);
+#17=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('1HR'),$);
+#18=IFCPROPERTYSET('0Pset000000000000000018',$,'Pset_Test',$,(#17));
+#19=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000019',$,$,$,(#10),#18);
+#41=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2HR'),$);
+#42=IFCPROPERTYSET('0Pset000000000000000042',$,'Pset_Test',$,(#41));
+#43=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000043',$,$,$,(#10),#42);
+#44=IFCPROPERTYLISTVALUE('Colors',$,(IFCLABEL('Red'),IFCLABEL('Blue')),$);
+#45=IFCPROPERTYSET('0Pset000000000000000045',$,'Pset_Test',$,(#44));
+#46=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000046',$,$,$,(#10),#45);
 #20=IFCWALL('0Wall000000000000000020',$,'Blue wall',$,$,$,$,$,$);
 #21=IFCPROPERTYSINGLEVALUE('Text',$,IFCLABEL('Blue'),$);
 #22=IFCPROPERTYSINGLEVALUE('Number',$,IFCREAL(20.),$);
@@ -145,6 +154,51 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
         .map((row) => row.expressId);
       assert.deepEqual(actual, old, `Lists ${operator} after v1 migration`);
       assert.deepEqual(filterRuleToLegacyListOperator(rule), { status: 'readable', value: operator });
+    }
+  });
+
+  it('uses the first of two same-named parsed IFC property sets for saved v1 Lists (#5894)', async () => {
+    const { store, lists } = await fixture();
+    const matching = lists.getPropertySets(10).filter((set) => set.name === 'Pset_Test')
+      .flatMap((set) => set.properties.filter((property) => property.name === 'FireRating'));
+    assert.deepEqual(matching.map((property) => property.value), ['1HR', '2HR']);
+
+    for (const operator of ['equals', 'notEquals'] as const) {
+      const definition: ListDefinition = {
+        id: 'first-pset', name: 'First pset', createdAt: 0, updatedAt: 0,
+        entityTypes: [], expressIdsByModel: { m: [10] }, columns: [],
+        conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'FireRating',
+          operator, value: '2HR' }],
+      };
+      const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
+      const migrated = migrateLegacyListConditions(definition.conditions);
+      assert.deepEqual(migrated.unreadableConditions, []);
+      const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: [10], limit: 1 })
+        .map((row) => row.expressId);
+      assert.deepEqual(actual, old, `${operator} must not inspect the second property set`);
+    }
+  });
+
+  it('compares the scalar display of a parsed IFC list property for saved v1 Lists (#5894)', async () => {
+    const { store, lists } = await fixture();
+    const colors = lists.getPropertySets(10).flatMap((set) => set.properties)
+      .find((property) => property.name === 'Colors');
+    assert.equal(colors?.structure, 'list');
+    assert.equal(colors?.value, 'Red, Blue');
+
+    for (const [operator, value] of [
+      ['equals', 'Blue'], ['contains', 'Red, Blue'],
+    ] as const) {
+      const definition: ListDefinition = {
+        id: 'list-value', name: 'List value', createdAt: 0, updatedAt: 0,
+        entityTypes: [], expressIdsByModel: { m: [10] }, columns: [],
+        conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'Colors', operator, value }],
+      };
+      const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
+      const migrated = migrateLegacyListConditions(definition.conditions);
+      const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: [10], limit: 1 })
+        .map((row) => row.expressId);
+      assert.deepEqual(actual, old, `${operator} must compare the displayed list, not an individual member`);
     }
   });
 

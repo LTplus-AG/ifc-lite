@@ -18,6 +18,9 @@ const STORAGE_KEY = 'ifc-lite-lists';
 function withMigratedGroups(definition: ListDefinition): ListDefinition {
   if (typeof definition !== 'object' || definition === null) return definition;
   if (definition.groups !== undefined || !Array.isArray(definition.conditions)) return definition;
+  // A damaged v1 entry must not throw during the array-wide localStorage
+  // load and hide otherwise valid lists. Preserve it untouched for recovery.
+  if (!definition.conditions.every((condition) => typeof condition === 'object' && condition !== null)) return definition;
   const { groups, unreadableConditions } = migrateLegacyListConditions(definition.conditions);
   return { ...definition, groups, ...(unreadableConditions.length ? { unreadableConditions } : {}) };
 }

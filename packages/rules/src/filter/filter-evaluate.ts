@@ -395,7 +395,10 @@ function evaluateOneEntity(
       // A type-only pset (nothing on the instance) is appended as-is, so
       // `isSet`/`isNotSet` now also see properties that exist ONLY on the
       // type — a deliberate presence-semantics change (was instance-only).
-      psetCache = flattenPsets(mergeInheritedPropertySets(ownSets, typeSets));
+      psetCache = flattenPsets(
+        mergeInheritedPropertySets(ownSets, typeSets),
+        orderedRules.some((rule) => rule.kind === 'property' && rule.legacyListFirst === true),
+      );
     }
     return psetCache;
   };

@@ -295,7 +295,7 @@ export type ConditionOperator =
 
 export interface UnreadableListCondition {
   condition: PropertyCondition;
-  reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'operator' | 'invalid-value';
+  reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value';
 }
 
 // ============================================================================

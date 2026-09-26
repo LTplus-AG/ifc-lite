@@ -125,6 +125,9 @@ export interface PropertyRule extends SubjectReadOptions {
   setName: string;
   /** Preserve exact IFC name matching when decoding older saved List conditions. */
   nameCaseMode?: 'exact';
+  /** Saved v1 Lists read the first matching property, even when another
+   * same-named property set follows it. Other Rules keep any/none semantics. */
+  legacyListFirst?: true;
   /** How `setName` reads — a regex set name is what lets one rule reach both
    *  `Pset_WallCommon` and `Pset_SlabCommon`. */
   setNameKind?: TextKind;

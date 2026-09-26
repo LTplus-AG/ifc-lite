@@ -265,11 +265,18 @@ for (const federated of [false, true]) {
 }
 
 test('#5895 Site visibility removes single-model IfcGeographicElement terrain', async ({ page }) => {
+  let softwareDeviceLost = false;
+  page.on('console', (message) => {
+    if (/\[WebGPU\] Device lost:|\[Renderer\] GPU device lost/.test(message.text())) softwareDeviceLost = true;
+  });
   await openViewer(page);
   await load(page, TERRAIN, 1);
   const terrain = await modelIds(page, 0, 'IFCGEOGRAPHICELEMENT');
   expect(terrain.length).toBeGreaterThan(0);
   await expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length);
+  if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
+    test.skip(true, 'Hosted software WebGPU device was lost before the Site visibility reshape');
+  }
   await setTypeVisibility(page, 'site', false);
   await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
 });

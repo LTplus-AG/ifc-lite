@@ -420,7 +420,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0">
+            <button className="relative flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.epsgButton')}
             </button>

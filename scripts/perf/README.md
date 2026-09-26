@@ -2161,3 +2161,23 @@ and provenance are retained. Lesson: a large inclusive React sample bucket does
 not establish that removing a framework or a few subscriptions buys the same
 wall time; test the actual change, and measure the avoidable upload work before
 committing to permanent renderer pages.
+
+## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
+
+Five interleaved native base-versus-branch runs covered AC20-FZK-Haus and the
+source-verified Viadotto Acerno fixture. AC20 emitted identical mesh, vertex,
+and triangle counts. Its parse, geometry, and total timings all fell within
+the wide run-to-run noise. Viadotto emitted additional meshes and triangles
+because the branch now generates its sectioned solids; its timing comparison
+is therefore not like-for-like. No measurable end-to-end speed verdict follows
+from either fixture. The numeric A/B evidence is in the PR.
+
+The incremental clothoid sampler avoids repeatedly integrating from the
+origin for each station. A follow-up review found that inverting 3D station
+length still rescanned every densely sampled horizontal segment and vertical
+profile segment at each integration point; those lookups now use their sorted
+station keys. The final interleaved A/B kept AC20's output counts identical
+and its phase timings within noise. Viadotto again emitted the intended extra
+geometry, so its timing remains non-comparable. The lesson is to check
+complete model output before interpreting alignment timings and to trace
+the lookup cost inside each repeated station evaluation.

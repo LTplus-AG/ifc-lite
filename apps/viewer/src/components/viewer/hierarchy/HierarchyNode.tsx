@@ -42,7 +42,7 @@ export interface HierarchyNodeProps {
   modelsCount: number;
   searchActive?: boolean;
   modelVisible?: boolean;
-  onNodeClick: (node: TreeNode, e: React.MouseEvent) => void;
+  onNodeClick: (node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => void;
   onToggleExpand: (nodeId: string) => void;
   onVisibilityToggle: (node: TreeNode) => void;
   onModelVisibilityToggle: (modelId: string, e: React.MouseEvent) => void;
@@ -138,6 +138,11 @@ export function HierarchyNode({
       }}
     >
       <div
+        role="treeitem"
+        tabIndex={0}
+        aria-level={node.depth + 1}
+        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        aria-selected={isSelected}
         className={cn(
           'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
           // No selection styling for spatial containers in multi-model mode
@@ -162,6 +167,11 @@ export function HierarchyNode({
             onNodeClick(node, e);
           }
         }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          onNodeClick(node, e);
+        }}
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();
@@ -182,7 +192,12 @@ export function HierarchyNode({
                 : t('hierarchy.node.expandAriaLabel', { name: node.name })
             }
             aria-expanded={node.isExpanded}
-            className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1"
+            // 14px icon, `p-[5px]` a side: 14 + 2*5 = 24, the WCAG 2.2 2.5.8
+            // minimum with no headroom to spare (#5826 review round) — grown
+            // via padding (part of the button's own box) rather than a
+            // pseudo-element slop, so normal flex flow keeps it from
+            // overlapping the type-icon slot that follows.
+            className="p-[5px] hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <ChevronRight
               className={cn(
@@ -233,7 +248,12 @@ export function HierarchyNode({
                       : t('hierarchy.node.showAriaLabel', { name: node.name })
                   }
                   className={cn(
-                    'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
+                    // The 14px slot itself is `inset-0`; `-inset-[5px]`
+                    // grows the button's own box to 14 + 2*5 = 24, the WCAG
+                    // 2.2 2.5.8 minimum (#5826). The type-icon slot's
+                    // neighbours (the chevron before, the name after) sit
+                    // >=8px away in normal flow, so this clears them.
+                    'absolute -inset-[5px] flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-opacity',
                     nodeHidden && 'opacity-100'
                   )}
                 >

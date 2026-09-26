@@ -245,9 +245,18 @@ function retainLandXmlProvenance(entry) {
   };
 }
 
+function retainUpstreamArchive(entry) {
+  const previous = previousEntries.get(entry.path);
+  if (!previous?.upstream_archive) return entry;
+  if (previous.sha256 !== entry.sha256 || previous.size !== entry.size) {
+    throw new Error(`refusing to change upstream fixture ${entry.path} without reviewing its pinned archive`);
+  }
+  return { ...entry, upstream_archive: previous.upstream_archive };
+}
+
 const out = {
   ...header,
-  files: files.map(({ source: _src, ...rest }) => retainLandXmlProvenance(rest)),
+  files: files.map(({ source: _src, ...rest }) => retainUpstreamArchive(retainLandXmlProvenance(rest))),
 };
 
 assertValidManifest(out);
@@ -284,10 +293,15 @@ if (ignoredFiles.length) {
 // is advisory (regeneration is often exactly to add a legit new public fixture),
 // but it forces a conscious "is this cleared for the public bucket?" check.
 if (newFiles.length) {
+  const releaseFiles = newFiles.filter((path) => !out.files.find((entry) => entry.path === path)?.upstream_archive);
+  const upstreamFiles = newFiles.filter((path) => !releaseFiles.includes(path));
+  if (upstreamFiles.length) console.error(`\n  New upstream-only fixtures (never uploaded): ${upstreamFiles.join(', ')}`);
+  if (releaseFiles.length) {
   console.error(
     `\n  ⚠️  NEW fixtures added to the manifest — \`fixtures:upload\` will publish these to the PUBLIC release bucket.\n` +
       `      Confirm each is cleared for public redistribution; if not, add it to tests/models/.manifest-ignore\n` +
       `      (or move it under tests/models/local/):\n` +
-      newFiles.map((p) => `    + ${p}`).join('\n')
+      releaseFiles.map((p) => `    + ${p}`).join('\n')
   );
+  }
 }

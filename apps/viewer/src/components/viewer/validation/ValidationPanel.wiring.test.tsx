@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { IDSDocument } from '@ifc-lite/ids';
-import { cleanup, click, render, type as typeInput } from '@/test/render.js';
+import { advance, cleanup, click, mouseDown, press, render, type as typeInput } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
@@ -140,6 +140,21 @@ afterEach(() => {
 });
 
 describe('ValidationPanel wiring (#5138)', () => {
+  it('#5815 ArrowRight selects Information validation and labels its panel', async () => {
+    setValidationSourceChoice('ids');
+    const ui = render(<ValidationPanel />);
+    const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
+    assert.equal(tabs.length, 2);
+    tabs[0].focus();
+    press(tabs[0], 'ArrowRight');
+    await advance(5);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, tabs[1]);
+    const panel = ui.querySelector('[role="tabpanel"][data-state="active"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[1].id);
+  });
+
   for (const modelCount of [1, 2]) {
     it(`keeps an unsaved rule-set draft and edit mode across remount with ${modelCount} model(s) (#5825)`, async () => {
       const parsed = await parseWalls();
@@ -267,7 +282,7 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     const rulesToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'Information validation');
     assert.ok(rulesToggle, 'expected the "Information validation" toggle button');
-    click(rulesToggle!);
+    mouseDown(rulesToggle!);
 
     // No rule set loaded yet on this side — the New/Open entry, not a blank pane.
     assert.match(ui.textContent ?? '', /New rule set/);
@@ -276,7 +291,7 @@ describe('ValidationPanel wiring (#5138)', () => {
 
     const idsToggle = [...ui.querySelectorAll('button[role="tab"]')].find((b) => b.textContent === 'IDS validation');
     assert.ok(idsToggle);
-    click(idsToggle!);
+    mouseDown(idsToggle!);
 
     // Toggling back: the IDS document is still there, untouched by the round trip.
     assert.match(ui.textContent ?? '', /Wiring IDS fixture/);

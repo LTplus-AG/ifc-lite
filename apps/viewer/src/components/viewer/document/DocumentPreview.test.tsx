@@ -7,6 +7,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { activate, click } from '@/test/render.js';
 import { aggregate } from '@ifc-lite/charts';
 import { DocumentPreview } from './DocumentPreview.js';
 import { pageBox } from '@/lib/export/report/compose.js';
@@ -37,6 +38,33 @@ const baseDocument = {
   page: { size: 'A4', orientation: 'portrait' },
   blocks: [imageBlock],
 } satisfies DocumentSpec;
+
+it('#5823 selects the same document block by click, Enter, and Space', () => {
+  const selections: string[] = [];
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  act(() => root?.render(
+    <DocumentPreview
+      document={{ ...baseDocument, blocks: [imageBlock, { kind: 'spacer', id: 'spacer', height: 12 }] }}
+      bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }}
+      aggregations={new Map()}
+      chartMessages={new Map()}
+      topics={new Map()}
+      selectedBlockId={null}
+      onSelectBlock={(id) => selections.push(id)}
+    />,
+  ));
+  const block = container.querySelector<HTMLElement>('[data-preview-block="image"]');
+  assert.ok(block);
+  assert.equal(block.getAttribute('role'), 'button');
+  assert.equal(block.getAttribute('aria-label'), 'Image / logo');
+  assert.equal(container.querySelector('[data-preview-block="spacer"]')?.getAttribute('aria-label'), 'Spacer');
+  click(block);
+  activate(block, 'Enter');
+  activate(block, ' ');
+  assert.deepEqual(selections, ['image', 'image', 'image']);
+});
 
 function render(dataUrl: string): HTMLImageElement {
   if (!container) {

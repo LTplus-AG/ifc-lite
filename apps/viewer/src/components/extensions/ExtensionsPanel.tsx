@@ -25,6 +25,7 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
 import { useForkExtension } from '@/hooks/useForkExtension';
@@ -182,7 +183,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <Tabs value={view} onValueChange={(value) => setView(value as typeof view)} className="flex flex-col h-full">
       {/* Title row — always fits regardless of panel width. The tab
           strip moves to its own row below so it can scroll
           horizontally without crowding the title. */}
@@ -246,9 +247,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
       {/* Tab strip — its own row so the title row never crowds it.
           Horizontally scrollable when the panel narrows. */}
-      <div
-        className="flex items-center gap-0 border-b overflow-x-auto px-1"
-        role="tablist"
+      <TabsList
+        className="flex h-auto items-center justify-start gap-0 rounded-none border-b bg-transparent overflow-x-auto px-1 py-0"
         aria-label={t('extensionsFlavors.extensionsPanel.tabStripAriaLabel')}
       >
         {(
@@ -259,31 +259,23 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             { id: 'audit', label: t('extensionsFlavors.extensionsPanel.tab.audit'), Icon: FileText },
           ] as const
         ).map(({ id, label, Icon }) => {
-          const active = view === id;
           return (
-            <button
+            <TabsTrigger
               key={id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setView(id)}
-              className={`shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
-                active
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+              value={id}
+              className="shrink-0 flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none transition-colors data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
-            </button>
+            </TabsTrigger>
           );
         })}
-      </div>
+      </TabsList>
 
       {/* Body — every sub-view fills the remaining height and owns its
           own scroll. `min-h-0` lets flex children actually shrink so
           inner ScrollArea / overflow-auto kicks in at narrow heights. */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <TabsContent value={view} className="mt-0 flex-1 min-h-0 flex flex-col">
       {view === 'audit' ? (
         <AuditLogPanel />
       ) : view === 'ideas' ? (
@@ -446,7 +438,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         )}
       </div>
       )}
-      </div>
+      </TabsContent>
       {pending && (
         <CapabilityReview
           open
@@ -457,6 +449,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           onCancel={() => setPending(null)}
         />
       )}
-    </div>
+    </Tabs>
   );
 }

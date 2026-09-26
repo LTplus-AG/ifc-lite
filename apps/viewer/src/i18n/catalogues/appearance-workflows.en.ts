@@ -171,7 +171,7 @@ export const appearanceWorkflowsEn = {
   'appearance.sourceFields.reuseImage': 'Reuse an image',
   'appearance.sourceFields.chooseSourceOption': 'Choose a source',
   'appearance.sourceFields.chooseImageOption': 'Choose an image',
-  'appearance.sourceFields.helpPdf': 'PNG or JPEG image, or one PDF page · PDF up to 64 MB',
+  'appearance.sourceFields.helpPdf': 'PNG/JPEG or one PDF page · PDF max 64 MB',
   'appearance.sourceFields.helpImage': 'PNG or JPEG · up to {maxMb} MB and {maxMegapixels} megapixels · maximum edge {maxDimension} px',
 
   // AppearanceScopeFields

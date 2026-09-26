@@ -22,3 +22,15 @@ revert oracle cannot observe computed fonts without a browser test (browser
 specs are excluded from that oracle). PR #6114 uses the repository's
 `revert-oracle-exempt` label; the production build and these same-viewport
 browser captures are its behavior evidence.
+
+## Appearance batch
+
+The Appearance batch replaces 33 arbitrary 10px and 11px font utilities in
+ten Appearance component files. The [before](appearance-before.png) and
+[after](appearance-after.png) screenshots show the built-in
+`building-architecture.ifc` demo in the viewer with the Appearance panel open.
+Both are headful Chrome production builds at 1440 × 900 with the same model
+and viewport. The source hint grows from 10px to the 11px floor; its wording
+is shortened to keep the PDF limit on one line (measured height: 17.875 CSS
+pixels after). The document width remains 1440 CSS pixels with no horizontal
+overflow.

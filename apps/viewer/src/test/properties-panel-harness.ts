@@ -92,10 +92,7 @@ export async function addPropertyThroughDialog(container: HTMLElement, psetName:
 export async function openInlineEditor(container: HTMLElement, propKey: string): Promise<HTMLElement> {
   const row = container.querySelector(`[data-prop-key="${propKey}"]`);
   assert.ok(row, `row ${propKey} must render`);
-  // The click-to-edit trigger is a real <button> (#5812: a <span onClick>
-  // with no keyboard activation failed the jsx-a11y ratchet), so this
-  // queries by its title, not by tag.
-  const value = row.querySelector('[title="Click to edit"]');
+  const value = row.querySelector('button[title="Click to edit"]');
   assert.ok(value, `row ${propKey} must be editable`);
   click(value);
   await advance(0);

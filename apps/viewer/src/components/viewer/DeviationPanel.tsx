@@ -22,6 +22,10 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
+import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
+import { downloadFile } from '@/lib/export/download';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { cn } from '@/lib/utils';
 
 export interface DeviationPanelProps {
@@ -46,6 +50,45 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     durationMs: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    const renderer = getGlobalRenderer();
+    if (!renderer || !computed || !stats) return;
+    setExporting(true);
+    setError(null);
+    const sourceModels = useViewerStore.getState().models;
+    const idsByIndex = new Map([...modelIndices(sourceModels)].map(([id, index]) => [index, id]));
+    try {
+      const assetStats = await renderer.readDeviationAssetStats();
+      if (useViewerStore.getState().models !== sourceModels) {
+        throw new Error(t('deviationPanel.positionsChangedError'));
+      }
+      const rows = assetStats.map((asset) => {
+        const modelId = idsByIndex.get(asset.modelIndex);
+        const model = modelId ? sourceModels.get(modelId) : undefined;
+        const ref = resolveEntityRef(asset.expressId);
+        const entities = ref.modelId === modelId ? model?.ifcDataStore?.entities : undefined;
+        return {
+          Model: model?.name ?? '',
+          GlobalId: entities?.getGlobalId(ref.expressId) ?? '',
+          Name: entities?.getName(ref.expressId) ?? '',
+          IfcClass: entities?.getTypeName(ref.expressId) ?? '',
+          PointsProcessed: asset.pointsProcessed,
+          FinitePoints: asset.finitePoints,
+          MinimumDeviationM: asset.minimumDeviation,
+          MaximumDeviationM: asset.maximumDeviation,
+          MeanDeviationM: asset.meanDeviation,
+        };
+      });
+      const report = buildDeviationCsvReport(rows, [...sourceModels.values()].map((model) => model.name));
+      if (report) downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  }, [computed, stats, t]);
 
   const handleCompute = useCallback(async () => {
     const renderer = getGlobalRenderer();
@@ -154,6 +197,14 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             duration: Math.round(stats.durationMs),
           })}
         </div>
+      )}
+
+      {computed && stats && (
+        <button type="button" onClick={handleExport}
+          disabled={running || exporting}
+          className="text-xs px-2 py-1 rounded border border-border text-left hover:bg-accent">
+          {exporting ? t('deviationPanel.exportingCsv') : t('deviationPanel.exportCsv')}
+        </button>
       )}
 
       {computed && (

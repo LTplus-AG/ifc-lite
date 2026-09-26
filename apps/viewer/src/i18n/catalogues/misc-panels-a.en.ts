@@ -74,6 +74,8 @@ export const miscPanelsAEn = {
   'deviationPanel.computingLabel': 'Computing…',
   'deviationPanel.recomputeLabel': 'Recompute',
   'deviationPanel.computeLabel': 'Compute deviation',
+  'deviationPanel.exportCsv': 'Export CSV',
+  'deviationPanel.exportingCsv': 'Exporting CSV…',
   'deviationPanel.statsLine': '{points} pts vs. {triangles} tris in {duration} ms',
   'deviationPanel.rangeSliderTitle':
     'Deviation half-range in millimetres — values past ±this map to the ramp endpoints',

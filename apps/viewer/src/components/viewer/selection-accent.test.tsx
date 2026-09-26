@@ -29,7 +29,7 @@ import postcss from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
 import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup } from '@/test/render.js';
 import { OVERLAY_PALETTES, tokenToLinearRgba } from '@/lib/viewport-ui/overlay-theme';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { RectSelectionOverlay } from './RectSelectionOverlay';

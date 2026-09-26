@@ -23,7 +23,7 @@ export function filterPropertySets<T extends PropertySet>(sets: readonly T[], qu
     const properties = set.properties.filter((property) => {
       if (matchesPropertySearch(property.name, query)) return true;
       const display = propertyDisplayValue(property, units, overrides);
-      return matchesPropertySearch(display.full, query) || matchesPropertySearch(display.parsed.displayValue, query);
+      return matchesPropertySearch(display.full, query);
     });
     return properties.length > 0 ? [{ ...set, properties } as T] : [];
   });
@@ -35,8 +35,7 @@ export function filterQuantitySets(sets: readonly QuantitySet[], query: string, 
     if (matchesPropertySearch(set.name, query)) return [set];
     const quantities = set.quantities.filter((quantity) =>
       matchesPropertySearch(quantity.name, query)
-      || matchesPropertySearch(quantityDisplayValue(quantity, units, overrides, locale), query)
-      || matchesPropertySearch(quantity.value, query),
+      || matchesPropertySearch(quantityDisplayValue(quantity, units, overrides, locale), query),
     );
     return quantities.length > 0 ? [{ ...set, quantities }] : [];
   });

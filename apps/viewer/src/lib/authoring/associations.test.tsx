@@ -111,9 +111,9 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 0, 'source relationship extended');
     assert.deepEqual(view().getPositionalMutationsForEntity(61)?.get(4), ['#52', '#30']);
 
-    const { text, reparsed } = await exportAndReparse(store, 'IFC4');
-    assert.match(text, /#61=IFCRELASSOCIATESMATERIAL\([^;]*\(#52,#30\),#62\);/,
-      'the exported source relationship still names its original slab');
+    const { reparsed } = await exportAndReparse(store, 'IFC4');
+    assert.deepEqual(reparsed.getEntity(61)?.attributes.slice(4, 6), [[52, 30], 62],
+      'the exported source relationship still names its original slab and material');
     assert.deepEqual(extractClassificationsOnDemand(reparsed, 262)
       .map((value) => [value.system, value.identification, value.name]),
     [['CCI Construction', 'E-AAA-WALL', 'Outer wall']]);
@@ -142,7 +142,13 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     it('a classification exports as IfcClassificationReference + IfcRelAssociatesClassification and reads back', async () => {
       assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25', name: 'Walls' }), { ok: true });
       const { text, reparsed } = await exportAndReparse(store, 'IFC4');
-      assert.match(text, /IFCRELASSOCIATESCLASSIFICATION\('[^']{22}',\$,\$,\$,\(#10\),#\d+\)/);
+      const relationships = reparsed.getEntitiesByType('IFCRELASSOCIATESCLASSIFICATION');
+      assert.equal(relationships.length, 1);
+      assert.equal(relationships[0].attributes[1], null, 'IFC4 relationship has optional OwnerHistory');
+      assert.deepEqual(relationships[0].attributes[4], [10]);
+      const referenceId = relationships[0].attributes[5];
+      assert.ok(typeof referenceId === 'number');
+      assert.equal(reparsed.getEntity(referenceId)?.type, 'IFCCLASSIFICATIONREFERENCE');
       assert.doesNotMatch(text, /Classification \[/, 'no look-alike property set');
       const read = extractClassificationsOnDemand(reparsed, 10);
       assert.equal(read.length, 1);
@@ -247,13 +253,16 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
         assert.ok(creates.some((call) => call.type.toUpperCase() === 'IFCRELASSOCIATESCLASSIFICATION'));
         const wallPath = pathForEntity(store, 10);
         assert.ok(wallPath);
+        const hasWallRoomPath = (value: unknown) => Array.isArray(value) && value.some((item) =>
+          item !== null && typeof item === 'object' && !Array.isArray(item)
+          && 'ifc-lite::entityPath' in item && item['ifc-lite::entityPath'] === wallPath);
         assert.ok(attributes.some((call) => call.name === 'bsi::ifc::prop::RelatedObjects'
-          && JSON.stringify(call.value).includes(wallPath)), 'relationship references are room paths, not sender-local ids');
+          && hasWallRoomPath(call.value)), 'relationship references are room paths, not sender-local ids');
         const beforeExtension = creates.length;
         assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
         assert.equal(creates.length, beforeExtension, 'extending source IfcRelAssociatesMaterial creates no duplicate entity');
         assert.ok(attributes.some((call) => call.id === 21 && call.name === 'bsi::ifc::prop::RelatedObjects'
-          && JSON.stringify(call.value).includes(wallPath)), 'the source relationship extension is mirrored');
+          && hasWallRoomPath(call.value)), 'the source relationship extension is mirrored');
       } finally {
         useViewerStore.setState({
           collabRoomId: original.collabRoomId,
@@ -313,10 +322,14 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       store = await seed(IFC2X3(true));
       assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25', name: 'Walls' }), { ok: true });
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Brick' }), { ok: true });
-      const { text, reparsed } = await exportAndReparse(store, 'IFC2X3');
-      assert.match(text, /IFCCLASSIFICATION\('Uniclass','',\$,'Uniclass'\)/);
-      assert.match(text, /IFCRELASSOCIATESCLASSIFICATION\('[^']{22}',#5,/);
-      assert.match(text, /IFCMATERIAL\('Brick'\)/);
+      const { reparsed } = await exportAndReparse(store, 'IFC2X3');
+      const classification = reparsed.getEntitiesByType('IFCCLASSIFICATION');
+      assert.equal(classification.length, 1);
+      assert.deepEqual(classification[0].attributes, ['Uniclass', '', null, 'Uniclass']);
+      const relationships = reparsed.getEntitiesByType('IFCRELASSOCIATESCLASSIFICATION');
+      assert.equal(relationships.length, 1);
+      assert.equal(relationships[0].attributes[1], 5, 'IFC2X3 relationship keeps the model OwnerHistory');
+      assert.deepEqual(reparsed.getEntitiesByType('IFCMATERIAL').map((material) => material.attributes[0]), ['Brick']);
       assert.equal(extractClassificationsOnDemand(reparsed, 10)[0]?.identification, 'Ss_25');
       assert.equal(extractAllMaterialsOnDemand(reparsed, 10)[0]?.name, 'Brick');
     });

@@ -57,7 +57,7 @@ function publish(status: WebGPUStatus): void {
 }
 
 export function getWebGPUStatus(): WebGPUStatus {
-  return cachedProbe?.gpu === navigator.gpu && cachedProbe.secureContext === window.isSecureContext
+  return cachedProbe !== undefined && cachedProbe.gpu === navigator.gpu && cachedProbe.secureContext === window.isSecureContext
     ? cachedProbe.status ?? CHECKING_STATUS
     : CHECKING_STATUS;
 }
@@ -65,7 +65,7 @@ export function getWebGPUStatus(): WebGPUStatus {
 function probeWebGPU(force = false): Promise<WebGPUStatus> {
   const gpu = navigator.gpu;
   const secureContext = window.isSecureContext;
-  if (!force && cachedProbe?.gpu === gpu && cachedProbe.secureContext === secureContext) {
+  if (!force && cachedProbe !== undefined && cachedProbe.gpu === gpu && cachedProbe.secureContext === secureContext) {
     return cachedProbe.result;
   }
 

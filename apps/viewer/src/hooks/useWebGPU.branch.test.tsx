@@ -25,7 +25,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { useWebGPU, type WebGPUStatus } from './useWebGPU.js';
+import { getWebGPUStatus, useWebGPU, type WebGPUStatus } from './useWebGPU.js';
 import { useWebGpuOpenGuard, type WebGpuOpenGuard } from './useWebGpuOpenGuard.js';
 import { webGpuBannerBlurb } from '@/components/viewer/WebGpuTroubleshooting.js';
 import { useViewerStore } from '@/store';
@@ -80,6 +80,13 @@ afterEach(() => {
 });
 
 describe('useWebGPU category detection', () => {
+  it('starts a probe when navigator.gpu is absent without dereferencing an empty cache (#5851)', async () => {
+    setSecureContext(false);
+    setNavigatorGpu(undefined);
+    assert.equal(getWebGPUStatus().checking, true);
+    assert.equal((await renderProbe()).category, 'insecure-context');
+  });
+
   it('rechecks a failed adapter on explicit Retry and then opens the same source (#5851)', async () => {
     setSecureContext(true);
     let calls = 0;

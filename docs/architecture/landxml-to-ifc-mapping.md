@@ -7,8 +7,10 @@
 # LandXML → IFC mapping specification (v1, proposed)
 
 Status: **accepted — v1 implemented; v1.1 (horizontal alignments, §11) implemented; v1.2 (vertical
-profiles, §12) implemented; v1.3 (station equations, §14) implemented**.
-Version 1.3, 2026-09-25.
+profiles, §12) implemented; v1.3 (station equations, §14) implemented; v1.4 (terrain imagery,
+§15) specified — its projection (§15.3) is implemented, the viewer drape (§15.4) and the export
+(§15.5) are not yet**.
+Version 1.4, 2026-09-25.
 (Version 0.1, 2026-09-22, was the proposal; §9 records what changed on acceptance.)
 Issues: [#5175](https://github.com/LTplus-AG/ifc-lite/issues/5175) (export honesty),
 [#4937](https://github.com/LTplus-AG/ifc-lite/issues/4937) (native LandXML).
@@ -824,3 +826,164 @@ along around its placed PVI whether or not an equation falls inside it.
    must evaluate the written gradient curve to the heights the generator computed along the
    alignment (`check_vertical.py`), and the gap and double-display cases are refused by
    name.
+
+## 15. v1.4 — terrain imagery
+
+v1.4, [#5942](https://github.com/LTplus-AG/ifc-lite/issues/5942). LandXML 1.0–1.2 has no raster
+or texture element, so imagery on a terrain can never come from the LandXML file. It comes from
+a georeferenced sidecar the operator supplies, and this section defines how the viewer drapes it
+and how the IFC4X3 export carries it. An imagery overlay is **provenance, not a claim the LandXML
+contained it**: the same rule as `assumedLinearUnit` (§2.1, §7).
+
+### 15.1 Sources
+
+| Source | Placement | CRS | Viewer | Export |
+|---|---|---|---|---|
+| GeoTIFF | `ModelTiepointTag` + `ModelPixelScaleTag`, or `ModelTransformationTag` | `ProjectedCSTypeGeoKey` / `GeographicTypeGeoKey`, as an EPSG code | draped | shipped as a lossless PNG transcode (§15.5) |
+| PNG or JPEG + world file (`.pgw`, `.jgw`, `.pngw`, `.jpgw`, `.wld`) | the world file's six-term affine | a `.prj` or `.aux.xml` WKT carrying an EPSG authority | draped | shipped as the original bytes |
+| XYZ tiles or WMS, at a chosen zoom | the tile grid (EPSG:3857), or a WMS 1.1.1 `GetMap` requested in the terrain's own CRS | as requested | draped | **never** (§15.2) |
+
+Every source enters through `useIfcLoader.loadFile`, as every model does. A raster is not a
+model, so it creates none: it is draped onto the LandXML terrain models already loaded.
+
+### 15.2 Refusals
+
+Stated up front, in the style of §5. Each is a refusal of the drape, named to the operator; none
+is a partial or a guess.
+
+1. **The terrain declares no CRS.** `LandXML/CoordinateSystem` must name an explicit EPSG code
+   (the same adapter the federation path uses, `spatialMetadataFromLandXml`). A raster is never
+   placed by pixel bounds or by the terrain's extent.
+2. **The image has no placement or no CRS.** A PNG/JPEG without a world file, a GeoTIFF without
+   a geotransform, and an image whose CRS is absent, user-defined or not an EPSG code are all
+   refused. A `.prj` in ESRI form without an `AUTHORITY["EPSG", …]` is refused rather than
+   matched by name — that would be the producer-sniffing §2.2 rejects.
+3. **The image CRS differs from the terrain's and the operation is not exact.** Reprojection goes
+   through the resolver model federation uses (`resolveProjectionOperation`); an unresolvable
+   CRS, a missing datum grid, or an operation that only a documented approximation could perform
+   is refused, as it is for models.
+4. **The image is not planar in the terrain's CRS to within half a pixel.** The UV projection is
+   planar (§15.3). A skewed geotransform, or a reprojection whose curvature over the image's
+   extent exceeds half a pixel, is refused with the measured deviation.
+5. **The image covers no vertex of a terrain.** That terrain is left untouched and named.
+6. **An operator-assumed linear unit is allowed.** The projection runs in the terrain's native
+   plan coordinates, so the image still lands on the right vertices; but everything the export
+   writes in metres, the texture mapping included, inherits the operator's scale. The export
+   dialog names the assumed unit next to the imagery.
+7. **Tile sources are viewer-only.** Their bytes are not ours to redistribute and their coverage
+   depends on the zoom chosen, so a tile drape is never written to an export; the dialog says so.
+8. **Budget.** A decoded image above 64 megapixels is refused (it would need gigabytes to
+   decode); the viewer downsamples to the device's texture limit and reports the resulting ground
+   sample distance; the export ships the image at full resolution.
+
+### 15.3 The projection
+
+One definition, used by the viewer and the export. The image's placement is reduced to the
+terrain's horizontal CRS, in its native plan units, as
+
+- `O`, the plan position of the image's **bottom-left corner**;
+- `U`, the unit vector along the image's columns (left to right);
+- `V`, the unit vector up the image (bottom to top), perpendicular to `U`;
+- `W`, `H`, the image's extent along `U` and `V`.
+
+A vertex at plan position `P = (easting, northing)` — the same axis contract as §2.2 and §4.1 —
+maps to
+
+```
+u = (P − O) · U / W
+v = (P − O) · V / H
+```
+
+with the texture origin at the bottom-left, which is the `IfcTextureVertexList` convention. The
+viewer's GPU convention is top-left, so it uses `1 − v`. A vertex is **covered** when
+`0 ≤ u ≤ 1` and `0 ≤ v ≤ 1`, and the **covered fraction** of a surface is the fraction of its TIN
+vertices — those referenced by at least one rendered (viewer) or written (export) face — that
+are covered.
+
+Two traps, both pinned by tests:
+
+- **Half a pixel.** A world file's translation terms name the *centre* of the upper-left pixel;
+  a GeoTIFF tie point under the default `RasterPixelIsArea` names its *corner*, and under
+  `RasterPixelIsPoint` its centre. All three are normalised to the corner before `O` is formed.
+  Getting this wrong shifts the image by half a pixel, which at an orthophoto's resolution is
+  invisible on screen and wrong in every measurement.
+- **Coordinate order, twice.** World files and geotransforms are authored as
+  `(x = easting, y = northing)`; LandXML point text is northing-first (§2.2). The drape reads each
+  terrain vertex as `(easting, northing)`, exactly as the mesh does, and never reorders the image.
+  An easting-first terrain under a correctly placed image is therefore mirrored against it across
+  the line `easting = northing`, which is the visual that makes that defect visible.
+
+When the image CRS differs from the terrain's, the image's placement is carried into the
+terrain's CRS by reprojecting a grid of points spanning the image and fitting the affine above
+by least squares. The fit's largest residual, and the largest departure of the fitted affine
+from an orthogonal one (a planar mapping carries no skew), are measured in image pixels; either
+above one half is refusal 4.
+
+### 15.4 Viewer drape
+
+- Each draped mesh keeps its geometry. Per vertex it gains `(u, 1 − v)`, computed from the
+  vertex's **source** plan position: the rendered position is carried back to the source frame
+  (through the pre-alignment snapshot when the model was federated) and snapped to the surface's
+  own TIN point. A vertex with no TIN point within tolerance refuses the drape rather than
+  guessing.
+- It renders through the existing textured-mesh path (`MeshData.textureRef` + `textureBitmap`,
+  one GPU texture per `textureId`).
+- **Outside the extent, the flat terrain colour.** The uploaded bitmap carries a one-pixel border
+  in the terrain's flat colour and samples with clamp-to-edge; the mesh colour becomes white so
+  the image is not tinted. A covered fragment shows the image, an uncovered one the border — the
+  flat colour — and the change happens at the image's edge, not at the nearest vertex.
+- The model's card in the properties panel reports the source, its CRS, the ground sample
+  distance and the covered fraction.
+
+### 15.5 Export (IFC4X3)
+
+For each draped surface whose imagery came from a file (§15.1):
+
+| What | IFC4X3 |
+|---|---|
+| the image | `IfcImageTexture`: `RepeatS = .F.`, `RepeatT = .F.`, `URLReference` = the image's entry name in the `.ifcZIP` |
+| its style | `IfcSurfaceStyle` (`.BOTH.`) of `IfcSurfaceStyleShading` (white) and `IfcSurfaceStyleWithTextures`, bound to the TIN by an `IfcStyledItem` |
+| the UVs | one `IfcTextureVertexList` row per TIN vertex (§15.3), bound by an `IfcIndexedTriangleTextureMap` whose `MappedTo` is the `IfcTriangulatedIrregularNetwork` and whose `TexCoordIndex` repeats the TIN's `CoordIndex` |
+
+`IfcIndexedTriangleTextureMap` is the concrete subtype of the abstract `IfcIndexedTextureMap`
+the issue names. `IfcTriangulatedIrregularNetwork` is a subtype of `IfcTriangulatedFaceSet`
+with the same attributes at positions 0–4, so the shape is the one the appearance workspace
+writes for building elements, and it is written **by the appearance workspace's planner**
+(`plan_appearance`, `planar` mapping in the `world` frame, with `O`, `U`, `V`, `W`, `H` scaled to
+metres). There is no second texture writer. The TIN written by §4.1 is unchanged: same vertices,
+same triangles, same `Flags`.
+
+- **Outside the extent.** `IfcIndexedTriangleTextureMap` maps every triangle of its face set, and
+  `RepeatS = .F.` clamps coordinates to the image, so a consumer shows the image's edge pixels
+  across an uncovered part. The viewer's flat fallback cannot be expressed on one face set
+  without splitting the TIN, which §4.1's one-TIN-per-surface rule and the round-trip acceptance
+  forbid. The UVs are the exact georeferenced values, not clamped ones, and the covered fraction
+  is recorded (below), so a consumer can tell.
+- **Packaging.** The file becomes an `.ifcZIP`: the STEP entry and the image entry side by side,
+  the image stored uncompressed, and `URLReference` the image's entry name — resolved on load by
+  basename, as `textureResources.ts` resolves every `.ifcZIP` texture. PNG and JPEG ship as their
+  original bytes; a GeoTIFF ships as a lossless PNG transcode, because neither browsers nor most
+  IFC consumers decode TIFF.
+- **Provenance.** `LandXML_Conversion` (§7) gains: `ImagerySourceFileName`, `ImagerySourceHash`
+  (SHA-256 of the image bytes as supplied), `ImageryPlacement` (`world file` or `GeoTIFF`),
+  `ImageryCrs` (as declared), `ImageryProjection` (`O`, `U`, `V`, `W`, `H` in the terrain CRS),
+  `ImageryCoveredFraction`, and, for a transcode, `ImageryShippedFileName` and
+  `ImageryShippedHash`. They are written only when imagery is exported.
+- **Refused.** A tile drape (§15.2 item 7) exports the terrain untextured, and the dialog says
+  so before the user commits.
+
+### 15.6 Acceptance
+
+1. **Coordinate order.** A terrain whose point text is easting-first, under a correctly placed
+   image, lands its marked vertex on the mirrored pixel, not the marked one.
+2. **Projection.** UVs at known coordinates for a north-up world file, a rotated one and a
+   GeoTIFF under both raster types; the half-pixel normalisation; the reprojection fit's refusal.
+3. **Independent read-back.** IfcOpenShell reopens the exported `.ifcZIP`, validates it with
+   `express_rules=True`, and resolves the texture on the TIN's faces: the texture map's
+   `MappedTo` is the TIN, its `URLReference` resolves to an entry of the archive, and the UV at a
+   marked vertex lands on the marked pixel of the shipped image.
+4. **Real data.** A real orthophoto and TIN pair from the reviewed producer corpus, with a
+   surveyed feature visible in both, whose draped pixel and TIN vertex coincide within the
+   image's ground sample distance. **Owed**: the fixture corpus holds no such pair yet, so items
+   1–3 stand on synthetic, known-georeferenced data (§8's rule: a synthetic fixture proves an
+   invariant and certifies no producer).

@@ -42,7 +42,11 @@ function alerts(): Element[] {
   return [...document.body.querySelectorAll('[role="alert"]')];
 }
 
-function mountShell(onExport: () => Promise<ExportDialogShellResult>, filenamePreview?: string) {
+function mountShell(
+  onExport: () => Promise<ExportDialogShellResult>,
+  filenamePreview?: string,
+  options: { closeOnSuccess?: boolean } = {},
+) {
   render(
     <ExportDialogShell
       trigger={<button>Open export dialog</button>}
@@ -56,6 +60,7 @@ function mountShell(onExport: () => Promise<ExportDialogShellResult>, filenamePr
       errorTitle="Error"
       filenamePreview={filenamePreview}
       onExport={onExport}
+      closeOnSuccess={options.closeOnSuccess}
     >
       <div>options</div>
     </ExportDialogShell>,
@@ -161,6 +166,31 @@ describe('ExportDialogShell (#5848)', () => {
     assert.ok(errorAlert.querySelector('svg'), 'error alert carries an icon');
     assert.match(errorAlert.textContent ?? '', /Error/);
     assert.match(errorAlert.textContent ?? '', /it broke/);
+  });
+
+  it('closeOnSuccess closes the dialog on success instead of showing the Alert (#5848)', async () => {
+    mountShell(async () => ({ success: true, message: 'it worked' }), undefined, { closeOnSuccess: true });
+    click(trigger());
+    click(button('Export'));
+    await waitFor(() => dialogIsOpen() === false, 'a successful export must close the dialog');
+    assert.equal(alerts().length, 0, 'closeOnSuccess must not show the result Alert on success');
+  });
+
+  it('closeOnSuccess still shows the Alert on failure, and a reopen clears it (#5848)', async () => {
+    mountShell(async () => ({ success: false, message: 'it broke' }), undefined, { closeOnSuccess: true });
+    click(trigger());
+    click(button('Export'));
+    await waitFor(() => alerts().length === 1, 'a failed export must still show its error, even with closeOnSuccess');
+    assert.ok(dialogIsOpen(), 'a failed export must not close the dialog');
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    assert.equal(dialogIsOpen(), false, 'an idle dialog still closes on Escape');
+
+    click(trigger());
+    assert.ok(dialogIsOpen(), 'precondition: the dialog reopened');
+    assert.equal(alerts().length, 0, 'a reopened dialog must not show the previous run\'s stale error');
   });
 
   it('the filename preview matches what the download call would actually produce', () => {

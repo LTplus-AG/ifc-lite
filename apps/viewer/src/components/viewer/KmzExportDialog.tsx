@@ -62,6 +62,13 @@ export function KmzExportDialog({ surface = 'classic', trigger }: KmzExportDialo
   // drapes on Google Earth's terrain and can never float, regardless of the
   // model's OrthogonalHeight (#1427). "True elevation" places it at MSL.
   const [altitudeMode, setAltitudeMode] = useState<KmzAltitudeMode>('clampToGround');
+  // Mirrors the shell's own open state (via `onOpenStateChange`) so
+  // `suggestTrueElevation` below can stay a `useMemo` gated on "is the dialog
+  // open", exactly like the pre-#5848 local `open` state did — without this,
+  // the hint recomputes `kmzSuggestsAbsoluteAltitude` on every render while
+  // the dialog is open, not just when the inputs it actually depends on
+  // change.
+  const [open, setOpenMirror] = useState(false);
 
   // Models that have both geometry and a parsed store (georef is checked at export
   // time so we don't scan every store on every render). Falls back to the legacy
@@ -121,23 +128,20 @@ export function KmzExportDialog({ surface = 'classic', trigger }: KmzExportDialo
   // while the merged conversion's OrthogonalHeight is ~0): the clampToGround
   // default pins project zero to the terrain and would float the building by
   // that baked Z, so hint at "True elevation" instead (#1427 follow-up).
-  const suggestTrueElevation = useCallback(
-    (isOpen: boolean) => {
-      if (!isOpen || !selectedModel) return false;
-      try {
-        return kmzSuggestsAbsoluteAltitude({
-          geometryResult: selectedModel.geometryResult,
-          dataStore: selectedModel.dataStore,
-          mutations: selectedModel.id === '__legacy__' ? undefined : georefMutations.get(selectedModel.id),
-        });
-      } catch (err) {
-        // A hint must never break the dialog — log and fall back to no hint.
-        console.debug('[kmz] altitude hint evaluation failed:', err);
-        return false;
-      }
-    },
-    [selectedModel, georefMutations],
-  );
+  const suggestTrueElevation = useMemo(() => {
+    if (!open || !selectedModel) return false;
+    try {
+      return kmzSuggestsAbsoluteAltitude({
+        geometryResult: selectedModel.geometryResult,
+        dataStore: selectedModel.dataStore,
+        mutations: selectedModel.id === '__legacy__' ? undefined : georefMutations.get(selectedModel.id),
+      });
+    } catch (err) {
+      // A hint must never break the dialog — log and fall back to no hint.
+      console.debug('[kmz] altitude hint evaluation failed:', err);
+      return false;
+    }
+  }, [open, selectedModel, georefMutations]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
     if (!selectedModel) {
@@ -200,77 +204,76 @@ export function KmzExportDialog({ surface = 'classic', trigger }: KmzExportDialo
       filenamePreview={filenamePreview}
       exportDisabled={!selectedModel}
       onExport={handleExport}
+      onOpenStateChange={setOpenMirror}
     >
-      {(state) => (
-        <>
-          {/* Google Earth Web does not support KML <Model>, so it cannot render a KMZ 3D
-              model — only Earth Pro (desktop) can. Web users should export GLB instead. */}
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>{t('geometryExport.kmz.webNoticeTitle')}</AlertTitle>
-            <AlertDescription>
-              {t('geometryExport.kmz.webNoticeDescription')}
-            </AlertDescription>
-          </Alert>
+      <>
+        {/* Google Earth Web does not support KML <Model>, so it cannot render a KMZ 3D
+            model — only Earth Pro (desktop) can. Web users should export GLB instead. */}
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>{t('geometryExport.kmz.webNoticeTitle')}</AlertTitle>
+          <AlertDescription>
+            {t('geometryExport.kmz.webNoticeDescription')}
+          </AlertDescription>
+        </Alert>
 
-          {modelList.length > 1 && (
-            <div className="flex items-center gap-4">
-              <Label className="w-32">{t('geometryExport.kmz.modelLabel')}</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('geometryExport.kmz.selectModelPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelList.map((m) => {
-                    const displayName = m.name.length > 24 ? m.name.slice(0, 24) + '…' : m.name;
-                    return (
-                      <SelectItem key={m.id} value={m.id} title={m.name}>
-                        {displayName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
+        {modelList.length > 1 && (
           <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">{t('geometryExport.kmz.outputLabel')}</Label>
-            <Badge variant="secondary">{t('geometryExport.kmz.outputFormat')}</Badge>
-            <span className="text-xs text-muted-foreground">{t('geometryExport.kmz.fileExtension')}</span>
+            <Label className="w-32">{t('geometryExport.kmz.modelLabel')}</Label>
+            <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+              <SelectTrigger>
+                <SelectValue placeholder={t('geometryExport.kmz.selectModelPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {modelList.map((m) => {
+                  const displayName = m.name.length > 24 ? m.name.slice(0, 24) + '…' : m.name;
+                  return (
+                    <SelectItem key={m.id} value={m.id} title={m.name}>
+                      {displayName}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
+        )}
 
-          <div className="flex items-start gap-4">
-            <Label className="w-32 pt-2" htmlFor="kmz-altitude-mode">
-              {t('geometryExport.kmz.placementLabel')}
-            </Label>
-            <div className="flex flex-1 flex-col gap-1">
-              <Select
-                value={altitudeMode}
-                onValueChange={(v) => setAltitudeMode(v as KmzAltitudeMode)}
-              >
-                <SelectTrigger id="kmz-altitude-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="clampToGround">{t('geometryExport.kmz.placementClampToGround')}</SelectItem>
-                  <SelectItem value="absolute">{t('geometryExport.kmz.placementAbsolute')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {altitudeMode === 'clampToGround'
-                  ? t('geometryExport.kmz.placementClampHint')
-                  : t('geometryExport.kmz.placementAbsoluteHint')}
+        <div className="flex items-center gap-4">
+          <Label className="w-32 text-muted-foreground">{t('geometryExport.kmz.outputLabel')}</Label>
+          <Badge variant="secondary">{t('geometryExport.kmz.outputFormat')}</Badge>
+          <span className="text-xs text-muted-foreground">{t('geometryExport.kmz.fileExtension')}</span>
+        </div>
+
+        <div className="flex items-start gap-4">
+          <Label className="w-32 pt-2" htmlFor="kmz-altitude-mode">
+            {t('geometryExport.kmz.placementLabel')}
+          </Label>
+          <div className="flex flex-1 flex-col gap-1">
+            <Select
+              value={altitudeMode}
+              onValueChange={(v) => setAltitudeMode(v as KmzAltitudeMode)}
+            >
+              <SelectTrigger id="kmz-altitude-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="clampToGround">{t('geometryExport.kmz.placementClampToGround')}</SelectItem>
+                <SelectItem value="absolute">{t('geometryExport.kmz.placementAbsolute')}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {altitudeMode === 'clampToGround'
+                ? t('geometryExport.kmz.placementClampHint')
+                : t('geometryExport.kmz.placementAbsoluteHint')}
+            </p>
+            {altitudeMode === 'clampToGround' && suggestTrueElevation && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {t('geometryExport.kmz.suggestTrueElevationHint')}
               </p>
-              {altitudeMode === 'clampToGround' && suggestTrueElevation(state.isOpen) && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {t('geometryExport.kmz.suggestTrueElevationHint')}
-                </p>
-              )}
-            </div>
+            )}
           </div>
-        </>
-      )}
+        </div>
+      </>
     </ExportDialogShell>
   );
 }

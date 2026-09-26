@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** One persisted Lens normalization path for localStorage, JSON import and
- * flavor snapshots (#5896). The old editor import validator is removed in the
- * final cleanup step of this stack. */
+ * flavor snapshots (#5896). */
 import { AUTO_COLOR_SOURCES, type AutoColorSpec, type Lens, type LensRule } from '@ifc-lite/lens';
 import { migrateSavedLensRule } from './migrate-saved-lens-rule.js';
 

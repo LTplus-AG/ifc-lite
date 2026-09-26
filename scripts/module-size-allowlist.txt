@@ -156,7 +156,7 @@
    638 apps/viewer/src/services/extensions/host.ts
    561 apps/viewer/src/services/ifc-cache.ts
    562 apps/viewer/src/store/basketVisibleSet.ts
-   485 apps/viewer/src/store/constants.ts
+   444 apps/viewer/src/store/constants.ts
    494 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts

@@ -137,35 +137,51 @@ fn naming(out: &str, rel_type: &str, claimed: usize, id: u32) -> usize {
         .count()
 }
 
-/// #5923: each model states `rel` (`{a}` = the shared entity #10, `{b}` = its own
-/// partner #11) about an entity both share by GlobalId. The merged file names
-/// the shared entity on the claimed side (argument `claimed`) once.
-fn one_rel_for_the_shared_entity(schema: &str, file_schema: &str, rel_type: &str, rel: &str, claimed: usize) {
-    let model_of = |tag: &str| {
-        model(file_schema, &[
-            format!("#1=IFCPROJECT('{}',$,'P',$,$,$,$,$,$);", guid(&format!("p{tag}"))),
-            format!("#10=IFCBUILDINGELEMENTPROXY('{}',$,'shared',$,$,$,$,$,$);", guid("shared")),
-            format!("#11=IFCBUILDINGELEMENTPROXY('{}',$,'own',$,$,$,$,$,$);", guid(&format!("own{tag}"))),
-            format!("#20={rel_type}('{}',$,$,$,{});", guid(&format!("r{tag}")), rel),
-        ])
-    };
-    let (out, _) = merge(schema, &[model_of("a"), model_of("b")]);
-    assert_eq!(naming(&out, rel_type, claimed, id_of(&out, "shared")), 1, "{schema} {rel_type}:\n{out}");
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Row {
+    schema: String,
+    rel_type: String,
+    inverse: String,
+    claimed: usize,
+    partner: usize,
+    claimed_list: bool,
+    partner_list: bool,
+    arity: usize,
 }
 
+/// #5923: every row of the TypeScript rule table (`inverseRules`, pinned to
+/// the EXPRESS schemas and written to `fixtures/merged_inverse_rules.json` by
+/// `merged-inverse-claims.test.ts`) holds for the Rust merge too. Two models
+/// each state the row's relationship about an entity they share by GlobalId
+/// (#10), with a partner of their own (#11); the merged file names the shared
+/// entity on the claimed side once. A Rust table that drops a row or moves an
+/// index fails here.
 #[test]
-fn a_shared_element_keeps_one_containment_void_fill_and_type() {
-    for (schema, file_schema) in [("IFC2X3", "IFC2X3"), ("IFC4", "IFC4"), ("IFC4X3", "IFC4X3_ADD2")] {
-        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELCONTAINEDINSPATIALSTRUCTURE", "(#10),#11", 4);
-        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELVOIDSELEMENT", "#11,#10", 5);
-        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELFILLSELEMENT", "#11,#10", 5);
-        // The object side: IFC2X3 IfcObject.WR1, IFC4 IsTypedBy.
-        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELDEFINESBYTYPE", "(#10),#11", 4);
-        // The type side: IFC2X3 ObjectTypeOf, IFC4 Types (the later object is folded in).
-        one_rel_for_the_shared_entity(schema, file_schema, "IFCRELDEFINESBYTYPE", "(#11),#10", 5);
+fn every_rule_of_the_shared_table_keeps_one_relationship() {
+    let fixture = include_str!("fixtures/merged_inverse_rules.json");
+    let rows: Vec<Row> = serde_json::from_value(serde_json::from_str::<serde_json::Value>(fixture).unwrap()["rows"].clone()).unwrap();
+    assert!(rows.len() >= 50, "the fixture lists every rule");
+    for row in rows {
+        let file_schema = if row.schema == "IFC4X3" { "IFC4X3_ADD2" } else { row.schema.as_str() };
+        let model_of = |tag: &str| {
+            let args: Vec<String> = (0..row.arity).map(|i| match i {
+                0 => format!("'{}'", guid(&format!("r{tag}"))),
+                i if i == row.claimed => if row.claimed_list { "(#10)".into() } else { "#10".into() },
+                i if i == row.partner => if row.partner_list { "(#11)".into() } else { "#11".into() },
+                _ => "$".into(),
+            }).collect();
+            model(file_schema, &[
+                format!("#1=IFCPROJECT('{}',$,'P',$,$,$,$,$,$);", guid(&format!("p{tag}"))),
+                format!("#10=IFCBUILDINGELEMENTPROXY('{}',$,'shared',$,$,$,$,$,$);", guid("shared")),
+                format!("#11=IFCBUILDINGELEMENTPROXY('{}',$,'own',$,$,$,$,$,$);", guid(&format!("own{tag}"))),
+                format!("#20={}({});", row.rel_type, args.join(",")),
+            ])
+        };
+        let (out, _) = merge(&row.schema, &[model_of("a"), model_of("b")]);
+        let shared = id_of(&out, "shared");
+        assert_eq!(naming(&out, &row.rel_type, row.claimed, shared), 1, "{} {} {}:\n{out}", row.schema, row.rel_type, row.inverse);
     }
-    one_rel_for_the_shared_entity("IFC4X3", "IFC4X3_ADD2", "IFCRELADHERESTOELEMENT", "#11,(#10)", 5);
-    one_rel_for_the_shared_entity("IFC4", "IFC4", "IFCRELDECLARES", "#11,(#10)", 5);
 }
 
 /// A type's later objects join the type's first `IfcRelDefinesByType`, so no

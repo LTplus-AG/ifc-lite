@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import { applyRelMemberStrip, inverseRules } from './merged-inverse-claims.js';
@@ -221,4 +221,41 @@ describe('every inverse rule keeps one relationship per GlobalId-unified entity 
       }
     }
   }
+});
+
+/**
+ * The rule table, as data, for the Rust twin (`rules_of` in
+ * `rust/export/src/merged/single_parents.rs`): one row per schema, relationship
+ * and rule, with the argument count and the claimed/partner shapes the EXPRESS
+ * gives it. `rust/export/tests/merged_single_inverses.rs` merges one case per
+ * row, so a Rust table that drifts from this one fails there. Regenerate with
+ * `UPDATE_INVERSE_RULES=1`.
+ */
+describe('the inverse rule table fixture shared with Rust (#5923)', () => {
+  const fixturePath = fileURLToPath(new URL('../../../rust/export/tests/fixtures/merged_inverse_rules.json', import.meta.url));
+
+  it('matches inverseRules() and the EXPRESS attribute lists', () => {
+    const rows = (['IFC2X3', 'IFC4', 'IFC4X3'] as const).flatMap(schemaName => {
+      const schema = readExpress(EXPRESS[schemaName]);
+      return [...inverseRules(schemaName)].sort(([a], [b]) => a.localeCompare(b)).flatMap(([relType, rules]) => {
+        const attributes = allAttributesOf(schema, relType);
+        return rules.map(rule => ({
+          schema: schemaName,
+          relType,
+          inverse: rule.inverse,
+          claimed: rule.claimed,
+          partner: rule.partner,
+          claimedList: attributes[rule.claimed].list,
+          partnerList: attributes[rule.partner].list,
+          arity: attributes.length,
+          ...(rule.onePartner ? { onePartner: true } : {}),
+          ...(rule.where ? { where: rule.where } : {}),
+        }));
+      });
+    });
+    const text = `${JSON.stringify({ rows }, null, 2)}\n`;
+    if (process.env.UPDATE_INVERSE_RULES) writeFileSync(fixturePath, text);
+    // NOT guarded by existsSync: a missing fixture means the Rust pin is not enforced.
+    expect(readFileSync(fixturePath, 'utf8')).toBe(text);
+  });
 });

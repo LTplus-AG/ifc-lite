@@ -78,13 +78,23 @@ function mount(): void {
 describe('?model= autoload (#5851)', () => {
   it('a fetch failure sets the store error, with a Retry closure ready', async () => {
     setModelParam('/fixtures/does-not-exist.ifc');
-    globalThis.fetch = (async () => new Response(null, { status: 404, statusText: 'Not Found' })) as typeof fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
 
     mount();
 
     await waitFor(() => useViewerStore.getState().error !== null, 'the ?model= fetch failure sets store error');
     assert.match(useViewerStore.getState().error ?? '', /could not be downloaded/i);
     assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function');
+    useViewerStore.getState().lastLoadRetry?.();
+    await waitFor(() => requestedUrls.length === 2, 'Retry fetches the same model URL');
+    assert.deepEqual(requestedUrls, [
+      new URL('/fixtures/does-not-exist.ifc', window.location.href).href,
+      new URL('/fixtures/does-not-exist.ifc', window.location.href).href,
+    ]);
   });
 
   it('a cross-origin URL is refused and reported, never fetched', async () => {

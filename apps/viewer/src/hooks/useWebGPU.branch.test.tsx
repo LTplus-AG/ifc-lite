@@ -73,6 +73,36 @@ afterEach(() => {
 });
 
 describe('useWebGPU category detection', () => {
+  it('shares one adapter probe across viewport, URL and status consumers (#5851)', async () => {
+    setSecureContext(true);
+    let calls = 0;
+    setNavigatorGpu({ requestAdapter: async () => { calls += 1; return {}; } });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const statuses: WebGPUStatus[] = [];
+    try {
+      await act(async () => {
+        root.render(<>
+          <Probe onStatus={(status) => { statuses[0] = status; }} />
+          <Probe onStatus={(status) => { statuses[1] = status; }} />
+          <Probe onStatus={(status) => { statuses[2] = status; }} />
+        </>);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      assert.equal(calls, 1);
+      assert.equal(statuses.length, 3);
+      assert.ok(statuses.every((status) => status.supported));
+    } finally {
+      act(() => { root.unmount(); });
+      container.remove();
+    }
+
+    assert.equal((await renderProbe()).supported, true);
+    assert.equal(calls, 1, 'remounting another consumer must reuse the capability verdict');
+  });
+
   it('reports insecure-context when navigator.gpu is missing on an insecure origin', async () => {
     setSecureContext(false);
     setNavigatorGpu(undefined);

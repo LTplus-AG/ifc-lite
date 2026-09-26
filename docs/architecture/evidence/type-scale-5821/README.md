@@ -54,3 +54,13 @@ the built-in IFC demo in headful Chrome production builds at 1440 × 900. The
 first example's node and edge count grows from 10px to the 11px `text-2xs`
 floor. Its line remains within the 324 CSS-pixel card, and the document width
 stays at 1440 CSS pixels in both builds.
+
+## Data and authoring panels batch
+
+This batch replaces 115 numeric font utilities in the Clash, Add Element,
+Point Cloud, validation, and related data panels. The
+[before](add-element-before.png) and [after](add-element-after.png) screenshots
+show the Add Element wall form over the built-in IFC demo in headful Chrome
+production builds at 1440 × 900. The Type label grows from 10px to the 11px
+`text-2xs` floor. All controls remain visible, and both document widths stay
+at 1440 CSS pixels with no horizontal overflow.

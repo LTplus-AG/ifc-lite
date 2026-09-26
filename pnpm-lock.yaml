@@ -1667,9 +1667,6 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:*
         version: link:../ids
-      '@ifc-lite/lens':
-        specifier: workspace:*
-        version: link:../lens
       '@ifc-lite/lists':
         specifier: workspace:*
         version: link:../lists

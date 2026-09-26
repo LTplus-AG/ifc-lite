@@ -6,7 +6,6 @@
  * Callers supply the target field as a rule template; the adapter changes only
  * the comparison, so a missing field or unknown saved operator is never lost
  * through an unrelated source conversion. */
-import type { LensOperator } from '@ifc-lite/lens';
 import type { ConditionOperator } from '@ifc-lite/lists';
 import type { FilterOperator, PropertyValue } from '@ifc-lite/mutations';
 import type { AttributeRule, PropertyRule, ValueComparison, ValueOp } from './filter-rules.js';
@@ -21,7 +20,10 @@ export type LegacyOperatorResult<T> =
 const LENS_OPS = {
   equals: 'eq', contains: 'contains', exists: 'isNotNull', ne: 'ne',
   gt: 'gt', gte: 'gte', lt: 'lt', lte: 'lte',
-} as const satisfies Record<LensOperator, ValueOp>;
+} as const satisfies Record<string, ValueOp>;
+
+/** Operators stored in v1 Lens JSON. Kept private so rules has no Lens package edge. */
+type PersistedLensOperator = keyof typeof LENS_OPS;
 
 const LIST_OPS = {
   equals: 'eq', notEquals: 'ne', contains: 'contains', exists: 'isNonEmpty',
@@ -120,7 +122,7 @@ function legacyComparison(
     && comparison.typeMode === undefined && comparison.operandType === undefined;
 }
 
-export function filterRuleToLegacyLensOperator(rule: ValueRule): LegacyOperatorResult<LensOperator> {
+export function filterRuleToLegacyLensOperator(rule: ValueRule): LegacyOperatorResult<PersistedLensOperator> {
   const caseMode = rule.op === 'eq' ? 'lensBoolean' : 'fold';
   if (!legacyComparison(rule.comparison, caseMode, 'prefix')) {
     return { status: 'unreadable', vocabulary: 'lens', operator: rule.op };
@@ -129,7 +131,7 @@ export function filterRuleToLegacyLensOperator(rule: ValueRule): LegacyOperatorR
   if (rule.op === 'isNotNull' && rule.kind === 'attribute') {
     return { status: 'unreadable', vocabulary: 'lens', operator: rule.op };
   }
-  return inverse('lens', rule.op, Object.entries(LENS_OPS) as [LensOperator, ValueOp][]);
+  return inverse('lens', rule.op, Object.entries(LENS_OPS) as [PersistedLensOperator, ValueOp][]);
 }
 
 export function filterRuleToLegacyListOperator(rule: ValueRule): LegacyOperatorResult<ConditionOperator> {

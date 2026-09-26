@@ -37,41 +37,80 @@ export interface InverseRule {
   partner: number;
   /** A WHERE rule bounds the partner list to one, so nothing can be folded into it. */
   onePartner?: true;
+  /** The bound is this WHERE rule, not the inverse's cardinality (IFC2X3 `IfcObject.WR1`). */
+  where?: string;
 }
 
-const DECOMPOSES: InverseRule = { inverse: 'Decomposes', claimed: 5, partner: 4 };
+/** Shorthand for a row: `inverse` on attribute `claimed`, related to attribute `partner`. */
+const rule = (inverse: string, claimed: number, partner: number, extra: Partial<InverseRule> = {}): InverseRule => ({ inverse, claimed, partner, ...extra });
+type RuleTable = ReadonlyMap<string, readonly InverseRule[]>;
+
+/**
+ * Rows every schema shares (#5923): containment, voids and fills, coverings,
+ * flow control, ports, services and structural activity. Each is `SET [0:1]`
+ * (or exactly one) on the claimed side in IFC2X3, IFC4 and IFC4X3.
+ */
+const SHARED_ROWS: Array<[string, InverseRule[]]> = [
+  ['IFCRELCONTAINEDINSPATIALSTRUCTURE', [rule('ContainedInStructure', 4, 5)]],
+  ['IFCRELVOIDSELEMENT', [rule('VoidsElements', 5, 4)]],
+  ['IFCRELFILLSELEMENT', [rule('FillsVoids', 5, 4)]],
+  ['IFCRELPROJECTSELEMENT', [rule('ProjectsElements', 5, 4)]],
+  ['IFCRELCOVERSSPACES', [rule('CoversSpaces', 5, 4)]],
+  ['IFCRELFLOWCONTROLELEMENTS', [rule('AssignedToFlowElement', 4, 5), rule('HasControlElements', 5, 4)]],
+  ['IFCRELCONNECTSPORTS', [rule('ConnectedTo', 4, 5), rule('ConnectedFrom', 5, 4)]],
+  ['IFCRELSERVICESBUILDINGS', [rule('ServicesBuildings', 4, 5)]],
+];
 
 /**
  * Relationship type (uppercase) → its single-valued inverses, per OUTPUT
- * schema. Every row is checked against the EXPRESS schemas in
- * `merged-inverse-claims.test.ts`.
+ * schema, list-side rules first. Every row is checked against the EXPRESS
+ * schemas in `merged-inverse-claims.test.ts`, which also lists the one
+ * single-valued relationship inverse left out and why.
  *
  * IFC2X3: `IfcObjectDefinition.Decomposes : SET [0:1] OF IfcRelDecomposes`,
  * and IfcRelAggregates and IfcRelNests are both IfcRelDecomposes, so one
  * nesting and one aggregation parent together are already two (#5726).
  * `IfcPropertySetDefinition.PropertyDefinitionOf : SET [0:1] OF
- * IfcRelDefinesByProperties` (#5774). IFC4 and later split
- * `Nests : SET [0:1] OF IfcRelNests` off `Decomposes : SET [0:1] OF
- * IfcRelAggregates`, and relax the property-set side to
+ * IfcRelDefinesByProperties` (#5774). A type has one IfcRelDefinesByType
+ * (`ObjectTypeOf`), and `IfcObject.WR1` (a WHERE rule, not an inverse bound)
+ * allows an object one. IFC4 and later split `Nests : SET [0:1] OF IfcRelNests`
+ * off `Decomposes : SET [0:1] OF IfcRelAggregates`, name the typing inverses
+ * `IsTypedBy`/`Types`, and relax the property-set side to
  * `DefinesOccurrence : SET [0:?]`, so a property set may be shared by several
  * IfcRelDefinesByProperties there.
  */
-const PROPERTY_DEFINITION_OF: InverseRule = { inverse: 'PropertyDefinitionOf', claimed: 5, partner: 4 };
-const IFC2X3_RULES: ReadonlyMap<string, readonly InverseRule[]> = new Map([
-  ['IFCRELAGGREGATES', [DECOMPOSES]],
-  ['IFCRELNESTS', [DECOMPOSES]],
+const PROPERTY_DEFINITION_OF = rule('PropertyDefinitionOf', 5, 4);
+const IFC2X3_RULES: RuleTable = new Map([
+  ...SHARED_ROWS,
+  ['IFCRELAGGREGATES', [rule('Decomposes', 5, 4)]],
+  ['IFCRELNESTS', [rule('Decomposes', 5, 4)]],
   ['IFCRELDEFINESBYPROPERTIES', [PROPERTY_DEFINITION_OF]],
   // `IfcRelOverridesProperties.WR1`: `SIZEOF(RelatedObjects) = 1`.
   ['IFCRELOVERRIDESPROPERTIES', [{ ...PROPERTY_DEFINITION_OF, onePartner: true }]],
+  ['IFCRELDEFINESBYTYPE', [rule('IsDefinedBy', 4, 5, { where: 'IfcObject.WR1' }), rule('ObjectTypeOf', 5, 4)]],
+  ['IFCRELCOVERSBLDGELEMENTS', [rule('Covers', 5, 4)]],
+  ['IFCRELCONNECTSPORTTOELEMENT', [rule('ContainedIn', 4, 5)]],
+  ['IFCRELCONNECTSSTRUCTURALACTIVITY', [rule('AssignedToStructuralItem', 5, 4)]],
+  ['IFCRELASSIGNSTOGROUP', [rule('IsGroupedBy', 6, 4)]],
+  ['IFCRELASSIGNSTASKS', [rule('ScheduleTimeControlAssigned', 7, 6)]],
 ]);
-const IFC4_RULES: ReadonlyMap<string, readonly InverseRule[]> = new Map([
-  ['IFCRELAGGREGATES', [DECOMPOSES]],
-  ['IFCRELNESTS', [{ inverse: 'Nests', claimed: 5, partner: 4 }]],
-]);
+const IFC4_ROWS: Array<[string, InverseRule[]]> = [
+  ...SHARED_ROWS,
+  ['IFCRELAGGREGATES', [rule('Decomposes', 5, 4)]],
+  ['IFCRELNESTS', [rule('Nests', 5, 4)]],
+  ['IFCRELDEFINESBYTYPE', [rule('IsTypedBy', 4, 5), rule('Types', 5, 4)]],
+  ['IFCRELDEFINESBYOBJECT', [rule('IsDeclaredBy', 4, 5)]],
+  ['IFCRELDECLARES', [rule('HasContext', 5, 4)]],
+  ['IFCRELCOVERSBLDGELEMENTS', [rule('CoversElements', 5, 4)]],
+  ['IFCRELCONNECTSPORTTOELEMENT', [rule('ContainedIn', 4, 5)]],
+  ['IFCRELCONNECTSSTRUCTURALACTIVITY', [rule('AssignedToStructuralItem', 5, 4)]],
+];
+const IFC4_RULES: RuleTable = new Map(IFC4_ROWS);
+const IFC4X3_RULES: RuleTable = new Map([...IFC4_ROWS, ['IFCRELADHERESTOELEMENT', [rule('AdheresToElement', 5, 4)]]]);
 
-/** The rule table of an output schema (IFC4X3 shares IFC4's). */
-export function inverseRules(outputSchema: IfcSchemaVersion): ReadonlyMap<string, readonly InverseRule[]> {
-  return outputSchema === 'IFC2X3' ? IFC2X3_RULES : IFC4_RULES;
+/** The rule table of an output schema (IFC5 falls back to IFC4X3's). */
+export function inverseRules(outputSchema: IfcSchemaVersion): RuleTable {
+  return outputSchema === 'IFC2X3' ? IFC2X3_RULES : outputSchema === 'IFC4' ? IFC4_RULES : IFC4X3_RULES;
 }
 
 /** The written rel a single-valued claimed entity already belongs to. */

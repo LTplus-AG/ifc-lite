@@ -7,7 +7,8 @@
  * step of IfcOpenShell/BlenderBIM's "Merge Projects" recipe that container
  * *matching* (`mergeSites` / `mergeBuildings` / `mergeStoreys`) leaves behind.
  *
- * An `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` is empty when
+ * An `IfcSite` / `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` (or an IFC4X3
+ * facility or facility part) is empty when
  * it contains no surviving element (`IfcRelContainedInSpatialStructure`),
  * directly aggregates no surviving non-spatial object, and transitively
  * aggregates no non-empty spatial child. `IfcProject` is never a candidate.
@@ -30,14 +31,18 @@ import { argRefs, classifyRefs, leadingGuid, refList, singleRef, topLevelAttrs }
 import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
- * Spatial container types dropped when they end up empty. `IfcProject` is
- * deliberately absent: it is the file's root, never a candidate.
+ * Spatial container types dropped when they end up empty: every instantiable
+ * IfcSpatialStructureElement, including the IFC4X3 facilities and facility
+ * parts (#5937). `IfcProject` is deliberately absent: it is the file's root,
+ * never a candidate. Twin of `CONTAINER_TYPES` in `rust/export/src/merged/empty.rs`.
  */
 const CONTAINER_TYPES = new Set([
   'IFCSITE',
   'IFCBUILDING',
   'IFCBUILDINGSTOREY',
   'IFCSPACE',
+  'IFCFACILITY', 'IFCBRIDGE', 'IFCMARINEFACILITY', 'IFCRAILWAY', 'IFCROAD',
+  'IFCBRIDGEPART', 'IFCFACILITYPARTCOMMON', 'IFCMARINEPART', 'IFCRAILWAYPART', 'IFCROADPART',
 ]);
 
 /**
@@ -80,12 +85,13 @@ export interface EmptyContainerModelView {
    * writes, or a still-full child loses its only parent. So it may see LESS
    * than the emit pass, never more. It claims only through
    * {@link isStructureRelation} types, and resolves ids through `sharedRemap`
-   * (spatial unification, which the emit pass repeats exactly), not through
-   * this module's GlobalId canonicalisation, which the emit pass does not
-   * always repeat (a GlobalId duplicated within one model, or an
-   * `assume-shared` emitter in another unit). What it misses is an edge the
-   * emit pass withholds and this one counts, which only keeps a container
-   * (#3643's behaviour before #5725).
+   * (spatial unification, which the emit pass repeats exactly) plus the
+   * GlobalId unifications the emit pass is sure to make (#5937,
+   * `merged-planner-guids.ts`), not through this module's own GlobalId
+   * canonicalisation, which the emit pass does not always repeat (a GlobalId
+   * duplicated within one model, or an `assume-shared` emitter in another
+   * unit). What it misses is an edge the emit pass withholds and this one
+   * counts, which only keeps a container (#3643's behaviour before #5725).
    */
   claimParents?: () => WithheldParents;
 }
@@ -113,7 +119,7 @@ export function isStructureRelation(typeUpper: string): boolean {
 }
 
 /** True when `typeUpper` is a droppable spatial container type. */
-function isSpatialContainerType(typeUpper: string): boolean {
+export function isSpatialContainerType(typeUpper: string): boolean {
   return CONTAINER_TYPES.has(typeUpper);
 }
 

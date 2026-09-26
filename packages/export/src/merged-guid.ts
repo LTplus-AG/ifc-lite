@@ -28,6 +28,11 @@ import type { ExportEntityRef } from './entity-iteration.js';
  */
 const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
 
+/** True for IfcRelationship subtypes (objectified relationships), which GlobalId reconciliation never unifies. */
+export function isRelationshipType(typeUpper: string): boolean {
+  return typeUpper.startsWith('IFCREL');
+}
+
 /**
  * Whether `type` is an IfcRoot subtype — a schema-derived replacement for a
  * hand-maintained denylist of "non-rooted types whose first attribute happens
@@ -117,6 +122,19 @@ export function extractGlobalIdFast(
   if (close === -1) return null;
   const raw = head.slice(i + 1, close);
   return GLOBAL_ID_RE.test(raw) ? raw : null;
+}
+
+/** Every rooted entity's GlobalId, by local id in index order: what GlobalId reconciliation works from. */
+export function readLocalGuids(
+  index: Iterable<[number, ExportEntityRef]>,
+  source: Uint8Array | IfcSourceBytes,
+): Map<number, string> {
+  const guids = new Map<number, string>();
+  for (const [id, ref] of index) {
+    const guid = extractGlobalIdFast(ref, source);
+    if (guid !== null) guids.set(id, guid);
+  }
+  return guids;
 }
 
 /**

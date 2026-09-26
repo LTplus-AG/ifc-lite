@@ -70,9 +70,9 @@ describe('BulkPropertyEditor accessibility (#5812)', () => {
     click([...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Filter'))!);
     const operatorSelect = getByLabelText(dialog, 'Filter operator');
     click(operatorSelect);
-    const isEmptyOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'Is empty');
-    assert.ok(isEmptyOption);
-    click(isEmptyOption);
+    const isNullOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'is null');
+    assert.ok(isNullOption);
+    click(isNullOption);
     const valueLabel = [...dialog.querySelectorAll('label')].find((el) => el.textContent === 'Value');
     assert.equal(valueLabel, undefined, 'the value field is gone, not just unlabelled');
   });

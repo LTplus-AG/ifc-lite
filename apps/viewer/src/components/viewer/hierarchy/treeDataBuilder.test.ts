@@ -1024,6 +1024,8 @@ describe('buildGroupTree (#1622)', () => {
     // #100 has 3 members (2 ports + 1 duct) but they resolve to ONE geometry row.
     assert.strictEqual(groupNode.elementCount, 1);
     assert.deepStrictEqual(groupNode.globalIds, [202], 'isolation ids = resolved host geometry only');
+    assert.deepStrictEqual(groupNode.memberGlobalIds, [201, 202, 203],
+      'selection targets all actual IfcRelAssignsToGroup members, including geometry-less ports');
     const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-100-'));
     assert.strictEqual(memberRows.length, 1);
     assert.strictEqual(memberRows[0].expressIds[0], 202, 'the duct, not the ports');

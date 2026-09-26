@@ -62,7 +62,7 @@ interface UseTreeKeyboardParams {
    *  through). */
   onToggleExpand: (nodeId: string) => void;
   /** Select/activate a node exactly like a click on its row would. */
-  onActivate: (node: TreeNode, modifiers: NodeActivationModifiers) => void;
+  onActivate: (node: TreeNode, modifiers: NodeActivationModifiers, index: number) => void;
   /** Typeahead matches against the row's visible name. */
   getNodeName?: (node: TreeNode) => string;
 }
@@ -235,7 +235,7 @@ export function useTreeKeyboard({
       // like a Shift+click there would (APG: Ctrl+Up/Down moves focus only;
       // plain Up/Down also moves focus only — selection doesn't follow focus
       // in this multi-select tree).
-      if (activateWith) onActivate(node, activateWith);
+      if (activateWith) onActivate(node, activateWith, index);
     },
     [nodes, virtualizer, onActivate, containerRef],
   );
@@ -311,7 +311,7 @@ export function useTreeKeyboard({
         case 'Enter':
         case ' ':
           e.preventDefault();
-          onActivate(node, { ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey });
+          onActivate(node, { ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey }, currentIndex);
           return;
         case '*': {
           e.preventDefault();

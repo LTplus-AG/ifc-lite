@@ -107,7 +107,7 @@
   "apps/viewer/src/components/viewer/flow/FlowPanel.tsx": 1,
   "apps/viewer/src/components/viewer/hierarchy/CountBadgeTooltip.tsx": 1,
   "apps/viewer/src/components/viewer/hierarchy/HierarchyFooterStatus.tsx": 8,
-  "apps/viewer/src/components/viewer/hierarchy/HierarchyNode.tsx": 3,
+  "apps/viewer/src/components/viewer/hierarchy/HierarchyNode.tsx": 1,
   "apps/viewer/src/components/viewer/hierarchy/HierarchySortControl.tsx": 1,
   "apps/viewer/src/components/viewer/hierarchy/ModelHeaderRow.tsx": 1,
   "apps/viewer/src/components/viewer/hierarchy/ModelRowTags.tsx": 1,

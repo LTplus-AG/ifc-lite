@@ -37,7 +37,7 @@ interface UseHierarchyTreeKeyboardParams {
    *  mirrors that one branch, then delegates everything else to the exact
    *  function a mouse click uses so Ctrl/Shift multi-select behaves
    *  identically from keyboard and mouse. */
-  handleNodeClick: (node: TreeNode, e: NodeActivationModifiers) => void;
+  handleNodeClick: (node: TreeNode, e: NodeActivationModifiers, section: 'storeys' | 'models' | 'filtered', index: number) => void;
   handleModelHeaderClick: (modelId: string, nodeId: string, hasChildren: boolean) => void;
 }
 
@@ -62,12 +62,12 @@ export function useHierarchyTreeKeyboard({
 }: UseHierarchyTreeKeyboardParams): UseHierarchyTreeKeyboardResult {
   const { t } = useTranslation();
 
-  const handleNodeActivate = useCallback((node: TreeNode, modifiers: NodeActivationModifiers) => {
+  const activateInSection = useCallback((section: 'storeys' | 'models' | 'filtered') => (node: TreeNode, modifiers: NodeActivationModifiers, index: number) => {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       handleModelHeaderClick(node.modelIds[0], node.id, node.hasChildren);
       return;
     }
-    handleNodeClick(node, modifiers);
+    handleNodeClick(node, modifiers, section, index);
   }, [handleModelHeaderClick, handleNodeClick]);
 
   const storeysAriaAttrs = useMemo(() => computeAriaTreeAttrs(storeysNodes), [storeysNodes]);
@@ -75,13 +75,13 @@ export function useHierarchyTreeKeyboard({
   const filteredAriaAttrs = useMemo(() => computeAriaTreeAttrs(filteredNodes), [filteredNodes]);
 
   const storeysTreeKeyboard = useTreeKeyboard({
-    nodes: storeysNodes, containerRef: storeysRef, virtualizer: storeysVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: storeysNodes, containerRef: storeysRef, virtualizer: storeysVirtualizer, onToggleExpand: toggleExpand, onActivate: activateInSection('storeys'),
   });
   const modelsTreeKeyboard = useTreeKeyboard({
-    nodes: modelsNodes, containerRef: modelsRef, virtualizer: modelsVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: modelsNodes, containerRef: modelsRef, virtualizer: modelsVirtualizer, onToggleExpand: toggleExpand, onActivate: activateInSection('models'),
   });
   const legacyTreeKeyboard = useTreeKeyboard({
-    nodes: filteredNodes, containerRef: parentRef, virtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: filteredNodes, containerRef: parentRef, virtualizer, onToggleExpand: toggleExpand, onActivate: activateInSection('filtered'),
   });
 
   const singleTreeSectionTitle = groupingMode === 'spatial' ? t('hierarchy.panel.sectionTitle.spatial')

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { NAMESPACE_SCHEMAS, type MethodPlacementKind } from '@ifc-lite/sandbox/schema';
+import { maskScriptLiterals } from './mask-script-literals.js';
 import {
   createPreflightDiagnostic,
   formatDiagnosticsForDisplay,
@@ -1069,11 +1070,9 @@ function validateStoreyElevationDoubling(code: string): PreflightScriptDiagnosti
 
 function validateDetachedSnippetScope(code: string): PreflightScriptDiagnostic[] {
   const diagnostics: PreflightScriptDiagnostic[] = [];
-  const declared = collectDeclaredIdentifiers(code);
-
-  const maybePushIdentifierDiagnostic = (identifier: string, message: string) => {
-    const match = new RegExp(String.raw`\b${identifier}\b`).exec(code);
-    const offset = match?.index ?? 0;
+  const executable = maskScriptLiterals(code);
+  const declared = collectDeclaredIdentifiers(executable);
+  const maybePushIdentifierDiagnostic = (identifier: string, message: string, offset = executable.search(new RegExp(String.raw`\b${identifier}\b`))) => {
     const { line, column } = getLineAndColumn(code, offset);
     diagnostics.push(createPreflightDiagnostic(
       'detached_snippet_scope',
@@ -1091,17 +1090,18 @@ function validateDetachedSnippetScope(code: string): PreflightScriptDiagnostic[]
     ));
   };
 
-  if (/\bbim\.create\.[A-Za-z]+\(\s*h\s*,/.test(code) && !declared.has('h') && !/bim\.create\.project\(/.test(code)) {
+  if (/\bbim\.create\.[A-Za-z]+\(\s*h\s*,/.test(executable) && !declared.has('h') && !/bim\.create\.project\(/.test(executable)) {
     maybePushIdentifierDiagnostic('h', 'Detached snippet risk: BIM create calls reference `h`, but no project handle is declared in this script. Preserve the surrounding full script or recreate the project/context explicitly.');
   }
-
-  if (/\bbim\.create\.[A-Za-z]+\(\s*h\s*,\s*storey\b/.test(code) && !declared.has('storey') && !/addIfcBuildingStorey\(/.test(code)) {
+  if (/\bbim\.create\.[A-Za-z]+\(\s*h\s*,\s*storey\b/.test(executable) && !declared.has('storey') && !/addIfcBuildingStorey\(/.test(executable)) {
     maybePushIdentifierDiagnostic('storey', 'Detached snippet risk: BIM create calls reference `storey`, but no storey handle is declared in this script. Preserve the surrounding loop/context instead of returning a standalone fragment.');
   }
 
   for (const identifier of ['width', 'depth', 'i', 'z']) {
-    if (new RegExp(String.raw`\b${identifier}\b`).test(code) && !declared.has(identifier)) {
-      maybePushIdentifierDiagnostic(identifier, `Detached snippet risk: script references \`${identifier}\` without declaring it locally. If this is a fix for an existing script, patch the full script in place instead of returning an isolated fragment.`);
+    const reference = [...executable.matchAll(new RegExp(String.raw`\b${identifier}\b(?!\s*:)`, 'g'))]
+      .find((match) => match.index !== undefined && executable[match.index - 1] !== '.');
+    if (reference && !declared.has(identifier)) {
+      maybePushIdentifierDiagnostic(identifier, `Detached snippet risk: script references \`${identifier}\` without declaring it locally. If this is a fix for an existing script, patch the full script in place instead of returning an isolated fragment.`, reference.index);
     }
   }
 

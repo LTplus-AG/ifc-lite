@@ -23,6 +23,7 @@ import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
+import { orbitPivotStore } from './orbitPivotStore.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
@@ -450,6 +451,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // Uses pointer events + setPointerCapture so pointerup always fires,
     // even when the pointer leaves the canvas (e.g. dragging across panels).
     const handleMouseDown = async (e: PointerEvent) => {
+      orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       e.preventDefault();
       // Capture the pointer so move/up events fire even outside the canvas
@@ -496,8 +498,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // A focused clash with nothing selected orbits around the clashing pair (#4806).
       const clashPivot = willOrbit
         ? focusedClashOrbitPivot(useViewerStore.getState(), selectedEntityIdRef.current) : null;
-      if (clashPivot) camera.setOrbitCenter(clashPivot);
-      else if (willOrbit) {
+      let orbitPivot = clashPivot;
+      if (willOrbit && !clashPivot) {
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
@@ -526,19 +528,19 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         }
 
         if (hit?.intersection) {
-          camera.setOrbitCenter(hit.intersection.point);
+          orbitPivot = hit.intersection.point;
         } else if (selectedEntityIdRef.current) {
           // No geometry under cursor but object selected — use its center
           const center = getEntityCenter(geometryRef.current, selectedEntityIdRef.current);
-          if (center) {
-            camera.setOrbitCenter(center);
-          } else {
-            camera.setOrbitCenter(null);
-          }
+          orbitPivot = center;
         } else {
           // No geometry hit or large model — anchor the pivot to the scene centre.
-          camera.setOrbitCenter(sceneAnchorOrbitPivot(camera, cx, cy, rect.width, rect.height));
+          orbitPivot = sceneAnchorOrbitPivot(camera, cx, cy, rect.width, rect.height);
         }
+      }
+      if (willOrbit) {
+        camera.setOrbitCenter(orbitPivot);
+        orbitPivotStore.begin({ point: orbitPivot ?? camera.getTarget(), camera, canvas });
       }
 
       if (gesture === 'pan' || gesture === 'fly') {
@@ -662,6 +664,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseUp = (e: PointerEvent) => {
+      orbitPivotStore.end();
       releasePointer(canvas, e.pointerId);
 
       // Clear interaction flag so the animation loop restores post-processing
@@ -725,6 +728,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     };
 
     const handleMouseLeave = () => {
+      orbitPivotStore.end();
       const tool = activeToolRef.current;
       mouseState.isDragging = false;
       mouseState.isPanning = false;
@@ -859,6 +863,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', handleMouseLeave);
     canvas.addEventListener('mouseleave', handleMouseLeave);
     canvas.addEventListener('contextmenu', handleContextMenu);
     canvas.addEventListener('wheel', handleWheel, { passive: false });
@@ -866,11 +871,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     canvas.addEventListener('dblclick', handleDoubleClick);
 
     return () => {
+      orbitPivotStore.end();
       invalidateSelectionPick(canvas);
       setMeasureTapHandler(canvas, null);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', handleMouseLeave);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       canvas.removeEventListener('contextmenu', handleContextMenu);
       canvas.removeEventListener('wheel', handleWheel);

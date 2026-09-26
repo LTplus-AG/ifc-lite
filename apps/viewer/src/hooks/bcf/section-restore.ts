@@ -29,8 +29,6 @@ interface Snapshot {
   applied: SectionPlane;
 }
 
-let snapshot: Snapshot | null = null;
-
 /** The cut's geometry; `enabled` / `parked` follow the active tool, not the user's choice of cut. */
 function sameCut(a: SectionPlane, b: SectionPlane): boolean {
   return a.axis === b.axis && a.position === b.position && a.flipped === b.flipped
@@ -38,32 +36,33 @@ function sameCut(a: SectionPlane, b: SectionPlane): boolean {
     && JSON.stringify(a.custom ?? null) === JSON.stringify(b.custom ?? null);
 }
 
-/** Call before a viewpoint changes the section: remembers the user's cut once per BCF session. */
-export function noteSectionBeforeViewpoint(state: SectionState): void {
-  if (!snapshot) snapshot = { plane: state.sectionPlane, tool: state.activeTool, applied: state.sectionPlane };
-}
+/** One hook's section history; only opt-in callers record a viewpoint. */
+export class SectionRestoreSession {
+  private snapshot: Snapshot | null = null;
 
-/** Call after a viewpoint changed the section. */
-export function noteSectionAfterViewpoint(state: SectionState): void {
-  if (snapshot) snapshot.applied = state.sectionPlane;
-}
+  /** Remember the user's cut once, before this panel applies its first viewpoint. */
+  noteBeforeViewpoint(state: SectionState): void {
+    if (!this.snapshot) this.snapshot = { plane: state.sectionPlane, tool: state.activeTool, applied: state.sectionPlane };
+  }
 
-/**
- * Restore the user's cut and tool if the section is still what the last
- * viewpoint made it. Returns whether it restored.
- */
-export function restoreSectionAfterBcf(
-  getState: () => SectionState & { setActiveTool: (tool: string) => void },
-  setState: (partial: { sectionPlane: SectionPlane }) => void,
-): boolean {
-  const snap = snapshot;
-  snapshot = null;
-  if (!snap) return false;
-  const state = getState();
-  if (!sameCut(state.sectionPlane, snap.applied)) return false;
-  // Leave the Section tool only if a viewpoint opened it; the store parks or
-  // resumes the restored cut for whichever tool ends up active.
-  if (state.activeTool === 'section' && snap.tool !== 'section') state.setActiveTool(snap.tool);
-  setState({ sectionPlane: snap.plane });
-  return true;
+  noteAfterViewpoint(state: SectionState): void {
+    if (this.snapshot) this.snapshot.applied = state.sectionPlane;
+  }
+
+  /** Restore only if the current cut still matches this panel's last viewpoint. */
+  restore(
+    getState: () => SectionState & { setActiveTool: (tool: string) => void },
+    setState: (partial: { sectionPlane: SectionPlane }) => void,
+  ): boolean {
+    const snap = this.snapshot;
+    this.snapshot = null;
+    if (!snap) return false;
+    const state = getState();
+    if (!sameCut(state.sectionPlane, snap.applied)) return false;
+    // Leave the Section tool only if a viewpoint opened it; the store parks or
+    // resumes the restored cut for whichever tool ends up active.
+    if (state.activeTool === 'section' && snap.tool !== 'section') state.setActiveTool(snap.tool);
+    setState({ sectionPlane: snap.plane });
+    return true;
+  }
 }

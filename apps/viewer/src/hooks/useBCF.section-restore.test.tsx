@@ -77,11 +77,11 @@ async function unmount(): Promise<void> {
 }
 
 /** The user's own cut: front at 30 %, then back to the Select tool (the cut parks). */
-async function userCut(): Promise<void> {
+async function userCut(position = 30): Promise<void> {
   await act(async () => {
     s().setActiveTool('section');
     s().setSectionPlaneAxis('front');
-    s().setSectionPlanePosition(30);
+    s().setSectionPlanePosition(position);
     s().setActiveTool('select');
   });
 }
@@ -147,5 +147,24 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
     await act(async () => api!.applyViewpoint(vp, false));
     await unmount();
     assert.equal(s().sectionPlane.axis, 'side', 'no restore without restoreSectionOnUnmount');
+  });
+
+  it('a non-opt-in caller cannot leave a stale cut for the next BCF panel (#5829)', async () => {
+    await mount(false);
+    const vp = await sideViewpoint();
+    await userCut(30);
+    await act(async () => api!.applyViewpoint(vp, false));
+    await unmount();
+
+    await userCut(65);
+    const nextUserCut = s().sectionPlane;
+    await mount(true);
+    await act(async () => api!.applyViewpoint(vp, false));
+    assert.equal(s().sectionPlane.axis, 'side');
+    await unmount();
+    assert.equal(s().activeTool, 'select');
+    assert.equal(s().sectionPlane.axis, nextUserCut.axis);
+    assert.equal(s().sectionPlane.position, 65);
+    assert.equal(s().sectionPlane.parked, true);
   });
 });

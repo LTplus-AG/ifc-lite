@@ -633,8 +633,8 @@ export class RenderPipeline {
             (sectionPlane?.enabled ? 1 : 0) |
             (sectionPlane?.flipped ? 2 : 0) |
             clipBit;
-        flagBuffer[2] = 0;                             // reserved (edgeEnabled written by Renderer)
-        flagBuffer[3] = 0;                             // reserved (edgeIntensity written by Renderer)
+        flagBuffer[2] = 0;                             // unused since #5746, kept for layout
+        flagBuffer[3] = 0;                             // unused since #5746, kept for layout
 
         // Write the buffer
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);

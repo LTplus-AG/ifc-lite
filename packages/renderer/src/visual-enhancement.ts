@@ -7,10 +7,6 @@ import type { VisualEnhancementOptions, ContactShadingQuality, SeparationLinesQu
 
 export type ResolvedVisualEnhancement = {
     enabled: boolean;
-    edgeContrast: {
-        enabled: boolean;
-        intensity: number;
-    };
     contactShading: {
         quality: ContactShadingQuality;
         /** [0, 1]. */
@@ -59,7 +55,6 @@ function clampOr(value: number | undefined, previous: number, min: number, max: 
 export class VisualEnhancementResolver {
     private state: ResolvedVisualEnhancement = {
         enabled: true,
-        edgeContrast: { enabled: true, intensity: 1.0 },
         contactShading: { quality: 'off', intensity: 0.8, radius: 1.0 },
         separationLines: { enabled: true, quality: 'low', intensity: 0.5, radius: 1.0 },
     };
@@ -71,10 +66,6 @@ export class VisualEnhancementResolver {
         const prev = this.state;
         const merged: ResolvedVisualEnhancement = {
             enabled: options.enabled ?? prev.enabled,
-            edgeContrast: {
-                enabled: options.edgeContrast?.enabled ?? prev.edgeContrast.enabled,
-                intensity: options.edgeContrast?.intensity ?? prev.edgeContrast.intensity,
-            },
             contactShading: {
                 quality: options.contactShading?.quality ?? prev.contactShading.quality,
                 intensity: clampOr(options.contactShading?.intensity, prev.contactShading.intensity, 0, 1),

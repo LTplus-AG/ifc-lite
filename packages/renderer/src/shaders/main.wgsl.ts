@@ -6,8 +6,8 @@
  * Main rendering shader for IFC geometry.
  * Features: linear-space lighting of sRGB-authored colours with a GGX
  * specular term (specular.wgsl.ts), section plane clipping, selection
- * highlight, glass, hue-preserving highlight roll-off, screen-space edge
- * enhancement.
+ * highlight, glass, hue-preserving highlight roll-off. Edges come from the
+ * screen-space edge pass (edge-pass.ts), not from this shader (#5746).
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { colorTransferWgsl } from './color-transfer.wgsl.js';
@@ -48,7 +48,10 @@ export const mainShaderSource = `
           metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
           transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
+          // x = isSelected, y = section/clip bits. z and w are unused and written
+          // as 0; they held the derivative edge darkening, removed in #5746 in
+          // favour of the edge pass. Kept so the struct stays byte-compatible.
+          flags: vec4<u32>,
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
           clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
           quantParams: vec4<f32>, // local min xyz, lattice step w
@@ -101,7 +104,6 @@ export const mainShaderSource = `
           @location(0) worldPos: vec3<f32>,
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
-          @location(3) viewPos: vec3<f32>,  // For edge detection
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
           // per-batch / overlay-override colour) AND the instanced path
@@ -186,7 +188,6 @@ export const mainShaderSource = `
           output.color = uniforms.baseColor;
           output.instSelected = 0u;
           output.eyePos = eyePos;
-          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -229,8 +230,6 @@ export const mainShaderSource = `
           output.color = uniforms.baseColor;
           output.instSelected = 0u;  // flat path selects via uniforms.flags.x
           output.eyePos = eyePos;
-          // Store view-space position for edge detection
-          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -259,7 +258,6 @@ export const mainShaderSource = `
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
           output.eyePos = eyePos;
-          output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
         }
 
@@ -555,37 +553,6 @@ export const mainShaderSource = `
           // unit irradiance leaves here unchanged unless it is brighter than
           // the roll-off threshold.
           color = neutralCompress(color);
-
-          // Subtle edge enhancement using screen-space derivatives.
-          //
-          // Use the SHADED normal (face normal from dpdx/dpdy above)
-          // for the normal-gradient term, not the interpolated vertex
-          // normal — otherwise we get spurious dark stripes on flat
-          // surfaces whose vertex normals carry numerical noise from
-          // CSG output (the visible scar-line symptom would just
-          // resurface here even after the lit-normal fix). With the
-          // face normal, coplanar adjacent triangles agree exactly →
-          // zero normal gradient → no false edge; only the genuine
-          // creases between perpendicular faces produce a real
-          // gradient and get the intended outline.
-          let depthGradient = length(vec2<f32>(
-            dpdx(input.viewPos.z),
-            dpdy(input.viewPos.z)
-          ));
-          let normalGradient = length(vec2<f32>(
-            length(dpdx(N)),
-            length(dpdy(N))
-          ));
-
-          if (uniforms.flags.z == 1u) {
-            // Threshold filters subtle normal discontinuities at internal
-            // triangle edges between coplanar entities in the same batch.
-            let edgeFactor = smoothstep(0.02, 0.12, depthGradient * 10.0 + normalGradient * 5.0);
-            let edgeIntensity = f32(uniforms.flags.w) / 1000.0;
-            let edgeDarkenStrength = clamp(0.25 * edgeIntensity, 0.0, 0.85);
-            let edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
-            color *= edgeDarken;
-          }
 
           color = linearToSrgb(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)));
 

@@ -1734,14 +1734,6 @@ export class Renderer {
             timingUnstable,
             options.interactionFrameIntervalMs ?? 0,
         );
-        // Edge contrast is NOT interaction-gated: its per-fragment work runs
-        // unconditionally in the shader and the gated tail is a handful of
-        // ALU ops, so disabling it bought nothing and only made the crease
-        // darkening pop off/on around gestures (visible in ortho).
-        const edgeEnabled = visualEnhancement.enabled && visualEnhancement.edgeContrast.enabled;
-        const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
-        const edgeEnabledU32 = edgeEnabled ? 1 : 0;
-        const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
         // Only the edge pass reads the object-id attachment after the pass.
         const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).edges;
 
@@ -2041,8 +2033,8 @@ export class Renderer {
                         (sectionPlaneData?.enabled ? 1 : 0) |
                         (options.sectionPlane?.flipped ? 2 : 0) |
                         clipBit;
-                    meshFlags[2] = edgeEnabledU32;
-                    meshFlags[3] = edgeIntensityMilliU32;
+                    meshFlags[2] = 0; // unused since #5746 (was the derivative edge darkening)
+                    meshFlags[3] = 0;
 
                     // Individual meshes retain their origin and share the RTE
                     // fragment contract with colour batches.
@@ -2539,15 +2531,16 @@ export class Renderer {
                 //   x = isSelected (0/1)
                 //   y = section/clip bitfield:
                 //       bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBoxEnabled
-                //   z = edgeEnabled (0/1)
-                //   w = edgeIntensityMilli
+                //   z, w = unused, written as 0. They fed the in-shader derivative
+                //          edge darkening, removed in #5746; edges come from the
+                //          edge pass. The lanes stay so the struct layout is unchanged.
                 tplFlags[0] = 0;
                 tplFlags[1] =
                     (sectionPlaneData?.enabled ? 1 : 0) |
                     (options.sectionPlane?.flipped ? 2 : 0) |
                     tplClipBit;
-                tplFlags[2] = edgeEnabledU32;
-                tplFlags[3] = edgeIntensityMilliU32;
+                tplFlags[2] = 0;
+                tplFlags[3] = 0;
                 // Flat/quantized/textured batches enter WGSL in the single
                 // camera-relative frame. Their fragment clip inputs must use
                 // that same frame; mixing a local vertex with a 5,000 km f32
@@ -2975,8 +2968,8 @@ export class Renderer {
                             (sectionPlaneData?.enabled ? 1 : 0) |
                             (options.sectionPlane?.flipped ? 2 : 0) |
                             tplClipBit;
-                        tplFlags[2] = edgeEnabledU32;
-                        tplFlags[3] = edgeIntensityMilliU32;
+                        tplFlags[2] = 0;
+                        tplFlags[3] = 0;
                         packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                         const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
                         relativeToEyeFrame.packDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
@@ -3035,8 +3028,8 @@ export class Renderer {
                         (sectionPlaneData?.enabled ? 1 : 0) |
                         (options.sectionPlane?.flipped ? 2 : 0) |
                         tplClipBit;
-                    tplFlags[2] = edgeEnabledU32;
-                    tplFlags[3] = edgeIntensityMilliU32;
+                    tplFlags[2] = 0;
+                    tplFlags[3] = 0;
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                     const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
                     relativeToEyeFrame.packDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);

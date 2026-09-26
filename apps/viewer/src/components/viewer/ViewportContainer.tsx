@@ -430,21 +430,15 @@ export function ViewportContainer() {
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
   }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
-  // The whole window is the drop target (#5845): a file dropped on the
-  // toolbar, sidebar or a panel loads too, and the browser never navigates to
-  // it. While WebGPU is unsupported the drop is refused with the shared
-  // load-error card (#5851), not a silent no-op.
+  // Window drops on any viewer chrome route through the same guarded loader.
+  // Unsupported WebGPU reports through the shared load-error card (#5851).
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
     const droppedFiles = Array.from(dataTransfer.files);
-
     const attempt = () => {
       if (!guardWebGpu(attempt)) return;
-
-      // DXF reference underlays split off before model routing (issue #1782):
-      // a dropped site plan must never replace or federate with the model.
       const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
       if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
       if (allDropped.length === 0) return;

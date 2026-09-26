@@ -11,7 +11,7 @@ describe('export completion privacy contract (#5844)', () => {
   it('keeps a fixed surface and aggregate metrics through the actual send gate', () => {
     const properties: ExportCompletedProperties = {
       format: 'ifc-anonymized', surface: 'palette', seed_count: 2,
-      included_count: 15, relation_toggles: ['voids', 'aggregates'], anonymize_names: true,
+      included_count: 15, model_count: 2, relation_toggles: ['voids', 'aggregates'], anonymize_names: true,
     };
     const sent = beforeSend({
       event: 'export_completed',
@@ -40,5 +40,18 @@ describe('export completion privacy contract (#5844)', () => {
       },
     });
     assert.deepEqual(sent?.properties, { format: 'csv', surface: 'classic', token: 'sdk' });
+  });
+
+  it('keeps only a safe model count through the global privacy scrubber (#5844)', () => {
+    const sent = beforeSend({
+      event: 'export_completed',
+      properties: { format: 'ifc', surface: 'classic', model_count: 3, model_name: 'Private Tower.ifc' },
+    });
+    assert.deepEqual(sent?.properties, { format: 'ifc', surface: 'classic', model_count: 3 });
+    const malformed = beforeSend({
+      event: 'export_completed',
+      properties: { format: 'ifc', surface: 'classic', model_count: 1.5 },
+    });
+    assert.deepEqual(malformed?.properties, { format: 'ifc', surface: 'classic' });
   });
 });

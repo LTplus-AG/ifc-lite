@@ -17,7 +17,8 @@ import type { PropertyRule } from './filter-rules.js';
 // that state so the existing-API observer below can fail on behavior, rather
 // than ending at module collection before any assertion runs.
 const adapters = await import('./legacy-operator-adapters.js').catch((error: unknown) => {
-  if (error instanceof Error && error.message.includes("Cannot find module './legacy-operator-adapters.js'")) return null;
+  if (error instanceof Error && error.message.includes('Cannot find module')
+    && error.message.includes('legacy-operator-adapters.js')) return null;
   throw error;
 });
 

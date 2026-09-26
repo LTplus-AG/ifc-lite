@@ -30,13 +30,14 @@ function PrereqCard({ tour }: { tour: TourDefinition }) {
   const needsSecond = Boolean(tour.prerequisites?.secondModel);
   const needsStack = Boolean(tour.prerequisites?.layerStack);
   return (
-    <div
-      role="dialog"
+    // The anchored tour prerequisite card uses a fixed-position div for its existing layout.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <div role="dialog"
       aria-label={t('tours.tourHost.prereqAriaLabel', { title: tour.title })}
       className="pointer-events-auto fixed left-1/2 top-1/2 w-80 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
     >
       <div className="text-sm font-semibold">{tour.title}</div>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
         {needsStack
           ? t('tours.tourHost.prereqLayerStack')
           : needsSecond

@@ -108,7 +108,7 @@ function Bucket({ title, clashes, tone }: BucketProps) {
       </div>
       <ul className="space-y-0.5 max-h-28 overflow-y-auto pr-1">
         {clashes.map((c) => (
-          <li key={c.id} className="text-[11px] text-foreground/80 truncate" title={clashLabel(c)}>
+          <li key={c.id} className="text-xs text-foreground/80 truncate" title={clashLabel(c)}>
             {clashLabel(c)}
           </li>
         ))}
@@ -212,7 +212,7 @@ export function ClashRevisionCompareDialog() {
           {comparison && (
             <div className="space-y-3 rounded-md border border-border p-2.5">
               {comparison.unretested.length > 0 && (
-                <div className="rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground space-y-0.5">
+                <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground space-y-0.5">
                   <div className="font-medium text-foreground">
                     {t('clashTools.revisionCompare.unretestedCount', { count: comparison.unretested.length })}
                   </div>

@@ -89,12 +89,13 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
   const titleId = `tour-step-title-${step.id}`;
 
   return (
-    <div
+    // The anchored nonmodal card needs its measured div and dialog semantics.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <div role="dialog"
       ref={(el) => {
         ref.current = el;
         cardRef.current = el;
       }}
-      role="dialog"
       aria-labelledby={titleId}
       tabIndex={-1}
       className={cn(
@@ -132,21 +133,21 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
         {t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
       </span>
       <div className="mt-1.5 text-sm font-semibold" aria-hidden="true">{step.title}</div>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{step.body}</p>
+      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
 
       {redockedPanel && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {t('tours.tourStepCard.redockedNotice')}
         </p>
       )}
       {hintVisible && !showNext && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {t('tours.tourStepCard.stuckHint')}
         </p>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-[11px] tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {stepIndex + 1} / {total}
         </span>
         <div className="flex items-center gap-1.5">

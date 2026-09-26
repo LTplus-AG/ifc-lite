@@ -114,7 +114,7 @@ export function ClashRuleDraftEditor({
           <Check className="h-3.5 w-3.5 mr-1" /> {draft.id ? t('clashTools.ruleEditor.saveButton') : t('clashTools.ruleEditor.addButton')}
         </Button>
       </div>
-      <p className="text-[10px] text-muted-foreground leading-snug">
+      <p className="text-xs text-muted-foreground leading-snug">
         {t('clashTools.ruleEditor.selectorsIntro')} <code>IfcWall</code>, <code>{t('clashTools.ruleEditor.selectorExamplePipe')}</code>,{' '}
         <code>{t('clashTools.ruleEditor.selectorExampleWallSlab')}</code>, <code>{t('clashTools.ruleEditor.selectorExampleNotSpace')}</code>,{' '}
         <code>*</code>.{' '}
@@ -137,7 +137,7 @@ function SelectorField({
         placeholder={placeholder}
         className="h-8 w-full rounded-md border border-border bg-transparent px-2 text-xs font-mono"
       />
-      <div className="mt-0.5 h-3 text-[10px] text-muted-foreground truncate">
+      <div className="mt-0.5 h-3 text-xs text-muted-foreground truncate">
         {!hasModel
           ? t('clashTools.ruleEditor.loadModelHint')
           : count === null

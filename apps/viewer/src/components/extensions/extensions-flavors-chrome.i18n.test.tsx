@@ -822,6 +822,24 @@ describe('BundlePreview localization (#4918)', () => {
       { key: 'extensionsFlavors.bundlePreview.copyButton' },
     ]);
   });
+
+  it('keeps file preview selection visible through native list buttons (#5821)', () => {
+    const files = new Map<string, BundleFile>([
+      ['alpha.ts', { path: 'alpha.ts', bytes: new TextEncoder().encode('alpha content'), text: 'alpha content' }],
+      ['beta.ts', { path: 'beta.ts', bytes: new TextEncoder().encode('beta content'), text: 'beta content' }],
+    ]);
+    const bundle = { manifest: {} as Bundle['manifest'], files };
+    const ui = render(<BundlePreview bundle={bundle} />);
+    const choices = [...ui.querySelectorAll<HTMLButtonElement>('ul button')];
+    assert.equal(choices.length, 2);
+    assert.equal(choices[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.querySelector('pre')?.textContent, 'alpha content');
+
+    click(choices[1]);
+    assert.equal(choices[0].getAttribute('aria-pressed'), 'false');
+    assert.equal(choices[1].getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.querySelector('pre')?.textContent, 'beta content');
+  });
 });
 
 describe('ExtensionDockHost localization (#4918)', () => {

@@ -71,14 +71,14 @@ export function ScheduleCard({
         </span>
         {isGenerated && (
           <span
-            className="flex items-center gap-1 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
             title={t('properties.schedule.pendingTooltip')}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
             {t('properties.schedule.pendingBadge')}
           </span>
         )}
-        <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
+        <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
           {t('properties.schedule.taskCount', {
             count: tasks.length,
             countDisplay: formatLocaleNumber(locale, tasks.length),
@@ -88,7 +88,7 @@ export function ScheduleCard({
       <CollapsibleContent>
         <div className="border-t-2 border-sky-200 dark:border-sky-800">
           {isGenerated && (
-            <div className="px-3 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
+            <div className="px-3 py-1.5 text-2xs text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
               {t('properties.schedule.generatedLocallyNote')}
             </div>
           )}
@@ -137,12 +137,12 @@ function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
           {task.name || task.identification || task.globalId.slice(0, 12)}
         </span>
         {task.predefinedType && (
-          <span className="text-[9px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300 shrink-0">
+          <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300 shrink-0">
             {task.predefinedType}
           </span>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-1 text-[11px]">
+      <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-1 text-2xs">
         {start && (
           <>
             <span className="text-muted-foreground">{t('properties.schedule.start')}</span>

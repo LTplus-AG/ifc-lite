@@ -48,7 +48,7 @@ export function SpatialLocationBadge({ spatialInfo }: { spatialInfo: SpatialLoca
         {spatialInfo.height !== undefined && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-[10px] whitespace-nowrap">
+              <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-2xs whitespace-nowrap">
                 <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
                 <span className="hidden sm:inline">
                   {t('properties.spatialLocation.heightDisplay', { value: formatLocaleNumber(locale, spatialInfo.height, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}

@@ -230,12 +230,12 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
         <div className="px-2 pb-2 space-y-2">
           {/* Position — XYZ inputs + ±step nudges */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+            <div className="flex items-center justify-between text-2xs uppercase tracking-wide text-muted-foreground">
               <span>{t('geometryExport.editCard.positionSectionLabel')}</span>
               <select
                 value={step}
                 onChange={(e) => setStep(parseFloat(e.target.value))}
-                className="bg-transparent border border-overlay-accent/40 px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-overlay-accent"
+                className="bg-transparent border border-overlay-accent/40 px-1 py-0.5 text-2xs focus:outline-none focus:ring-1 focus:ring-overlay-accent"
                 aria-label={t('geometryExport.editCard.nudgeStepAriaLabel')}
                 disabled={!movable}
               >
@@ -245,7 +245,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
               </select>
             </div>
             {!movable ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {t('geometryExport.editCard.nonStandardPlacementHint')}
               </p>
             ) : (
@@ -289,7 +289,7 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
           {rotation && (
             <div className="flex items-center gap-1 pt-1 border-t border-overlay-accent/40">
               <RotateCw className="h-3 w-3 shrink-0 text-overlay-accent" />
-              <span className="text-[11px] font-mono text-foreground flex-1">
+              <span className="text-2xs font-mono text-foreground flex-1">
                 {yawDegrees !== null
                   ? t('geometryExport.editCard.yawReadout', { degrees: yawDegrees.toFixed(1) })
                   : t('geometryExport.editCard.yawReadoutEmpty')}

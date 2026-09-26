@@ -370,7 +370,7 @@ export function BsddCard({
     <div className="space-y-2 w-full min-w-0 overflow-hidden">
       {/* Header with class description */}
       {classInfo.definition && (
-        <div className="px-1 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        <div className="px-1 pb-1 text-2xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
           {classInfo.definition}
         </div>
       )}
@@ -430,7 +430,7 @@ export function BsddCard({
               <span className="font-bold text-xs text-sky-800 dark:text-sky-300 truncate flex-1 min-w-0">
                 {psetName}
               </span>
-              <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400 shrink-0">
+              <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-400 shrink-0">
                 {formatLocaleNumber(locale, props.length)}
               </span>
               {addableCount > 0 && (
@@ -473,7 +473,7 @@ export function BsddCard({
                             {prop.name}
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs text-[10px]">
+                        <TooltipContent side="top" className="max-w-xs text-2xs">
                           {/* TooltipContent uses the neutral popover surface (#4767);
                               secondary lines use the plain semantic muted token instead
                               of hardcoded primary-foreground opacity tiers. */}
@@ -511,7 +511,7 @@ export function BsddCard({
           href={`https://search.bsdd.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/${entityType}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] text-sky-500/70 hover:text-sky-600 transition-colors"
+          className="flex items-center gap-1 text-2xs text-sky-500/70 hover:text-sky-600 transition-colors"
         >
           <ExternalLink className="h-2.5 w-2.5" />
           {t('properties.bsdd.viewOnBsdd')}

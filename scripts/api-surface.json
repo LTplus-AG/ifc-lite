@@ -6395,7 +6395,6 @@
     "evaluateLens: function",
     "hexToRgba: function",
     "isGhostColor: function",
-    "matchesCriteria: function",
     "rgbaToHex: function",
     "uniqueColor: function"
   ],

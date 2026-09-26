@@ -146,21 +146,10 @@ export interface ClassificationInfo {
 // ============================================================================
 
 /**
- * Comparison operators available to a {@link LensCriteria}.
+ * Operators found in persisted v1 {@link LensCriteria} data.
  *
- * `equals` / `contains` / `exists` are the original three and are unchanged.
- * `ne` / `gt` / `gte` / `lt` / `lte` were added so numeric conditions
- * ("Volume > 10", "Thickness < 200") are expressible; they are honoured by the
- * `property`, `attribute` and `quantity` criteria types. The other criteria
- * types (`ifcType`, `material`, `classification`, `model`, `group`) ignore
- * `operator` exactly as they did before.
- *
- * Comparison semantics mirror the viewer's search rule model
- * (`@ifc-lite/rules`'s `filter-ops.ts`, `valueOpMatches`): `gt` / `gte`
- * / `lt` / `lte` parse both sides with `Number.parseFloat` and match only when
- * both parse finite; `ne` is a case-insensitive string comparison, not a
- * numeric one (unlike `equals`, which stays case-sensitive except for the
- * boolean literal tolerance - see `matchesComparison` in matching.ts).
+ * The viewer's saved-rule migrator translates representable operators into
+ * shared filter rules and warns when a v1 comparison has no exact equivalent.
  */
 export type LensOperator =
   | 'equals'
@@ -172,32 +161,22 @@ export type LensOperator =
   | 'lt'
   | 'lte';
 
-/** All supported lens comparison operators, for rule-editor dropdowns. */
+/** Persisted v1 operator vocabulary used by the migration parity tests. */
 export const LENS_OPERATORS = [
   'equals', 'contains', 'exists', 'ne', 'gt', 'gte', 'lt', 'lte',
 ] as const satisfies readonly LensOperator[];
 
 /**
- * Criteria for matching entities.
+ * Persisted v1 criteria shape retained for saved-rule migration.
  *
  * A criterion is either a *leaf* (one of the eight data-backed types) or a
  * *compound* (`and` / `or`) whose `conditions` array holds further criteria -
  * leaves or nested compounds - enabling Smart-Views-style rules like
  * "IfcWall AND (FireRating >= 60 OR LoadBearing = true)".
  *
- * Compound semantics (all fail closed, consistent with how an incomplete leaf
- * like `{ type: 'ifcType' }` already behaves):
- * - `and` matches when EVERY member matches; `or` when ANY member matches.
- * - An empty or missing `conditions` array matches nothing - an empty group is
- *   an incomplete rule, not a match-everything wildcard.
- * - A member whose data is absent fails closed as usual; inside an `or` the
- *   other members can still match.
- * - Nesting deeper than {@link MAX_COMPOUND_DEPTH} matches nothing.
- *
- * Forward compatibility: a build of the engine predating compounds evaluates
- * an `and` / `or` criterion through its `default: return false` branch - the
- * rule is inert (matches nothing, its legend count reads 0) rather than
- * silently matching the wrong entities.
+ * The viewer converts representable conditions to shared FilterGroups. It
+ * preserves unsupported source data for an explicit warning rather than
+ * silently changing the saved rule's selection.
  */
 export interface LensCriteria {
   type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group' | 'and' | 'or';
@@ -367,12 +346,7 @@ export const LENS_CRITERIA_TYPES = [
 /** The compound (grouping) criteria types, for rule-editor group controls. */
 export const LENS_COMPOUND_TYPES = ['and', 'or'] as const;
 
-/**
- * Maximum nesting depth the evaluator will follow through compound criteria
- * (a top-level criterion is at depth 0). Deeper nesting matches nothing.
- * Smart-Views-style rules need depth 2; the cap only exists so a pathological
- * hand-edited lens file degrades to an inert rule instead of a stack overflow.
- */
+/** Maximum persisted v1 compound depth accepted by the viewer migrator. */
 export const MAX_COMPOUND_DEPTH = 16;
 
 /** Common entity attribute names for the lens rule editor */

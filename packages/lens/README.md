@@ -30,12 +30,10 @@ const result = evaluateLens(BUILTIN_LENSES[0], provider, selectedByRule);
 The viewer stores manual rules as shared `FilterGroup[]` chips. Evaluate each
 rule with `@ifc-lite/rules`, convert model-local IDs to global IDs, and pass
 those ID sets by rule ID as the required third argument to `evaluateLens`.
-Missing selections match nothing. The legacy `matchesCriteria` helper remains
-exported only during the stacked migration; `evaluateLens` no longer uses it.
+Missing selections match nothing. The standalone v1 matcher has been removed.
 
 - `evaluateLens` / `evaluateAutoColorLens`: turn a `Lens` definition into color and visibility maps
 - Auto-color mode: assign distinct colors per IFC class, property value, or material automatically, with a generated legend
-- `matchesCriteria` for standalone rule matching
 - `BUILTIN_LENSES` presets (for example "By IFC Class")
 - `discoverClasses` / `discoverDataSources` to populate lens editors from model data
 - Color helpers: `hexToRgba`, `rgbaToHex`, `uniqueColor`, `GHOST_COLOR`, `LENS_PALETTE`

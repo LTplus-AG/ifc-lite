@@ -5,9 +5,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
-import { BUILTIN_LENSES, matchesCriteria, type LensCriteria } from '@ifc-lite/lens';
+import { BUILTIN_LENSES, type LensCriteria } from '@ifc-lite/lens';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
-import { createLensDataProvider } from './adapter.js';
 
 async function loadConverter() {
   const module = await import('./legacy-criteria-to-filter-groups.js').catch(() => null);
@@ -44,8 +43,6 @@ const IDS = [10, 20, 30, 40];
 async function fixture() {
   const legacyCriteriaToFilterGroups = await loadConverter();
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
-  const provider = createLensDataProvider(new Map(), store);
-  const before = (criteria: LensCriteria) => IDS.filter((id) => matchesCriteria(criteria, id, provider));
   const after = (criteria: LensCriteria) => {
     const converted = legacyCriteriaToFilterGroups(criteria);
     assert.equal(converted.status, 'readable', JSON.stringify(criteria));
@@ -54,7 +51,7 @@ async function fixture() {
       candidateExpressIds: IDS, limit: Number.POSITIVE_INFINITY,
     }).map((row) => row.expressId).sort((a, b) => a - b);
   };
-  return { store, before, after };
+  return { store, after };
 }
 
 describe('#5896 legacy lens criteria migration', () => {
@@ -115,7 +112,7 @@ describe('#5896 legacy lens criteria migration', () => {
   });
 
   it('preserves numeric quantity, type-inherited quantity, and group membership', async () => {
-    const { before, after } = await fixture();
+    const { after } = await fixture();
     for (const [criteria, expected] of [
       [{ type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Height',
         operator: 'gt', quantityValue: '2' }, [10, 30]],
@@ -124,24 +121,22 @@ describe('#5896 legacy lens criteria migration', () => {
       [{ type: 'group', groupName: 'FIRE' }, [10, 20]],
       [{ type: 'group' }, [10, 20]],
     ] as [LensCriteria, number[]][]) {
-      assert.deepEqual(before(criteria), expected, `legacy ${criteria.type}`);
       assert.deepEqual(after(criteria), expected, `converted ${criteria.type}`);
     }
   });
 
   it('preserves existence checks for a real property and a supported attribute', async () => {
-    const { before, after } = await fixture();
+    const { after } = await fixture();
     for (const criteria of [
       { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'exists' },
       { type: 'attribute', attributeName: 'Tag', operator: 'exists' },
     ] as LensCriteria[]) {
-      assert.deepEqual(before(criteria), [10], `legacy ${criteria.type}`);
       assert.deepEqual(after(criteria), [10], `converted ${criteria.type}`);
     }
   });
 
   it('warns for derived Type and schema attributes absent from the old provider', async () => {
-    const { store, before } = await fixture();
+    const { store } = await fixture();
     const convert = await loadConverter();
     const derivedType: LensCriteria = { type: 'attribute', attributeName: 'Type',
       operator: 'equals', attributeValue: 'IfcDoor' };
@@ -151,10 +146,8 @@ describe('#5896 legacy lens criteria migration', () => {
       operator: 'equals', attributeValue: '' };
     const notTag: LensCriteria = { type: 'attribute', attributeName: 'Tag',
       operator: 'ne', attributeValue: 'W-10' };
-    assert.deepEqual(before(derivedType), [20]);
-    assert.deepEqual(before(schemaAttribute), []);
-    assert.deepEqual(before(emptyTag), []);
-    assert.deepEqual(before(notTag), []);
+    // Recorded v1 results: Type derived one door; the provider could not
+    // read schema-specific OverallHeight, and its blank Tag was absent.
     const genericAttributeIds = evaluateFilterGroups('legacy', store, [{
       rules: [{ kind: 'attribute', name: 'OverallHeight', op: 'eq', value: '2.1' }],
       combinator: 'AND',

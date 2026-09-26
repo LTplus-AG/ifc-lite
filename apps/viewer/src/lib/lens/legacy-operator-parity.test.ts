@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcTypeEnum, type PropertySet } from '@ifc-lite/data';
-import { matchesCriteria, LENS_OPERATORS, type LensDataProvider } from '@ifc-lite/lens';
+import { LENS_OPERATORS } from '@ifc-lite/lens';
 import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
 import { BulkQueryEngine, MutablePropertyView, type FilterOperator, type PropertyValue } from '@ifc-lite/mutations';
 import {
@@ -32,15 +32,6 @@ async function fixture() {
   }));
   const typeSets = (id: number): PropertySet[] => (extractTypePropertiesOnDemand(store, id)?.properties ?? [])
     .map((set) => ({ name: set.name, globalId: set.globalId ?? '', properties: set.properties }));
-  const property = (id: number, name: string) => psets.get(id)?.flatMap((set) => set.properties)
-    .find((row) => row.name === name)?.value;
-  const lens: LensDataProvider = {
-    forEachEntity: (visit) => IDS.forEach((id) => visit(id, 'm')),
-    getEntityCount: () => IDS.length,
-    getEntityType: (id) => store.entities.getTypeName(id),
-    getPropertyValue: (id, _set, name) => property(id, name),
-    getPropertySets: (id) => sets(id),
-  };
   const lists: ListDataProvider = {
     getEntitiesByType: (type) => type === IfcTypeEnum.IfcWall ? IDS : [],
     getEntityName: (id) => store.entities.getName(id),
@@ -58,8 +49,15 @@ async function fixture() {
     view.setProperty(id, set.name, prop.name, prop.value as PropertyValue);
   }
   const bulk = new BulkQueryEngine(store.entities, view, null, null, store.strings);
-  return { store, lens, lists, bulk };
+  return { store, lists, bulk };
 }
+
+// Captured from the v1 Lens matcher on the parsed IFC above before #5896
+// removed that implementation. Keep these independent of the new evaluator.
+const legacyLensIds: Record<(typeof LENS_OPERATORS)[number], number[]> = {
+  equals: [30], contains: [10, 30], exists: [20, 30], ne: [20],
+  gt: [20], gte: [10, 20], lt: [30], lte: [10, 30],
+};
 
 const template = (propertyName: string, value: string): PropertyRule => ({
   kind: 'property', setName: 'Pset_Test', propertyName, op: 'eq', value,
@@ -77,8 +75,8 @@ const bulkCases = {
 } satisfies Record<FilterOperator, [string, PropertyValue | undefined]>;
 
 describe('#5892 legacy operator adapters over one parsed IFC store', () => {
-  it('every LensOperator selects the same elements as the Lens evaluator', async () => {
-    const { store, lens } = await fixture();
+  it('every LensOperator preserves the recorded v1 Lens selection', async () => {
+    const { store } = await fixture();
     for (const operator of LENS_OPERATORS) {
       const numeric = operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte';
       const field = operator === 'exists' ? 'Nullable' : numeric ? 'Number' : 'Text';
@@ -86,11 +84,7 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
       const converted = legacyLensOperatorToFilterRule(operator, template(field, value));
       assert.equal(converted.status, 'readable', operator);
       if (converted.status !== 'readable') continue;
-      const old = IDS.filter((id) => matchesCriteria({
-        type: 'property', propertySet: 'Pset_Test', propertyName: field,
-        operator, propertyValue: value,
-      }, id, lens));
-      assert.deepEqual(canonicalIds(store, converted.value), old, `Lens ${operator}`);
+      assert.deepEqual(canonicalIds(store, converted.value), legacyLensIds[operator], `Lens ${operator}`);
       assert.deepEqual(filterRuleToLegacyLensOperator(converted.value), { status: 'readable', value: operator });
     }
   });
@@ -181,17 +175,14 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
   });
 
   it('preserves boolean case and Bulk typed operands from the parsed store', async () => {
-    const { store, lens, lists, bulk } = await fixture();
+    const { store, lists, bulk } = await fixture();
     for (const expected of ['TRUE', 'false']) {
       const lensRule = legacyLensOperatorToFilterRule('equals', template('Flag', expected));
       const listRule = legacyListOperatorToFilterRule('equals', template('Flag', expected));
       assert.equal(lensRule.status, 'readable');
       assert.equal(listRule.status, 'readable');
       if (lensRule.status !== 'readable' || listRule.status !== 'readable') continue;
-      const lensIds = IDS.filter((id) => matchesCriteria({
-        type: 'property', propertySet: 'Pset_Test', propertyName: 'Flag',
-        operator: 'equals', propertyValue: expected,
-      }, id, lens));
+      const lensIds = expected === 'TRUE' ? [10, 30] : [20];
       const definition: ListDefinition = {
         id: 'boolean-parity', name: 'Boolean parity', createdAt: 0, updatedAt: 0,
         entityTypes: [], expressIdsByModel: { m: IDS }, columns: [],
@@ -214,7 +205,7 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
   });
 
   it('keeps null distinct from an empty string in converted numeric comparisons', async () => {
-    const { store, lens, lists, bulk } = await fixture();
+    const { store, lists, bulk } = await fixture();
     const lensRule = legacyLensOperatorToFilterRule('gte', template('Nullable', '0'));
     const listRule = legacyListOperatorToFilterRule('gte', template('Nullable', '0'));
     const bulkRule = legacyBulkOperatorToFilterRule('>=', template('Nullable', ''), 0);
@@ -222,10 +213,7 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
     assert.equal(listRule.status, 'readable');
     assert.equal(bulkRule.status, 'readable');
     if (lensRule.status !== 'readable' || listRule.status !== 'readable' || bulkRule.status !== 'readable') return;
-    const lensIds = IDS.filter((id) => matchesCriteria({
-      type: 'property', propertySet: 'Pset_Test', propertyName: 'Nullable',
-      operator: 'gte', propertyValue: '0',
-    }, id, lens));
+    const lensIds: number[] = []; // v1 treated null, empty string and text as non-numeric.
     const definition: ListDefinition = {
       id: 'null-parity', name: 'Null parity', createdAt: 0, updatedAt: 0,
       entityTypes: [], expressIdsByModel: { m: IDS }, columns: [],

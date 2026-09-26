@@ -55,13 +55,9 @@ as Search and Lists. Saved v1 `criteria` are converted when their meaning is
 exactly representable; other saved conditions remain visible with a warning
 until the user explicitly replaces them. For programmatic evaluation, pass a
 map of rule IDs to selected global IDs as the required third argument to
-`evaluateLens`. Missing rule IDs match nothing. During this migration the old
-`LensCriteria` type and standalone `matchesCriteria` helper remain exported,
-but `evaluateLens` applies only the shared selection map.
-
-For a standalone check of a saved v1 condition during migration,
-`matchesCriteria(criteria, globalId, provider)` remains available. It does not
-contribute matches to `evaluateLens`.
+`evaluateLens`. Missing rule IDs match nothing. The saved v1 `LensCriteria`
+shape remains available for migration; the standalone v1 matcher has been
+removed from the public package.
 
 ## Worked Example: Color by Fire Rating
 
@@ -159,12 +155,11 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 |--------|-------------|
 | `evaluateLens(lens, provider, matchedByRule)` | Apply rule actions to shared evaluator global-ID sets; returns `LensEvaluationResult` |
 | `evaluateAutoColorLens(spec, provider)` | Group-by-value colorization with legend |
-| `matchesCriteria(criteria, globalId, provider)` | Test one entity against one criterion |
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
 | `BUILTIN_LENSES` | The seven built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
-| `LENS_OPERATORS` | The eight value operators, for rule-editor dropdowns |
-| `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two compound criteria types |
-| `MAX_COMPOUND_DEPTH` | Nesting cap (16) beyond which a compound matches nothing |
+| `LENS_OPERATORS` | The eight persisted v1 comparison operators used in migration |
+| `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two persisted v1 compound criteria types |
+| `MAX_COMPOUND_DEPTH` | V1 migration nesting cap (16); deeper source data remains unreadable |
 
 Key types: `Lens`, `LensRule`, `LensCriteria`, `LensOperator`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.

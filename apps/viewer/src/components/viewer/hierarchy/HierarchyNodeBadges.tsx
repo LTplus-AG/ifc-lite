@@ -24,7 +24,7 @@ export function HierarchyNodeBadges({ node }: { node: TreeNode }) {
     {elevation !== undefined && (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
+          <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
             {elevationLabel}
           </span>
         </TooltipTrigger>

@@ -17,18 +17,16 @@ import {
   RelativeToEyeFrame,
   RTE_FRAME_FLOATS,
   RTE_ORIGIN_FLOATS,
-  RTE_UNIFORM_LAYOUT,
   MAX_RTE_EYE_RELATIVE_METRES,
   MAX_RTE_SOURCE_ABS_METRES,
-  assertRteUniformAbi,
   packRteOrigin,
-  reflectRteUniformStruct,
   rteRelativePositionF32,
   splitFloat64ForRte,
   translationFreeViewProjection,
   tryPackRteDrawableDelta,
   unpackRteOrigin,
 } from './relative-to-eye.js';
+import { RTE_UNIFORM_LAYOUT, assertRteUniformAbi, reflectRteUniformStruct } from './relative-to-eye-abi.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 
 function close(actual: number, expected: number, tolerance = 1e-7): void {

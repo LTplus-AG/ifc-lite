@@ -21,15 +21,14 @@ import {
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { tryPackRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
-import { collectInstanceRuns, type InstanceRun } from './instanced-rte.js';
+import type { InstanceRun } from './instanced-rte.js';
+import { packTextRteDeltas, TEXT_RTE_DELTA_FLOATS, TEXT_RTE_DELTA_STRIDE_BYTES } from './symbolic-text-rte.js';
 import { parseBoxAlignment, triangulateFillTo } from './symbolic-overlay-geometry.js';
 export { parseBoxAlignment } from './symbolic-overlay-geometry.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 const TEXT_INSTANCE_FLOATS = 3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1;
 const TEXT_INSTANCE_STRIDE_BYTES = TEXT_INSTANCE_FLOATS * 4;
-const TEXT_RTE_DELTA_FLOATS = 8;
-const TEXT_RTE_DELTA_STRIDE_BYTES = TEXT_RTE_DELTA_FLOATS * 4;
 // Static glyph fields: origin, axes, UV/color, label anchor, cap height,
 // billboard, glyph offset/size and target override (108 B/glyph). A separate
 // dynamic RTE delta stream updates only 32 B/glyph per camera frame; low.w marks anchor-local legacy origins.
@@ -663,31 +662,12 @@ export class SymbolicTextPipeline {
     this.instanceCount = layouts.length;
   }
 
-  /**
-   * Pack each f64 anchor against this frame's camera via the shared RTE
-   * contract, returning the runs of instances to draw. An anchor outside this
-   * camera's eye envelope cannot be rasterised this frame and keeps a stale
-   * delta, so it is left out of every run (#6128).
-   */
+  /** Refresh the per-glyph delta stream; returns the glyph runs to draw (see `packTextRteDeltas`). */
   private updateRteInstanceDeltas(camera: WorldPoint | undefined): InstanceRun[] {
     if (!this.rteDeltaBuffer || !this.rteDeltaData || this.instanceAnchors.length === 0) {
       return [{ first: 0, count: this.instanceCount }];
     }
-    const rteDeltaData = this.rteDeltaData;
-    const runs = collectInstanceRuns(this.instanceAnchors.length, (index) => {
-      const offset = index * TEXT_RTE_DELTA_FLOATS;
-      const anchor = this.instanceAnchors[index];
-      let drawable = true;
-      if (anchor && camera) {
-        drawable = tryPackRteDrawableDelta(anchor, camera, rteDeltaData, offset);
-        if (drawable) rteDeltaData[offset + 3] = 1;
-      } else {
-        rteDeltaData.fill(0, offset, offset + TEXT_RTE_DELTA_FLOATS);
-      }
-      // Keep the anchor-local marker separate from high.w's RTE projection flag.
-      if (anchor) rteDeltaData[offset + 7] = 1;
-      return drawable;
-    });
+    const runs = packTextRteDeltas(this.instanceAnchors, camera, this.rteDeltaData);
     this.device.queue.writeBuffer(this.rteDeltaBuffer, 0, this.rteDeltaData);
     return runs;
   }

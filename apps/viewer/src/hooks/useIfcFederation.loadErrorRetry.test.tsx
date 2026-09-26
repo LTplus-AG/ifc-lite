@@ -10,9 +10,9 @@
  * `lastLoadRetry`, so the card's Retry button silently replayed A's load
  * instead of the failed federated add.
  *
- * Root-cause fix: `showLoadError(message, code, retry)` takes `retry` as a
- * REQUIRED third argument, so a call site cannot show an error without
- * deciding what Retry does, and `setError(null)` now clears
+ * Root-cause fix: `showLoadError` takes `retry` as a REQUIRED argument, so
+ * a call site cannot show an error without deciding what Retry does, and
+ * `setError(null)` now clears
  * `lastLoadRetry` whenever `error` is cleared — so a stale retry from an
  * unrelated success can never survive to sit next to the next error.
  *

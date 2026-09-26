@@ -450,12 +450,11 @@ export function useIfcLoader() {
       return true;
     };
 
-    // Every load failure the user sees goes through here (#5618). `retry` is
-    // fixed to THIS call, so no call site below can omit a Retry decision or
-    // leave a stale one (#5851 review); `setError(null)` clears any retry a
-    // previous attempt left.
+    // Every load failure the user sees goes through here (#5618); `retry`
+    // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = () => { void loadFile(file, target, options); };
-    const showLoadError = (message: string, code: string) => reportLoadError(message, code, retryThisLoad);
+    const showLoadError = (message: string, code: string) =>
+      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
 
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A

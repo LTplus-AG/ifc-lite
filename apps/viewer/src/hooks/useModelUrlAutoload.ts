@@ -22,6 +22,7 @@ import { useEffect, useRef } from 'react';
 import { useIfc } from './useIfc';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
+import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 export function useModelUrlAutoload(): void {
@@ -45,8 +46,10 @@ export function useModelUrlAutoload(): void {
     // cross-origin URL is the SAME url string on every attempt, so retrying
     // it can never differ — null, no Retry button. A fetch failure may well
     // be transient, so it gets a real retry over this same attempt.
-    const fail = (key: TranslationKey, code: string, retry: (() => void) | null, values?: Record<string, string>) =>
-      showLoadError(t(key, values), code, retry);
+    const fail = (key: TranslationKey, code: string, retry: (() => void) | null, values?: Record<string, string>) => {
+      const { setError, setLastLoadRetry } = useViewerStore.getState();
+      showLoadError(setError, setLastLoadRetry, t(key, values), code, retry);
+    };
 
     const attempt = async () => {
       if (!guardWebGpu(() => { void attempt(); })) return;

@@ -14,6 +14,7 @@
 
 import { useCallback } from 'react';
 import { useTranslation } from '@/i18n';
+import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
 import { useWebGPU, type WebGPUStatus } from './useWebGPU';
 
@@ -34,7 +35,9 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     if (webgpu.supported) return true;
     // Explains a drop/open even while the adapter check is still pending,
     // instead of a silent no-op — the caller has no separate "wait" path.
+    const { setError, setLastLoadRetry } = useViewerStore.getState();
     showLoadError(
+      setError, setLastLoadRetry,
       t(webgpu.checking
         ? 'viewportLighting.container.loadErrorCard.webgpuChecking'
         : 'viewportLighting.container.loadErrorCard.webgpuUnsupported'),

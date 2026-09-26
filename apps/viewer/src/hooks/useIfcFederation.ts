@@ -97,6 +97,9 @@ export function useIfcFederation(
   // Mirrors the same pattern in useIfcLoader.ts.
   const loadSessionRef = useRef(0), realignSessionRef = useRef(0);
 
+  const reportError = (message: string, code: string, retry: (() => void) | null) => // #5851: retry required
+    showLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retry);
+
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
@@ -187,8 +190,7 @@ export function useIfcFederation(
       }
       console.error('[useIfc] addModel failed:', err);
       if (isCurrent) {
-        // Through the shared helper (#5851 review), retry = re-run this add.
-        showLoadError(err instanceof Error ? err.message : 'Unknown error', 'federated_add_failed',
+        reportError(err instanceof Error ? err.message : 'Unknown error', 'federated_add_failed',
           () => { void addModel(file, options); });
         setLoading(false);
       }
@@ -522,16 +524,15 @@ export function useIfcFederation(
     } catch (err: unknown) {
       console.error('[useIfc] Federated IFCX loading failed:', err);
       const message = err instanceof Error ? err.message : String(err);
-      // Retry re-composes the SAME already-read buffers, no re-reading files.
-      showLoadError(`Federated IFCX loading failed: ${message}`, 'ifcx_federated_load_failed',
-        () => { void loadFederatedIfcxFromBuffers(buffers); });
+      reportError(`Federated IFCX loading failed: ${message}`, 'ifcx_federated_load_failed',
+        () => { void loadFederatedIfcxFromBuffers(buffers); }); // retry re-composes the same buffers
       setLoading(false);
     }
   }, [setLoading, setProgress, setGeometryResult, setIfcDataStore, storeAddModel, clearAllModels]);
 
   const loadFederatedIfcx = useCallback(async (files: File[]): Promise<void> => {
     if (files.length === 0) {
-      showLoadError('No files provided for federated loading', 'ifcx_federated_no_files', null); // no retry: empty list
+      reportError('No files provided for federated loading', 'ifcx_federated_no_files', null); // no retry: empty list
       return;
     }
 
@@ -546,7 +547,7 @@ export function useIfcFederation(
       const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
-        showLoadError(`File "${file.name}" is not an IFCX file. Federated loading only supports IFCX files.`, 'ifcx_federated_not_ifcx', null); // no retry: still not IFCX
+        reportError(`File "${file.name}" is not an IFCX file. Federated loading only supports IFCX files.`, 'ifcx_federated_not_ifcx', null); // no retry: still not IFCX
         return;
       }
       buffers.push({ buffer, name: file.name });
@@ -589,9 +590,8 @@ export function useIfcFederation(
 
       existingBuffers = [{ buffer: sourceBuffer, name: modelName }];
     } else {
-      // A base model may finish loading before a retry, so retry is real.
-      showLoadError('Cannot add overlays: no IFCX model loaded', 'ifcx_overlay_no_base',
-        () => { void addIfcxOverlays(files); });
+      reportError('Cannot add overlays: no IFCX model loaded', 'ifcx_overlay_no_base',
+        () => { void addIfcxOverlays(files); }); // a base model may load before a retry
       return;
     }
 
@@ -606,7 +606,7 @@ export function useIfcFederation(
       const buffer = await file.arrayBuffer();
       const format = detectFormat(buffer);
       if (format !== 'ifcx') {
-        showLoadError(`File "${file.name}" is not an IFCX file.`, 'ifcx_overlay_not_ifcx', null); // no retry: still not IFCX
+        reportError(`File "${file.name}" is not an IFCX file.`, 'ifcx_overlay_not_ifcx', null); // no retry: still not IFCX
         return;
       }
       newBuffers.push({ buffer, name: file.name });

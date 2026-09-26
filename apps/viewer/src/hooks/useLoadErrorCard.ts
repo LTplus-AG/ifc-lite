@@ -10,9 +10,9 @@
  * `error` and `lastLoadRetry` both live on `loadingSlice`. Every load path
  * (`useIfcLoader.loadFile`, every federated IFCX path in `useIfcFederation`,
  * the WebGPU guard, and the `?model=` autoload) reports failure through the
- * one shared `showLoadError(message, code, retry)` in `lib/analytics.ts`,
- * which sets `error` and `lastLoadRetry` TOGETHER — `retry` is a required
- * argument there, not optional, so no call site can show an error while
+ * one shared `showLoadError` in `lib/analytics.ts`, which sets `error` and
+ * `lastLoadRetry` TOGETHER — `retry` is a required argument there, not
+ * optional, so no call site can show an error while
  * leaving a stale retry from whatever the previous, unrelated error was
  * (the bug a 2026-09 review caught: a federated-add failure left a primary
  * load's own retry sitting there). `setError(null)` also clears

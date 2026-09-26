@@ -51,25 +51,27 @@ export function useModelUrlAutoload(): void {
       showLoadError(setError, setLastLoadRetry, t(key, values), code, retry);
     };
 
+    let resolvedUrl: URL | null = null;
     const attempt = async () => {
       if (!guardWebGpu(() => { void attempt(); })) return;
       // Resolve (supports relative paths) and enforce same-origin before fetching.
-      let resolvedUrl: URL;
+      let source: URL;
       try {
-        resolvedUrl = new URL(modelUrl, window.location.href);
+        source = resolvedUrl ?? new URL(modelUrl, window.location.href);
+        resolvedUrl = source;
       } catch {
         fail('viewportLighting.container.modelUrlAutoload.malformedUrl', 'model_url_malformed', null);
         return;
       }
-      if (resolvedUrl.origin !== window.location.origin) {
+      if (source.origin !== window.location.origin) {
         fail('viewportLighting.container.modelUrlAutoload.crossOrigin', 'model_url_cross_origin', null);
         return;
       }
       try {
-        const res = await fetch(resolvedUrl.href);
+        const res = await fetch(source.href);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
-        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
+        const filename = source.pathname.split('/').pop() || 'model.ifc';
         const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
         await addModel(file);
       } catch (err) {

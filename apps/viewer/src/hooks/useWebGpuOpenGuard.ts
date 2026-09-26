@@ -12,11 +12,11 @@
  * a Retry closing over the same attempt.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
-import { useWebGPU, type WebGPUStatus } from './useWebGPU';
+import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
 export interface WebGpuOpenGuard {
   webgpu: WebGPUStatus;
@@ -31,21 +31,51 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
   const webgpu = useWebGPU();
   const { t } = useTranslation();
 
+  useEffect(() => {
+    if (webgpu.checking || webgpu.supported) return;
+    const state = useViewerStore.getState();
+    if (state.error !== t('viewportLighting.container.loadErrorCard.webgpuChecking')) return;
+    showLoadError(
+      state.setError, state.setLastLoadRetry,
+      t('viewportLighting.container.loadErrorCard.webgpuUnsupported'),
+      'webgpu_unsupported', state.lastLoadRetry,
+    );
+  }, [t, webgpu.checking, webgpu.supported]);
+
   const guard = useCallback((retry?: () => void): boolean => {
-    if (webgpu.supported) return true;
+    const status = getWebGPUStatus();
+    if (status.supported) return true;
     // Explains a drop/open even while the adapter check is still pending,
     // instead of a silent no-op — the caller has no separate "wait" path.
     const { setError, setLastLoadRetry } = useViewerStore.getState();
+    const retryAfterProbe: (() => void) | null = retry ? () => {
+      if (getWebGPUStatus().supported) {
+        retry();
+        return;
+      }
+      void retryWebGPU().then((fresh) => {
+        if (fresh.supported) {
+          retry();
+          return;
+        }
+        const state = useViewerStore.getState();
+        showLoadError(
+          state.setError, state.setLastLoadRetry,
+          t('viewportLighting.container.loadErrorCard.webgpuUnsupported'),
+          'webgpu_unsupported', retryAfterProbe,
+        );
+      });
+    } : null;
     showLoadError(
       setError, setLastLoadRetry,
-      t(webgpu.checking
+      t(status.checking
         ? 'viewportLighting.container.loadErrorCard.webgpuChecking'
         : 'viewportLighting.container.loadErrorCard.webgpuUnsupported'),
-      webgpu.checking ? 'webgpu_checking' : 'webgpu_unsupported',
-      retry ?? null,
+      status.checking ? 'webgpu_checking' : 'webgpu_unsupported',
+      retryAfterProbe,
     );
     return false;
-  }, [webgpu, t]);
+  }, [t]);
 
   return { webgpu, guard };
 }

@@ -26,11 +26,18 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useWebGPU, type WebGPUStatus } from './useWebGPU.js';
+import { useWebGpuOpenGuard, type WebGpuOpenGuard } from './useWebGpuOpenGuard.js';
 import { webGpuBannerBlurb } from '@/components/viewer/WebGpuTroubleshooting.js';
+import { useViewerStore } from '@/store';
 
 function Probe({ onStatus }: { onStatus: (status: WebGPUStatus) => void }) {
   const status = useWebGPU();
   onStatus(status);
+  return null;
+}
+
+function OpenProbe({ onGuard }: { onGuard: (guard: WebGpuOpenGuard['guard']) => void }) {
+  onGuard(useWebGpuOpenGuard().guard);
   return null;
 }
 
@@ -73,6 +80,41 @@ afterEach(() => {
 });
 
 describe('useWebGPU category detection', () => {
+  it('rechecks a failed adapter on explicit Retry and then opens the same source (#5851)', async () => {
+    setSecureContext(true);
+    let calls = 0;
+    setNavigatorGpu({ requestAdapter: async () => ++calls === 1 ? null : {} });
+    useViewerStore.getState().resetViewerState();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    let guard!: WebGpuOpenGuard['guard'];
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    try {
+      await act(async () => {
+        root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      act(attempt);
+      assert.equal(calls, 1);
+      assert.equal(opened, 0);
+      assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function');
+
+      await act(async () => {
+        useViewerStore.getState().lastLoadRetry?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      assert.equal(calls, 2, 'explicit Retry must recheck a failed adapter');
+      assert.equal(opened, 1, 'the original source opens after WebGPU recovers');
+    } finally {
+      act(() => { root.unmount(); });
+      container.remove();
+      useViewerStore.setState({ error: null, lastLoadRetry: null });
+    }
+  });
+
   it('shares one adapter probe across viewport, URL and status consumers (#5851)', async () => {
     setSecureContext(true);
     let calls = 0;

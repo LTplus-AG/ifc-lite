@@ -77,7 +77,9 @@ function mount(): void {
 
 describe('?model= autoload (#5851)', () => {
   it('a fetch failure sets the store error, with a Retry closure ready', async () => {
-    setModelParam('/fixtures/does-not-exist.ifc');
+    setModelParam('model.ifc');
+    const originalLocation = window.location.href;
+    const source = new URL('model.ifc', originalLocation).href;
     const requestedUrls: string[] = [];
     globalThis.fetch = (async (input) => {
       requestedUrls.push(String(input));
@@ -89,12 +91,14 @@ describe('?model= autoload (#5851)', () => {
     await waitFor(() => useViewerStore.getState().error !== null, 'the ?model= fetch failure sets store error');
     assert.match(useViewerStore.getState().error ?? '', /could not be downloaded/i);
     assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function');
-    useViewerStore.getState().lastLoadRetry?.();
-    await waitFor(() => requestedUrls.length === 2, 'Retry fetches the same model URL');
-    assert.deepEqual(requestedUrls, [
-      new URL('/fixtures/does-not-exist.ifc', window.location.href).href,
-      new URL('/fixtures/does-not-exist.ifc', window.location.href).href,
-    ]);
+    try {
+      window.history.pushState(null, '', '/different/path/');
+      useViewerStore.getState().lastLoadRetry?.();
+      await waitFor(() => requestedUrls.length === 2, 'Retry fetches the same model URL');
+      assert.deepEqual(requestedUrls, [source, source]);
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
   });
 
   it('a cross-origin URL is refused and reported, never fetched', async () => {

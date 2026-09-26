@@ -48,12 +48,24 @@ let cachedProbe: {
   gpu: Navigator['gpu'];
   secureContext: boolean;
   result: Promise<WebGPUStatus>;
+  status: WebGPUStatus | null;
 } | undefined;
+const subscribers = new Set<(status: WebGPUStatus) => void>();
 
-function probeWebGPU(): Promise<WebGPUStatus> {
+function publish(status: WebGPUStatus): void {
+  for (const subscriber of subscribers) subscriber(status);
+}
+
+export function getWebGPUStatus(): WebGPUStatus {
+  return cachedProbe?.gpu === navigator.gpu && cachedProbe.secureContext === window.isSecureContext
+    ? cachedProbe.status ?? CHECKING_STATUS
+    : CHECKING_STATUS;
+}
+
+function probeWebGPU(force = false): Promise<WebGPUStatus> {
   const gpu = navigator.gpu;
   const secureContext = window.isSecureContext;
-  if (cachedProbe?.gpu === gpu && cachedProbe.secureContext === secureContext) {
+  if (!force && cachedProbe?.gpu === gpu && cachedProbe.secureContext === secureContext) {
     return cachedProbe.result;
   }
 
@@ -78,8 +90,20 @@ function probeWebGPU(): Promise<WebGPUStatus> {
       };
     }
   })();
-  cachedProbe = { gpu, secureContext, result };
+  const entry = { gpu, secureContext, result, status: null as WebGPUStatus | null };
+  cachedProbe = entry;
+  publish(CHECKING_STATUS);
+  void result.then((status) => {
+    if (cachedProbe !== entry) return;
+    entry.status = status;
+    publish(status);
+  });
   return result;
+}
+
+/** Explicit Retry rechecks a settled failure; concurrent callers still share one in-flight probe. */
+export function retryWebGPU(): Promise<WebGPUStatus> {
+  return probeWebGPU(cachedProbe?.status !== null);
 }
 
 /**
@@ -102,11 +126,10 @@ export function useWebGPU(): WebGPUStatus {
   const [status, setStatus] = useState<WebGPUStatus>(CHECKING_STATUS);
 
   useEffect(() => {
-    let mounted = true;
-    void probeWebGPU().then((result) => {
-      if (mounted) setStatus(result);
-    });
-    return () => { mounted = false; };
+    subscribers.add(setStatus);
+    setStatus(getWebGPUStatus());
+    void probeWebGPU();
+    return () => { subscribers.delete(setStatus); };
   }, []);
 
   return status;

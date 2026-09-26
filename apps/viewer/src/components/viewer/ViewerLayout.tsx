@@ -430,8 +430,8 @@ export function ViewerLayout() {
 
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
-              <div
-                className="absolute inset-0 bg-black/40 z-30 animate-in fade-in duration-200"
+              <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
+                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);

@@ -86,9 +86,9 @@ function getSaveButton(): HTMLButtonElement {
  *  outside `click()` (which already wraps in `act()`) does not flush
  *  synchronously. */
 async function openEditor(container: HTMLElement): Promise<{ input: HTMLInputElement; save: HTMLButtonElement }> {
-  const editSpan = [...container.querySelectorAll('span')].find((s) => s.title === 'Click to edit');
-  assert.ok(editSpan, 'value span must render (click to enter edit mode)');
-  click(editSpan!);
+  const editButton = container.querySelector<HTMLButtonElement>('button[title="Click to edit"]');
+  assert.ok(editButton, 'editable value button must render');
+  click(editButton);
   await advance(0);
 
   return { input: getValueInput(), save: getSaveButton() };

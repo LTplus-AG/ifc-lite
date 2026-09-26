@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
@@ -22,6 +22,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
@@ -105,11 +106,9 @@ export function HierarchyPanel() {
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 
-  // Resizable panel split (percentage for storeys section, 0.5 = 50%)
-  const [splitRatio, setSplitRatio] = useState(0.5);
-  const [isDragging, setIsDragging] = useState(false);
   const [syncingSourceModelIds, setSyncingSourceModelIds] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const { splitRatio, isDragging, handleResizeStart, handleResizeKeyDown } = useHierarchySplit(containerRef);
 
   // Check if we have multiple models loaded
   const isMultiModel = models.size > 1;
@@ -218,39 +217,6 @@ export function HierarchyPanel() {
     overscan: 10,
   });
 
-  // Resize handler for draggable divider
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const relativeY = e.clientY - containerRect.top;
-      // Account for the search header height (~70px)
-      const headerHeight = 70;
-      const availableHeight = containerRect.height - headerHeight;
-      const newRatio = Math.max(0.15, Math.min(0.85, (relativeY - headerHeight) / availableHeight));
-      setSplitRatio(newRatio);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
-
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
     const elements = getNodeElements(node);
@@ -347,7 +313,7 @@ export function HierarchyPanel() {
   );
 
   // Handle node click - for selection/isolation or expand/collapse
-  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
+  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;
@@ -946,7 +912,7 @@ export function HierarchyPanel() {
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
             <StoreyDisplayControls />
-            <div ref={storeysRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={storeysRef} role="tree" aria-label={t('hierarchy.panel.buildingStoreysTitle')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${storeysVirtualizer.getTotalSize()}px`,
@@ -963,12 +929,21 @@ export function HierarchyPanel() {
           </div>
 
           {/* Resizable Divider */}
-          <div
+          {/* The focusable resize widget contains a grip icon; hr cannot contain children. */}
+          {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+          <div role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('shellChrome.sidebarPanelHost.resizeSplitAriaLabel')}
+            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuemin={15}
+            aria-valuemax={85}
+            tabIndex={0}
             className={cn(
               'flex items-center justify-center h-2 cursor-ns-resize border-y border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors',
               isDragging && 'bg-primary/20'
             )}
             onMouseDown={handleResizeStart}
+            onKeyDown={handleResizeKeyDown}
           >
             <GripHorizontal className="h-3 w-3 text-zinc-400" />
           </div>
@@ -976,7 +951,7 @@ export function HierarchyPanel() {
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
             <ModelsSectionHeader count={models.size} />
-            <div ref={modelsRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={modelsRef} role="tree" aria-label={t('hierarchy.modelsSection.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${modelsVirtualizer.getTotalSize()}px`,
@@ -1077,7 +1052,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-label={t('hierarchy.panel.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

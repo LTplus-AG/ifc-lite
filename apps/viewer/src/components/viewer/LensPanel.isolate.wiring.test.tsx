@@ -32,7 +32,7 @@
 import '@/test/setup-dom.js';
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, activate } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { Lens } from '@/store/slices/lensSlice';
 import { LensPanel } from './LensPanel.js';
@@ -135,7 +135,7 @@ function seedLens(options: {
 /** The legend row for `ruleName`, matched the way a user finds it: by the
  *  visible rule name on a clickable row. */
 function ruleRow(container: HTMLElement, ruleName: string): HTMLElement {
-  const rows = [...container.querySelectorAll<HTMLElement>('div[role="button"]')].filter(
+  const rows = [...container.querySelectorAll<HTMLElement>('button[aria-pressed]')].filter(
     (el) => el.textContent?.includes(ruleName),
   );
   assert.equal(rows.length, 1, `expected exactly one clickable legend row for ${JSON.stringify(ruleName)}, found ${rows.length}`);
@@ -176,14 +176,14 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     // A count of 0 renders the row un-clickable (RuleRow's `isEmpty`), which
     // would make every assertion below vacuously unreachable instead of red.
-    assert.equal(container.querySelectorAll('div[role="button"]').length, 4);
+    assert.equal(container.querySelectorAll('button[aria-pressed]').length, 5);
   });
 
-  it('isolates the assembly\'s geometry-bearing parts, not its bare id', () => {
+  it('#5823 Enter on a legend button isolates the assembly\'s geometry-bearing parts', () => {
     seedLens({ resolveHighlightIds: assemblyResolver });
     const container = render(<LensPanel onClose={() => {}} />);
 
-    click(ruleRow(container, 'Assemblies'));
+    activate(ruleRow(container, 'Assemblies'), 'Enter');
 
     // Append, not replace: the parts MUST be there (the bare assembly renders
     // nothing), and the matched id rides along free because an id with no mesh
@@ -231,7 +231,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     assert.deepEqual(s.hiddenEntities, userHidden, 'the user\'s own hides must survive the round-trip untouched');
   });
 
-  it('round-trips through lens deactivation too, not just the rule row', () => {
+  it('#5823 Space on the lens header releases rule isolation', () => {
     seedLens({ resolveHighlightIds: assemblyResolver });
     const container = render(<LensPanel onClose={() => {}} />);
 
@@ -241,10 +241,18 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     // Turning the lens off runs the same releaseRuleIsolation ownership check.
     const card = container.querySelector<HTMLElement>(`div[data-tour="lens-card-${LENS.id}"]`);
     assert.ok(card, 'the lens card must render');
-    click(card);
+    const toggle = card.querySelector<HTMLButtonElement>('button[aria-pressed]');
+    assert.ok(toggle);
+    activate(toggle, ' ');
 
     assert.equal(useViewerStore.getState().isolatedEntities, null, 'deactivating the lens must release its isolation');
     assert.equal(useViewerStore.getState().lensRuleIsolation, null);
+    const count = toggle.querySelector<HTMLElement>('span.font-mono');
+    assert.ok(count);
+    click(count);
+    assert.equal(useViewerStore.getState().activeLensId, LENS.id, 'the rule-count area must reactivate the lens');
+    click(card);
+    assert.equal(useViewerStore.getState().activeLensId, null, 'empty card space must still toggle the lens');
   });
 
   it('leaves a geometry-bearing rule alone, so the fix does not broaden every isolation', () => {

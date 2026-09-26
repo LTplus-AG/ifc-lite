@@ -33,6 +33,7 @@ import type { FederatedModel } from '@/store/types.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { activate, press } from '@/test/render.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
 
 // `@tanstack/react-virtual` measures the scroll container's real
@@ -200,5 +201,55 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
       'Level 2 (model m2\'s own unrelated storey, which merely SHARES the local expressId 5 with model m1\'s Level 1) ' +
       'must NOT be highlighted — computeNodeState must check modelIds, not just expressIds, against selectedStoreys',
     );
+  });
+
+  it('activates hierarchy rows and model headers with Enter and Space (#5823)', () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['m1', federatedModel('m1', makeStore(5, 0, 'Level 1'))],
+        ['m2', federatedModel('m2', makeStore(6, 10, 'Level 2'))],
+      ]),
+    });
+    const container = renderPanel();
+    const level1 = storeyRow(container, 'Level 1');
+    assert.equal(level1.getAttribute('role'), 'treeitem');
+    activate(level1, 'Enter');
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([5]));
+
+    const level2 = storeyRow(container, 'Level 2');
+    activate(level2, ' ');
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([6]));
+
+    const modelRow = container.querySelector<HTMLElement>('button[aria-label="Edit tags for model m1.ifc"]')
+      ?.closest<HTMLElement>('[role="treeitem"]');
+    assert.ok(modelRow, 'model header should be a focusable tree item');
+    activate(modelRow, 'Enter');
+    assert.equal(useViewerStore.getState().selectedModelId, 'm1');
+    const secondModelRow = container.querySelector<HTMLElement>('button[aria-label="Edit tags for model m2.ifc"]')
+      ?.closest<HTMLElement>('[role="treeitem"]');
+    assert.ok(secondModelRow);
+    activate(secondModelRow, ' ');
+    assert.equal(useViewerStore.getState().selectedModelId, 'm2');
+  });
+
+  it('resizes the storeys and models split with arrow keys (#5823)', () => {
+    useViewerStore.setState({
+      models: new Map([
+        ['m1', federatedModel('m1', makeStore(5, 0, 'Level 1'))],
+        ['m2', federatedModel('m2', makeStore(6, 10, 'Level 2'))],
+      ]),
+    });
+    const container = renderPanel();
+    const divider = container.querySelector<HTMLElement>('[role="separator"][aria-orientation="horizontal"]');
+    assert.ok(divider);
+    assert.equal(divider.getAttribute('aria-valuenow'), '50');
+    const storeysSection = divider.previousElementSibling as HTMLElement;
+    press(divider, 'ArrowDown');
+    assert.equal(divider.getAttribute('aria-valuenow'), '55');
+    assert.ok(Math.abs(parseFloat(storeysSection.style.height) - 55) < 0.001);
+    press(divider, 'Home');
+    assert.equal(divider.getAttribute('aria-valuenow'), '15');
+    press(divider, 'End');
+    assert.equal(divider.getAttribute('aria-valuenow'), '85');
   });
 });

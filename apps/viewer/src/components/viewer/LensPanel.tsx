@@ -18,7 +18,7 @@
  */
 
 import { trackExportCompleted } from '@/lib/analytics';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, ArrowUpDown, GripVertical } from 'lucide-react';
 import { discoverDataSources, LENS_OPERATORS } from '@ifc-lite/lens';
 import { SearchableSelect } from './SearchableSelect';
@@ -40,144 +40,11 @@ import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry,
 import { LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n';
 import { OPERATOR_LABEL_KEYS, TYPE_LABEL_KEYS } from './lens-editor-labels';
-
-/** Format large counts compactly: 1234 → "1.2k" */
-function formatCount(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(n);
-}
+import { RuleRow, AutoColorRow } from './LensLegendRows';
 
 interface LensPanelProps {
   onClose?: () => void;
 }
-
-// ─── Rule display (read-only, clickable for isolation) ──────────────────────
-
-const RuleRow = memo(function RuleRow({
-  rule,
-  count,
-  isIsolated,
-  onClick,
-}: {
-  rule: LensRule;
-  count: number;
-  isIsolated?: boolean;
-  onClick?: () => void;
-}) {
-  const { t } = useTranslation();
-  const isEmpty = count === 0;
-  const isClickable = !!onClick && !isEmpty;
-
-  return (
-    <div
-      className={cn(
-        'group/row relative flex items-center gap-2 pl-3 pr-3 py-1.5 text-xs',
-        'border-l-2 transition-[border-color,background-color] duration-100',
-        !rule.enabled && 'opacity-40',
-        !isIsolated && !isEmpty && 'border-l-transparent',
-        isClickable && 'cursor-pointer hover:border-l-primary/70 hover:bg-zinc-100/80 dark:hover:bg-zinc-700/40',
-        isIsolated && 'border-l-primary bg-primary/8 dark:bg-primary/15',
-        isEmpty && 'border-l-transparent opacity-50 cursor-default',
-      )}
-      role={isClickable ? 'button' : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      onClick={(e) => { if (isClickable) { e.stopPropagation(); onClick(); } }}
-      onKeyDown={(e) => { if (isClickable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
-      title={isClickable ? t('lensPanel.ruleRow.isolateTooltip') : isEmpty ? t('lensPanel.ruleRow.emptyTooltip') : undefined}
-    >
-      <div
-        className={cn(
-          'w-3 h-3 rounded-sm flex-shrink-0 ring-1 ring-black/10 dark:ring-white/20',
-          isEmpty && 'grayscale',
-        )}
-        style={{ backgroundColor: rule.color }}
-      />
-      <span className={cn(
-        'flex-1 truncate font-medium',
-        isIsolated
-          ? 'text-zinc-900 dark:text-zinc-50'
-          : isEmpty
-            ? 'text-zinc-400 dark:text-zinc-600'
-            : 'text-zinc-900 dark:text-zinc-50',
-      )}>
-        {rule.name}
-      </span>
-      {isIsolated && (
-        <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
-          {t('lensPanel.isolatedBadge')}
-        </span>
-      )}
-      <span className={cn(
-        'text-[10px] tabular-nums font-mono min-w-[2ch] text-right',
-        isEmpty
-          ? 'text-zinc-300 dark:text-zinc-700'
-          : 'text-zinc-400 dark:text-zinc-500',
-      )}>
-        {isEmpty ? '—' : formatCount(count)}
-      </span>
-    </div>
-  );
-});
-
-// ─── Auto-color legend row (read-only, clickable for isolation) ─────────────
-
-const AutoColorRow = memo(function AutoColorRow({
-  entry,
-  isIsolated,
-  onClick,
-}: {
-  entry: AutoColorLegendEntry;
-  isIsolated?: boolean;
-  onClick?: () => void;
-}) {
-  const { t } = useTranslation();
-  const isEmpty = entry.count === 0;
-  const isClickable = !!onClick && !isEmpty;
-
-  return (
-    <div
-      className={cn(
-        'group/row relative flex items-center gap-2 pl-3 pr-3 py-1.5 text-xs',
-        'border-l-2 transition-[border-color,background-color] duration-100',
-        !isIsolated && !isEmpty && 'border-l-transparent',
-        isClickable && 'cursor-pointer hover:border-l-primary/70 hover:bg-zinc-100/80 dark:hover:bg-zinc-700/40',
-        isIsolated && 'border-l-primary bg-primary/8 dark:bg-primary/15',
-        isEmpty && 'border-l-transparent opacity-50 cursor-default',
-      )}
-      role={isClickable ? 'button' : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      onClick={(e) => { if (isClickable) { e.stopPropagation(); onClick(); } }}
-      onKeyDown={(e) => { if (isClickable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
-      title={isClickable ? t('lensPanel.autoColorRow.isolateTooltip') : undefined}
-    >
-      <div
-        className="w-3 h-3 rounded-sm flex-shrink-0 ring-1 ring-black/10 dark:ring-white/20"
-        style={{ backgroundColor: entry.color }}
-      />
-      <span
-        className={cn(
-          'flex-1 truncate font-medium text-zinc-900 dark:text-zinc-50',
-          // Absence buckets ("No classification", "Not in this system") are
-          // synthetic - not a value read off the model - so they're set in
-          // italics to read as a category rather than a classification code,
-          // while staying otherwise identical (same swatch shape, same
-          // clickable/isolate behavior) so they don't look broken or special.
-          entry.isAbsent && 'italic text-zinc-600 dark:text-zinc-300',
-        )}
-      >
-        {entry.name}
-      </span>
-      {isIsolated && (
-        <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
-          {t('lensPanel.isolatedBadge')}
-        </span>
-      )}
-      <span className="text-[10px] tabular-nums font-mono min-w-[2ch] text-right text-zinc-400 dark:text-zinc-500">
-        {formatCount(entry.count)}
-      </span>
-    </div>
-  );
-});
 
 // ─── Rule editor (inline editing with criteria type selector) ────────────────
 
@@ -352,6 +219,8 @@ export function RuleEditor({
         isDragOver && (dropEdge === 'bottom' ? 'border-b-primary' : 'border-t-primary'),
         isDragging && 'opacity-40',
       )}
+      role="group"
+      aria-label={rule.name}
       onDragOver={onDrop ? (e) => { e.preventDefault(); onDragEnter?.(index); } : undefined}
       onDrop={onDrop ? (e) => { e.preventDefault(); onDrop(index); } : undefined}
     >
@@ -360,7 +229,9 @@ export function RuleEditor({
             its column (invisible when there's nothing to reorder) so single- and
             multi-rule editors indent identically. Order is priority: first
             matching rule wins. (#1403) */}
-        <span
+        <button
+          type="button"
+          disabled={!onMove}
           draggable={!!onMove}
           onDragStart={onMove ? (e) => {
             e.dataTransfer.effectAllowed = 'move';
@@ -372,8 +243,6 @@ export function RuleEditor({
             if (e.key === 'ArrowUp') { e.preventDefault(); onMove(index, index - 1); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); onMove(index, index + 1); }
           } : undefined}
-          role={onMove ? 'button' : undefined}
-          tabIndex={onMove ? 0 : undefined}
           aria-label={onMove ? t('lensPanel.ruleEditor.reorderAriaLabel') : undefined}
           title={onMove ? t('lensPanel.ruleEditor.reorderTooltip') : undefined}
           className={cn(
@@ -384,7 +253,7 @@ export function RuleEditor({
           )}
         >
           <GripVertical className="h-3.5 w-3.5" />
-        </span>
+        </button>
         <input
           type="color"
           value={rule.color}
@@ -1097,19 +966,27 @@ function LensCard({
     : legendSort === 'name-asc' ? t('lensPanel.card.sortNameAsc') : t('lensPanel.card.sortNameDesc');
 
   return (
+    /* Nested legend and action buttons prevent a native wrapper button; the header button supplies keyboard activation. */
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       className={cn(
-        'border-2 transition-colors cursor-pointer group rounded-sm',
+        'border-2 transition-colors group rounded-sm',
         isActive
           ? 'border-primary bg-white dark:bg-zinc-900'
           : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-500',
       )}
-      onClick={() => onToggle(lens.id)}
+      onClick={(event) => {
+        if (!(event.target as Element).closest('button')) onToggle(lens.id);
+      }}
       {...tourAnchor(lensCardAnchor(lens.id))}
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2 min-w-0">
+        <button
+          type="button"
+          aria-pressed={isActive}
+          onClick={() => onToggle(lens.id)}
+          className="flex flex-1 items-center justify-between gap-2 min-w-0 self-stretch cursor-pointer text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        >
           {isActive ? (
             <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />
           ) : isAutoColor ? (
@@ -1120,7 +997,10 @@ function LensCard({
           <span className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 truncate">
             {lens.name}
           </span>
-        </div>
+          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono ml-auto shrink-0">
+            {isAutoColor ? t(TYPE_LABEL_KEYS[lens.autoColor!.source]) : t('lensPanel.card.ruleCount', { count: enabledRuleCount })}
+          </span>
+        </button>
         <div className="flex items-center gap-1">
           {onDuplicate && (
             <button
@@ -1149,15 +1029,8 @@ function LensCard({
               <Trash2 className="h-3 w-3" />
             </button>
           )}
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono ml-1">
-            {isAutoColor
-              ? t(TYPE_LABEL_KEYS[lens.autoColor!.source])
-              : t('lensPanel.card.ruleCount', { count: enabledRuleCount })}
-          </span>
         </div>
       </div>
-
-      {/* Auto-color legend (shown when active + auto-color lens) */}
       {isActive && legendToShow && legendToShow.length > 0 && (
         <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60" {...tourAnchor(TOUR_ANCHORS.lensLegend)}>
           <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">

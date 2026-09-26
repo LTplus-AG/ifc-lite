@@ -29,12 +29,12 @@ export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void
   // cannot drift out of sync with the others (#2654 review).
   state.clearClashFocus();
   // The lens stays active through a reset — its colours are re-sent above —
-  // so its hides stay too, re-owned by the lens (#5877).
-  const { lensHiddenIds, activeLensId } = useViewerStore.getState();
+  // so its hides stay too, retaining manual overlap ownership (#5877).
+  const { lensHiddenIds, lensAppliedHiddenIds, activeLensId } = useViewerStore.getState();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
   useViewerStore.setState({
     activeBasketViewId: null,
-    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds),
+    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds),
   });
 }
 

@@ -35,6 +35,7 @@ import {
   GROUP_ENTITY_TYPES,
   type AuthoredProduct,
 } from './treeDataBuilder';
+import { findNodePath } from './findNodePath';
 import type { HierarchySortMode } from './types';
 
 function createSpatialNode(
@@ -1591,5 +1592,69 @@ describe('type-group / ifc-type nodes — memberGlobalIds (deep-review follow-up
     assert.deepStrictEqual(typeNode.expressIds, [10]);
     assert.deepStrictEqual(typeNode.memberGlobalIds, [10]);
     assert.deepStrictEqual(typeNode.globalIds, [11, 12]);
+  });
+});
+
+describe('findNodePath (#5881)', () => {
+  const expandAll = { has: () => true };
+
+  it('finds a leaf several levels deep and returns its ancestor id chain in order', () => {
+    const dataStore = createSearchDataStore();
+    const expanded = buildTreeData(new Map(), dataStore, expandAll, false, []);
+    const found = findNodePath(expanded, (node) => node.name === 'Target Wall');
+    assert.ok(found);
+    assert.deepStrictEqual(
+      expanded.filter((n) => found.ancestorIds.includes(n.id)).map((n) => n.name),
+      ['Project', 'Site', 'Building', 'Storey 2'],
+    );
+    assert.strictEqual(expanded[found.targetIndex].name, 'Target Wall');
+    assert.strictEqual(found.targetId, expanded[found.targetIndex].id);
+  });
+
+  it('returns null when nothing matches', () => {
+    const dataStore = createSearchDataStore();
+    const expanded = buildTreeData(new Map(), dataStore, expandAll, false, []);
+    assert.strictEqual(findNodePath(expanded, (node) => node.name === 'Nonexistent'), null);
+  });
+
+  it('finds a node inside a federated model contribution only', () => {
+    useViewerStore.setState({ models: new Map() });
+    const offsetA = useViewerStore.getState().registerModelOffset('search-A', 8);
+    const offsetB = useViewerStore.getState().registerModelOffset('search-B', 8);
+    const modelA: FederatedModel = {
+      ...createModel(offsetA),
+      id: 'search-A',
+      name: 'Model A',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Wall A' }),
+      maxExpressId: 7,
+    };
+    const modelB: FederatedModel = {
+      ...createModel(offsetB),
+      id: 'search-B',
+      name: 'Model B',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Target Wall B' }),
+      maxExpressId: 7,
+    };
+    const models = new Map<string, FederatedModel>([['search-A', modelA], ['search-B', modelB]]);
+    useViewerStore.setState({ models });
+    const unified = buildUnifiedStoreys(models, 'name-asc');
+    const expanded = buildTreeData(models, null, expandAll, true, unified);
+    const targetGlobalId = offsetB + 7;
+
+    const found = findNodePath(
+      expanded,
+      (node) => node.type === 'element' && node.globalIds.includes(targetGlobalId),
+    );
+    assert.ok(found);
+    // The hit is under a unified storey, which the flat array lists BEFORE
+    // 'models-header' (the per-model MODELS section comes after the unified
+    // storeys) — so this hit's own ancestor chain never sees it, matching
+    // filterNodes's 'keeps a federated hit under its own model contribution
+    // only' test.
+    assert.deepStrictEqual(found.ancestorIds, [
+      `unified-${unified[0].key}`,
+      'contrib-search-B-4',
+    ]);
+    assert.strictEqual(expanded[found.targetIndex].id, 'element-search-B-7');
   });
 });

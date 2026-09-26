@@ -51,7 +51,7 @@ export default defineConfig({
   projects: [
     {
       name: 'viewer-e2e',
-      testMatch: /(viewer-smoke|mobile-page-zoom|usd-export|laz-wasm|model-reposition|document-text|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|hierarchy-names|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|section-measure-lasting-5893)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|mobile-page-zoom|usd-export|laz-wasm|model-reposition|document-text|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|hierarchy-names|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -72,7 +72,7 @@ export default defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /(viewer-smoke|mobile-page-zoom|usd-export|laz-wasm|model-reposition|document-text|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|hierarchy-names|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|section-measure-lasting-5893)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|mobile-page-zoom|usd-export|laz-wasm|model-reposition|document-text|rte-gpu-witness|federation-control-triplet|landxml-units-smoke|ribbon-labels|hierarchy-names|viewport-hud|command-palette-entry|navigation-presets|sticky-overrides|orbit-pivot-marker|target-size-focus-5826|visibility-chips|visibility-empty-result|visibility-scenarios|section-measure-lasting-5893)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: BASE_URL,

@@ -268,7 +268,7 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
         assert.notDeepEqual(camera.getTarget(), target, 'horizontal swipe must pan');
         assert.equal(camera.getDistance(), distance, 'pan preserves orbit distance');
 
-        const pinch = wheelEvent({ ctrlKey: true, deltaY: -120 });
+        const pinch = wheelEvent({ ctrlKey: true, deltaY: 120 });
         canvas.dispatchEvent(pinch);
         assert.notEqual(camera.getDistance(), distance, 'Ctrl + wheel must zoom');
       } finally {

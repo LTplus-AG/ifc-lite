@@ -46,7 +46,7 @@ it('#5823 selects the same document block by click, Enter, and Space', () => {
   root = createRoot(container);
   act(() => root?.render(
     <DocumentPreview
-      document={baseDocument}
+      document={{ ...baseDocument, blocks: [imageBlock, { kind: 'spacer', id: 'spacer', height: 12 }] }}
       bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }}
       aggregations={new Map()}
       chartMessages={new Map()}
@@ -59,6 +59,7 @@ it('#5823 selects the same document block by click, Enter, and Space', () => {
   assert.ok(block);
   assert.equal(block.getAttribute('role'), 'button');
   assert.equal(block.getAttribute('aria-label'), 'Image / logo');
+  assert.equal(container.querySelector('[data-preview-block="spacer"]')?.getAttribute('aria-label'), 'Spacer');
   click(block);
   activate(block, 'Enter');
   activate(block, ' ');

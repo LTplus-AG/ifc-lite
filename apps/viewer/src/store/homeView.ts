@@ -11,6 +11,7 @@ import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void {
   trackUiEvent('view_reset', { trigger });
   const state = useViewerStore.getState();
+  const hiddenBeforeReset = state.hiddenEntities;
   state.showAllInAllModels();
   state.clearStoreySelection();
   state.clearHierarchyBasketSelection();
@@ -34,7 +35,7 @@ export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
   useViewerStore.setState({
     activeBasketViewId: null,
-    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds),
+    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds, hiddenBeforeReset),
   });
 }
 

@@ -35,7 +35,7 @@ it('Settings → Collaboration saves a trimmed, bounded display name and rejects
   assert.equal(save.disabled, true);
   assert.equal(useViewerStore.getState().collabIdentity.name, 'Ada Lovelace');
 
-  enterText(input, 'x'.repeat(MAX_COLLAB_DISPLAY_NAME_LENGTH + 12));
-  click(save);
+  assert.equal(input.maxLength, MAX_COLLAB_DISPLAY_NAME_LENGTH);
+  act(() => useViewerStore.getState().setCollabIdentity({ name: 'x'.repeat(MAX_COLLAB_DISPLAY_NAME_LENGTH + 12) }));
   assert.equal(useViewerStore.getState().collabIdentity.name, 'x'.repeat(MAX_COLLAB_DISPLAY_NAME_LENGTH));
 });

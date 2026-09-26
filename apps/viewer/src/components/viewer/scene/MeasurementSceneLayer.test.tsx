@@ -14,6 +14,8 @@ import assert from 'node:assert/strict';
 import { cleanup, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { MeasurementSceneLayer } from './MeasurementSceneLayer.js';
+import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
+import { MeasureOverlay } from '../tools/MeasurePanel.js';
 
 const s = () => useViewerStore.getState();
 
@@ -60,5 +62,16 @@ describe('MeasurementSceneLayer (#5893)', () => {
     });
     const container = render(<MeasurementSceneLayer />);
     assert.equal(container.querySelector('svg'), null);
+  });
+
+  it('keeps finished measurements hidden when the Measure tool opens (#5893)', () => {
+    useViewerStore.setState({
+      activeTool: 'measure',
+      measurements: [A_MEASUREMENT],
+      sceneState: { ...s().sceneState, measurements: { visible: false } },
+    });
+    const container = render(<><ViewportHud /><MeasureOverlay /><MeasurementSceneLayer /></>);
+    assert.equal(container.querySelector('line[stroke-dasharray="6,3"]'), null);
+    assert.equal(s().measurements.length, 1, 'the hide toggle preserves the finished measurement');
   });
 });

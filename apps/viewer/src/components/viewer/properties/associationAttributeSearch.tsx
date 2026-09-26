@@ -68,7 +68,10 @@ function materialCard(info: MaterialInfo, id: string, query: string, t: Translat
   const title = info.name || typeLabel;
   const rows: SearchRow[] = [];
   if (info.type === 'Material') rows.push(...row(EXPRESS_NAME_ATTRIBUTE, info.name), ...row(EXPRESS_DESCRIPTION_ATTRIBUTE, info.description));
-  if (info.type !== 'Material') rows.push(...row(t('properties.material.setName'), info.name));
+  const hasSetRows = (info.type === 'MaterialLayerSet' && info.layers)
+    || (info.type === 'MaterialProfileSet' && info.profiles)
+    || (info.type === 'MaterialConstituentSet' && info.constituents);
+  if (hasSetRows) rows.push(...row(t('properties.material.setName'), info.name));
   info.layers?.forEach((layer, i) => {
     const heading = t('properties.material.layerN', { n: i + 1 });
     if (layer.thickness !== undefined) rows.push(...row(heading, formatThickness(layer.thickness, locale)));

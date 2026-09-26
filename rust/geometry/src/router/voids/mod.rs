@@ -686,7 +686,7 @@ impl GeometryRouter {
             // per-host diagnostic matches what the exact/rect paths record.
             let prism_bounds = world_host_bounds(&mesh);
             let prism_tris_before = mesh.triangle_count();
-            if let Some((cut, residual)) = self.try_prism_cut_frame_invariant(&mesh, ctx) {
+            if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
                 return match residual {
                     None => {
                         // Same per-host cut-effect snapshot the exact path
@@ -949,44 +949,6 @@ impl GeometryRouter {
             }
         }
         Some(result)
-    }
-
-    /// The analytic prism cut, decided on world coordinates for a plan-rotated
-    /// wall stored in a per-element local frame (#5739).
-    ///
-    /// The cut's route decisions (per-opening partition checks, the
-    /// hairline-tolerant emit gate) read the vertices at their stored f32
-    /// precision. A rotated wall's faces are planar only to that precision, so
-    /// the same wall could pass them in a local frame and fail them in the
-    /// world frame, where the wall-frame route then cut it closed. For such a
-    /// wall the cut runs on the world-coordinate copy of host and cutters (the
-    /// operands the world frame sees) and the result is moved back into the
-    /// host's frame, so both frames take the same route. Every other host,
-    /// and every world-frame host, runs the cut exactly as before.
-    fn try_prism_cut_frame_invariant(
-        &self,
-        mesh: &Mesh,
-        ctx: &VoidContext,
-    ) -> Option<(Mesh, Option<VoidContext>)> {
-        let origin = mesh.origin;
-        if origin == [0.0; 3] || self.wall_frame_axes(mesh, ctx).is_none() {
-            return self.try_prism_cut(mesh, ctx);
-        }
-        let mut world = mesh.clone();
-        for c in world.positions.chunks_exact_mut(3) {
-            for k in 0..3 {
-                c[k] = (c[k] as f64 + origin[k]) as f32;
-            }
-        }
-        world.origin = [0.0; 3];
-        let (mut cut, residual) = self.try_prism_cut(&world, &ctx.relativized_by([0.0; 3]))?;
-        for c in cut.positions.chunks_exact_mut(3) {
-            for k in 0..3 {
-                c[k] = (c[k] as f64 - origin[k]) as f32;
-            }
-        }
-        cut.origin = origin;
-        Some((cut, residual))
     }
 
     /// The #1167 wall frame `[run, height, normal]` for a plan-rotated wall

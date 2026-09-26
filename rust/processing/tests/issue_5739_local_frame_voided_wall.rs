@@ -3,14 +3,24 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Issue #5739: with per-element local frames on (the wasm and viewer
-//! default), a plan-rotated voided wall came back open while the native
-//! world path was closed. The analytic prism cut's closure verdict, and the
-//! wall-frame snap tolerance, read the vertices at their stored precision,
-//! so the same wall took a different route in each vertex frame.
+//! default), a plan-rotated voided wall came back open while the world frame
+//! cut it closed. Two wall-frame decisions read vertex precision in the frame
+//! the vertices are stored in: the closure test that gates the #5635 snap
+//! retry ran before rotate-back and degenerate cleanup, and the snap
+//! tolerance came from local-frame bounds. Both are now frame-invariant.
 //!
-//! The wall is #5635's (`common::wall_frame_seams`). Every angle is asserted
-//! in BOTH vertex frames, each chosen by an explicit router policy rather
-//! than the process-global env/override.
+//! KNOWN RESIDUAL, 61°: the analytic prism cut's own decisions (per-opening
+//! partition check, hairline emit gate at its 64-edge cap) also read stored
+//! precision. In the local frame this wall passes them with 64 open edges; in
+//! the world frame it fails them and is cut closed in the wall frame. Both
+//! frame-invariant fixes measured for that (a wall-frame comparison cut, and
+//! routing the cut through world coordinates) slowed ISSUE_098 or made local
+//! closure worse; see `scripts/perf/README.md`, "Dead ends". The test pins the
+//! residual so a change to it is noticed.
+//!
+//! The wall is #5635's (`common::wall_frame_seams`). Both vertex frames are
+//! chosen by an explicit router policy rather than the process-global
+//! env/override.
 
 mod common;
 
@@ -81,13 +91,29 @@ fn assert_leaf_closed(leaf: &MeshData, what: &str) {
 
 const PLAN_ANGLES: [f64; 8] = [-34.3, -12.0, 17.0, 29.0, 41.0, 61.0, 73.3, 133.0];
 
+/// The one angle whose local-frame analytic cut still keeps its seams.
+const KNOWN_RESIDUAL_DEG: f64 = 61.0;
+
 #[test]
 fn leaf_stays_closed_in_world_and_local_vertex_frames_5739() {
     for local_frame in [false, true] {
         for deg in std::iter::once(0.0).chain(PLAN_ANGLES) {
+            if local_frame && deg == KNOWN_RESIDUAL_DEG {
+                continue;
+            }
             let leaf = leaf_in_frame(deg, local_frame);
             assert_leaf_closed(&leaf, &format!("{deg}°, local_frame={local_frame} (#5739)"));
         }
     }
 }
 
+#[test]
+fn known_residual_61_degrees_in_the_local_frame_5739() {
+    let leaf = leaf_in_frame(KNOWN_RESIDUAL_DEG, true);
+    let open = unpaired_directed_edges(&leaf.positions, &leaf.indices);
+    assert_eq!(
+        open, 64,
+        "the 61° local-frame residual changed (64 open edges pinned, see the module doc); \
+         if it closed, move 61° back into the closed set"
+    );
+}

@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Plan-rotated walls with openings take the same cut route in the viewer as on the native path. The viewer stores each element's vertices relative to its own origin, and the analytic opening cut's decisions read the vertices at that stored precision. So the same wall could pass them in the viewer, keep seams, and come out open. The cut now decides on the wall's world coordinates. The wall-frame cut is judged rotated back and after degenerate-sliver cleanup, and its snap tolerance comes from world coordinates.
+More plan-rotated walls with openings now come out closed in the viewer. The viewer stores each element's vertices relative to its own origin. The wall-frame cut judged its closure before rotating back and removing degenerate slivers, and its snap tolerance came from those local coordinates, so walls the native path closed could stay open. Both decisions now use world-equivalent terms. One case remains: a wall whose analytic cut passes its seam-tolerant check only in the viewer's frame can still keep seams there.

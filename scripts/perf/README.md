@@ -787,7 +787,7 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
 
 ### Dead ends (do NOT re-spike without a new mechanism)
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
-  NOT SHIPPED; both attempts measured on ISSUE_098 against the merge-base. With
+  the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route
   decisions (per-opening partition check, hairline emit gate at its 64-edge cap)
   read f32 precision in the frame the vertices are stored in, so one 61° wall
@@ -810,6 +810,22 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     worse across rvt01, ISSUE_098 and ISSUE_129. ISSUE_098 goes from 306 to 353
     torn elements.
   - A cheap world-quantized final gate alone leaves the 61° wall open.
+
+  **Shipped instead (option B):** only the wall-frame closure test judged as
+  emitted and the world-magnitude snap tolerance. Against merge-base a20989951:
+  - Pinned single-thread user CPU, min of 6 (base vs branch):
+    - ISSUE_098: world 7.65 vs 7.85 s, local 9.80 vs 9.30 s
+    - ISSUE_129: world 2.19 vs 2.12 s, local 2.17 vs 2.29 s
+    - Holter: world 3.74 vs 3.63 s, local 3.76 vs 3.97 s
+    - AC20: 0.03 s both
+  - Multi-threaded geometry, 8 interleaved rounds: every range overlaps base.
+    ISSUE_098 world was re-run over 12 rounds: median 1099 vs 1129 ms, min 764
+    vs 777 ms, with equal CSG subtract counts (338).
+  - No element got less watertight on ISSUE_098, ISSUE_129, rvt01, ISSUE_171 or
+    02_BIMcollab in either frame. ISSUE_098 world goes 361 -> 357 torn, local
+    306 -> 305.
+  - The 61° wall stays open in the local frame; it is pinned as a known
+    residual.
 
   **Lessons:**
   - A route decision made at stored precision cannot be made frame-invariant

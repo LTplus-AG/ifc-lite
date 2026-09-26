@@ -15,7 +15,8 @@
  */
 
 import { useEffect, useMemo, useState, useCallback, type ReactNode } from 'react';
-import { CalendarPlus, Layers, Building2, Ruler, AlertTriangle, Loader2 } from 'lucide-react';
+import { CalendarPlus, Layers, Building2, Ruler, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Dialog,
   DialogContent,
@@ -353,7 +354,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>{t('schedule.generateDialog.cancel')}</Button>
           <Button onClick={handleGenerate} disabled={!canSubmit}>
-            {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarPlus className="h-4 w-4 mr-2" />}
+            {submitting ? <Spinner size="md" className="mr-2" /> : <CalendarPlus className="h-4 w-4 mr-2" />}
             {t('schedule.generateDialog.title')}
           </Button>
         </DialogFooter>

@@ -137,7 +137,7 @@ Two things the dialog states because the geometry cannot:
 Also available, and still the recommended route when a downstream tool can read the source:
 
 - **Download the original LandXML.** The export dialog offers the source file back, unchanged.
-- **Changes Only** export. Mutation deltas are source-independent JSON, not synthesised IFC, so
+- **Changes only (JSON delta)** export. Mutation deltas are source-independent JSON, not synthesised IFC, so
   the mapping does not apply to them.
 
 ## Diagnostics

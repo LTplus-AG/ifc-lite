@@ -18,19 +18,25 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, StrictMode } from 'react';
+import { act, StrictMode, type ComponentProps } from 'react';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { cleanup, render } from '@/test/render.js';
+import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 // Bare specifier, matching what the code under test imports, so the spy
 // watches the same module instance (see export-ui-parity.test.tsx).
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
 import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.js';
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
+import { usePaletteExportRunner } from './usePaletteExportRunner.js';
+import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 const PARAMS: CommandPaletteBuildParams = {
   execute: () => {},
@@ -69,6 +75,12 @@ function renderPalette(): void {
   );
 }
 
+let paletteRunner: ReturnType<typeof usePaletteExportRunner> | null = null;
+function PaletteRunnerHarness() {
+  paletteRunner = usePaletteExportRunner();
+  return paletteRunner.dialog;
+}
+
 /** Click the palette row whose label starts with `prefix`, then let its deferred action run. */
 async function runRow(prefix: RegExp): Promise<void> {
   const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
@@ -81,15 +93,44 @@ async function runRow(prefix: RegExp): Promise<void> {
 }
 
 beforeEach(() => {
-  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map() });
+  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), scheduleIsEdited: false });
 });
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map() });
+  clearDownloads();
+  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), scheduleIsEdited: false });
+  paletteRunner = null;
 });
 
 describe('command palette exports (#5601)', () => {
+  it('forwards palette surface to every registered export dialog (#5844)', async () => {
+    const model = fixtureModel('m');
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, scheduleIsEdited: true });
+    const dialogs = EXPORT_COMMANDS.filter((command) => command.kind === 'dialog');
+    const originals = dialogs.map((command) => ({ command, Dialog: command.Dialog }));
+    const seen: string[] = [];
+    try {
+      for (const { command, Dialog } of originals) {
+        Reflect.set(command, 'Dialog', (props: ComponentProps<typeof Dialog>) => {
+          assert.equal(props.surface, 'palette');
+          seen.push(command.id);
+          return null;
+        });
+      }
+      render(<BimReactContext.Provider value={{} as BimContext}><PaletteRunnerHarness /></BimReactContext.Provider>);
+      for (const command of dialogs) {
+        await act(async () => {
+          assert.ok(paletteRunner);
+          paletteRunner.runExport({ id: command.id });
+        });
+      }
+      assert.deepEqual(seen, dialogs.map((command) => command.id));
+    } finally {
+      for (const { command, Dialog } of originals) Reflect.set(command, 'Dialog', Dialog);
+    }
+  });
+
   it('offers exactly the registry formats, in registry order', () => {
     const ids = buildCommandPaletteCommands(PARAMS)
       .filter((cmd) => cmd.category === 'Export')
@@ -111,17 +152,94 @@ describe('command palette exports (#5601)', () => {
   it('a failing export from the palette surfaces an error toast', async () => {
     useViewerStore.setState({ ifcDataStore: brokenDataStore() });
     const errors: string[] = [];
+    const completions: unknown[] = [];
     const spy = mock.method(toast, 'error', (message: string) => { errors.push(message); });
+    const analytics = mock.method(posthog, 'capture', (event: string) => {
+      if (event === 'export_completed') completions.push(event);
+    });
     const quiet = mock.method(console, 'error', () => {});
     try {
       renderPalette();
       await runRow(/^Export JSON/);
     } finally {
       spy.mock.restore();
+      analytics.mock.restore();
       quiet.mock.restore();
     }
     assert.equal(errors.length, 1, `expected one error toast, saw ${errors.length}`);
     assert.match(errors[0], /JSON export failed/);
+    assert.deepEqual(completions, [], '#5844: a failed export must not emit a completion');
+  });
+
+  it('a successful palette JSON download emits one completion with palette surface (#5844)', async () => {
+    useViewerStore.setState({
+      ifcDataStore: {
+        source: { byteLength: 4, materialize: () => new Uint8Array(4) },
+        entities: { count: 0 },
+      } as unknown as IfcDataStore,
+    });
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const spy = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    try {
+      renderPalette();
+      await runRow(/^Export JSON/);
+    } finally {
+      spy.mock.restore();
+    }
+    assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+      { event: 'export_completed', properties: { format: 'json', surface: 'palette', row_count: 0 } },
+    ]);
+  });
+
+  it('each palette CSV table and screenshot emits one completion for its download (#5844)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const model = { ...fixtureModel('m'), ifcDataStore };
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore });
+    const csv = EXPORT_COMMANDS.find((command) => command.id === 'csv');
+    assert.ok(csv && csv.kind === 'table-menu');
+    const canvas = document.createElement('canvas');
+    canvas.dataset.viewport = 'main';
+    canvas.toDataURL = () => 'data:image/png;base64,AA==';
+    document.body.appendChild(canvas);
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    const init = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportCsv = mock.method(GeometryProcessor.prototype, 'exportCsv', () => new TextEncoder().encode('a,b\n'));
+    const dispose = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}><PaletteRunnerHarness /></BimReactContext.Provider>);
+      for (const item of csv.items) {
+        const before = events.length;
+        await act(async () => {
+          assert.ok(paletteRunner);
+          paletteRunner.runExport({ id: 'csv', table: item.type });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        assert.deepEqual(events.slice(before).filter(({ event }) => event === 'export_completed'), [
+          { event: 'export_completed', properties: { format: 'csv', surface: 'palette' } },
+        ], `CSV ${item.type} must record exactly one completion`);
+      }
+      const before = events.length;
+      await act(async () => {
+        assert.ok(paletteRunner);
+        paletteRunner.runExport({ id: 'screenshot' });
+      });
+      assert.deepEqual(events.slice(before).filter(({ event }) => event === 'export_completed'), [
+        { event: 'export_completed', properties: { format: 'png', surface: 'palette' } },
+      ]);
+      assert.equal(downloadedNames().length, csv.items.length + 1, 'one browser download per completion');
+      assert.equal(exportCsv.mock.callCount(), csv.items.length, 'every registered CSV table reached the writer');
+    } finally {
+      analytics.mock.restore();
+      init.mock.restore();
+      exportCsv.mock.restore();
+      dispose.mock.restore();
+      canvas.remove();
+    }
   });
 
   it('GLB opens the same export dialog the toolbars use', async () => {

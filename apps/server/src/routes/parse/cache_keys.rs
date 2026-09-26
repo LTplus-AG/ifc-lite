@@ -42,7 +42,7 @@ pub(crate) fn cache_key_from_parts(
 ///
 /// Lives beside [`cache_key_from_parts`] because that is what it protects. The
 /// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
-/// the namespace suffix (`-parquet-v5`, `-datamodel-v7`, ...) is appended after
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v8`, ...) is appended after
 /// it, so a caller-shaped string is a caller-shaped cache key. Checking the
 /// shape keeps the value to the one job it has, naming a file.
 ///
@@ -223,13 +223,11 @@ pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
 /// the reader (`get_data_model`): three separate literals could disagree, and a
 /// reader looking up a key nobody writes answers `202` forever.
 ///
-/// The suffix bumps on EVERY change to the data-model payload's columns. `v6`
-/// with issue #3860: the relationships table gained `rel_id`. Without the bump
-/// a warm `CACHE_DIR` replays the pre-bump blob verbatim, the column is absent,
-/// the decoder correctly omits it, and the viewer's server path is back to
-/// `RelId = 0` on every exported relationship row with nothing saying so.
+/// The suffix bumps on EVERY change to the data-model payload's columns.
+/// `v8` adds complete material association fields (#5296); a warm `v7` cache
+/// cannot support material value checks even after the server is upgraded.
 pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-datamodel-v7")
+    format!("{cache_key}-datamodel-v8")
 }
 
 /// Whether a data model at the CURRENT payload version is cached for

@@ -4,6 +4,9 @@
 
 import type { ObjectCountSummary } from './objectCountSummary';
 
+/** Builders need only an expansion decision, so search can project a fully expanded tree without changing user state. */
+export type ExpansionLookup = Pick<ReadonlySet<string>, 'has'>;
+
 /** Node types for the hierarchy tree */
 export type NodeType =
   | 'unified-storey'      // Grouped storey across models (multi-model only)
@@ -60,6 +63,8 @@ export interface TreeNode {
   entityExpressId?: number;
   /** Model IDs this node belongs to */
   modelIds: string[];
+  /** Owning model for a row representing one model; absent for cross-model groups. */
+  modelId?: string;
   name: string;
   /**
    * Secondary descriptive label rendered muted after `name`, currently the IFC

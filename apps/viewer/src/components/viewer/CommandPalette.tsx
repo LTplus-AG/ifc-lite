@@ -19,6 +19,8 @@ import type { CommandContribution } from '@ifc-lite/extensions';
 import { getRecentFiles, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import { trackUiEvent } from '@/lib/analytics';
+import { commandIdForAnalytics } from '@/lib/analytics-ui-events';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
 import { usePaletteExportRunner } from './usePaletteExportRunner';
@@ -26,8 +28,7 @@ import {
   type Command,
   type Category,
   type FlatItem,
-  MAX_RECENT,
-  CATEGORY_ORDER,
+  browseCommands,
   rankCommand,
   getRecentIds,
   recordUsage,
@@ -39,7 +40,7 @@ import {
  *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
 function activateRightPanel(panel: RightPanel) {
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleWorkspacePanel(panel);
+  useViewerStore.getState().toggleWorkspacePanel(panel, 'palette');
 }
 
 /** Category header text, browse mode (#4918 slice 3). Exhaustive by type: a
@@ -63,7 +64,7 @@ const CATEGORY_LABEL_KEY: Record<Category, TranslationKey> = {
  *  flips that used to live here knew only the dock flags, so toggling a FLOATING Lists panel left it on screen with nothing latched. */
 function activateBottomPanel(panel: BottomPanelId) {
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleBottomPanel(panel);
+  useViewerStore.getState().toggleBottomPanel(panel, 'palette');
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   const { t } = useTranslation();
-  const { runExport, dialog: exportDialog } = usePaletteExportRunner();
+  const { runExport, dialog: exportDialog, extensionExporters } = usePaletteExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => buildCommandPaletteCommands({
@@ -119,57 +120,33 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     activateRightPanel,
     activateBottomPanel,
     runExport,
-  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport]);
+    extensionExporters,
+  }), [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters]);
 
 
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
   const { grouped, flatItems } = useMemo(() => {
+    if (!query) return browseCommands(commands, recentIds);
     const groups: { category: string; items: FlatItem[] }[] = [];
     const flat: FlatItem[] = [];
     let idx = 0;
 
-    if (query) {
-      // ── Searching: flat ranked list, no categories ──
-      const scored = commands
-        .map(cmd => ({ cmd, s: rankCommand(cmd, query, cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
-        .filter(x => x.s > 0);
-      scored.sort((a, b) => b.s - a.s);
+    // ── Searching: flat ranked list, no categories ──
+    const scored = commands
+      .map(cmd => ({ cmd, s: rankCommand(cmd, query, cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : undefined) }))
+      .filter(x => x.s > 0);
+    scored.sort((a, b) => b.s - a.s);
 
-      if (scored.length > 0) {
-        const items: FlatItem[] = scored.map(({ cmd }) => {
-          const item = { cmd, flatIdx: idx++ };
-          flat.push(item);
-          return item;
-        });
-        groups.push({ category: '', items }); // empty category = no header
-      }
-    } else {
-      // ── Browsing: recent on top, then categories ──
-      if (recentIds.length > 0) {
-        const items: FlatItem[] = [];
-        for (const id of recentIds.slice(0, MAX_RECENT)) {
-          const cmd = commands.find(c => c.id === id);
-          if (cmd) { const item = { cmd, flatIdx: idx++ }; items.push(item); flat.push(item); }
-        }
-        if (items.length > 0) groups.push({ category: 'Recent', items });
-      }
-
-      for (const cat of CATEGORY_ORDER) {
-        if (cat === 'Recent') continue;
-        const catCmds = commands.filter(c => c.category === cat);
-        if (catCmds.length > 0) {
-          const items: FlatItem[] = catCmds.map(cmd => {
-            const item = { cmd, flatIdx: idx++ };
-            flat.push(item);
-            return item;
-          });
-          groups.push({ category: cat, items });
-        }
-      }
+    if (scored.length > 0) {
+      const items: FlatItem[] = scored.map(({ cmd }) => {
+        const item = { cmd, flatIdx: idx++ };
+        flat.push(item);
+        return item;
+      });
+      groups.push({ category: '', items }); // empty category = no header
     }
-
     return { grouped: groups, flatItems: flat };
   }, [commands, query, recentIds, t]);
 
@@ -185,6 +162,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
+    trackUiEvent('command_executed', { command_id: commandIdForAnalytics(cmd.id), surface: 'palette' });
     // File-dialog actions must run while user activation is still live; deferring
     // them to a frame later voids it and Chrome silently ignores the dialog.
     if (cmd.immediate) {

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Spinner } from '@/components/ui/spinner';
+
 /**
  * Single mount point for the tour UI (ViewerLayout's global-overlays block).
  *
@@ -12,7 +14,7 @@
  */
 
 import { createPortal } from 'react-dom';
-import { Loader2 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { cancelPrereq, confirmPrereqWithDemo } from '@/lib/tours/controller';
@@ -46,7 +48,7 @@ function PrereqCard({ tour }: { tour: TourDefinition }) {
           {t('tours.tourHost.cancel')}
         </Button>
         <Button size="sm" disabled={demoLoading} onClick={() => void confirmPrereqWithDemo()}>
-          {demoLoading && <Loader2 className="animate-spin" />}
+          {demoLoading && <Spinner />}
           {needsStack ? t('tours.tourHost.loadDemoStack') : t('tours.tourHost.loadDemoProject')}
         </Button>
       </div>

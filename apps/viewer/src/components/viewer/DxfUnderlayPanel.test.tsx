@@ -162,7 +162,7 @@ describe('DxfUnderlayPanel: independent 2D/3D visibility toggles (issue #2043)',
 
   function toggleButton(container: HTMLElement, titleSubstring: string): HTMLButtonElement {
     const btn = [...container.querySelectorAll('button')].find((el) =>
-      el.getAttribute('title')?.includes(titleSubstring),
+      el.getAttribute('aria-label')?.includes(titleSubstring),
     );
     assert.ok(btn instanceof HTMLButtonElement, `expected a button titled like "${titleSubstring}"`);
     return btn;

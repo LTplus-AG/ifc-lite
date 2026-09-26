@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { HudSurface } from '@/components/viewport-ui/hud';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -176,15 +177,13 @@ export function AnnotationPopover({
             )}
           </span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('annotations.popover.closeButtonTitle')}
           className="h-5 w-5 p-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           onClick={onClose}
-          title={t('annotations.popover.closeButtonTitle')}
         >
           <X className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
 
       {/* Body */}
@@ -269,24 +268,20 @@ export function AnnotationPopover({
                 )}
               </span>
               <div className="flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <IconButton
+                  label={t('annotations.popover.editButtonTitle')}
                   className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
                   onClick={() => setEditing(true)}
-                  title={t('annotations.popover.editButtonTitle')}
                 >
                   <Pencil className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
+                </IconButton>
+                <IconButton
+                  label={t('annotations.popover.deleteButtonTitle')}
                   className="h-6 w-6 p-0 text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
                   onClick={onDelete}
-                  title={t('annotations.popover.deleteButtonTitle')}
                 >
                   <Trash2 className="h-3 w-3" />
-                </Button>
+                </IconButton>
               </div>
             </div>
           </>

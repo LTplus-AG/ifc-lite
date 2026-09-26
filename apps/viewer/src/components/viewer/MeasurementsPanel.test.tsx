@@ -12,7 +12,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, waitFor, mouseDown, press, advance } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { useViewerStore } from '@/store/index.js';
 import type { MeasurePoint } from '@/store/types.js';
 import { MeasurementsPanel } from './MeasurementsPanel.js';
@@ -26,8 +27,6 @@ const START = mp(0, 0, 0);
 const END = mp(3, 3, -4);
 const M1 = { id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) };
 const M2 = { id: 'm2', start: START, end: mp(2, 0, 0), distance: 2 };
-
-const originalConfirm = window.confirm;
 
 beforeEach(() => {
   useViewerStore.setState({
@@ -50,7 +49,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.confirm = originalConfirm;
 });
 
 function tab(container: HTMLElement, label: string): Element {
@@ -80,12 +78,28 @@ describe('Measurements panel (#5502)', () => {
   it('Point tab reads the last endpoint in IFC axes; Qty tab answers for an empty selection', () => {
     useViewerStore.setState({ measurements: [M1] });
     const container = render(<MeasurementsPanel />);
-    click(tab(container, 'Point'));
+    mouseDown(tab(container, 'Point'));
     assert.match(container.textContent ?? '', /X 3\.000\s+Y 4\.000\s+Z 3\.000/, container.textContent ?? '');
     assert.equal(tab(container, 'Point').getAttribute('aria-selected'), 'true');
-    click(tab(container, 'Qty'));
+    mouseDown(tab(container, 'Qty'));
     assert.match(container.textContent ?? '', /Select elements to read their quantities/);
     assert.doesNotMatch(container.textContent ?? '', /X 3\.000/);
+  });
+
+  it('#5815 ArrowRight selects Point and ties its readout to the tab', async () => {
+    useViewerStore.setState({ measurements: [M1] });
+    const container = render(<MeasurementsPanel />);
+    const list = tab(container, 'List') as HTMLElement;
+    list.focus();
+    press(list, 'ArrowRight');
+    await advance(5);
+    const point = tab(container, 'Point') as HTMLElement;
+    assert.equal(document.activeElement, point);
+    assert.equal(point.getAttribute('aria-selected'), 'true');
+    const panel = container.querySelector('[role="tabpanel"][data-state="active"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), point.id);
+    assert.match(panel.textContent ?? '', /X 3\.000/);
   });
 
   it('offers to start measuring from an empty list only while the tool is closed', () => {
@@ -103,17 +117,23 @@ describe('Measurements panel (#5502)', () => {
     );
   });
 
-  it('Clear all asks first and clears every kind when accepted', () => {
+  it('Clear all asks first and clears every kind when accepted', async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
     useViewerStore.setState({ measurements: [M1] });
-    const asked: string[] = [];
-    window.confirm = (m?: string) => { asked.push(m ?? ''); return asked.length > 1; };
-    const container = render(<MeasurementsPanel />);
+    const container = render(<><MeasurementsPanel /><ConfirmDialogHost /></>);
     const clear = container.querySelector('button[title="Clear all"]');
     assert.ok(clear);
     click(clear);
+    let dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', /Clear every measurement\? This cannot be undone\./);
     assert.equal(useViewerStore.getState().measurements.length, 1, 'declined: nothing cleared');
+    click(dialog.querySelector('button')!);
     click(clear);
-    assert.deepEqual(asked, ['Clear every measurement? This cannot be undone.', 'Clear every measurement? This cannot be undone.']);
+    dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    click(dialog.querySelectorAll('button')[1]);
+    await waitFor(() => useViewerStore.getState().measurements.length === 0, 'accepted clear removes measurements');
     assert.equal(useViewerStore.getState().measurements.length, 0);
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 0);
     assert.equal(container.querySelector('button[title="Clear all"]'), null, 'nothing left to clear');

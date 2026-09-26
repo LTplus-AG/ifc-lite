@@ -357,22 +357,20 @@ function CustomRuleItem({
   if (!isEditing) {
     return (
       <div
-        className="flex items-center gap-2 px-2 py-1.5 bg-muted/30 rounded text-xs cursor-pointer hover:bg-muted/50"
-        onClick={onEdit}
+        className="group flex items-center gap-2 px-2 py-1.5 bg-muted/30 rounded text-xs hover:bg-muted/50"
       >
-        <GripVertical className="h-3 w-3 text-muted-foreground" />
-        {rule.style.fillColor && (
-          <div
-            className="w-4 h-4 rounded border border-black/20"
-            style={{ backgroundColor: rule.style.fillColor }}
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="font-medium truncate">{rule.name}</div>
-          <div className="text-muted-foreground truncate">
-            {ifcTypes.join(', ') || t('drawingUnderlay.settings.clickToEditPlaceholder')}
-          </div>
-        </div>
+        <button type="button" className="flex flex-1 min-w-0 items-center gap-2 text-left" onClick={onEdit}>
+          <GripVertical className="h-3 w-3 text-muted-foreground" />
+          {rule.style.fillColor && (
+            <span className="w-4 h-4 rounded border border-black/20" style={{ backgroundColor: rule.style.fillColor }} />
+          )}
+          <span className="flex-1 min-w-0">
+            <span className="block font-medium truncate">{rule.name}</span>
+            <span className="block text-muted-foreground truncate">
+              {ifcTypes.join(', ') || t('drawingUnderlay.settings.clickToEditPlaceholder')}
+            </span>
+          </span>
+        </button>
         <Button
           variant="ghost"
           size="icon-sm"

@@ -22,13 +22,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Camera, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
 
 const ref = <T,>(current: T) => ({ current });
 const noop = () => {};
 
-function pointer(type: string, button: number, x: number, y: number): PointerEvent {
-  const e = new PointerEvent(type, { button, pointerId: 1, bubbles: true, cancelable: true });
+function pointer(type: string, button: number, x: number, y: number, modifiers: PointerEventInit = {}): PointerEvent {
+  const e = new PointerEvent(type, { button, pointerId: 1, bubbles: true, cancelable: true, ...modifiers });
   Object.defineProperties(e, {
     clientX: { value: x, configurable: true },
     clientY: { value: y, configurable: true },
@@ -226,4 +227,38 @@ describe('useMouseControls right-button fly mode', () => {
     assert.equal(updates, 0, 'and does not drag the measurement');
     canvas.dispatchEvent(pointer('pointerup', 2, 460, 300));
   });
+
+  for (const modelCount of [1, 2]) {
+    for (const tool of ['select', 'measure']) {
+      it(`Shift+left pans with ${tool} across ${modelCount} model(s) (#5887)`, () => {
+        const previous = useViewerStore.getState();
+        const models = Array.from({ length: modelCount }, (_, i) =>
+          fixtureModel(`model-${i}`, { idOffset: i * 1_000_000 }));
+        useViewerStore.setState({ ...fixtureModels(...models), measureMode: 'drag', interactionMode: 'all' });
+        try {
+          const point = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+          let measureUpdates = 0;
+          const { canvas, camera } = mount({
+            activeToolRef: { current: tool },
+            activeMeasurementRef: { current: { start: point, current: point, distance: 0 } },
+            updateMeasurement: () => { measureUpdates++; },
+          });
+          const position = camera.getPosition();
+          const target = camera.getTarget();
+          canvas.dispatchEvent(pointer('pointerdown', 0, 400, 300, { shiftKey: true }));
+          canvas.dispatchEvent(pointer('pointermove', 0, 460, 330, { shiftKey: true }));
+          assert.notDeepEqual(camera.getTarget(), target, 'pan must translate the target');
+          assert.notDeepEqual(camera.getPosition(), position, 'pan must translate the camera');
+          assert.equal(camera.getPosition().x - position.x, camera.getTarget().x - target.x);
+          assert.equal(measureUpdates, 0, 'navigation must not update an active measurement');
+          canvas.dispatchEvent(pointer('pointerup', 0, 460, 330, { shiftKey: true }));
+        } finally {
+          useViewerStore.setState({
+            models: previous.models, activeModelId: previous.activeModelId,
+            measureMode: previous.measureMode, interactionMode: previous.interactionMode,
+          });
+        }
+      });
+    }
+  }
 });

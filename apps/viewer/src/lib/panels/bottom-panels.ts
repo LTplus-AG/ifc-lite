@@ -80,3 +80,11 @@ export function activeBottomPanel(flags: BottomPanelFlags): BottomPanelId | null
 export function isBottomPanelOpen(flags: BottomPanelFlags, id: BottomPanelId): boolean {
   return flags[BOTTOM_PANEL_FLAG[id]];
 }
+
+/** Open in the strip itself: flag on, and neither floating nor popped out into an OS window. */
+export function isBottomPanelDocked(
+  state: BottomPanelFlags & { floatingPanels: ReadonlyArray<{ id: string }>; poppedOutIds: ReadonlyArray<string> },
+  id: BottomPanelId,
+): boolean {
+  return isBottomPanelOpen(state, id) && !state.floatingPanels.some((p) => p.id === id) && !state.poppedOutIds.includes(id);
+}

@@ -63,6 +63,7 @@ import {
 } from '@/lib/lists/column-edit';
 import { previewSetPattern } from './pattern-preview';
 import { useTranslation } from '@/i18n/useTranslation';
+import { LIST_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
 import {
   discoverConditionValues,
   storesWithMutationViews,
@@ -1194,10 +1195,6 @@ function ConditionRow({
     classification: t('lists.builder.source.classification'), spatial: t('lists.builder.source.spatial'),
     model: t('lists.builder.source.model'), zone: t('lists.builder.source.zone'),
   };
-  const operatorLabels: Record<ConditionOperator, string> = {
-    equals: '=', notEquals: '≠', contains: t('lists.builder.operator.contains'),
-    gt: '>', lt: '<', gte: '≥', lte: '≤', exists: t('lists.builder.operator.isSet'),
-  };
   const spatialLevelLabels: Record<string, string> = {
     Container: t('lists.builder.spatial.container'), Storey: t('lists.builder.spatial.storey'),
     Building: t('lists.builder.spatial.building'), Site: t('lists.builder.spatial.site'),
@@ -1354,7 +1351,7 @@ function ConditionRow({
         aria-label={t('lists.builder.operatorAriaLabel')}
       >
         {ops.map((op) => (
-          <option key={op} value={op}>{operatorLabels[op]}</option>
+          <option key={op} value={op}>{t(LIST_OPERATOR_LABEL_KEYS[op])}</option>
         ))}
       </select>
 

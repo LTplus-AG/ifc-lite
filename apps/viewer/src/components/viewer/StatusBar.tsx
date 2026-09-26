@@ -3,16 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2, Layers } from 'lucide-react';
+import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
-import { formatNumber, formatBytes } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { StatusBarPresentationButton } from './StatusBarPresentationButton';
+import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { collectMeshedIds, countShapedObjects, createShapePredicate } from '@/lib/object-count';
@@ -22,7 +25,6 @@ import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
-
 /** One loaded model's store paired with the geometry produced from it. */
 interface CountedModel {
   modelId: string;
@@ -34,14 +36,14 @@ interface CountedModel {
 export function StatusBar() {
   const { t } = useTranslation();
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
-  const progress = useViewerStore((s) => s.progress);
-  const error = useViewerStore((s) => s.error);
+  const progress = useViewerStore(selectActiveLoadProgress);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
-  const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
+  const activeStreamCanceller = useViewerStore(selectLoadCanceller);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const showPerformanceStats = useViewerStore((s) => s.showPerformanceStats);
   const webgpu = useWebGPU();
   // The storey pill and the hidden/ghosted count moved here from
   // `ViewportOverlays` (#5504, charter #5478 item 22); mobile keeps its own
@@ -49,8 +51,6 @@ export function StatusBar() {
   // `{!isMobile && <StatusBar />}`).
   const { storeyNames, objectCounts } = useViewportStatusSummary();
 
-  const [fps, setFps] = useState(60);
-  const [memory, setMemory] = useState(0);
   const [flavorDialogOpen, setFlavorDialogOpen] = useState(false);
   /** Deep-link from Command Palette → "Manage flavors…". */
   const flavorDialogRequested = useViewerStore((s) => s.flavorDialogRequested);
@@ -61,48 +61,6 @@ export function StatusBar() {
       setFlavorDialogRequested(false);
     }
   }, [flavorDialogRequested, setFlavorDialogRequested]);
-
-  // FPS counter (simplified)
-  useEffect(() => {
-    let frameCount = 0;
-    let lastTime = performance.now();
-    let animationId: number;
-
-    const measureFps = () => {
-      frameCount++;
-      const currentTime = performance.now();
-
-      if (currentTime - lastTime >= 1000) {
-        setFps(frameCount);
-        frameCount = 0;
-        lastTime = currentTime;
-      }
-
-      animationId = requestAnimationFrame(measureFps);
-    };
-
-    animationId = requestAnimationFrame(measureFps);
-    return () => cancelAnimationFrame(animationId);
-  }, []);
-
-  // Memory usage (if available)
-  useEffect(() => {
-    const updateMemory = () => {
-      // Avoid `as any` per repo TypeScript rules — narrow to a concrete shape.
-      // `performance.memory` is Chromium-only and absent from lib.dom.
-      type PerformanceWithMemory = Performance & {
-        memory?: { usedJSHeapSize: number };
-      };
-      const memoryInfo = (performance as PerformanceWithMemory).memory;
-      if (memoryInfo) {
-        setMemory(memoryInfo.usedJSHeapSize);
-      }
-    };
-
-    updateMemory();
-    const interval = setInterval(updateMemory, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Every model whose objects this bar speaks for, paired with its own
   // geometry. Federated models each carry their own store and meshes; legacy
@@ -132,15 +90,6 @@ export function StatusBar() {
       geometryReady: geometryResult != null,
     }] : [];
   }, [models, ifcDataStore, geometryResult]);
-
-  const triangleCount = useMemo(() => {
-    if (models.size === 0) return geometryResult?.totalTriangles ?? 0;
-    let total = 0;
-    for (const model of models.values()) {
-      total += model.geometryResult?.totalTriangles ?? 0;
-    }
-    return total;
-  }, [models, geometryResult]);
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's
@@ -259,16 +208,15 @@ export function StatusBar() {
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
       {/* Left: Status */}
       <div className="flex items-center gap-3">
+        {/* A load error shows once, in the viewport's load-error card
+            (#5851) — not here too. */}
         {loading ? (
           <span className="text-primary">{progress?.phase || t('shellChrome.statusBar.loadingFallback')}</span>
-        ) : error ? (
-          <span className="text-destructive">{error}</span>
         ) : (
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
-        {/* Cancel button — only visible while a long-running stream
-            (LAS/LAZ/PLY/PCD/E57) is in flight. The loader hooks
-            register/clear the canceller around `await ingest.done`. */}
+        {/* Cancel: shown while a model load (#5849) or point-cloud stream
+            has published a canceller; the loading card uses the same selector. */}
         {activeStreamCanceller && (
           <button
             type="button"
@@ -327,34 +275,26 @@ export function StatusBar() {
           </span>
         </div>
 
-        <Separator orientation="vertical" className="h-3.5" />
-
-        <div className="flex items-center gap-1.5">
-          <Triangle className="h-3.5 w-3.5" />
-          <span>
-            {formatNumber(triangleCount)} {t('shellChrome.statusBar.trisCount', { count: triangleCount })}
-          </span>
-        </div>
+        {showPerformanceStats && (
+          <>
+            <Separator orientation="vertical" className="h-3.5" />
+            <TriangleCount models={models} geometryResult={geometryResult} />
+          </>
+        )}
       </div>
 
       {/* Right: Performance */}
       <div className="flex items-center gap-3">
-        <span className={fps < 30 ? 'text-destructive' : fps < 50 ? 'text-yellow-500' : ''}>
-          {fps} {t('shellChrome.statusBar.fpsUnit')}
-        </span>
-
-        {memory > 0 && (
+        {showPerformanceStats && (
           <>
+            <FpsMemoryStats />
             <Separator orientation="vertical" className="h-3.5" />
-            <span>{formatBytes(memory)}</span>
           </>
         )}
 
-        <Separator orientation="vertical" className="h-3.5" />
-
         <div className="flex items-center gap-1">
           {webgpu.checking ? (
-            <Loader2 className="h-3.5 w-3.5 text-zinc-400 animate-spin" />
+            <Spinner size="sm" className="text-zinc-400" />
           ) : webgpu.supported ? (
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           ) : (

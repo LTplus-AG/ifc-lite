@@ -20,7 +20,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, PencilRuler, RefreshCw, Video } from 'lucide-react';
+import { PencilRuler, RefreshCw, Video } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
@@ -34,6 +35,7 @@ import { DrawingExportMenu } from './DrawingExportMenu';
 import { DrawingCanvasView } from './DrawingCanvasView';
 import { DrawingStatusLine } from './DrawingStatusLine';
 import { DrawingInspector } from './DrawingInspector';
+import { DrawingSectionCutMenu } from './DrawingSectionCutMenu';
 
 /** Labels need ~1180px for one row; icons alone fit from ~640px; below that
  *  the rarest items overflow (see DrawingToolbar). */
@@ -111,11 +113,11 @@ export function DrawingPanel(): React.ReactElement {
         <div className="flex min-w-0 items-center gap-2">
           <PencilRuler className="h-4 w-4 shrink-0" />
           <span className="shrink-0 text-sm font-medium">{t('section2d.heading')}</span>
-          <span className="truncate text-xs text-muted-foreground tabular-nums">{cutLabel}</span>
+          <DrawingSectionCutMenu cutLabel={cutLabel} />
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <HeaderAction label={t('section2d.regenerate')} onClick={() => vm.runtime.generateDrawing(false)} disabled={status === 'generating'}>
-            {status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {status === 'generating' ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </HeaderAction>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -146,6 +148,8 @@ export function DrawingPanel(): React.ReactElement {
             onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
             displayedScale={displayOptions.scale || 100}
             sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
+            markupCounts={vm.markupCounts}
+            visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
           />
         </div>
       </div>

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -39,6 +40,7 @@ export function PlacementFiles() {
       const state = useViewerStore.getState();
       const value = makePlacementManifest(state.models, state.modelPlacement.placements, placementFrameKey(state));
       downloadBlob(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }), `${sanitizeFilename('model-placements')}.json`);
+      trackExportCompleted({ format: 'json', surface: 'placement_panel' });
     }}>{t('repositionPanel.files.exportButton')}</Button>
     <label className="block">{t('repositionPanel.files.openLabel')}<input aria-label={t('repositionPanel.files.openLabel')} type="file" accept=".json,application/json"
       onChange={(event) => { const file = event.target.files?.[0]; if (file) void read(file); event.target.value = ''; }} /></label>

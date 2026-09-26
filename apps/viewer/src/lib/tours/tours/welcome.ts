@@ -67,7 +67,7 @@ export const WELCOME_TOUR: TourDefinition = {
       title: 'Read its data',
       body: 'The Information panel lists attributes and property sets for the selection. Open the Quantities tab to see areas and volumes.',
       prepare: (store) => {
-        store.getState().showWorkspacePanel('properties');
+        store.getState().showWorkspacePanel('properties', 'programmatic');
         store.getState().setPropertiesActiveTab('properties');
       },
       gate: { predicate: (s) => s.propertiesActiveTab === 'quantities' },

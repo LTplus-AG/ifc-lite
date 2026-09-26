@@ -13,7 +13,7 @@
  * threaded in, so this file has no behaviour to test beyond wiring.
  */
 
-import { Loader2, Play } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -48,6 +48,7 @@ interface CompareRunControlsProps {
   canRun: boolean;
   running: boolean;
   onRun: () => void;
+  onCancel: () => void;
   error: string | null;
   /** Show the "no geometry fingerprints" warning (result-dependent). */
   geometryUnavailable: boolean;
@@ -80,6 +81,7 @@ export function CompareRunControls({
   canRun,
   running,
   onRun,
+  onCancel,
   error,
   geometryUnavailable,
   placementOnlyGeometry,
@@ -160,7 +162,7 @@ export function CompareRunControls({
         />
         <span>
           {t('comparePanel.runControls.matchByContentLabel')}
-          <span className="block text-[10px] opacity-70">
+          <span className="block text-2xs opacity-70">
             {t('comparePanel.runControls.matchByContentHint')}
           </span>
         </span>
@@ -179,12 +181,12 @@ export function CompareRunControls({
       <Button
         size="sm"
         className="w-full gap-1.5"
-        disabled={!canRun}
-        onClick={onRun}
+        disabled={!running && !canRun}
+        onClick={running ? onCancel : onRun}
         {...tourAnchor(TOUR_ANCHORS.compareRun)}
       >
-        {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-        {running ? t('comparePanel.runControls.comparing') : t('comparePanel.runControls.runComparison')}
+        {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        {t(running ? 'comparePanel.runControls.cancel' : 'comparePanel.runControls.runComparison')}
       </Button>
 
       {error && <p className="text-xs text-[#f7768e]">{error}</p>}

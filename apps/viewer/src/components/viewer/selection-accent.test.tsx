@@ -89,8 +89,10 @@ describe('one selection accent across GPU and DOM (#5491)', () => {
   for (const theme of THEMES) {
     it(`${theme}: the rectangle-select marquee strokes in the GPU selection colour`, () => {
       mountTheme(theme);
-      const ui = render(<RectSelectionOverlay rect={{ x0: 10, y0: 10, x1: 120, y1: 80 }} />);
-      const rect = ui.querySelector('rect');
+      // The marquee portals into the scene kernel's SVG layer (#6016), so it
+      // needs the scene host mounted, like the pin case below.
+      const { container } = renderScene(<RectSelectionOverlay rect={{ x0: 10, y0: 10, x1: 120, y1: 80 }} />);
+      const rect = container.querySelector('[data-scene-primitive="rect-selection"]');
       assert.ok(rect, 'marquee rendered');
       const stroke = getComputedStyle(rect).stroke;
       assert.deepEqual(asLinear(stroke), gpuSelection(theme));

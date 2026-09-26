@@ -9,22 +9,10 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from 'react';
-import {
-  Upload,
-  FileSpreadsheet,
-  Link2,
-  ArrowRight,
-  Check,
-  AlertCircle,
-  Loader2,
-  Trash2,
-  Plus,
-  Eye,
-  Play,
-  Wand2,
-  ChevronRight,
-} from 'lucide-react';
+import { Upload, FileSpreadsheet, Link2, ArrowRight, Check, AlertCircle, Trash2, Plus, Eye, Play, Wand2, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -538,20 +526,20 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   // Drag-and-drop handlers
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   }, []);
 
   const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
+    (e: DragEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
@@ -653,7 +641,6 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 </p>
               )}
             </div>
-
             {/* File Upload - Drag and Drop Zone */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">{t('dataConnector.csvFileLabel')}</Label>
@@ -665,27 +652,28 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 className="hidden"
               />
               {!fileName ? (
-                <div
+                <button
+                  type="button"
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                  className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                     isDragging
                       ? 'border-primary bg-primary/5'
                       : 'border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50'
                   }`}
                 >
                   <Upload className={`h-8 w-8 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <div className="text-center">
-                    <p className="text-sm font-medium">
+                  <span className="text-center">
+                    <span className="block text-sm font-medium">
                       {isDragging ? t('dataConnector.dropHereText') : t('dataConnector.dragDropText')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    </span>
+                    <span className="block text-xs text-muted-foreground mt-1">
                       {t('dataConnector.clickToBrowseText')}
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
               ) : (
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1.5">
@@ -917,14 +905,13 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                             </SelectContent>
                           </Select>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
+                          <IconButton
+                            label={t('dataConnector.removeMappingLabel')}
                             className="h-8 w-8"
                             onClick={() => removeMapping(mapping.id)}
                           >
                             <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>
@@ -952,7 +939,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                       <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Spinner size="md" />
                         {importProgress.phase === 'parsing' && t('dataConnector.phaseParsing')}
                         {importProgress.phase === 'matching' && t('dataConnector.phaseMatching')}
                         {importProgress.phase === 'applying' && t('dataConnector.phaseApplying')}
@@ -1012,7 +999,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
             disabled={!csvConnector || !csvContent || !matchColumn || isProcessing}
           >
             {isProcessing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size="md" className="mr-2" />
             ) : (
               <Eye className="h-4 w-4 mr-2" />
             )}
@@ -1033,7 +1020,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
           >
             {isProcessing && importProgress ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {Math.round(importProgress.percent * 100)}%
               </>
             ) : (

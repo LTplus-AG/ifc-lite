@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Download, Crosshair, Loader2, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Download, Crosshair, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -241,7 +242,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           </Button>
           <Button onClick={() => void handleExport()} disabled={!canExport}>
             {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              <Spinner size="md" className="mr-1.5" />
             ) : (
               <Download className="h-4 w-4 mr-1.5" />
             )}

@@ -45,35 +45,38 @@
  */
 export const miscPanelsAEn = {
   // PresentationPanel (`presentation` bottom panel, formerly BasketPresentationDock)
-  'presentationPanel.inBasketCount': '{count} in basket',
+  'presentationPanel.inBasketCount': '{count} in collection',
   'presentationPanel.viewsCount': { one: '{count} view', other: '{count} views' },
-  'presentationPanel.setFromContextTitle': 'Set basket from current context',
-  'presentationPanel.addToBasketTitle': 'Add current context to basket',
-  'presentationPanel.removeFromBasketTitle': 'Remove current context from basket',
-  'presentationPanel.hideActiveBasketTitle': 'Hide active basket',
-  'presentationPanel.showActiveBasketTitle': 'Show active basket',
-  'presentationPanel.clearActiveBasketTitle': 'Clear active basket',
-  'presentationPanel.saveCurrentViewTitle': 'Save current basket as presentation view',
+  'presentationPanel.setFromContextTitle': 'Set collection from current context',
+  'presentationPanel.addToBasketTitle': 'Add current context to collection',
+  'presentationPanel.removeFromBasketTitle': 'Remove current context from collection',
+  'presentationPanel.hideActiveBasketTitle': 'Hide active collection',
+  'presentationPanel.showActiveBasketTitle': 'Show active collection',
+  'presentationPanel.clearActiveBasketTitle': 'Clear active collection',
+  'presentationPanel.saveCurrentViewTitle': 'Save current collection as presentation view',
   'presentationPanel.stopPlaybackTitle': 'Stop playback',
   'presentationPanel.playAllTitle': 'Play all saved views (Shift+Click to loop)',
   'presentationPanel.scrollLeftTitle': 'Scroll left',
   'presentationPanel.emptyStripHint':
-    'Save basket views here. Click any card to restore both visibility and viewpoint.',
+    'Save collection views here. Click any card to restore both visibility and viewpoint.',
   'presentationPanel.activeBadge': 'Active',
   'presentationPanel.objectsCount': { one: '{count} object', other: '{count} objects' },
   'presentationPanel.transitionSuffix': ' · {duration}s',
   'presentationPanel.renameViewTitle': 'Rename view',
   'presentationPanel.setTransitionTitle': 'Set transition duration',
+  'presentationPanel.transitionDurationPrompt': 'Transition duration in seconds (optional). Leave empty for the default smooth transition.',
   'presentationPanel.deleteViewTitle': 'Delete view',
   'presentationPanel.scrollRightTitle': 'Scroll right',
 
   // DeviationPanel
   'deviationPanel.sectionLabel': 'Deviation (BIM ↔ scan)',
   'deviationPanel.computeButtonTitle':
-    'Build BVH from {count} triangles, then signed-distance every loaded point against the nearest surface',
+    'Build spatial index from {count} triangles, then signed-distance every loaded point against the nearest surface',
   'deviationPanel.computingLabel': 'Computing…',
   'deviationPanel.recomputeLabel': 'Recompute',
   'deviationPanel.computeLabel': 'Compute deviation',
+  'deviationPanel.exportCsv': 'Export CSV',
+  'deviationPanel.exportingCsv': 'Exporting CSV…',
   'deviationPanel.statsLine': '{points} pts vs. {triangles} tris in {duration} ms',
   'deviationPanel.rangeSliderTitle':
     'Deviation half-range in millimetres — values past ±this map to the ramp endpoints',
@@ -137,8 +140,8 @@ export const miscPanelsAEn = {
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
 
-  // SpaceMousePanel — the Navigation section's own heading (#5509) comes
-  // from `keyboardShortcuts.preferences.spaceMouseSectionTitle`, so no
+  // SpaceMousePanel — the Navigation section's own heading comes from
+  // `settings.display.spaceMouseTitle` (Settings → Display, #5857), so no
   // header/drag-title strings live here any more.
   'spaceMousePanel.noWebHidMessage':
     'This browser has no WebHID support. Use a Chromium-based browser (Chrome or Edge) to navigate with a 3D mouse.',

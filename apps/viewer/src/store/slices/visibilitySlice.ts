@@ -10,7 +10,9 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { TypeVisibility, EntityRef } from '../types.js';
+import type { ViewerState } from '../index.js';
+import { resetVisibilityReasons } from '../../lib/visibility/visibility-reasons.js';
+import type { TypeVisibility } from '../types.js';
 import {
   getPersistedTypeVisibility,
   TYPE_VISIBILITY_STORAGE_KEYS,
@@ -149,7 +151,7 @@ export interface VisibilitySlice {
   setHostHiddenIfcTypes: (hidden: ReadonlySet<string> | null) => void;
 }
 
-export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], VisibilitySlice> = (set, get) => ({
+export const createVisibilitySlice: StateCreator<ViewerState, [], [], VisibilitySlice> = (set, get) => ({
   // Initial state
   hiddenEntities: new Set(),
   isolatedEntities: null,
@@ -264,12 +266,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     classFilter: null,
   }),
 
-  showAll: () => set({
-    isolatedEntities: null,
-    ghostExceptEntities: null,
-    hiddenEntities: new Set<number>(),
-    classFilter: null,
-  }),
+  showAll: () => resetVisibilityReasons({ getState: get, setState: (patch) => set(patch) }),
 
   setHiddenEntities: (ids) => set({
     isolatedEntities: null,
@@ -367,12 +364,5 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     state.hasTypeGeometry === value ? state : { hasTypeGeometry: value }
   )),
 
-  showAllInAllModels: () => set({
-    hiddenEntities: new Set(),
-    isolatedEntities: null,
-    classFilter: null,
-    // "Show all" must also drop any X-ray context (clash focus, Space Sketch
-    // preview) — the single-model showAll already does.
-    ghostExceptEntities: null,
-  }),
+  showAllInAllModels: () => resetVisibilityReasons({ getState: get, setState: (patch) => set(patch) }),
 });

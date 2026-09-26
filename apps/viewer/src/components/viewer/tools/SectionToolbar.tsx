@@ -6,21 +6,23 @@
  * The Section tool's bar on the HUD's top-center region (#5499, charter
  * #5478 §6):
  *
- *   ✂ SECTION │ Down Front Side Face │ ⇅ │ +1.20 m ▾ │ Cap ▾ │ ◉ Cut │ 2D │ ✕
+ *   ✂ SECTION │ Down Front Side Face Box │ ⇅ │ +1.20 m ▾ │ Cap ▾ │ ◉ Cut │ 2D │ ✕
  *
  * One segmented axis control (face pick is its fourth segment, not a
- * separate mode), a scrubbable distance in metres with the storeys as snap
- * ticks and a storey menu, the cap appearance behind the bar's one popover,
- * a Cut toggle that replaces the old CLIP ON/OFF chip, the Drawing panel
- * and close. Every control writes the store; the bar holds no state of its
- * own beyond the popovers' open flags.
+ * separate mode; the section box its fifth, #5513), a scrubbable distance
+ * in metres with the storeys as snap ticks and a storey menu, the cap
+ * appearance behind the bar's one popover, a Cut toggle that replaces the
+ * old CLIP ON/OFF chip, the Drawing panel and close. In box mode the
+ * distance group reads the box's size and offers Fit (to the selection,
+ * else the model); Cap hides, a box has no cap. Every control writes the
+ * store; the bar holds no state of its own beyond the popovers' open flags.
  *
  * Registered as the `section` row's `Bar` in `TOOL_HUD`, so `ToolOverlays`
  * places it (top-center, order 0); this component never positions itself.
  */
 
 import { useCallback } from 'react';
-import { ChevronDown, FlipHorizontal2, Layers, PencilRuler, Scissors, Slice, X } from 'lucide-react';
+import { ChevronDown, FlipHorizontal2, Focus, Layers, PencilRuler, Scissors, Slice, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore } from '@/store';
 import { resetSectionToAxis } from '@/store/section-active';
@@ -42,12 +44,15 @@ import { AXIS_INFO } from './sectionConstants';
 import { SectionCapControls } from './SectionCapControls';
 import { STOREY_SNAP_TOLERANCE_M, useSectionDistance } from './useSectionDistance';
 import { storeyCutElevation } from '@/lib/section/section-distance';
+import { sectionBoxFromBounds, sectionBoxSize } from '@/lib/section/section-box';
 import type { SectionPlaneAxis } from '@/store/types';
 
-type AxisSegment = SectionPlaneAxis | 'face';
+type AxisSegment = SectionPlaneAxis | 'face' | 'box';
 
 /** One unbreakable run of controls on the bar. */
 const GROUP = 'flex items-center gap-1';
+/** A one-shot action on the bar (Cap, Fit): muted at rest, the chrome accent on hover/open. */
+const ACTION = 'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground';
 
 /** The Drawing panel counts as open when docked, floating or popped out. */
 function selectDrawingPanelOpen(s: {
@@ -76,12 +81,15 @@ export function SectionToolbar() {
   const drawingOpen = useViewerStore(selectDrawingPanelOpen);
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
+  const setSectionBox = useViewerStore((s) => s.setSectionBox);
+  const hasSelection = useViewerStore((s) => s.selectedEntityId !== null || s.selectedEntityIds.size > 0);
   const distance = useSectionDistance();
 
   const isCustom = sectionPlane.custom !== undefined;
+  const box = sectionPlane.box;
   // While pick mode is armed the user is "on" the Face segment even before a
   // face exists; a committed custom plane keeps it selected afterwards.
-  const axisValue: AxisSegment = sectionPickMode || isCustom ? 'face' : sectionPlane.axis;
+  const axisValue: AxisSegment = sectionPickMode || isCustom ? 'face' : box ? 'box' : sectionPlane.axis;
 
   const axes: HudSegmentedOption<AxisSegment>[] = [
     ...(['down', 'front', 'side'] as const).map((axis) => ({ value: axis, label: t(AXIS_INFO[axis].labelKey) })),
@@ -90,7 +98,17 @@ export function SectionToolbar() {
       label: t('sectionTool.axis.face'),
       title: t(sectionPickMode ? 'sectionTool.pick.activeTitle' : 'sectionTool.pick.title'),
     },
+    { value: 'box', label: t('sectionTool.axis.box'), title: t('sectionTool.box.title') },
   ];
+
+  // The box fits the selection when there is one (the same bounds Frame
+  // uses, assemblies resolved to their parts), else the placed model bounds;
+  // with neither known there is nothing to cut with, so the segment stays.
+  const fitBox = useCallback(() => {
+    const selected = hasSelection ? useViewerStore.getState().cameraCallbacks.selectionBounds?.() : null;
+    const next = sectionBoxFromBounds(selected) ?? sectionBoxFromBounds(distance.bounds);
+    if (next) setSectionBox(next);
+  }, [hasSelection, distance.bounds, setSectionBox]);
 
   // A cardinal segment is a cardinal cut (drops any face-picked plane and
   // disarms the pick); from a face-picked plane, its own axis keeps the side
@@ -103,8 +121,12 @@ export function SectionToolbar() {
       return;
     }
     if (sectionPickMode) setSectionPickMode(false);
+    if (next === 'box') {
+      fitBox();
+      return;
+    }
     resetSectionToAxis(useViewerStore.getState, next);
-  }, [sectionPickMode, setSectionPickMode]);
+  }, [sectionPickMode, setSectionPickMode, fitBox]);
 
   // Scrubbing thins a loaded scan to a quarter of its points so a >10M-point
   // cloud keeps up with the drag; restored on release (and on unmount, by
@@ -128,6 +150,7 @@ export function SectionToolbar() {
 
   const showStoreys = !isCustom && sectionPlane.axis === 'down' && distance.kind === 'world' && distance.storeys.length > 0;
   const unit = distance.kind === 'percent' ? t('sectionTool.distance.percentUnit') : t('sectionTool.distance.unit');
+  const boxSize = box ? sectionBoxSize(box) : null;
 
   // The Cap popover is anchored to the whole bar, not to its trigger: when
   // the bar wraps in a narrow top-center lane the trigger can sit on a
@@ -141,13 +164,30 @@ export function SectionToolbar() {
           between groups — caption + axis, flip + distance, Cap + Cut,
           2D + close — never inside one. */}
       <span className={GROUP}>
-        <span className="flex items-center gap-1 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           <Scissors aria-hidden className="h-3.5 w-3.5 text-overlay-accent" />
           {t('sectionTool.heading')}
         </span>
         <HudDivider />
         <HudSegmented options={axes} value={axisValue} onChange={handleAxis} aria-label={t('sectionTool.bar.axisAria')} />
       </span>
+      {boxSize ? (
+        <span className={GROUP}>
+          <HudDivider />
+          <span title={t('sectionTool.box.sizeAria')} className="whitespace-nowrap px-1 text-xs tabular-nums text-muted-foreground" data-testid="section-box-size">
+            {t('sectionTool.box.size', { x: boxSize[0].toFixed(2), y: boxSize[1].toFixed(2), z: boxSize[2].toFixed(2) })}
+          </span>
+          <button
+            type="button"
+            onClick={fitBox}
+            title={t(hasSelection ? 'sectionTool.box.fitSelectionTitle' : 'sectionTool.box.fitModelTitle')}
+            className={ACTION}
+          >
+            <Focus aria-hidden className="h-3.5 w-3.5" />
+            {t('sectionTool.box.fit')}
+          </button>
+        </span>
+      ) : (
       <span className={GROUP}>
       <HudDivider />
       <HudToggle
@@ -215,14 +255,13 @@ export function SectionToolbar() {
         </HudPopover>
       )}
       </span>
+      )}
       <span className={GROUP}>
       <HudDivider />
+      {!box && (
+        <>
         <HudPopoverTrigger asChild>
-          <button
-            type="button"
-            title={t('sectionTool.cap.title')}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
-          >
+          <button type="button" title={t('sectionTool.cap.title')} className={ACTION}>
             <Slice aria-hidden className="h-3.5 w-3.5" />
             {t('sectionTool.cap.label')}
             <ChevronDown aria-hidden className="h-3 w-3 opacity-70" />
@@ -231,6 +270,8 @@ export function SectionToolbar() {
         <HudPopoverContent align="center" side="bottom" className="w-64" data-testid="section-cap-popover">
           <SectionCapControls />
         </HudPopoverContent>
+        </>
+      )}
       <HudToggle
         pressed={sectionPlane.enabled}
         onPressedChange={toggleSectionPlane}

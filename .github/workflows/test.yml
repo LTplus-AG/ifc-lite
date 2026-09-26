@@ -971,6 +971,8 @@ jobs:
         run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      - name: Check export completion calls
+        run: node scripts/check-export-event-calls.mjs
       # Executable proof the wiring gate cannot pass vacuously — the failure
       # mode it exists to catch is exactly the one it could have itself. Its
       # first fixture reconstructs #3062's pre-wiring state (a gate script and
@@ -1184,6 +1186,13 @@ jobs:
       # it used to be the one non-executable case in frameWait.test.ts (#2434).
       - name: Check for unbounded animation-frame waits
         run: node scripts/check-unbounded-frame-wait.mjs
+      # Icon-only buttons go through IconButton, which requires a label (#5811).
+      # A per-file two-way ratchet over the components tree: an absence claim
+      # with nothing to drive, so a lint rather than a unit test.
+      - name: Check icon-only buttons use IconButton
+        run: node scripts/check-icon-button-adoption.mjs
+      - name: Check icon-button adoption gate's own tests
+        run: node --test scripts/check-icon-button-adoption.test.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the

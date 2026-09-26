@@ -17,7 +17,7 @@ export function AppearanceMembershipChanges({ review }: { review: Review }) {
   ], [review, t, revision]);
   const last = Math.max(0, Math.ceil(changes.length / 50) - 1), current = Math.min(page, last);
   if (!changes.length) return null;
-  return <details className="text-[11px]">
+  return <details className="text-2xs">
     <summary>{t('appearance.membershipChanges.summary')}</summary>
     <ul className="my-2 max-h-40 space-y-1 overflow-y-auto break-all">
       {changes.slice(current * 50, (current + 1) * 50).map(change => <li key={change}>{change}</li>)}

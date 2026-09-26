@@ -12,7 +12,7 @@
  * `FilterGroupEditor` directly, where two independent bounds on the same
  * subject are not a "between" the operator table offers.
  *
- * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` / `GroupTabs` are reused
+ * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` are reused
  * unchanged; only the rule-list loop differs from `FilterGroupEditor`.
  */
 
@@ -25,7 +25,7 @@ import type { FilterGroup } from '@ifc-lite/rules';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from '../FilterRuleControls';
 import { RuleRow } from '../SearchModal.filter.editors';
-import { GroupTabs } from '../SearchModal.filter.groupTabs';
+import { GroupTabsPanel } from '../SearchModal.filter.groupTabs';
 import { clampGroupIndex } from '@/store/slices/searchSlice.filterGroups';
 import { foldBetweenPairs, unfoldBetweenChips, isBetweenChip, type FoldedRule } from '@ifc-lite/rules';
 import type { FilterGroupEditorModel, FilterGroupEditorState } from '../FilterGroupEditor';
@@ -112,10 +112,7 @@ export function FoldedGroupEditor({ groups, activeGroup, onChange, allowedKinds,
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      {groups.length > 1 && (
-        <GroupTabs groups={groups} activeIndex={activeIndex} onSelect={setActiveGroup} onRemove={removeGroup} />
-      )}
+    <GroupTabsPanel groups={groups} activeIndex={activeIndex} onSelect={setActiveGroup} onRemove={removeGroup}>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <CombinatorToggle value={active?.combinator ?? 'AND'} onChange={setCombinator} />
@@ -151,7 +148,7 @@ export function FoldedGroupEditor({ groups, activeGroup, onChange, allowedKinds,
         )}
         <AddRuleMenu onAdd={addRuleOfKind} allowedKinds={allowedKinds} />
       </div>
-    </div>
+    </GroupTabsPanel>
   );
 }
 

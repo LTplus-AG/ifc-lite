@@ -67,6 +67,18 @@ describe('placement math', () => {
     near(back.refDirection![2], 0); // Z component removed
     near(Math.hypot(...back.refDirection!), 1); // unit length
   });
+
+  it('fills an absent refDirection as the renderer does, including on a -X axis (#5922)', () => {
+    // Exactly -X: the renderer reads `$` as (0,0,1) x Axis = (0,-1,0).
+    nearVec(placementToMatrix({ location: [0, 0, 0], axis: [-1, 0, 0] })[0], [0, -1, 0, 0]);
+    // Exactly +X: world Y, per IfcFirstProjAxis.
+    nearVec(placementToMatrix({ location: [0, 0, 0], axis: [1, 0, 0] })[0], [0, 1, 0, 0]);
+    // Tilted: world X projected onto the plane normal to the axis.
+    nearVec(
+      placementToMatrix({ location: [0, 0, 0], axis: [1, 0, 1] })[0],
+      [Math.SQRT1_2, 0, -Math.SQRT1_2, 0],
+    );
+  });
 });
 
 describe('placement on the Y.Doc', () => {

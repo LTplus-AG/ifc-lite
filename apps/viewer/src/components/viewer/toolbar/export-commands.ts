@@ -17,6 +17,11 @@
  * format. `export-ui-parity.test.tsx` then checks at runtime that both styles
  * actually render every id, and that neither hand-rolls an entry beside it.
  *
+ * Extension-contributed exporters are the registry's runtime half: they are
+ * not known until an extension installs them, so `useExportCommands` resolves
+ * them from the `exportMenu` slot (`useExtensionExporters`) and every surface
+ * renders them after the built-in groups (#5838).
+ *
  * Out of scope: exports that belong to a panel rather than a toolbar (IDS
  * reports, BCF, clash BCF, list/schedule tables, compare reports, drawing
  * sheets). Those live in exactly one panel each and are opened the same way
@@ -25,7 +30,9 @@
 
 import type React from 'react';
 import type { TranslationKey } from '@/i18n';
+import type { UiSurface } from '@/lib/analytics-ui-events';
 import { ExportDialog } from '../ExportDialog';
+import { ExportChangesButton } from '../ExportChangesButton';
 import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
 import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
@@ -37,7 +44,7 @@ import { PdfViewExportDialog } from '../PdfViewExportDialog';
 export type CsvExportType = 'entities' | 'properties' | 'quantities' | 'spatial';
 
 /** Every export dialog takes the calling toolbar's own element as its trigger. */
-export type ExportDialogComponent = React.ComponentType<{ trigger?: React.ReactNode }>;
+export type ExportDialogComponent = React.ComponentType<{ trigger?: React.ReactNode; surface: UiSurface }>;
 
 interface ExportCommandBase {
   /** Stable id — also the `data-export-command` attribute both styles render. */
@@ -57,9 +64,10 @@ interface ExportCommandBase {
   readonly tooltipKey: TranslationKey;
   /**
    * What has to be loaded first. `model` means any loaded model (federated or
-   * legacy single-result); `dataStore` means a parsed entity store.
+   * legacy single-result); `dataStore` means a parsed entity store; `changes`
+   * means at least one model has unexported edits.
    */
-  readonly requires: 'model' | 'dataStore';
+  readonly requires: 'model' | 'dataStore' | 'changes';
   /**
    * Visual cluster. Consecutive commands sharing a group render as one small
    * button stack in the ribbon and one separator-delimited block in the
@@ -132,6 +140,20 @@ export const EXPORT_COMMANDS = [
     menuLabelKey: 'exportCommands.anonymized.menuLabel',
     tooltipKey: 'exportCommands.anonymized.tooltip',
     requires: 'model',
+    group: 0.5,
+    emphasis: 'small',
+  },
+  {
+    // Every model with unexported edits, edits applied, after a review. The
+    // amber toolbar button stays as the standing "you have edits" prompt; this
+    // entry is the same dialog reached from the menus and the palette.
+    id: 'modified-ifc',
+    kind: 'dialog',
+    Dialog: ExportChangesButton,
+    labelKey: 'exportCommands.modifiedIfc.label',
+    menuLabelKey: 'exportCommands.modifiedIfc.menuLabel',
+    tooltipKey: 'exportCommands.modifiedIfc.tooltip',
+    requires: 'changes',
     group: 0.5,
     emphasis: 'small',
   },
@@ -247,15 +269,18 @@ export type RegisteredExportCommand = (typeof EXPORT_COMMANDS)[number];
 /** Registry ids in registry order. */
 export const EXPORT_COMMAND_IDS: readonly ExportCommandId[] = EXPORT_COMMANDS.map((c) => c.id);
 
-/** An icon per export command, supplied by each toolbar style in its own set. */
-export type ExportIconSet = Record<ExportCommandId, React.ElementType>;
+/**
+ * An icon per export command, supplied by each toolbar style in its own set,
+ * plus the one icon every extension-contributed exporter row shares.
+ */
+export type ExportIconSet = Record<ExportCommandId | 'extension', React.ElementType>;
 
 /** Split a registry-ordered list into its visual groups, preserving order. */
-export function groupExportCommands<T>(items: readonly T[], groupOf: (item: T) => number): T[][] {
+export function groupExportCommands<T>(items: readonly T[], groupOf: (item: T, index: number) => number): T[][] {
   const groups: T[][] = [];
   let current: number | null = null;
-  for (const item of items) {
-    const group = groupOf(item);
+  for (const [index, item] of items.entries()) {
+    const group = groupOf(item, index);
     if (group !== current) {
       groups.push([]);
       current = group;

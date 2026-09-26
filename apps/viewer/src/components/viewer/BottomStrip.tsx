@@ -188,7 +188,12 @@ export function BottomStrip({ dockedPanel, analysisExtension, containerRef, clos
             onToggleOrientation={onToggleOrientation}
           />
         )}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div
+          className="flex-1 min-h-0 overflow-hidden"
+          role={!analysisExtension && dockedPanel ? 'tabpanel' : undefined}
+          id={!analysisExtension && dockedPanel ? `bottom-strip-panel-${dockedPanel}` : undefined}
+          aria-labelledby={!analysisExtension && dockedPanel ? `bottom-strip-tab-${dockedPanel}` : undefined}
+        >
           {analysisExtension
             ? analysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
             : dockedPanel && renderPanelBody(dockedPanel, () => closePanel(dockedPanel))}

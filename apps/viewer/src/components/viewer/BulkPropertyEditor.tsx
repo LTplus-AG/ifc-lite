@@ -8,19 +8,10 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  Search,
-  Play,
-  Eye,
-  Filter,
-  Plus,
-  Trash2,
-  Loader2,
-  Building2,
-  Layers,
-  Tag,
-} from 'lucide-react';
+import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -65,7 +56,7 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_TYPE_MAP, presentTypeEnums } from './bulk-property-editor-options';
+import { FILTER_OPERATORS, IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
 import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
@@ -234,13 +225,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
       const nameToEnums = new Map<string, number[]>();
       const presentTypes: { ifcType: string; label: string }[] = [];
-      for (const [ifcType, { labelKey, pattern }] of Object.entries(IFC_TYPE_MAP)) {
-        const enums: number[] = [];
-        for (const [typeEnum, typeName] of enumToTypeName) {
-          if (typeName.includes(pattern)) {
-            enums.push(typeEnum);
-          }
-        }
+      for (const [ifcType, { labelKey }] of Object.entries(IFC_TYPE_MAP)) {
+        const enums = classTargetEnums(ifcType, enumToTypeName);
         if (enums.length > 0) {
           nameToEnums.set(ifcType, enums);
           presentTypes.push({ ifcType, label: t(labelKey) });
@@ -679,7 +665,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
         {isInitializing ? (
           <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner size="lg" />
             <span className="text-sm">{t('bulkPropertyEditor.loading')}</span>
           </div>
         ) : (
@@ -709,7 +695,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 {t('bulkPropertyEditor.selectionCriteria')}
               </Label>
               <Badge variant={liveMatchCount > 0 ? 'default' : 'secondary'} className="text-xs">
-                {isComputing && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                {isComputing && <Spinner size="xs" className="mr-1" />}
                 {t('bulkPropertyEditor.matched', {
                   count: liveMatchCount,
                   countDisplay: formatLocaleNumber(locale, liveMatchCount),
@@ -834,9 +820,9 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                       className="h-8 text-xs w-20"
                     />
                   )}
-                  <Button aria-label={t('bulkPropertyEditor.removeFilter')} variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
+                  <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
+                  </IconButton>
                 </div>
               ))}
             </div>

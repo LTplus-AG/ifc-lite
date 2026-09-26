@@ -24,7 +24,7 @@ interface PendingRemoval {
 
 /**
  * The hierarchy's "Remove model" handler, guarded (#5604): a model with
- * unexported changes (the same per-model count the Export Changes badge sums)
+ * unexported changes (the same per-model count the Export modified IFC… badge sums)
  * is only removed after the user confirms discarding them; a model without
  * any is removed straight away, as before.
  */

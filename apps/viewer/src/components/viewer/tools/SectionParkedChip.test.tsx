@@ -7,7 +7,7 @@
  * while a cut is parked with the tool closed, naming the cut in the bar's
  * metres, with resume and clear. Asserted on the OUTPUT — the region's DOM,
  * the chip's text, the store after each action — never on the wiring.
- * Mounted alongside the level-display chip so the two stack by order, which
+ * Mounted alongside the visibility chips so the two stack by order, which
  * is the #5481 "badge over the Solo chip" collision made impossible.
  */
 
@@ -20,7 +20,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
-import { LevelDisplayIndicator } from '../LevelDisplayIndicator.js';
+import type { ComponentType } from 'react';
 import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionParkedChip } from './SectionParkedChip.js';
@@ -93,14 +93,21 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('names the parked cut in the bar\'s metres and stacks after the Solo chip by order', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><LevelDisplayIndicator /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    // Let the revert oracle mount the previous chip and exercise the changed
+    // Solo label, rather than failing before the test starts on a dead import.
+    const replacementPath = '../../viewport-ui/hud/VisibilityChips.js';
+    const previousPath = '../LevelDisplayIndicator.js';
+    const StatusChip: ComponentType = await import(replacementPath)
+      .then((module) => module.VisibilityChips)
+      .catch(async () => (await import(previousPath)).LevelDisplayIndicator);
+    render(<><ViewportHud /><SectionParkedChip /><StatusChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('down', 55);
     // 55 % of Y in [-1, 3] is 1.2 m.
     assert.equal(chip()?.textContent?.trim(), 'Down · 1.20 m');
     act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm', expressId: 10 } }));
     const items = [...region('top-left').querySelectorAll<HTMLElement>(':scope > [data-hud-item]')];
     assert.equal(items.length, 2, 'Solo chip + parked chip, both HUD items');
-    assert.match(items[0].textContent ?? '', /Erdgeschoss/, 'the level chip (order 1) comes first');
+    assert.match(items[0].textContent ?? '', /Solo · 1 storey/, 'the visibility chips (order 1) come first');
     assert.equal(items[1], chip(), 'the parked chip (order 2) stacks below it — no badge drawn over the Solo chip');
     assert.equal(document.querySelector('[data-section-badge]'), null, 'the corner badge is gone');
   });
@@ -112,6 +119,20 @@ describe('parked-section chip (#5500)', () => {
     const picked = s().sectionPlane.custom!.distance;
     await act(async () => { s().setActiveTool('select'); await new Promise((r) => setTimeout(r, 0)); });
     assert.equal(chip()?.textContent?.trim(), `Face · ${picked.toFixed(2)} m`);
+  });
+
+  it('names a parked section box by its size, and resume brings the box back (#5513)', async () => {
+    render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    await act(async () => { s().setActiveTool('section'); await new Promise((r) => setTimeout(r, 0)); });
+    act(() => s().setSectionBox({ min: [0, -1, 0], max: [10, 3, 8] }));
+    await act(async () => { s().setActiveTool('select'); await new Promise((r) => setTimeout(r, 0)); });
+    assert.equal(chip()?.textContent?.trim(), 'Box · 10.0×4.0×8.0 m');
+    click(chip()!.querySelector('button[aria-label="Resume the section cut"]')!);
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    assert.equal(s().activeTool, 'section');
+    assert.equal(s().sectionPlane.enabled, true);
+    assert.deepEqual(s().sectionPlane.box, { min: [0, -1, 0], max: [10, 3, 8] }, 'the box mode restore keeps the box');
+    assert.equal(s().sectionPickMode, false, 'a resumed box does not arm the face pick');
   });
 
   it('resume reopens the Section tool on the same cut', async () => {

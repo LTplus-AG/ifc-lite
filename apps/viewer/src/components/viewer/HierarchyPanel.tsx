@@ -179,7 +179,6 @@ export function HierarchyPanel() {
   const modelsRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null); // Legacy single-model mode
 
-
   // Virtualizers for both sections
   const storeysVirtualizer = useVirtualizer({
     count: storeysNodes.length,
@@ -203,8 +202,7 @@ export function HierarchyPanel() {
     overscan: 10,
   });
 
-  // Reveal a selection made outside the tree (viewport, search, BCF, context
-  // menu) by expanding its ancestors and scrolling it into view (#5881).
+  // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
   const { markFromTreeClick } = useRevealSelection({
     selectedEntityId, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
     isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer,
@@ -340,7 +338,7 @@ export function HierarchyPanel() {
 
   // Handle node click - for selection/isolation or expand/collapse
   const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
-    markFromTreeClick();
+    try {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;
@@ -703,6 +701,9 @@ export function HierarchyPanel() {
         setSelectedEntityId(globalId);
         setSelectedEntity(resolveEntityRef(globalId));
       }
+    }
+    } finally {
+      markFromTreeClick();
     }
   }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility, markFromTreeClick]);
 

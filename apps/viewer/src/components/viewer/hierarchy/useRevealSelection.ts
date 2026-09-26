@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { useViewerStore } from '@/store';
 import type { TreeNode } from './types';
 
 /** The subset of a `useVirtualizer` instance this hook needs — narrow enough
@@ -31,9 +32,16 @@ interface UseRevealSelectionParams {
  *  into `storeysNodes`/`modelsNodes`/`filteredNodes`, and expanding ancestors
  *  is itself an async state update relative to this effect.
  *
- *  Returns `markFromTreeClick`, to be called at the top of the tree's own
- *  click handler: a selection that originated from a tree row click must not
- *  re-scroll the row that produced it (#5881) — it is already on screen. */
+ *  Returns `markFromTreeClick`, to be called from a `finally` block wrapping
+ *  the tree's own click handler, once the click has settled on its final
+ *  selection: a selection that originated from a tree row click must not
+ *  re-scroll the row that produced it (#5881) — it is already on screen.
+ *  Stores the resulting id (not a boolean) and matches it against
+ *  `selectedEntityId` in Effect A below, rather than a plain flag, so a
+ *  repeat click on an already-selected row — which never changes
+ *  `selectedEntityId`, so Effect A never runs to clear a boolean flag —
+ *  cannot leave a stale flag that masks the NEXT, genuinely outside,
+ *  selection. */
 export function useRevealSelection({
   selectedEntityId,
   revealGlobalId,
@@ -46,9 +54,9 @@ export function useRevealSelection({
   virtualizer,
 }: UseRevealSelectionParams): { markFromTreeClick: () => void } {
   const pendingTargetRef = useRef<string | null>(null);
-  const fromTreeClickRef = useRef(false);
+  const fromTreeClickRef = useRef<number | null | undefined>(undefined);
   const markFromTreeClick = useCallback(() => {
-    fromTreeClickRef.current = true;
+    fromTreeClickRef.current = useViewerStore.getState().selectedEntityId;
   }, []);
 
   // Effect A: a new selection arrives. Resolve which node it maps to (and
@@ -56,10 +64,11 @@ export function useRevealSelection({
   // click, which already put itself on screen.
   useEffect(() => {
     if (selectedEntityId == null) return;
-    if (fromTreeClickRef.current) {
-      fromTreeClickRef.current = false;
+    if (fromTreeClickRef.current === selectedEntityId) {
+      fromTreeClickRef.current = undefined;
       return;
     }
+    fromTreeClickRef.current = undefined;
     pendingTargetRef.current = revealGlobalId(selectedEntityId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId's own deps cover the tree/expansion state it reads
   }, [selectedEntityId]);

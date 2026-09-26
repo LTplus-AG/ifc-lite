@@ -30,6 +30,15 @@ export function useModelUrlAutoload(): void {
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   const { t } = useTranslation();
   const autoloadDoneRef = useRef(false);
+  // Navigation may change the query and relative URL base while the adapter
+  // probe is pending. Preserve the source requested on this mount.
+  const sourceRef = useRef<{ modelUrl: string | null; baseUrl: string } | null>(null);
+  if (sourceRef.current === null) {
+    sourceRef.current = {
+      modelUrl: new URLSearchParams(window.location.search).get('model'),
+      baseUrl: window.location.href,
+    };
+  }
 
   useEffect(() => {
     // `useWebGPU`'s adapter probe is async; wait for it to settle so the
@@ -37,8 +46,9 @@ export function useModelUrlAutoload(): void {
     // re-runs once `webgpu.checking` flips).
     if (webgpu.checking) return;
     if (autoloadDoneRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const modelUrl = params.get('model');
+    const source = sourceRef.current;
+    if (!source) return;
+    const { modelUrl, baseUrl: sourceBaseUrl } = source;
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
 
@@ -51,25 +61,27 @@ export function useModelUrlAutoload(): void {
       showLoadError(setError, setLastLoadRetry, t(key, values), code, retry);
     };
 
+    let resolvedUrl: URL | null = null;
     const attempt = async () => {
       if (!guardWebGpu(() => { void attempt(); })) return;
       // Resolve (supports relative paths) and enforce same-origin before fetching.
-      let resolvedUrl: URL;
+      let source: URL;
       try {
-        resolvedUrl = new URL(modelUrl, window.location.href);
+        source = resolvedUrl ?? new URL(modelUrl, sourceBaseUrl);
+        resolvedUrl = source;
       } catch {
         fail('viewportLighting.container.modelUrlAutoload.malformedUrl', 'model_url_malformed', null);
         return;
       }
-      if (resolvedUrl.origin !== window.location.origin) {
+      if (source.origin !== window.location.origin) {
         fail('viewportLighting.container.modelUrlAutoload.crossOrigin', 'model_url_cross_origin', null);
         return;
       }
       try {
-        const res = await fetch(resolvedUrl.href);
+        const res = await fetch(source.href);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
-        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
+        const filename = source.pathname.split('/').pop() || 'model.ifc';
         const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
         await addModel(file);
       } catch (err) {

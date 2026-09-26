@@ -7,7 +7,7 @@
  * direct-mode (non-sheet) section view used to paint `#ffffff` regardless of
  * theme, a white slab against the rest of the dark UI. It now reads the same
  * `paper` / `paper-ink` tokens `overlay-theme.ts` already defines and
- * `useOverlayThemeSync` already publishes for every other overlay.
+ * `registerOverlayThemeSync` already publishes for every other overlay.
  *
  * Two things stay theme-INDEPENDENT on purpose, both already true before
  * this change and preserved here rather than "fixed":

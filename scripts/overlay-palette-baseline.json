@@ -1,4 +1,6 @@
 {
+  "hexOrRgb:apps/viewer/src/components/viewer/BasepointOverlay.tsx": 6,
+  "hexOrRgb:apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx": 4,
   "hexOrRgb:apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchCanvas.tsx": 48,
   "hexOrRgb:apps/viewer/src/components/viewer/tools/ZoneOverlay.tsx": 11,
   "hexOrRgb:apps/viewer/src/components/viewer/ViewportContainer.tsx": 4,

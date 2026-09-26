@@ -22,7 +22,8 @@ const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
 ]);
 
 const VALUE_OPS: ReadonlySet<unknown> = new Set<ValueOp>([
-  'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
+  'eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'notContains', 'startsWith', 'endsWith',
+  'matches', 'notMatches', 'isSet', 'isNotSet', 'isNonEmpty', 'isNull', 'isNotNull',
 ]);
 
 const CLASSIFICATION_OPS: ReadonlySet<unknown> = new Set<ClassificationOp>([
@@ -59,6 +60,7 @@ export function isFilterRule(value: unknown): value is FilterRule {
     );
   }
   if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
+  if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
   if (kind === 'modelFact') {
     const r = value as { fact?: unknown; op?: unknown; value?: unknown };
     return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';
@@ -85,6 +87,20 @@ function validReadOptions(value: object): boolean {
   const r = value as { valueUnit?: unknown; inherit?: unknown };
   return (r.valueUnit === undefined || r.valueUnit === 'si')
     && (r.inherit === undefined || r.inherit === 'type' || r.inherit === 'aggregation');
+}
+
+function validComparison(value: object): boolean {
+  const options = (value as { comparison?: unknown }).comparison;
+  if (options === undefined) return true;
+  if (options === null || typeof options !== 'object') return false;
+  const o = options as Record<string, unknown>;
+  return (o.caseMode === undefined || o.caseMode === 'fold' || o.caseMode === 'exact'
+      || o.caseMode === 'lensBoolean' || o.caseMode === 'ifcBoolean')
+    && (o.numericMode === undefined || o.numericMode === 'prefix' || o.numericMode === 'strict')
+    && (o.typeMode === undefined || o.typeMode === 'bulk')
+    && (o.operandType === undefined || o.operandType === 'string' || o.operandType === 'number'
+      || o.operandType === 'boolean' || o.operandType === 'null' || o.operandType === 'undefined'
+      || o.operandType === 'array');
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

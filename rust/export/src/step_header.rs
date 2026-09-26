@@ -64,9 +64,24 @@ pub(crate) fn write_header<W: Write>(
     source: Option<&SourceHeader>,
     schema: &str,
 ) -> std::io::Result<()> {
+    write_header_counted(out, opts, source, schema, 0)
+}
+
+/// [`write_header`], appending the twin's `Re-exported by ifc-lite, N
+/// modification(s)` description item when `modifications` is non-zero. The
+/// mutation-log writer (`crate::step_log`) is the caller that has a count; the
+/// plain writer applies no session and passes zero, which is what the twin
+/// writes for an export without a mutation view.
+pub(crate) fn write_header_counted<W: Write>(
+    out: &mut W,
+    opts: &StepOptions,
+    source: Option<&SourceHeader>,
+    schema: &str,
+    modifications: usize,
+) -> std::io::Result<()> {
     // FILE_DESCRIPTION items: an explicit option wins, else the source items
     // verbatim, else the generic default.
-    let description: Vec<String> = match &opts.description {
+    let mut description: Vec<String> = match &opts.description {
         Some(d) => vec![d.clone()],
         None => match source.filter(|s| !s.description.is_empty()) {
             Some(s) => s.description.clone(),
@@ -79,6 +94,10 @@ pub(crate) fn write_header<W: Write>(
             None => vec!["Exported from ifc-lite".to_string()],
         },
     };
+    if modifications > 0 {
+        let plural = if modifications == 1 { "" } else { "s" };
+        description.push(format!("Re-exported by ifc-lite, {modifications} modification{plural}"));
+    }
     let implementation_level = source
         .map(|s| s.implementation_level.as_str())
         .filter(|s| !s.is_empty())

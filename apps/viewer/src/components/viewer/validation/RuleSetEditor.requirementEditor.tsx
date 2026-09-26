@@ -60,7 +60,7 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="inline-flex self-start rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="inline-flex self-start rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
         {KINDS.map((k) => (
           <button
             key={k}
@@ -246,7 +246,7 @@ function AggregateFields({
 function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; onChange: (v: 'perModel' | 'federation') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
       {(['federation', 'perModel'] as const).map((s) => (
         <button
           key={s}
@@ -266,7 +266,7 @@ function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; on
 function ValueTypeToggle({ value, onChange }: { value: 'number' | 'date'; onChange: (v: 'number' | 'date') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
       {(['number', 'date'] as const).map((v) => (
         <button
           key={v}
@@ -323,7 +323,7 @@ function RequirementTextField({
         spellCheck={false}
         className="h-7 font-mono text-xs"
       />
-      {error && <p role="alert" className="text-[11px] text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-2xs text-destructive">{error}</p>}
     </div>
   );
 }

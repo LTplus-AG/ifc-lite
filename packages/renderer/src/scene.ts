@@ -2735,8 +2735,8 @@ export class Scene {
       return;
     }
 
-    // Defensive copy: callers may mutate/reuse `overrides`; the tuples are treated as immutable by every consumer.
-    this.colorOverrides = new Map(overrides);
+    // Deep copy: the retained map must describe what the batches below were built from. The viewer mutates its clash tints in place on a theme change (#5490), so a shared tuple would drift from the GPU.
+    this.colorOverrides = cloneOverrides(overrides);
 
     // Instanced occurrences carry the override colour in their records (no overlay pass); no-op without instanced data.
     this.setInstancedColorOverrides(overrides);

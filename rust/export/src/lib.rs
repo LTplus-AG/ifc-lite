@@ -60,6 +60,7 @@ mod step_api;
 mod step_cow;
 mod step_header;
 mod step_json;
+mod step_log;
 mod step_slot;
 mod step_text;
 mod usd;
@@ -124,6 +125,10 @@ pub use step::{
     PropMutation, StepOptions, StepStats,
 };
 pub use step_json::export_step_json;
+pub use step_log::{
+    export_merged_models_with_logs, export_step_with_log, export_step_with_log_to_writer, GeorefMutations, LogExportStats, LogMutation,
+    LogNewEntity, MutationKind, MutationLog, StepCounters,
+};
 pub use usd::{export_usd, UsdOptions};
 
 use ifc_lite_geometry::extract_profiles;

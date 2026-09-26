@@ -38,6 +38,8 @@ export const drawingUnderlayEn = {
   'drawingUnderlay.settings.customLineWeightOption': 'Custom...',
   'drawingUnderlay.settings.millimetersUnit': 'mm',
   'drawingUnderlay.settings.deleteButton': 'Delete',
+  'drawingUnderlay.settings.disableRule': 'Disable {name}',
+  'drawingUnderlay.settings.enableRule': 'Enable {name}',
   'drawingUnderlay.settings.doneButton': 'Done',
 
   // DxfUnderlayPanel

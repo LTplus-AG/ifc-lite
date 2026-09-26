@@ -88,7 +88,7 @@ export function RuleModelPicker({ models, value, onChange }: RuleModelPickerProp
         })}
       </div>
       {notLoaded.length > 0 && (
-        <p className="text-[11px] text-amber-600 dark:text-amber-500">
+        <p className="text-2xs text-amber-600 dark:text-amber-500">
           {t('validationEditor.modelPicker.notLoaded', { count: notLoaded.length })}
         </p>
       )}

@@ -27,7 +27,7 @@ bytemuck = "1.25"
 # the dependency graph for nothing. `alloc` is what the streaming hasher needs.
 twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_128", "alloc"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 
 # Parquet/.bos export pulls native compression (zstd/snap) + a zip writer that do
 # NOT target wasm32 cleanly, so it is gated behind the `parquet-bos` feature and

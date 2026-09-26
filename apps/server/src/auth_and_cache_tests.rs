@@ -94,6 +94,12 @@ const PROTECTED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/api/v1/metrics"),
 ];
 
+/// `GET /api/v1/cache/{key}` for a well-formed request `cache_key` nothing
+/// was ever cached under. Well-formed so the route answers `404` from the
+/// lookup, not `400` from `resolve_request_cache_key` (#5750).
+const MISSING_CACHE_KEY_PATH: &str =
+    "/api/v1/cache/0000000000000000000000000000000000000000000000000000000000000000-default";
+
 /// A minimal but structurally complete `ParseResponse`, built from the
 /// `Default` impls of its fields (all of which derive `Default` except
 /// `cache_key`, which is required).
@@ -124,7 +130,7 @@ async fn auth_disabled_by_default_lets_protected_route_through_without_a_header(
     // No Authorization header at all. If auth were somehow on, this would be
     // 401; with it off, the request reaches `get_cached`, which 404s because
     // the key was never cached - the diagnostic proof the layer let it through.
-    let response = get_with_token(&state, "/api/v1/cache/missing-key", None).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, None).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
@@ -139,7 +145,7 @@ async fn auth_rejects_missing_header_when_token_configured() {
     config.api_token = Some("s3cr3t".to_string());
     state.config = Arc::new(config);
 
-    let response = get_with_token(&state, "/api/v1/cache/missing-key", None).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, None).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -150,7 +156,7 @@ async fn auth_rejects_wrong_token_when_token_configured() {
     config.api_token = Some("s3cr3t".to_string());
     state.config = Arc::new(config);
 
-    let response = get_with_token(&state, "/api/v1/cache/missing-key", Some("nope")).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, Some("nope")).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -164,7 +170,7 @@ async fn auth_rejects_same_length_token_differing_in_last_byte() {
     config.api_token = Some("s3cr3t".to_string());
     state.config = Arc::new(config);
 
-    let response = get_with_token(&state, "/api/v1/cache/missing-key", Some("s3cr3x")).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, Some("s3cr3x")).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -181,7 +187,7 @@ async fn auth_accepts_correct_token_when_token_configured() {
 
     // The request must reach `get_cached` (404, not 401) to prove the
     // matching-token path actually runs `next.run(request)`.
-    let response = get_with_token(&state, "/api/v1/cache/missing-key", Some("s3cr3t")).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, Some("s3cr3t")).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
@@ -242,14 +248,14 @@ async fn auth_leaves_health_route_open_even_when_token_configured() {
 #[tokio::test]
 async fn get_cached_returns_404_for_a_key_never_written() {
     let state = test_state("cache-miss").await;
-    let response = get_with_token(&state, "/api/v1/cache/does-not-exist", None).await;
+    let response = get_with_token(&state, MISSING_CACHE_KEY_PATH, None).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn get_cached_returns_the_stored_response_and_sets_from_cache() {
     let state = test_state("cache-hit").await;
-    let key = "hit-key-1";
+    let key = "1111111111111111111111111111111111111111111111111111111111111111-default";
     let mut stored = minimal_parse_response(key);
     // Stored with from_cache = false, as a freshly-processed response would be,
     // under the key the JSON parse route writes for this `cache_key` (#5542).

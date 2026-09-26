@@ -348,7 +348,8 @@ export class SectionPlaneRenderer {
     const uniforms = new Float32Array(SECTION_PLANE_UNIFORM_FLOATS);
     if (relativeToEyeFrame) {
       relativeToEyeFrame.packUniforms(uniforms, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
-      relativeToEyeFrame.packDrawableOrigin(origin, uniforms, SECTION_PLANE_UNIFORM_SLOTS.drawableDelta);
+      // Outside this camera's RTE envelope: not rasterisable this frame (#6128).
+      if (!relativeToEyeFrame.tryPackDrawableOrigin(origin, uniforms, SECTION_PLANE_UNIFORM_SLOTS.drawableDelta)) return;
     } else {
       uniforms.set(viewProj!, SECTION_PLANE_UNIFORM_SLOTS.rteViewProj);
     }

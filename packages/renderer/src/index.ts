@@ -188,7 +188,7 @@ import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
-import { uploadInstancedRteDeltas } from './instanced-rte.js';
+import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
@@ -1997,6 +1997,11 @@ export class Renderer {
                 }
                 : null;
 
+            // Meshes this camera's RTE frame cannot represent (#6128). Nothing
+            // culls individual meshes before this point, so a far-off mesh (a
+            // stray element, one hydrated for picking) must be skipped, not
+            // allowed to fail every frame.
+            const outsideEyeEnvelope = new Set<Mesh>();
             // Reuse pooled scratch buffer for per-mesh uniform writes
                 const meshBuf = this.uniformScratch;
                 const meshFlags = this.uniformScratchU32;
@@ -2049,7 +2054,10 @@ export class Renderer {
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
                     const meshOrigin = mesh.rteOrigin
                         ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                    relativeToEyeFrame.packDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta)) {
+                        outsideEyeEnvelope.add(mesh);
+                        continue;
+                    }
                     meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
@@ -2579,7 +2587,7 @@ export class Renderer {
                     // The regular model matrix remains for absolute-space
                     // fragment work (section/shadow); vertex projection uses
                     // this f64-subtracted high/low origin instead.
-                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta)) return;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     // Quantized dequantization params (issue #1682 phase 6);
@@ -2687,8 +2695,11 @@ export class Renderer {
                     }
                     visibleInstanced = kept;
                 }
+                // Per-template instance runs inside this frame's RTE envelope,
+                // shared by the opaque and transparent instanced sub-passes.
+                let visibleInstancedRuns: InstanceRun[][] = [];
                 if (visibleInstanced.length > 0) {
-                    uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
+                    visibleInstancedRuns = uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
@@ -2697,13 +2708,13 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of visibleInstanced) {
+                    for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
-                        pass.drawIndexed(it.indexCount, it.instanceCount);
-                        frameDrawCalls++;
-                        frameInstancedDrawn++;
+                        const runs = visibleInstancedRuns[i]!;
+                        frameDrawCalls += drawInstanceRuns(pass, it.indexCount, runs);
+                        if (runs.length > 0) frameInstancedDrawn++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
@@ -2752,7 +2763,7 @@ export class Renderer {
                         // drew every textured occurrence collapsed toward the
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
-                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        if (!relativeToEyeFrame.tryPackDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
@@ -2930,12 +2941,11 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of visibleInstanced) {
+                    for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
-                        pass.drawIndexed(it.indexCount, it.instanceCount);
-                        frameDrawCalls++;
+                        frameDrawCalls += drawInstanceRuns(pass, it.indexCount, visibleInstancedRuns[i]!);
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
@@ -2979,7 +2989,7 @@ export class Renderer {
                         tplFlags[3] = edgeIntensityMilliU32;
                         packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                         const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                        relativeToEyeFrame.packDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        if (!relativeToEyeFrame.tryPackDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
@@ -3039,7 +3049,7 @@ export class Renderer {
                     tplFlags[3] = edgeIntensityMilliU32;
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                     const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                    relativeToEyeFrame.packDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
@@ -3055,6 +3065,7 @@ export class Renderer {
                 // Fallback: render individual meshes (only when no batches exist)
                 // Render opaque meshes with per-mesh bind groups
                 for (const mesh of opaqueMeshes) {
+                    if (outsideEyeEnvelope.has(mesh)) continue;
                     if (mesh.bindGroup) {
                         pass.setBindGroup(0, mesh.bindGroup);
                     } else {
@@ -3070,6 +3081,7 @@ export class Renderer {
                 if (transparentMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
+                        if (outsideEyeEnvelope.has(mesh)) continue;
                         if (mesh.bindGroup) {
                             pass.setBindGroup(0, mesh.bindGroup);
                         } else {

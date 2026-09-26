@@ -26,6 +26,7 @@ import {
   rteRelativePositionF32,
   splitFloat64ForRte,
   translationFreeViewProjection,
+  tryPackRteDrawableDelta,
   unpackRteOrigin,
 } from './relative-to-eye.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
@@ -171,6 +172,32 @@ describe('relative-to-eye packing (#5049)', () => {
       () => frame.update({ x: MAX_RTE_SOURCE_ABS_METRES + 1, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity()),
       /source envelope/,
       'camera source coordinates are checked even though they are no longer uploaded',
+    );
+  });
+
+  it('tryPack skips an out-of-envelope drawable without writing, and still rejects bad source data (#6128)', () => {
+    const out = new Float32Array(RTE_ORIGIN_FLOATS).fill(7);
+    for (const axis of [0, 1, 2]) {
+      const origin: [number, number, number] = [0, 0, 0];
+      origin[axis] = -(MAX_RTE_EYE_RELATIVE_METRES + 1);
+      assert.strictEqual(tryPackRteDrawableDelta(origin, [0, 0, 0], out, 0), false);
+    }
+    assert.deepStrictEqual(Array.from(out), new Array(RTE_ORIGIN_FLOATS).fill(7), 'a skipped drawable leaves the lanes untouched');
+
+    assert.strictEqual(tryPackRteDrawableDelta([MAX_RTE_EYE_RELATIVE_METRES, 0, 0], [0, 0, 0], out, 0), true, 'the envelope is inclusive');
+    assert.deepStrictEqual(unpackRteOrigin(out), [MAX_RTE_EYE_RELATIVE_METRES, 0, 0]);
+
+    assert.throws(() => tryPackRteDrawableDelta([MAX_RTE_SOURCE_ABS_METRES + 1, 0, 0], [0, 0, 0], out, 0), /source envelope/);
+    assert.throws(() => tryPackRteDrawableDelta([0, 0, 0], [0, 0, Number.NaN], out, 0), /finite/);
+
+    const frame = new RelativeToEyeFrame();
+    frame.update({ x: 0, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity());
+    assert.strictEqual(frame.tryPackDrawableOrigin([0, MAX_RTE_EYE_RELATIVE_METRES + 1, 0], out), false);
+    assert.strictEqual(frame.snapshot().tryPackDrawableOrigin([0, 0, 1], out), true);
+    assert.throws(
+      () => frame.packDrawableOrigin([0, 0, MAX_RTE_EYE_RELATIVE_METRES + 1], out),
+      /camera-relative envelope on axis 2/,
+      'the strict packer still names the offending axis',
     );
   });
 

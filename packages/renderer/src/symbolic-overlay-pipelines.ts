@@ -20,7 +20,8 @@ import {
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { packRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
+import { tryPackRteDrawableDelta, type WorldPoint } from './relative-to-eye.js';
+import { collectInstanceRuns, type InstanceRun } from './instanced-rte.js';
 import { parseBoxAlignment, triangulateFillTo } from './symbolic-overlay-geometry.js';
 export { parseBoxAlignment } from './symbolic-overlay-geometry.js';
 
@@ -263,7 +264,8 @@ export class SymbolicFillPipeline {
       const uniform = new Float32Array(40); uniform.set(viewProj);
       if (partition.origin && rteViewProj && camera) {
         uniform.set(rteViewProj, 16);
-        packRteDrawableDelta(partition.origin, camera, uniform, 32);
+        // Outside this camera's RTE envelope: not rasterisable this frame (#6128).
+        if (!tryPackRteDrawableDelta(partition.origin, camera, uniform, 32)) continue;
         uniform[35] = 1;
       }
       this.device.queue.writeBuffer(partition.uniformBuffer, 0, uniform);
@@ -661,22 +663,33 @@ export class SymbolicTextPipeline {
     this.instanceCount = layouts.length;
   }
 
-  /** Pack each f64 anchor against this frame's camera via the shared RTE contract. */
-  private updateRteInstanceDeltas(camera: WorldPoint | undefined): void {
-    if (!this.rteDeltaBuffer || !this.rteDeltaData || this.instanceAnchors.length === 0) return;
-    for (let index = 0; index < this.instanceAnchors.length; index++) {
+  /**
+   * Pack each f64 anchor against this frame's camera via the shared RTE
+   * contract, returning the runs of instances to draw. An anchor outside this
+   * camera's eye envelope cannot be rasterised this frame and keeps a stale
+   * delta, so it is left out of every run (#6128).
+   */
+  private updateRteInstanceDeltas(camera: WorldPoint | undefined): InstanceRun[] {
+    if (!this.rteDeltaBuffer || !this.rteDeltaData || this.instanceAnchors.length === 0) {
+      return [{ first: 0, count: this.instanceCount }];
+    }
+    const rteDeltaData = this.rteDeltaData;
+    const runs = collectInstanceRuns(this.instanceAnchors.length, (index) => {
       const offset = index * TEXT_RTE_DELTA_FLOATS;
       const anchor = this.instanceAnchors[index];
+      let drawable = true;
       if (anchor && camera) {
-        packRteDrawableDelta(anchor, camera, this.rteDeltaData, offset);
-        this.rteDeltaData[offset + 3] = 1;
+        drawable = tryPackRteDrawableDelta(anchor, camera, rteDeltaData, offset);
+        if (drawable) rteDeltaData[offset + 3] = 1;
       } else {
-        this.rteDeltaData.fill(0, offset, offset + TEXT_RTE_DELTA_FLOATS);
+        rteDeltaData.fill(0, offset, offset + TEXT_RTE_DELTA_FLOATS);
       }
       // Keep the anchor-local marker separate from high.w's RTE projection flag.
-      if (anchor) this.rteDeltaData[offset + 7] = 1;
-    }
+      if (anchor) rteDeltaData[offset + 7] = 1;
+      return drawable;
+    });
     this.device.queue.writeBuffer(this.rteDeltaBuffer, 0, this.rteDeltaData);
+    return runs;
   }
 
   hasGeometry(): boolean { return this.instanceCount > 0; }
@@ -730,7 +743,7 @@ export class SymbolicTextPipeline {
     }
     // RTE text consumes CPU-packed per-instance drawable deltas. Retain the
     // camera split slots above for the established 208-byte uniform ABI.
-    this.updateRteInstanceDeltas(rteViewProj && rteCamera ? rteCamera : undefined);
+    const runs = this.updateRteInstanceDeltas(rteViewProj && rteCamera ? rteCamera : undefined);
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
 
     pass.setPipeline(this.pipeline);
@@ -738,7 +751,7 @@ export class SymbolicTextPipeline {
     pass.setVertexBuffer(0, this.cornerBuffer);
     pass.setVertexBuffer(1, this.instanceBuffer);
     pass.setVertexBuffer(2, this.rteDeltaBuffer);
-    pass.draw(4, this.instanceCount);
+    for (const run of runs) pass.draw(4, run.count, 0, run.first);
   }
 
   destroy(): void {

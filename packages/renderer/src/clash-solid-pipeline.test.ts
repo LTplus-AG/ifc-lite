@@ -40,11 +40,11 @@ describe('expandTriangles', () => {
     const out = expandTriangles(input);
     assert.equal(out.length, 3 * 7);
     // Vertex 0: position then colour.
-    assertCloseArray([...out.slice(0, 7)], [0, 0, 0, 1, 0.1, 0.85, 1]);
+    assertCloseArray(Array.from(out.slice(0, 7)), [0, 0, 0, 1, 0.1, 0.85, 1]);
     // Vertex 1.
-    assertCloseArray([...out.slice(7, 14)], [1, 0, 0, 1, 0.1, 0.85, 1]);
+    assertCloseArray(Array.from(out.slice(7, 14)), [1, 0, 0, 1, 0.1, 0.85, 1]);
     // Vertex 2.
-    assertCloseArray([...out.slice(14, 21)], [0, 1, 0, 1, 0.1, 0.85, 1]);
+    assertCloseArray(Array.from(out.slice(14, 21)), [0, 1, 0, 1, 0.1, 0.85, 1]);
   });
 
   it('every vertex of a two-triangle mesh carries the SAME flat colour', () => {
@@ -56,7 +56,7 @@ describe('expandTriangles', () => {
     const out = expandTriangles(input);
     assert.equal(out.length, 6 * 7);
     for (let v = 0; v < 6; v += 1) {
-      const rgba = [...out.slice(v * 7 + 3, v * 7 + 7)];
+      const rgba = Array.from(out.slice(v * 7 + 3, v * 7 + 7));
       assertCloseArray(rgba, [0.2, 0.4, 0.6, 0.9]);
     }
   });
@@ -71,9 +71,9 @@ describe('expandTriangles', () => {
     const out = expandTriangles(input);
     assert.equal(out.length, 6 * 7);
     // First triangle's first vertex is index 1 -> position [0,0,0].
-    assert.deepEqual([...out.slice(0, 3)], [0, 0, 0]);
+    assert.deepEqual(Array.from(out.slice(0, 3)), [0, 0, 0]);
     // Second triangle's first vertex is ALSO index 1 -> [0,0,0] again.
-    assert.deepEqual([...out.slice(21, 24)], [0, 0, 0]);
+    assert.deepEqual(Array.from(out.slice(21, 24)), [0, 0, 0]);
   });
 
   it('accepts f64 positions (the wasm solid is f64) without losing precision beyond f32 rounding', () => {
@@ -83,7 +83,7 @@ describe('expandTriangles', () => {
       color: [1, 0, 0, 1],
     };
     const out = expandTriangles(input);
-    assert.deepEqual([...out.slice(0, 3)], [1.5, 2.5, 3.5]);
+    assert.deepEqual(Array.from(out.slice(0, 3)), [1.5, 2.5, 3.5]);
   });
 
   it('does not subtract an explicit local-origin clash stream twice (#5049)', () => {
@@ -94,8 +94,8 @@ describe('expandTriangles', () => {
       color: [1, 0, 0, 1],
     };
     const out = expandTriangles(input);
-    assertCloseArray([...out.slice(0, 3)], [0.01, 0.02, 0]);
-    assertCloseArray([...out.slice(7, 10)], [0.03, 0.02, 0]);
+    assertCloseArray(Array.from(out.slice(0, 3)), [0.01, 0.02, 0]);
+    assertCloseArray(Array.from(out.slice(7, 10)), [0.03, 0.02, 0]);
   });
 
   it('an empty index list yields an empty stream', () => {
@@ -158,5 +158,39 @@ describe('expandTriangles', () => {
     const legacy = writes[writes.length - 1];
     assert.equal(legacy[35], 0, 'legacy Float32 callers must retain the global route');
     assert.equal(legacy[0], 3, 'legacy Float32 callers retain the global projection');
+  });
+
+  it('skips, rather than throws for, a solid outside the eye envelope (#6128)', () => {
+    let uniformWrites = 0;
+    const device = {
+      createBindGroupLayout: () => ({}) as GPUBindGroupLayout,
+      createPipelineLayout: () => ({}) as GPUPipelineLayout,
+      createShaderModule: () => ({}) as GPUShaderModule,
+      createRenderPipeline: () => ({}) as GPURenderPipeline,
+      createBindGroup: () => ({}) as GPUBindGroup,
+      createBuffer: () => ({ destroy() {} }) as GPUBuffer,
+      queue: {
+        writeBuffer(_buffer: GPUBuffer, _offset: number, data: ArrayBufferView) {
+          if (data.byteLength === 40 * 4) uniformWrites += 1;
+        },
+      },
+    } as unknown as GPUDevice;
+    const pipeline = new ClashSolidPipeline(device, 'bgra8unorm', 1);
+    pipeline.upload({
+      positions: new Float64Array([3_000_000, 0, 0, 3_000_001, 0, 0, 3_000_000, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 0, 0, 1],
+    });
+    const draws: number[] = [];
+    const pass = {
+      setPipeline() {}, setBindGroup() {}, setVertexBuffer() {},
+      draw(count: number) { draws.push(count); },
+    } as unknown as GPURenderPassEncoder;
+    pipeline.render(pass, new Float32Array(16), new Float32Array(16), [0, 0, 0]);
+    assert.deepEqual(draws, []);
+    assert.equal(uniformWrites, 0, 'a skipped solid does not upload a partial uniform');
+
+    pipeline.render(pass, new Float32Array(16), new Float32Array(16), [3_000_000, 0, 0]);
+    assert.deepEqual(draws, [3], 'the same solid draws once the camera is in range');
   });
 });

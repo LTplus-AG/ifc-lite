@@ -681,7 +681,22 @@ impl GeometryRouter {
         // residual through this path on recursion, so a 2D host's perpendicular
         // sleeves take the prism cut too). Any miss falls through to the exact
         // kernel below with the FULL opening set unchanged.
-        if prism_cut::enabled() {
+        //
+        // A plan-rotated wall (#1167) is judged more strictly (#5739). Its faces
+        // are planar only to the f32 quantum outside its own frame, and the
+        // analytic cut's hairline-tolerant emit gate reads the vertices at
+        // their stored precision, so the same wall passed it with per-element
+        // local frames on and went to the wall frame with them off. Such a wall
+        // keeps this cut outright only when it is closed as emitted; otherwise
+        // the same cut is also made in the wall frame, and the better result
+        // is kept.
+        if self.wall_frame_axes(&mesh, ctx).is_some() {
+            if prism_cut::enabled() {
+                if let Some(cut) = self.try_wall_prism_cut(&mesh, ctx, element_id) {
+                    return cut;
+                }
+            }
+        } else if prism_cut::enabled() {
             // World bounds + triangle count captured BEFORE the cut so the
             // per-host diagnostic matches what the exact/rect paths record.
             let prism_bounds = world_host_bounds(&mesh);
@@ -790,43 +805,18 @@ impl GeometryRouter {
     /// are subtracted there too. The result is rotated back; the orthonormal,
     /// origin-centred round-trip is identity for untouched geometry. Recurses
     /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
+    ///
+    /// `frame_prism` selects the #5739 comparison route instead: only the
+    /// analytic prism cut, in this frame, `None` unless it is closed as emitted.
     fn try_cut_wall_local_frame(
         &self,
         mesh: &Mesh,
         ctx: &VoidContext,
         element_id: u32,
         host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
+        frame_prism: bool,
     ) -> Option<Mesh> {
-        if ctx.merged_openings.is_empty() {
-            return None;
-        }
-        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
-            match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
-                OpeningType::NonRectangular(_, _, _, d) => *d,
-                OpeningType::Rectangular(_, _, d) => *d,
-            }
-        };
-        // Define the wall frame from the first opening whose depth is a
-        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
-        // keep their (unchanged) world path.
-        let horizontal_axes = ctx
-            .merged_openings
-            .iter()
-            .filter_map(depth_of)
-            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
-            .and_then(wall_frame_from_depth);
-        let axes = match horizontal_axes {
-            Some(axes) => axes,
-            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
-                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
-        };
-
-        // AABB-only `Rectangular` openings can't be rotated into the frame; a
-        // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
-            return None;
-        }
+        let axes = self.wall_frame_axes(mesh, ctx)?;
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -915,8 +905,35 @@ impl GeometryRouter {
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
         let diag_before = frame_snap::HostDiagSnapshot::capture(self, element_id);
-        let mut result_local = self
+        let frame = Matrix3::from_columns(&axes);
+        let center_point = Point3::from(center);
+        // The #5739 comparison route is the analytic prism cut here, where every
+        // face is axis-aligned, kept only when it is closed as emitted. It does
+        // not fall back to the exact kernel: re-cutting every such wall exactly
+        // cost 2.5x the subtracts on ISSUE_098. The ordinary route never takes
+        // this branch, so its cuts are unchanged.
+        if frame_prism {
+            let telemetry = crate::telemetry_transaction::Transaction::new();
+            if let Some((cut, None)) = self.try_prism_cut(&host_local, &local_ctx) {
+                let cut = rotate_mesh_from_frame(&cut, &frame, &center_point);
+                if frame_snap::closed_as_emitted(&cut) {
+                    telemetry.commit();
+                    self.record_host_cut_effect(
+                        element_id,
+                        mesh.triangle_count(),
+                        cut.triangle_count(),
+                        ctx.rect_opening_count(),
+                        host_world_bounds,
+                    );
+                    return Some(cut);
+                }
+            }
+            return None;
+        }
+        let result_local = self
             .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+        // Rotation-only positions retain the far centre in `Mesh::origin`.
+        let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
         // #5635: the operands arrive as f32 WORLD positions, so in the frame one
         // authored face can land on dozens of depth values micrometres apart and
         // the cut keeps T-junction seams along them. Only when the cut came back
@@ -927,9 +944,11 @@ impl GeometryRouter {
         // is already closed is never touched, so it stays byte-identical. The
         // host itself need not be closed: an extruded voided profile carries
         // T-junctions of its own that the cut consolidates away.
-        if !result_local.positions.is_empty()
-            && !frame_snap::closed_and_consistently_wound(&result_local)
-        {
+        //
+        // Closure is judged on the cut as it will be emitted: rotated back and
+        // after the degenerate-triangle hygiene. A cut can be closed on the
+        // frame's grid only through µm slivers that hygiene then drops (#5739).
+        if !result_local.positions.is_empty() && !frame_snap::closed_as_emitted(&result) {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
             let diag_first = frame_snap::HostDiagSnapshot::capture(self, element_id);
@@ -937,7 +956,10 @@ impl GeometryRouter {
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
-            let world_magnitude = [mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]
+            // The WORLD magnitude (a local-frame host's origin folded in), so
+            // the tolerance does not depend on the vertex frame (#5739).
+            let ((wx0, wy0, wz0), (wx1, wy1, wz1)) = host_world_bounds;
+            let world_magnitude = [wx0, wy0, wz0, wx1, wy1, wz1]
                 .iter()
                 .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
             frame_snap::snap_to_frame_planes(
@@ -961,15 +983,106 @@ impl GeometryRouter {
             let retry_volume = frame_snap::enclosed_volume(&retry);
             let same_cut = (retry_volume - first_volume).abs()
                 <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
-            if same_cut && frame_snap::closed_and_consistently_wound(&retry) {
-                result_local = retry;
+            let retry = rotate_mesh_from_frame(&retry, &frame, &center_point);
+            if same_cut && frame_snap::closed_as_emitted(&retry) {
+                result = retry;
             } else {
                 diag_first.restore(self, element_id);
             }
         }
-        let frame = Matrix3::from_columns(&axes);
-        // Rotation-only positions retain the far centre in `Mesh::origin`.
-        Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))
+        Some(result)
+    }
+
+    /// The #1167 wall frame `[run, height, normal]` for a plan-rotated wall
+    /// whose openings can all be expressed in it, else `None` (the host keeps
+    /// the world path). Translation-invariant, so it gives the same answer for a
+    /// world-stored host and a local-frame one (#5739).
+    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
+        if ctx.merged_openings.is_empty() {
+            return None;
+        }
+        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
+            match op {
+                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
+                OpeningType::NonRectangular(_, _, _, d) => *d,
+                OpeningType::Rectangular(_, _, d) => *d,
+            }
+        };
+        // Define the wall frame from the first opening whose depth is a
+        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
+        // keep their (unchanged) world path.
+        let horizontal_axes = ctx
+            .merged_openings
+            .iter()
+            .filter_map(depth_of)
+            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
+            .and_then(wall_frame_from_depth);
+        let axes = match horizontal_axes {
+            Some(axes) => axes,
+            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
+                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
+        };
+
+        // AABB-only `Rectangular` openings can't be rotated into the frame; a
+        // plan-rotated wall never has them (they'd be diagonal), so bail.
+        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
+            return None;
+        }
+        Some(axes)
+    }
+
+    /// The prism route for a plan-rotated wall, judged against the wall-frame
+    /// route (#5739). `None` when the prism cut declines, so the caller carries
+    /// on down the ordinary path.
+    ///
+    /// A prism result closed as emitted is kept as is, so every such host stays
+    /// byte-identical. Otherwise the same analytic cut is made in the wall
+    /// frame, and that result is kept if it is closed as emitted and has fewer
+    /// [`topology_defect_count`] defects.
+    /// Only the kept route's per-host diagnostics remain; the prism telemetry
+    /// counts the attempt either way, the wall-frame route's only if kept.
+    fn try_wall_prism_cut(&self, mesh: &Mesh, ctx: &VoidContext, element_id: u32) -> Option<Mesh> {
+        let diag_before = frame_snap::HostDiagSnapshot::capture(self, element_id);
+        let prism_bounds = world_host_bounds(mesh);
+        let prism_tris_before = mesh.triangle_count();
+        let (cut, residual) = self.try_prism_cut(mesh, ctx)?;
+        let prism_result = match residual {
+            None => {
+                self.record_host_cut_effect(
+                    element_id,
+                    prism_tris_before,
+                    cut.triangle_count(),
+                    ctx.rect_opening_count(),
+                    prism_bounds,
+                );
+                cut
+            }
+            Some(res) => self.apply_void_context(cut, &res, element_id),
+        };
+        if frame_snap::closed_as_emitted(&prism_result) {
+            return Some(prism_result);
+        }
+        let diag_prism = frame_snap::HostDiagSnapshot::capture(self, element_id);
+        diag_before.restore(self, element_id);
+        let frame_telemetry = crate::telemetry_transaction::Transaction::new();
+        let origin = mesh.origin;
+        let mut host = mesh.clone();
+        host.origin = [0.0; 3];
+        let frame_result = self
+            .try_cut_wall_local_frame(&host, &ctx.relativized_by(origin), element_id, prism_bounds, true)
+            .map(|mut cut| {
+                cut.origin = std::array::from_fn(|i| cut.origin[i] + origin[i]);
+                cut
+            });
+        if let Some(frame_result) = frame_result
+            .filter(|cut| topology_defect_count(cut) < topology_defect_count(&prism_result))
+        {
+            frame_telemetry.commit();
+            return Some(frame_result);
+        }
+        drop(frame_telemetry);
+        diag_prism.restore(self, element_id);
+        Some(prism_result)
     }
 
     // `host_mutated` is set just before an early `break` (final write unread; kept
@@ -1002,7 +1115,7 @@ impl GeometryRouter {
         // fragments badly. Scoped to plan-rotated walls; everything else falls
         // through to the world path unchanged. Gated on `allow_local_frame`.
         if allow_local_frame {
-            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture) {
+            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture, false) {
                 return cut;
             }
         }

@@ -80,7 +80,7 @@ function dismiss(id: number) {
 export const toast = {
   success: (message: string, action?: Toast['action']) => addToast('success', message, action ? null : 3000, action),
   error: (message: string) => addToast('error', message, null),
-  info: (message: string) => addToast('info', message, 3000),
+  info: (message: string, action?: Toast['action']) => addToast('info', message, action ? null : 3000, action),
 };
 
 // ─── React Component ──────────────────────────────────────────────────────

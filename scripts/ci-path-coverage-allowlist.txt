@@ -76,6 +76,8 @@ scripts/typecheck-tests.test.mjs apps/landing/** # apps/landing is not a tsconfi
 scripts/check-workflow-report-paths.mjs apps/landing/** # walks apps/ only for package.json; apps/landing contains no package manifest
 scripts/check-i18n-literals.test.mjs apps/landing/** # `apps` is a synthetic fixture-directory literal (join(dir, 'apps', 'viewer', 'src', 'components') in makeTree(), dir a mkdtemp path) mirroring the production scan root's own path, not a real read -- every CLI-harness call passes --root <tempdir>, so the checker never walks the real tree
 scripts/check-jsx-a11y.test.mjs apps/landing/** # `apps` is a synthetic fixture-directory literal (join(root, 'apps', 'ui') in writeComponent(), root a mkdtemp path); every CLI-harness call passes --root <tempdir>, so oxlint never lints the real tree, and .oxlintrc.json ignores apps/landing anyway
+scripts/check-icon-button-adoption.mjs apps/landing/** # walks only apps/viewer/src/components (join(root, 'apps', 'viewer', 'src', 'components')); apps/landing is never read
+scripts/check-icon-button-adoption.test.mjs apps/landing/** # `apps` is a synthetic fixture-directory literal under a mkdtemp root; every CLI call passes --root <tempdir>, so the real tree is never read
 
 # ---------------------------------------------------------------------------
 # 3. OTHER WORKFLOWS. Real holes, in workflows this change does not own.

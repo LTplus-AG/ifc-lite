@@ -1173,6 +1173,36 @@ describe('buildMaterialTree — type-level material expansion (#1755)', () => {
     assert.strictEqual(byName.get('wood1')!.elementCount, 2);
     assert.deepStrictEqual(byName.get('Unknown')!.globalIds, [3], 'occurrence-level association untouched');
   });
+
+  it('keeps equal material names in separate federated model rows (#5888)', () => {
+    const models = new Map<string, FederatedModel>([
+      ['A', { ...createModel(0), id: 'A', name: 'A.ifc', ifcDataStore: createTypedMaterialDataStore() }],
+      ['B', { ...createModel(1000), id: 'B', name: 'B.ifc', ifcDataStore: createTypedMaterialDataStore() }],
+    ]);
+    useViewerStore.setState({ models });
+    const nodes = buildMaterialTree(models, null, new Set(), true);
+    const wood = nodes.filter((node) => node.name === 'wood1');
+    assert.strictEqual(wood.length, 2, 'one material row per source model');
+    assert.deepStrictEqual(wood.map((node) => node.modelId), ['A', 'B']);
+    assert.ok(wood.every((node) => node.modelIds.length === 1 && node.entityExpressId === 10));
+    assert.ok(wood.every((node) => !node.name.includes('[')), 'model attribution stays outside IFC Name');
+    assert.notStrictEqual(wood[0].id, wood[1].id, 'rows remain distinct in the virtual tree');
+  });
+
+  it('does not invent a material owner for layers sharing one composed IFCX store (#5888)', () => {
+    const composed = createTypedMaterialDataStore();
+    const models = new Map<string, FederatedModel>([
+      ['A', { ...createModel(0), id: 'A', name: 'Layer A', ifcDataStore: composed }],
+      ['B', { ...createModel(0), id: 'B', name: 'Layer B', ifcDataStore: composed }],
+    ]);
+    useViewerStore.setState({ models });
+    const nodes = buildMaterialTree(models, null, new Set(), true);
+    const wood = nodes.filter((node) => node.name === 'wood1');
+    assert.strictEqual(wood.length, 1, 'one composed material row, not one invented owner per layer');
+    assert.deepStrictEqual(wood[0].modelIds, ['A', 'B']);
+    assert.strictEqual(wood[0].modelId, undefined, 'shared store has no single source model');
+    assert.deepStrictEqual(wood[0].globalIds, [1, 2], 'usage is not duplicated across layers');
+  });
 });
 
 /**
@@ -1234,6 +1264,40 @@ function createDecompositionDataStore(opts: { cycle?: boolean; emptyTypeTarget?:
     relationships: relBuilder.build(),
   } as unknown as IfcDataStore;
 }
+
+describe('federated model attribution in hierarchy rows (#5888)', () => {
+  const modelsFor = (makeStore: () => IfcDataStore): Map<string, FederatedModel> => new Map([
+    ['A', { ...createModel(0), id: 'A', name: 'A.ifc', ifcDataStore: makeStore() }],
+    ['B', { ...createModel(1000), id: 'B', name: 'B.ifc', ifcDataStore: makeStore() }],
+  ]);
+
+  it('keeps By Class and By Type IFC names clean while assigning each row to its model', () => {
+    const models = modelsFor(createDecompositionDataStore);
+    useViewerStore.setState({ models });
+    const geometry = new Set([11, 12, 14, 1011, 1012, 1014]);
+    const byClass = buildTypeTree(models, null, new Set(['type-IfcWall']), true, geometry);
+    const walls = byClass.filter((row) => row.type === 'element' && row.expressIds[0] === 14);
+    assert.deepStrictEqual(walls.map((row) => [row.modelId, row.name]), [['A', 'Plain Wall'], ['B', 'Plain Wall']]);
+
+    const expanded = new Set(['typeclass-IfcWallType', 'ifctype-A-21', 'ifctype-B-21']);
+    const byType = buildIfcTypeTree(models, null, expanded, true, geometry);
+    const typeRows = byType.filter((row) => row.type === 'ifc-type' && row.entityExpressId === 21);
+    assert.deepStrictEqual(typeRows.map((row) => [row.modelId, row.name]), [['A', 'WallType'], ['B', 'WallType']]);
+    const occurrences = byType.filter((row) => row.type === 'element' && row.expressIds[0] === 14);
+    assert.deepStrictEqual(occurrences.map((row) => row.modelId), ['A', 'B']);
+  });
+
+  it('keeps group and member names clean while assigning each row to its model', () => {
+    const models = modelsFor(createGroupDataStore);
+    useViewerStore.setState({ models });
+    const geometry = new Set([202, 301, 302, 1202, 1301, 1302]);
+    const rows = buildGroupTree(models, null, new Set(['group-A-100', 'group-B-100']), true, geometry);
+    const groups = rows.filter((row) => row.type === 'group' && row.expressIds[0] === 100);
+    assert.deepStrictEqual(groups.map((row) => [row.modelId, row.name]), [['A', 'HVAC System'], ['B', 'HVAC System']]);
+    const members = rows.filter((row) => row.type === 'group-member' && row.expressIds[0] === 202);
+    assert.deepStrictEqual(members.map((row) => [row.modelId, row.name]), [['A', 'Main Duct'], ['B', 'Main Duct']]);
+  });
+});
 
 describe('buildTypeTree — geometry-less assemblies (By Class tab)', () => {
   it('lists an assembly whose IfcRelAggregates parts carry the geometry', () => {

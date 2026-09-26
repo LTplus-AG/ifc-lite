@@ -95,6 +95,8 @@ export const commandPaletteEn = {
   'commandPalette.panel.ids.label': 'IDS Validation',
   'commandPalette.panel.clash.label': 'Clash Detection',
   'commandPalette.panel.compare.label': 'Compare Models',
+  'commandPalette.panel.cost.label': 'Cost',
+  'commandPalette.panel.chat.label': 'AI Chat',
   'commandPalette.panel.lens.label': 'Lens Rules',
   'commandPalette.panel.layers.label': 'Layer Stack',
   'commandPalette.panel.sources.label': 'Cloud Sources',
@@ -128,6 +130,7 @@ export const commandPaletteEn = {
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
+  'commandPalette.pref.settings.label': 'Settings…',
 
   // ── Learn ──
   'commandPalette.learn.hub.label': 'Open Learn Hub',

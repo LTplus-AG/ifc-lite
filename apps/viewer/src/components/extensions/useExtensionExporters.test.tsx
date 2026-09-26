@@ -3,15 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Rendering tests for `ExtensionExportSlot` — the "appears" half of #1907.
- *
- * The unit tests around #1907/#1930 proved the host dispatches the right
- * exporter, but nothing ever asserted that a registered `exportMenu`
- * contribution actually SHOWS UP in the UI — the original bug was precisely
- * an extension that installed correctly and then displayed nothing. These
- * are the first React rendering tests in `apps/viewer`: happy-dom provides
- * the DOM (registered by `@/test/setup-dom.js`, which must stay the first
- * import), React 19's `createRoot` + `act()` drive the component for real.
+ * Extension exporters are export-registry entries (#5838), rendered by every
+ * export surface — the "appears" half of #1907, which used to be proven for a
+ * block inside the IFC dialog only.
  *
  * The host injected through `ExtensionHostContext` is a real
  * `ExtensionHostService` subclass over a real `SlotRegistry` — only
@@ -19,15 +13,13 @@
  * IndexedDB). Download assertions sit on the browser seams the code
  * actually uses: the bubbling click of the `<a download>` anchor that
  * `downloadFile` dispatches, the `Blob` handed to `URL.createObjectURL`,
- * and the `ifc-lite:file-downloaded` tour event. The tour event alone
- * carries only the file KIND, not the filename or bytes, which is why the
- * anchor + blob seams are asserted too.
+ * and the `ifc-lite:file-downloaded` tour event.
  */
 
 import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ExporterContribution, RuntimeRunResult } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -35,7 +27,15 @@ import { ExtensionHostService } from '@/services/extensions/host.js';
 import type { ExporterOutput } from '@/services/extensions/host-exporters.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events';
-import { ExtensionExportSlot } from './ExtensionExportSlot.js';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { EXPORT_COMMAND_IDS, type ExportIconSet } from '@/components/viewer/toolbar/export-commands';
+import { ClassicExportMenuItems } from '@/components/viewer/toolbar/ClassicExportMenuItems';
+import { RibbonExportGroup } from '@/components/viewer/ribbon/tabs/RibbonExportGroup';
+import { buildExportCommands } from '@/components/viewer/commandPaletteExports';
+import { usePaletteExportRunner } from '@/components/viewer/usePaletteExportRunner';
 
 // ─── Download-path observers (real seams, no module mocks) ───────────────
 
@@ -138,14 +138,14 @@ function registerExporter(
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderExportSlot(host: ExtensionHostService): HTMLElement {
+function mount(host: ExtensionHostService, node: React.ReactNode): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <ExtensionHostContext.Provider value={host}>
-        <ExtensionExportSlot baseName="model" />
+        <TooltipProvider>{node}</TooltipProvider>
       </ExtensionHostContext.Provider>,
     );
   });
@@ -153,11 +153,30 @@ function renderExportSlot(host: ExtensionHostService): HTMLElement {
   return container;
 }
 
-function buttonsIn(container: HTMLElement): HTMLButtonElement[] {
-  return [...container.querySelectorAll('button')];
+function StubIcon(props: React.SVGProps<SVGSVGElement>) {
+  return <svg {...props} />;
+}
+const STUB_ICONS = Object.fromEntries(
+  [...EXPORT_COMMAND_IDS, 'extension'].map((id) => [id, StubIcon]),
+) as ExportIconSet;
+
+/** The ribbon's File > Export group. */
+function renderRibbon(host: ExtensionHostService): HTMLElement {
+  return mount(host, <RibbonExportGroup icons={STUB_ICONS} />);
 }
 
-describe('ExtensionExportSlot rendering (#1907)', () => {
+/** Every extension exporter control on screen, in DOM order. */
+function extensionControls(): HTMLElement[] {
+  return [...document.body.querySelectorAll<HTMLElement>('[data-export-extension]')];
+}
+
+let paletteRunner: ReturnType<typeof usePaletteExportRunner> | null = null;
+function PaletteRunnerHarness() {
+  paletteRunner = usePaletteExportRunner();
+  return null;
+}
+
+describe('extension exporters are export-registry entries (#1907, #5838)', () => {
   beforeEach(() => {
     for (const { root, container } of mounted.splice(0)) {
       act(() => {
@@ -168,54 +187,66 @@ describe('ExtensionExportSlot rendering (#1907)', () => {
     anchorClicks.length = 0;
     createdBlobs.length = 0;
     downloadedKinds.length = 0;
+    paletteRunner = null;
+    const model = fixtureModel('m');
+    model.name = 'Haus.ifc';
+    useViewerStore.setState({ ...fixtureModels(model) });
   });
 
-  it('renders nothing while the exportMenu slot is empty', () => {
-    const container = renderExportSlot(new StubExtensionHost());
-    assert.equal(container.innerHTML, '');
+  it('renders no extension row while the exportMenu slot is empty', () => {
+    renderRibbon(new StubExtensionHost());
+    assert.equal(extensionControls().length, 0);
   });
 
-  it('a registered exporter contribution APPEARS as a button labelled with its name', () => {
+  it('a registered exporter APPEARS in the ribbon, the classic menu and the palette, labelled with its name', () => {
     const host = new StubExtensionHost();
     registerExporter(host, 'ext.alpha', exporterContribution());
-    const container = renderExportSlot(host);
 
-    const buttons = buttonsIn(container);
-    assert.equal(buttons.length, 1, 'expected exactly one exporter button');
-    assert.ok(
-      buttons[0].textContent?.includes('Demo CSV'),
-      `button must carry the exporter's name; got: ${JSON.stringify(buttons[0].textContent)}`,
-    );
-    assert.ok(buttons[0].textContent?.includes('.csv'), 'button shows the normalised extension');
-    assert.ok(container.textContent?.includes('From extensions'), 'section label renders');
+    renderRibbon(host);
+    mount(host, (
+      <DropdownMenu open modal={false}>
+        <DropdownMenuTrigger>Export</DropdownMenuTrigger>
+        <DropdownMenuContent><ClassicExportMenuItems /></DropdownMenuContent>
+      </DropdownMenu>
+    ));
+    const controls = extensionControls();
+    assert.deepEqual(controls.map((c) => c.getAttribute('data-export-extension')), [`ext.alpha:${EXPORTER_ID}`, `ext.alpha:${EXPORTER_ID}`]);
+    for (const control of controls) {
+      assert.ok(control.textContent?.includes('Demo CSV'), `row carries the exporter's name: ${JSON.stringify(control.textContent)}`);
+    }
+    assert.ok(document.body.textContent?.includes('From extensions'), 'the classic menu labels the group');
+
+    mount(host, <PaletteRunnerHarness />);
+    assert.ok(paletteRunner);
+    const rows = buildExportCommands(() => {}, paletteRunner.extensionExporters).filter((c) => c.id.startsWith('export:ext:'));
+    assert.deepEqual(rows.map((r) => [r.id, r.label, r.detail]), [[`export:ext:ext.alpha:${EXPORTER_ID}`, 'Demo CSV', '.csv']]);
   });
 
   it('appears when a contribution is registered AFTER mount (subscription path)', () => {
     const host = new StubExtensionHost();
-    const container = renderExportSlot(host);
-    assert.equal(buttonsIn(container).length, 0);
+    renderRibbon(host);
+    assert.equal(extensionControls().length, 0);
 
     act(() => {
       registerExporter(host, 'ext.alpha', exporterContribution());
     });
-    const buttons = buttonsIn(container);
-    assert.equal(buttons.length, 1);
-    assert.ok(buttons[0].textContent?.includes('Demo CSV'));
+    const controls = extensionControls();
+    assert.equal(controls.length, 1);
+    assert.ok(controls[0].textContent?.includes('Demo CSV'));
   });
 
-  it('clicking runs the exporter with id AND owner, then downloads the produced bytes', async () => {
+  it('clicking runs the exporter with id AND owner, then downloads the bytes under the active model name', async () => {
     const host = new StubExtensionHost();
     const payload = exporterContribution();
     registerExporter(host, 'ext.alpha', payload);
-    const container = renderExportSlot(host);
-    const [button] = buttonsIn(container);
+    renderRibbon(host);
+    const [button] = extensionControls();
     assert.ok(button, 'exporter button must render before it can be clicked');
 
     await act(async () => {
       button.click();
     });
     // Argument ORDER is part of the contract: (exporterId, extensionId).
-    // Recording named fields from the real parameters pins both values.
     assert.deepEqual(host.exporterRuns, [{ exporterId: EXPORTER_ID, extensionId: 'ext.alpha' }]);
 
     const bytes = new TextEncoder().encode('a,b\n1,2\n');
@@ -224,16 +255,30 @@ describe('ExtensionExportSlot rendering (#1907)', () => {
     });
 
     assert.equal(anchorClicks.length, 1, 'exactly one download anchor click');
-    assert.equal(anchorClicks[0].download, 'model.csv', 'baseName + exporter extension');
+    assert.equal(anchorClicks[0].download, 'Haus.csv', 'model name + exporter extension (#5833)');
     assert.equal(createdBlobs.length, 1);
     assert.equal(anchorClicks[0].href, 'blob:ifc-lite-test-1', 'anchor points at the produced blob');
     assert.equal(createdBlobs[0].type, 'text/csv', 'blob carries the contribution mime type');
-    assert.deepEqual(
-      new Uint8Array(await createdBlobs[0].arrayBuffer()),
-      bytes,
-      'the exporter bytes reach the download path unmodified',
-    );
+    assert.deepEqual(new Uint8Array(await createdBlobs[0].arrayBuffer()), bytes, 'the exporter bytes reach the download unmodified');
     assert.deepEqual(downloadedKinds, ['csv'], 'tour event fires from the download choke point');
+  });
+
+  it('the palette row runs the same exporter through the same path', async () => {
+    const host = new StubExtensionHost();
+    const payload = exporterContribution();
+    registerExporter(host, 'ext.alpha', payload);
+    mount(host, <PaletteRunnerHarness />);
+    assert.ok(paletteRunner);
+    const [row] = buildExportCommands(paletteRunner.runExport, paletteRunner.extensionExporters).filter((c) => c.id.startsWith('export:ext:'));
+    assert.ok(row);
+    await act(async () => {
+      row.action();
+    });
+    assert.deepEqual(host.exporterRuns, [{ exporterId: EXPORTER_ID, extensionId: 'ext.alpha' }]);
+    await act(async () => {
+      host.resolvePendingRun(payload, 'x');
+    });
+    assert.equal(anchorClicks[0]?.download, 'Haus.csv');
   });
 
   it('same exporter id in two extensions: second button runs the SECOND extension and is the only busy one (#1930)', async () => {
@@ -242,9 +287,9 @@ describe('ExtensionExportSlot rendering (#1907)', () => {
     const betaPayload = exporterContribution({ name: 'Beta CSV' }); // same `id` on purpose
     registerExporter(host, 'ext.alpha', alphaPayload);
     registerExporter(host, 'ext.beta', betaPayload);
-    const container = renderExportSlot(host);
+    renderRibbon(host);
 
-    const buttons = buttonsIn(container);
+    const buttons = extensionControls() as HTMLButtonElement[];
     assert.equal(buttons.length, 2, 'one button PER contribution, not per exporter id');
     const alphaButton = buttons.find((b) => b.textContent?.includes('Alpha CSV'));
     const betaButton = buttons.find((b) => b.textContent?.includes('Beta CSV'));
@@ -256,24 +301,15 @@ describe('ExtensionExportSlot rendering (#1907)', () => {
     // The confused-deputy fix: the run must carry ext.beta, not fall back
     // to the first extension that declares the id.
     assert.deepEqual(host.exporterRuns, [{ exporterId: EXPORTER_ID, extensionId: 'ext.beta' }]);
-
-    // Busy state is keyed on owner:exporter — only beta's button spins,
-    // while BOTH are disabled for the duration of the run. Compare booleans,
-    // not elements: feeding a happy-dom node (with its React fiber graph) to
-    // a failing assert.equal makes the error serializer OOM the process.
-    const spinning = (button: HTMLButtonElement): boolean =>
-      button.querySelector('.animate-spin') !== null;
-    assert.equal(spinning(betaButton), true, 'running button shows the spinner');
-    assert.equal(spinning(alphaButton), false, 'idle button does not spin');
+    // One run at a time: both rows are disabled while it is in flight.
     assert.equal(betaButton.disabled, true);
     assert.equal(alphaButton.disabled, true);
 
     await act(async () => {
       host.resolvePendingRun(betaPayload, 'col\nvalue\n');
     });
-    assert.equal(spinning(betaButton), false, 'spinner clears after the run');
     assert.equal(betaButton.disabled, false);
     assert.equal(anchorClicks.length, 1);
-    assert.equal(anchorClicks[0].download, 'model.csv');
+    assert.equal(anchorClicks[0].download, 'Haus.csv');
   });
 });

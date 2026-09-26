@@ -4,6 +4,7 @@
 import { useId, useRef, useState } from 'react';
 import { ImagePlus, Upload, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { DEFAULT_APPEARANCE_ASSET_LIMITS as limits } from '@/lib/appearance/asset-format.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { useTranslation } from '@/i18n';
@@ -39,8 +40,13 @@ export function AppearanceSourceFields(props: Pick<AppearancePanelViewProps,
             <Upload aria-hidden="true" />{props.sourceBusy ? (props.allowPdf ? t('appearance.sourceFields.readingSource') : t('appearance.sourceFields.readingImage')) : source ? (props.allowPdf ? t('appearance.sourceFields.uploadAnotherSource') : t('appearance.sourceFields.uploadAnotherImage')) : (props.allowPdf ? t('appearance.sourceFields.chooseImageOrPdf') : t('appearance.sourceFields.chooseImage'))}
           </Button>
         </div>
-        {source && props.onRemoveSource && <Button type="button" variant="ghost" size="icon-xs" disabled={disabled}
-          aria-label={props.allowPdf ? t('appearance.sourceFields.removeSource') : t('appearance.sourceFields.removeSourceImage')} title={props.allowPdf ? t('appearance.sourceFields.removeSource') : t('appearance.sourceFields.removeSourceImage')} onClick={() => props.onRemoveSource?.(source.id)}><Trash2 aria-hidden="true" /></Button>}
+        {source && props.onRemoveSource && <IconButton
+   label={props.allowPdf ? t('appearance.sourceFields.removeSource') : t('appearance.sourceFields.removeSourceImage')}
+   type="button"
+   size="icon-xs"
+   disabled={disabled}
+   onClick={() => props.onRemoveSource?.(source.id)}
+ ><Trash2 aria-hidden="true" /></IconButton>}
       </div>
       <input ref={picker} id={`${id}-file`} type="file" accept={props.allowPdf ? 'image/png,image/jpeg,application/pdf,.png,.jpg,.jpeg,.pdf' : 'image/png,image/jpeg,.png,.jpg,.jpeg'} className="sr-only" tabIndex={-1}
         aria-label={props.allowPdf ? t('appearance.sourceFields.uploadSourceAriaLabel') : t('appearance.sourceFields.uploadImageAriaLabel')} disabled={disabled} onChange={event => {

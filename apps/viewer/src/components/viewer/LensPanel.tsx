@@ -22,6 +22,7 @@ import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, 
 import { discoverDataSources, LENS_OPERATORS } from '@ifc-lite/lens';
 import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
@@ -29,17 +30,13 @@ import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
-import {
-  buildAutoColorLensToSave, moveItem, cloneCriteria, cloneLensRules, isCompoundCriteria,
-  deriveRuleName, compoundCriteriaSummary, isRuleValid,
-} from './lens-editor-utils';
+import { buildAutoColorLensToSave, moveItem, cloneCriteria, cloneLensRules, isCompoundCriteria,
+  deriveRuleName, compoundCriteriaSummary, isRuleValid } from './lens-editor-utils';
 import { importLensFile } from './lens-import';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
-import {
-  LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES,
-} from '@/store/slices/lensSlice';
+import { LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n';
 import { OPERATOR_LABEL_KEYS, TYPE_LABEL_KEYS } from './lens-editor-labels';
 
@@ -1595,6 +1592,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
       {/* Lens list + editor */}
       <div className="flex-1 overflow-auto p-3 space-y-2" {...tourAnchor(TOUR_ANCHORS.lensList)}>
+        {savedLenses.length === 0 && !editingLens && !creatingAutoColor && (
+          <EmptyState icon={<Palette className="size-8" />} title={t('lensPanel.emptyTitle')} description={t('lensPanel.emptyDescription')} />
+        )}
         {savedLenses.map(lens => (
           editingLens?.id === lens.id ? (
             editingLens.autoColor ? (

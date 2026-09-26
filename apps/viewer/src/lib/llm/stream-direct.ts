@@ -85,8 +85,8 @@ export async function streamAnthropicChat(
     const client = createAnthropicClient(credentials);
     const stream = client.messages.stream({
       model,
-      // Opus 5 (the default BYOK model) runs adaptive thinking when `thinking`
-      // is omitted; Opus 4.7/4.8 do not. Thinking spends this ceiling, and
+      // Opus 5.5 (the default BYOK model) runs adaptive thinking when `thinking`
+      // is omitted. Thinking spends this ceiling, and
       // `display` defaults to omitted, so too low a value truncates the visible
       // answer with nothing to show for the tokens. Safe to raise: we stream.
       max_tokens: 32_000,
@@ -313,16 +313,41 @@ async function openAiFetch(
   if (!response.ok) {
     cleanup();
     let detail = `OpenAI error (${response.status})`;
+    let error: { code?: string; message?: string } | undefined;
     try {
-      const errBody = (await response.json()) as { error?: { message?: string } };
-      if (response.status === 401) {
-        detail = 'Invalid OpenAI API key. Check your key in the chat panel.';
-      } else if (response.status === 429) {
-        detail = 'OpenAI rate limit reached. Please wait and try again.';
-      } else if (errBody.error?.message) {
-        detail = `OpenAI: ${errBody.error.message}`;
+      const errBody = (await response.json()) as { error?: { code?: string; message?: string } };
+      error = errBody.error;
+    } catch (parseError) {
+      console.warn('Could not parse OpenAI error response:', parseError);
+    }
+    if (response.status === 401) {
+      detail = 'Invalid OpenAI API key. Check your key in the chat panel.';
+    } else if (response.status === 429) {
+      switch (error?.code) {
+        case 'credit_balance_exhausted':
+          detail = 'OpenAI API credits are exhausted. Check your organization billing.';
+          break;
+        case 'organization_spend_limit_exceeded':
+          detail = 'OpenAI organization spend limit reached. Check organization limits.';
+          break;
+        case 'project_spend_limit_exceeded':
+          detail = 'OpenAI project spend limit reached. Check project limits.';
+          break;
+        case 'organization_usage_limit_exceeded':
+          detail = 'OpenAI organization usage limit reached. Check organization limits.';
+          break;
+        case 'rate_limit_exceeded':
+        case 'slow_down':
+          detail = 'OpenAI rate limit reached. Please wait and try again.';
+          break;
+        default:
+          detail = error?.message
+            ? `OpenAI (429): ${error.message}`
+            : 'OpenAI rejected the request (429). Check API rate limits, billing, and project limits.';
       }
-    } catch { /* ignore parse failure */ }
+    } else if (error?.message) {
+      detail = `OpenAI: ${error.message}`;
+    }
     onError(new Error(detail));
     return { response: null, cleanup: () => {} };
   }

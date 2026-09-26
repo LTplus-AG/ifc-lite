@@ -19,7 +19,6 @@ import {
   Home,
   Maximize2,
   Crosshair,
-  Loader2,
   MoreHorizontal,
   Plus,
   Download,
@@ -27,7 +26,9 @@ import {
   Sun,
   Moon,
   PersonStanding,
+  Search,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -42,6 +43,7 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
@@ -49,7 +51,9 @@ import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -70,7 +74,6 @@ export function MobileToolbar() {
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
   const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
@@ -80,13 +83,14 @@ export function MobileToolbar() {
   const theme = useViewerStore((state) => state.theme);
   const toggleTheme = useViewerStore((state) => state.toggleTheme);
 
-  const hasSelection = selectedEntityId !== null;
+  // Multi-selection counts too (#5852): Hide acts on it even with no primary.
+  const hasSelection = useViewerStore((state) => state.selectedEntityIds.size > 0) || selectedEntityId !== null;
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     if (supportedFiles.length === 1) {
@@ -103,7 +107,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     loadFilesSequentially(supportedFiles);
@@ -115,14 +119,8 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
-
-  const handleHide = useCallback(() => {
-    if (selectedEntityId !== null) {
-      hideEntities([selectedEntityId]);
-    }
-  }, [selectedEntityId, hideEntities]);
 
   const handleHome = useCallback(() => {
     goHomeFromStore();
@@ -182,7 +180,7 @@ export function MobileToolbar() {
         aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner size="md" />
         ) : (
           <FolderOpen className="h-4 w-4" />
         )}
@@ -282,6 +280,11 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={emitOpenCommandPalette}>
+            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+            {t('shellChrome.mobileToolbar.commands')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
             checked={activeTool === 'walk'}
@@ -298,7 +301,7 @@ export function MobileToolbar() {
             <Eye className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.isolateSelection')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleHide} disabled={!hasSelection}>
+          <DropdownMenuItem onClick={hideSelectionFromStore} disabled={!hasSelection}>
             <EyeOff className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.hideSelection')}
           </DropdownMenuItem>

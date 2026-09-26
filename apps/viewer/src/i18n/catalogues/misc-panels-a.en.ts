@@ -64,6 +64,7 @@ export const miscPanelsAEn = {
   'presentationPanel.transitionSuffix': ' · {duration}s',
   'presentationPanel.renameViewTitle': 'Rename view',
   'presentationPanel.setTransitionTitle': 'Set transition duration',
+  'presentationPanel.transitionDurationPrompt': 'Transition duration in seconds (optional). Leave empty for the default smooth transition.',
   'presentationPanel.deleteViewTitle': 'Delete view',
   'presentationPanel.scrollRightTitle': 'Scroll right',
 
@@ -74,6 +75,8 @@ export const miscPanelsAEn = {
   'deviationPanel.computingLabel': 'Computing…',
   'deviationPanel.recomputeLabel': 'Recompute',
   'deviationPanel.computeLabel': 'Compute deviation',
+  'deviationPanel.exportCsv': 'Export CSV',
+  'deviationPanel.exportingCsv': 'Exporting CSV…',
   'deviationPanel.statsLine': '{points} pts vs. {triangles} tris in {duration} ms',
   'deviationPanel.rangeSliderTitle':
     'Deviation half-range in millimetres — values past ±this map to the ramp endpoints',
@@ -137,8 +140,8 @@ export const miscPanelsAEn = {
   'scanSectionPanel.showingAllMessage': 'Showing all {total} points in band.',
   'scanSectionPanel.showingPartialMessage': 'Showing {rendered} of {total} points in band (decimated for display).',
 
-  // SpaceMousePanel — the Navigation section's own heading (#5509) comes
-  // from `keyboardShortcuts.preferences.spaceMouseSectionTitle`, so no
+  // SpaceMousePanel — the Navigation section's own heading comes from
+  // `settings.display.spaceMouseTitle` (Settings → Display, #5857), so no
   // header/drag-title strings live here any more.
   'spaceMousePanel.noWebHidMessage':
     'This browser has no WebHID support. Use a Chromium-based browser (Chrome or Edge) to navigate with a 3D mouse.',

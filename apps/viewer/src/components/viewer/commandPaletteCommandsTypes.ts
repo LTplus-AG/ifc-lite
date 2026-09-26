@@ -15,9 +15,10 @@ import type { RecentFileEntry } from '@/lib/recent-files';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { PaletteExportRequest } from './usePaletteExportRunner';
+import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 export type RightPanel =
-  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
+  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'cost' | 'extensions' | 'layers'
   | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements';
 
 export interface CommandPaletteBuildParams {
@@ -32,6 +33,8 @@ export interface CommandPaletteBuildParams {
   activateBottomPanel: (panel: BottomPanelId) => void;
   /** Runs an Export row through the toolbars' handlers and dialogs (`usePaletteExportRunner`). */
   runExport: (request: PaletteExportRequest) => void;
+  /** Installed extension exporters, offered as Export rows (#5838). */
+  extensionExporters?: readonly ExtensionExporter[];
 }
 
 /** `labelKey` shorthand: every row that shows fixed UI copy sets exactly

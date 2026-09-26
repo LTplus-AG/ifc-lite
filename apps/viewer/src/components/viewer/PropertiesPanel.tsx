@@ -9,10 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
 import { ModelBadge } from './ModelBadge';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { useSelectAssembly } from './properties/useSelectAssembly';
@@ -1268,15 +1269,12 @@ export function PropertiesPanel() {
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">{t('properties.panel.title')}</h2>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-black">
-          <div className="w-16 h-16 border-2 border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center mb-4 bg-zinc-100 dark:bg-zinc-950">
-            <MousePointer2 className="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
-          </div>
-          <p className="font-bold uppercase text-zinc-900 dark:text-zinc-100 mb-2">{t('properties.panel.emptyTitle')}</p>
-          <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400 max-w-[150px]">
-            {models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
-          </p>
-        </div>
+        <EmptyState
+          className="flex-1 bg-white dark:bg-black"
+          icon={<MousePointer2 className="size-8" />}
+          title={t('properties.panel.emptyTitle')}
+          description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
+        />
       </div>
     );
   }
@@ -1352,8 +1350,8 @@ export function PropertiesPanel() {
             <code className="flex-1 text-[10px] bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
               {entityGlobalId}
             </code>
-            <Button
-              variant="ghost"
+            <IconButton
+              label={t('properties.panel.copyGlobalIdLabel')}
               size="icon-xs"
               className={`h-6 w-6 rounded-none border-l transition-all duration-200 ${
                 copied
@@ -1367,7 +1365,7 @@ export function PropertiesPanel() {
               ) : (
                 <Copy className="h-3 w-3 text-zinc-600 dark:text-zinc-400" />
               )}
-            </Button>
+            </IconButton>
           </div>
         )}
 
@@ -1891,14 +1889,13 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
           onBlur={save}
           className="flex-1 min-w-0 h-6 px-1.5 text-sm font-mono bg-white dark:bg-zinc-900 border border-overlay-accent/40 outline-none focus:ring-1 focus:ring-overlay-accent"
         />
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('properties.panel.saveAttributeLabel', { attrName })}
           className="h-5 w-5 p-0 shrink-0 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
           onClick={save}
         >
           <Check className="h-3 w-3 text-emerald-500" />
-        </Button>
+        </IconButton>
       </div>
     );
   }
@@ -1912,19 +1909,14 @@ function AttributeEditorField({ modelId, entityId, attrName, currentValue }: { m
       >
         {currentValue || <span className="text-zinc-400 italic">{t('properties.panel.attributeEditor.emptyValue')}</span>}
       </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
-            onClick={() => setEditing(true)}
-          >
-            <PenLine className="h-3 w-3 text-overlay-accent" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{t('properties.panel.attributeEditor.editTooltip')}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('properties.panel.attributeEditor.editTooltip')}
+        tooltipSide="left"
+        className="h-5 w-5 p-0 shrink-0 opacity-0 group-hover/attr:opacity-100 hover:bg-overlay-accent-soft transition-opacity"
+        onClick={() => setEditing(true)}
+      >
+        <PenLine className="h-3 w-3 text-overlay-accent" />
+      </IconButton>
     </div>
   );
 }

@@ -8,18 +8,8 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  Search,
-  Play,
-  Eye,
-  Filter,
-  Plus,
-  Trash2,
-  Loader2,
-  Building2,
-  Layers,
-  Tag,
-} from 'lucide-react';
+import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -674,7 +664,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
         {isInitializing ? (
           <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner size="lg" />
             <span className="text-sm">{t('bulkPropertyEditor.loading')}</span>
           </div>
         ) : (
@@ -704,7 +694,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 {t('bulkPropertyEditor.selectionCriteria')}
               </Label>
               <Badge variant={liveMatchCount > 0 ? 'default' : 'secondary'} className="text-xs">
-                {isComputing && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                {isComputing && <Spinner size="xs" className="mr-1" />}
                 {t('bulkPropertyEditor.matched', {
                   count: liveMatchCount,
                   countDisplay: formatLocaleNumber(locale, liveMatchCount),

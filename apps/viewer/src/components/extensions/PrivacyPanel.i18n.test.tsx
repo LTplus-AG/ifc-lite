@@ -26,13 +26,16 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { InMemoryFlavorStorage, type Flavor } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { extensionsPanelsEn } from '@/i18n/catalogues/extensions-panels.en';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { FlavorService } from '@/services/extensions/flavor-service.js';
 import { PrivacyPanel } from './PrivacyPanel.js';
+import { beforeSend } from '@/lib/analytics.js';
+import { SettingsDialogHost } from '@/components/viewer/settings/SettingsDialog.js';
+import { openSettings } from '@/lib/settings/open-settings.js';
 
 class StubExtensionHost extends ExtensionHostService {
   constructor() {
@@ -165,7 +168,7 @@ async function mountActiveFlavorFixture(host: StubExtensionHost): Promise<HTMLEl
   await host.flavors.activate('flavor-1');
   const container = render(
     <ExtensionHostContext.Provider value={host}>
-      <PrivacyPanel onClose={() => {}} />
+      <PrivacyPanel />
     </ExtensionHostContext.Provider>,
   );
   await act(async () => {
@@ -203,6 +206,29 @@ async function revealProposals(container: HTMLElement): Promise<void> {
 }
 
 describe('PrivacyPanel localization (#4918)', () => {
+  it('opens under Settings and persists analytics opt-out (#5866)', async () => {
+    localStorage.removeItem('ifc-lite:analytics-opt-out');
+    const host = new StubExtensionHost();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <SettingsDialogHost />
+      </ExtensionHostContext.Provider>,
+    );
+    act(() => openSettings('privacy'));
+    const dialog = document.querySelector('[data-settings-dialog]');
+    assert.ok(dialog, 'Settings opens its Privacy section');
+    const toggle = dialog.querySelector<HTMLElement>('#settings-analytics-opt-out');
+    assert.ok(toggle, 'Privacy settings disclose product analytics and expose opt-out');
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    click(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(localStorage.getItem('ifc-lite:analytics-opt-out'), 'true');
+    assert.equal(beforeSend({ event: 'command_executed', properties: { command_id: 'test' } }), null);
+    click(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(localStorage.getItem('ifc-lite:analytics-opt-out'), 'false');
+  });
+
   it('localizes untouched baseline metadata in the active-flavor label', async () => {
     registerLocale('privacy-default-name', {
       'extensionsFlavors.flavorIndicator.defaultLabel': 'BASELINE LOCALISÉE',
@@ -249,7 +275,7 @@ describe('PrivacyPanel localization (#4918)', () => {
     const emptyHost = new StubExtensionHost();
     const emptyContainer = render(
       <ExtensionHostContext.Provider value={emptyHost}>
-        <PrivacyPanel onClose={() => {}} />
+        <PrivacyPanel />
       </ExtensionHostContext.Provider>,
     );
     await act(async () => {
@@ -288,7 +314,7 @@ describe('PrivacyPanel localization (#4918)', () => {
     const emptyHost = new StubExtensionHost();
     const emptyContainer = render(
       <ExtensionHostContext.Provider value={emptyHost}>
-        <PrivacyPanel onClose={() => {}} />
+        <PrivacyPanel />
       </ExtensionHostContext.Provider>,
     );
     await act(async () => {

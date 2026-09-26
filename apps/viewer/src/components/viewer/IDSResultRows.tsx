@@ -40,11 +40,12 @@ export function useFailureReasonLabel(): (reason: string | undefined) => string 
 interface EntityResultRowProps {
   entity: EntityResult;
   onClick: () => void;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
 }
 
-export function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
+export function EntityResultRow({ entity, onClick, detailsOpen, onToggleDetails }: EntityResultRowProps) {
   const { t } = useTranslation();
-  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <div className="hover:bg-muted/50 focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-primary focus-within:ring-inset rounded-md">
@@ -72,14 +73,14 @@ export function EntityResultRow({ entity, onClick }: EntityResultRowProps) {
         <button
           type="button"
           className="shrink-0 p-3 rounded hover:bg-accent focus:outline-none"
-          onClick={() => setShowDetails((visible) => !visible)}
-          aria-expanded={showDetails}
-          aria-label={t(showDetails ? 'idsPanel.hideDetails' : 'idsPanel.showDetails')}
+          onClick={onToggleDetails}
+          aria-expanded={detailsOpen}
+          aria-label={t(detailsOpen ? 'idsPanel.hideDetails' : 'idsPanel.showDetails')}
         >
-          {showDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          {detailsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
       </div>
-      {showDetails && (
+      {detailsOpen && (
         <div className="pl-8 pr-2 pb-2 space-y-1">
           {entity.requirementResults.map((req, idx) => (
             <RequirementResultRow key={req.requirement.id || idx} result={req} />

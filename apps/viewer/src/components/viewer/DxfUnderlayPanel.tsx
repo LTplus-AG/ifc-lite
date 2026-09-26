@@ -35,8 +35,10 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
+import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, AlertTriangle, Crosshair } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -50,7 +52,6 @@ import { posthog } from '@/lib/analytics';
 import { ingestDxfFile } from '@/hooks/ingest/dxfIngest';
 import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
-
 interface DxfUnderlayPanelProps {
   /** Centre the underlay on the generated drawing (offset adjustment). */
   onCenterOnModel: (id: string) => void;
@@ -124,45 +125,41 @@ function UnderlayCard({
     <div className="border rounded-md p-2 space-y-2 bg-muted/20">
       <div className="flex items-center gap-1.5 min-w-0">
         <div className="flex items-center">
-          <Button
-            variant="ghost"
+          <IconButton
+            label={t(state.visible ? 'drawingUnderlay.dxf.hide2DTitle' : 'drawingUnderlay.dxf.show2DTitle')}
             size="icon-sm"
             onClick={() => setDxfUnderlayVisible(state.id, !state.visible)}
-            title={t(state.visible ? 'drawingUnderlay.dxf.hide2DTitle' : 'drawingUnderlay.dxf.show2DTitle')}
           >
             {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
+          </IconButton>
           <span className="text-[8px] leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
         </div>
         <div className="flex items-center">
-          <Button
-            variant="ghost"
+          <IconButton
+            label={t(state.visible3D ? 'drawingUnderlay.dxf.hide3DTitle' : 'drawingUnderlay.dxf.show3DTitle')}
             size="icon-sm"
             onClick={() => setDxfUnderlayVisible3D(state.id, !state.visible3D)}
-            title={t(state.visible3D ? 'drawingUnderlay.dxf.hide3DTitle' : 'drawingUnderlay.dxf.show3DTitle')}
           >
             {state.visible3D ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
+          </IconButton>
           <span className="text-[8px] leading-none text-muted-foreground -ml-1">3D</span>
         </div>
         <span className="text-xs font-medium truncate flex-1" title={state.name}>{state.name}</span>
-        <Button
-          variant="ghost"
+        <IconButton
+          label={t(planViewActive ? 'drawingUnderlay.dxf.centerOnModelTitle' : 'drawingUnderlay.dxf.centerOnModelDisabledTitle')}
           size="icon-sm"
           onClick={() => onCenterOnModel(state.id)}
           disabled={!planViewActive}
-          title={t(planViewActive ? 'drawingUnderlay.dxf.centerOnModelTitle' : 'drawingUnderlay.dxf.centerOnModelDisabledTitle')}
         >
           <Crosshair className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
+        </IconButton>
+        <IconButton
+          label={t('drawingUnderlay.dxf.removeUnderlayTitle')}
           size="icon-sm"
           onClick={() => removeDxfUnderlay(state.id)}
-          title={t('drawingUnderlay.dxf.removeUnderlayTitle')}
         >
           <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </div>
 
       <div className="text-[10px] text-muted-foreground px-1">
@@ -385,7 +382,7 @@ export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeference
           onClick={() => fileInputRef.current?.click()}
         >
           {importing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Spinner size="md" className="mr-2" />
           ) : (
             <FileUp className="h-4 w-4 mr-2" />
           )}

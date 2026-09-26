@@ -72,7 +72,7 @@ function buttonByText(text: string): HTMLButtonElement {
 
 /** Open "Add property", pick a custom set name, fill it in, submit. */
 export async function addPropertyThroughDialog(container: HTMLElement, psetName: string, propName: string, value: string): Promise<void> {
-  const trigger = container.querySelector('button[title="Add property"]');
+  const trigger = container.querySelector('button[aria-label="Add property"]');
   assert.ok(trigger, 'the edit toolbar must offer "Add property"');
   click(trigger);
   await advance(0);

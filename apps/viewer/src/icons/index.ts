@@ -83,3 +83,4 @@ export { default as Move } from '~icons/viewer/move';
 export { default as FollowWork } from '~icons/viewer/follow-work';
 export { default as ClassicBar } from '~icons/viewer/classic-bar';
 export { default as Cost } from '~icons/viewer/cost';
+export { default as Settings } from '~icons/viewer/settings';

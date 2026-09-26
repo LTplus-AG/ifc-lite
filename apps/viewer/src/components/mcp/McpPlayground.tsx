@@ -24,7 +24,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Loader2, Upload, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Upload, AlertTriangle, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { useDocumentMeta, useFonts } from './use-mcp-page';
@@ -265,7 +266,7 @@ function SampleList({
                     <span className="text-[13.5px] font-medium" style={{ color: PAPER }}>
                       {s.label}
                     </span>
-                    {isLoading && <Loader2 size={11} className="animate-spin" style={{ color: ACCENT }} />}
+                    {isLoading && <Spinner size="xs" style={{ color: ACCENT }} />}
                   </div>
                   <p className="mt-0.5 text-[11px]" style={{ color: PAPER_DIM }}>
                     {s.blurb}

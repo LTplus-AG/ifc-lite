@@ -7,13 +7,15 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
+import { installLayout } from '@/test/dom-layout.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
-import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport } from '@ifc-lite/ids';
+import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport, ValidationProgress } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
 
 const initial = useViewerStore.getState();
+installLayout();
 
 const documentFixture: IDSDocument = {
   info: { title: 'Fixture IDS', version: '1.0', description: 'Fixture description' },
@@ -64,6 +66,11 @@ const reportFixture: IDSValidationReport = {
   }],
 };
 
+const activeProgress: ValidationProgress = {
+  phase: 'filtering', specificationIndex: 0, totalSpecifications: 1,
+  entitiesProcessed: 0, totalEntities: 2, percentage: 0,
+};
+
 function pseudoCatalogue(): Catalogue {
   return Object.fromEntries(Object.entries(en).map(([key, value]) => {
     if (typeof value === 'string') return [key, `⟦${key}⟧ ${value}`];
@@ -108,7 +115,6 @@ describe('IDSPanel localization (#4918)', () => {
       'idsPanel.specificationsPassed': { one: 'SPECS ONE', other: 'SPECS OTHER' },
       'idsPanel.checkingEntities': { one: 'CHECK ONE', other: 'CHECK OTHER' },
       'idsPanel.scanningCandidates': { one: 'SCAN ONE', other: 'SCAN OTHER' },
-      'idsPanel.showingEntities': { one: 'SHOW ONE', other: 'SHOW OTHER' },
     });
     setLocale('ru-x-ids-counts');
 
@@ -142,17 +148,9 @@ describe('IDSPanel localization (#4918)', () => {
     assert.match(render(<IDSPanel />).textContent ?? '', /SCAN ONE/);
     cleanup();
 
-    const entity = reportFixture.specificationResults[0].entityResults[0];
-    const entityResults = Array.from({ length: 101 }, (_, index) => ({
-      ...entity,
-      expressId: index + 1,
-    }));
     useViewerStore.setState({
       idsDocument: documentFixture,
-      idsValidationReport: {
-        ...reportFixture,
-        specificationResults: [{ ...reportFixture.specificationResults[0], entityResults }],
-      },
+      idsValidationReport: reportFixture,
       idsAuditReport: null,
       idsError: null,
       idsLoading: false,
@@ -163,7 +161,6 @@ describe('IDSPanel localization (#4918)', () => {
     const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
     assert.ok(card);
     click(card!);
-    assert.match(ui.textContent ?? '', /SHOW ONE/, 'Russian 101 selects one only when the raw total is present');
   });
 
   it('keeps entity selection and detail disclosure as separate keyboard-focusable controls', () => {
@@ -336,5 +333,31 @@ describe('IDSPanel localization (#4918)', () => {
     const text = ui.textContent ?? '';
     assert.match(text, /НЕТ МОДЕЛИ/, 'the resolver error renders through the active locale catalogue, not hardcoded English');
     assert.doesNotMatch(text, /No IFC model loaded/, 'the English literal must not reach the DOM under a non-English locale');
+  });
+
+  it('turns the first-run control into Cancel while validation is active (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null, idsLoading: true, idsProgress: activeProgress });
+    const ui = render(<IDSPanel />);
+    const cancel = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Cancel validation'));
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(useViewerStore.getState().idsLoading, false);
+  });
+
+  it('turns Re-run into Cancel and keeps the previous report (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true, idsProgress: activeProgress });
+    const ui = render(<IDSPanel />);
+    const cancel = ui.querySelector<HTMLButtonElement>('[aria-label="Cancel validation"]');
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(useViewerStore.getState().idsLoading, false);
+    assert.strictEqual(useViewerStore.getState().idsValidationReport, reportFixture);
+  });
+
+  it('keeps Re-run disabled during file reading rather than offering validation Cancel (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true, idsProgress: null });
+    const ui = render(<IDSPanel />);
+    assert.equal(ui.querySelector('[aria-label="Cancel validation"]'), null);
+    assert.equal(ui.querySelector<HTMLButtonElement>('[aria-label="Re-run validation"]')?.disabled, true);
   });
 });

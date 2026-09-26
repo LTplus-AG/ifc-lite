@@ -9,22 +9,10 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from 'react';
-import {
-  Upload,
-  FileSpreadsheet,
-  Link2,
-  ArrowRight,
-  Check,
-  AlertCircle,
-  Loader2,
-  Trash2,
-  Plus,
-  Eye,
-  Play,
-  Wand2,
-  ChevronRight,
-} from 'lucide-react';
+import { Upload, FileSpreadsheet, Link2, ArrowRight, Check, AlertCircle, Trash2, Plus, Eye, Play, Wand2, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -917,14 +905,13 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                             </SelectContent>
                           </Select>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
+                          <IconButton
+                            label={t('dataConnector.removeMappingLabel')}
                             className="h-8 w-8"
                             onClick={() => removeMapping(mapping.id)}
                           >
                             <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>
@@ -952,7 +939,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                       <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Spinner size="md" />
                         {importProgress.phase === 'parsing' && t('dataConnector.phaseParsing')}
                         {importProgress.phase === 'matching' && t('dataConnector.phaseMatching')}
                         {importProgress.phase === 'applying' && t('dataConnector.phaseApplying')}
@@ -1012,7 +999,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
             disabled={!csvConnector || !csvContent || !matchColumn || isProcessing}
           >
             {isProcessing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size="md" className="mr-2" />
             ) : (
               <Eye className="h-4 w-4 mr-2" />
             )}
@@ -1033,7 +1020,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
           >
             {isProcessing && importProgress ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {Math.round(importProgress.percent * 100)}%
               </>
             ) : (

@@ -7,7 +7,8 @@
  * table for spreadsheets / BI tools (#3944). Extracted from `ClashPanel` so the
  * CSV action could be added without growing that file.
  */
-import { FilePlus, Loader2, Sheet } from 'lucide-react';
+import { FilePlus, Sheet } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
@@ -47,7 +48,7 @@ export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic }
         onClick={() => void createBcfTopic()}
         {...tourAnchor(TOUR_ANCHORS.clashBcf)}
       >
-        {creatingTopic ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FilePlus className="h-3.5 w-3.5 mr-1" />}
+        {creatingTopic ? <Spinner size="sm" className="mr-1" /> : <FilePlus className="h-3.5 w-3.5 mr-1" />}
         {t('clashTools.export.bcfTopicButton')}
       </Button>
       <ClashBcfExportDialog />

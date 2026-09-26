@@ -94,7 +94,6 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.tab.ideas': 'Ideas',
   'extensionsFlavors.extensionsPanel.tab.repair': 'Repair',
   'extensionsFlavors.extensionsPanel.tab.audit': 'Audit',
-  'extensionsFlavors.extensionsPanel.tab.privacy': 'Privacy',
   'extensionsFlavors.extensionsPanel.emptyState.title': 'No extensions installed',
   'extensionsFlavors.extensionsPanel.emptyState.description':
     'Extensions are sandboxed bundles that add commands, lenses, panels, or exporters. You can install one three ways:',
@@ -272,11 +271,6 @@ export const extensionsFlavorsEn = {
   // ── ExtensionDockHost ──
   'extensionsFlavors.extensionDockHost.dockAriaLabel': 'Extension dock ({slot})',
   'extensionsFlavors.extensionDockHost.loadingWidget': 'Loading widget…',
-
-  // ── ExtensionExportSlot ──
-  'extensionsFlavors.extensionExportSlot.fromExtensionsLabel': 'From extensions',
-  'extensionsFlavors.extensionExportSlot.exportedToast': 'Exported with {name}',
-  'extensionsFlavors.extensionExportSlot.failedToast': '"{name}" failed: {error}',
 
   // ── ExtensionToolbarSlot ──
   'extensionsFlavors.extensionToolbarSlot.runAriaLabel': 'Run {title}',

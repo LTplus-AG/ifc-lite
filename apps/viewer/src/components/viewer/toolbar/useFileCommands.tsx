@@ -21,6 +21,7 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
@@ -66,6 +67,7 @@ export interface FileCommands {
 }
 
 export function useFileCommands(): FileCommands {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addModelInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -195,12 +197,12 @@ export function useFileCommands(): FileCommands {
     } else if (newFilesAreIfcx && !existingIsIfcx && ifcDataStore) {
       // User trying to add IFCX to IFC4 model - won't work
       console.warn('[toolbar] Cannot add IFCX files to non-IFCX model');
-      alert(`IFCX overlay files cannot be added to IFC4 models.\n\nPlease load IFCX files separately.`);
+      toast.error(t('viewerShell.file.ifcxOverlayRequiresIfcx'));
     } else {
       // Standard case - add as independent models (IFC4, GLB, or mixed)
       void loadFilesSequentially(supportedFiles, handles);
     }
-  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
+  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore, t]);
 
   const prepareAndAdd = usePreparedModelFileRoute(addSupportedFiles);
 

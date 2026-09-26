@@ -36,16 +36,16 @@ export function activateBasketViewFromStore(viewId: string): void {
       drawing2DPanelVisible: false,
     });
     if (sectionSnapshot.plane.enabled) {
-      state.setActiveTool('section');
+      state.setActiveTool('section', 'programmatic');
     } else if (state.activeTool === 'section') {
-      state.setActiveTool('select');
+      state.setActiveTool('select', 'programmatic');
     }
   } else {
     // This view has no section snapshot: ensure previously active cutting is cleared.
     const current = useViewerStore.getState().sectionPlane;
     useViewerStore.setState({ sectionPlane: { ...current, enabled: false, parked: false } }); // parked too (#4910)
     if (state.activeTool === 'section') {
-      state.setActiveTool('select');
+      state.setActiveTool('select', 'programmatic');
     }
   }
 }

@@ -52,7 +52,7 @@ export function AuthorTab() {
   const hasRedo = useViewerStore(state => hasWorkspaceHistory(state, 'redo'));
   const canRedo = canEditInSession && hasRedo;
 
-  const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls();
+  const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls('ribbon');
 
   return (
     <>

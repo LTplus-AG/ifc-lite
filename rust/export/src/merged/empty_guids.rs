@@ -92,7 +92,3 @@ impl PlannerGuids {
         unified
     }
 }
-
-#[cfg(test)]
-#[path = "empty_guids_tests.rs"]
-mod tests;

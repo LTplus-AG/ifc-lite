@@ -28,7 +28,8 @@ use super::guid::extract_global_id_fast;
 use super::line_edit::{arg_refs, classify_refs, RefSlot};
 use super::plan::{next_offset, resolve_included, unify_spatial, ModelIndex};
 use super::spatial::{nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy};
-use super::units::ModelUnitMode;
+use super::units::{resolve_length_scale, ModelUnitMode};
+use crate::schema_detect::detect_schema;
 use super::{MergedModel, MergedOptions};
 
 #[path = "empty_claims.rs"]
@@ -114,12 +115,13 @@ pub(super) fn plan_drops(
     opts: &MergedOptions,
     spatial_lookup: &SpatialLookup,
     modes: &[ModelUnitMode],
-    primary_scale: f64,
-    schema: &str,
 ) -> Option<DropPlan> {
     if !opts.drop_empty_containers {
         return None;
     }
+    // The same primary unit and output schema `export_merged_models` resolves.
+    let primary_scale = models.first().map_or(1.0, |m| resolve_length_scale(m.content));
+    let schema = opts.schema.clone().or_else(|| models.first().map(|m| detect_schema(m.content))).unwrap_or_else(|| "IFC4".to_string());
     Some(plan_container_drops(models, &DropCtx {
         spatial_lookup,
         merge_sites: opts.merge_sites,
@@ -127,7 +129,7 @@ pub(super) fn plan_drops(
         merge_storeys: opts.merge_storeys,
         modes,
         primary_scale,
-        schema,
+        schema: &schema,
     }))
 }
 
@@ -177,7 +179,7 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
         let canon = canonical_containers(&index, &included, &remap, compatible, i, &mut guid_node);
         graph.nodes.extend(canon.values().copied());
         // GlobalId unification the emit loop is sure to repeat (#5937).
-        let converting = crate::schema_convert::needs_conversion(&crate::schema_detect::detect_schema(model.content), ctx.schema);
+        let converting = crate::schema_convert::needs_conversion(&detect_schema(model.content), ctx.schema);
         let scale = mode.map_or(1.0, |m| m.scale);
         let guid_model = GuidModel { index: &index, included: &included, remap: &remap, first: i == 0, compatible, base, scale, converting };
         let mut resolved = guids.plan(&guid_model);

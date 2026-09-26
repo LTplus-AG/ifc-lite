@@ -221,7 +221,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // has to know which models unify before anything is written, and the emit
     // loop below must reach the same verdict — so both read this one answer.
     let modes = resolve_model_modes(models, opts.unit_reconciliation, primary_scale);
-    let drop_plan = empty::plan_drops(models, opts, &spatial_lookup, &modes, primary_scale, &schema);
+    let drop_plan = empty::plan_drops(models, opts, &spatial_lookup, &modes);
     stats.dropped_container_count = drop_plan.as_ref().map_or(0, |p| p.count);
 
     // Running cross-model state.

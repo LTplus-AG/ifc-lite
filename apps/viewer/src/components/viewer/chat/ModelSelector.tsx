@@ -33,7 +33,7 @@ function formatContextWindow(tokens: number): string {
 function CostBadge({ cost }: { cost?: LLMModel['cost'] }) {
   if (!cost) return null;
   const color = cost === '$$$' ? 'text-amber-500' : cost === '$$' ? 'text-blue-500' : 'text-emerald-500';
-  return <span className={`text-[10px] font-mono ${color}`}>{cost}</span>;
+  return <span className={`text-2xs font-mono ${color}`}>{cost}</span>;
 }
 
 export function ModelSelector() {
@@ -74,15 +74,15 @@ export function ModelSelector() {
         {/* Free tier */}
         {FREE_MODELS.length > 0 && (
           <>
-            <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            <div className="px-2 py-1 text-2xs font-semibold text-muted-foreground uppercase tracking-wider">
               {t('chat.modelSelector.free')}
             </div>
             {FREE_MODELS.map((m) => (
               <SelectItem key={m.id} value={m.id} className="text-xs">
                 <span className="flex items-center gap-1.5">
                   <span>{m.name}</span>
-                  <span className="text-muted-foreground text-[10px]">{m.provider}</span>
-                  <span className="text-muted-foreground text-[10px]">{formatContextWindow(m.contextWindow)}</span>
+                  <span className="text-muted-foreground text-2xs">{m.provider}</span>
+                  <span className="text-muted-foreground text-2xs">{formatContextWindow(m.contextWindow)}</span>
                 </span>
               </SelectItem>
             ))}
@@ -92,7 +92,7 @@ export function ModelSelector() {
         {/* Anthropic BYOK */}
         {anthropicModels.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <div className="px-2 py-1 mt-1 text-2xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
               {t('chat.modelSelector.anthropic')}
               {hasAnthropic
                 ? <Check className="h-2.5 w-2.5 text-emerald-500" />
@@ -104,7 +104,7 @@ export function ModelSelector() {
                 <span className="flex items-center gap-1.5">
                   <span>{m.name}</span>
                   <CostBadge cost={m.cost} />
-                  <span className="text-muted-foreground text-[10px]">{formatContextWindow(m.contextWindow)}</span>
+                  <span className="text-muted-foreground text-2xs">{formatContextWindow(m.contextWindow)}</span>
                   {!hasAnthropic && <Key className="h-3 w-3 text-muted-foreground/50" />}
                 </span>
               </SelectItem>
@@ -115,7 +115,7 @@ export function ModelSelector() {
         {/* OpenAI BYOK */}
         {openaiModels.length > 0 && (
           <>
-            <div className="px-2 py-1 mt-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <div className="px-2 py-1 mt-1 text-2xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
               {t('chat.modelSelector.openai')}
               {hasOpenai
                 ? <Check className="h-2.5 w-2.5 text-emerald-500" />
@@ -127,7 +127,7 @@ export function ModelSelector() {
                 <span className="flex items-center gap-1.5">
                   <span>{m.name}</span>
                   <CostBadge cost={m.cost} />
-                  <span className="text-muted-foreground text-[10px]">{formatContextWindow(m.contextWindow)}</span>
+                  <span className="text-muted-foreground text-2xs">{formatContextWindow(m.contextWindow)}</span>
                   {!hasOpenai && <Key className="h-3 w-3 text-muted-foreground/50" />}
                 </span>
               </SelectItem>

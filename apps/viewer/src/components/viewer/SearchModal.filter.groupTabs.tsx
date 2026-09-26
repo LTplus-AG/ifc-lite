@@ -45,7 +45,7 @@ function GroupTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <TabsList className="flex h-auto flex-wrap items-center justify-start gap-1 bg-transparent p-0 text-[11px]" aria-label={t('filterGroups.tabsAriaLabel')}>
+    <TabsList className="flex h-auto flex-wrap items-center justify-start gap-1 bg-transparent p-0 text-2xs" aria-label={t('filterGroups.tabsAriaLabel')}>
       {groups.map((g, i) => (
         <Fragment key={i}>
           {i > 0 && <span aria-hidden className="px-0.5 text-muted-foreground">+</span>}
@@ -58,7 +58,7 @@ function GroupTabs({
             }`}
           >
             {t('filterGroups.groupLabel', { index: i + 1 })}
-            <span className="text-[10px] text-muted-foreground">({g.rules.length})</span>
+            <span className="text-2xs text-muted-foreground">({g.rules.length})</span>
           </TabsTrigger>
         </Fragment>
       ))}

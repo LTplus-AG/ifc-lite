@@ -228,7 +228,7 @@ export function RawStepCard({
           <button
             type="button"
             onClick={handleResetToRoot}
-            className="mt-3 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 hover:underline"
+            className="mt-3 text-2xs font-mono text-emerald-600 dark:text-emerald-400 hover:underline"
           >
             {t('properties.rawStep.backToRoot', { type: entityType, id: entityId })}
           </button>
@@ -241,7 +241,7 @@ export function RawStepCard({
     <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
       {/* Breadcrumb (only when drilled in) */}
       {!isAtRoot && (
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-emerald-50/40 dark:bg-emerald-950/15 text-[10px] font-mono">
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-emerald-50/40 dark:bg-emerald-950/15 text-2xs font-mono">
           <button
             type="button"
             onClick={handleBack}
@@ -280,7 +280,7 @@ export function RawStepCard({
         <div className="flex items-center gap-2 min-w-0">
           <FileBox className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
           <span
-            className="font-mono text-[11px] font-semibold tracking-wide text-zinc-700 dark:text-zinc-200 truncate"
+            className="font-mono text-2xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-200 truncate"
             title={`${currentType} #${currentId}`}
           >
             {currentType} #{currentId}
@@ -288,7 +288,7 @@ export function RawStepCard({
         </div>
         {isOverlayOnly && (
           <span
-            className="inline-flex items-center gap-1 rounded-sm border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300"
+            className="inline-flex items-center gap-1 rounded-sm border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 text-2xs font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300"
             title={t('properties.rawStep.overlayAddedTooltip')}
           >
             <Sparkles className="h-2.5 w-2.5" />

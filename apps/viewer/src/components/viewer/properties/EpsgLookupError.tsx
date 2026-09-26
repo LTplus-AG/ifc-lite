@@ -6,5 +6,5 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 
 export function EpsgLookupError({ errorKey }: { errorKey: TranslationKey | null }) {
   const { t } = useTranslation();
-  return errorKey ? <p className="text-[11px] text-muted-foreground px-4 pb-2">{t(errorKey)}</p> : null;
+  return errorKey ? <p className="text-2xs text-muted-foreground px-4 pb-2">{t(errorKey)}</p> : null;
 }

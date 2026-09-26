@@ -21,7 +21,7 @@ function Margin({ name, labelKey, ariaLabelKey, value, maximum, onChange, onInva
   const invalid = text.trim() === '' || !Number.isFinite(Number(text)) || Number(text) < 0 || Number(text) >= maximum * mmPerPoint;
   useEffect(() => { setText(displayMm(value)); onInvalid(name, false); }, [value, name, onInvalid]);
   useEffect(() => () => onInvalid(name, false), [name, onInvalid]);
-  return <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t(labelKey)}</span>
+  return <label className="block space-y-1 text-xs text-muted-foreground"><span>{t(labelKey)}</span>
     <Input aria-label={t(ariaLabelKey)} type="number" min="0" step="any"
       value={text} aria-invalid={invalid} className="h-8 text-xs aria-[invalid=true]:border-destructive" onChange={event => {
         const next = event.currentTarget.value;
@@ -53,6 +53,8 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
   const shown = drag ? rectangle(drag.start, drag.end) : pdf.cropPoints;
   return <div className="space-y-2">
     {pdf.pagePreviewUrl && <div className="rounded-md border bg-muted/40 p-2">
+      {/* The focusable drawing surface uses pointer capture and Escape to cancel an active crop. */}
+      {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions */}
       <div role="group" aria-label={t('appearance.pdfCrop.previewAriaLabel')} tabIndex={0}
         className={`relative mx-auto w-full overflow-hidden bg-white outline-none focus-visible:ring-2 focus-visible:ring-ring ${disabled ? 'opacity-60' : 'cursor-crosshair'}`}
         style={{ aspectRatio: `${width}/${height}`, maxWidth: 240 * width / height, touchAction: disabled ? 'auto' : 'none' }}
@@ -79,11 +81,11 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
         <div aria-hidden="true" className="pointer-events-none absolute border-2 border-primary bg-primary/5"
           style={{ left: `${shown[0] / width * 100}%`, top: `${shown[1] / height * 100}%`, width: `${shown[2] / width * 100}%`, height: `${shown[3] / height * 100}%`, boxShadow: '0 0 0 999px rgb(0 0 0 / 35%)' }} />
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground">{t('appearance.pdfCrop.dragToCrop')}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{t('appearance.pdfCrop.dragToCrop')}</p>
     </div>}
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[11px] font-medium">{t('appearance.pdfCrop.pageCropLabel')}</span>
-      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[11px]" disabled={disabled}
+      <span className="text-xs font-medium">{t('appearance.pdfCrop.pageCropLabel')}</span>
+      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={disabled}
         onClick={() => { setReset(value => value + 1); pdf.onCropChange([0, 0, width, height]); }}>{t('appearance.pdfCrop.useFullPage')}</Button>
     </div>
     <fieldset disabled={disabled} className="grid grid-cols-2 gap-2" aria-label={t('appearance.pdfCrop.marginsAriaLabel')}>
@@ -92,6 +94,6 @@ export function AppearancePdfCrop({ pdf, disabled, onInvalid }: {
       <Margin key={`${reset}:Right`} name="Right" labelKey="appearance.pdfCrop.marginRightMm" ariaLabelKey="appearance.pdfCrop.marginRightAriaLabel" value={right} maximum={width - left} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, width - left - value, cropHeight])} />
       <Margin key={`${reset}:Bottom`} name="Bottom" labelKey="appearance.pdfCrop.marginBottomMm" ariaLabelKey="appearance.pdfCrop.marginBottomAriaLabel" value={bottom} maximum={height - top} onInvalid={onInvalid} onChange={value => pdf.onCropChange([left, top, cropWidth, height - top - value])} />
     </fieldset>
-    <p className="text-[10px] leading-relaxed text-muted-foreground">{t('appearance.pdfCrop.marginsNote')}</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">{t('appearance.pdfCrop.marginsNote')}</p>
   </div>;
 }

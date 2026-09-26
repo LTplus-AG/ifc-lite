@@ -59,7 +59,7 @@ export function ScanSectionPanel({
         )}
 
         <div className="flex flex-col gap-1">
-          <Label htmlFor="scan-section-thickness" className="text-[10px] text-muted-foreground">
+          <Label htmlFor="scan-section-thickness" className="text-2xs text-muted-foreground">
             {t('scanSectionPanel.bandThicknessLabel', {
               value: scanSectionThickness >= 1
                 ? `${scanSectionThickness.toFixed(2)} m`
@@ -80,7 +80,7 @@ export function ScanSectionPanel({
         </div>
 
         <div className="flex flex-col gap-1">
-          <Label htmlFor="scan-section-opacity" className="text-[10px] text-muted-foreground">
+          <Label htmlFor="scan-section-opacity" className="text-2xs text-muted-foreground">
             {t('scanSectionPanel.dotOpacityLabel', { percent: Math.round(scanSectionOpacity * 100) })}
           </Label>
           <input
@@ -106,7 +106,7 @@ export function ScanSectionPanel({
         </label>
 
         {hasPointCloud && (
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
+          <p className="text-2xs text-muted-foreground border-t pt-2">
             {!showScanSection
               ? t('scanSectionPanel.overlayHiddenMessage')
               : renderedCount >= totalInBand

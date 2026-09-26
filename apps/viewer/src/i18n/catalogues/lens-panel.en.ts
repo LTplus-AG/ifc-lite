@@ -63,6 +63,11 @@ export const lensPanelEn = {
   // Rule editor
   'lensPanel.ruleEditor.reorderAriaLabel': 'Reorder rule: drag, or press arrow up or down',
   'lensPanel.ruleEditor.reorderTooltip': 'Drag to reorder (or arrow keys)',
+  'lensPanel.ruleEditor.colorAriaLabel': 'Rule color',
+  'lensPanel.ruleEditor.nameAriaLabel': 'Rule name',
+  'lensPanel.ruleEditor.actionAriaLabel': 'Rule action',
+  'lensPanel.ruleEditor.unreadableCondition': 'Saved condition cannot be read: {reason}',
+  'lensPanel.ruleEditor.replaceCondition': 'Replace condition',
   'lensPanel.ruleEditor.compoundTypeAriaLabel': 'Compound criteria type (read-only, imported)',
   'lensPanel.ruleEditor.criteriaTypeAriaLabel': 'Criteria type',
   'lensPanel.ruleEditor.compoundReadOnlyTooltip':

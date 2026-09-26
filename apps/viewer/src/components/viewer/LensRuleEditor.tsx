@@ -96,20 +96,20 @@ export function LensRuleEditor({
           type="color"
           value={rule.color}
           onChange={(event) => onChange({ color: event.target.value })}
-          aria-label="Rule color"
+          aria-label={t('lensPanel.ruleEditor.colorAriaLabel')}
           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent flex-shrink-0 rounded"
         />
         <input
           type="text"
           value={rule.name}
           onChange={(event) => onChange({ name: event.target.value })}
-          aria-label="Rule name"
+          aria-label={t('lensPanel.ruleEditor.nameAriaLabel')}
           className="flex-1 min-w-0 text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm"
         />
         <select
           value={rule.action}
           onChange={(event) => onChange({ action: event.target.value as LensRule['action'] })}
-          aria-label="Rule action"
+          aria-label={t('lensPanel.ruleEditor.actionAriaLabel')}
           className="text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm"
         >
           <option value="colorize">{t('lensPanel.action.colorize')}</option>
@@ -125,9 +125,9 @@ export function LensRuleEditor({
       </div>
       {rule.unreadableLegacy ? (
         <div role="alert" className="pl-7 text-xs text-amber-700 dark:text-amber-300">
-          <p>Saved condition cannot be read: {rule.unreadableLegacy.reason}</p>
+          <p>{t('lensPanel.ruleEditor.unreadableCondition', { reason: rule.unreadableLegacy.reason })}</p>
           <button type="button" className="underline" onClick={() => changeGroups(() => ({ groups: [emptyFilterGroup()], activeGroup: 0 }))}>
-            Replace condition
+            {t('lensPanel.ruleEditor.replaceCondition')}
           </button>
         </div>
       ) : (

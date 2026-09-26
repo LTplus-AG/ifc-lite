@@ -80,7 +80,7 @@ function GroupRemoveActions({ groups, onRemove }: {
           type="button"
           aria-label={t('filterGroups.removeGroupAriaLabel', { index: i + 1 })}
           onClick={() => onRemove(i)}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
         >
           <span>{t('filterGroups.groupLabel', { index: i + 1 })}</span>
           <X className="h-3 w-3" aria-hidden />

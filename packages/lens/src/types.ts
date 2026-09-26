@@ -150,7 +150,7 @@ export interface LensRule {
   id: string;
   name: string;
   enabled: boolean;
-  groups?: import('@ifc-lite/rules').FilterGroup[];
+  groups: import('@ifc-lite/rules').FilterGroup[];
   unreadableLegacy?: { criteria: unknown; reason: string };
   action: 'colorize' | 'hide' | 'transparent';
   /** Hex color for colorize/transparent actions (e.g. "#E53935") */

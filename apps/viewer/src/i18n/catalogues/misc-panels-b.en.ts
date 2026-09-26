@@ -23,8 +23,7 @@ import type { TranslationValue } from '../types';
  * Fast/Exact geometry banner), `filterRuleControls.*`
  * (`FilterRuleControls.tsx`, the shared AND/OR combinator toggle and
  * "Add rule" menu), `geometryAxisRow.*` (`GeometryAxisRow.tsx`, the
- * Geometry edit card's X/Y/Z nudge row), `levelDisplayIndicator.*`
- * (`LevelDisplayIndicator.tsx`, the Exploded/Solo viewport chip),
+ * Geometry edit card's X/Y/Z nudge row),
  * `entityContextMenu.*` (`EntityContextMenu.tsx` — its default-direction
  * duplicate row plus the frame/hide/basket/show-all items that carry a
  * shortcut hint (#5597); the menu's remaining per-action `label` props are
@@ -230,13 +229,6 @@ export const miscPanelsBEn = {
   // ---- GeometryAxisRow.tsx -------------------------------------------------
   'geometryAxisRow.decreaseAriaLabel': 'Decrease {label}',
   'geometryAxisRow.increaseAriaLabel': 'Increase {label}',
-
-  // ---- LevelDisplayIndicator.tsx --------------------------------------------
-  'levelDisplayIndicator.backToStackedTitle': 'Back to stacked',
-  'levelDisplayIndicator.backToStackedAriaLabel': 'Back to stacked view',
-  'levelDisplayIndicator.explodedLabel': 'Exploded · {gap} m gap',
-  'levelDisplayIndicator.soloLabel': 'Solo · {name}',
-  'levelDisplayIndicator.storeyFallback': 'storey',
 
   // ---- EntityContextMenu.tsx (shortcut-hinted items + DuplicateRow, see doc comment)
   'entityContextMenu.duplicateDefaultTitle': 'Duplicate one bbox-width along +X (default)',

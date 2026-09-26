@@ -677,8 +677,8 @@ and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
 table and per-entity summary line); `GeometryModeBanner.tsx` (the
 reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
 shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
-(the Geometry edit card's X/Y/Z nudge row); `LevelDisplayIndicator.tsx` (the
-Exploded/Solo viewport chip); `TextAnnotationEditor.tsx` (the 2D-drawing
+(the Geometry edit card's X/Y/Z nudge row); `VisibilityChips.tsx` (the
+viewport visibility reasons); `TextAnnotationEditor.tsx` (the 2D-drawing
 text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
 collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
 `SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two

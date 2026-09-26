@@ -60,6 +60,8 @@ export interface TreeNode {
   entityExpressId?: number;
   /** Model IDs this node belongs to */
   modelIds: string[];
+  /** Owning model for a row representing one model; absent for cross-model groups. */
+  modelId?: string;
   name: string;
   /**
    * Secondary descriptive label rendered muted after `name`, currently the IFC

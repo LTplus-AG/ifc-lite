@@ -59,7 +59,7 @@ export interface HierarchyNodeProps extends HierarchyNodeAriaProps {
   modelsCount: number;
   searchActive?: boolean;
   modelVisible?: boolean;
-  onNodeClick: (node: TreeNode, e: React.MouseEvent) => void;
+  onNodeClick: (node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => void;
   onToggleExpand: (nodeId: string) => void;
   onVisibilityToggle: (node: TreeNode) => void;
   onModelVisibilityToggle: (modelId: string, e: React.MouseEvent) => void;
@@ -214,6 +214,11 @@ export function HierarchyNode({
           if ((e.target as HTMLElement).closest('button') === null) {
             onNodeClick(node, e);
           }
+        }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          onNodeClick(node, e);
         }}
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button') === null) {

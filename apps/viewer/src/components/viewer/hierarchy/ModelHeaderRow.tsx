@@ -84,7 +84,15 @@ export function ModelHeaderRow({
           node.hasChildren && 'cursor-pointer'
         )}
         style={{ paddingLeft: '8px' }}
-        onClick={() => onModelHeaderClick(modelId, node.id, node.hasChildren)}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button,[data-model-row-tags]')) return;
+          onModelHeaderClick(modelId, node.id, node.hasChildren);
+        }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          onModelHeaderClick(modelId, node.id, node.hasChildren);
+        }}
       >
         {/* Expand/collapse chevron */}
         {node.hasChildren ? (

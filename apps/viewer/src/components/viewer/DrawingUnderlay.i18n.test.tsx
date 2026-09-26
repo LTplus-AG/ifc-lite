@@ -147,8 +147,8 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
     assert.match(settings.textContent ?? '', /Click to edit/);
 
     // Open the editor for RULE_BEING_EDITED to reach its form fields.
-    const editRow = Array.from(settings.querySelectorAll('div')).find(
-      (el) => el.textContent?.includes('Test Rule Edited') && el.className.includes('cursor-pointer'),
+    const editRow = Array.from(settings.querySelectorAll('button')).find(
+      (el) => el.textContent?.includes('Test Rule Edited'),
     );
     assert.ok(editRow, 'expected the collapsed row for the rule being edited');
     act(() => (editRow as HTMLElement).click());
@@ -176,8 +176,8 @@ describe('DrawingSettingsPanel + DxfUnderlayPanel localization (#4918)', () => {
 
   it('translates every catalogue key rendered across both components', () => {
     const settings = render(<DrawingSettingsPanel />);
-    const editRow = Array.from(settings.querySelectorAll('div')).find(
-      (el) => el.textContent?.includes('Test Rule Edited') && el.className.includes('cursor-pointer'),
+    const editRow = Array.from(settings.querySelectorAll('button')).find(
+      (el) => el.textContent?.includes('Test Rule Edited'),
     );
     assert.ok(editRow);
     act(() => (editRow as HTMLElement).click());

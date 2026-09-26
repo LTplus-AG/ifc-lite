@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network } from 'lucide-react';
@@ -22,6 +22,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
@@ -109,11 +110,9 @@ export function HierarchyPanel() {
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 
-  // Resizable panel split (percentage for storeys section, 0.5 = 50%)
-  const [splitRatio, setSplitRatio] = useState(0.5);
-  const [isDragging, setIsDragging] = useState(false);
   const [syncingSourceModelIds, setSyncingSourceModelIds] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const { splitRatio, isDragging, handleResizeStart, handleResizeKeyDown } = useHierarchySplit(containerRef);
 
   // Check if we have multiple models loaded
   const isMultiModel = models.size > 1;
@@ -221,39 +220,6 @@ export function HierarchyPanel() {
     estimateSize: () => 36,
     overscan: 10,
   });
-
-  // Resize handler for draggable divider
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const relativeY = e.clientY - containerRect.top;
-      // Account for the search header height (~70px)
-      const headerHeight = 70;
-      const availableHeight = containerRect.height - headerHeight;
-      const newRatio = Math.max(0.15, Math.min(0.85, (relativeY - headerHeight) / availableHeight));
-      setSplitRatio(newRatio);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
 
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
@@ -983,12 +949,21 @@ export function HierarchyPanel() {
           </div>
 
           {/* Resizable Divider */}
-          <div
+          {/* The focusable resize widget contains a grip icon; hr cannot contain children. */}
+          {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+          <div role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('shellChrome.sidebarPanelHost.resizeSplitAriaLabel')}
+            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuemin={15}
+            aria-valuemax={85}
+            tabIndex={0}
             className={cn(
               'flex items-center justify-center h-2 cursor-ns-resize border-y border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors',
               isDragging && 'bg-primary/20'
             )}
             onMouseDown={handleResizeStart}
+            onKeyDown={handleResizeKeyDown}
           >
             <GripHorizontal className="h-3 w-3 text-zinc-400" />
           </div>

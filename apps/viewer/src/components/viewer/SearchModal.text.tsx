@@ -229,7 +229,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
               <button
                 type="button"
                 onClick={clearSearchModelFilter}
-                className="ml-1 text-[10px] text-muted-foreground underline hover:text-foreground"
+                className="ml-1 text-2xs text-muted-foreground underline hover:text-foreground"
               >
                 {t('searchModal.text.resetModelFilter')}
               </button>
@@ -319,23 +319,23 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     aria-label={t('searchModal.text.toggleRowAriaLabel', { name: r.name || r.globalId })}
                     className="shrink-0 cursor-pointer"
                   />
-                  <Badge variant="secondary" className="shrink-0 font-mono text-[10px] uppercase">
+                  <Badge variant="secondary" className="shrink-0 font-mono text-2xs uppercase">
                     {r.typeName}
                   </Badge>
                   <span className="min-w-0 flex-1 truncate font-medium">
                     {r.name || <span className="italic text-muted-foreground">{t('searchModal.text.unnamed')}</span>}
                   </span>
                   {r.globalId && (
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                       {r.globalId.slice(0, 10)}…
                     </span>
                   )}
                   {availableModelIds.length > 1 && (
-                    <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-700">
+                    <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-2xs text-muted-foreground dark:border-zinc-700">
                       {(models.get(r.modelId)?.name ?? r.modelId).slice(0, 8)}
                     </span>
                   )}
-                  <span className="shrink-0 text-[10px] uppercase text-muted-foreground opacity-60">
+                  <span className="shrink-0 text-2xs uppercase text-muted-foreground opacity-60">
                     {r.matchField}
                   </span>
                 </div>

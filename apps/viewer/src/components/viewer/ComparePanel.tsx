@@ -363,7 +363,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               </button>
               <span className="text-muted-foreground shrink-0">{t('comparePanel.panel.topicFor')}</span>
               <span className="font-medium truncate min-w-0">{selectedRow.name || selectedRow.ifcType}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+              <span className="ml-auto text-2xs text-muted-foreground shrink-0">
                 {selectedRow.ifcType.replace(/^Ifc/, '')}
               </span>
             </div>

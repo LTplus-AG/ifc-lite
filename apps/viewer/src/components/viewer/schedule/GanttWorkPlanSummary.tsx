@@ -87,7 +87,7 @@ export function GanttWorkPlanSummary({ workSchedules }: GanttWorkPlanSummaryProp
               className="flex shrink-0 items-center gap-1.5 rounded border bg-background px-2 py-1"
               title={t('schedule.workPlanSummary.planTitle', { globalId: plan.globalId })}
             >
-              <span className="font-mono text-[10px] text-muted-foreground">IfcWorkPlan</span>
+              <span className="font-mono text-2xs text-muted-foreground">IfcWorkPlan</span>
               <span className="font-medium">{displayName(plan)}</span>
               <span className="text-muted-foreground" aria-label={t('schedule.workPlanSummary.nestedAriaLabel')}>
                 {childSchedules.length > 0

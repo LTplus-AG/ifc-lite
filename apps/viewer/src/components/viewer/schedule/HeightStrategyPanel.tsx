@@ -34,7 +34,7 @@ export function HeightStrategyPanel({
       <div className="flex items-center gap-2">
         <Ruler className="h-3.5 w-3.5 text-primary" />
         <span className="text-xs font-medium">{t('schedule.heightStrategy.title')}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">
+        <span className="ml-auto text-2xs text-muted-foreground">
           {t('schedule.heightStrategy.usesGeometry')}
         </span>
       </div>
@@ -58,7 +58,7 @@ export function HeightStrategyPanel({
           onChange={(e) => onHeightToleranceChange(parseFloat(e.target.value))}
           className="w-full accent-primary"
         />
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t('schedule.heightStrategy.description')}
         </p>
       </div>
@@ -80,7 +80,7 @@ export function HeightStrategyPanel({
             />
           ))}
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {elementZSubgroup === 'none'
             ? t('schedule.heightStrategy.subgroupNone')
             : elementZSubgroup === 'class'

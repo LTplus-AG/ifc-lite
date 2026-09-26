@@ -64,11 +64,16 @@ it('#5823 leaves the height row closed when the terrain button receives Enter', 
     .find((button) => button.textContent?.includes('Coordinate Operation'));
   assert.ok(operationHeading);
   click(operationHeading);
-  const heightRow = [...ui.querySelectorAll<HTMLElement>('[role="button"]')]
-    .find((row) => row.textContent?.includes('OrthogonalHeight'));
+  const heightValue = ui.querySelector<HTMLElement>('[role="button"][aria-label="OrthogonalHeight"]');
+  assert.ok(heightValue);
+  const heightRow = heightValue.parentElement?.parentElement?.parentElement;
   assert.ok(heightRow);
+  assert.equal(heightRow.getAttribute('role'), null, 'the terrain button is not nested inside another button role');
   const terrainButton = heightRow.querySelector<HTMLButtonElement>('button');
   assert.ok(terrainButton);
   press(terrainButton, 'Enter');
   assert.equal(heightRow.querySelector('input'), null, 'terrain activation must not open the inline editor');
+  heightValue.focus();
+  press(heightValue, 'Enter');
+  assert.ok(heightRow.querySelector('input'), 'the separate value target still opens the editor');
 });

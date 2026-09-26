@@ -37,13 +37,7 @@ import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 import { parseLocalizedRotationDegrees } from './georeference-angle';
 import { getFieldHint } from './georeference-field-hints';
-
-function activateEditorFromKeyboard(event: React.KeyboardEvent, startEdit: () => void): void {
-  if (event.target !== event.currentTarget) return;
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault(); startEdit();
-  }
-}
+import { activateEditorFromKeyboard } from './georeference-row-keyboard';
 
 // ── GeorefRow: a single editable field ─────────────────────────────────
 
@@ -111,6 +105,8 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
 
   const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
   const canStartEdit = editable && !isComputed && !editing;
+  const rowIsKeyboardTarget = canStartEdit && !children;
+  const valueIsKeyboardTarget = canStartEdit && !!children;
 
   return (
     /* The row is a button only while its inline editor is closed; a native button cannot contain the editor inputs. */
@@ -119,10 +115,10 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${
         isMutated ? 'bg-overlay-accent-soft' : ''
       } ${editable && !isComputed ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
-      role={canStartEdit ? 'button' : undefined}
-      tabIndex={canStartEdit ? 0 : undefined}
+      role={rowIsKeyboardTarget ? 'button' : undefined}
+      tabIndex={rowIsKeyboardTarget ? 0 : undefined}
       onClick={canStartEdit ? startEdit : undefined}
-      onKeyDown={canStartEdit ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
+      onKeyDown={rowIsKeyboardTarget ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
     >
       <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         {isComputed && (
@@ -200,6 +196,10 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
                     : 'text-teal-700 dark:text-teal-400'
                 }`}
                 title={displayValue}
+                role={valueIsKeyboardTarget ? 'button' : undefined}
+                tabIndex={valueIsKeyboardTarget ? 0 : undefined}
+                aria-label={valueIsKeyboardTarget ? label : undefined}
+                onKeyDown={valueIsKeyboardTarget ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
               >
                 {displayValue}
                 {suffix && <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{suffix}</span>}

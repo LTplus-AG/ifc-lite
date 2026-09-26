@@ -9,21 +9,12 @@
  * views) to keep that file under the module-size budget.
  */
 
-import {
-  Plus,
-  Play,
-  FileSpreadsheet,
-  Trash2,
-  Download,
-  Upload,
-  Loader2,
-  Pencil,
-  Copy,
-} from 'lucide-react';
+import { Plus, Play, FileSpreadsheet, Trash2, Download, Upload, Pencil, Copy } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { LIST_PRESETS } from '@/lib/lists';
 import type { ListDefinition } from '@/lib/lists';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -150,116 +141,91 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
   const { t } = useTranslation();
   return (
     <div
-      className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer hover:bg-muted/50 ${
+      className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-muted/50 ${
         isActive ? 'bg-muted' : ''
       }`}
-      onClick={() => hasData && onExecute(definition)}
     >
-      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex-1 min-w-0">
-        <div className="truncate text-xs font-medium">{definition.name}</div>
+      <button type="button" disabled={!hasData} className="flex flex-1 min-w-0 items-center gap-2 text-left focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed" onClick={() => onExecute(definition)}>
+        <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0"><span className="block truncate text-xs font-medium">{definition.name}</span>
         {definition.description && (
-          <div className="truncate text-xs text-muted-foreground">{definition.description}</div>
+          <span className="block truncate text-xs text-muted-foreground">{definition.description}</span>
         )}
-      </div>
+        </span>
+      </button>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {executing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Spinner size="sm" />
         ) : (
           <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="h-6 w-6"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (hasData) onExecute(definition);
-                  }}
-                  disabled={!hasData}
-                  aria-label={t('lists.library.runListAriaLabel', { name: definition.name })}
-                >
-                  <Play className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('lists.library.run')}</TooltipContent>
-            </Tooltip>
+            <IconButton
+              label={t('lists.library.runListAriaLabel', { name: definition.name })}
+              tooltip={t('lists.library.run')}
+              size="icon-sm"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (hasData) onExecute(definition);
+              }}
+              disabled={!hasData}
+            >
+              <Play className="h-3 w-3" />
+            </IconButton>
             {!isPreset && onEdit && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(definition);
-                    }}
-                    aria-label={t('lists.library.editListAriaLabel', { name: definition.name })}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('lists.library.edit')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={t('lists.library.editListAriaLabel', { name: definition.name })}
+                tooltip={t('lists.library.edit')}
+                size="icon-sm"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(definition);
+                }}
+              >
+                <Pencil className="h-3 w-3" />
+              </IconButton>
             )}
             {onDuplicate && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDuplicate(definition);
-                    }}
-                    aria-label={isPreset ? t('lists.library.useAsTemplateAriaLabel', { name: definition.name }) : t('lists.library.duplicateListAriaLabel', { name: definition.name })}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{isPreset ? t('lists.library.useAsTemplate') : t('lists.library.duplicate')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={isPreset ? t('lists.library.useAsTemplateAriaLabel', { name: definition.name }) : t('lists.library.duplicateListAriaLabel', { name: definition.name })}
+                tooltip={isPreset ? t('lists.library.useAsTemplate') : t('lists.library.duplicate')}
+                size="icon-sm"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate(definition);
+                }}
+              >
+                <Copy className="h-3 w-3" />
+              </IconButton>
             )}
             {!isPreset && onExport && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-6 w-6"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onExport(definition);
-                    }}
-                    aria-label={t('lists.library.exportListAriaLabel', { name: definition.name })}
-                  >
-                    <Download className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('lists.library.export')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={t('lists.library.exportListAriaLabel', { name: definition.name })}
+                tooltip={t('lists.library.export')}
+                size="icon-sm"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExport(definition);
+                }}
+              >
+                <Download className="h-3 w-3" />
+              </IconButton>
             )}
             {!isPreset && onDelete && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="h-6 w-6 hover:text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(definition.id);
-                    }}
-                    aria-label={t('lists.library.deleteListAriaLabel', { name: definition.name })}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('lists.library.delete')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={t('lists.library.deleteListAriaLabel', { name: definition.name })}
+                tooltip={t('lists.library.delete')}
+                size="icon-sm"
+                className="h-6 w-6 hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(definition.id);
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </IconButton>
             )}
           </>
         )}

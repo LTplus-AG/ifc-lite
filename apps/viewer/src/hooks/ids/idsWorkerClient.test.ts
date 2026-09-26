@@ -81,6 +81,16 @@ afterEach(() => {
 });
 
 describe('runValidationInWorker', () => {
+  it('terminates its worker and rejects when the validation is cancelled (#5831)', async () => {
+    const controller = new AbortController();
+    const promise = runValidationInWorker(baseArgs({ signal: controller.signal }));
+    const worker = instances[0];
+    controller.abort();
+    await assert.rejects(promise, { name: 'AbortError' });
+    assert.equal(worker.terminated, 1);
+    assert.equal(worker.onmessage, null, 'late reports must not reach a cancelled caller');
+  });
+
   it('resolves with the report on a matching complete message', async () => {
     const promise = runValidationInWorker(baseArgs());
     const worker = instances[0];

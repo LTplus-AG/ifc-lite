@@ -22,12 +22,8 @@ import {
   Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { BCFViewpointCaptureButtons } from './BCFViewpointCaptureButtons';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -133,28 +129,22 @@ export function BCFTopicDetail({
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <h3 className="font-medium text-sm flex-1 truncate">{topic.title}</h3>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onZoomToTopic}
-              disabled={!canZoomToTopic}
-              aria-label={t('bcf.topicDetail.zoomToTopicAria')}
-            >
-              <Crosshair className="h-4 w-4" aria-hidden />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('bcf.topicDetail.zoomTo')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" onClick={onEditTopic} aria-label={t('bcf.topicDetail.editTopic')}>
-              <Pencil className="h-4 w-4" aria-hidden />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('bcf.topicDetail.editTopic')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('bcf.topicDetail.zoomToTopicAria')}
+          tooltip={t('bcf.topicDetail.zoomTo')}
+          size="sm"
+          onClick={onZoomToTopic}
+          disabled={!canZoomToTopic}
+        >
+          <Crosshair className="h-4 w-4" aria-hidden />
+        </IconButton>
+        <IconButton
+          label={t('bcf.topicDetail.editTopic')}
+          size="sm"
+          onClick={onEditTopic}
+        >
+          <Pencil className="h-4 w-4" aria-hidden />
+        </IconButton>
         <Button
           variant="ghost"
           size="sm"
@@ -242,7 +232,7 @@ export function BCFTopicDetail({
               <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.noViewpoints')}</p>
             ) : (
               <div className="space-y-2">
-                {topic.viewpoints.map((vp) => {
+                {topic.viewpoints.map((vp, index) => {
                   const isSelected = selectedViewpointGuid === vp.guid;
                   const commentCount = topic.comments.filter(c => c.viewpointGuid === vp.guid).length;
                   return (
@@ -255,33 +245,31 @@ export function BCFTopicDetail({
                       {/* Snapshot */}
                       <div className="relative group">
                         {vp.snapshot ? (
-                          <img
-                            src={vp.snapshot}
-                            alt={t('bcf.topicDetail.viewpointAlt')}
-                            className="w-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => onActivateViewpoint(vp)}
-                          />
+                          <button type="button" aria-label={`${t('bcf.topicDetail.viewpointAlt')} ${index + 1}`} className="block w-full hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onActivateViewpoint(vp)}>
+                            <img src={vp.snapshot} alt={t('bcf.topicDetail.viewpointAlt')} className="w-full object-contain" />
+                          </button>
                         ) : (
-                          <div
-                            className="w-full aspect-video bg-muted flex items-center justify-center cursor-pointer hover:bg-muted/80 transition-colors min-h-[120px]"
+                          <button
+                            type="button"
+                            aria-label={`${t('bcf.topicDetail.viewpointAlt')} ${index + 1}`}
+                            className="w-full aspect-video bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors min-h-[120px] focus-visible:ring-2 focus-visible:ring-ring"
                             onClick={() => onActivateViewpoint(vp)}
                           >
                             <Camera className="h-6 w-6 text-muted-foreground" />
-                          </div>
+                          </button>
                         )}
                         {/* Delete button - hover only */}
-                        <Button
+                        <IconButton
+                          label={t('bcf.topicDetail.deleteViewpointAria')}
                           variant="destructive"
-                          size="icon"
                           className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          aria-label={t('bcf.topicDetail.deleteViewpointAria')}
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteViewpoint(vp.guid);
                           }}
                         >
                           <Trash2 className="h-3 w-3" />
-                        </Button>
+                        </IconButton>
                       </div>
                       {/* Action bar - always visible */}
                       <div className="flex items-center justify-between px-2 py-1.5 bg-muted/30">
@@ -329,8 +317,9 @@ export function BCFTopicDetail({
                   >
                     {/* Show associated viewpoint thumbnail if present */}
                     {associatedViewpoint?.snapshot && (
-                      <div
-                        className="mb-2 rounded overflow-hidden border border-border cursor-pointer hover:opacity-80 transition-opacity"
+                      <button
+                        type="button"
+                        className="mb-2 block w-full rounded overflow-hidden border border-border hover:opacity-80 transition-opacity focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => onActivateViewpoint(associatedViewpoint)}
                       >
                         <img
@@ -338,7 +327,7 @@ export function BCFTopicDetail({
                           alt={t('bcf.topicDetail.associatedViewpointAlt')}
                           className="w-full max-h-24 object-contain bg-muted"
                         />
-                      </div>
+                      </button>
                     )}
                     <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
                       {comment.author && <><User className="h-3 w-3" /><span>{comment.author.split('@')[0]}</span></>}
@@ -374,15 +363,13 @@ export function BCFTopicDetail({
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.commentingOnViewpoint')}</p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              label={t('bcf.topicDetail.cancelViewpointCommentAria')}
               className="h-6 w-6 shrink-0"
-              aria-label={t('bcf.topicDetail.cancelViewpointCommentAria')}
               onClick={() => setSelectedViewpointGuid(null)}
             >
               <X className="h-3 w-3" />
-            </Button>
+            </IconButton>
           </div>
         )}
         <div className="flex gap-2">
@@ -393,9 +380,9 @@ export function BCFTopicDetail({
             onKeyDown={handleKeyDown}
             className="flex-1"
           />
-          <Button size="icon" aria-label={t('bcf.topicDetail.sendCommentAria')} onClick={handleSubmitComment} disabled={!commentText.trim()}>
+          <IconButton label={t('bcf.topicDetail.sendCommentAria')} onClick={handleSubmitComment} disabled={!commentText.trim()}>
             <Send className="h-4 w-4" />
-          </Button>
+          </IconButton>
         </div>
       </div>
 

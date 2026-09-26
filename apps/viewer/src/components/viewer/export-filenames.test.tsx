@@ -20,6 +20,7 @@ import { render, cleanup, click, advance, press } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { GLBExportDialog } from './GLBExportDialog';
@@ -54,8 +55,8 @@ function button(label: string): HTMLElement {
 }
 
 let api: ReturnType<typeof useExportCommands> | null = null;
-function ExportCommandsHarness() {
-  api = useExportCommands();
+function ExportCommandsHarness({ surface }: { surface: 'classic' | 'ribbon' | 'palette' }) {
+  api = useExportCommands(surface);
   return null;
 }
 function commands(): ReturnType<typeof useExportCommands> {
@@ -78,41 +79,77 @@ describe('every model export is filed under the model name (#5833)', () => {
   });
 
   it('GLB dialog keeps the copy suffix', async () => {
+    const completed: Record<string, unknown>[] = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completed.push(properties);
+    });
     mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', () => new Uint8Array([1]));
     mock.method(GeometryProcessor.prototype, 'exportGlb', () => new Uint8Array([1]));
-    render(<GLBExportDialog />);
-    click(button('Export GLB')); await advance(1);
-    click(button('Export')); await advance(20);
-    assert.deepEqual(downloadedNames(), ['Haus -2.glb']);
+    for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+      render(<GLBExportDialog surface={surface} />);
+      click(button('Export GLB')); await advance(1);
+      click(button('Export')); await advance(20);
+      assert.deepEqual(downloadedNames(), Array(index + 1).fill('Haus -2.glb'));
+      assert.equal(completed.length, index + 1, '#5844: one completion per dialog GLB download');
+      assert.equal(completed[index].surface, surface);
+      cleanup();
+    }
   });
 
   it('mobile GLB is named like the dialog, not model.glb', async () => {
+    const completed: Record<string, unknown>[] = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completed.push(properties);
+    });
     mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', () => new Uint8Array([1]));
     render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
     press(document.querySelector('[aria-haspopup="menu"]')!, 'ArrowDown'); await advance(10);
     const action = [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'Export GLB');
     assert.ok(action); click(action); await advance(25);
     assert.deepEqual(downloadedNames(), ['Haus -2.glb']);
+    assert.equal(completed.length, 1, '#5844: one completion for the mobile GLB download');
+    assert.equal(completed[0].surface, 'mobile');
   });
 
   it('JSON, CSV and screenshot carry the active model name', async () => {
     mock.method(GeometryProcessor.prototype, 'exportCsv', () => new TextEncoder().encode('a,b\n'));
+    const completed: Record<string, unknown>[] = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completed.push(properties);
+    });
     const canvas = document.createElement('canvas');
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,AA==';
     document.body.appendChild(canvas);
     try {
-      render(<ExportCommandsHarness />);
-      commands().handleExportJSON();
-      await commands().handleExportCSV('entities');
-      await commands().handleExportCSV('spatial');
-      commands().handleScreenshot();
-      assert.deepEqual(downloadedNames(), [
-        'Haus -2_data.json',
-        'Haus -2_entities.csv',
-        'Haus -2_spatial-hierarchy.csv',
-        'Haus -2_screenshot.png',
-      ]);
+      for (const surface of ['classic', 'ribbon', 'palette'] as const) {
+        const before = downloadedNames().length;
+        const eventsBefore = completed.length;
+        render(<ExportCommandsHarness surface={surface} />);
+        commands().handleExportJSON();
+        await commands().handleExportCSV('entities');
+        await commands().handleExportCSV('properties');
+        await commands().handleExportCSV('quantities');
+        await commands().handleExportCSV('spatial');
+        commands().handleScreenshot();
+        assert.deepEqual(downloadedNames().slice(before), [
+          'Haus -2_data.json',
+          'Haus -2_entities.csv',
+          'Haus -2_properties.csv',
+          'Haus -2_quantities.csv',
+          'Haus -2_spatial-hierarchy.csv',
+          'Haus -2_screenshot.png',
+        ]);
+        assert.deepEqual(completed.slice(eventsBefore).map(({ format, surface: eventSurface }) => ({ format, surface: eventSurface })), [
+          { format: 'json', surface },
+          { format: 'csv', surface },
+          { format: 'csv', surface },
+          { format: 'csv', surface },
+          { format: 'csv', surface },
+          { format: 'png', surface },
+        ], '#5844: one completion per data download with the initiating surface');
+        cleanup();
+      }
     } finally {
       canvas.remove();
     }

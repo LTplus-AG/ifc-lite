@@ -24,8 +24,14 @@ impl GeometryRouter {
         self.shared_brep_signatures = Some(cache);
     }
 
-    fn brep_key_with_params(&self, structural: u128) -> u128 {
-        super::content_hash::key_with_params(structural, self.tessellation_quality.to_index(), self.unit_scale, self.rtc_offset)
+    fn brep_key_with_params(&self, structural: u128, rtc: (f64, f64, f64)) -> u128 {
+        super::content_hash::key_with_params(structural, self.tessellation_quality.to_index(), self.unit_scale, rtc)
+    }
+
+    /// [`Self::item_dedup_key_in_frame`] at the model RTC offset.
+    #[cfg(test)]
+    pub(super) fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
+        self.item_dedup_key_in_frame(item, decoder, self.rtc_offset)
     }
 
     /// Cache key for an item: its structural hash combined with the router params
@@ -33,8 +39,15 @@ impl GeometryRouter {
     /// `None` when dedup is disabled (skips the hash walk so disabled = zero
     /// overhead). The quality fold is what keeps `setTessellationQuality` correct —
     /// the shared cache persists across quality changes on a worker, so the key
-    /// must distinguish them (#976).
-    pub(super) fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
+    /// must distinguish them (#976). `rtc` is the offset in the item's own frame
+    /// (metres): an element-frame rebase (#5698) is a different mesh from the
+    /// model-frame one.
+    pub(super) fn item_dedup_key_in_frame(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        rtc: (f64, f64, f64),
+    ) -> Option<u128> {
         self.item_dedup_cache.as_ref()?;
         // Keep the proven default types; mapped items have their own cache.
         let base = matches!(
@@ -64,7 +77,7 @@ impl GeometryRouter {
             if let Some(cache) = &self.shared_brep_signatures {
                 let hit = cache.0.lock().unwrap_or_else(|e| e.into_inner()).get(&item.id).copied();
                 if let Some(signature) = hit {
-                    return Some(self.brep_key_with_params(signature));
+                    return Some(self.brep_key_with_params(signature, rtc));
                 }
             }
             if let Some(face_count) = super::content_hash::faceted_brep_face_count(decoder, item.id) {
@@ -81,13 +94,13 @@ impl GeometryRouter {
                     if let Some(signature) = super::content_hash::try_faceted_brep_signature(decoder, item.id) {
                         self.content_sig_memo.borrow_mut().insert(item.id, signature);
                         cache.0.lock().unwrap_or_else(|e| e.into_inner()).insert(item.id, signature);
-                        return Some(self.brep_key_with_params(signature));
+                        return Some(self.brep_key_with_params(signature, rtc));
                     }
                 }
                 let mut memo = self.content_sig_memo.borrow_mut();
                 let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
                 let signature = super::content_hash::item_signature_after_failed_brep(decoder, item.id, &mut memo, &mut refused);
-                return Some(self.brep_key_with_params(signature));
+                return Some(self.brep_key_with_params(signature, rtc));
             }
         }
         let structural = {
@@ -99,7 +112,7 @@ impl GeometryRouter {
             structural,
             self.tessellation_quality.to_index(),
             self.unit_scale,
-            self.rtc_offset,
+            rtc,
         ))
     }
 

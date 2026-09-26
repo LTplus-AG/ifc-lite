@@ -23,11 +23,12 @@ import {
   MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
@@ -104,7 +105,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   const setBcfError = useViewerStore((s) => s.setBcfError);
   const models = useViewerStore((s) => s.models);
 
-  const { createViewpointFromState, headerFilesForViewpoints, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF();
+  const { createViewpointFromState, headerFilesForViewpoints, applyViewpoint, zoomToTopic, canZoomToTopic } = useBCF({ restoreSectionOnUnmount: true });
   const sectionCapture = useSectionViewpointCapture(createViewpointFromState);
   // Local state
   const [statusFilter, setStatusFilter] = useState('all');
@@ -200,7 +201,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // Export BCF file
   const handleExport = useCallback(async () => {
     if (!bcfProject) return;
-
     try {
       setBcfLoading(true);
       setBcfError(null);
@@ -208,6 +208,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       // Use project name, or generate from model name, or date-based fallback
       const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
       downloadBlob(blob, `${fileName}.bcfzip`);
+      trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);
@@ -408,51 +409,44 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onChange={handleImport}
             className="hidden"
           />
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('bcf.panel.importTitle')}
             className="h-7 w-7"
             onClick={() => { void handleImportClick(); }}
-            title={t('bcf.panel.importTitle')}
           >
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+            <Upload className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            label={t('bcf.panel.exportTitle')}
             className="h-7 w-7"
             onClick={handleExport}
             disabled={!bcfProject || topics.length === 0}
-            title={t('bcf.panel.exportTitle')}
             {...tourAnchor(TOUR_ANCHORS.bcfExport)}
           >
-            <Upload className="h-4 w-4" />
-          </Button>
+            <Download className="h-4 w-4" />
+          </IconButton>
           <BCFServerControl />
-          <Button
+          <IconButton
+            label={bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers')}
             variant={bcfOverlayVisible ? 'secondary' : 'ghost'}
-            size="icon"
             className="h-7 w-7"
             onClick={toggleBcfOverlay}
-            title={bcfOverlayVisible ? t('bcf.panel.hideMarkers') : t('bcf.panel.showMarkers')}
           >
             <MapPin className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          </IconButton>
+          <IconButton
+            label={t('bcf.panel.setAuthorTitle')}
             className="h-7 w-7"
             onClick={() => {
               setTempAuthor(bcfAuthor);
               setShowAuthorDialog(true);
             }}
-            title={t('bcf.panel.setAuthorTitle')}
           >
             <User className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('bcf.shared.close')} onClick={onClose}>
+          </IconButton>
+          <IconButton label={t('bcf.shared.close')} className="h-7 w-7" onClick={onClose}>
             <X className="h-4 w-4" />
-          </Button>
+          </IconButton>
         </div>
       </div>
       <BCFPanelStatus />

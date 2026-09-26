@@ -120,7 +120,7 @@ function geometry(meshes: MeshData[]): GeometryResult {
   return { meshes, totalTriangles: 12 * meshes.length, totalVertices: 8 * meshes.length, coordinateInfo };
 }
 
-function model(id: string, store: IfcDataStore, meshes: MeshData[]): FederatedModel {
+function model(id: string, store: IfcDataStore, meshes: MeshData[], idOffset = 0): FederatedModel {
   return {
     id,
     name: `${id}.ifc`,
@@ -131,7 +131,7 @@ function model(id: string, store: IfcDataStore, meshes: MeshData[]): FederatedMo
     schemaVersion: 'IFC4',
     loadedAt: 0,
     fileSize: 0,
-    idOffset: 0,
+    idOffset,
     maxExpressId: WALL_COUNT,
   };
 }
@@ -150,11 +150,12 @@ function Probe(): null {
 
 let root: Root | null = null;
 
-async function seed(): Promise<void> {
+async function seed(modelCount: 1 | 2 = 1): Promise<void> {
   const store = await parse(wallsBody(WALL_COUNT));
   const meshes: MeshData[] = [];
   for (let i = 0; i < WALL_COUNT; i += 1) meshes.push(boxMesh(i + 1, i));
   const models = new Map<string, FederatedModel>([['A', model('A', store, meshes)]]);
+  if (modelCount === 2) models.set('B', model('B', store, [], 1_000_000));
   useViewerStore.setState({
     models,
     activeModelId: 'A',
@@ -200,6 +201,30 @@ afterEach(async () => {
 });
 
 describe('useClash - concurrent-run supersession (#2802)', () => {
+  for (const modelCount of [1, 2] as const) {
+    it(`cancelRun() keeps the previous result after a live engine abort with ${modelCount} model(s) (#5831)`, async () => {
+      await seed(modelCount);
+      await act(async () => { await api!.runDuplicates(); });
+      const previous = useViewerStore.getState().clashResult;
+      assert.ok(previous, 'a prior result should be visible during re-run');
+
+      let cancelled = false;
+      const unsub = fireAtNarrowPhase(() => {
+        cancelled = true;
+        api!.cancelRun();
+      });
+      await act(async () => { await api!.run([ALL_RULE]); });
+      unsub();
+
+      assert.equal(cancelled, true, 'the real engine should reach narrow-phase work');
+      const state = useViewerStore.getState();
+      assert.equal(state.clashRunning, false);
+      assert.equal(state.clashProgress, null);
+      assert.equal(state.clashError, null);
+      assert.strictEqual(state.clashResult, previous, 'cancel must retain the prior result');
+    });
+  }
+
   it('a later runDuplicates() that finishes first must not be overwritten by an earlier, slower run() finishing after it', async () => {
     await seed();
 

@@ -15,7 +15,8 @@ import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, waitFor } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { useViewerStore } from '@/store/index.js';
 import type { Measurement } from '@/store/types.js';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts.js';
@@ -36,8 +37,6 @@ function press(key: string, init: KeyboardEventInit = {}): void {
   });
 }
 
-const originalConfirm = window.confirm;
-
 beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'measure',
@@ -52,7 +51,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.confirm = originalConfirm;
 });
 
 describe('Measure tool keyboard shortcuts do not clear measurements (#5598)', () => {
@@ -84,21 +82,28 @@ describe('Measure bar "Clear all" asks before clearing (#5598)', () => {
   }
 
   /** The bar portals into the HUD host (#5502), so both mount together. */
-  const renderBar = () => render(<><ViewportHud /><MeasureOverlay /></>);
+  const renderBar = async () => {
+    const { ConfirmDialogHost } = await loadDialogs();
+    return render(<><ViewportHud /><MeasureOverlay /><ConfirmDialogHost /></>);
+  };
 
-  it('keeps the measurements when the confirm is declined', () => {
-    const asked: string[] = [];
-    window.confirm = (message?: string) => { asked.push(message ?? ''); return false; };
-    const container = renderBar();
+  it('keeps the measurements when the confirm is declined', async () => {
+    const container = await renderBar();
     click(clearAllButton(container));
-    assert.deepEqual(asked, ['Clear every measurement? This cannot be undone.']);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', /Clear every measurement\? This cannot be undone\./);
+    click(dialog.querySelector('button')!);
     assert.deepEqual(useViewerStore.getState().measurements, [MEASUREMENT]);
   });
 
-  it('clears the measurements when the confirm is accepted', () => {
-    window.confirm = () => true;
-    const container = renderBar();
+  it('clears the measurements when the confirm is accepted', async () => {
+    const container = await renderBar();
     click(clearAllButton(container));
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    click(dialog.querySelectorAll('button')[1]);
+    await waitFor(() => useViewerStore.getState().measurements.length === 0, 'accepted clear removes measurements');
     assert.deepEqual(useViewerStore.getState().measurements, []);
   });
 });

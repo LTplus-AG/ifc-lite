@@ -95,6 +95,20 @@ fn parse_index_value(bytes: &[u8], pos: &mut usize, result: &mut Vec<u32>) {
 /// or the list is refused as corrupt (#5266).
 #[inline]
 pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
+    coordinates::try_parse_coordinates_direct(coordinate_list_span(bytes)?)
+}
+
+/// [`extract_coordinate_list_from_entity`] at f64 precision. A caller that
+/// rebases national-grid coordinates must subtract its offset from these
+/// values: narrowing first can merge vertices that differ by less than one
+/// f32 ULP (0.25 m at 2,600 km) before the offset is removed (#5698).
+#[inline]
+pub fn extract_coordinate_list_from_entity_f64(bytes: &[u8]) -> Option<Vec<f64>> {
+    coordinates::try_parse_coordinates_direct_f64(coordinate_list_span(bytes)?)
+}
+
+/// The bytes of attribute 0's balanced list, including its outer parentheses.
+fn coordinate_list_span(bytes: &[u8]) -> Option<&[u8]> {
     let head = crate::parser::argument_list_start(bytes)?;
     let open = crate::parser::skip_step_trivia(bytes, head)?;
     if bytes.get(open) != Some(&b'(') {
@@ -109,7 +123,7 @@ pub fn extract_coordinate_list_from_entity(bytes: &[u8]) -> Option<Vec<f32>> {
                 continue;
             }
             b'(' => depth += 1,
-            b')' if depth == 1 => return coordinates::try_parse_coordinates_direct(&bytes[open..=i]),
+            b')' if depth == 1 => return Some(&bytes[open..=i]),
             b')' => depth -= 1,
             _ => {}
         }

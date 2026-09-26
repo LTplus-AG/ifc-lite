@@ -29,6 +29,14 @@ import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element
  * Handle click event for selection (single click and double click).
  * Manages click timing for double-click detection and Ctrl/Cmd multi-select.
  */
+/** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
+export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
+  const mode = useViewerStore.getState().measureMode;
+  if (mode === 'polyline') handlePolylineClick(ctx, x, y);
+  else if (mode === 'angle') handleAngleClick(ctx, x, y);
+  else if (mode === 'radius') handleRadiusClick(ctx, x, y);
+}
+
 export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEvent): Promise<void> {
   const { canvas, renderer, mouseState } = ctx;
   const rect = canvas.getBoundingClientRect();
@@ -58,17 +66,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // opposite — it does nothing on mousedown/drag, so a click is the ONLY
   // gesture that adds a point, which is what makes the two modes unable to
   // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
-  if (tool === 'measure') {
-    const mode = useViewerStore.getState().measureMode;
-    if (mode === 'polyline') {
-      handlePolylineClick(ctx, x, y);
-    } else if (mode === 'angle') {
-      handleAngleClick(ctx, x, y);
-    } else if (mode === 'radius') {
-      handleRadiusClick(ctx, x, y);
-    }
-    return;
-  }
+  if (tool === 'measure') return handleMeasureClickAt(ctx, x, y);
 
   // Section-tool face-pick (issue #243): clicking any visible face places
   // the clip plane through it. Intercept BEFORE the generic select path

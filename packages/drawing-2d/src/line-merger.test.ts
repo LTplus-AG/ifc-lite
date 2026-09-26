@@ -76,14 +76,16 @@ describe('mergeCollinearLines', () => {
     const reference = seg(0, 0, 10, 0.1); // angle 0.01 rad
     // Start offset 0.0005 (inside distanceTolerance 0.001), end offset 0.0995.
     const converging = seg(0, 0.0005, 10, 0.0005);
-    expect(mergeCollinearLines([reference, converging])).toHaveLength(2);
+    expect(mergeCollinearLines([reference, converging], { distanceTolerance: 0.001 }))
+      .toHaveLength(2);
   });
 
   it('rejects a near-parallel segment whose END lies on the reference line', () => {
     const reference = seg(0, 0, 10, 0.1);
     // Mirror image: start offset 0.0995, end offset 0.0005.
     const converging = seg(0, 0.0995, 10, 0.0995);
-    expect(mergeCollinearLines([reference, converging])).toHaveLength(2);
+    expect(mergeCollinearLines([reference, converging], { distanceTolerance: 0.001 }))
+      .toHaveLength(2);
   });
 
   it('keeps segments of different direction apart', () => {
@@ -190,6 +192,26 @@ describe('mergeDrawingLines grouping', () => {
     const merged = mergeDrawingLines([drawingLine(a), drawingLine(b)]);
     expect(merged).toHaveLength(1);
     expect(lengthOf(merged[0].line)).toBeCloseTo(2, 9);
+  });
+
+  it('keeps both cut faces of a 0.8 mm foil (#6027)', () => {
+    const merged = mergeDrawingLines([
+      drawingLine(seg(0, 0, 0.5, 0)),
+      drawingLine(seg(0, -0.0008, 0.5, -0.0008)),
+    ]);
+
+    expect(merged).toHaveLength(2);
+    expect(merged.map(({ line }) => line.start.y).sort((a, b) => a - b)).toEqual([-0.0008, 0]);
+  });
+
+  it('still joins fragments separated by sub-micron coordinate noise (#6027)', () => {
+    const merged = mergeDrawingLines([
+      drawingLine(seg(0, 0, 0.25, 0)),
+      drawingLine(seg(0.25, 0.0000005, 0.5, 0.0000005)),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(lengthOf(merged[0].line)).toBeCloseTo(0.5, 6);
   });
 
   it('does NOT merge across line categories', () => {

@@ -324,16 +324,14 @@ fn request_cache_key_separates_content_filter_and_quality() {
     assert_ne!(other, request_cache_key(data, &default_query, TessellationQuality::default()));
 }
 
-/// The data-model payload's columns changed (issue #3860), so the suffix
-/// must have moved off `v5`: a warm cache would otherwise serve a blob
-/// written before the `rel_id` column existed, and absence of the column
-/// reads to the decoder exactly like an older server — silently correct,
-/// silently wrong.
+/// A warm cache from before #5296 has partial material rows and must be
+/// bypassed so material value checks receive the complete v8 payload.
 #[test]
 fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     let request_key = "0ab20f4e4014-default";
     let key = data_model_cache_key(request_key);
-    assert_eq!(key, format!("{request_key}-datamodel-v7"));
+    assert_eq!(key, format!("{request_key}-datamodel-v8"));
+    assert_ne!(key, format!("{request_key}-datamodel-v7"));
     assert_ne!(
         key,
         format!("{request_key}-datamodel-v5"),

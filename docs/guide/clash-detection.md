@@ -135,6 +135,8 @@ const topicStatus = aggregateReviewStatus(members.map((c) => reviews.get(clashRe
 
 ### BCF export
 
+In the viewer, once a result is on screen the collapsed detection header offers **Re-run**. It repeats the run that produced the result ("Detect all clashes", the enabled rule set, a single rule, or "Find duplicates"), with the current mode and tolerance settings, and its tooltip names what it will repeat.
+
 `groupClashes` clusters related clashes into the unit of a single BCF topic, and `createBCFFromClashResult` (from `@ifc-lite/clash/bcf`) turns those groups into a BCF project you write with `@ifc-lite/bcf`. On export, review status maps to a BCF 2.1 `TopicStatus` through `reviewStatusToBcfTopicStatus`, using only the two universally supported statuses (`Open` and `Closed`) so any BCF tool round-trips the archive. Both `resolved` and `accepted` are terminal and close the topic; the finer distinction is preserved in the topic description rather than the status field. Clash bounds are in the mesher's shifted render frame, so pass `worldOffset: renderFrameWorldOffset(geometryResult.coordinateInfo)` (from `@ifc-lite/geometry/world-frame`) to write world-coordinate cameras; the CLI and the viewer do. See the [BCF Collaboration](bcf.md) guide for the round-trip and the coordinate frames.
 
 ### CSV table export

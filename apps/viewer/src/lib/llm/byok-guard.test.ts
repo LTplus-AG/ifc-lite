@@ -85,6 +85,17 @@ test('resolveStreamRoute returns openai route when key present', () => {
   }
 });
 
+test('resolveStreamRoute sends canonical model IDs for saved selections (#6097)', () => {
+  const keys = { anthropicKey: 'sk-ant-abc', anthropicWorkspaceId: '', openaiKey: 'sk-openai-xyz' };
+  const anthropic = resolveStreamRoute('claude-opus-5', keys);
+  assert.equal(anthropic.kind, 'anthropic');
+  if (anthropic.kind === 'anthropic') assert.equal(anthropic.model, 'claude-opus-5-5');
+
+  const openai = resolveStreamRoute('gpt-5.6-sol', keys);
+  assert.equal(openai.kind, 'openai');
+  if (openai.kind === 'openai') assert.equal(openai.model, 'gpt-6-sol');
+});
+
 test('resolveStreamRoute returns missing-key when openai model selected without key', () => {
   const route = resolveStreamRoute(OPENAI_MODEL.id, {
     anthropicKey: 'sk-ant-abc',

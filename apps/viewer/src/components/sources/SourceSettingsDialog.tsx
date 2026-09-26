@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 
 interface SourceSettingsDialogProps {
@@ -160,7 +161,7 @@ export function SourceSettingsDialog({
               onClick={handleTest}
               disabled={testing || requiredMissing}
             >
-              {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {testing && <Spinner size="md" className="mr-2" />}
               {t('sources.sourceSettingsDialog.testConnection')}
             </Button>
           )}

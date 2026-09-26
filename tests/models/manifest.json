@@ -324,6 +324,18 @@
       "size": 2593
     },
     {
+      "path": "buildingsmart/Viadotto_Acerno.ifc",
+      "sha256": "21fe8b26f0bb425aa250709005f795db06bfc98853a252d8dce97d58c2474e28",
+      "size": 32993144,
+      "upstream_archive": {
+        "blob_url": "https://github.com/buildingSMART/IFC4.x-IF/blob/f046b924e3f5688a11a6d375ff8dbd28428a911a/IFC-files/ACCA/Bridge-for-MINnD/Viadotto%20Acerno.zip",
+        "commit": "f046b924e3f5688a11a6d375ff8dbd28428a911a",
+        "sha256": "9d8a105a4d718bebe91be2028912fd7286b2e16c33f8898b297f0d1413f65ac4",
+        "size": 8364131,
+        "member": "Viadotto Acerno.ifc"
+      }
+    },
+    {
       "path": "buildingsmart/wall-with-opening-and-window.ifc",
       "sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
       "size": 12492

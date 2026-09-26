@@ -184,6 +184,28 @@ export function validateManifest(manifest) {
     if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
       invalid(errors, `${where}.size`, 'must be a non-negative safe integer');
     }
+    if (entry.upstream_archive !== undefined) {
+      const archive = entry.upstream_archive;
+      if (!isObject(archive)) {
+        invalid(errors, `${where}.upstream_archive`, 'must be an object');
+      } else {
+        if (!/\.ifc$/i.test(entry.path)) invalid(errors, `${where}.path`, 'upstream ZIP extraction supports IFC files only');
+        if (!isText(archive.commit) || !COMMIT_RE.test(archive.commit)) {
+          invalid(errors, `${where}.upstream_archive.commit`, 'must be a 40-character lowercase Git commit');
+        }
+        requirePinnedGitHubBlobUrl(archive.blob_url, archive.commit, `${where}.upstream_archive.blob_url`, errors);
+        if (!isText(archive.blob_url) || !/\.zip$/i.test(archive.blob_url)) {
+          invalid(errors, `${where}.upstream_archive.blob_url`, 'must name a ZIP archive');
+        }
+        if (!isText(archive.sha256) || !SHA256_RE.test(archive.sha256)) {
+          invalid(errors, `${where}.upstream_archive.sha256`, 'must be a lowercase SHA-256');
+        }
+        if (!Number.isSafeInteger(archive.size) || archive.size <= 0 || archive.size > 200_000_000) {
+          invalid(errors, `${where}.upstream_archive.size`, 'must be a positive archive size of at most 200 MB');
+        }
+        requireText(archive.member, `${where}.upstream_archive.member`, errors);
+      }
+    }
     // The root manifest remains v1 while the historical IFC catalogue awaits
     // its own rights review. LandXML files are reviewed per entry, so adding
     // one cannot bypass provenance simply by retaining a v1 root header.

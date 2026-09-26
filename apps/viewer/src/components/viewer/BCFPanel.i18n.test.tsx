@@ -86,6 +86,20 @@ afterEach(() => {
 });
 
 describe('BCFPanel localization (#4918)', () => {
+  it('uses upload for import and download for export (#5822)', () => {
+    assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
+    const container = renderPanel();
+    for (const [titleKey, iconClass] of [
+      ['bcf.panel.importTitle', 'lucide-upload'],
+      ['bcf.panel.exportTitle', 'lucide-download'],
+    ] as const) {
+      const title = CATALOGUE[titleKey] as string;
+      const button = [...container.querySelectorAll('button')].find((item) => item.getAttribute('aria-label') === title);
+      assert.ok(button, `expected a button titled ${title}`);
+      assert.ok(button.querySelector(`svg.${iconClass}`), `${title} should show ${iconClass}`);
+    }
+  });
+
   it('renders English header chrome by default', () => {
     assert.ok(bcfEn, 'bcf.en.ts catalogue must exist');
     const container = renderPanel();
@@ -99,13 +113,13 @@ describe('BCFPanel localization (#4918)', () => {
     act(() => setLocale('bcf-panel-pseudo'));
 
     assert.match(container.textContent ?? '', /⟦BCF Topics⟧/);
-    const titles = [...container.querySelectorAll('[title]')].map((el) => el.getAttribute('title'));
+    const titles = [...container.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label'));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.importTitle'] as string)));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.exportTitle'] as string)));
     assert.ok(titles.includes(marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string)));
 
     const setAuthorButton = [...container.querySelectorAll('button')].find(
-      (b) => b.getAttribute('title') === marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string),
+      (b) => b.getAttribute('aria-label') === marked(CATALOGUE['bcf.panel.setAuthorTitle'] as string),
     );
     assert.ok(setAuthorButton, 'expected a Set author button');
     act(() => {

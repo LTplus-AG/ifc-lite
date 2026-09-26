@@ -6,7 +6,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
+import type { TreeNode, UnifiedStorey, HierarchySortMode, ExpansionLookup } from './types';
 import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
   buildUnifiedStoreys,
@@ -30,6 +30,7 @@ import {
 export type { HierarchyMode } from '@/store';
 
 const SORT_STORAGE_KEY = 'hierarchy-sort';
+const EXPAND_ALL: ExpansionLookup = { has: () => true };
 
 /** Read the persisted sort mode, falling back to the default for missing or
  *  stale (e.g. renamed) localStorage values. Reads can throw (private mode,
@@ -244,10 +245,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     // mutationVersion bumps on every authoring edit; geometricIds tracks the mesh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationViews, models, geometricIds, mutationVersion]);
-
-
-  // Build the tree data structure based on grouping mode
-  // Note: hiddenEntities intentionally NOT in deps - visibility computed lazily for performance
+  const searchExpansion = searchQuery.trim() ? EXPAND_ALL : expandedNodes;
+  // hiddenEntities intentionally NOT in deps - visibility computed lazily
   const treeData = useMemo(
     (): TreeNode[] => {
       const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
@@ -255,7 +254,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         return buildTypeTree(
           models,
           ifcDataStore,
-          expandedNodes,
+          searchExpansion,
           isMultiModel,
           classTreeIds,
           authoredProducts,
@@ -264,18 +263,18 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         );
       }
       if (groupingMode === 'ifc-type') {
-        return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
+        return buildIfcTypeTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
       }
       if (groupingMode === 'material') {
-        return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, geometryReadyModelIds);
+        return buildMaterialTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds);
       }
       if (groupingMode === 'groups') {
-        return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter, treeOverlay);
+        return buildGroupTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
       }
       return buildTreeData(
         models,
         ifcDataStore,
-        expandedNodes,
+        searchExpansion,
         isMultiModel,
         unifiedStoreys,
         sortMode,
@@ -283,7 +282,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         geometryReadyModelIds, georefMutations,
       );
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
+    [models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
 
   // Filter nodes based on search
@@ -299,6 +298,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   );
 
   const toggleExpand = useCallback((nodeId: string) => {
+    if (searchQuery.trim()) return;
     setExpandedNodes(prev => {
       const next = new Set(prev);
       if (next.has(nodeId)) {
@@ -308,7 +308,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       }
       return next;
     });
-  }, []);
+  }, [searchQuery]);
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {

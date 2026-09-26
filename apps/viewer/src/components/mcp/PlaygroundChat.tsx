@@ -33,7 +33,8 @@ import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
 import { anthropicErrorMessage, createAnthropicClient, type AnthropicCredentials } from '@/lib/llm/anthropic-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, RefreshCcw, Wrench } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { resolveLiveMessage, type LiveTranslationMessage } from '@/i18n/live-message';
@@ -63,7 +64,6 @@ import {
   type UploadedFile,
 } from './playground-uploads';
 import { Paperclip, X } from 'lucide-react';
-
 const MAX_TOOL_CALLS = 25;
 const MAX_TOKENS = 16_384; // Opus 5 thinks by default; 4096 truncated the tool loop. Under the SDK's non-streaming cap.
 const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
@@ -363,7 +363,7 @@ export function PlaygroundChat({
       </div>
 
       {error && (
-        <div className="mx-5 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+        <div className="mx-5 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {errorText}
         </div>
       )}
@@ -385,7 +385,7 @@ export function PlaygroundChat({
             {pendingAttachments.map((f) => (
               <span
                 key={f.name}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#d6ff3f]/30 bg-[#d6ff3f]/10 px-2 py-1 text-[11px]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#d6ff3f]/30 bg-[#d6ff3f]/10 px-2 py-1 text-2xs"
                 style={{ ...{ fontFamily: '"JetBrains Mono", monospace' }, color: '#d6ff3f' }}
               >
                 <Paperclip size={11} />
@@ -450,7 +450,7 @@ export function PlaygroundChat({
             }
             disabled={!model || isStreaming}
             rows={1}
-            className="min-h-[28px] max-h-32 flex-1 resize-none bg-transparent text-[14px] outline-none placeholder:text-white/30"
+            className="min-h-[28px] max-h-32 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-white/30"
             style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
           />
           <button
@@ -459,17 +459,17 @@ export function PlaygroundChat({
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
             aria-label={t('mcp.playgroundChat.send')}
           >
-            {isStreaming ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+            {isStreaming ? <Spinner size="sm" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
-        <p className="mt-1.5 text-[10px] text-white/40">
+        <p className="mt-1.5 text-2xs text-white/40">
           {uploads.length > 0
             ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
             : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div
-            className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-md border-2 border-dashed text-[12px]"
+            className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-md border-2 border-dashed text-xs"
             style={{ borderColor: '#d6ff3f', color: '#d6ff3f', background: 'rgba(214,255,63,0.05)', fontFamily: '"JetBrains Mono", monospace' }}
           >
             {t('mcp.playgroundChat.releaseToAttach')}
@@ -505,7 +505,7 @@ function PlaygroundHeader({
           aria-hidden
         />
         <span
-          className="text-[10px] uppercase tracking-[0.22em] text-white/60"
+          className="text-2xs uppercase tracking-[0.22em] text-white/60"
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
         >
           {t('mcp.playgroundChat.brand')}
@@ -517,7 +517,7 @@ function PlaygroundHeader({
             Anthropic's native tools API. The dropdown's styling mirrors the
             key-status pill so the two affordances read as a single cluster. */}
         <label
-          className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/[0.03] px-1.5 py-1 text-[10.5px] text-white/70"
+          className="inline-flex items-center gap-1 rounded border border-white/15 bg-white/[0.03] px-1.5 py-1 text-2xs text-white/70"
           style={{ fontFamily: '"JetBrains Mono", monospace' }}
           title={t('mcp.playgroundChat.modelTooltip')}
         >
@@ -525,7 +525,7 @@ function PlaygroundHeader({
           <select
             value={selectedModel}
             onChange={(e) => onChangeModel(e.target.value)}
-            className="bg-transparent text-[10.5px] outline-none [&>option]:bg-[#0a0a0c] [&>option]:text-white"
+            className="bg-transparent text-2xs outline-none [&>option]:bg-[#0a0a0c] [&>option]:text-white"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
             aria-label={t('mcp.playgroundChat.selectModelAria')}
           >
@@ -542,7 +542,7 @@ function PlaygroundHeader({
         <button
           onClick={onOpenKeyModal}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10.5px]',
+            'inline-flex items-center gap-1.5 rounded border px-2 py-1 text-2xs',
             hasKey
               ? 'border-[#d6ff3f]/40 text-[#d6ff3f] hover:bg-[#d6ff3f]/5'
               : 'border-orange-400/40 text-orange-300 hover:bg-orange-400/5',
@@ -573,18 +573,18 @@ function Welcome({
     <div className="flex h-full flex-col items-start justify-center gap-4">
       <div>
         <h2
-          className="text-[28px] leading-none tracking-tight"
+          className="text-3xl leading-none tracking-tight"
           style={{ fontFamily: '"Instrument Serif", serif', fontStyle: 'italic' }}
         >
           {model ? t('mcp.playgroundChat.askAboutModel', { name: model.name }) : t('mcp.playgroundChat.loadModelAskAgent')}
         </h2>
-        <p className="mt-2 max-w-md text-[13.5px] leading-snug text-white/60">
+        <p className="mt-2 max-w-md text-sm leading-snug text-white/60">
           {t('mcp.playgroundChat.toolsIntro', { count: anthropicToolDefinitions().length })}
         </p>
       </div>
       {model && (
         <div className="mt-2 flex flex-col gap-1.5">
-          <span className="text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+          <span className="text-2xs uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
             {t('mcp.playgroundChat.try')}
           </span>
           <div className="flex flex-col gap-1.5">
@@ -592,7 +592,7 @@ function Welcome({
               <button
                 key={p}
                 onClick={() => onPickPrompt(p)}
-                className="text-left text-[12.5px] leading-snug text-white/80 underline-offset-4 hover:text-[#d6ff3f] hover:underline"
+                className="text-left text-xs leading-snug text-white/80 underline-offset-4 hover:text-[#d6ff3f] hover:underline"
               >
                 ↳ {p}
               </button>
@@ -610,7 +610,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
   const { t } = useTranslation(); if (msg.role === 'user') {
     return (
       <div className="flex flex-col items-end">
-        <div className="max-w-[85%] rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-[13.5px] leading-snug">
+        <div className="max-w-[85%] rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm leading-snug">
           {msg.text}
         </div>
       </div>
@@ -642,7 +642,7 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
         </ul>
       )}
       {(msg.text || msg.displayTextKey) && (
-        <div className="prose-playground max-w-[95%] text-[13.5px] leading-relaxed text-white/95">
+        <div className="prose-playground max-w-[95%] text-sm leading-relaxed text-white/95">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
             {msg.displayTextKey ? t(msg.displayTextKey) : msg.text}
           </ReactMarkdown>
@@ -650,10 +650,10 @@ function MessageView({ msg }: { msg: ChatMessage }): ReactNode {
         </div>
       )}
       {msg.pending && !msg.text && !msg.displayTextKey && msg.toolCalls && msg.toolCalls.length > 0 && (
-        <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.composingAnswer')}</div>
+        <div className="text-2xs text-white/40">{t('mcp.playgroundChat.composingAnswer')}</div>
       )}
       {msg.pending && !msg.text && !msg.displayTextKey && (!msg.toolCalls || msg.toolCalls.length === 0) && (
-        <div className="text-[11px] text-white/40">{t('mcp.playgroundChat.thinking')}</div>
+        <div className="text-2xs text-white/40">{t('mcp.playgroundChat.thinking')}</div>
       )}
     </div>
   );
@@ -668,7 +668,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
   return (
     <div
       className={cn(
-        'rounded-md border text-[12.5px]',
+        'rounded-md border text-xs',
         isErr ? 'border-red-500/40 bg-red-500/[0.04]' : 'border-white/10 bg-white/[0.025]',
       )}
     >
@@ -678,12 +678,12 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Wrench size={12} className={isErr ? 'text-red-400' : 'text-[#d6ff3f]'} />
-        <code className="font-mono text-[12px]" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+        <code className="font-mono text-xs" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
           {call.name}
         </code>
-        <span className="ml-auto inline-flex items-center gap-2 text-[10.5px] text-white/40">
+        <span className="ml-auto inline-flex items-center gap-2 text-2xs text-white/40">
           {call.result == null ? (
-            <Loader2 size={10} className="animate-spin" />
+            <Spinner size="xs" />
           ) : (
             <>
               {ms != null && <span style={{ fontFamily: '"JetBrains Mono", monospace' }}>{t('mcp.playgroundChat.msSuffix', { ms })}</span>}
@@ -709,11 +709,11 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
         <div className="border-t border-white/10 px-3 py-2.5">
           {Object.keys(call.args).length > 0 && (
             <>
-              <div className="mb-1 text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              <div className="mb-1 text-2xs uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
                 {t('mcp.playgroundChat.argsLabel')}
               </div>
               <pre
-                className="mb-3 overflow-x-auto rounded bg-black/40 p-2 text-[11px]"
+                className="mb-3 overflow-x-auto rounded bg-black/40 p-2 text-2xs"
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
                 {JSON.stringify(call.args, null, 2)}
@@ -722,12 +722,12 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
           )}
           {call.result && (
             <>
-              <div className="mb-1 text-[10px] uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              <div className="mb-1 text-2xs uppercase tracking-[0.22em] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
                 {t('mcp.playgroundChat.resultLabel')}
               </div>
               <pre
                 className={cn(
-                  'overflow-x-auto whitespace-pre-wrap rounded p-2 text-[11px] leading-snug',
+                  'overflow-x-auto whitespace-pre-wrap rounded p-2 text-2xs leading-snug',
                   isErr ? 'bg-red-500/10 text-red-200' : 'bg-black/40 text-white/85',
                 )}
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
@@ -735,7 +735,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
                 {call.result.textKey ? t(call.result.textKey) : call.result.text}
               </pre>
               {(call.result.hint || call.result.hintKey) && (
-                <p className="mt-1.5 text-[10.5px] italic text-white/50">
+                <p className="mt-1.5 text-2xs italic text-white/50">
                   {call.result.hintKey ? t(call.result.hintKey) : call.result.hint}
                 </p>
               )}
@@ -1082,13 +1082,13 @@ function InlineDownload({
           </span>
           <span className="flex min-w-0 flex-col leading-tight">
             <span
-              className="truncate text-[13px] font-semibold"
+              className="truncate text-sm font-semibold"
               style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
             >
               {justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
             </span>
             <span
-              className={cn('truncate text-[10.5px]', justSaved ? 'text-white/50' : 'text-black/55')}
+              className={cn('truncate text-2xs', justSaved ? 'text-white/50' : 'text-black/55')}
               style={{ fontFamily: '"JetBrains Mono", monospace' }}
             >
               {download.filename} · {formatFileBytes(download.size)}
@@ -1109,11 +1109,11 @@ function InlineDownload({
 
 const MARKDOWN_COMPONENTS = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h1: (props: any) => <h3 className="mt-3 mb-1 text-[16px] font-semibold" {...props} />,
+  h1: (props: any) => <h3 className="mt-3 mb-1 text-base font-semibold" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h2: (props: any) => <h4 className="mt-3 mb-1 text-[14.5px] font-semibold" {...props} />,
+  h2: (props: any) => <h4 className="mt-3 mb-1 text-sm font-semibold" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h3: (props: any) => <h5 className="mt-2 mb-1 text-[13.5px] font-semibold" {...props} />,
+  h3: (props: any) => <h5 className="mt-2 mb-1 text-sm font-semibold" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   p: (props: any) => <p className="my-1.5 first:mt-0 last:mb-0" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1152,7 +1152,7 @@ const MARKDOWN_COMPONENTS = {
     return (
       <code
         className={cn(
-          'rounded bg-white/10 px-1 py-0.5 text-[12px] text-[#d6ff3f]',
+          'rounded bg-white/10 px-1 py-0.5 text-xs text-[#d6ff3f]',
           cls,
         )}
         style={{ fontFamily: '"JetBrains Mono", monospace' }}
@@ -1164,16 +1164,16 @@ const MARKDOWN_COMPONENTS = {
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pre: (props: any) => (
-    <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-[12px] leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
+    <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-xs leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
   ),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   table: (props: any) => <div className="my-2 overflow-x-auto rounded border border-white/10">
-    <table className="w-full border-collapse text-[12.5px]" {...props} />
+    <table className="w-full border-collapse text-xs" {...props} />
   </div>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   thead: (props: any) => <thead className="bg-white/[0.04]" {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-[10.5px] uppercase tracking-[0.18em] text-white/70"
+  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-2xs uppercase tracking-[0.18em] text-white/70"
     style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   td: (props: any) => <td className="border-b border-white/5 px-2.5 py-1.5 align-top" {...props} />,

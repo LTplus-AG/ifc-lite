@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { posthog } from '@/lib/analytics';
 import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -50,13 +51,19 @@ function makeModel(): FederatedModel {
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+function unmountAll(): void {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+}
 
-function renderDialog(): HTMLElement {
+function renderDialog(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<EnergyModelExportDialog />);
+    root.render(<EnergyModelExportDialog surface={surface} />);
   });
   mounted.push({ root, container });
   return container;
@@ -65,8 +72,8 @@ function renderDialog(): HTMLElement {
 /**
  * Open the dialog, pick `format` on the segmented control, then press Export.
  *
- * The format picker is a plain segmented group of `<button>`s (only the model
- * selector is a Radix `Select`), so the real control is driven here rather
+ * The format picker is a radio group (the model selector is a Radix `Select`),
+ * so the real control is driven here rather
  * than a test-only prop. The footer button is matched on its exact
  * `Export DFJSON` / `Export HBJSON` label, so a segmented click that failed to
  * switch format fails the test instead of silently exporting the other one.
@@ -80,13 +87,12 @@ async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'):
     trigger.click();
   });
 
-  const formatButton = [...document.body.querySelectorAll('button')].find(
-    (b) => b.textContent?.trim() === format,
-  );
-  assert.ok(formatButton, `the "${format}" segmented option must render`);
+  const formatRadio = document.body.querySelector<HTMLInputElement>(`input[type="radio"][value="${format.toLowerCase()}"]`);
+  assert.ok(formatRadio, `the "${format}" segmented option must render`);
   await act(async () => {
-    formatButton.click();
+    formatRadio.click();
   });
+  assert.equal(formatRadio.checked, true, 'the chosen format is announced as selected');
 
   const exportButton = [...document.body.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === `Export ${format}`,
@@ -99,12 +105,7 @@ async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'):
 
 describe('EnergyModelExportDialog WASM disposal', () => {
   beforeEach(() => {
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    }
+    unmountAll();
     useViewerStore.setState({ models: new Map([['model-1', makeModel()]]) });
   });
 
@@ -126,15 +127,26 @@ describe('EnergyModelExportDialog WASM disposal', () => {
       stats: cleanStats,
     }));
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
     try {
-      const container = renderDialog();
-      await clickExport(container, 'HBJSON');
-      assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once on success');
-      assert.equal(exportMock.mock.callCount(), 1, 'the HBJSON exporter actually ran');
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        const container = renderDialog(surface);
+        await clickExport(container, 'HBJSON');
+        assert.equal(disposeMock.mock.callCount(), index + 1, 'dispose runs once per download');
+        assert.equal(exportMock.mock.callCount(), index + 1, 'the HBJSON exporter runs once per download');
+        assert.equal(completions.length, index + 1, '#5844: one completion per HBJSON download');
+        assert.equal(completions[index].surface, surface);
+        assert.equal(completions[index].format, 'hbjson');
+        unmountAll();
+      }
     } finally {
       initMock.mock.restore();
       exportMock.mock.restore();
       disposeMock.mock.restore();
+      analytics.mock.restore();
     }
   });
 

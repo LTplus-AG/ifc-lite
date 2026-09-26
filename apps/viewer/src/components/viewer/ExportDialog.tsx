@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
@@ -15,20 +17,14 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  * - IFC2X3 / IFC4 / IFC4X3 → .ifc (STEP), or .ifczip with image resources
  * - IFC5 → .ifcx (JSON + USD geometry)
  *
- * "Changes Only" exports just mutations:
+ * "Changes only" exports just mutations:
  * - Below IFC5 → .json
  * - IFC5 → .ifcx
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  Download,
-  AlertCircle,
-  Check,
-  Loader2,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
+import { Download, AlertCircle, Check, ArrowUp, ArrowDown } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -59,7 +55,7 @@ import { useViewerStore, countGeneratedTasks } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
@@ -69,12 +65,11 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadFile, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
+import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 import { finishLandXmlIfcExport } from '@/lib/export/landXmlIfcDownload.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
-import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
 import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-export';
@@ -88,9 +83,10 @@ type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
 interface ExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
-export function ExportDialog({ trigger }: ExportDialogProps) {
+export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -339,15 +335,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
     if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
-        { t, setExportResult, setIsExporting });
+      if (finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
+        { t, setExportResult, setIsExporting })) {
+        trackExportCompleted({ format: 'ifc', surface });
+      }
       return;
     }
 
     // Set per success branch; captured once in `finally` so a thrown export
     // never counts. Format reflects what was actually written (the IFC5 vs
     // STEP vs changes-JSON branch), not just the schema-derived extension.
-    let exportedFormat: string | null = null;
+    let exportedFormat: ExportFormat | null = null;
     try {
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
@@ -574,7 +572,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     } finally {
       setIsExporting(false);
       if (exportedFormat) {
-        posthog.capture('export_completed', {
+        trackExportCompleted({
+          surface,
           format: exportedFormat,
           scope: exportScope,
           changes_only: changesOnly,
@@ -583,7 +582,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t, surface]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -737,7 +736,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           {exportScope === 'single' && (
             <div className="flex items-center justify-between">
               <div>
-                <Label>{t('exportDialog.changesOnlyLabel')}</Label>
+                <Label>{isIfc5 ? t('exportDialog.changesOnlyLabel.ifc5') : t('exportDialog.changesOnlyLabel.default')}</Label>
                 <p className="text-xs text-muted-foreground">
                   {isIfc5 ? t('exportDialog.changesOnlyHint.ifc5') : t('exportDialog.changesOnlyHint.default')}
                 </p>
@@ -775,7 +774,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Spinner size="md" />
                   {exportProgress.phase}
                 </span>
                 <span>
@@ -799,15 +798,6 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             </Alert>
           )}
 
-          {/* Extension-contributed exporters (#1907). Rendered alongside the
-              built-in formats so a third-party exporter is actually reachable. */}
-          <ExtensionExportSlot
-            baseName={
-              selectedModel
-                ? sanitizeFilename(stripExtension(selectedModel.name), { fallback: 'model' })
-                : 'model'
-            }
-          />
         </div>
 
         <DialogFooter>
@@ -817,7 +807,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('exportDialog.exportingLabel')}
               </>
             ) : (

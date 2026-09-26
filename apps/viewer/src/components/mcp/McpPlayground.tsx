@@ -24,7 +24,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Loader2, Upload, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Box, ChevronDown, ChevronRight, Download, Upload, AlertTriangle, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { useDocumentMeta, useFonts } from './use-mcp-page';
@@ -142,12 +143,12 @@ export function McpPlayground(): ReactNode {
         >
           <div>
             <h2
-              className="text-[26px] leading-none tracking-tight"
+              className="text-2xl leading-none tracking-tight"
               style={{ ...display, fontStyle: 'italic' }}
             >
               {t('mcp.mcpPlayground.title')}
             </h2>
-            <p className="mt-1.5 text-[12.5px] leading-snug" style={{ color: PAPER_DIM }}>
+            <p className="mt-1.5 text-xs leading-snug" style={{ color: PAPER_DIM }}>
               {t('mcp.mcpPlayground.subtitle', { count: supportedToolNames().length })}
             </p>
           </div>
@@ -157,7 +158,7 @@ export function McpPlayground(): ReactNode {
           <DropZone disabled={loadingId !== null} onFile={loadFromFile} />
 
           {error && (
-            <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+            <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
               <AlertTriangle size={12} className="mr-1 inline" />
               {error}
             </div>
@@ -196,25 +197,25 @@ export function McpPlayground(): ReactNode {
 function TopBar({ onClose, hasModel }: { onClose: () => void; hasModel: boolean }): ReactNode {
   const { t } = useTranslation(); return (
     <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-      <a href="/mcp" className="flex items-center gap-2 text-[13px] text-white/70 hover:text-white">
+      <a href="/mcp" className="flex items-center gap-2 text-sm text-white/70 hover:text-white">
         <ArrowLeft size={14} />
         <span>{t('mcp.mcpPlayground.backToMcp')}</span>
       </a>
       <div className="flex items-center gap-3">
         <a
           href="/"
-          className="hidden items-center gap-1 text-[10.5px] uppercase tracking-[0.22em] text-white/40 hover:text-white sm:inline-flex"
+          className="hidden items-center gap-1 text-2xs uppercase tracking-[0.22em] text-white/40 hover:text-white sm:inline-flex"
           style={mono}
         >
           {t('mcp.mcpPlayground.topBarViewerLink')}
         </a>
-        <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
+        <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.22em]">
           {t('mcp.mcpPlayground.playgroundPath')}
         </span>
         {hasModel && (
           <button
             onClick={onClose}
-            className="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 text-[10.5px] hover:bg-white/5"
+            className="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 text-2xs hover:bg-white/5"
             style={{ ...mono, color: PAPER_DIM }}
           >
             <Trash2 size={11} /> {t('mcp.mcpPlayground.unload')}
@@ -240,7 +241,7 @@ function SampleList({
 }): ReactNode {
   const { t } = useTranslation(); return (
     <div className="flex flex-col gap-2">
-      <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
+      <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.22em]">
         {t('mcp.mcpPlayground.sampleModels')}
       </span>
       <ul className="flex flex-col gap-1.5">
@@ -262,16 +263,16 @@ function SampleList({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[13.5px] font-medium" style={{ color: PAPER }}>
+                    <span className="text-sm font-medium" style={{ color: PAPER }}>
                       {s.label}
                     </span>
-                    {isLoading && <Loader2 size={11} className="animate-spin" style={{ color: ACCENT }} />}
+                    {isLoading && <Spinner size="xs" style={{ color: ACCENT }} />}
                   </div>
-                  <p className="mt-0.5 text-[11px]" style={{ color: PAPER_DIM }}>
+                  <p className="mt-0.5 text-2xs" style={{ color: PAPER_DIM }}>
                     {s.blurb}
                   </p>
                 </div>
-                <span style={{ ...mono, color: PAPER_DIM }} className="shrink-0 text-[10px]">
+                <span style={{ ...mono, color: PAPER_DIM }} className="shrink-0 text-2xs">
                   {formatFileBytes(s.approxBytes)}
                 </span>
               </button>
@@ -310,7 +311,7 @@ function DropZone({
       style={{ color: PAPER_DIM }}
     >
       <Upload size={14} />
-      <span className="text-[11.5px]">{t('mcp.mcpPlayground.dropHint')}</span>
+      <span className="text-xs">{t('mcp.mcpPlayground.dropHint')}</span>
       <input
         ref={inputRef}
         type="file"
@@ -329,7 +330,7 @@ function DropZone({
 
 function FooterLinks(): ReactNode {
   const { t } = useTranslation(); return (
-    <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/10 pt-3 text-[10.5px]" style={{ ...mono, color: PAPER_DIM }}>
+    <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/10 pt-3 text-2xs" style={{ ...mono, color: PAPER_DIM }}>
       <a href="/mcp" className="hover:text-white">{t('mcp.mcpPlayground.footerTools')}</a>
       <a href="https://github.com/LTplus-AG/ifc-lite" className="hover:text-white">{t('mcp.mcpPlayground.footerGithub')}</a>
       <a href="https://www.npmjs.com/package/@ifc-lite/mcp" className="hover:text-white">{t('mcp.mcpPlayground.footerNpm')}</a>
@@ -360,13 +361,13 @@ function DownloadsPanel(): ReactNode {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
+        <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.22em]">
           {t('mcp.mcpPlayground.downloadsCount', { count: files.length })}
         </span>
         <button
           onClick={() => playgroundFiles.clear()}
           style={{ ...mono, color: PAPER_DIM }}
-          className="text-[10px] uppercase tracking-[0.18em] hover:text-white"
+          className="text-2xs uppercase tracking-[0.18em] hover:text-white"
         >
           {t('mcp.mcpPlayground.clear')}
         </button>
@@ -378,20 +379,20 @@ function DownloadsPanel(): ReactNode {
             className="flex flex-col gap-1.5 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2"
           >
             <div className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-[12.5px]" style={{ color: PAPER }} title={f.filename}>
+              <span className="truncate text-xs" style={{ color: PAPER }} title={f.filename}>
                 {f.filename}
               </span>
-              <span style={{ ...mono, color: PAPER_DIM }} className="shrink-0 text-[10px]">
+              <span style={{ ...mono, color: PAPER_DIM }} className="shrink-0 text-2xs">
                 {formatFileBytes(f.size)}
               </span>
             </div>
             {f.description && (
-              <span className="text-[10.5px] leading-snug" style={{ color: PAPER_DIM }}>
+              <span className="text-2xs leading-snug" style={{ color: PAPER_DIM }}>
                 {f.description}
               </span>
             )}
             <div className="flex items-center justify-between gap-2 pt-0.5">
-              <span style={{ ...mono, color: PAPER_DIM }} className="text-[9.5px] uppercase tracking-[0.18em]">
+              <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.18em]">
                 {t('mcp.mcpPlayground.fromSource', { source: f.source })}
               </span>
               <div className="flex items-center gap-1">
@@ -405,7 +406,7 @@ function DownloadsPanel(): ReactNode {
                 </button>
                 <button
                   onClick={() => playgroundFiles.download(f.id)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-semibold"
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-2xs font-semibold"
                   style={{ background: ACCENT, color: NIGHT, ...mono }}
                 >
                   <Download size={11} />
@@ -443,16 +444,16 @@ function ViewerPanel({
       >
         <span className="flex items-center gap-2">
           <Box size={13} style={{ color: ACCENT }} />
-          <span className="text-[12px]" style={{ color: PAPER }}>
+          <span className="text-xs" style={{ color: PAPER }}>
             {t('mcp.mcpPlayground.viewer3d')}
           </span>
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.22em]">
             {open ? t('mcp.mcpPlayground.viewerStatusOn') : t('mcp.mcpPlayground.viewerStatusOff')}
           </span>
         </span>
         <span className="flex items-center gap-2">
           {!model && (
-            <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px]">
+            <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs">
               {t('mcp.mcpPlayground.loadModelFirst')}
             </span>
           )}

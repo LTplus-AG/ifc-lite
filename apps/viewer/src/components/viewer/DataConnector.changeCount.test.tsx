@@ -27,7 +27,7 @@ const MODEL_ID = 'model-a';
 const GLOBAL_ID = '2O2Fr$t4X7Zf8NOew3FLOH';
 
 function exportChangesButton(container: HTMLElement): HTMLButtonElement | undefined {
-  return [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export Changes'));
+  return [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export modified IFC'));
 }
 
 async function uploadCsv(text: string): Promise<void> {
@@ -63,7 +63,7 @@ describe('DataConnector — CSV import refreshes the pending-changes count (#560
     cleanup();
   });
 
-  it('shows the Export Changes button once a CSV import has written a property', async () => {
+  it('shows the Export modified IFC button once a CSV import has written a property', async () => {
     const container = render(
       <>
         <ExportChangesButton />
@@ -91,7 +91,7 @@ describe('DataConnector — CSV import refreshes the pending-changes count (#560
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID);
     assert.equal(view?.getModifiedEntityCount(), 1, 'fixture sanity: the import wrote one entity to the overlay');
     const button = exportChangesButton(container);
-    assert.ok(button, 'the Export Changes button must appear after the CSV import');
+    assert.ok(button, 'the Export modified IFC button must appear after the CSV import');
     assert.match(button.textContent ?? '', /1/, 'and count the imported change');
   });
 });

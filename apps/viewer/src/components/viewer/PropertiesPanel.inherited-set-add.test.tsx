@@ -106,7 +106,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     const mirrored: string[] = [];
     const mirror: ViewerState['mirrorPropertyEdit'] = (_m, id, pset, prop) => { mirrored.push(`${id}:${pset}:${prop}`); };
     useViewerStore.setState({ mirrorPropertyEdit: mirror });
-    const trigger = container.querySelector('button[title="Add property"]');
+    const trigger = container.querySelector('button[aria-label="Add property"]');
     assert.ok(trigger);
     click(trigger);
     await advance(0);

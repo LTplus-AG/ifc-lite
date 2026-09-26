@@ -20,7 +20,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { HudChip, HudItem } from '../viewport-ui/hud';
@@ -36,7 +37,6 @@ import { useCesiumModel } from './cesium/useCesiumModel';
 import { useCesiumSolar } from './cesium/useCesiumSolar';
 import { useCesiumCameraSync } from './cesium/useCesiumCameraSync';
 import { CesiumViewerLifetime } from './cesium/cesium-viewer-lifetime';
-
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
   cameraMapConversion?: MapConversion;
@@ -463,7 +463,7 @@ export function CesiumOverlay({
         <HudItem region="top-left" order={2}>
           <div className="flex flex-col items-start gap-1.5">
             {status === 'loading' && (
-              <HudChip icon={<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />}>
+              <HudChip icon={<Spinner size="sm" className="text-muted-foreground" />}>
                 {t('cesiumGeo.overlay.loadingLabel')}
               </HudChip>
             )}

@@ -20,7 +20,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, PencilRuler, RefreshCw, Video } from 'lucide-react';
+import { PencilRuler, RefreshCw, Video } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
@@ -116,7 +117,7 @@ export function DrawingPanel(): React.ReactElement {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <HeaderAction label={t('section2d.regenerate')} onClick={() => vm.runtime.generateDrawing(false)} disabled={status === 'generating'}>
-            {status === 'generating' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {status === 'generating' ? <Spinner size="sm" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </HeaderAction>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -147,6 +148,8 @@ export function DrawingPanel(): React.ReactElement {
             onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
             displayedScale={displayOptions.scale || 100}
             sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
+            markupCounts={vm.markupCounts}
+            visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
           />
         </div>
       </div>

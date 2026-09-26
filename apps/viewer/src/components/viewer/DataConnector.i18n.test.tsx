@@ -25,7 +25,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, activate, advance } from '@/test/render.js';
 import { registerLocale, setLocale, localeCount, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -192,6 +192,19 @@ afterEach(() => {
 });
 
 describe('DataConnector localization (#4918)', () => {
+  it('#5823 opens the CSV picker from the upload control with Enter and Space', async () => {
+    await openDialog();
+    const upload = [...document.body.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Drag & drop a CSV file'));
+    const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
+    assert.ok(upload && input);
+    let opens = 0;
+    input.addEventListener('click', () => { opens++; });
+    activate(upload, 'Enter');
+    activate(upload, ' ');
+    assert.equal(opens, 2);
+  });
+
   it('translates the default trigger button when no custom trigger is supplied', async () => {
     render(<DataConnector />);
     checkAtCurrentState([{ key: 'dataConnector.triggerButton' }]);

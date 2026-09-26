@@ -284,6 +284,17 @@ describe('Search tab — committing a result row', () => {
     assert.equal(s.selectedEntityIds.size, 1);
     assert.equal(closed, 1);
   });
+
+  it('#5823 Space on the result list commits the highlighted option', () => {
+    seedStore();
+    useViewerStore.setState({ searchHighlightIndex: 1 });
+    const container = mount();
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    assert.ok(listbox);
+    press(listbox, ' ');
+    assert.equal(useViewerStore.getState().selectedEntity?.expressId, 43);
+    assert.equal(closed, 1);
+  });
 });
 
 describe('Search tab — the additive (Shift) path', () => {

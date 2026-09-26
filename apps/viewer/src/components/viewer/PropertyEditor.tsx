@@ -211,13 +211,13 @@ export function PropertyEditor({
   if (!isEditing) {
     return (
       <div className="flex items-center gap-2 min-w-0">
-        <span
-          className="font-mono text-zinc-900 dark:text-zinc-100 select-all break-words flex-1 min-w-0 cursor-text"
+        <button type="button"
+          className="font-mono text-zinc-900 dark:text-zinc-100 select-all break-words flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
           onClick={() => setIsEditing(true)}
           title={t('propertyEditor.inline.clickToEdit')}
         >
           {displayValue}
-        </span>
+        </button>
         <IconButton
           label={t('propertyEditor.inline.editProperty')}
           tooltipSide="left"

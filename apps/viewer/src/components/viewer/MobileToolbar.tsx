@@ -27,6 +27,7 @@ import {
   Sun,
   Moon,
   PersonStanding,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +52,7 @@ import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -279,6 +281,11 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={emitOpenCommandPalette}>
+            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+            {t('shellChrome.mobileToolbar.commands')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
             checked={activeTool === 'walk'}

@@ -38,6 +38,12 @@ export const EVENT_LOAD_FILE = 'ifc-lite:load-file';
 export const EVENT_SHOW_SHORTCUTS = 'ifc-lite:show-shortcuts';
 export const EVENT_OPEN_COMMAND_PALETTE = 'ifc-lite:open-command-palette';
 
+/** All visible palette entry points use the viewer's existing event listener. */
+export function emitOpenCommandPalette(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(EVENT_OPEN_COMMAND_PALETTE));
+}
+
 export type CameraGestureKind = 'orbit' | 'pan' | 'zoom' | 'preset';
 
 /** Emit helpers keep both sides of a signal on the same name and shape. */

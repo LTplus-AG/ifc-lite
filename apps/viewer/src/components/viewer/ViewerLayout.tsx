@@ -60,6 +60,7 @@ import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
+import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
 
 /** Technical query flag, not translated prose — kept as a plain constant
  *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
@@ -188,10 +189,10 @@ export function ViewerLayout() {
       else shortcutsDialog.toggle();
     };
 
-    window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
+    window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
-      window.removeEventListener('ifc-lite:open-command-palette', openCommandPalette);
+      window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
       window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
   }, [shortcutsDialog]);

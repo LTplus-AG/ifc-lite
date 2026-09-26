@@ -14,6 +14,7 @@ import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
@@ -33,12 +34,12 @@ import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { hasInstancedShards } from '@/store/instancedShardModels';
+import { computeVisibilityIsolation, isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
+import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
-import { useWebGPU } from '@/hooks/useWebGPU';
+import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
@@ -82,6 +83,8 @@ export function ViewportContainer() {
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const resolveGlobalIdFromModels = useViewerStore((s) => s.resolveGlobalIdFromModels);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -97,7 +100,7 @@ export function ViewportContainer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
-  const webgpu = useWebGPU();
+  const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
   // switch instead of reading the registry's non-reactive `resolve` default
@@ -429,8 +432,10 @@ export function ViewportContainer() {
 
   // The whole window is the drop target (#5845): a file dropped on the
   // toolbar, sidebar or a panel loads too, and the browser never navigates to
-  // it. Drops are refused (not loaded) while WebGPU is unsupported.
+  // it. While WebGPU is unsupported the drop is refused with the shared
+  // load-error card (#5851), not a silent no-op.
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
+    if (!guardWebGpu()) return;
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
@@ -461,14 +466,13 @@ export function ViewportContainer() {
 
       void prepareAndRoute(files, handles);
     });
-  }, [prepareAndRoute, isSupportedFile]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
+  // `accept` only steers the drop cursor/overlay; handleDrop's own guard (not
+  // this flag) is what shows the load-error card when unsupported (#5851).
   const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Block file loading if WebGPU not supported
-    if (!webgpu.supported) {
-      return;
-    }
+    if (!guardWebGpu()) return;
 
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -485,13 +489,13 @@ export function ViewportContainer() {
     else reportFileOpenRejected(modelFiles);
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;
@@ -509,17 +513,17 @@ export function ViewportContainer() {
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   const handleStartBlank = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
     // Must await: loadFile() calls resetViewerState() internally which
     // resets activeTool back to 'select'. Setting addElement before that
     // races and leaves the user in select mode despite the click.
     await loadFile(file);
     setActiveTool('addElement');
-  }, [webgpu.supported, loadFile, setActiveTool]);
+  }, [guardWebGpu, loadFile, setActiveTool]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
   // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
@@ -776,76 +780,24 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Compute combined isolation set (storeys + manual isolation)
-  // This is passed to the renderer for batch-level visibility filtering
-  // Now supports multi-model: aggregates elements from all models for selected storeys
-  // IMPORTANT: Returns globalIds (meshes use globalIds after federation registry transformation)
+  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useMemo(() => {
-    // Compute storey isolation if storeys are selected
-    let storeyIsolation: Set<number> | null = null;
-    if (selectedStoreys.size > 0) {
-      const combinedGlobalIds = new Set<number>();
+    return computeVisibilityIsolation({
+      models: storeModels, ifcDataStore, selectedStoreys, isolatedEntities,
+      classFilter, resolveGlobalIdFromModels,
+    });
+  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter, resolveGlobalIdFromModels]);
 
-      // Check each federated model's storeys
-      for (const [, model] of storeModels) {
-        const hierarchy = model.ifcDataStore?.spatialHierarchy;
-        if (!hierarchy) continue;
-        // Pass the relationship graph so storey isolation pulls in the parts of
-        // any decomposing assembly (stair flights, railings, …) — they live off
-        // the spatial tree via IfcRelAggregates and would otherwise vanish (#1133).
-        const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
-
-        for (const storeyId of selectedStoreys) {
-          const localStoreyId = hierarchy.byStorey.has(storeyId)
-            ? storeyId
-            : storeyId - (model.idOffset ?? 0);
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
-          if (storeyElementIds) {
-            for (const originalExpressId of storeyElementIds) {
-              combinedGlobalIds.add(toGlobalIdFromModels(storeModels, model.id, originalExpressId));
-            }
-          }
-        }
-      }
-
-      // Legacy single-model mode (offset = 0)
-      if (ifcDataStore?.spatialHierarchy && storeModels.size === 0) {
-        const hierarchy = ifcDataStore.spatialHierarchy;
-        const relationships = ifcDataStore.relationships as AggregationRelationships | undefined;
-        for (const storeyId of selectedStoreys) {
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
-          if (storeyElementIds) {
-            for (const id of storeyElementIds) {
-              combinedGlobalIds.add(id);
-            }
-          }
-        }
-      }
-
-      if (combinedGlobalIds.size > 0) {
-        storeyIsolation = combinedGlobalIds;
-      }
-    }
-
-    // Collect all active filters and intersect them
-    const filters: Set<number>[] = [];
-    if (storeyIsolation !== null) filters.push(storeyIsolation);
-    if (classFilter !== null) filters.push(classFilter.ids);
-    if (isolatedEntities !== null) filters.push(isolatedEntities);
-
-    if (filters.length === 0) return null;
-    if (filters.length === 1) return filters[0];
-
-    // Intersect all active filters — start from smallest for efficiency
-    const sorted = filters.sort((a, b) => a.size - b.size);
-    const intersection = new Set<number>();
-    for (const id of sorted[0]) {
-      if (sorted.every(s => s.has(id))) {
-        intersection.add(id);
-      }
-    }
-    return intersection;
-  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter]);
+  const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
+    models: storeModels, geometryResult, hiddenEntities,
+  }, {
+    meshes: filteredGeometry,
+    pointClouds: mergedPointClouds,
+    isolatedIds: computedIsolatedIds,
+    hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
+      && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
+  }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
+    computedIsolatedIds, hiddenEntities]);
 
   // Grid Pattern
   const GridPattern = () => (
@@ -963,6 +915,11 @@ export function ViewportContainer() {
           </div>
         )}
 
+        {/* One load-error card for every failed open attempt (#5851) —
+            picker, drop, ?model= autoload — shown here too since a failure
+            with nothing loaded yet renders THIS branch, not ViewportOverlays'. */}
+        <ViewportLoadErrorCard />
+
         {/* Empty state content — mobile-optimized padding and scrollable.
             The scroll container must NOT center via justify-center: a flex
             child taller than an overflow-auto parent gets its top clipped
@@ -1074,6 +1031,7 @@ export function ViewportContainer() {
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
       <VisibilityChips />
+      <EmptyVisibilityNotice visible={visibleResultEmpty} />
       <ZoneAssignmentSyncMount />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />

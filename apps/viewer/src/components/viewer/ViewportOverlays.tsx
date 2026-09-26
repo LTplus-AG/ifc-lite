@@ -20,6 +20,7 @@ import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
+import { OrbitPivotMarker } from './OrbitPivotMarker';
 import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
@@ -175,6 +176,7 @@ export function ViewportOverlays({
       <ViewportLoadingCard />
       <SectionParkedChip />
       <FlySpeedIndicator />
+      <OrbitPivotMarker />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
           styles carry zoom and Home from the shared camera command list
           (`toolbar/CameraCommands`) — when this guard first narrowed to

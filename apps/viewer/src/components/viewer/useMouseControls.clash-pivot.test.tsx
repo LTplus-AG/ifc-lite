@@ -24,6 +24,7 @@ import { Camera, type Renderer } from '@ifc-lite/renderer';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
+import { orbitPivotStore } from './orbitPivotStore.js';
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -48,8 +49,8 @@ const HIT: Vec3 = { x: -20, y: 0, z: 5 };
 /** Scene bounds centred on the origin. */
 const SCENE = { min: { x: -50, y: -5, z: -50 }, max: { x: 50, y: 5, z: 50 } };
 
-function pointer(type: string, x: number, y: number): PointerEvent {
-  const e = new PointerEvent(type, { button: 0, pointerId: 1, bubbles: true, cancelable: true });
+function pointer(type: string, x: number, y: number, button = 0): PointerEvent {
+  const e = new PointerEvent(type, { button, pointerId: 1, bubbles: true, cancelable: true });
   Object.defineProperties(e, { clientX: { value: x, configurable: true }, clientY: { value: y, configurable: true } });
   return e;
 }
@@ -188,6 +189,24 @@ describe('useMouseControls orbit pivot while a clash is focused (#4806)', () => 
     const orbit = orbitDrag(canvas, camera, HIT);
     assert.deepEqual(pivots.at(-1), HIT, 'the pivot is the geometry under the cursor');
     assert.ok(Math.abs(orbit.after - orbit.before) < 1e-6);
+  });
+
+  it('publishes the picked pivot for orbit only, and clears it on drag end (#5891)', () => {
+    const { canvas, camera } = mount();
+    canvas.dispatchEvent(pointer('pointerdown', 400, 300));
+    assert.deepEqual(orbitPivotStore.getSnapshot()?.point, HIT);
+    assert.equal(orbitPivotStore.getSnapshot()?.camera, camera);
+    canvas.dispatchEvent(pointer('pointerup', 400, 300));
+    assert.equal(orbitPivotStore.getSnapshot(), null);
+
+    canvas.dispatchEvent(pointer('pointerdown', 400, 300, 1));
+    assert.equal(orbitPivotStore.getSnapshot(), null, 'middle-button pan does not publish an orbit marker');
+    canvas.dispatchEvent(pointer('pointerup', 400, 300, 1));
+
+    canvas.dispatchEvent(pointer('pointerdown', 400, 300));
+    assert.deepEqual(orbitPivotStore.getSnapshot()?.point, HIT);
+    canvas.dispatchEvent(pointer('pointercancel', 400, 300));
+    assert.equal(orbitPivotStore.getSnapshot(), null, 'cancelled gestures release the marker');
   });
 
   it('keeps pick-to-pivot once the user selects something while the clash stays focused', () => {

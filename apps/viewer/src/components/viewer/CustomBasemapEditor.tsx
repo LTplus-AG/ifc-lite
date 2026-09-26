@@ -163,7 +163,7 @@ export function CustomBasemapEditor() {
         <p role="alert" className="text-2xs leading-tight text-amber-400">{probe.message}</p>
       )}
       {probe?.status === 'ok' && !probe.concerning && (
-        <output className="text-2xs leading-tight text-muted-foreground">
+        <output className="block text-2xs leading-tight text-muted-foreground">
           {probe.message ?? t('cesiumGeo.basemap.okStatus')}
         </output>
       )}

@@ -17,7 +17,6 @@
  * living apart from `treeDataBuilder.ts`.
  */
 
-import type { FederatedModel } from '@/store';
 import type { TreeNode } from './types';
 
 export interface OtherBucketEntry {
@@ -41,8 +40,6 @@ export function buildOtherGroupNodes(
   entries: readonly OtherBucketEntry[],
   otherNodeId: string,
   expandedNodes: Set<string>,
-  isMultiModel: boolean,
-  models: Map<string, FederatedModel>,
 ): TreeNode[] {
   if (entries.length === 0) return [];
 
@@ -66,13 +63,13 @@ export function buildOtherGroupNodes(
   if (isOtherExpanded) {
     const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of sorted) {
-      const suffix = isMultiModel ? ` [${models.get(entry.modelId)?.name || entry.modelId}]` : '';
       nodes.push({
         id: `element-${entry.modelId}-${entry.expressId}`,
         expressIds: [entry.expressId],
         globalIds: [entry.globalId],
         modelIds: [entry.modelId],
-        name: entry.name + suffix,
+        modelId: entry.modelId,
+        name: entry.name,
         type: 'element',
         ifcType: entry.ifcType,
         depth: 1,

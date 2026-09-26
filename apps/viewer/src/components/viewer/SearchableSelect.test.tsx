@@ -34,14 +34,14 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { PortalContainerProvider } from '@/components/ui/portal-container';
 import { SearchableSelect } from './SearchableSelect.js';
 
-const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+const mounted: Array<{ root: Root; container: HTMLElement; trigger: HTMLButtonElement }> = [];
 
 /** Mounts `SearchableSelect` inside a clipping ancestor, mimicking the real
  *  panel's scroll container / floating-panel chrome nesting (mimicking
@@ -72,10 +72,9 @@ function renderInClippingAncestor(props: {
         : select,
     );
   });
-  mounted.push({ root, container: clipper });
-
   const trigger = clipper.querySelector('button');
   assert.ok(trigger, 'trigger button must render');
+  mounted.push({ root, container: clipper, trigger });
   return { clipper, trigger: trigger as HTMLButtonElement };
 }
 
@@ -111,6 +110,13 @@ function findPopupIn(doc: Document): HTMLElement | null {
 function findPopupInDocument(): HTMLElement | null {
   return findPopupIn(document);
 }
+
+afterEach(() => {
+  // A failed assertion must still close the popup before the next test
+  // unmounts its root; an open Radix portal leaves autoUpdate running.
+  const active = mounted.at(-1);
+  if (active && findPopupInDocument()) openPopup(active.trigger);
+});
 
 describe('SearchableSelect popup portal (#1924, #5817)', () => {
   beforeEach(() => {

@@ -513,13 +513,14 @@ export function SearchInline() {
           Esc and outside-click dismissal (`onOpenChange` above) and the
           `PointerEvent`s a `mousedown`-based row pick needs pass through
           unchanged, since neither listener intercepts them.
-          `onFocusOutside` is also suppressed: the Anchor (the input) is a
+          `onFocusOutside` is suppressed for the Anchor: the input is a
           SIBLING of Content, not a descendant of it, so — without this —
           Radix's `DismissableLayer` reads every keystroke's focus staying
           on the input as focus moving OUTSIDE the popover and closes it
           on the very next render; a combobox needs focus to stay on its
           input while the list is open, so that "outside" reading is wrong
-          here specifically. `onPointerDownOutside` needs the SAME
+          here specifically. Focus moving beyond the search container still
+          closes the results. `onPointerDownOutside` needs the SAME
           exemption for the same reason: a `mousedown` in the input (moving
           the caret) or on the clear-filters/advanced-filter buttons (both
           siblings of Content inside the Anchor) is, by the same
@@ -535,7 +536,10 @@ export function SearchInline() {
         sideOffset={4}
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
-        onFocusOutside={(e) => e.preventDefault()}
+        onFocusOutside={(e) => {
+          const target = e.detail.originalEvent.target as Node | null;
+          if (target && containerRef.current?.contains(target)) e.preventDefault();
+        }}
         onPointerDownOutside={(e) => {
           const target = e.detail.originalEvent.target as Node | null;
           if (target && containerRef.current?.contains(target)) e.preventDefault();
@@ -575,4 +579,3 @@ export function SearchInline() {
     </Popover>
   );
 }
-

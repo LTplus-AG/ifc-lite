@@ -103,6 +103,22 @@ describe('SearchInline popover dismissal (#5817)', () => {
     assert.equal(document.activeElement, input, 'focus stays on the input');
   });
 
+  it('closes when keyboard focus leaves the search area', async () => {
+    seedOpenWithResults();
+    const outside = document.createElement('button');
+    outside.textContent = 'Outside search';
+    document.body.appendChild(outside);
+    try {
+      await advance(0);
+      act(() => outside.focus());
+      assert.equal(document.activeElement, outside);
+      assert.equal(useViewerStore.getState().searchOpen, false);
+      assert.equal(document.getElementById('search-inline-popover'), null);
+    } finally {
+      outside.remove();
+    }
+  });
+
   it('a pointerdown on the input itself (e.g. moving the caret) does not close the popover (review)', async () => {
     const container = seedOpenWithResults();
     const input = container.querySelector('input')!;

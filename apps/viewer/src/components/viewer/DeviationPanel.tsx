@@ -24,6 +24,7 @@ import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
 import { buildDeviationCsvReport } from '@/lib/analysis/export-csv';
 import { downloadFile } from '@/lib/export/download';
+import { trackExportCompleted } from '@/lib/analytics';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { cn } from '@/lib/utils';
@@ -84,7 +85,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
         };
       });
       const report = buildDeviationCsvReport(rows, [...sourceModels.values()].map((model) => model.name));
-      if (report) downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+      if (report) {
+        downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+        trackExportCompleted({ format: 'csv', surface: 'deviation_panel', row_count: report.rows });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

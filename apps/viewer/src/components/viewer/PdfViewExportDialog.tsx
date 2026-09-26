@@ -33,6 +33,7 @@
  * view it claims to be is its own defect.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useCallback, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -58,7 +59,7 @@ import {
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
@@ -93,6 +94,7 @@ import type {
 export type ViewPdfExporter = (input: ViewPdfExportInput) => Promise<ViewPdfExportResult>;
 
 interface PdfViewExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
   /** Test seam for the exporter. See {@link ViewPdfExporter}. */
   exportViewPdf?: ViewPdfExporter;
@@ -107,7 +109,7 @@ function formatMm(value: number): string {
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
-export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDialogProps) {
+export function PdfViewExportDialog({ surface = 'classic', trigger, exportViewPdf }: PdfViewExportDialogProps) {
   const { t } = useTranslation();
   // Subscribed purely so the readout recomputes when the view changes; the
   // values themselves are read back off `getState()` inside the memo, which
@@ -208,11 +210,9 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
       return null;
     }
   }, [camera, drawnMeshes, scaleFactor, showScaleStamp]);
-
   const oversize = preview?.oversize ?? false;
   const canExport =
     !isExporting && camera !== null && drawnMeshes.length > 0 && scaleFactor !== null && !oversize;
-
   const handleExport = useCallback(async () => {
     if (!source || !camera || scaleFactor === null) return;
     setIsExporting(true);
@@ -240,7 +240,8 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
       });
       const message = t('sheetsPdf.pdfView.exportSuccessToast', { scale: formatScaleFactorLabel(scaleFactor), width: formatMm(result.page.widthMm), height: formatMm(result.page.heightMm) });
       toast.success(message);
-      posthog.capture('export_completed', {
+      trackExportCompleted({
+        surface,
         format: 'pdf-3d-view',
         scale_factor: scaleFactor,
         projection_mode: camera.projectionMode,
@@ -271,8 +272,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     // this repo to catch that, and no orchestrator test can see it: the option
     // is honoured correctly one layer down. `PdfViewExportDialog.test.tsx`
     // drives the real dialog through the `exportViewPdf` seam for exactly this.
-  }, [source, camera, scaleFactor, showHiddenEdges, renderMode, showScaleStamp, exportViewPdf]);
-
+  }, [source, camera, scaleFactor, showHiddenEdges, renderMode, showScaleStamp, exportViewPdf, surface]);
   const displayedLabel = displayedScale
     ? t('sheetsPdf.pdfView.displayedScaleOption', { scale: formatScaleFactorLabel(displayedScale) })
     : t('sheetsPdf.pdfView.displayedScaleUnavailable');

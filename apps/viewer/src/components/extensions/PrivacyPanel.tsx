@@ -19,6 +19,7 @@
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §7.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState } from 'react';
 import { Brain, Download, Eraser, ScrollText, Save, Shield } from 'lucide-react';
 import {
@@ -88,6 +89,7 @@ export function PrivacyPanel() {
   const handleExportLog = () => {
     const json = host.actionLog.exportJson();
     downloadFile(json, `ifclite-action-log-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'extension_panel' });
     toast.success(t('extensionsPanels.privacyPanel.exportLogToast'));
   };
 

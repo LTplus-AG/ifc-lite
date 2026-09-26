@@ -21,6 +21,7 @@
  * triggered instance ignores it — see the `trigger` prop doc below.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useCallback, useState } from 'react';
 import { EyeOff, Download, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -42,7 +43,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { useAnonymizedExportSet } from './useAnonymizedExportSet';
@@ -64,6 +65,7 @@ import {
 const DEFAULT_FILE_STEM = 'anonymized';
 
 interface AnonymizedExportDialogProps {
+  surface?: ExportSurface;
   /**
    * Omit when mounting this as the trigger-less, always-open-able host (see
    * `ViewerLayout.tsx`'s "Global Overlays" — the context menu and Command
@@ -74,7 +76,7 @@ interface AnonymizedExportDialogProps {
   trigger?: React.ReactNode;
 }
 
-export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps) {
+export function AnonymizedExportDialog({ surface = 'classic', trigger }: AnonymizedExportDialogProps) {
   const { t } = useTranslation();
   const [localOpen, setLocalOpen] = useState(false);
   // Only the trigger-less host instance (ViewerLayout's "Global Overlays")
@@ -170,7 +172,8 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
         set.options.IfcRelDefinesByProperties ?? false ? 'psets' : null,
         (set.options.IfcRelConnectsPathElementsDepth ?? 0) > 0 ? 'connected' : null,
       ].filter((v): v is string => v !== null);
-      posthog.capture('export_completed', {
+      trackExportCompleted({
+        surface,
         format: 'ifc-anonymized',
         seed_count: set.seeds.length,
         included_count: set.includedIds.size,
@@ -192,7 +195,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
     } finally {
       setIsExporting(false);
     }
-  }, [set, toggles, fileStem, t]);
+  }, [set, toggles, fileStem, t, surface]);
 
   return (
     // Non-modal on purpose: the right ~60% of the 99vw content is a

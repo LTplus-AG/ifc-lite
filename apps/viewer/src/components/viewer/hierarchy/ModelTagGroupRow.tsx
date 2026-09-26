@@ -21,8 +21,23 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { UNTAGGED_GROUP_ID } from './modelTagView';
 import type { TreeNode } from './types';
+import type { HierarchyNodeAriaProps } from './HierarchyNode';
 
-export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtualRow: { size: number; start: number } }) {
+export interface ModelTagGroupRowProps extends HierarchyNodeAriaProps {
+  node: TreeNode;
+  virtualRow: { size: number; start: number };
+}
+
+export function ModelTagGroupRow({
+  node,
+  virtualRow,
+  ariaLevel = 1,
+  ariaSetSize = 1,
+  ariaPosInSet = 1,
+  tabIndex = -1,
+  rowRef,
+  onRowFocus,
+}: ModelTagGroupRowProps) {
   const { t, locale } = useTranslation();
   const { models, setModelsVisibility, tag } = useViewerStore(
     useShallow((s) => ({
@@ -41,9 +56,18 @@ export function ModelTagGroupRow({ node, virtualRow }: { node: TreeNode; virtual
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
     >
       <div
+        ref={rowRef}
+        role="treeitem"
+        aria-level={ariaLevel}
+        aria-setsize={ariaSetSize}
+        aria-posinset={ariaPosInSet}
+        data-node-id={node.id}
+        tabIndex={tabIndex}
+        onFocus={onRowFocus}
         className={cn(
           'flex items-center gap-1.5 px-2 py-1.5 border-l-4 border-transparent group',
           'bg-zinc-50 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           members.length > 0 && visibleCount === 0 && 'opacity-50',
         )}
         data-model-tag-group={isUntagged ? UNTAGGED_GROUP_ID : tag?.id ?? ''}

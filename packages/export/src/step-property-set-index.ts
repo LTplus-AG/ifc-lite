@@ -97,8 +97,11 @@ function getRelatedEntities(ctx: PropertySetContext, relId: number): number[] {
   if (entityText === null) return [];
 
   // Parse IfcRelDefinesByProperties: #ID=IFCRELDEFINESBYPROPERTIES('guid',$,$,$,(#objects),#pset);
-  // The 5th argument (index 4) is the list of related objects
-  const match = entityText.match(/\(([^)]+)\)\s*,\s*#(\d+)\s*\)\s*;/);
+  // The 5th argument (index 4) is the list of related objects. `[^()]`, not
+  // `[^)]`: the list must not open inside the match, or it starts at the
+  // record's own `(` and a set OwnerHistory (`#5`) is read as a related
+  // object, which kept an unshared set alive as an orphan (#5794).
+  const match = entityText.match(/\(([^()]+)\)\s*,\s*#(\d+)\s*\)\s*;/);
   if (!match) return [];
 
   const objectsList = match[1];

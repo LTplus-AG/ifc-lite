@@ -116,12 +116,14 @@ pub(crate) fn property_ids_in_set(line: &str) -> Vec<u32> {
     Vec::new()
 }
 
-/// `getRelatedEntities`: `/\(([^)]+)\)\s*,\s*#(\d+)\s*\)\s*;/`.
+/// `getRelatedEntities`: `/\(([^()]+)\)\s*,\s*#(\d+)\s*\)\s*;/`. The list
+/// may not open inside the match, or a set OwnerHistory is read as a related
+/// object (#5794).
 pub(crate) fn related_entities(line: &str) -> Vec<u32> {
     let b = line.as_bytes();
     for (i, _) in line.match_indices('(') {
         let Some(close) = line[i + 1..].find(')').map(|p| i + 1 + p) else { continue };
-        if close == i + 1 {
+        if close == i + 1 || line[i + 1..close].contains('(') {
             continue;
         }
         let mut j = ws(b, close + 1);

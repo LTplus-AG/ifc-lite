@@ -397,7 +397,7 @@ export class PointCloudRenderer {
 
     for (const [id, node] of this.nodes) {
       if (!this.visibility.visible(id)) continue;
-      writePointCloudUniforms(
+      const drawable = writePointCloudUniforms(
         this.device,
         this.uniformScratch,
         this.uniformScratchU32,
@@ -425,6 +425,7 @@ export class PointCloudRenderer {
           deviationHalfRange: this.options.deviationRange.halfRange,
         },
       );
+      if (!drawable) continue;
       pass.setBindGroup(0, node.bindGroup);
       for (const chunk of node.chunks) {
         pass.setVertexBuffer(0, chunk.vertexBuffer);

@@ -98,7 +98,8 @@ function seedFederated(largeVisible = true): void {
     classFilter: null,
     selectedStoreys: new Set<number>(),
     projectionMode: 'orthographic',
-    // The cut is on screen only while the Section tool draws it (#4910).
+    // The cut is lasting scene state (#5893) — `activeTool: 'section'` here
+    // is just how these fixtures start; leaving it does not hide the cut.
     activeTool: 'section',
     sectionPlane: {
       ...useViewerStore.getState().sectionPlane,
@@ -151,10 +152,24 @@ describe('readViewPdfSource (#2042)', () => {
     );
   });
 
-  it('prints no cut once the user has left the Section tool (#4910)', () => {
+  it('keeps printing the cut once the user has left the Section tool (#5893, revises #4910)', () => {
+    // #4910: the cut used to be forced off the moment the tool closed, so a
+    // PDF export after leaving Section printed nothing. #5893 makes the cut
+    // lasting scene state — it stays on screen (and in the exported sheet)
+    // exactly like the live viewport, regardless of which tool is active.
     useViewerStore.getState().setActiveTool('select');
     const source = readViewPdfSource(useViewerStore.getState());
-    assert.equal(source.section, null, 'BUG: the sheet is cut although the view is not');
+    assert.ok(source.section, 'BUG (pre-#5893): the sheet printed no cut although the viewport still shows one');
+    assert.equal(source.sectionEnabled, true);
+  });
+
+  it('prints no cut once the visibility toggle hides it (#5893)', () => {
+    // The real "not on screen" signal now: `sceneState.section.visible`,
+    // not the active tool.
+    useViewerStore.getState().setActiveTool('select');
+    useViewerStore.getState().setSectionVisible(false);
+    const source = readViewPdfSource(useViewerStore.getState());
+    assert.equal(source.section, null, 'the sheet must not cut a view the user cannot see');
     assert.equal(source.sectionEnabled, false);
   });
 

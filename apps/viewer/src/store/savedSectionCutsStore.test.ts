@@ -44,11 +44,14 @@ describe('saved section cuts (#5514)', () => {
     const id = saveCurrentSectionCut('Front @ level 2');
 
     // Move the live cut elsewhere and leave the tool — the saved cut must
-    // still describe the ORIGINAL geometry, not whatever is live now.
+    // still describe the ORIGINAL geometry, not whatever is live now. The
+    // moved cut stays on screen after leaving the tool (#5893 — lasting
+    // scene state, not tool-coupled), so this asserts it is the MOVED
+    // geometry still showing, not the one about to be restored.
     state().setSectionPlaneAxis('down');
     state().setSectionPlanePosition(10);
     state().setActiveTool('select');
-    assert.equal(activeSectionPlane(state()), null, 'no cut on screen outside the tool');
+    assert.equal(activeSectionPlane(state())?.position, 10, 'the moved cut, not the saved one, is still on screen');
 
     applySavedSectionCut(id);
 
@@ -60,6 +63,18 @@ describe('saved section cuts (#5514)', () => {
     const shown = activeSectionPlane(state());
     assert.ok(shown, 'the saved cut is visible, exactly like any other section writer');
     assert.equal(useSavedSectionCuts.getState().activeCutId, id);
+  });
+
+  it('applying a saved cut un-hides it, even if the chip hid the previous one (#5893 review)', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('front');
+    const id = saveCurrentSectionCut('Front');
+    state().setSectionVisible(false); // hide the (now different) live cut via the chip
+    assert.equal(state().sceneState.section.visible, false);
+
+    applySavedSectionCut(id);
+    assert.equal(state().sceneState.section.visible, true, 'BUG: a stale hide left the restored cut invisible');
+    assert.ok(activeSectionPlane(state()));
   });
 
   it('restores a face-picked (custom) plane bit for bit', () => {

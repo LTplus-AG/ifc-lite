@@ -20,45 +20,23 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  * "Changes only" exports just mutations:
  * - Below IFC5 → .json
  * - IFC5 → .ifcx
+ *
+ * `ExportDialogShell` owns open/busy/result state and guarded chrome (#5848).
+ * This component owns the options and export logic.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Download, AlertCircle, Check, ArrowUp, ArrowDown } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
+import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
 import { useTranslation } from '@/i18n';
-import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
@@ -66,9 +44,8 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
-import { LandXmlExportRefusal } from './LandXmlExportRefusal.js';
+import { landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
-import { finishLandXmlIfcExport } from '@/lib/export/landXmlIfcDownload.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
@@ -78,6 +55,10 @@ import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
 import { exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
+import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
+import { ExportDialogScopeOptions } from './export-dialog-scope-options';
+import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
+import { ExportDialogToggleOptions } from './export-dialog-toggle-options';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -104,11 +85,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  // Not read directly below — `resolveExportVisibility` reads the live store
-  // snapshot at export time — but subscribed so the dialog re-renders (and the
-  // memoized visibility getters below get fresh identities) when the Class
-  // tab filter, storey selection, or a type-visibility toggle changes while
-  // the dialog is open (#4328).
+  // Keep visibility subscriptions so the options refresh when Class, storey,
+  // or type filters change; export reads the live store snapshot (#4328).
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -120,7 +98,6 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   // so the local pattern miner can spot load → export workflows.
   const extensionHost = useOptionalExtensionHost();
 
-  const [open, setOpen] = useState(false);
   const [schema, setSchema] = useState<SchemaVersion | ''>('');
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [exportScope, setExportScope] = useState<ExportScope>('single');
@@ -131,8 +108,6 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   // How a merged export reconciles models with different length units.
   const [unitReconciliation, setUnitReconciliation] = useState<'auto' | 'normalize' | 'assume-shared'>('auto');
   const [onlyKnownProperties, setOnlyKnownProperties] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [exportProgress, setExportProgress] = useState<{
     phase: string;
     percent: number;
@@ -140,20 +115,17 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     entitiesTotal: number;
     currentModel?: string;
   } | null>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // Scroll progress into the shell's own scrollable container.
+  const progressAnchorRef = useRef<HTMLDivElement>(null);
   const prevProgressRef = useRef<typeof exportProgress>(null);
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, []);
 
   // Auto-scroll when progress first appears
   useEffect(() => {
-    if (exportProgress && !prevProgressRef.current) scrollToBottom();
+    if (exportProgress && !prevProgressRef.current) {
+      progressAnchorRef.current?.scrollIntoView({ block: 'end' });
+    }
     prevProgressRef.current = exportProgress;
-  }, [exportProgress, scrollToBottom]);
+  }, [exportProgress]);
 
   // Derived: is this an IFC5/IFCX export?
   const isIfc5 = schema === 'IFC5';
@@ -173,14 +145,14 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     }
   }, [modelList, selectedModelId]);
 
-  const handleOpenChange = useExportDialogOpenGuard({
-    busy: isExporting,
-    setOpen,
-    onOpen: () => {
+  // #5605 (via the shell): re-seed the model selection every time the dialog
+  // opens, same as the pre-#5848 `onOpen` handler did. The shell clears the
+  // rendered result itself.
+  const handleDialogOpenStateChange = useCallback((open: boolean) => {
+    if (open) {
       setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
-      setExportResult(null);
-    },
-  });
+    }
+  }, [modelList, activeModelId]);
 
   const selectedModel = useMemo(
     () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
@@ -314,32 +286,30 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, packagesImages),
     [isIfc5, changesOnly, packagesImages]);
 
-  const handleExport = useCallback(async () => {
-    if (!schema) return;
-    if (exportScope === 'single' && !selectedModel) return;
+  const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!schema || (exportScope === 'single' && !selectedModel)) {
+      return { success: false, message: t('exportDialog.notReadyError') };
+    }
     if (!exportAllowed) {
       const message = t('exportDialog.landXml.error');
-      setExportResult({ success: false, message });
       toast.error(message);
-      return;
+      return { success: false, message };
     }
 
     // Action log: content-free emit so the miner can spot
     // "load → export" patterns. Format label only — no path / data.
     extensionHost?.emitAction('export.run', { format: outputInfo.ext.replace(/^\./, '') });
 
-    setIsExporting(true);
-    setExportResult(null);
     setExportProgress(null);
 
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
     if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      if (finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
-        { t, setExportResult, setIsExporting })) {
+      const outcome = landXmlIfcExportOutcome({ document: selectedModel.landXmlDocument, name: selectedModel.name }, t);
+      if (outcome.success) {
         trackExportCompleted({ format: 'ifc', surface });
       }
-      return;
+      return outcome;
     }
 
     // Set per success branch; captured once in `finally` so a thrown export
@@ -405,13 +375,14 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
           + (result.stats.normalizedModelCount > 0
             ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
             : '');
-        setExportResult({ success: true, message: msg });
-        toast.success(msg);
         exportedFormat = 'ifc';
-        return;
+        toast.success(msg);
+        return { success: true, message: msg };
       }
 
-      if (!selectedModel) return;
+      if (!selectedModel) {
+        return { success: false, message: t('exportDialog.notReadyError') };
+      }
       const mutationView = getMutationView(selectedModelId);
 
       // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
@@ -421,10 +392,9 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
       if (changesOnly && !isIfc5) {
         const jsonMsg = exportChangesJson(
           selectedModelId, selectedModel.name, mutationView?.getMutations() || []);
-        setExportResult({ success: true, message: jsonMsg });
-        toast.success(jsonMsg);
         exportedFormat = 'json';
-        return;
+        toast.success(jsonMsg);
+        return { success: true, message: jsonMsg };
       }
 
       // Every remaining branch needs a parsed data store + geometry.
@@ -504,10 +474,10 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
 
         const losses = unrepresentedPsetsNote(result.stats.skippedCount) + lostPropertyCollisionsNote(result.stats.propertyCollisions);
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties${losses}`;
-        setExportResult({ success: true, message: ifcxMsg });
         if (losses) toast.info(ifcxMsg); // #5201, #5376: not a plain success
         else toast.success(ifcxMsg);
         exportedFormat = 'ifcx';
+        return { success: true, message: ifcxMsg };
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {
@@ -528,7 +498,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
         const localIsolated = portable ? portable.toSourceIds(roomIsolated) : roomIsolated;
 
         // Include georeferencing mutations if applying mutations
-        const georefMutations = applyMutations
+        const georefMutationsForExport = applyMutations
           ? useViewerStore.getState().georefMutations?.get(selectedModelId) ?? undefined
           : undefined;
 
@@ -539,7 +509,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
           visibleOnly,
           hiddenEntityIds: localHidden,
           isolatedEntityIds: localIsolated,
-          georefMutations,
+          georefMutations: georefMutationsForExport,
           description: `Exported from ifc-lite with ${modifiedCount} modifications`,
           application: 'ifc-lite',
           onProgress: p => setExportProgress(stepExportProgress(p)),
@@ -560,17 +530,16 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
         downloadFile(artifact.content, modelExportFilename(selectedModel.name, artifact.ext, suffix), artifact.mime);
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
-        setExportResult({ success: true, message: stepMsg });
-        toast.success(stepMsg);
         exportedFormat = artifact.ext;
+        toast.success(stepMsg);
+        return { success: true, message: stepMsg };
       }
     } catch (error) {
       console.error('Export failed:', error);
       const errMsg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
+      return { success: false, message: errMsg };
     } finally {
-      setIsExporting(false);
       if (exportedFormat) {
         trackExportCompleted({
           surface,
@@ -585,240 +554,90 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t, surface]);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
+    <ExportDialogShell
+      trigger={
+        trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             {t('exportDialog.trigger')}
           </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            {t('exportDialog.title')}
-          </DialogTitle>
-          <DialogDescription>
-            {isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
-          </DialogDescription>
-        </DialogHeader>
+        )
+      }
+      icon={<Download className="h-5 w-5" />}
+      title={t('exportDialog.title')}
+      description={isIfc5 && !changesOnly ? t('exportDialog.description.ifc5') : t('exportDialog.description.default')}
+      cancelLabel={t('exportDialog.cancelButton')}
+      exportLabel={t('exportDialog.exportButton')}
+      exportingLabel={t('exportDialog.exportingLabel')}
+      exportIcon={<Download className="h-4 w-4 mr-2" />}
+      successTitle={t('exportDialog.resultSuccessTitle')}
+      errorTitle={t('exportDialog.resultErrorTitle')}
+      exportDisabled={!selectedModel || !schema || !exportAllowed}
+      onExport={handleExport}
+      onOpenStateChange={handleDialogOpenStateChange}
+    >
+      {({ isExporting }) => (
+      <>
+      <ExportDialogScopeOptions
+        isIfc5={isIfc5}
+        changesOnly={changesOnly}
+        modelList={modelList}
+        exportScope={exportScope}
+        setExportScope={setExportScope}
+        unitReconciliation={unitReconciliation}
+        setUnitReconciliation={setUnitReconciliation}
+        selectedModelId={selectedModelId}
+        setSelectedModelId={setSelectedModelId}
+        exportModelLabels={exportModelLabels}
+      />
 
-        <div ref={scrollAreaRef} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-          {/* Scope selector (only for STEP schemas with multiple models) */}
-          {!isIfc5 && !changesOnly && modelList.length > 1 && (
-            <div className="flex items-center gap-4">
-              <Label className="w-32">{t('exportDialog.scopeLabel')}</Label>
-              <Select value={exportScope} onValueChange={(v) => setExportScope(v as ExportScope)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single">{t('exportDialog.scope.single')}</SelectItem>
-                  <SelectItem value="merged">{t('exportDialog.scope.merged')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+      <ExportDialogSchemaOptions
+        landXmlPlan={landXmlPlan}
+        changesOnly={changesOnly}
+        isIfc5={isIfc5}
+        schema={schema}
+        setSchema={setSchema}
+        sourceFile={selectedModel?.sourceFile}
+        sourceSchema={sourceSchema}
+        schemaConversion={schemaConversion}
+        outputInfo={outputInfo}
+      />
 
-          {/* Mixed-unit handling — only meaningful for a merged export */}
-          {!isIfc5 && !changesOnly && exportScope === 'merged' && modelList.length > 1 && (
-            <div className="flex items-center gap-4">
-              <Label className="w-32">{t('exportDialog.mixedUnitsLabel')}</Label>
-              <Select value={unitReconciliation} onValueChange={(v) => setUnitReconciliation(v as typeof unitReconciliation)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">{t('exportDialog.unitReconciliation.auto')}</SelectItem>
-                  <SelectItem value="normalize">{t('exportDialog.unitReconciliation.normalize')}</SelectItem>
-                  <SelectItem value="assume-shared">{t('exportDialog.unitReconciliation.assumeShared')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+      <ExportDialogToggleOptions
+        visibleOnly={visibleOnly}
+        setVisibleOnly={setVisibleOnly}
+        changesOnly={changesOnly}
+        setChangesOnly={setChangesOnly}
+        exportScope={exportScope}
+        includeGeometry={includeGeometry}
+        setIncludeGeometry={setIncludeGeometry}
+        applyMutations={applyMutations}
+        setApplyMutations={setApplyMutations}
+        isIfc5={isIfc5}
+        hasFilterableProperties={hasFilterableProperties}
+        onlyKnownProperties={onlyKnownProperties}
+        setOnlyKnownProperties={setOnlyKnownProperties}
+        modifiedCount={modifiedCount}
+      />
 
-          {/* Model selector (only for single-model export) */}
-          {exportScope === 'single' && (
-          <div className="flex items-center gap-4">
-            <Label className="w-32">{t('exportDialog.modelLabel')}</Label>
-            <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-              <SelectTrigger>
-                <SelectValue placeholder={t('exportDialog.selectModelPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {modelList.map((m) => {
-                  const displayName = exportModelLabels.get(m.id) ?? m.name;
-                  return (
-                  <SelectItem key={m.id} value={m.id} title={m.name}>
-                    {displayName}{m.isDirty ? ' *' : ''}{m.sourceSchema ? ` (${m.sourceSchema})` : m.schemaVersion ? ` (${m.schemaVersion})` : ''}
-                  </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+      {/* Export Progress */}
+      {isExporting && exportProgress && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <Spinner size="md" />
+              {exportProgress.phase}
+            </span>
+            <span>
+              {t('exportDialog.progressCount', { processed: exportProgress.entitiesProcessed.toLocaleString(), total: exportProgress.entitiesTotal.toLocaleString() })}
+            </span>
           </div>
-          )}
-
-          {/* Schema selector — this drives the output format */}
-          {/* Only where an IFC-family file is synthesised: a changes-only JSON
-              delta is source-independent, so neither branch applies to it. */}
-          {landXmlPlan && (!changesOnly || isIfc5) && (
-            <LandXmlExportRefusal
-              plan={landXmlPlan} schemaSupported={schema === 'IFC4X3'} sourceFile={selectedModel?.sourceFile} />
-          )}
-          <div className="flex items-center gap-4">
-            <Label className="w-32">{t('exportDialog.schemaLabel')}</Label>
-            <Select value={schema} onValueChange={(v) => setSchema(v as SchemaVersion)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(['IFC2X3', 'IFC4', 'IFC4X3', 'IFC5'] as const).map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {v === 'IFC5' ? t('exportDialog.schemaOption.ifc5Alpha') : v}
-                    {v === sourceSchema ? t('exportDialog.currentSchemaSuffix') : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Schema conversion warning */}
-          {schemaConversion && (
-            <Alert variant={schemaConversion === 'downgrade' ? 'destructive' : 'default'}>
-              {schemaConversion === 'upgrade' ? (
-                <ArrowUp className="h-4 w-4" />
-              ) : (
-                <ArrowDown className="h-4 w-4" />
-              )}
-              <AlertTitle>
-                {schemaConversion === 'upgrade' ? t('exportDialog.schemaUpgradeTitle') : t('exportDialog.schemaDowngradeTitle')}
-              </AlertTitle>
-              <AlertDescription>
-                {t('exportDialog.conversionSummary', { source: sourceSchema, target: schema })}{' '}
-                {schemaConversion === 'downgrade' ? t('exportDialog.schemaDowngradeNote') : t('exportDialog.schemaUpgradeNote')}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Output format indicator */}
-          <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">{t('exportDialog.outputLabel')}</Label>
-            <Badge variant="secondary">{outputInfo.label}</Badge>
-            <span className="text-xs text-muted-foreground">{outputInfo.ext}</span>
-          </div>
-
-          {/* Options */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>{t('exportDialog.visibleOnlyLabel')}</Label>
-              <p className="text-xs text-muted-foreground">{t('exportDialog.visibleOnlyHint')}</p>
-            </div>
-            <Switch checked={visibleOnly} onCheckedChange={setVisibleOnly} />
-          </div>
-
-          {!changesOnly && exportScope === 'single' && (
-            <div className="flex items-center justify-between">
-              <Label>{t('exportDialog.includeGeometryLabel')}</Label>
-              <Switch checked={includeGeometry} onCheckedChange={setIncludeGeometry} />
-            </div>
-          )}
-
-          {(exportScope === 'single' || exportScope === 'merged') && (
-            <div className="flex items-center justify-between">
-              <Label>{t('exportDialog.applyMutationsLabel')}</Label>
-              <Switch checked={applyMutations} onCheckedChange={setApplyMutations} />
-            </div>
-          )}
-
-          {exportScope === 'single' && (
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>{isIfc5 ? t('exportDialog.changesOnlyLabel.ifc5') : t('exportDialog.changesOnlyLabel.default')}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {isIfc5 ? t('exportDialog.changesOnlyHint.ifc5') : t('exportDialog.changesOnlyHint.default')}
-                </p>
-              </div>
-              <Switch checked={changesOnly} onCheckedChange={setChangesOnly} />
-            </div>
-          )}
-
-          {/* IFC5: strict property schema filtering */}
-          {isIfc5 && hasFilterableProperties && (
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>{t('exportDialog.onlyKnownPropertiesLabel')}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('exportDialog.onlyKnownPropertiesHint')}
-                </p>
-              </div>
-              <Switch checked={onlyKnownProperties} onCheckedChange={setOnlyKnownProperties} />
-            </div>
-          )}
-
-          {/* Stats */}
-          {modifiedCount > 0 && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{t('exportDialog.pendingChangesTitle')}</AlertTitle>
-              <AlertDescription>
-                {t('exportDialog.pendingChangesDescription', { count: modifiedCount, countDisplay: modifiedCount })}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Export Progress */}
-          {isExporting && exportProgress && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <Spinner size="md" />
-                  {exportProgress.phase}
-                </span>
-                <span>
-                  {t('exportDialog.progressCount', { processed: exportProgress.entitiesProcessed.toLocaleString(), total: exportProgress.entitiesTotal.toLocaleString() })}
-                </span>
-              </div>
-              <Progress value={exportProgress.percent * 100} />
-            </div>
-          )}
-
-          {/* Export result */}
-          {exportResult && (
-            <Alert variant={exportResult.success ? 'default' : 'destructive'}>
-              {exportResult.success ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>{exportResult.success ? t('exportDialog.resultSuccessTitle') : t('exportDialog.resultErrorTitle')}</AlertTitle>
-              <AlertDescription>{exportResult.message}</AlertDescription>
-            </Alert>
-          )}
-
+          <Progress value={exportProgress.percent * 100} />
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
-            {t('exportDialog.cancelButton')}
-          </Button>
-          <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>
-            {isExporting ? (
-              <>
-                <Spinner size="md" className="mr-2" />
-                {t('exportDialog.exportingLabel')}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                {t('exportDialog.exportButton')}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      )}
+      <div ref={progressAnchorRef} />
+      </>
+      )}
+    </ExportDialogShell>
   );
 }

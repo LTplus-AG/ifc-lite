@@ -293,7 +293,11 @@ type RegisteredKindMatchesSliceShape = {
 type AssertAllTrue<T extends Record<ReprojectedMeasurementField, true>> = T;
 export type _ReprojectedKindsMatch = AssertAllTrue<RegisteredKindMatchesSliceShape>;
 
-export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => ({
+export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => {
+  // Finishing a measurement un-hides it (#5893) — a stale chip-hidden `sceneState.measurements.visible: false` would otherwise draw nothing.
+  const revealMeasurements = (): void => { (get() as unknown as { setMeasurementsVisible?: (v: boolean) => void }).setMeasurementsVisible?.(true); };
+
+  return {
   // Initial state
   measurements: [],
   pendingMeasurePoint: null,
@@ -317,27 +321,21 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
 
-  completeMeasurement: (endPoint) => set((state) => {
-    if (!state.pendingMeasurePoint) return {};
-    const start = state.pendingMeasurePoint;
-    const distance = Math.sqrt(
-      Math.pow(endPoint.x - start.x, 2) +
-      Math.pow(endPoint.y - start.y, 2) +
-      Math.pow(endPoint.z - start.z, 2)
-    );
-    // Use counter combined with timestamp to guarantee unique IDs
-    measurementCounter++;
-    const measurement: Measurement = {
-      id: `m-${Date.now()}-${measurementCounter}`,
-      start,
-      end: endPoint,
-      distance,
-    };
-    return {
-      measurements: [...state.measurements, measurement],
-      pendingMeasurePoint: null,
-    };
-  }),
+  completeMeasurement: (endPoint) => {
+    set((state) => {
+      if (!state.pendingMeasurePoint) return {};
+      const start = state.pendingMeasurePoint;
+      const distance = Math.sqrt(
+        Math.pow(endPoint.x - start.x, 2) +
+        Math.pow(endPoint.y - start.y, 2) +
+        Math.pow(endPoint.z - start.z, 2)
+      );
+      measurementCounter++; // combined with timestamp to guarantee unique IDs
+      const measurement: Measurement = { id: `m-${Date.now()}-${measurementCounter}`, start, end: endPoint, distance };
+      return { measurements: [...state.measurements, measurement], pendingMeasurePoint: null };
+    });
+    revealMeasurements();
+  },
 
   // Drag-based measurement actions
   startMeasurement: (point) => set({
@@ -365,23 +363,20 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     };
   }),
 
-  finalizeMeasurement: () => set((state) => {
-    if (!state.activeMeasurement) return {};
-    // Use counter combined with timestamp to guarantee unique IDs
-    measurementCounter++;
-    const measurement: Measurement = {
-      id: `m-${Date.now()}-${measurementCounter}`,
-      start: state.activeMeasurement.start,
-      end: state.activeMeasurement.current,
-      distance: state.activeMeasurement.distance,
-    };
-    return {
-      measurements: [...state.measurements, measurement],
-      activeMeasurement: null,
-      snapTarget: null,
-      measurementConstraintEdge: null,
-    };
-  }),
+  finalizeMeasurement: () => {
+    set((state) => {
+      if (!state.activeMeasurement) return {};
+      measurementCounter++; // combined with timestamp to guarantee unique IDs
+      const measurement: Measurement = { id: `m-${Date.now()}-${measurementCounter}`, start: state.activeMeasurement.start, end: state.activeMeasurement.current, distance: state.activeMeasurement.distance };
+      return {
+        measurements: [...state.measurements, measurement],
+        activeMeasurement: null,
+        snapTarget: null,
+        measurementConstraintEdge: null,
+      };
+    });
+    revealMeasurements();
+  },
 
   cancelMeasurement: () => set({
     activeMeasurement: null,
@@ -636,26 +631,28 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return { angleKind: kind, activeAngle: null };
   }),
 
-  addAnglePick: (pick) => set((state) => {
-    const kind = state.angleKind;
-    // Defence in depth: the handler filters by kind, but a mismatched pick
-    // reaching the store would produce an angle measured from the wrong sort
-    // of input, silently.
-    if (pick.kind !== kind) return {};
-    const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
-    const picks = [...prior, pick];
-    if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
-      return { activeAngle: { kind, picks } };
-    }
-    measurementCounter++;
-    return {
-      activeAngle: null,
-      angleMeasurements: [
-        ...state.angleMeasurements,
-        { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks },
-      ],
-    };
-  }),
+  addAnglePick: (pick) => {
+    let recorded = false;
+    set((state) => {
+      const kind = state.angleKind;
+      // Defence in depth: the handler filters by kind, but a mismatched pick
+      // reaching the store would produce an angle measured from the wrong sort
+      // of input, silently.
+      if (pick.kind !== kind) return {};
+      const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
+      const picks = [...prior, pick];
+      if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
+        return { activeAngle: { kind, picks } };
+      }
+      measurementCounter++;
+      recorded = true;
+      return {
+        activeAngle: null,
+        angleMeasurements: [...state.angleMeasurements, { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks }],
+      };
+    });
+    if (recorded) revealMeasurements();
+  },
 
   cancelAngle: () => set({ activeAngle: null }),
 
@@ -733,6 +730,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
         activePolyline: null,
       };
     });
+    if (recorded) revealMeasurements();
     return recorded;
   },
 
@@ -779,6 +777,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
         activeRadius: null,
       };
     });
+    if (recorded) revealMeasurements();
     return recorded;
   },
 
@@ -817,4 +816,5 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activeRadius: null,
     radiusMeasurements: [],
   }),
-});
+  };
+};

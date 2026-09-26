@@ -33,6 +33,10 @@ export function activateBasketViewFromStore(viewId: string): void {
     const sectionSnapshot = view.section;
     useViewerStore.setState({
       sectionPlane: { ...sectionSnapshot.plane },
+      // The snapshot was only ever captured while ON SCREEN (`activeSectionPlane`
+      // in `captureSectionSnapshot`), so restoring it puts it on screen too,
+      // independent of which tool is active (#5893).
+      sceneState: { ...state.sceneState, section: { visible: true } },
       drawing2DPanelVisible: false,
     });
     if (sectionSnapshot.plane.enabled) {
@@ -43,7 +47,10 @@ export function activateBasketViewFromStore(viewId: string): void {
   } else {
     // This view has no section snapshot: ensure previously active cutting is cleared.
     const current = useViewerStore.getState().sectionPlane;
-    useViewerStore.setState({ sectionPlane: { ...current, enabled: false, parked: false } }); // parked too (#4910)
+    useViewerStore.setState({
+      sectionPlane: { ...current, enabled: false, parked: false }, // parked too (#4910)
+      sceneState: { ...state.sceneState, section: { visible: true } }, // next cut starts visible (#5893)
+    });
     if (state.activeTool === 'section') {
       state.setActiveTool('select', 'programmatic');
     }

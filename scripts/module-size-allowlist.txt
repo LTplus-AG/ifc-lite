@@ -73,7 +73,7 @@
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    409 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
-   834 apps/viewer/src/components/viewer/ExportDialog.tsx
+   644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
   1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx

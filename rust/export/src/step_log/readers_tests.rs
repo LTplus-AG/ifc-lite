@@ -4,11 +4,15 @@ use super::*;
 const REL: &str = "#30=IFCRELDEFINESBYPROPERTIES('2hK1S0rB9DZuP7Qn4c6uVb',#5,$,$,(#21,#22),#29);";
 
 #[test]
-fn related_entities_reads_what_the_typescript_pattern_matches() {
-    // The pattern starts at the record's first `(`, so the owner history is
-    // among the "related" ids. Ported as matched, not as meant.
-    assert_eq!(related_entities(REL), vec![5, 21, 22]);
+fn related_entities_reads_the_related_objects_list_only() {
+    // The owner history is NOT a related object. The pattern used to start at
+    // the record's own `(` and return it too, which kept an unshared set alive
+    // as an orphan once copy-on-write asked who else a relation names (#5794).
+    assert_eq!(related_entities(REL), vec![21, 22]);
     assert_eq!(related_property_set(REL), Some(29));
+    // A parenthesis inside a string slot does not open the list either.
+    let named = "#30=IFCRELDEFINESBYPROPERTIES('g',#5,'Walls (east)',$,(#21),#29);";
+    assert_eq!(related_entities(named), vec![21]);
 }
 
 #[test]

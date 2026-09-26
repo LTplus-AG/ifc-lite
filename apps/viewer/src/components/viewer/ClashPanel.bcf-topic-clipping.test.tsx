@@ -4,11 +4,19 @@
 
 /**
  * The Clash panel's "BCF topic" button (the reporter's path) writes
- * `<ClippingPlanes>` only for a section that is on screen (#4806).
+ * `<ClippingPlanes>` only for a section that is on screen (#4806, revised by
+ * #5893).
  *
- * The reporter never cut the model, yet every clash topic opened sectioned in
- * BIMcollab and usBIM: `sectionPlane.enabled` stays on after the Section tool
- * is left, while the renderer stops drawing the cut.
+ * #4806: the reporter never cut the model, yet every clash topic opened
+ * sectioned in BIMcollab and usBIM, because `sectionPlane.enabled` stayed on
+ * after the Section tool was left while the renderer stopped drawing it.
+ *
+ * #5893 makes the cut lasting scene state: `enabled: true` outside the tool
+ * is no longer a leftover, it is the cut the user genuinely still has on
+ * screen (`sceneState.section.visible` defaults `true`) — that combination
+ * now correctly exports. The real "not on screen" signal is
+ * `sceneState.section.visible: false` (the chip's hide toggle), still tested
+ * below.
  */
 
 import '@/test/setup-dom.js';
@@ -65,7 +73,7 @@ function result(): ClashResult {
   };
 }
 
-function seed(activeTool: string, enabled: boolean, modelCount = 1): void {
+function seed(activeTool: string, enabled: boolean, modelCount = 1, visible = true): void {
   const geometryResult: GeometryResult = {
     meshes: [],
     totalVertices: 0,
@@ -90,6 +98,7 @@ function seed(activeTool: string, enabled: boolean, modelCount = 1): void {
     clashHideTouching: false,
     activeTool,
     sectionPlane: { ...useViewerStore.getState().sectionPlane, axis: 'down', position: 25, flipped: false, enabled, custom: undefined },
+    sceneState: { ...useViewerStore.getState().sceneState, section: { visible } },
   });
 }
 
@@ -132,12 +141,19 @@ async function clickBcfTopic(): Promise<string> {
   return zip.file(entries[0])!.async('string');
 }
 
-describe('Clash panel "BCF topic" clipping planes (#4806)', () => {
-  it('writes no <ClippingPlanes> when a section left enabled is not on screen', async () => {
+describe('Clash panel "BCF topic" clipping planes (#4806, #5893)', () => {
+  it('writes <ClippingPlanes> for a cut left enabled across a tool switch — lasting scene state (#5893)', async () => {
     seed('select', true);
     const xml = await clickBcfTopic();
     assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
-    assert.doesNotMatch(xml, /<ClippingPlane/, 'BUG: the clash topic carries a section the user never saw');
+    assert.match(xml, /<ClippingPlane>/, 'the cut is genuinely on screen now (#5893), so it exports');
+  });
+
+  it('writes no <ClippingPlanes> when the cut is hidden by the visibility toggle (#4806, #5893)', async () => {
+    seed('select', true, 1, false);
+    const xml = await clickBcfTopic();
+    assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
+    assert.doesNotMatch(xml, /<ClippingPlane/, 'BUG: the clash topic carries a section the user cannot see');
   });
 
   it('writes exactly the visible section cut while the Section tool shows one', async () => {

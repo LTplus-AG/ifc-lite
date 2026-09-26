@@ -41,10 +41,10 @@ use super::spatial::nth_attr;
 /// the entity named at `claimed` may be named there by at most one written rel
 /// (of any type sharing `inverse`). The twin of `InverseRule` in
 /// `merged-inverse-claims.ts`, whose test pins both tables to the EXPRESS schemas.
-struct Rule {
-    inverse: &'static str,
+pub(super) struct Rule {
+    pub(super) inverse: &'static str,
     /// Argument index of the side that carries the inverse.
-    claimed: usize,
+    pub(super) claimed: usize,
     /// Argument index of the other side.
     partner: usize,
     /// A WHERE rule bounds the partner list to one, so nothing can be folded into it.
@@ -70,7 +70,7 @@ const PROPERTY_OVERRIDE_OF: Rule = Rule { one_partner: true, ..PROPERTY_DEFINITI
 /// and `IfcObject.WR1` (a WHERE rule) allows an object one; IFC4 splits off
 /// `Nests`, names the typing inverses `IsTypedBy`/`Types`, and relaxes the
 /// property-set side to `SET [0:?]`.
-fn rules_of(rel_type: &str, schema: &str) -> &'static [Rule] {
+pub(super) fn rules_of(rel_type: &str, schema: &str) -> &'static [Rule] {
     const CONTAINED: &[Rule] = &[rule("ContainedInStructure", 4, 5)];
     const VOIDS: &[Rule] = &[rule("VoidsElements", 5, 4)];
     const FILLS: &[Rule] = &[rule("FillsVoids", 5, 4)];

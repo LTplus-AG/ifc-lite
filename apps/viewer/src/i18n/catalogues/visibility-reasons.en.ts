@@ -20,6 +20,8 @@ export const visibilityReasonsEn = {
   'visibilityReasons.typeVisibility': 'Hidden IFC classes',
   'visibilityReasons.typeViewMode': 'Types view',
   'visibilityReasons.hostTypes': 'Classes hidden by host',
+  'visibilityReasons.section': 'Section cut',
+  'visibilityReasons.measurements': 'Measurements',
   'visibilityChips.hiddenCount': 'Hidden elements · {count}',
   'visibilityChips.isolationCount': 'Isolated elements · {count}',
   'visibilityChips.ghostCount': 'X-ray context · {count}',

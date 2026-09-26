@@ -81,6 +81,7 @@ import { pointCloudTeardown } from './slices/pointCloudSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
 import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
 import { modelTagsTeardown } from './slices/modelTagsSlice.teardown.js';
+import { sceneStateTeardown } from './slices/sceneStateSlice.js';
 
 /**
  * Every slice teardown the viewer store knows about.
@@ -127,6 +128,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   chartTeardown,
   flowTeardown,
   documentTeardown,
+  sceneStateTeardown,
 ]);
 
 /**

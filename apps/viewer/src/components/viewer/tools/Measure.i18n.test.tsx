@@ -265,6 +265,16 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.quantities.legend',
   'measure.quantities.massLegend',
   'measure.quantities.massLegendWithEstimated',
+  // MeasurementsVisibilityChip.tsx's own rows (#5893) — a separate,
+  // always-mounted HUD chip this suite's `renderMeasure()` never renders
+  // (it exercises MeasurePanel/MeasureToolbar only); the chip has its own
+  // component, not a test file (mirrors SectionParkedChip's convention).
+  'measure.chip.hideAria',
+  'measure.chip.hideTitle',
+  'measure.chip.showAria',
+  'measure.chip.showTitle',
+  'measure.chip.clearAria',
+  'measure.chip.clearTitle',
 ];
 
 const NOT_RENDERED_PARAMS: MeasureKey[] = [
@@ -276,6 +286,7 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
   'measure.quantities.noMeshToMeasure',
   'measure.quantities.meshAreaIncomplete',
   'measure.quantities.rescaledVolume',
+  'measure.chip.label', // MeasurementsVisibilityChip.tsx, see NOT_RENDERED_IN_THIS_STATE above
 ];
 
 /** Runs the shared static-key check for one (english-before, marked-after) pair.

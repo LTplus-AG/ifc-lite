@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** One side of a clash rule, edited with the shared OR-of-groups UI (#5898). */
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
@@ -28,17 +28,23 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
   const models = useViewerStore((state) => state.models);
   const [activeGroup, setActiveGroup] = useState(0);
   const groups = filter ?? [emptyFilterGroup()];
+  const editorState = useRef<FilterGroupEditorState>({ groups, activeGroup });
+  editorState.current = { groups, activeGroup };
   const unreadable = unreadableRuleCount(filter);
 
   const commit = useCallback((updater: (previous: FilterGroupEditorState) => FilterGroupEditorState) => {
     // FilterGroupEditor updates its selected tab and groups together. The
     // parent owns the saved groups, so apply the same pure updater to its
     // latest draft rather than closing over a previous render's filter.
-    const nextIndex = updater({ groups, activeGroup }).activeGroup;
-    setActiveGroup(nextIndex);
+    const previousState = editorState.current;
+    const preview = updater(previousState);
+    // Keep consecutive clicks ordered even when React batches them before a
+    // render (e.g. add two groups, then add a rule to the newest group).
+    editorState.current = preview;
+    setActiveGroup(preview.activeGroup);
     onChange((previous) => {
       const previousGroups = previous ?? [emptyFilterGroup()];
-      const next = updater({ groups: previousGroups, activeGroup });
+      const next = updater({ groups: previousGroups, activeGroup: previousState.activeGroup });
       if (next.groups === previousGroups) return previous; // Selecting a tab is not an edit.
       // As before #5898, an explicit edit discards unreadable entries only
       // after the warning above. Retaining them would leave the run refused
@@ -47,7 +53,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
       // Clearing the final rule means selector fallback, never empty members.
       return activeClashSetFilter(editable) ? editable : undefined;
     });
-  }, [groups, activeGroup, onChange]);
+  }, [onChange]);
 
   return (
     <div className="space-y-1.5">

@@ -88,6 +88,18 @@ describe('ClashSetFilterEditor', () => {
     assert.deepEqual(tabs, ['Group 1(2)', 'Group 2(0)']);
   });
 
+  it('keeps the newest group active across batched clicks (#5898)', () => {
+    const { container, commits } = mount(TWO_RULES);
+    const addGroup = buttonByText(container, 'Add group');
+    act(() => {
+      addGroup.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      addGroup.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(commits.at(-1)?.length, 3);
+    const selected = container.querySelector('[role="tab"][aria-selected="true"]');
+    assert.equal(selected?.textContent?.trim(), 'Group 3(0)');
+  });
+
   it('offers no combinator or clear control when there is no filter yet', () => {
     const { container } = mount(undefined);
     const labels = [...container.querySelectorAll('button')].map((b) => (b.textContent ?? '').trim());

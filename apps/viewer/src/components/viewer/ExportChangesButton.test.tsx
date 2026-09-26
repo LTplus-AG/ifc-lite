@@ -107,7 +107,7 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
 
   it('records one completion for the reviewed IFC file after the browser download (#5844)', async () => {
     const ifcDataStore = await parseFixtureModel();
-    const model = { ...makeModel(), ifcDataStore, sourceFile: new File([ifcDataStore.source], 'model-1.ifc') };
+    const model = { ...makeModel(), ifcDataStore };
     const view = new MutablePropertyView(null, model.id);
     view.setAttribute(FIXTURE_WALL_A, 'Name', 'Reviewed edit');
     useViewerStore.setState({

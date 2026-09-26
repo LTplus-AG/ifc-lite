@@ -23,15 +23,15 @@ function isValidAnthropicModel(id: string): boolean {
 }
 
 /**
- * Default when nothing is in storage. Opus 5 plans a 25-tool loop better than
- * the cheaper entries and costs half what Fable 5 does, so it is worth naming
+ * Default when nothing is in storage. Opus 5.5 plans a 25-tool loop better than
+ * the cheaper entries and costs less than Fable 5.1, so it is worth naming
  * rather than taking whatever sorts first. It is checked against the registry
  * so a refresh that drops it degrades to the first Anthropic model instead of
  * sending a dead id to the API.
  */
-const PREFERRED_MODEL = 'claude-opus-5';
+const PREFERRED_MODEL = 'claude-opus-5-5';
 const FALLBACK_MODEL = isValidAnthropicModel(PREFERRED_MODEL)
-  ? PREFERRED_MODEL
+  ? canonicalModelId(PREFERRED_MODEL)
   : (getByokModelsForSource('anthropic')[0]?.id ?? PREFERRED_MODEL);
 
 export function getPlaygroundModel(): string {

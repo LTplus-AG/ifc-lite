@@ -8,7 +8,7 @@ import { downloadFile, modelExportFilename } from '@/lib/export/download.js';
 export type ExportedMutation = unknown;
 
 /**
- * The "Changes Only" export: the session's queued edits as a JSON delta.
+ * The "Changes only (JSON delta)" export: the session's queued edits as a JSON delta.
  *
  * Source-independent by construction — it is built from the mutation view
  * alone and never touches the model's `IfcDataStore`. That is what keeps it

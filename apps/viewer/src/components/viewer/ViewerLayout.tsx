@@ -16,6 +16,8 @@ import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { SettingsDialogHost } from './settings/SettingsDialog';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
@@ -26,6 +28,7 @@ import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomS
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
+import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { toast } from '@/components/ui/toast';
@@ -58,10 +61,9 @@ import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
+import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
 
-/** Technical query flag, not translated prose — kept as a plain constant
- *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
- *  styled `<code>` element `styleInterpolatedValues` substitutes in below. */
+/** Technical query flag rendered as code by the localized safe-mode notice. */
 const SAFE_MODE_QUERY_FLAG = '?safe=0';
 
 export function ViewerLayout() {
@@ -83,49 +85,10 @@ export function ViewerLayout() {
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
-  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
-  // a sample IFC into the viewer on first mount.
-  //
-  // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
-  // attacker-controllable (any link can set it), so honouring an arbitrary
-  // cross-origin URL is a drive-by model-injection vector. We resolve the param
-  // against the current document and require its origin to match
-  // window.location.origin; a cross-origin URL is refused, never fetched.
-  const { addModel: autoloadAddModel } = useIfc();
-  const autoloadDoneRef = useRef(false);
-  useEffect(() => {
-    if (autoloadDoneRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const modelUrl = params.get('model');
-    if (!modelUrl) return;
-    autoloadDoneRef.current = true;
-    // Resolve (supports relative paths) and enforce same-origin before fetching.
-    let resolvedUrl: URL;
-    try {
-      resolvedUrl = new URL(modelUrl, window.location.href);
-    } catch {
-      console.error('[viewer] autoload from ?model= refused: malformed URL');
-      return;
-    }
-    if (resolvedUrl.origin !== window.location.origin) {
-      console.error(
-        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
-      );
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(resolvedUrl.href);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const blob = await res.blob();
-        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
-        const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
-        await autoloadAddModel(file);
-      } catch (err) {
-        console.error('[viewer] autoload from ?model=… failed:', err);
-      }
-    })();
-  }, [autoloadAddModel]);
+  // Auto-load a model from ?model=<URL> (extracted to its own hook, #5851:
+  // a malformed/cross-origin/failed fetch now shows the load-error card
+  // instead of only `console.error`; see the hook's docblock).
+  useModelUrlAutoload();
 
   // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
   // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
@@ -186,10 +149,10 @@ export function ViewerLayout() {
       else shortcutsDialog.toggle();
     };
 
-    window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
+    window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
-      window.removeEventListener('ifc-lite:open-command-palette', openCommandPalette);
+      window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
       window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
   }, [shortcutsDialog]);
@@ -289,7 +252,6 @@ export function ViewerLayout() {
   useMobileLayoutMode();
 
   useThemeDocumentClass();
-
   const safeMode = isSafeMode();
 
   return (
@@ -305,10 +267,10 @@ export function ViewerLayout() {
             </span>
           </div>
         )}
-        {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
-
-        {/* Global Overlays */}
+        <SettingsDialogHost />
+        <ConfirmDialogHost />
+        {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
@@ -319,7 +281,7 @@ export function ViewerLayout() {
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
-        <AnonymizedExportDialog />
+        <AnonymizedExportDialog surface="context_menu" />
 
         {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
             user picks classic strip vs tabbed ribbon (issue #1686). */}
@@ -430,8 +392,8 @@ export function ViewerLayout() {
 
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
-              <div
-                className="absolute inset-0 bg-black/40 z-30 animate-in fade-in duration-200"
+              <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
+                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);
@@ -530,4 +492,3 @@ export function ViewerLayout() {
     </TooltipProvider>
   );
 }
-

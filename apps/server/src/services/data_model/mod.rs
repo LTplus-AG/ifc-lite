@@ -8,6 +8,7 @@ mod classifications;
 mod generated;
 mod documents;
 mod materials;
+mod material_units;
 mod metadata;
 mod properties;
 mod property_value;
@@ -24,6 +25,7 @@ use ifc_lite_core::{
     build_entity_index, extract_length_unit_scale, DecodedEntity, EntityDecoder, EntityScanner,
 };
 use materials::extract_materials;
+use material_units::MaterialUnitContext;
 use metadata::extract_entity_metadata;
 use properties::extract_properties;
 use quantities::extract_quantities;
@@ -161,6 +163,9 @@ where
         length_unit_scale = length_unit_scale,
         "Extracted length unit scale"
     );
+    let material_units = MaterialUnitContext::new(
+        &entities, &relationships, &mut unit_decoder, length_unit_scale,
+    );
 
     // Extract classifications, materials, and documents in parallel. These
     // follow the same `IfcRelAssociates*` pattern as the relationship pass but
@@ -176,7 +181,7 @@ where
                         &all_entities,
                         &content_arc,
                         &entity_index,
-                        length_unit_scale,
+                        &material_units,
                     )
                 },
             )

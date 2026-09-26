@@ -5,7 +5,7 @@
 /**
  * #5604: the hierarchy's "Remove model" used to call `removeModel` at once,
  * discarding a model's unexported edits without a word. A model with changes
- * (the per-model count the Export Changes badge sums) now asks first; a model
+ * (the per-model count the Export modified IFC… badge sums) now asks first; a model
  * without any is still removed straight away.
  */
 

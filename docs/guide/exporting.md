@@ -4,11 +4,11 @@ Guide to exporting IFC data in various formats.
 
 ## Textured IFC in the web viewer
 
-Normal IFC exports, visible subsets, and Export Changes package retained image
+Normal IFC exports, visible subsets, and Export modified IFC… package retained image
 resources into `.ifczip` automatically. The archive preserves original PNG/JPEG
 bytes, the IFC entry directory, and relative texture paths; authored images use
 content-addressed filenames. Untextured models continue to download as `.ifc`.
-SDK IFC exports and Export Changes omit unreachable appearance resources
+SDK IFC exports and Export modified IFC… omit unreachable appearance resources
 created by tracked commands, while the original session keeps those rows and
 images for Undo/Redo. Imported resources are preserved; this is not general
 cleanup of orphan entities from another authoring session.

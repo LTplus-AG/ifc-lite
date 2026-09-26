@@ -30,6 +30,7 @@ import type { SpatialIndex } from '@ifc-lite/spatial';
 import { buildEntityTable } from './serverEntityTable';
 import { buildSpatialHierarchy } from './serverSpatialHierarchy';
 import { buildRelationships } from './serverRelationships';
+import { resolvedServerMaterials } from './serverMaterials';
 export type { ServerQuantitySet } from './serverRelationships';
 
 // ============================================================================
@@ -75,12 +76,13 @@ export function convertServerDataModel(
   dataModel: DataModel,
   parseResult: ServerParseResult,
   file: { size: number },
-  allMeshes: MeshData[]
+  _allMeshes: MeshData[]
 ): IfcDataStore {
   const strings = new StringTable();
 
   // Regroup server-resolved classifications by element_id (#3955).
   const resolvedClassifications = new Map<number, ClassificationInfo[]>();
+  const resolvedMaterials = resolvedServerMaterials(dataModel.materials ?? []);
   for (const c of dataModel.classifications ?? []) {
     const info: ClassificationInfo = {
       system: c.system_name,
@@ -323,6 +325,7 @@ export function convertServerDataModel(
     quantities,
     relationships,
     resolvedClassifications,
+    resolvedMaterials,
     spatialHierarchy,
     spatialIndex,
     // IfcStoreBase accessors: server-parsed models carry pre-built property/

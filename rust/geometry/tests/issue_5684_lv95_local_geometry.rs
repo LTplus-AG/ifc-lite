@@ -271,10 +271,9 @@ fn issue_5684_local_structural_face_does_not_rebase_into_national_grid_magnitude
 #[test]
 fn issue_5684_true_raw_world_geometry_still_rebases() {
     // Pre-f32 paths must retain detail smaller than the f32 ULP at LV95.
-    // The generic polygonal processor already stores f32, so use exactly
-    // representable points there to assert final RTC placement independently.
-    // f32 processors can preserve values at this magnitude only when they are
-    // representable; improving sub-ULP raw-world detail is tracked by #5698.
+    // Exactly representable points assert final RTC placement independently;
+    // sub-ULP raw-world detail for every item family is covered by #5698's
+    // `issue_5698_raw_world_rtc_before_narrow`.
     for shape in [
         Shape::Polygonal,
         Shape::FaceBased,

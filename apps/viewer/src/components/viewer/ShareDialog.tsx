@@ -27,14 +27,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Copy, Link2, Loader2, Users } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -343,7 +338,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
             </div>
             {seedInFlight && seedLabel && (
               <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                <Spinner size="sm" className="shrink-0" />
                 <span>{seedLabel}</span>
               </p>
             )}

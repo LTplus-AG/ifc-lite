@@ -44,7 +44,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   // ActivityBar rail was its only entry point, the same gap Location zones
   // had before #2508, and the parity guard cannot see it: both toolbars
   // already reach `toggleWorkspacePanel` for other panels.
-  const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls();
+  const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls('ribbon');
 
   return (
     <>
@@ -113,7 +113,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               label={t('ribbon.file.room')}
               tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
-              onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+              onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
                   {collabPeerCount + 1}

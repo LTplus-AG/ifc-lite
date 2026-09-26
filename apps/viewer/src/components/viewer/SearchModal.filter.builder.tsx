@@ -22,6 +22,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -156,10 +157,9 @@ export function SearchModalFilterBuilder() {
 
   // ── Preset handlers ─────────────────────────────────────────────────
 
-  const handleSavePreset = useCallback(() => {
+  const handleSavePreset = useCallback(async () => {
     if (totalRules === 0) return;
-    // eslint-disable-next-line no-alert
-    const name = window.prompt(t('searchModal.filterBuilder.saveFilterPrompt'), '');
+    const name = await promptDialog({ description: t('searchModal.filterBuilder.saveFilterPrompt'), defaultValue: '' });
     if (!name) return;
     const result = saveFilter(name, filter.groups);
     setSavedPresets(result.presets);
@@ -168,7 +168,7 @@ export function SearchModalFilterBuilder() {
     if (!result.persisted) {
       toast.error(t('searchModal.filterBuilder.saveFilterFailed'));
     }
-  }, [filter.groups, totalRules]);
+  }, [filter.groups, totalRules, t]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
     setSearchFilter({

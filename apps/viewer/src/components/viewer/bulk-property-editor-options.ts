@@ -4,42 +4,48 @@
 
 import type { FilterOperator, MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcTypeEnum, type EntityTable } from '@ifc-lite/data';
+import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import type { TranslationKey } from '@/i18n';
 import { selectPluralCategory } from '@/i18n/registry';
+import { BULK_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
 
-/** Common IFC product types offered by the editor; patterns match canonical type names. */
-export const IFC_TYPE_MAP: Record<string, { labelKey: TranslationKey; pattern: string }> = {
-  IfcWall: { labelKey: 'bulkPropertyEditor.type.wall', pattern: 'Wall' },
-  IfcWallStandardCase: { labelKey: 'bulkPropertyEditor.type.wallStandard', pattern: 'WallStandardCase' },
-  IfcDoor: { labelKey: 'bulkPropertyEditor.type.door', pattern: 'Door' },
-  IfcWindow: { labelKey: 'bulkPropertyEditor.type.window', pattern: 'Window' },
-  IfcSlab: { labelKey: 'bulkPropertyEditor.type.slab', pattern: 'Slab' },
-  IfcColumn: { labelKey: 'bulkPropertyEditor.type.column', pattern: 'Column' },
-  IfcBeam: { labelKey: 'bulkPropertyEditor.type.beam', pattern: 'Beam' },
-  IfcRoof: { labelKey: 'bulkPropertyEditor.type.roof', pattern: 'Roof' },
-  IfcStair: { labelKey: 'bulkPropertyEditor.type.stair', pattern: 'Stair' },
-  IfcRailing: { labelKey: 'bulkPropertyEditor.type.railing', pattern: 'Railing' },
-  IfcCurtainWall: { labelKey: 'bulkPropertyEditor.type.curtainWall', pattern: 'CurtainWall' },
-  IfcCovering: { labelKey: 'bulkPropertyEditor.type.covering', pattern: 'Covering' },
-  IfcPlate: { labelKey: 'bulkPropertyEditor.type.plate', pattern: 'Plate' },
-  IfcMember: { labelKey: 'bulkPropertyEditor.type.member', pattern: 'Member' },
-  IfcFurnishingElement: { labelKey: 'bulkPropertyEditor.type.furniture', pattern: 'Furnishing' },
-  IfcBuildingElementProxy: { labelKey: 'bulkPropertyEditor.type.proxy', pattern: 'BuildingElementProxy' },
-  IfcSpace: { labelKey: 'bulkPropertyEditor.type.space', pattern: 'Space' },
-  IfcOpeningElement: { labelKey: 'bulkPropertyEditor.type.opening', pattern: 'Opening' },
+/**
+ * Common IFC product classes offered by the editor, keyed by exact class name.
+ * A target selects its class and that class's schema subtypes only
+ * (`classTargetEnums`).
+ */
+export const IFC_TYPE_MAP: Record<string, { labelKey: TranslationKey }> = {
+  IfcWall: { labelKey: 'bulkPropertyEditor.type.wall' },
+  IfcWallStandardCase: { labelKey: 'bulkPropertyEditor.type.wallStandard' },
+  IfcDoor: { labelKey: 'bulkPropertyEditor.type.door' },
+  IfcWindow: { labelKey: 'bulkPropertyEditor.type.window' },
+  IfcSlab: { labelKey: 'bulkPropertyEditor.type.slab' },
+  IfcColumn: { labelKey: 'bulkPropertyEditor.type.column' },
+  IfcBeam: { labelKey: 'bulkPropertyEditor.type.beam' },
+  IfcRoof: { labelKey: 'bulkPropertyEditor.type.roof' },
+  IfcStair: { labelKey: 'bulkPropertyEditor.type.stair' },
+  IfcRailing: { labelKey: 'bulkPropertyEditor.type.railing' },
+  IfcCurtainWall: { labelKey: 'bulkPropertyEditor.type.curtainWall' },
+  IfcCovering: { labelKey: 'bulkPropertyEditor.type.covering' },
+  IfcPlate: { labelKey: 'bulkPropertyEditor.type.plate' },
+  IfcMember: { labelKey: 'bulkPropertyEditor.type.member' },
+  IfcFurnishingElement: { labelKey: 'bulkPropertyEditor.type.furniture' },
+  IfcBuildingElementProxy: { labelKey: 'bulkPropertyEditor.type.proxy' },
+  IfcSpace: { labelKey: 'bulkPropertyEditor.type.space' },
+  IfcOpeningElement: { labelKey: 'bulkPropertyEditor.type.opening' },
 };
 
 export const FILTER_OPERATORS: { value: FilterOperator; labelKey: TranslationKey }[] = [
-  { value: '=', labelKey: 'bulkPropertyEditor.operator.equals' },
-  { value: '!=', labelKey: 'bulkPropertyEditor.operator.notEquals' },
-  { value: '>', labelKey: 'bulkPropertyEditor.operator.greater' },
-  { value: '<', labelKey: 'bulkPropertyEditor.operator.less' },
-  { value: '>=', labelKey: 'bulkPropertyEditor.operator.greaterOrEqual' },
-  { value: '<=', labelKey: 'bulkPropertyEditor.operator.lessOrEqual' },
-  { value: 'CONTAINS', labelKey: 'bulkPropertyEditor.operator.contains' },
-  { value: 'STARTS_WITH', labelKey: 'bulkPropertyEditor.operator.startsWith' },
-  { value: 'IS_NULL', labelKey: 'bulkPropertyEditor.operator.isNull' },
-  { value: 'IS_NOT_NULL', labelKey: 'bulkPropertyEditor.operator.isNotNull' },
+  { value: '=', labelKey: BULK_OPERATOR_LABEL_KEYS['='] },
+  { value: '!=', labelKey: BULK_OPERATOR_LABEL_KEYS['!='] },
+  { value: '>', labelKey: BULK_OPERATOR_LABEL_KEYS['>'] },
+  { value: '<', labelKey: BULK_OPERATOR_LABEL_KEYS['<'] },
+  { value: '>=', labelKey: BULK_OPERATOR_LABEL_KEYS['>='] },
+  { value: '<=', labelKey: BULK_OPERATOR_LABEL_KEYS['<='] },
+  { value: 'CONTAINS', labelKey: BULK_OPERATOR_LABEL_KEYS.CONTAINS },
+  { value: 'STARTS_WITH', labelKey: BULK_OPERATOR_LABEL_KEYS.STARTS_WITH },
+  { value: 'IS_NULL', labelKey: BULK_OPERATOR_LABEL_KEYS.IS_NULL },
+  { value: 'IS_NOT_NULL', labelKey: BULK_OPERATOR_LABEL_KEYS.IS_NOT_NULL },
 ];
 
 const PLURAL_SUFFIX = {
@@ -83,4 +89,19 @@ export function presentTypeEnums(entities: EntityTable, view: MutablePropertyVie
     if (typeof typeEnum === 'number' && !enumToTypeName.has(typeEnum)) enumToTypeName.set(typeEnum, name);
   }
   return enumToTypeName;
+}
+
+/**
+ * The present classes (from `presentTypeEnums`) a class target selects: the
+ * class itself and its schema subtypes, e.g. `IfcWallStandardCase` under
+ * `IfcWall`. Never a class that merely shares a name fragment
+ * (`IfcCurtainWall`, `IfcStairFlight`) or a type object (`IfcWallType`),
+ * which a substring match used to sweep in (#5864).
+ */
+export function classTargetEnums(target: string, present: ReadonlyMap<number, string>): number[] {
+  const enums: number[] = [];
+  for (const [typeEnum, typeName] of present) {
+    if (getInheritanceChainAcrossSchemas(typeName.toUpperCase()).includes(target)) enums.push(typeEnum);
+  }
+  return enums;
 }

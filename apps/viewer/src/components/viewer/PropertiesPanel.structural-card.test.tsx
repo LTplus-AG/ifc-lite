@@ -11,7 +11,7 @@ import '@/test/setup-dom.js';
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render } from '@/test/render.js';
+import { activate, cleanup, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { IfcParser } from '@ifc-lite/parser';
@@ -64,10 +64,16 @@ describe('PropertiesPanel structural-only selection', () => {
       selectedEntity: { modelId: MODEL_ID, expressId: 10 },
       selectedEntityId: ID_OFFSET + 10,
       selectedEntityIds: new Set([ID_OFFSET + 10]),
+      editEnabled: true,
     });
 
-    const text = render(<PropertiesPanel />).textContent ?? '';
+    const ui = render(<PropertiesPanel />);
+    const text = ui.textContent ?? '';
     assert.ok(text.includes('Structural Analysis'), `structural card in: ${text}`);
     assert.ok(!text.includes('No property sets'), `empty state must not hide the card: ${text}`);
+    const value = ui.querySelector<HTMLButtonElement>('button[title="Beam"]');
+    assert.ok(value, '#5823 inline attribute value must be a keyboard control');
+    activate(value, 'Enter');
+    assert.ok(ui.querySelector('input[value="Beam"]'), 'Enter opens editing for the selected IFC Name');
   });
 });

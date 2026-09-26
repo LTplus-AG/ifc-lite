@@ -13,6 +13,22 @@
  */
 
 const LS_IDENTITY_KEY = 'ifc-lite:collab:identity';
+export const MAX_COLLAB_DISPLAY_NAME_LENGTH = 64;
+
+/** Keep the display name suitable for local storage and live presence. */
+export function normalizeCollabDisplayName(value: string): string | null {
+  const name = value.trim().slice(0, MAX_COLLAB_DISPLAY_NAME_LENGTH).trim();
+  return name || null;
+}
+
+/** Normalize edits once before either storage or live presence receives them. */
+export function applyIdentityPatch(
+  current: EphemeralIdentity,
+  patch: Partial<Pick<EphemeralIdentity, 'name' | 'color'>>,
+): EphemeralIdentity | null {
+  const name = patch.name === undefined ? current.name : normalizeCollabDisplayName(patch.name);
+  return name === null ? null : { ...current, ...patch, name };
+}
 
 /**
  * Deterministic per-user color, replicated from `@ifc-lite/collab`'s

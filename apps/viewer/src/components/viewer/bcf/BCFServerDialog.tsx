@@ -12,7 +12,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, CloudDownload, Loader2, LogOut, XCircle } from 'lucide-react';
+import { CheckCircle2, CloudDownload, LogOut, XCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Dialog,
   DialogContent,
@@ -248,7 +249,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
                 <Label id="bcf-server-project-label">{t('bcf.serverDialog.projectLabel')}</Label>
                 {projects === null ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Spinner size="md" />
                     {t('bcf.serverDialog.loadingProjects')}
                   </div>
                 ) : projects.length === 0 ? (
@@ -317,7 +318,7 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
               disabled={busy || projects === null || !selectedProjectId}
             >
               {busy ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size="md" className="mr-2" />
               ) : (
                 <CloudDownload className="mr-2 h-4 w-4" />
               )}

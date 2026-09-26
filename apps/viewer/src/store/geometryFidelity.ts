@@ -13,6 +13,7 @@
  */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
+import { clearStickyQueryOverride } from './stickyQueryOverride.js';
 
 /** localStorage key for the sticky tessellation-tier override. */
 export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
@@ -120,47 +121,14 @@ export function getGeomTierOverride(): TessellationQuality | undefined {
 }
 
 /**
- * Drop `geomTier` from the address bar without navigating.
- *
- * Clearing localStorage alone is NOT enough: `getGeomTierOverride` re-reads the
- * query parameter on every call and re-persists it, so on the originating
- * `?geomTier=low` link the very next load would silently restore the pin - and
- * that link is precisely the case the clear action exists for. Stripping the
- * parameter also stops the user re-sharing a URL that re-pins the next reader.
- */
-function stripGeomTierParam(): void {
-  if (typeof window === 'undefined') return;
-  const href = window.location?.href;
-  // Guarded rather than try/caught so the no-DOM test/SSR paths stay silent:
-  // absence here is normal, only a real failure below deserves a warning.
-  if (typeof href !== 'string' || typeof window.history?.replaceState !== 'function') return;
-  try {
-    const url = new URL(href);
-    if (!url.searchParams.has('geomTier')) return;
-    url.searchParams.delete('geomTier');
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-  } catch (err) {
-    console.warn('[geom-tier] could not strip the URL parameter; the pin may return', err);
-  }
-}
-
-/**
  * Drop any stored `?geomTier=` override, restoring automatic tier selection.
  *
  * The override persists across sessions by design, but nothing in the URL says
- * so after the first visit, so this is the UI's way out (the Visibility menu's
- * "Detail pinned" row) alongside the pre-existing `?geomTier=auto`. Clears BOTH
- * homes of the pin - storage and query string - see `stripGeomTierParam`.
+ * so after the first visit. Settings → Performance is the UI's way out,
+ * alongside `?geomTier=auto`. Both storage and URL must be cleared.
  */
 export function clearGeomTierOverride(): void {
-  try {
-    localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
-  } catch (err) {
-    // Blocked/unavailable storage. Don't swallow silently (AGENTS.md); the
-    // in-memory store still clears, so this load behaves as requested.
-    console.warn('[geom-tier] clear failed; override may return on reload', err);
-  }
-  stripGeomTierParam();
+  clearStickyQueryOverride(GEOM_TIER_STORAGE_KEY, 'geomTier');
 }
 
 /**

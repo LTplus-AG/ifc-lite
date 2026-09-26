@@ -206,6 +206,8 @@ import {
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+export type { DeviationAssetStats } from './deviation/deviation-readback.js';
+import type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
@@ -1137,6 +1139,16 @@ export class Renderer {
      */
     async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
         return this.deviationComputer.compute(opts, {
+            device: this.device,
+            scene: this.scene,
+            pointCloudRenderer: this.pointCloudRenderer,
+            requestRender: () => this.requestRender(),
+        });
+    }
+
+    /** Read per-scan-asset signed-distance statistics after a completed run. */
+    async readDeviationAssetStats(): Promise<DeviationAssetStats[]> {
+        return this.deviationComputer.readAssetStats({
             device: this.device,
             scene: this.scene,
             pointCloudRenderer: this.pointCloudRenderer,

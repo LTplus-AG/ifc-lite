@@ -20,7 +20,8 @@
  */
 
 import { useMemo } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type {
   ChartNode,
   EmptyStateNode,
@@ -106,7 +107,7 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
   }, [rows, yField]);
   return (
     <div className="rounded-md border p-3 space-y-1.5">
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-2xs text-muted-foreground">
         {t('extensionsPanels.widgetRenderer.chartLabel', {
           variant: localizedChartVariant(node.variant, t),
         })}
@@ -197,7 +198,7 @@ export function RenderEmptyState({ node, ctx }: { node: EmptyStateNode; ctx: Wid
 export function RenderSpinner({ node }: { node: SpinnerNode }) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Loader2 className="h-3 w-3 animate-spin" />
+      <Spinner size="xs" />
       {node.label && <span>{node.label}</span>}
     </div>
   );

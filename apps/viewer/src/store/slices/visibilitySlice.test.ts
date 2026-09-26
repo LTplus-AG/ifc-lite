@@ -4,24 +4,25 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
+import { createStore } from 'zustand/vanilla';
 import { createVisibilitySlice, type VisibilitySlice } from './visibilitySlice.js';
 import { getPersistedTypeVisibility } from '../constants.js';
+import { useViewerStore, type ViewerState } from '../index.js';
 
 describe('VisibilitySlice', () => {
   let state: VisibilitySlice;
-  let setState: (partial: Partial<VisibilitySlice> | ((state: VisibilitySlice) => Partial<VisibilitySlice>)) => void;
 
   beforeEach(() => {
-    setState = (partial) => {
-      if (typeof partial === 'function') {
-        const updates = partial(state);
-        state = { ...state, ...updates };
-      } else {
-        state = { ...state, ...partial };
-      }
-    };
-
-    state = createVisibilitySlice(setState, () => state, {} as any);
+    // Give the slice its real cross-slice reset surface while keeping every
+    // assertion in this file isolated from the module-level viewer store.
+    const testStore = createStore<ViewerState>()((set, get, api) => ({
+      ...useViewerStore.getState(),
+      models: new Map(), selectedStoreys: new Set(), levelDisplayMode: 'stacked',
+      activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
+      ...createVisibilitySlice(set, get, api),
+    }));
+    state = testStore.getState();
+    testStore.subscribe((next) => { state = next; });
   });
 
   describe('initial state', () => {
@@ -227,14 +228,7 @@ describe('VisibilitySlice', () => {
       assert.strictEqual(state.hiddenEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
       assert.strictEqual(state.classFilter, null);
-      // NOTE: `ghostExceptEntities` is deliberately NOT asserted here.
-      // Unlike `showAll` / `clearAllFilters` / `setHiddenEntities`, this
-      // action does not clear it today, so an X-Ray context survives
-      // "Home / show all" (see resetVisibilityForHomeFromStore in
-      // store/homeView.ts). That looks like an oversight rather than a
-      // decision, but changing it is a behaviour change and needs a
-      // maintainer ruling — so this test pins only what the action
-      // currently promises instead of enshrining the gap either way.
+      assert.strictEqual(state.ghostExceptEntities, null);
     });
   });
 

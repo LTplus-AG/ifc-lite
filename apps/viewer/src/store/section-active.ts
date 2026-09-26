@@ -67,7 +67,7 @@ interface SectionWriterState extends SectionVisibilityState {
   setSectionPlanePosition: (position: number) => void;
   setSectionPlaneEnabled: (enabled: boolean) => void;
   flipSectionPlane: () => void;
-  setActiveTool: (tool: string) => void;
+  setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void;
 }
 
 /**
@@ -92,7 +92,7 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
   const state = getState();
   if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // parked until the tool opens
   if (getState().activeTool !== 'section') {
-    state.setActiveTool('section');
+    state.setActiveTool('section', 'programmatic');
   }
 }
 

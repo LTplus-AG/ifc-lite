@@ -8,7 +8,6 @@
 
 import type { StateCreator } from 'zustand';
 import {
-  HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
@@ -26,24 +25,14 @@ import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/re
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
+import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
+import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
 
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
-
-function getInitialHierarchyMode(): HierarchyMode {
-  if (typeof window === 'undefined') return 'spatial';
-  try {
-    const stored = localStorage.getItem(HIERARCHY_MODE_STORAGE_KEY);
-    if (stored === 'spatial' || stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
-      return stored;
-    }
-  } catch (err) {
-    console.warn('[hierarchy-mode] storage unavailable; using spatial', err);
-  }
-  return 'spatial';
-}
 
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).
@@ -122,6 +111,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
+  showPerformanceStats: boolean;
+  navigationPreset: NavigationPreset;
   visualEnhancementsEnabled: boolean;
   edgeContrastEnabled: boolean;
   edgeContrastIntensity: number;
@@ -156,7 +147,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
-  setActiveTool: (tool: string) => void;
+  setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
   /** Collapse the Space Sketch panel to a reopen pill (or restore it). */
   setSpaceSketchMinimized: (minimized: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;
@@ -171,6 +162,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleColorful: () => void;
   setIsMobile: (isMobile: boolean) => void;
   toggleHoverTooltips: () => void;
+  setShowPerformanceStats: (enabled: boolean) => void;
+  setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setEdgeContrastEnabled: (enabled: boolean) => void;
   setEdgeContrastIntensity: (intensity: number) => void;
@@ -201,23 +194,6 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setAnonymizedExportRequested: (requested: boolean) => void;
 }
 
-/** Apply the correct CSS classes on <html> for the given theme */
-function applyThemeClasses(theme: ThemeMode) {
-  const el = document.documentElement;
-  el.classList.toggle('dark', theme === 'dark');
-  el.classList.toggle('colorful', theme === 'colorful');
-}
-
-/**
- * True when any geometry is loaded — federated model map has entries, or
- * the legacy single-model `geometryResult` has a mesh. Centralised so the
- * merge-layers toggle has one source of truth for "is a model loaded?".
- */
-function hasLoadedModel(state: UICrossSliceState): boolean {
-  if (state.models.size > 0) return true;
-  return (state.geometryResult?.meshes.length ?? 0) > 0;
-}
-
 export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UISlice> = (set, get) => ({
   ...geometryLoadSettingsInitialState,
   ...createGeometryLoadSettings(set, get, () => hasLoadedModel(get())),
@@ -233,6 +209,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
+  showPerformanceStats: initialShowPerformanceStats(),
+  navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
   edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
@@ -329,11 +307,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setHierarchyMode: (mode) => {
     set({ hierarchyMode: mode });
-    try {
-      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, mode);
-    } catch (err) {
-      console.warn('[hierarchy-mode] persist failed; in-memory only', err);
-    }
+    persistHierarchyMode(mode);
   },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
@@ -365,6 +339,14 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setIsMobile: (isMobile) => set({ isMobile }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
+  setShowPerformanceStats: (showPerformanceStats) => {
+    persistShowPerformanceStats(showPerformanceStats);
+    set({ showPerformanceStats });
+  },
+  setNavigationPreset: (navigationPreset) => {
+    persistNavigationPreset(navigationPreset);
+    set({ navigationPreset });
+  },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setEdgeContrastEnabled: (edgeContrastEnabled) => set({ edgeContrastEnabled }),
   setEdgeContrastIntensity: (edgeContrastIntensity) => set({ edgeContrastIntensity }),

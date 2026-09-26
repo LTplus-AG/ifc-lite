@@ -12,6 +12,7 @@
  * which were minted in a different parse.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -102,18 +103,19 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
       new Blob([state.raw], { type: 'application/json' }),
       `${digest.replace(/^blake3:/, '').slice(0, 12)}-report.json`,
     );
+    trackExportCompleted({ format: 'json', surface: 'layer_evidence' });
   }, [state, digest]);
 
   if (state.kind === 'loading') {
-    return <p className="text-[10px] text-muted-foreground">{t('layersPanel.checkEvidence.loading')}</p>;
+    return <p className="text-2xs text-muted-foreground">{t('layersPanel.checkEvidence.loading')}</p>;
   }
   if (state.kind === 'offline') {
-    return <p className="text-[10px] text-muted-foreground">{t('layersPanel.checkEvidence.offline')}</p>;
+    return <p className="text-2xs text-muted-foreground">{t('layersPanel.checkEvidence.offline')}</p>;
   }
   if (state.kind === 'missing') {
-    return <p className="text-[10px] text-muted-foreground">{t('layersPanel.checkEvidence.missing')}</p>;
+    return <p className="text-2xs text-muted-foreground">{t('layersPanel.checkEvidence.missing')}</p>;
   }
-  if (state.kind === 'error') return <p className="text-[10px] text-red-500">{state.message}</p>;
+  if (state.kind === 'error') return <p className="text-2xs text-red-500">{state.message}</p>;
 
   const specs = state.parsed?.report?.specificationResults ?? [];
   const failures = specs.flatMap((spec) =>
@@ -125,7 +127,7 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
 
   return (
     <div className="flex flex-col gap-0.5 pt-0.5">
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-2xs text-muted-foreground">
         {state.parsed?.summary ? (
           <span>
             {t('layersPanel.checkEvidence.summary', {
@@ -156,7 +158,7 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
             type="button"
             disabled={!linkable}
             onClick={() => entity.globalId && selectEntity(entity.globalId)}
-            className={`rounded border bg-card/40 px-1 py-0.5 text-left text-[10px] ${
+            className={`rounded border bg-card/40 px-1 py-0.5 text-left text-2xs ${
               linkable ? 'hover:bg-muted/60' : 'cursor-default opacity-70'
             }`}
             title={
@@ -173,7 +175,7 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
         );
       })}
       {failures.length > shown.length && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t('layersPanel.checkEvidence.moreFailures', { count: failures.length - shown.length })}
         </p>
       )}

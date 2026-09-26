@@ -28,32 +28,32 @@ export function ModelSummary({ model, revision }: { model: LoadedPlaygroundModel
     <div className="flex flex-col gap-2 rounded-md border border-white/10 bg-white/[0.02] p-3">
       <div className="flex items-center gap-2">
         <FileText size={12} style={{ color: ACCENT }} />
-        <span className="text-[11.5px]" style={{ color: PAPER }}>
+        <span className="text-xs" style={{ color: PAPER }}>
           {model.name}
         </span>
       </div>
-      <dl className="grid grid-cols-3 gap-2 text-[11px]" style={{ ...mono, color: PAPER_DIM }}>
+      <dl className="grid grid-cols-3 gap-2 text-2xs" style={{ ...mono, color: PAPER_DIM }}>
         <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.schema')}</dt>
+          <dt className="text-2xs uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.schema')}</dt>
           <dd style={{ color: PAPER }}>{model.store.schemaVersion}</dd>
         </div>
         <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.entities')}</dt>
+          <dt className="text-2xs uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.entities')}</dt>
           <dd style={{ color: PAPER }}>{summary.entityCount.toLocaleString()}</dd>
         </div>
         <div>
-          <dt className="text-[9px] uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.file')}</dt>
+          <dt className="text-2xs uppercase tracking-[0.2em]">{t('mcp.mcpPlayground.file')}</dt>
           <dd style={{ color: PAPER }}>{formatBytes(model.fileSize)}</dd>
         </div>
       </dl>
 
       <div className="mt-1 border-t border-white/10 pt-2">
-        <div className="mb-1 text-[9px] uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
+        <div className="mb-1 text-2xs uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
           {t('mcp.mcpPlayground.topEntityTypes')}
         </div>
         <ul className="flex flex-col gap-0.5">
           {summary.top.map((row) => (
-            <li key={row.type} className="flex items-baseline justify-between gap-2 text-[11.5px]">
+            <li key={row.type} className="flex items-baseline justify-between gap-2 text-xs">
               <span className="truncate" style={{ ...mono, color: PAPER_DIM }}>
                 {row.type}
               </span>

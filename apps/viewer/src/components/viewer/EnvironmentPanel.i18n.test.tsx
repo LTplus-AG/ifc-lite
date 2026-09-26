@@ -150,7 +150,7 @@ describe('EnvironmentPanel localization (#4918 viewport/lighting slice, #5506 si
   it('renders a close button that calls onClose (#5506: the panel is docked, not floating — the host supplies onClose)', () => {
     let closed = false;
     const container = render(<EnvironmentPanel onClose={() => { closed = true; }} />);
-    const closeButton = container.querySelector('button[title="Close Environment panel"]');
+    const closeButton = container.querySelector('button[aria-label="Close Environment panel"]');
     assert.ok(closeButton, 'expected a close button wired to the registry title');
     act(() => { (closeButton as HTMLButtonElement).click(); });
     assert.strictEqual(closed, true, 'onClose must fire — mutating the click handler away must fail this test');

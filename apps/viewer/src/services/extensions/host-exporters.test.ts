@@ -221,7 +221,7 @@ describe('runExtensionExporter (#1907)', () => {
   });
 
   // #1930 review: two enabled extensions can declare the SAME exporter id.
-  // `ExtensionExportSlot` renders one button per `SlotContribution`, each
+  // Every export surface renders one row per `SlotContribution`, each
   // carrying its own `extensionId` — without threading that id through,
   // `runExtensionExporter` took the first match in storage order, so the
   // second extension's button silently ran the first extension's handler.

@@ -10,7 +10,10 @@
  * Unmatched entities with geometry are ghosted (semi-transparent).
  *
  * The pure evaluation logic lives in @ifc-lite/lens — this hook handles
- * React lifecycle and Zustand integration.
+ * React lifecycle and Zustand integration: evaluation, and the sync of the
+ * active lens's hidden ids into the shared `hiddenEntities` channel. It is
+ * mounted once, by `LensRuntimeHost`, so an active lens keeps applying while
+ * its panel is closed (#5877).
  *
  * Performance notes:
  * - Does NOT subscribe to `models` or `ifcDataStore` directly — reads them
@@ -35,9 +38,11 @@ import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
-import { useLensDiscovery } from './useLensDiscovery';
+import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
 
-export function useLens() {
+const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
+
+export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
   const savedLenses = useViewerStore((s) => s.savedLenses);
 
@@ -47,9 +52,6 @@ export function useLens() {
     () => savedLenses.find(l => l.id === activeLensId) ?? null,
     [activeLensId, savedLenses],
   );
-
-  // Run data discovery when models change (populates discoveredLensData in store)
-  useLensDiscovery();
 
   // Track the previously active lens to detect deactivation
   const prevLensIdRef = useRef<string | null>(null);
@@ -174,8 +176,39 @@ export function useLens() {
     });
   }, [activeLensId, activeLens, modelSetKey, mutationVersion]);
 
-  return {
-    activeLensId,
-    savedLenses,
-  };
+  // Identity, not `.size`: the evaluation above replaces the Set on every
+  // recompute, and a same-size content swap must still resync (#5206).
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
+
+  // planLensHiddenSync computes minimal show/hide deltas plus the ids the lens
+  // OWNS afterwards (only ids it newly hid — an id the user manually hid
+  // before or during the lens stays hidden after teardown). Ownership is
+  // persisted in the store, so a remount re-runs this as a no-op instead of
+  // losing track of (or double-claiming) the lens's hides.
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    const plan = planLensHiddenSync({
+      applied: state.lensAppliedHiddenIds,
+      hiddenEntities: state.hiddenEntities,
+      lensHiddenIds: activeLensId ? lensHiddenIds : EMPTY_LENS_HIDDEN,
+    });
+    if (plan.show.length > 0) state.showEntities(plan.show);
+    if (plan.hide.length > 0) state.hideEntities(plan.hide);
+    if (plan.nextApplied.length > 0 || state.lensAppliedHiddenIds.length > 0) {
+      state.setLensAppliedHiddenIds(plan.nextApplied);
+    }
+  }, [activeLensId, lensHiddenIds]);
+
+  // A lens deactivated while its panel is closed (a flavor switch clears
+  // activeLensId) leaves its recorded rule isolation with no owner. Release it
+  // here, panel or not; the channel is cleared only if the lens still owns it,
+  // so an isolation the user applied since is left alone.
+  useEffect(() => {
+    if (activeLensId !== null) return;
+    const state = useViewerStore.getState();
+    const isolation = state.lensRuleIsolation;
+    if (!isolation) return;
+    if (ruleIsolationOwnsChannel(state.isolatedEntities, isolation.entityIds)) state.clearIsolation();
+    state.setLensRuleIsolation(null);
+  }, [activeLensId]);
 }

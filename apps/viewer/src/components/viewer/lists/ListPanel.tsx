@@ -14,7 +14,7 @@
 import React, { useCallback, useState } from 'react';
 import { Table2, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import {
   summariseListRows,
@@ -196,22 +196,20 @@ export function ListPanel() {
         <div className="flex items-center gap-1">
           {view === 'results' && (
             <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={t('lists.panel.editConfiguration')} onClick={handleEditFromResults}>
-                    <Settings2 className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('lists.panel.editConfiguration')}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={t('lists.panel.backToLists')} onClick={() => setView('library')}>
-                    <Table2 className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('lists.panel.backToLists')}</TooltipContent>
-              </Tooltip>
+              <IconButton
+                label={t('lists.panel.editConfiguration')}
+                size="icon-sm"
+                onClick={handleEditFromResults}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </IconButton>
+              <IconButton
+                label={t('lists.panel.backToLists')}
+                size="icon-sm"
+                onClick={() => setView('library')}
+              >
+                <Table2 className="h-3.5 w-3.5" />
+              </IconButton>
             </>
           )}
           {view === 'builder' && (

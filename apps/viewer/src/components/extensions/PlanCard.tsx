@@ -24,6 +24,7 @@ import {
   type RiskTier,
 } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslation } from '@/i18n';
@@ -116,14 +117,13 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
                   <code className="text-[10px] text-muted-foreground font-mono">{c.slot}</code>
                 )}
                 {!readOnly && (
-                  <Button
+                  <IconButton
+                    label={t('extensionsPanels.planCard.removeContributionAriaLabel', { index: i })}
                     size="icon-xs"
-                    variant="ghost"
                     onClick={() => removeContribution(i)}
-                    aria-label={t('extensionsPanels.planCard.removeContributionAriaLabel', { index: i })}
                   >
                     <X className="h-3 w-3" />
-                  </Button>
+                  </IconButton>
                 )}
               </li>
             ))}

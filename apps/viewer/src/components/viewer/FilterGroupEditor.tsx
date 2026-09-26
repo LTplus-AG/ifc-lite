@@ -28,7 +28,7 @@
  * considers current at apply time, exactly like the store actions this
  * replaces (`searchSlice.filterGroups.ts`'s `set((state) => …)`).
  *
- * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` / `GroupTabs` /
+ * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` /
  * `useFilterRuleOptions` are reused UNCHANGED — this file only owns the
  * layout that used to sit directly in the builder.
  */
@@ -41,7 +41,7 @@ import type { FilterGroup } from '@ifc-lite/rules';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import { RuleRow } from './SearchModal.filter.editors';
-import { GroupTabs } from './SearchModal.filter.groupTabs';
+import { GroupTabsPanel } from './SearchModal.filter.groupTabs';
 import { clampGroupIndex } from '@/store/slices/searchSlice.filterGroups';
 import { useTranslation } from '@/i18n';
 
@@ -179,17 +179,8 @@ export function FilterGroupEditor({
     [onChange],
   );
 
-  return (
-    <div className="flex flex-col gap-3">
-      {groups.length > 1 && (
-        <GroupTabs
-          groups={groups}
-          activeIndex={activeIndex}
-          onSelect={setActiveGroup}
-          onRemove={removeGroup}
-        />
-      )}
-
+  const controls = (
+    <>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <CombinatorToggle value={active?.combinator ?? 'AND'} onChange={setCombinator} />
         <Button
@@ -222,6 +213,12 @@ export function FilterGroupEditor({
         ))}
         <AddRuleMenu onAdd={addRuleOfKind} allowedKinds={allowedKinds} />
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <GroupTabsPanel groups={groups} activeIndex={activeIndex} onSelect={setActiveGroup} onRemove={removeGroup}>
+      {controls}
+    </GroupTabsPanel>
   );
 }

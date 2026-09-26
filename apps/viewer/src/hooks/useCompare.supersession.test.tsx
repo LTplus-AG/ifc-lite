@@ -169,6 +169,22 @@ afterEach(async () => {
 // finished first, for a DIFFERENT pair ───────────────────────────────────
 
 describe('useCompare - supersession (#2802)', () => {
+  it('cancelComparison() hides progress immediately and discards late completion (#5831)', async () => {
+    let pending: Promise<void> | undefined;
+    act(() => { pending = hook!.runComparison(); });
+    assert.equal(useViewerStore.getState().compareRunning, true);
+
+    act(() => { hook!.cancelComparison(); });
+    assert.equal(useViewerStore.getState().compareRunning, false);
+    assert.equal(useViewerStore.getState().compareResult, null);
+
+    await act(async () => { await pending; });
+    const state = useViewerStore.getState();
+    assert.equal(state.compareRunning, false);
+    assert.equal(state.compareError, null);
+    assert.equal(state.compareResult, null, 'a late comparison must not publish after cancel');
+  });
+
   it('scenario 1: a slow run for pair A does not overwrite a fast run for pair B that finished first', async () => {
     // Start the slow run against SLOW while it is selected.
     let slowPending: Promise<void> | undefined;

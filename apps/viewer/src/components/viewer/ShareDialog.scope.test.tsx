@@ -168,7 +168,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     click(create);
     await settle();
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['a', 'c']);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
   });
 
   it('with two copies loaded, asks first: no room until "Create link", then shares both — active first', async () => {
@@ -205,7 +205,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     // The room now exists: the scope is fixed and the dialog reports it.
     for (const radio of scopeRadios()) assert.equal((radio as HTMLButtonElement).disabled, true);
     assert.equal(createLinkButton(), undefined);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
   });
 
   it('"Active model only" narrows the seed to the active model', async () => {
@@ -229,7 +229,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     await settle();
     assert.equal(starts.length, 1);
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['b']);
-    assert.match(document.body.textContent ?? '', /This room carries 1 model\./);
+    assert.match(document.body.textContent ?? '', /This session carries 1 model\./);
   });
 
   it('once the room exists the scope is fixed and the dialog reports what the room carries', async () => {
@@ -249,7 +249,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     render(<ShareDialog open onOpenChange={() => {}} />);
     await settle();
     for (const radio of scopeRadios()) assert.equal((radio as HTMLButtonElement).disabled, true);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
     assert.equal(starts.length, 0, 'an existing room is never re-seeded from the dialog');
   });
 });

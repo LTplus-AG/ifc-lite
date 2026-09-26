@@ -33,7 +33,24 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
  *  a storey row 12 px more for its name (#5394). */
 const HIERARCHY_INDENT_STEP_PX = 12;
 
-export interface HierarchyNodeProps {
+/** ARIA tree-row attributes plus the roving-tabIndex/focus wiring every row
+ *  type needs to behave as a `treeitem` (#5883) — computed once per rendered
+ *  list in `HierarchyPanel.tsx` (`ariaTreeAttrs.ts` + `useTreeKeyboard.ts`)
+ *  and threaded through here so `ModelHeaderRow`/`ModelTagGroupRow` apply
+ *  them on their own root element instead of duplicating the computation. */
+export interface HierarchyNodeAriaProps {
+  /** Optional so pre-existing unit tests that construct a row directly (not
+   *  through `HierarchyPanel.tsx`'s `renderNode`) don't all need updating for
+   *  a concern they aren't testing; `HierarchyPanel.tsx` always supplies them. */
+  ariaLevel?: number;
+  ariaSetSize?: number;
+  ariaPosInSet?: number;
+  tabIndex?: 0 | -1;
+  rowRef?: (el: HTMLElement | null) => void;
+  onRowFocus?: () => void;
+}
+
+export interface HierarchyNodeProps extends HierarchyNodeAriaProps {
   node: TreeNode;
   virtualRow: { size: number; start: number };
   isSelected: boolean;
@@ -71,6 +88,12 @@ export function HierarchyNode({
   onModelHeaderClick,
   sourceBacked = false,
   sourceSyncing = false,
+  ariaLevel = 1,
+  ariaSetSize = 1,
+  ariaPosInSet = 1,
+  tabIndex = -1,
+  rowRef,
+  onRowFocus,
 }: HierarchyNodeProps) {
   const { t, locale } = useTranslation();
   const resolvedType = node.ifcType || node.type;
@@ -94,7 +117,20 @@ export function HierarchyNode({
       : 'text-zinc-700 dark:text-zinc-300';
   const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
   const noGeometry = isNoGeometryNode(node);
-  if (node.type === 'model-tag-group') return <ModelTagGroupRow node={node} virtualRow={virtualRow} />;
+  if (node.type === 'model-tag-group') {
+    return (
+      <ModelTagGroupRow
+        node={node}
+        virtualRow={virtualRow}
+        ariaLevel={ariaLevel}
+        ariaSetSize={ariaSetSize}
+        ariaPosInSet={ariaPosInSet}
+        tabIndex={tabIndex}
+        rowRef={rowRef}
+        onRowFocus={onRowFocus}
+      />
+    );
+  }
   // Model header nodes (for visibility control and expansion)
   if (node.type === 'model-header' && node.id.startsWith('model-')) {
     return (
@@ -109,6 +145,12 @@ export function HierarchyNode({
         onModelHeaderClick={onModelHeaderClick}
         sourceBacked={sourceBacked}
         sourceSyncing={sourceSyncing}
+        ariaLevel={ariaLevel}
+        ariaSetSize={ariaSetSize}
+        ariaPosInSet={ariaPosInSet}
+        tabIndex={tabIndex}
+        rowRef={rowRef}
+        onRowFocus={onRowFocus}
       />
     );
   }
@@ -138,13 +180,19 @@ export function HierarchyNode({
       }}
     >
       <div
+        ref={rowRef}
         role="treeitem"
-        tabIndex={0}
-        aria-level={node.depth + 1}
-        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        aria-level={ariaLevel}
+        aria-setsize={ariaSetSize}
+        aria-posinset={ariaPosInSet}
         aria-selected={isSelected}
+        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        data-node-id={node.id}
+        tabIndex={tabIndex}
+        onFocus={onRowFocus}
         className={cn(
           'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           // No selection styling for spatial containers in multi-model mode
           isMultiModel && isSpatialContainer(node.type)
             ? 'border-transparent cursor-default'
@@ -167,11 +215,10 @@ export function HierarchyNode({
             onNodeClick(node, e);
           }
         }}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
-          e.preventDefault();
-          onNodeClick(node, e);
-        }}
+        // No row-level Enter/Space handler: the tree container's onKeyDown
+        // (useTreeKeyboard) already handles it for every row uniformly —
+        // one here too would double-activate (#5823 part 1 added one, this
+        // #6139 review round removed it).
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();
@@ -182,6 +229,8 @@ export function HierarchyNode({
         {node.hasChildren ? (
           <button
             disabled={searchActive}
+            // Not in the tab order: the treeitem itself is (roving tabIndex).
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.id);

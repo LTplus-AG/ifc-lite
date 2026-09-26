@@ -220,10 +220,24 @@ export function useTreeKeyboard({
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       // A row contains real buttons (chevron, visibility, actions). Their
-      // own key handlers must not also activate or navigate the tree row.
+      // own key handlers must not also activate or navigate the tree row —
+      // bail out unless the event target IS the container (the active row
+      // isn't mounted, #6139 review's virtualization fix) or a treeitem
+      // itself (the normal case).
       if (e.target !== e.currentTarget &&
           (!(e.target instanceof Element) || e.target.getAttribute('role') !== 'treeitem')) return;
-      const currentIndex = nodes.findIndex((n) => n.id === activeNodeId);
+      // Resolve which row this keydown is ABOUT from the real DOM event
+      // target first, falling back to `activeNodeId` state only when there
+      // is none (the container-target case above). A native `focus()`
+      // immediately followed by a synchronous `keydown` dispatch (a real
+      // user's Tab-then-Enter, and how `HierarchyPanel.federation.test.tsx`'s
+      // `activate()` helper drives this) can outrun the `onFocus`-driven
+      // `setRequestedActiveId` state update reaching a re-render before this
+      // handler runs — reading the DOM directly means this never depends on
+      // that timing.
+      const targetNodeId = (e.target as HTMLElement).closest?.('[data-node-id]')?.getAttribute('data-node-id') ?? null;
+      const resolvedNodeId = targetNodeId ?? activeNodeId;
+      const currentIndex = nodes.findIndex((n) => n.id === resolvedNodeId);
       if (currentIndex === -1) return;
       const node = nodes[currentIndex];
       const shiftExtend: NodeActivationModifiers | undefined = e.shiftKey

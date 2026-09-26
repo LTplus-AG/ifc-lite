@@ -215,6 +215,10 @@ export function HierarchyNode({
             onNodeClick(node, e);
           }
         }}
+        // No row-level Enter/Space handler: the tree container's onKeyDown
+        // (useTreeKeyboard) already handles it for every row uniformly —
+        // one here too would double-activate (#5823 part 1 added one, this
+        // #6139 review round removed it).
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();
@@ -225,9 +229,7 @@ export function HierarchyNode({
         {node.hasChildren ? (
           <button
             disabled={searchActive}
-            // Not in the tab order: the treeitem itself is (roving tabIndex,
-            // #5883) — a Tab from a treeitem must go to the NEXT treeitem,
-            // not stop on this button first (APG tree pattern).
+            // Not in the tab order: the treeitem itself is (roving tabIndex).
             tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();

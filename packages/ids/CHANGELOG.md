@@ -1,5 +1,14 @@
 # @ifc-lite/ids
 
+## 3.0.4
+
+### Patch Changes
+
+- [#6069](https://github.com/LTplus-AG/ifc-lite/pull/6069) [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b) Thanks [@louistrue](https://github.com/louistrue)! - Preserve server forwarded IFC material associations and their names, categories, and definition identities so server parsed models can evaluate material values without mistaking partial legacy payloads for verified mismatches.
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/parser@9.0.1
+
 ## 3.0.3
 
 ### Patch Changes

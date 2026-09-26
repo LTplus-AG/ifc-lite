@@ -1,5 +1,13 @@
 # @ifc-lite/renderer
 
+## 5.0.1
+
+### Patch Changes
+
+- [#5986](https://github.com/LTplus-AG/ifc-lite/pull/5986) [`50ffd9f`](https://github.com/LTplus-AG/ifc-lite/commit/50ffd9fab110f47411994e3ab47d5dcf0edc57dc) Thanks [@louistrue](https://github.com/louistrue)! - `setOverlayTheme` now repaints a focused clash pair ([#5490](https://github.com/LTplus-AG/ifc-lite/issues/5490)). The pair is painted through `Scene.setColorOverrides`, whose overlay batches bake the colour in, so a theme switch left the previous theme's tints on screen. Any installed colour override exactly equal to the previous theme's `clashA` / `clashB` is now rebuilt in the new theme's values; other override colours are untouched, and nothing is rebuilt when neither tint changes. `Scene.setColorOverrides` also deep-copies the colours it retains, so a caller that later mutates a tuple it passed in can no longer make `getColorOverrides()` disagree with what is drawn.
+
+- [#6095](https://github.com/LTplus-AG/ifc-lite/pull/6095) [`817e3ef`](https://github.com/LTplus-AG/ifc-lite/commit/817e3ef3fe27e26081fdc43edb1819d1e31a4919) Thanks [@louistrue](https://github.com/louistrue)! - Add export-only `readDeviationAssetStats()` after a completed scan deviation run. It returns signed-distance minimum, maximum and mean per scan asset, with model indices for federation attribution, and releases each GPU staging buffer after readback.
+
 ## 5.0.0
 
 ### Major Changes

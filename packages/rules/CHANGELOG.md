@@ -1,5 +1,20 @@
 # @ifc-lite/rules
 
+## 0.5.0
+
+### Minor Changes
+
+- [#6146](https://github.com/LTplus-AG/ifc-lite/pull/6146) [`236b076`](https://github.com/LTplus-AG/ifc-lite/commit/236b076ca7ee967691380335b4637a5be3c61562) Thanks [@louistrue](https://github.com/louistrue)! - Add total Lens, Lists, and Bulk filter operator adapters with semantic parity and inverse mappings.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`48e64d4`](https://github.com/LTplus-AG/ifc-lite/commit/48e64d44d418c913860c21e457d9053690ebd66c), [`28ae5b0`](https://github.com/LTplus-AG/ifc-lite/commit/28ae5b0bf1ce37fd592651113f3e765caa980291), [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b), [`efc652c`](https://github.com/LTplus-AG/ifc-lite/commit/efc652c475f71b0d884d5c746b3156516618d1e3)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/mutations@2.9.0
+  - @ifc-lite/parser@9.0.1
+  - @ifc-lite/ids@3.0.4
+  - @ifc-lite/lists@2.3.4
+
 ## 0.4.1
 
 ### Patch Changes

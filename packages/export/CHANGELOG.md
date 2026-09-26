@@ -1,5 +1,23 @@
 # @ifc-lite/export
 
+## 4.7.5
+
+### Patch Changes
+
+- [#5992](https://github.com/LTplus-AG/ifc-lite/pull/5992) [`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24) Thanks [@louistrue](https://github.com/louistrue)! - An `IfcAxis2Placement3D` with an absent (`$`) `RefDirection` now gets the same local X axis everywhere in TypeScript as the renderer draws ([#5922](https://github.com/LTplus-AG/ifc-lite/issues/5922)). The new `firstProjAxis(axis)` export in `@ifc-lite/data` is the one TypeScript copy of that fill. It mirrors `build_axis2_matrix` in the Rust geometry crate: world X projected onto the plane normal to the Axis, and `(0,0,1) x Axis` when that projection is shorter than 1e-6. So an Axis of exactly -X gets `(0,-1,0)`.
+  
+  Model compare used world Y there. That turned the compared frame 180 degrees about the Axis relative to the viewer. The LOD0 exporter, the viewer's storey display elevation, and collab `placementToMatrix` each had their own fallback, and those gave a frame 90 degrees off for ±X Axes. The viewer's slab split read such a solid Position as identity. All of these now call `firstProjAxis`, as does `@ifc-lite/create` when it completes an Axis-only placement.
+
+- [#6008](https://github.com/LTplus-AG/ifc-lite/pull/6008) [`09c1970`](https://github.com/LTplus-AG/ifc-lite/commit/09c19701c4373bdda931b52d86fb4c910cfc6e2e) Thanks [@louistrue](https://github.com/louistrue)! - `MergedExporter`: an IFC2X3 merge no longer writes a second `IfcRelDefinesByProperties` for a property set a later model repeats by GlobalId ([#5774](https://github.com/LTplus-AG/ifc-lite/issues/5774)). IFC2X3 bounds `IfcPropertySetDefinition.PropertyDefinitionOf` to one relationship; the later model's rel is now dropped, and any object only it defined is added to the property set's one written rel instead. IFC4 and IFC4X3 are unchanged, since `DefinesOccurrence` is `SET [0:?]` there. The one-parent pass behind [#5471](https://github.com/LTplus-AG/ifc-lite/issues/5471)/[#5726](https://github.com/LTplus-AG/ifc-lite/issues/5726) is now one table of single-valued inverses per output schema, checked against the EXPRESS schemas.
+
+- [#6047](https://github.com/LTplus-AG/ifc-lite/pull/6047) [`0476281`](https://github.com/LTplus-AG/ifc-lite/commit/0476281b0476ec65564e65b6fc7cfe729a3982bb) Thanks [@louistrue](https://github.com/louistrue)! - `StepExporter` now cleans up references in created (overlay) entities the way it already did for source records: a created `IfcStyledItem`, layer assignment, texture map or non-relationship aggregate (e.g. `IfcShapeRepresentation.Items`) that names a deleted or otherwise omitted entity is narrowed or withheld with a warning, instead of being written with a dangling `#id` ([#5941](https://github.com/LTplus-AG/ifc-lite/issues/5941) review).
+
+- [#6012](https://github.com/LTplus-AG/ifc-lite/pull/6012) [`0f52c72`](https://github.com/LTplus-AG/ifc-lite/commit/0f52c72f1ff739ba9f8dc061e45223e9a1307761) Thanks [@louistrue](https://github.com/louistrue)! - STEP export copies a shared property set on write ([#5794](https://github.com/LTplus-AG/ifc-lite/issues/5794)). Editing an `IfcPropertySet` or `IfcElementQuantity` that one `IfcRelDefinesByProperties` relates to several elements now gives only the edited element its own set and relation, and removes it from the shared relation's `RelatedObjects`; the other elements keep the original set. A type-owned set that another type object's `HasPropertySets` still names is also kept, where it used to be dropped and left that type pointing at a missing record. Before, the shared relation and set were dropped, so every other element lost the set. The regenerated set also references the source member of every property the session did not edit, so list, enumerated, bounded, table, reference and complex properties keep their IFC class instead of being written back as single-value text.
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`48e64d4`](https://github.com/LTplus-AG/ifc-lite/commit/48e64d44d418c913860c21e457d9053690ebd66c), [`28ae5b0`](https://github.com/LTplus-AG/ifc-lite/commit/28ae5b0bf1ce37fd592651113f3e765caa980291), [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b), [`efc652c`](https://github.com/LTplus-AG/ifc-lite/commit/efc652c475f71b0d884d5c746b3156516618d1e3)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/mutations@2.9.0
+  - @ifc-lite/parser@9.0.1
+
 ## 4.7.4
 
 ### Patch Changes

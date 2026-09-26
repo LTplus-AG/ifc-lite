@@ -1,5 +1,13 @@
 # @ifc-lite/charts
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`236b076`](https://github.com/LTplus-AG/ifc-lite/commit/236b076ca7ee967691380335b4637a5be3c61562)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/rules@0.5.0
+
 ## 0.6.1
 
 ### Patch Changes

@@ -1,5 +1,30 @@
 # @ifc-lite/mutations
 
+## 2.9.0
+
+### Minor Changes
+
+- [#6003](https://github.com/LTplus-AG/ifc-lite/pull/6003) [`48e64d4`](https://github.com/LTplus-AG/ifc-lite/commit/48e64d44d418c913860c21e457d9053690ebd66c) Thanks [@louistrue](https://github.com/louistrue)! - Bulk "Set Attribute" now writes the attribute ([#5867](https://github.com/LTplus-AG/ifc-lite/issues/5867)).
+  
+  `BulkQueryEngine`'s `SET_ATTRIBUTE` action used to be skipped for every entity, so a run reported success with nothing changed. It now writes through `MutablePropertyView.setAttribute`, the same path the Properties panel uses, and records the overlay value it replaces so the run undoes cleanly.
+  
+  `SET_ATTRIBUTE.attribute` takes the exact EXPRESS attribute name, one of the new `BULK_WRITABLE_ATTRIBUTES` export (`Name`, `Description`, `ObjectType`, `Tag`). The old lower-case spellings (`name`, `description`, `objectType`) never wrote anything and are now refused. An entity whose effective class (a retype wins) does not declare the attribute, for example `ObjectType` on a type object or `Tag` on a storey, fails the run with a per-entity error instead of being skipped silently. `BulkQueryEngine` takes the model's `schemaVersion` as a new optional last constructor argument so that check follows the file's own schema; without it, every bundled schema must declare the attribute. An unwritable attribute name is refused once for the whole run. The Bulk editor offers the same list, `Tag` included, and passes the model's schema.
+
+- [#5997](https://github.com/LTplus-AG/ifc-lite/pull/5997) [`28ae5b0`](https://github.com/LTplus-AG/ifc-lite/commit/28ae5b0bf1ce37fd592651113f3e765caa980291) Thanks [@louistrue](https://github.com/louistrue)! - Ctrl+Z reaches Bulk edits and CSV imports on any loaded model ([#5958](https://github.com/LTplus-AG/ifc-lite/issues/5958)).
+  
+  - The Bulk editor and the CSV importer default to the active model, and a run on another loaded model makes that model active. Undo replays the active model's history, so a run recorded on a different model used to be unreachable from Ctrl+Z and the ribbon Undo (it is reachable again whenever its model is active).
+  - A run is recorded chunk by chunk under one batch id, so it is one undo step unless another edit lands while it yields; that edit then keeps its place in history between the run's parts (one Ctrl+Z each). Previously the run was recorded only at the end, on top of that edit, and undoing the run overwrote it.
+  - A Bulk run cancelled during its last yield no longer reports "Cancelled after N of N".
+  
+  `CsvConnector` (`@ifc-lite/mutations`) no longer loses track of writes when an import throws partway. `import()` and `importAsync()` report every mutation that reached the view in `stats.mutations` and `mutationsCreated`, including the ones applied before a transform or `setProperty` threw, so a host can still undo them. `importAsync()` takes a new `onApplied` option, called after each apply batch with the mutations it wrote (the failing batch's applied part included), so a host can record undo history as the import goes.
+
+- [#6005](https://github.com/LTplus-AG/ifc-lite/pull/6005) [`efc652c`](https://github.com/LTplus-AG/ifc-lite/commit/efc652c475f71b0d884d5c746b3156516618d1e3) Thanks [@louistrue](https://github.com/louistrue)! - Undo and redo now work for creating or deleting a whole property set, and for whole quantity-set creation and quantity or quantity-set deletion ([#5965](https://github.com/LTplus-AG/ifc-lite/issues/5965)). Each whole-set mutation records its set's overlay rows before and after the edit on the new `Mutation.setOverlay` field (typed `SetOverlaySnapshot`), and `MutablePropertyView.restoreSetOverlay` puts either side back exactly. Previously the viewer moved these entries between the undo and redo stacks without touching the view, so an undone set still reached the panel and "Export changes", and an undone deletion stayed deleted.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24)]:
+  - @ifc-lite/data@6.1.0
+
 ## 2.8.0
 
 ### Minor Changes

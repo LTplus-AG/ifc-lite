@@ -15,8 +15,8 @@
  * `useClash` it mounts, `useColorOverlaySync` handing the paint to a real
  * `Renderer`'s `Scene`, the theme effect in `useRenderUpdates`, and the dots'
  * colour as the app's compiled stylesheet resolves it. Only the GPU objects are
- * stand-ins: this test observes the colors sent to the scene and does not
- * exercise GPU uploads.
+ * stand-ins: this test observes the colors sent to the scene, while the fake
+ * GPU accepts the color-table upload without allocating hardware resources.
  * What the scene was HANDED is recorded per rebuild, as a copy, because that is
  * what its batches are built from.
  */
@@ -111,16 +111,21 @@ async function seed(): Promise<void> {
 type Rgba = [number, number, number, number];
 
 function makeRenderer(): { renderer: Renderer; builds: Array<Map<number, number[]>> } {
+  Object.assign(globalThis, { GPUBufferUsage: { STORAGE: 128, COPY_DST: 8 } });
   const renderer = new Renderer({
     width: 256, height: 256, getBoundingClientRect: () => ({ width: 256, height: 256 }),
   } as unknown as HTMLCanvasElement);
   const fields = renderer as unknown as Record<string, unknown>;
-  fields['device'] = { isInitialized: () => true, getDevice: () => ({ limits: {} }) };
+  fields['device'] = { isInitialized: () => true, getDevice: () => ({
+    limits: {}, createBuffer: () => ({ destroy() {} }), queue: { writeBuffer() {} },
+  }) };
   fields['pipeline'] = { selectionColorUniform: { update() { /* not asserted */ } } };
   const scene = renderer.getScene() as unknown as { setColorOverrides(o: Map<number, Rgba>, d: unknown, p: unknown): void };
   const builds: Array<Map<number, number[]>> = [];
-  scene.setColorOverrides = (o) => {
+  const real = scene.setColorOverrides.bind(scene);
+  scene.setColorOverrides = (o, d, p) => {
     builds.push(new Map([...o].map(([id, c]) => [id, [...c]])));
+    real(o, d, p);
   };
   return { renderer, builds };
 }

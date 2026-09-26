@@ -70,6 +70,7 @@ it('#5823 list resize grips adjust and reset widths from the keyboard', () => {
   const ui = render(<ListResultsTable result={result} modelUnits={modelUnits} />);
   const grip = ui.querySelector('button[aria-label*="arrow keys to adjust"]') as HTMLButtonElement;
   assert.ok(grip);
+  assert.match(grip.getAttribute('aria-label') ?? '', /Name/);
   const header = grip.parentElement as HTMLElement;
   const initialWidth = Number.parseFloat(header.style.width);
   press(grip, 'ArrowRight');
@@ -102,4 +103,17 @@ it('#5823 pointer dragging still resizes a column after sharing its grip', () =>
     window.dispatchEvent(new window.MouseEvent('mouseup'));
   });
   assert.equal(Number.parseFloat(header.style.width), initialWidth + 20);
+});
+
+it('#5823 unmounting an active resize restores document interaction', () => {
+  const ui = render(<ListResultsTable result={result} modelUnits={modelUnits} />);
+  const grip = ui.querySelector<HTMLButtonElement>('button[aria-label*="arrow keys to adjust"]');
+  assert.ok(grip);
+  const cursor = document.body.style.cursor;
+  const userSelect = document.body.style.userSelect;
+  mouseDown(grip, { clientX: 100 });
+  assert.equal(document.body.style.userSelect, 'none');
+  cleanup();
+  assert.equal(document.body.style.cursor, cursor);
+  assert.equal(document.body.style.userSelect, userSelect);
 });

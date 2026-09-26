@@ -257,6 +257,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
           else commit(target, index);
         }}
         onKeyDown={(e) => {
+          if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') return;
           if (filtered.length === 0) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();

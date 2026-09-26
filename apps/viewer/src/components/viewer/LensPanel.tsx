@@ -981,7 +981,7 @@ function LensCard({
           type="button"
           aria-pressed={isActive}
           onClick={() => onToggle(lens.id)}
-          className="flex items-center gap-2 min-w-0 cursor-pointer text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          className="flex flex-1 items-center justify-between gap-2 min-w-0 self-stretch cursor-pointer text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
         >
           {isActive ? (
             <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />
@@ -992,6 +992,11 @@ function LensCard({
           )}
           <span className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 truncate">
             {lens.name}
+          </span>
+          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono ml-auto shrink-0">
+            {isAutoColor
+              ? t(TYPE_LABEL_KEYS[lens.autoColor!.source])
+              : t('lensPanel.card.ruleCount', { count: enabledRuleCount })}
           </span>
         </button>
         <div className="flex items-center gap-1">
@@ -1022,11 +1027,6 @@ function LensCard({
               <Trash2 className="h-3 w-3" />
             </button>
           )}
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono ml-1">
-            {isAutoColor
-              ? t(TYPE_LABEL_KEYS[lens.autoColor!.source])
-              : t('lensPanel.card.ruleCount', { count: enabledRuleCount })}
-          </span>
         </div>
       </div>
 

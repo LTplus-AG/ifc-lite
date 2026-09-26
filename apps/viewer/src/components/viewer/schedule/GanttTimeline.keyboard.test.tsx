@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { cleanup, press, render } from '@/test/render.js';
 import type { ScheduleExtraction } from '@ifc-lite/parser';
 import { GanttTimeline } from './GanttTimeline.js';
+import { advanceCalendarTime } from './schedule-utils.js';
 
 const DAY = 86_400_000;
 const data: ScheduleExtraction = { tasks: [], workSchedules: [], sequences: [], hasSchedule: false };
@@ -34,6 +35,7 @@ it('#5823 seeks the Gantt timeline with arrow, Home, and End keys', () => {
   );
   const timeline = ui.querySelector<SVGSVGElement>('svg[role="slider"]');
   assert.ok(timeline, 'timeline must be keyboard focusable');
+  assert.match(timeline.getAttribute('aria-valuetext') ?? '', /1970/);
   press(timeline, 'ArrowRight');
   assert.equal(seeks.at(-1), 2 * DAY);
   press(timeline, 'ArrowLeft');
@@ -42,4 +44,22 @@ it('#5823 seeks the Gantt timeline with arrow, Home, and End keys', () => {
   assert.equal(seeks.at(-1), 0);
   press(timeline, 'End');
   assert.equal(seeks.at(-1), 3 * DAY);
+});
+
+it('#5823 seeks in calendar units across month ends and daylight saving time', () => {
+  const previousTimezone = process.env.TZ;
+  try {
+    process.env.TZ = 'Europe/Zurich';
+    assert.equal(
+      advanceCalendarTime(new Date(2025, 0, 31, 12).getTime(), 'month', 1),
+      new Date(2025, 1, 28, 12).getTime(),
+    );
+    assert.equal(
+      advanceCalendarTime(new Date(2025, 2, 29, 12).getTime(), 'day', 1),
+      new Date(2025, 2, 30, 12).getTime(),
+    );
+  } finally {
+    if (previousTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimezone;
+  }
 });

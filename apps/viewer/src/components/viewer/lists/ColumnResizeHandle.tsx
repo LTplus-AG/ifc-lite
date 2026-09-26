@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type React from 'react';
+import { useEffect, useRef } from 'react';
 
 interface ColumnResizeHandleProps {
   columnId: string;
@@ -12,21 +13,29 @@ interface ColumnResizeHandleProps {
 }
 /** A pointer resize grip with equivalent arrow-key resizing and Home reset. */
 export function ColumnResizeHandle({ columnId, width, title, setWidthOverrides }: ColumnResizeHandleProps) {
+  const cleanupResizeRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => cleanupResizeRef.current?.(), []);
+
   const startResize = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    cleanupResizeRef.current?.();
     const startX = event.clientX;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
     const onMove = (move: MouseEvent) => setWidthOverrides((previous) => ({
       ...previous, [columnId]: Math.max(56, width + move.clientX - startX),
     }));
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      window.removeEventListener('mouseup', cleanup);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      cleanupResizeRef.current = null;
     };
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mouseup', cleanup);
+    cleanupResizeRef.current = cleanup;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   };

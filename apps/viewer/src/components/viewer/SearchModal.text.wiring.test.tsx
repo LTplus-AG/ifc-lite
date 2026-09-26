@@ -360,5 +360,8 @@ describe('Search tab — the additive (Shift) path', () => {
     // from firing: without it, ticking a box also selects, frames and closes.
     assert.equal(closed, 0, 'ticking the box must not close the modal');
     assert.equal(s.searchVimCycle, null, 'ticking the box must not arm the cycle');
+
+    press(checkbox, ' ');
+    assert.equal(closed, 0, 'Space on the checkbox must not commit the highlighted result');
   });
 });

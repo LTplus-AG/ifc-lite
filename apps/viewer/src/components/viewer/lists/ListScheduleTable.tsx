@@ -147,7 +147,7 @@ export function ListScheduleTable({
                 columnId={widthKey(col)}
                 width={scheduleColumnWidths[colIdx]}
                 setWidthOverrides={setWidthOverrides}
-                title={t('lists.scheduleTable.dragToResizeTitle')}
+                title={`${col.label}: ${t('lists.scheduleTable.dragToResizeTitle')}`}
               />
             </div>
           );

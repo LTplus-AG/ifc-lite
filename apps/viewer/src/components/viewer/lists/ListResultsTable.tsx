@@ -12,7 +12,7 @@
  * rows), so 100K+ rows stay smooth.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -421,7 +421,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   <ColumnResizeHandle
                     columnId={col.id}
                     width={columnWidths[colIdx]}
-                    title={t('lists.resultsTable.dragToResizeTitle')}
+                    title={`${col.label}: ${t('lists.resultsTable.dragToResizeTitle')}`}
                     setWidthOverrides={setWidthOverrides}
                   />
                 </div>

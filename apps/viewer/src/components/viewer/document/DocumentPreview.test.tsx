@@ -58,6 +58,7 @@ it('#5823 selects the same document block by click, Enter, and Space', () => {
   const block = container.querySelector<HTMLElement>('[data-preview-block="image"]');
   assert.ok(block);
   assert.equal(block.getAttribute('role'), 'button');
+  assert.equal(block.getAttribute('aria-label'), 'Image / logo');
   click(block);
   activate(block, 'Enter');
   activate(block, ' ');

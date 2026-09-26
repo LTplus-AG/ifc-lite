@@ -14,10 +14,12 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
 import { useTranslation } from '@/i18n';
+import { formatLocaleDate } from '@/i18n/intlFormat';
 import { IconButton } from '@/components/ui/icon-button';
 import type { FlattenedTask } from './schedule-utils';
 import {
   computeTicks,
+  advanceCalendarTime,
   formatTickLabel,
   timeToX,
 } from './schedule-utils';
@@ -61,7 +63,7 @@ export const GanttTimeline = memo(function GanttTimeline({
   scrollTop,
   onScroll,
 }: GanttTimelineProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
 
@@ -196,9 +198,9 @@ export const GanttTimeline = memo(function GanttTimeline({
     let nextTime: number;
     switch (event.key) {
       case 'ArrowLeft':
-      case 'ArrowDown': nextTime = playbackTime - MS_PER_TICK_FOR_SCALE[scale]; break;
+      case 'ArrowDown': nextTime = advanceCalendarTime(playbackTime, scale, -1); break;
       case 'ArrowRight':
-      case 'ArrowUp': nextTime = playbackTime + MS_PER_TICK_FOR_SCALE[scale]; break;
+      case 'ArrowUp': nextTime = advanceCalendarTime(playbackTime, scale, 1); break;
       case 'Home': nextTime = range.start; break;
       case 'End': nextTime = range.end; break;
       default: return;
@@ -207,6 +209,8 @@ export const GanttTimeline = memo(function GanttTimeline({
     event.stopPropagation();
     onScrubSeek(Math.min(range.end, Math.max(range.start, nextTime)));
   }, [playbackTime, scale, range, onScrubSeek]);
+
+  const clampedPlaybackTime = Math.min(range.end, Math.max(range.start, playbackTime));
 
   return (
     <div
@@ -264,7 +268,8 @@ export const GanttTimeline = memo(function GanttTimeline({
         aria-label={t('schedule.toolbar.playbackPosition')}
         aria-valuemin={range.start}
         aria-valuemax={range.end}
-        aria-valuenow={Math.min(range.end, Math.max(range.start, playbackTime))}
+        aria-valuenow={clampedPlaybackTime}
+        aria-valuetext={formatLocaleDate(locale, clampedPlaybackTime, { dateStyle: 'medium', timeStyle: 'short' })}
       >
         {/* Non-working-day shading (#4830) — painted first so grid lines,
             row highlights and bars all draw on top of it. */}

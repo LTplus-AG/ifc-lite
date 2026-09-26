@@ -30,9 +30,10 @@ it('#5823 activates snapshot, placeholder, and comment thumbnails from the keybo
     />,
   );
   const snapshot = ui.querySelector('img[alt="Viewpoint"]')?.closest<HTMLButtonElement>('button');
-  const placeholder = ui.querySelector<HTMLButtonElement>('button[aria-label="Viewpoint"]');
+  const placeholder = ui.querySelector<HTMLButtonElement>('button[aria-label="Viewpoint 2"]');
   const thumbnail = ui.querySelector('img[alt="Associated viewpoint"]')?.closest<HTMLButtonElement>('button');
   assert.ok(snapshot && placeholder && thumbnail);
+  assert.equal(snapshot.getAttribute('aria-label'), 'Viewpoint 1');
   activate(snapshot, 'Enter');
   activate(placeholder, ' ');
   activate(thumbnail, 'Enter');

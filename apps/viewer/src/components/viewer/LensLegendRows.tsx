@@ -65,12 +65,12 @@ export const RuleRow = memo(function RuleRow({
         {rule.name}
       </span>
       {isIsolated && (
-        <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
+        <span className="text-2xs uppercase tracking-wider font-bold text-primary">
           {t('lensPanel.isolatedBadge')}
         </span>
       )}
       <span className={cn(
-        'text-[10px] tabular-nums font-mono min-w-[2ch] text-right',
+        'text-2xs tabular-nums font-mono min-w-[2ch] text-right',
         isEmpty
           ? 'text-zinc-300 dark:text-zinc-700'
           : 'text-zinc-400 dark:text-zinc-500',
@@ -130,11 +130,11 @@ export const AutoColorRow = memo(function AutoColorRow({
         {entry.name}
       </span>
       {isIsolated && (
-        <span className="text-[10px] uppercase tracking-wider font-bold text-primary">
+        <span className="text-2xs uppercase tracking-wider font-bold text-primary">
           {t('lensPanel.isolatedBadge')}
         </span>
       )}
-      <span className="text-[10px] tabular-nums font-mono min-w-[2ch] text-right text-zinc-400 dark:text-zinc-500">
+      <span className="text-2xs tabular-nums font-mono min-w-[2ch] text-right text-zinc-400 dark:text-zinc-500">
         {formatCount(entry.count)}
       </span>
     </button>

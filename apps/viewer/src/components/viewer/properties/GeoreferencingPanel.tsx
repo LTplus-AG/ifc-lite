@@ -39,9 +39,9 @@ import { parseLocalizedRotationDegrees } from './georeference-angle';
 import { getFieldHint } from './georeference-field-hints';
 
 function activateEditorFromKeyboard(event: React.KeyboardEvent, startEdit: () => void): void {
+  if (event.target !== event.currentTarget) return;
   if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault();
-    startEdit();
+    event.preventDefault(); startEdit();
   }
 }
 

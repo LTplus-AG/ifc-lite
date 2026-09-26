@@ -247,6 +247,10 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     assert.equal(useViewerStore.getState().isolatedEntities, null, 'deactivating the lens must release its isolation');
     assert.equal(useViewerStore.getState().lensRuleIsolation, null);
+    const count = toggle.querySelector<HTMLElement>('span.font-mono');
+    assert.ok(count);
+    click(count);
+    assert.equal(useViewerStore.getState().activeLensId, LENS.id, 'the rule-count area must reactivate the lens');
   });
 
   it('leaves a geometry-bearing rule alone, so the fix does not broaden every isolation', () => {

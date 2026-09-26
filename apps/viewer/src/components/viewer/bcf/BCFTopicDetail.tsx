@@ -232,7 +232,7 @@ export function BCFTopicDetail({
               <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.noViewpoints')}</p>
             ) : (
               <div className="space-y-2">
-                {topic.viewpoints.map((vp) => {
+                {topic.viewpoints.map((vp, index) => {
                   const isSelected = selectedViewpointGuid === vp.guid;
                   const commentCount = topic.comments.filter(c => c.viewpointGuid === vp.guid).length;
                   return (
@@ -245,13 +245,13 @@ export function BCFTopicDetail({
                       {/* Snapshot */}
                       <div className="relative group">
                         {vp.snapshot ? (
-                          <button type="button" className="block w-full hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onActivateViewpoint(vp)}>
+                          <button type="button" aria-label={`${t('bcf.topicDetail.viewpointAlt')} ${index + 1}`} className="block w-full hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onActivateViewpoint(vp)}>
                             <img src={vp.snapshot} alt={t('bcf.topicDetail.viewpointAlt')} className="w-full object-contain" />
                           </button>
                         ) : (
                           <button
                             type="button"
-                            aria-label={t('bcf.topicDetail.viewpointAlt')}
+                            aria-label={`${t('bcf.topicDetail.viewpointAlt')} ${index + 1}`}
                             className="w-full aspect-video bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors min-h-[120px] focus-visible:ring-2 focus-visible:ring-ring"
                             onClick={() => onActivateViewpoint(vp)}
                           >

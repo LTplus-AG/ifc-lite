@@ -53,3 +53,22 @@ it('#5823 opens georeference field editors with Enter and Space', () => {
   press(angleRow, ' ');
   assert.ok(angleRow.querySelector('input'), 'Space opens the angle editor');
 });
+
+it('#5823 leaves the height row closed when the terrain button receives Enter', () => {
+  useViewerStore.setState({
+    cesiumEnabled: true, cesiumTerrainHeight: 20, cesiumTerrainSaveHeight: 20,
+    cesiumSourceModelId: 'A',
+  });
+  const ui = render(<GeoreferencingPanel georef={georef} modelId="A" enableEditing schemaVersion="IFC4" />);
+  const operationHeading = [...ui.querySelectorAll('button')]
+    .find((button) => button.textContent?.includes('Coordinate Operation'));
+  assert.ok(operationHeading);
+  click(operationHeading);
+  const heightRow = [...ui.querySelectorAll<HTMLElement>('[role="button"]')]
+    .find((row) => row.textContent?.includes('OrthogonalHeight'));
+  assert.ok(heightRow);
+  const terrainButton = heightRow.querySelector<HTMLButtonElement>('button');
+  assert.ok(terrainButton);
+  press(terrainButton, 'Enter');
+  assert.equal(heightRow.querySelector('input'), null, 'terrain activation must not open the inline editor');
+});

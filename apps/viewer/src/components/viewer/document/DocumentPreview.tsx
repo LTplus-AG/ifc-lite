@@ -206,6 +206,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
               // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
               <div role="button"
                 key={block.id}
+                aria-label={block.kind === 'spacer' ? t('document.addBlock.spacer') : block.kind === 'image' && !block.caption ? t('document.addBlock.image') : undefined}
                 tabIndex={0}
                 className={`-mx-1 cursor-pointer rounded px-1 ring-offset-1 hover:ring-1 hover:ring-sky-300 ${selectedBlockId === block.id ? 'ring-1 ring-sky-500' : ''}`}
                 onClick={() => onSelectBlock(block.id)}

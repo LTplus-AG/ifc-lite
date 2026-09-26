@@ -55,7 +55,7 @@ pub struct GradientProfile {
 impl GradientProfile {
     /// Parse the vertical profile of an `IfcGradientCurve`. `None` when the
     /// entity is not a gradient curve or carries no usable segment.
-    pub fn parse(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Self> {
+    pub fn from_curve(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Self> {
         if curve.ifc_type != IfcType::IfcGradientCurve {
             return None;
         }
@@ -208,7 +208,7 @@ mod tests {
         let index = ifc_lite_core::build_entity_index(ifc);
         let mut decoder = EntityDecoder::with_index(ifc, index);
         let curve = decoder.decode_by_id(id).unwrap();
-        GradientProfile::parse(&curve, &mut decoder).expect("parse gradient")
+        GradientProfile::from_curve(&curve, &mut decoder).expect("parse gradient")
     }
 
     /// Abridged from the buildingSMART "Viadotto Acerno" bridge: constant
@@ -281,7 +281,7 @@ ENDSEC;
         let index = ifc_lite_core::build_entity_index(ifc);
         let mut decoder = EntityDecoder::with_index(ifc, index);
         let e = decoder.decode_by_id(2).unwrap();
-        assert!(GradientProfile::parse(&e, &mut decoder).is_none());
+        assert!(GradientProfile::from_curve(&e, &mut decoder).is_none());
     }
 
     #[test]
@@ -305,6 +305,6 @@ ENDSEC;
         let index = ifc_lite_core::build_entity_index(ifc);
         let mut decoder = EntityDecoder::with_index(ifc, index);
         let curve = decoder.decode_by_id(5).unwrap();
-        assert!(GradientProfile::parse(&curve, &mut decoder).is_none());
+        assert!(GradientProfile::from_curve(&curve, &mut decoder).is_none());
     }
 }

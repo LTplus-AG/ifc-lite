@@ -342,7 +342,7 @@ impl AlignmentCurve {
     /// (`gradient.rs`), both indexed by horizontal station. `Ok(None)`
     /// when either half is missing, so the caller keeps its fallback.
     fn from_gradient_curve(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
-        let Some(profile) = GradientProfile::parse(curve, decoder) else {
+        let Some(profile) = GradientProfile::from_curve(curve, decoder) else {
             return Ok(None);
         };
         let Some(base_id) = curve.get_ref(2) else {

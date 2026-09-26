@@ -119,7 +119,7 @@ impl GeometryRouter {
         // folded into the tangent. Without this every product placed along
         // a gradient sat at z = 0 — ~55 m below the deck on the
         // buildingSMART "Viadotto Acerno" bridge.
-        if let Some(profile) = GradientProfile::parse(&basis_curve, decoder) {
+        if let Some(profile) = GradientProfile::from_curve(&basis_curve, decoder) {
             let (height, grade) = profile.evaluate(distance_along);
             origin.z += height;
             let horizontal = Vector3::new(tangent.x, tangent.y, 0.0);

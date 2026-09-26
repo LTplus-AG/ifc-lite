@@ -932,7 +932,7 @@ export function HierarchyPanel() {
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
             <StoreyDisplayControls />
-            <div ref={storeysRef} role="tree" tabIndex={-1} aria-label={t('hierarchy.panel.buildingStoreysTitle')} onKeyDown={storeysTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={storeysRef} role="tree" tabIndex={storeysTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.panel.buildingStoreysTitle')} onKeyDown={storeysTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${storeysVirtualizer.getTotalSize()}px`,
@@ -971,7 +971,7 @@ export function HierarchyPanel() {
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
             <ModelsSectionHeader count={models.size} />
-            <div ref={modelsRef} role="tree" tabIndex={-1} aria-label={t('hierarchy.modelsSection.title')} onKeyDown={modelsTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={modelsRef} role="tree" tabIndex={modelsTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.modelsSection.title')} onKeyDown={modelsTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${modelsVirtualizer.getTotalSize()}px`,
@@ -1032,7 +1032,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} role="tree" tabIndex={-1} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

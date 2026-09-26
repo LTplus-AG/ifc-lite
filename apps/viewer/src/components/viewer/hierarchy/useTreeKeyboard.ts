@@ -7,12 +7,20 @@
  * `HierarchyPanel.tsx` so its three virtualized lists (spatial/grouped
  * single-model, multi-model Storeys, multi-model Models) share ONE
  * implementation rather than three copies. Roving `tabIndex`: exactly one
- * row (`activeNodeId`) is ever in the tab order; arrow/Home/End/`*`
- * move it, Enter/Space activates it via the caller's existing click-handling
- * rules (so Ctrl/Shift multi-select behaves identically from click and
- * keyboard), and a row's own DOM node registers itself via `registerRow` so
- * focus can follow the active id once the virtualizer has actually mounted
- * that row — it may not be mounted yet when focus should move to it.
+ * row (`activeNodeId`) is ever in the tab order when it is mounted; arrow/
+ * Home/End/`*` move it, Enter/Space activates it via the caller's existing
+ * click-handling rules (so Ctrl/Shift multi-select behaves identically from
+ * click and keyboard), and a row's own DOM node registers itself via
+ * `registerRow` so focus can follow the active id once the virtualizer has
+ * actually mounted it.
+ *
+ * A tall tree's active row can be scrolled far outside the virtualizer's
+ * mounted window (e.g. `End` on a 300-row tree) — no MOUNTED treeitem then
+ * carries `tabIndex=0`, which would silently drop the tree out of the tab
+ * sequence. `containerTabIndex` covers this structurally: it is 0 on the
+ * tree container EXACTLY while the active row isn't mounted, and -1 once a
+ * treeitem is carrying the tab stop itself, so the tree is never absent from
+ * Tab order regardless of virtualization state (review round, #6139).
  *
  * Keys are handled entirely inside the tree's own `onKeyDown` (wired to the
  * scrolling container in `HierarchyPanel.tsx`); this never touches any
@@ -28,6 +36,9 @@ import type { TreeNode } from './types';
  *  so the two hooks compose without either importing the other's module). */
 interface ScrollableVirtualizer {
   scrollToIndex: (index: number, opts?: { align?: 'auto' | 'start' | 'center' | 'end' }) => void;
+  /** Only `index` is read — enough to know which rows are currently mounted,
+   *  without depending on `@tanstack/react-virtual`'s full `VirtualItem`. */
+  getVirtualItems: () => ReadonlyArray<{ index: number }>;
 }
 
 /** The modifier keys `handleNodeClick`'s existing multi-select rules read
@@ -60,6 +71,11 @@ export interface UseTreeKeyboardResult {
   activeNodeId: string | null;
   /** `tabIndex` for a given row: 0 for the active row, -1 otherwise. */
   getTabIndex: (nodeId: string) => 0 | -1;
+  /** `tabIndex` for the TREE CONTAINER itself: 0 exactly while the active
+   *  row is not currently mounted (so the tree stays in the tab sequence
+   *  even when the virtualizer hasn't caught up yet), -1 once a treeitem
+   *  carries the tab stop. Wire to the same element as `onKeyDown`. */
+  containerTabIndex: 0 | -1;
   /** Ref callback a row passes its own DOM node to, so focus can find it
    *  once mounted. Pass `null` on unmount to avoid a stale focus target. */
   registerRow: (nodeId: string, el: HTMLElement | null) => void;
@@ -99,6 +115,15 @@ function findParentIndex(nodes: TreeNode[], from: number, depth: number): number
   return -1;
 }
 
+/** A string that changes exactly when the virtualizer's mounted window
+ *  changes (first index, last index, count) — used only as an effect
+ *  dependency, so the focus-follow effect below reruns when a previously
+ *  unmounted row becomes available, rather than on every render. */
+function renderedRangeKey(virtualItems: ReadonlyArray<{ index: number }>): string {
+  if (virtualItems.length === 0) return 'empty';
+  return `${virtualItems[0].index}-${virtualItems[virtualItems.length - 1].index}-${virtualItems.length}`;
+}
+
 export function useTreeKeyboard({
   nodes,
   virtualizer,
@@ -121,6 +146,15 @@ export function useTreeKeyboard({
     return nodes[0]?.id ?? null;
   }, [nodes, requestedActiveId]);
 
+  // Read fresh on every render (cheap: one linear scan + one small array
+  // scan) — whether the active row is among the virtualizer's CURRENTLY
+  // MOUNTED items, not just logically present in `nodes`. Backs both
+  // `containerTabIndex` and the focus-follow effect's re-trigger key.
+  const virtualItems = virtualizer.getVirtualItems();
+  const activeIndex = activeNodeId == null ? -1 : nodes.findIndex((n) => n.id === activeNodeId);
+  const isActiveMounted = activeIndex !== -1 && virtualItems.some((v) => v.index === activeIndex);
+  const containerTabIndex: 0 | -1 = activeNodeId != null && !isActiveMounted ? 0 : -1;
+
   const registerRow = useCallback((nodeId: string, el: HTMLElement | null) => {
     if (el) rowsRef.current.set(nodeId, el);
     else rowsRef.current.delete(nodeId);
@@ -135,42 +169,52 @@ export function useTreeKeyboard({
     setRequestedActiveId(nodeId);
   }, []);
 
-  // Focus-follows-active: the target row may not be mounted yet (virtualizer
-  // window), so poll a few animation frames after asking the virtualizer to
-  // scroll to it rather than assuming one render is enough.
+  // Focus-follows-active, driven by the ACTUAL rendered rows rather than a
+  // timing guess: `moveTo` below asks the virtualizer to scroll first; once
+  // that scroll causes a re-render whose mounted window includes the active
+  // row (the `renderedRangeKey` dependency changes), this effect finds the
+  // now-registered DOM node and focuses it. Same "wait for the list the
+  // caller re-renders with" shape as #6133's reveal-selection effect B,
+  // just keyed on the virtualizer's mounted range instead of a node list.
+  const renderedKey = renderedRangeKey(virtualItems);
   useEffect(() => {
     // The first row is tabbable on mount, but focus stays wherever the user
-    // left it until they actually navigate or focus a tree row.
+    // left it until they actually navigate or focus a tree row — mounting
+    // (or re-rendering) the tree must never steal focus from another control.
     if (activeNodeId == null || requestedActiveId == null) return;
-    // Filtering or collapsing can remove the requested row. The fallback is
-    // the first visible node, which may be outside the virtualizer window.
+    // Filtering or collapsing can remove the requested row; the fallback is
+    // the first visible node, which may itself be outside the virtualizer's
+    // mounted window — ask it to bring index 0 into range. Either way, the
+    // `renderedKey` dependency below re-fires this effect once the target
+    // (the fallback or the originally requested row) actually mounts, so
+    // there is no rAF polling: `moveTo` already asked the virtualizer to
+    // scroll, and this effect just waits for that to show up in the DOM.
     if (requestedActiveId !== activeNodeId) virtualizer.scrollToIndex(0, { align: 'auto' });
-    let cancelled = false;
-    let frame = 0;
-    const tryFocus = () => {
-      if (cancelled) return;
-      const el = rowsRef.current.get(activeNodeId);
-      if (el) {
-        el.focus();
-        return;
-      }
-      frame += 1;
-      if (frame < 10) requestAnimationFrame(tryFocus);
-    };
-    requestAnimationFrame(tryFocus);
+    const el = rowsRef.current.get(activeNodeId);
+    if (el && document.activeElement !== el) el.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- renderedKey IS the "rows changed" signal; recomputing it isn't a real new dep
+  }, [activeNodeId, requestedActiveId, renderedKey, virtualizer]);
+
+  // Type-ahead buffer's timer must not fire (or leak) after the tree unmounts.
+  useEffect(() => {
     return () => {
-      cancelled = true;
+      if (typeaheadRef.current.timeout) clearTimeout(typeaheadRef.current.timeout);
     };
-  }, [activeNodeId, requestedActiveId, virtualizer]);
+  }, []);
 
   const moveTo = useCallback(
-    (index: number) => {
+    (index: number, activateWith?: NodeActivationModifiers) => {
       if (index < 0 || index >= nodes.length) return;
       const node = nodes[index];
       virtualizer.scrollToIndex(index, { align: 'auto' });
       setRequestedActiveId(node.id);
+      // Shift+Up/Down extends selection to the newly focused row, exactly
+      // like a Shift+click there would (APG: Ctrl+Up/Down moves focus only;
+      // plain Up/Down also moves focus only — selection doesn't follow focus
+      // in this multi-select tree).
+      if (activateWith) onActivate(node, activateWith);
     },
-    [nodes, virtualizer],
+    [nodes, virtualizer, onActivate],
   );
 
   const onKeyDown = useCallback(
@@ -182,15 +226,18 @@ export function useTreeKeyboard({
       const currentIndex = nodes.findIndex((n) => n.id === activeNodeId);
       if (currentIndex === -1) return;
       const node = nodes[currentIndex];
+      const shiftExtend: NodeActivationModifiers | undefined = e.shiftKey
+        ? { ctrlKey: false, metaKey: false, shiftKey: true }
+        : undefined;
 
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          moveTo(Math.min(currentIndex + 1, nodes.length - 1));
+          moveTo(Math.min(currentIndex + 1, nodes.length - 1), shiftExtend);
           return;
         case 'ArrowUp':
           e.preventDefault();
-          moveTo(Math.max(currentIndex - 1, 0));
+          moveTo(Math.max(currentIndex - 1, 0), shiftExtend);
           return;
         case 'Home':
           e.preventDefault();
@@ -263,5 +310,5 @@ export function useTreeKeyboard({
     [activeNodeId, getNodeName, moveTo, nodes, onActivate, onToggleExpand],
   );
 
-  return { activeNodeId, getTabIndex, registerRow, onKeyDown, onRowFocus };
+  return { activeNodeId, getTabIndex, containerTabIndex, registerRow, onKeyDown, onRowFocus };
 }

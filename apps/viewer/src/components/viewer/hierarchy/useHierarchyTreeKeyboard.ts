@@ -17,6 +17,7 @@ import { useTreeKeyboard, type NodeActivationModifiers, type UseTreeKeyboardResu
 
 interface ScrollableVirtualizer {
   scrollToIndex: (index: number, opts?: { align?: 'auto' | 'start' | 'center' | 'end' }) => void;
+  getVirtualItems: () => ReadonlyArray<{ index: number }>;
 }
 
 interface UseHierarchyTreeKeyboardParams {

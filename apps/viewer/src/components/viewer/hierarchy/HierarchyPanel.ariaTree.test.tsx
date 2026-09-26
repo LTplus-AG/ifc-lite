@@ -23,8 +23,9 @@ installLayout();
 
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { advance, cleanup, press, render } from '@/test/render.js';
+import { advance, cleanup, press, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -69,6 +70,56 @@ function mountHierarchy(): { container: HTMLElement; tree: HTMLElement } {
   const tree = container.querySelector('[role="tree"]');
   assert.ok(tree instanceof HTMLElement, 'the tree container renders with role="tree"');
   return { container, tree: tree as HTMLElement };
+}
+
+/** Project(1) -> Site(2) -> Building(3) -> Storey(4, collapsed) -> `wallCount`
+ *  plain walls (expressIds 100..100+wallCount-1), all under that one storey.
+ *  Used for the Shift+Down range-select test (a handful of walls) and the
+ *  virtualization test (hundreds, to force some of them out of the
+ *  virtualizer's mounted window — #6139 review). */
+function mountWallsHierarchy(wallCount: number): { tree: HTMLElement } {
+  const entities = Array.from({ length: wallCount }, (_, i) => ({ expressId: 100 + i, type: 'IfcWall', name: `Wall ${i}` }));
+  const expressIds = entities.map((e) => e.expressId);
+  const model = fixtureModel('walls-tree-model', { entities });
+  const storey = { expressId: 4, type: IfcTypeEnum.IfcBuildingStorey, name: 'Storey 1', children: [], elements: expressIds };
+  const building = { expressId: 3, type: IfcTypeEnum.IfcBuilding, name: 'Building', children: [storey], elements: [] };
+  const site = { expressId: 2, type: IfcTypeEnum.IfcSite, name: 'Site', children: [building], elements: [] };
+  const project = { expressId: 1, type: IfcTypeEnum.IfcProject, name: 'Project', children: [site], elements: [] };
+  Object.assign(model.ifcDataStore!, {
+    spatialHierarchy: {
+      project,
+      byStorey: new Map([[4, expressIds]]),
+      byBuilding: new Map(),
+      bySite: new Map(),
+      bySpace: new Map(),
+      storeyElevations: new Map(),
+      storeyHeights: new Map(),
+      elementToStorey: new Map(expressIds.map((id) => [id, 4])),
+      getStoreyElements: () => [],
+      getStoreyByElevation: () => null,
+      getContainingSpace: () => null,
+      getPath: () => [],
+    },
+  });
+  useViewerStore.setState({
+    ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial',
+    selectedEntityId: null, selectedEntityIds: new Set(), selectedStoreys: new Set(),
+  });
+  const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+  const tree = container.querySelector('[role="tree"]');
+  assert.ok(tree instanceof HTMLElement, 'the tree container renders with role="tree"');
+  return { tree: tree as HTMLElement };
+}
+
+/** Navigate Site -> Building -> Storey -> expand -> first child, from the
+ *  freshly mounted root (Project starts as the roving tab stop). Shared by
+ *  the tests below so each one starts from "focus is on the first wall". */
+function focusFirstWall(tree: HTMLElement): void {
+  press(tree, 'ArrowDown'); // Site
+  press(tree, 'ArrowDown'); // Building
+  press(tree, 'ArrowDown'); // Storey (collapsed)
+  press(tree, 'ArrowRight'); // expand
+  press(tree, 'ArrowRight'); // move into Wall 0
 }
 
 function treeitems(tree: HTMLElement): HTMLElement[] {
@@ -199,5 +250,90 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
 
     assert.equal(useViewerStore.getState().selectedStoreys.size, 0,
       'a nested button key press must not activate the tree row');
+  });
+
+  it('keeps every button inside a treeitem out of the tab order (#6139 review)', () => {
+    const { tree } = mountHierarchy();
+    press(tree, 'ArrowDown'); // Site
+    press(tree, 'ArrowDown'); // Building
+    press(tree, 'ArrowDown'); // Storey
+    press(tree, 'ArrowRight'); // expand — mounts the wall row's chevron/eye buttons too
+
+    const rows = treeitems(tree);
+    assert.ok(rows.length > 1);
+    for (const row of rows) {
+      for (const button of [...row.querySelectorAll('button')]) {
+        assert.equal(
+          button.getAttribute('tabindex'), '-1',
+          `a button inside the "${row.textContent}" treeitem must not be in the tab order — Tab from a treeitem must reach the next treeitem`,
+        );
+      }
+    }
+    // The roving tab stop is still exactly one treeitem, not any of the buttons.
+    assert.equal(rows.filter((r) => r.getAttribute('tabindex') === '0').length, 1);
+  });
+
+  it('Shift+Down twice from a selected wall extends the selection to three rows (#6139 review)', () => {
+    const { tree } = mountWallsHierarchy(5);
+    focusFirstWall(tree);
+    assert.equal(byName(tree, 'Wall 0').getAttribute('tabindex'), '0');
+
+    // Plain Enter: single-select Wall 0 (the legacy single-select path, which
+    // still seeds the multi-select anchor there, #1463) — carried on
+    // `selectedEntityId`, not the multi-select `selectedEntityIds` set, so
+    // the Shift+Down below extends a range FROM this row.
+    press(tree, 'Enter');
+    assert.equal(useViewerStore.getState().selectedEntityId, 100);
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+
+    press(tree, 'ArrowDown', { shiftKey: true });
+    assert.equal(byName(tree, 'Wall 1').getAttribute('tabindex'), '0', 'Shift+Down still moves focus');
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort((a, b) => a - b), [100, 101]);
+
+    press(tree, 'ArrowDown', { shiftKey: true });
+    assert.equal(byName(tree, 'Wall 2').getAttribute('tabindex'), '0');
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort((a, b) => a - b), [100, 101, 102]);
+  });
+
+  it('keeps a tab stop in the tree when the active row is not mounted, and focuses it once it is (virtualization, #6139 review)', async () => {
+    const { tree } = mountWallsHierarchy(300);
+    focusFirstWall(tree);
+
+    press(tree, 'End');
+
+    // Right after End: the last wall (row 304 of 304) is not mounted by the
+    // virtualizer yet (it's still scrolling the ~35 rows near the top). Zero
+    // MOUNTED treeitems carry tabIndex 0 — the tree CONTAINER itself does
+    // instead, so the tree is never absent from Tab order.
+    assert.equal(
+      treeitems(tree).filter((el) => el.getAttribute('tabindex') === '0').length, 0,
+      'the target row is not mounted yet, so no treeitem should claim the tab stop',
+    );
+    assert.equal(tree.getAttribute('tabindex'), '0', 'the container claims the tab stop while the active row is unmounted');
+
+    // happy-dom does not dispatch a real `scroll` event for a programmatic
+    // `scrollTop`/`scrollTo()` write (`useTreeKeyboard`'s `moveTo` already
+    // called `virtualizer.scrollToIndex` above) — `@tanstack/react-virtual`
+    // only recomputes its mounted range from a `scroll` LISTENER
+    // (`observeElementOffset`), never by polling, so nothing here is
+    // otherwise going to move. Firing the event synthesizes exactly what a
+    // real browser's scroll would deliver, to exercise OUR focus-follow
+    // effect once the row it's waiting for actually mounts.
+    act(() => {
+      // A number comfortably past the tree's total measured height (300+
+      // rows * ~36px) — the virtualizer clamps it to the real end itself;
+      // `scrollHeight` is not one of the properties `installLayout` stubs,
+      // so it cannot stand in for that clamp here.
+      tree.scrollTop = 100_000;
+      tree.dispatchEvent(new Event('scroll'));
+    });
+
+    await waitFor(
+      () => document.activeElement instanceof HTMLElement
+        && document.activeElement.getAttribute('role') === 'treeitem'
+        && (document.activeElement.textContent?.includes('Wall 299') ?? false),
+      'focus never reached the last wall row',
+    );
+    assert.equal(tree.getAttribute('tabindex'), '-1', 'the container yields the tab stop back once a treeitem has it');
   });
 });

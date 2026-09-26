@@ -119,6 +119,10 @@ export function ModelHeaderRow({
           // (4px) apart, so a bigger hit area (via padding or slop) would
           // overlap the next one (#5826 review round).
           className="p-[5px] relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          // Not in the tab order: the treeitem itself is (roving tabIndex,
+          // #5883) — these row buttons stay clickable/focus-visible on hover
+          // but a Tab from the row goes to the next treeitem, not here.
+          tabIndex={-1}
           aria-label={t('hierarchy.node.repositionAriaLabel', { name: node.name })}
           title={t('hierarchy.node.repositionTooltip')}
           onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}
@@ -128,6 +132,7 @@ export function ModelHeaderRow({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation();
                 onModelVisibilityToggle(modelId, e);
@@ -155,6 +160,7 @@ export function ModelHeaderRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSyncSourceModel(modelId, e);
@@ -186,6 +192,7 @@ export function ModelHeaderRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                tabIndex={-1}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemoveModel(modelId, e);

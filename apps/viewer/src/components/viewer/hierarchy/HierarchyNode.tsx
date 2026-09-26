@@ -225,6 +225,10 @@ export function HierarchyNode({
         {node.hasChildren ? (
           <button
             disabled={searchActive}
+            // Not in the tab order: the treeitem itself is (roving tabIndex,
+            // #5883) — a Tab from a treeitem must go to the NEXT treeitem,
+            // not stop on this button first (APG tree pattern).
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.id);
@@ -281,6 +285,7 @@ export function HierarchyNode({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
                     onVisibilityToggle(node);

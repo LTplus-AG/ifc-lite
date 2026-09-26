@@ -133,7 +133,7 @@ export function PropertyEditor({
   const inputRef = useRef<HTMLInputElement>(null);
   const initialValue = formatValue(currentValue);
   const initialType = detectValueType(currentValue, currentType);
-  const isUnchanged = value === initialValue && valueType === initialType;
+  const isUnchanged = valueType === initialType && (value === initialValue || parseValue(value, valueType) === currentValue); // '1.50' is 1.5
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -148,13 +148,7 @@ export function PropertyEditor({
     if (parsedValue === PARSE_INVALID) {
       return toast.error(t('propertyEditor.inline.invalid', { value, type: t(getTypeNameKey(valueType)) }));
     }
-    // Normalize model ID for legacy models
-    let normalizedModelId = modelId;
-    if (modelId === 'legacy') {
-      normalizedModelId = '__legacy__';
-    }
-
-    setProperty(normalizedModelId, entityId, psetName, propName, parsedValue, valueType);
+    setProperty(modelId === 'legacy' ? '__legacy__' : modelId, entityId, psetName, propName, parsedValue, valueType);
     bumpMutationVersion();
     setShowScopeConfirm(false);
     setIsEditing(false);
@@ -162,12 +156,14 @@ export function PropertyEditor({
   }, [modelId, entityId, psetName, propName, value, valueType, setProperty, bumpMutationVersion, onClose, t]);
 
   const handleSave = useCallback(() => {
-    if (editScope && !showScopeConfirm && !isUnchanged) {
+    // An unchanged value records nothing: no undo entry, no cleared redo (#5872).
+    if (isUnchanged) { setShowScopeConfirm(false); setIsEditing(false); onClose?.(); return; }
+    if (editScope && !showScopeConfirm) {
       setShowScopeConfirm(true);
       return;
     }
     commitSave();
-  }, [editScope, showScopeConfirm, isUnchanged, commitSave]);
+  }, [editScope, showScopeConfirm, isUnchanged, commitSave, onClose]);
 
   const handleDelete = useCallback(() => {
     // Normalize model ID for legacy models

@@ -24,6 +24,8 @@ import { useViewerStore } from '../index.js';
 import { activeSectionPlane } from '../section-active.js';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
 import { hasPendingMeasurementState } from '@/utils/viewportUtils';
+import { sceneStateTeardown } from './sceneStateSlice.js';
+import { viewerTeardown } from '../teardown-registry.js';
 
 function state() {
   return useViewerStore.getState();
@@ -124,5 +126,106 @@ describe('sceneState.measurements.visible (#5893)', () => {
     assert.equal(state().sceneState.measurements.visible, false);
     state().toggleMeasurementsVisible();
     assert.equal(state().sceneState.measurements.visible, true);
+  });
+});
+
+describe('sceneState teardown (#4249 completeness, #5893)', () => {
+  it('a session-reset (new file load) resets both toggles to visible, even from hidden', () => {
+    state().setSectionVisible(false);
+    state().setMeasurementsVisible(false);
+    const patch = sceneStateTeardown.teardown({ kind: 'session-reset' }, state());
+    assert.deepEqual(patch, { sceneState: { section: { visible: true }, measurements: { visible: true } } });
+  });
+
+  it('all-models-cleared (full teardown) resets both toggles too', () => {
+    state().setSectionVisible(false);
+    state().setMeasurementsVisible(false);
+    const patch = sceneStateTeardown.teardown({ kind: 'all-models-cleared' }, state());
+    assert.deepEqual(patch, { sceneState: { section: { visible: true }, measurements: { visible: true } } });
+  });
+
+  it('model-removed leaves scene-wide state alone (one of several models leaving)', () => {
+    state().setSectionVisible(false);
+    const patch = sceneStateTeardown.teardown(
+      { kind: 'model-removed', modelId: 'm', isStale: () => false, nextActiveModelId: null },
+      state(),
+    );
+    assert.deepEqual(patch, {});
+  });
+
+  it('the composed viewerTeardown entry point resets it on a session-reset too', () => {
+    state().setSectionVisible(false);
+    state().setMeasurementsVisible(false);
+    const patch = viewerTeardown({ kind: 'session-reset' }, state());
+    assert.deepEqual(patch.sceneState, { section: { visible: true }, measurements: { visible: true } });
+  });
+});
+
+describe('a stale hidden toggle must not survive re-enabling the cut (review of #5893)', () => {
+  it('hide → clear → a new cut via an axis button leaves the cut visible', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('down');
+    state().setSectionVisible(false); // hide via the chip
+    state().setSectionPlaneEnabled(false); // clear
+    state().setSectionPlaneAxis('front'); // a new cut, via the axis button
+    assert.equal(state().sectionPlane.enabled, true);
+    assert.equal(state().sceneState.section.visible, true, 'BUG: a stale hidden toggle left the new cut invisible');
+    assert.ok(activeSectionPlane(state()), 'the renderer receives the plane');
+  });
+
+  it('the same sequence via setSectionPlanePosition', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('down');
+    state().setSectionVisible(false);
+    state().setSectionPlaneEnabled(false);
+    state().setSectionPlanePosition(60);
+    assert.equal(state().sectionPlane.enabled, true);
+    assert.equal(state().sceneState.section.visible, true, 'BUG: setSectionPlanePosition left the hide toggle stale');
+  });
+
+  it('the same sequence via a face pick', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('down');
+    state().setSectionVisible(false);
+    state().setSectionPlaneEnabled(false);
+    state().setSectionPlaneFromFace([1, 0, 0], [3, 0, 0]);
+    assert.equal(state().sectionPlane.enabled, true);
+    assert.equal(state().sceneState.section.visible, true, 'BUG: the face-pick commit left the hide toggle stale');
+  });
+
+  it('the Cut toggle button re-enabling a cleared cut also un-hides it', () => {
+    state().setActiveTool('section');
+    state().setSectionPlaneAxis('down');
+    state().setSectionVisible(false);
+    state().setSectionPlaneEnabled(false);
+    state().toggleSectionPlane();
+    assert.equal(state().sectionPlane.enabled, true);
+    assert.equal(state().sceneState.section.visible, true, 'BUG: toggleSectionPlane left the hide toggle stale');
+  });
+
+  it('a two-click measurement finished while measurements are hidden becomes visible', () => {
+    state().setMeasurementsVisible(false);
+    state().addMeasurePoint({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+    state().completeMeasurement({ x: 1, y: 0, z: 0, screenX: 10, screenY: 0 });
+    assert.equal(state().measurements.length, 1);
+    assert.equal(state().sceneState.measurements.visible, true, 'BUG: completeMeasurement did not un-hide the layer');
+  });
+
+  it('a drag-finished measurement while measurements are hidden becomes visible', () => {
+    state().setMeasurementsVisible(false);
+    state().startMeasurement({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+    state().updateMeasurement({ x: 1, y: 0, z: 0, screenX: 10, screenY: 0 });
+    state().finalizeMeasurement();
+    assert.equal(state().measurements.length, 1);
+    assert.equal(state().sceneState.measurements.visible, true, 'BUG: finalizeMeasurement did not un-hide the layer');
+  });
+
+  it('a finished polyline while measurements are hidden becomes visible', () => {
+    state().setMeasurementsVisible(false);
+    state().startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+    state().addPolylinePoint({ x: 1, y: 0, z: 0, screenX: 10, screenY: 0 });
+    const recorded = state().finishPolyline(false);
+    assert.ok(recorded, 'the polyline was recorded');
+    assert.equal(state().sceneState.measurements.visible, true, 'BUG: finishPolyline did not un-hide the layer');
   });
 });

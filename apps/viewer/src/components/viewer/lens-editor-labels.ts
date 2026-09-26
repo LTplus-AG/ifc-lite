@@ -14,6 +14,7 @@
  */
 import type { LensOperator } from '@ifc-lite/lens';
 import type { TranslationKey } from '@/i18n';
+import { LENS_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
 
 /**
  * Translation key for every {@link LensOperator}, for the operator
@@ -26,16 +27,7 @@ import type { TranslationKey } from '@/i18n';
  * identical defect class this table's introduction (pre-#4918) already
  * fixed once.
  */
-export const OPERATOR_LABEL_KEYS: Record<LensOperator, TranslationKey> = {
-  exists: 'lensPanel.operator.exists',
-  equals: 'lensPanel.operator.equals',
-  contains: 'lensPanel.operator.contains',
-  ne: 'lensPanel.operator.notEqual',
-  gt: 'lensPanel.operator.gt',
-  gte: 'lensPanel.operator.gte',
-  lt: 'lensPanel.operator.lt',
-  lte: 'lensPanel.operator.lte',
-};
+export const OPERATOR_LABEL_KEYS: Record<LensOperator, TranslationKey> = LENS_OPERATOR_LABEL_KEYS;
 
 /** Human-readable label key for source / criteria types (shared) */
 export const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {

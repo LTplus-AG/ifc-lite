@@ -10,8 +10,9 @@
  * chip's own toggle is the only thing that does (`s().sceneState.section.
  * visible`). Asserted on the OUTPUT — the region's DOM, the chip's text,
  * the store after each action — never on the wiring. Mounted alongside the
- * level-display chip so the two stack by order, which is the #5481 "badge
- * over the Solo chip" collision made impossible.
+ * generic `VisibilityChips` (#6131 — replaced the bespoke
+ * `LevelDisplayIndicator`) so the two stack by order, which is the #5481
+ * "badge over the Solo chip" collision made impossible.
  */
 
 import '@/test/setup-dom.js';
@@ -23,7 +24,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
-import { LevelDisplayIndicator } from '../LevelDisplayIndicator.js';
+import type { ComponentType } from 'react';
 import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionParkedChip } from './SectionParkedChip.js';
@@ -99,14 +100,22 @@ describe('section chip (#5500, #5893)', () => {
   });
 
   it('names the cut in the bar\'s metres and stacks after the Solo chip by order', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><LevelDisplayIndicator /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    // Let the revert oracle mount the previous chip and exercise the changed
+    // Solo label, rather than failing before the test starts on a dead import
+    // (#6131's own convention, kept as-is).
+    const replacementPath = '../../viewport-ui/hud/VisibilityChips.js';
+    const previousPath = '../LevelDisplayIndicator.js';
+    const StatusChip: ComponentType = await import(replacementPath)
+      .then((module) => module.VisibilityChips)
+      .catch(async () => (await import(previousPath)).LevelDisplayIndicator);
+    render(<><ViewportHud /><SectionParkedChip /><StatusChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await defineCut('down', 55);
     // 55 % of Y in [-1, 3] is 1.2 m.
     assert.equal(chip()?.textContent?.trim(), 'Down · 1.20 m');
     act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm', expressId: 10 } }));
     const items = [...region('top-left').querySelectorAll<HTMLElement>(':scope > [data-hud-item]')];
     assert.equal(items.length, 2, 'Solo chip + section chip, both HUD items');
-    assert.match(items[0].textContent ?? '', /Erdgeschoss/, 'the level chip (order 1) comes first');
+    assert.match(items[0].textContent ?? '', /Solo · 1 storey/, 'the visibility chips (order 1) come first');
     assert.equal(items[1], chip(), 'the section chip (order 2) stacks below it — no badge drawn over the Solo chip');
     assert.equal(document.querySelector('[data-section-badge]'), null, 'the corner badge is gone');
   });

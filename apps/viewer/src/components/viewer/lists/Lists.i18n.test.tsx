@@ -66,7 +66,13 @@ const englishOf = (key: ListsKey): string => {
 };
 
 const mark = (key: ListsKey) => `⟦${key}|${englishOf(key)}⟧`;
-const PSEUDO: Catalogue = Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])) as Catalogue;
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])),
+  'filterOperators.hasAny': '⟦filterOperators.hasAny|has any of⟧',
+  'filterOperators.hasAll': '⟦filterOperators.hasAll|has all of⟧',
+  'filterOperators.hasNone': '⟦filterOperators.hasNone|has none of⟧',
+  'filterOperators.untagged': '⟦filterOperators.untagged|is untagged⟧',
+} as Catalogue;
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -343,12 +349,13 @@ describe('ListModelTagScopeEditor localization (#4918)', { skip: !HAS_CATALOGUE 
       'lists.modelTagScope.models',
       'lists.modelTagScope.selectAriaLabel',
       'lists.modelTagScope.allModels',
-      'lists.modelTagScope.opHasAny',
-      'lists.modelTagScope.opHasAll',
-      'lists.modelTagScope.opHasNone',
-      'lists.modelTagScope.opUntagged',
       'lists.modelTagScope.pickAtLeastOneTag',
     ]);
+    for (const key of ['hasAny', 'hasAll', 'hasNone', 'untagged']) {
+      assert.ok(after.has(`⟦filterOperators.${key}|${({
+        hasAny: 'has any of', hasAll: 'has all of', hasNone: 'has none of', untagged: 'is untagged',
+      } as Record<string, string>)[key]}⟧`), `shared operator ${key} must translate`);
+    }
   });
 
   it('translates the "runs over" summary hint', () => {

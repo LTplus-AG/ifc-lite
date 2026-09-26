@@ -32,10 +32,22 @@
  * `MeasurementsVisibilityChip`) and the visibility-reason registry
  * (`lib/visibility/visibility-reasons.ts`, #5869), so Show all / Home cover
  * them too.
+ *
+ * Teardown (#4249 completeness review): `sceneState` is world-space —
+ * scoped to the whole loaded scene, not to any one federated model, the
+ * same reasoning `sectionSlice.teardown.ts` gives for leaving `sectionPlane`
+ * untouched by `model-removed`. Removing ONE model out of several leaves
+ * the rest of the scene, and the toggles the user set for it, in place.
+ * But a genuinely NEW scene — a fresh file load (`'session-reset'`) or
+ * every model gone (`'all-models-cleared'`) — has nothing left for a
+ * previous hide to describe, so both reset to `visible: true`: the next
+ * cut or measurement in that scene should be shown, not silently born
+ * hidden by a toggle the user set for a file that is no longer open.
  */
 
 import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface SceneVisibilityState {
   section: { visible: boolean };
@@ -50,8 +62,10 @@ export interface SceneStateSlice {
   toggleMeasurementsVisible: () => void;
 }
 
+const defaultSceneState = (): SceneVisibilityState => ({ section: { visible: true }, measurements: { visible: true } });
+
 export const createSceneStateSlice: StateCreator<ViewerState, [], [], SceneStateSlice> = (set) => ({
-  sceneState: { section: { visible: true }, measurements: { visible: true } },
+  sceneState: defaultSceneState(),
 
   // `sectionPlane.parked` (#4910) is kept in sync here for the readers that
   // predate this slice and read it directly (`DrawingPanel`, tours,
@@ -81,4 +95,12 @@ export const createSceneStateSlice: StateCreator<ViewerState, [], [], SceneState
   toggleMeasurementsVisible: () => set((state) => ({
     sceneState: { ...state.sceneState, measurements: { visible: !state.sceneState.measurements.visible } },
   })),
+});
+
+export const sceneStateTeardown = defineSliceTeardown('sceneStateSlice', ['sceneState'], {
+  'session-reset': () => ({ sceneState: defaultSceneState() }),
+  // A model out of several going away doesn't touch the rest of the
+  // scene — see this file's own doc comment.
+  'model-removed': notApplicable,
+  'all-models-cleared': () => ({ sceneState: defaultSceneState() }),
 });

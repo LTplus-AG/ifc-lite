@@ -83,4 +83,9 @@ export const exportDialogEn = {
   'exportDialog.landXml.mergedUnsupported': 'The LandXML mapping converts one file into a standalone IFC4X3 model; it cannot take part in a merged export. Switch the scope to a single model to convert it.',
   'exportDialog.landXml.schemaUnsupported': 'The LandXML mapping derives IFC4X3 STEP only. Choose IFC4X3 to convert this model, or export the original LandXML file.',
   'exportDialog.landXml.exported': 'Converted to IFC4X3: {records}.',
+  // Defensive fallback (#5848): the shell's `exportDisabled` already covers
+  // "no model selected" / "no schema chosen", so this should be unreachable
+  // through the UI — kept only so `onExport` always has an i18n'd message to
+  // return rather than a thrown/untranslated string.
+  'exportDialog.notReadyError': 'Select a model and schema before exporting.',
 } as const satisfies Record<string, TranslationValue>;

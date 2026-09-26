@@ -19,10 +19,22 @@
  * mounted trigger-less in `ViewerLayout.tsx`'s "Global Overlays" block (the
  * same host `FlavorDialog` uses) specifically to own that flag, so the
  * triggered instance ignores it — see the `trigger` prop doc below.
+ *
+ * Its own non-modal, split-preview `<Dialog>` layout (a real 3D viewport
+ * shows through the right ~60% while the left panel stays interactive) does
+ * not fit `ExportDialogShell.tsx`'s single-column chrome (#5848 follow-up:
+ * the shell's own docblock says a dialog with different needs gets a second,
+ * purpose-built variant rather than bending the shared one). What IS shared
+ * with every shell-migrated dialog is the *behaviour* #5605 and #5848
+ * standardised: `useExportDialogOpenGuard` refuses Cancel/Escape while an
+ * export is in flight, and the previous run's result clears the moment the
+ * dialog reopens (`open` transitioning false→true, covering both the
+ * `trigger`-owned `localOpen` path and the store-flag host path below) — this
+ * dialog did neither before #5848.
  */
 
 import type { ExportSurface } from '@/lib/analytics-export-events';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { EyeOff, Download, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import type { AnonymizeResult, RelatedEntityOptions } from '@ifc-lite/export';
@@ -43,6 +55,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -89,7 +102,7 @@ export function AnonymizedExportDialog({ surface = 'classic', trigger }: Anonymi
   const setAnonymizedExportRequested = useViewerStore((s) => s.setAnonymizedExportRequested);
   const open = localOpen || (isHost && anonymizedExportRequested);
 
-  const handleOpenChange = useCallback((next: boolean) => {
+  const setOpenState = useCallback((next: boolean) => {
     setLocalOpen(next);
     if (!next && isHost) setAnonymizedExportRequested(false);
   }, [isHost, setAnonymizedExportRequested]);
@@ -113,6 +126,21 @@ export function AnonymizedExportDialog({ surface = 'classic', trigger }: Anonymi
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [lastResult, setLastResult] = useState<AnonymizeResult | null>(null);
+
+  // #5605: refuse Cancel/Escape while an export is in flight (this dialog's
+  // own non-modal, split-preview layout doesn't fit ExportDialogShell.tsx —
+  // see the module docblock — but shares its guard behaviour via the same hook).
+  const handleOpenChange = useExportDialogOpenGuard({ busy: isExporting, setOpen: setOpenState });
+
+  // #5848: clear the previous run's result on every open transition, from
+  // EITHER entry point (the guarded `localOpen` path above, or the
+  // trigger-less host answering `anonymizedExportRequested` directly) so a
+  // reopened dialog never shows a stale success/error.
+  const wasOpenRef = useRef(open);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) setExportResult(null);
+    wasOpenRef.current = open;
+  }, [open]);
 
   // ONE DECISION, TWO CONTROLS (#3351). "Property sets -> Anonymize" only ever
   // cleared `HasPropertySets` on type classes, so a pset pulled in by the
@@ -328,7 +356,7 @@ export function AnonymizedExportDialog({ surface = 'classic', trigger }: Anonymi
                 {t('anonymizedExport.dialog.ifcExtensionSuffix')}
               </span>
             </div>
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
               {t('anonymizedExport.dialog.cancelButton')}
             </Button>
             <Button onClick={() => void handleExport()} disabled={isExporting || !set.hasSelection || set.includedIds.size === 0}>

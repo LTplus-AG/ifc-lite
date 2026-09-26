@@ -62,39 +62,36 @@ export function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): LandXmlIfc
   };
 }
 
-/** The dialog's result/toast handling for a LandXML conversion. */
-export interface LandXmlIfcExportUi {
-  t: UseTranslationResult['t'];
-  setExportResult: (result: { success: boolean; message: string }) => void;
-  setIsExporting: (exporting: boolean) => void;
+/** The outcome an `ExportDialogShell.onExport` (or equivalent) renders. */
+export interface LandXmlIfcExportOutcome {
+  success: boolean;
+  message: string;
 }
 
 /**
  * Convert, download, and report — the whole LandXML branch of the dialog's
  * export handler, so the dialog itself keeps one call.
  *
- * `setIsExporting(false)` happens here rather than in the caller's `finally`
- * because this branch returns early from it; leaving that to the caller is how
- * the dialog would end up stuck on "Exporting...".
+ * Pure with respect to dialog state (#5848): the caller owns `isExporting`
+ * and the rendered result (the shell does, for `ExportDialog.tsx`), so this
+ * only returns the outcome rather than pushing it into setters itself.
  */
-export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandXmlIfcExportUi): boolean {
+export function landXmlIfcExportOutcome(
+  input: LandXmlIfcDownloadInput,
+  t: UseTranslationResult['t'],
+): LandXmlIfcExportOutcome {
   try {
     const result = downloadLandXmlAsIfc(input);
     if (result.status === 'refused') {
-      ui.setExportResult({ success: false, message: result.reason });
-      return false;
+      return { success: false, message: result.reason };
     }
     const records = [
-      ...(result.surfaces > 0 ? [ui.t('exportDialog.landXml.convertSurfaces', { count: result.surfaces })] : []),
-      ...(result.surveyPoints > 0 ? [ui.t('exportDialog.landXml.convertPoints', { count: result.surveyPoints })] : []),
-      ...(result.alignments > 0 ? [ui.t('exportDialog.landXml.convertAlignments', { count: result.alignments })] : []),
+      ...(result.surfaces > 0 ? [t('exportDialog.landXml.convertSurfaces', { count: result.surfaces })] : []),
+      ...(result.surveyPoints > 0 ? [t('exportDialog.landXml.convertPoints', { count: result.surveyPoints })] : []),
+      ...(result.alignments > 0 ? [t('exportDialog.landXml.convertAlignments', { count: result.alignments })] : []),
     ].join(', ');
-    ui.setExportResult({ success: true, message: ui.t('exportDialog.landXml.exported', { records }) });
-    return true;
+    return { success: true, message: t('exportDialog.landXml.exported', { records }) };
   } catch (error) {
-    ui.setExportResult({ success: false, message: error instanceof Error ? error.message : String(error) });
-    return false;
-  } finally {
-    ui.setIsExporting(false);
+    return { success: false, message: error instanceof Error ? error.message : String(error) };
   }
 }

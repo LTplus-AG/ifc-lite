@@ -57,5 +57,5 @@ test('annotation creation is unavailable without a spatial target or in a shared
   useViewerStore.setState({ models: new Map([['A', a]]), activeModelId: 'A', collabRoomId: 'room' });
   ui = render(<AppearanceAnnotationFields referenceId="drawing" name="Plan" disabled={false} />);
   assert.equal(ui.querySelector('fieldset')?.disabled, true);
-  assert.match(ui.textContent ?? '', /Leave the shared room/);
+  assert.match(ui.textContent ?? '', /Leave the shared session/);
 });

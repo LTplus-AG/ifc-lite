@@ -217,7 +217,7 @@ describe('#2508 zone apportionment reachability', () => {
 
         assert.doesNotMatch(
           (container.textContent ?? '') + (document.body.textContent ?? ''),
-          /straddler|Split volume by zone/,
+          /boundary-crossing element|Split volumes/,
           `${name} must not host a second copy of the apportionment UI`,
         );
       });
@@ -359,7 +359,7 @@ describe('#2508 zone apportionment reachability', () => {
 
       assert.match(
         container.textContent ?? '',
-        /1 straddler\b/,
+        /1 boundary-crossing element\b/,
         `ZonesPanel must render the whole-set control: ${container.textContent?.slice(0, 300)}`,
       );
     });
@@ -391,7 +391,7 @@ describe('#2508 zone apportionment reachability', () => {
       const button = container.querySelector('button');
       assert.ok(button, 'the control must render');
       assert.equal(button.disabled, true, 'nothing to split');
-      assert.match(button.textContent ?? '', /0 straddlers/);
+      assert.match(button.textContent ?? '', /0 boundary-crossing elements/);
     });
 
     it('CLICKING it with a straddler present records the outcome, including a refusal', () => {
@@ -405,7 +405,7 @@ describe('#2508 zone apportionment reachability', () => {
       act(() => root.render(<ZoneApportionSummary zoneSet={ZONE_SET} />));
       const button = container.querySelector('button')!;
       assert.equal(button.disabled, false, 'a straddler makes the control live');
-      assert.match(button.textContent ?? '', /1 straddler\b/);
+      assert.match(button.textContent ?? '', /1 boundary-crossing element\b/);
 
       act(() => button.click());
 

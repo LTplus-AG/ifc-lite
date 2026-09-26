@@ -106,10 +106,10 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     const hints: Array<[string, string]> = [
       ['Frame selection', 'F'],
       ['Hide', 'Del'],
-      ['Set Basket', '='],
-      ['Add to Basket', '+'],
-      ['Remove from Basket', '−'],
-      ['Save Basket View', 'B'],
+      ['Set Collection', '='],
+      ['Add to Collection', '+'],
+      ['Remove from Collection', '−'],
+      ['Save Collection View', 'B'],
     ];
     for (const [label, key] of hints) {
       const hint = menuItem(container, label).querySelectorAll('span')[1];

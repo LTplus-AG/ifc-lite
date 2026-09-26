@@ -168,7 +168,7 @@ export const appearancePanelEn = {
   'appearance.annotationFields.nameLabel': 'Name',
   'appearance.annotationFields.nameAriaLabel': 'Annotation Name',
   'appearance.annotationFields.createAnnotation': 'Create annotation',
-  'appearance.annotationFields.leaveRoomNotice': 'Leave the shared room to create an annotation, then share the saved model.',
+  'appearance.annotationFields.leaveRoomNotice': 'Leave the shared session to create an annotation, then share the saved model.',
   'appearance.annotationFields.cancelled': 'Annotation creation cancelled.',
   'appearance.annotationFields.cancelCreation': 'Cancel creation',
 

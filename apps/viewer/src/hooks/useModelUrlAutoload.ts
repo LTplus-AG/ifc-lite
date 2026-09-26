@@ -41,6 +41,7 @@ export function useModelUrlAutoload(): void {
     const modelUrl = params.get('model');
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
+    const sourceBaseUrl = window.location.href;
 
     // `retry` is required at every call (#5851 review): a malformed or
     // cross-origin URL is the SAME url string on every attempt, so retrying
@@ -57,7 +58,7 @@ export function useModelUrlAutoload(): void {
       // Resolve (supports relative paths) and enforce same-origin before fetching.
       let source: URL;
       try {
-        source = resolvedUrl ?? new URL(modelUrl, window.location.href);
+        source = resolvedUrl ?? new URL(modelUrl, sourceBaseUrl);
         resolvedUrl = source;
       } catch {
         fail('viewportLighting.container.modelUrlAutoload.malformedUrl', 'model_url_malformed', null);

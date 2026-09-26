@@ -101,6 +101,38 @@ describe('?model= autoload (#5851)', () => {
     }
   });
 
+  it('pins a relative source before WebGPU refusal, then retries it after navigation (#5851)', async () => {
+    let adapterCalls = 0;
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: async () => ++adapterCalls === 1 ? null : {} },
+    });
+    setModelParam('model.ifc');
+    const originalLocation = window.location.href;
+    const source = new URL('model.ifc', originalLocation).href;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
+
+    mount();
+    await waitFor(() => useViewerStore.getState().lastLoadRetry !== null, 'WebGPU refusal offers Retry');
+    assert.equal(requestedUrls.length, 0);
+    try {
+      window.history.pushState(null, '', '/different/path/');
+      await act(async () => {
+        useViewerStore.getState().lastLoadRetry?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await waitFor(() => requestedUrls.length === 1, 'WebGPU Retry fetches the original source');
+      assert.deepEqual(requestedUrls, [source]);
+      assert.equal(adapterCalls, 2);
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
+  });
+
   it('a cross-origin URL is refused and reported, never fetched', async () => {
     let fetchCalls = 0;
     setModelParam('https://attacker.example/model.ifc');

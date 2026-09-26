@@ -533,6 +533,7 @@
     "export_jsonld_with_filter": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_merged": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_merged_models": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "export_merged_models_with_logs": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_merged_with_stats": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_obj": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "export_obj_with_stats": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

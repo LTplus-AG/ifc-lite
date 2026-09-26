@@ -32,6 +32,8 @@ pub(crate) struct Pass<'s, 'a> {
     pub(crate) type_owned_names: Vec<(u32, Vec<String>)>,
     pub(crate) type_owned_ids: HashMap<u32, Vec<u32>>,
     pub(crate) generated: Vec<String>,
+    /// Records the georeferencing edits create, in allocation order.
+    pub(crate) georef_lines: Vec<String>,
     /// A created type object's repointed `HasPropertySets`, applied as a slot
     /// override when the created entity is written (`overlayTypeOwnedPsets`).
     pub(crate) overlay_type_owned: Vec<(u32, serde_json::Value)>,
@@ -63,6 +65,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             type_owned_names: Vec::new(),
             type_owned_ids: HashMap::new(),
             generated: Vec::new(),
+            georef_lines: Vec::new(),
             overlay_type_owned: Vec::new(),
             created_lines: Vec::new(),
             new_entity_count: 0,

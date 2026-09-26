@@ -8,9 +8,9 @@ A **list definition** describes what to tabulate:
 
 - **Entity types** - Which IFC classes to include (e.g. all `IfcDoor`)
 - **Columns** - Which values to pull for each entity (attributes, properties, quantities, ...)
-- **Conditions** - Optional filters on property values
+- **Filter groups** - Optional shared Rules predicates, evaluated by the viewer before column extraction
 
-`executeList` runs the definition against a **data provider** (an adapter over your parsed model) and returns a `ListResult` with one row per matching entity.
+`executeList` runs a definition with empty filter groups against a **data provider** (an adapter over your parsed model) and returns a `ListResult` with one row per matching entity. See [migrating saved v1 conditions](#migrating-saved-v1-conditions) for Rules-backed definitions.
 
 ## Quick Start
 

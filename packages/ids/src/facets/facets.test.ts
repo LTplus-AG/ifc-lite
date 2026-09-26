@@ -732,6 +732,22 @@ describe('checkPropertyFacet', () => {
     // as "not present", matching upstream ifctester (#6117).
     expect(result.failure?.type).toBe('PROPERTY_EMPTY');
   });
+
+  it('keeps IFCLABEL("UNKNOWN") distinct from an unknown IfcLogical (#6117)', () => {
+    const accessor = createMockAccessor([
+      { expressId: 11, type: 'IfcWall', properties: [
+        { psetName: 'Pset_WallCommon', propName: 'Status', value: 'UNKNOWN', dataType: 'IFCLABEL' },
+      ] },
+      { expressId: 12, type: 'IfcWall', properties: [
+        { psetName: 'Pset_WallCommon', propName: 'Status', value: 'UNKNOWN', dataType: 'IFCLOGICAL' },
+      ] },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property', propertySet: sv('Pset_WallCommon'), baseName: sv('Status'), value: sv('UNKNOWN'),
+    };
+    expect(checkPropertyFacet(facet, 11, accessor).passed).toBe(true);
+    expect(checkPropertyFacet(facet, 12, accessor).failure?.type).toBe('PROPERTY_EMPTY');
+  });
 });
 
 // ============================================================================

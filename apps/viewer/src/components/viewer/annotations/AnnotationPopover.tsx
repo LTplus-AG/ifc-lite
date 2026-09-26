@@ -152,9 +152,10 @@ export function AnnotationPopover({
   const overHardLimit = draft.length > MAX_NOTE_LEN;
 
   return (
-    <HudSurface
+    // HudSurface owns the shared HUD div; the popover adds dialog semantics to that surface.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <HudSurface role="dialog"
       ref={containerRef}
-      role="dialog"
       aria-label={t('annotations.popover.ariaLabel')}
       style={{ left, top, width: POPOVER_WIDTH }}
       className={cn(
@@ -168,7 +169,7 @@ export function AnnotationPopover({
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
           <span className="h-2 w-2 rounded-full bg-overlay-ink shrink-0" aria-hidden />
-          <span className="font-mono text-[10px] uppercase tracking-wider text-popover-foreground truncate">
+          <span className="font-mono text-xs uppercase tracking-wider text-popover-foreground truncate">
             {entityType ? entityType : t('annotations.popover.headerFallbackLabel')}
             {annotation.entityExpressId !== null && (
               <span className="ml-1 text-muted-foreground">
@@ -199,7 +200,7 @@ export function AnnotationPopover({
               rows={4}
               maxLength={MAX_NOTE_LEN + 100}
               className={cn(
-                'w-full resize-none font-mono text-[11px] leading-relaxed',
+                'w-full resize-none font-mono text-xs leading-relaxed',
                 'bg-background/60 text-popover-foreground',
                 'border border-border rounded-sm',
                 'px-2 py-1.5 outline-none focus:ring-1',
@@ -210,7 +211,7 @@ export function AnnotationPopover({
               spellCheck
               autoCorrect="on"
             />
-            <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono">
+            <div className="mt-1.5 flex items-center justify-between gap-2 text-xs font-mono">
               <span className="text-zinc-400 dark:text-zinc-500">
                 {t('annotations.popover.keyHints')}
               </span>
@@ -233,14 +234,14 @@ export function AnnotationPopover({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2 text-xs"
                 onClick={handleCancel}
               >
                 {t('annotations.popover.cancelButton')}
               </Button>
               <Button
                 size="sm"
-                className="h-7 px-2 text-[11px] border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
+                className="h-7 px-2 text-xs border border-overlay-accent bg-overlay-accent-soft text-popover-foreground hover:bg-overlay-accent/25"
                 onClick={handleSave}
                 disabled={overHardLimit}
               >
@@ -252,16 +253,16 @@ export function AnnotationPopover({
         ) : (
           <>
             {annotation.note ? (
-              <p className="font-mono text-[11px] leading-relaxed text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+              <p className="font-mono text-xs leading-relaxed text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                 {annotation.note}
               </p>
             ) : (
-              <p className="font-mono text-[11px] italic text-zinc-400 dark:text-zinc-500">
+              <p className="font-mono text-xs italic text-zinc-400 dark:text-zinc-500">
                 {t('annotations.popover.emptyNoteHint')}
               </p>
             )}
             <div className="mt-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between gap-2">
-              <span className="text-[9.5px] font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              <span className="text-xs font-mono uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 {formatRelativeTime(annotation.updatedAt, t)}
                 {annotation.updatedAt !== annotation.createdAt && (
                   <span className="ml-1">{t('annotations.popover.editedSuffix')}</span>

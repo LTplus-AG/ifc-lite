@@ -34,6 +34,7 @@ import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
+import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
@@ -348,11 +349,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
   useEffect(() => () => {
     const s = useViewerStore.getState();
-    // Fully reset the focus view: a clash focused in isolate/ghost would
-    // otherwise leave the model isolated/ghosted after the panel unmounts.
+    // Release only the isolation/ghost CLASH installed (#5829): a storey isolation
+    // or X-ray set elsewhere survives, as for runs (`discardSolidPresentation`).
     s.clearEntitySelection();
-    s.clearIsolation();
-    s.clearGhost();
+    releaseOwnedClashVisibility(s);
     // One call, not a field list: this cleanup used to clear the selected id,
     // the pair tint, the overlap box and the solid but NOT `clashContactLines`,
     // so a focused clash whose contact interface HAD been built (the preferred

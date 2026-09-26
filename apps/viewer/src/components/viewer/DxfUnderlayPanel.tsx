@@ -35,7 +35,8 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
+import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, AlertTriangle, Crosshair } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
@@ -51,7 +52,6 @@ import { posthog } from '@/lib/analytics';
 import { ingestDxfFile } from '@/hooks/ingest/dxfIngest';
 import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
-
 interface DxfUnderlayPanelProps {
   /** Centre the underlay on the generated drawing (offset adjustment). */
   onCenterOnModel: (id: string) => void;
@@ -382,7 +382,7 @@ export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeference
           onClick={() => fileInputRef.current?.click()}
         >
           {importing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Spinner size="md" className="mr-2" />
           ) : (
             <FileUp className="h-4 w-4 mr-2" />
           )}

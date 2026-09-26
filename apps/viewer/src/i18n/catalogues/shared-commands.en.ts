@@ -147,7 +147,7 @@ export const sharedCommandsEn = {
   'classVisibility.fastGeometry.descriptionExact': 'Exact: full cuts + density · on reload',
 
   'classVisibility.pinnedDetail.label': 'Detail pinned: {tier}',
-  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · from a ?geomTier= link',
-  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · from a ?geomTier= link',
-  'classVisibility.clear': 'Clear',
+  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · manage in Performance settings',
+  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · manage in Performance settings',
+  'classVisibility.performanceSettings': 'Performance settings',
 } as const satisfies Record<string, TranslationValue>;

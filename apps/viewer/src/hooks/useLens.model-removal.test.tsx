@@ -61,10 +61,11 @@ const WALL_LENS: Lens = {
   ],
 };
 
-let api: ReturnType<typeof useLens> | null = null;
+let mounted = false;
 
 function Probe(): null {
-  api = useLens();
+  useLens();
+  mounted = true;
   return null;
 }
 
@@ -77,7 +78,7 @@ async function mountProbe(): Promise<void> {
   await act(async () => {
     root!.render(<Probe />);
   });
-  assert.ok(api, 'useLens must be mounted');
+  assert.ok(mounted, 'useLens must be mounted');
 }
 
 async function activateLens(): Promise<void> {
@@ -109,7 +110,7 @@ async function loadModel(modelId: string, store: IfcDataStore, maxExpressId: num
 }
 
 beforeEach(() => {
-  api = null;
+  mounted = false;
 });
 
 afterEach(async () => {

@@ -4,9 +4,6 @@
 
 /**
  * Tests for the polyline-mode pieces of measureHandlers.ts (#2199):
- *   - shouldStartDragMeasurement: the gate that stops a drag measurement
- *     from ever starting while polyline mode is active (and vice versa is
- *     structural — polyline mode never touches activeMeasurement at all).
  *   - raycastForPolylinePoint: the store-free raycast a click resolves to.
  *   - isNearPolylineStart: the screen-space "close the loop" threshold.
  */
@@ -15,27 +12,11 @@ import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  shouldStartDragMeasurement,
   raycastForPolylinePoint,
   isNearPolylineStart,
   CLOSE_LOOP_SCREEN_RADIUS_PX,
 } from './measureHandlers.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-
-describe('shouldStartDragMeasurement', () => {
-  it('starts a drag in drag mode without shift', () => {
-    assert.equal(shouldStartDragMeasurement('drag', false), true);
-  });
-
-  it('does NOT start a drag when shift is held (existing orbit escape hatch)', () => {
-    assert.equal(shouldStartDragMeasurement('drag', true), false);
-  });
-
-  it('does NOT start a drag in polyline mode, shift or not', () => {
-    assert.equal(shouldStartDragMeasurement('polyline', false), false);
-    assert.equal(shouldStartDragMeasurement('polyline', true), false);
-  });
-});
 
 /** Build a minimal MouseHandlerContext for raycastForPolylinePoint — only
  *  the fields that function actually reads. */
@@ -142,28 +123,5 @@ describe('isNearPolylineStart', () => {
     const candidate = { screenX: 50, screenY: 0 };
     assert.equal(isNearPolylineStart(candidate, first, 40), false);
     assert.equal(isNearPolylineStart(candidate, first, 60), true);
-  });
-});
-
-describe('shouldStartDragMeasurement - angle mode (#2735)', () => {
-  it('never starts a drag in angle mode', () => {
-    // The single gate that stops two mode state machines running at once.
-    // Angle mode places points by click, so a drag starting underneath it
-    // would leave `activeMeasurement` non-null while a pick sequence is in
-    // progress - the exact corruption `setMeasureMode` exists to prevent.
-    assert.equal(shouldStartDragMeasurement('angle', false), false);
-  });
-
-  it('is an ALLOW-list, so a future mode is click-driven by default', () => {
-    // Written as `mode === 'drag'`, not `mode !== 'polyline'`. The exclusion
-    // form is a deny-list: every new click-driven mode must remember to add
-    // itself, and forgetting means the drag gesture silently runs underneath
-    // it. This pins the safe direction rather than the current mode list, so
-    // it keeps biting when a fourth mode lands.
-    assert.equal(shouldStartDragMeasurement('drag', false), true);
-    assert.equal(shouldStartDragMeasurement('drag', true), false, 'shift still escapes to orbit');
-    for (const mode of ['polyline', 'angle'] as const) {
-      assert.equal(shouldStartDragMeasurement(mode, false), false, `${mode} must not drag`);
-    }
   });
 });

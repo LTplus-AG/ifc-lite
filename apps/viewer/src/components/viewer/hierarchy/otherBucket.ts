@@ -17,7 +17,7 @@
  * living apart from `treeDataBuilder.ts`.
  */
 
-import type { TreeNode } from './types';
+import type { TreeNode, ExpansionLookup } from './types';
 
 export interface OtherBucketEntry {
   expressId: number;
@@ -39,7 +39,7 @@ export interface OtherBucketEntry {
 export function buildOtherGroupNodes(
   entries: readonly OtherBucketEntry[],
   otherNodeId: string,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
 ): TreeNode[] {
   if (entries.length === 0) return [];
 

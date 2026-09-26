@@ -40,6 +40,7 @@ import type { PropertyValueType } from '@ifc-lite/data';
 import type { ViewerState } from '../index.js';
 import { collabServerUrl } from '@/lib/collab/config';
 import {
+  applyIdentityPatch,
   loadOrCreateIdentity,
   persistIdentity,
   type EphemeralIdentity,
@@ -529,12 +530,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabGeometryNotice: null,
 
   setCollabPanelVisible: (collabPanelVisible) => set({ collabPanelVisible }),
-
   setCollabIdentity: (patch) => {
-    const next: EphemeralIdentity = { ...get().collabIdentity, ...patch };
+    const next = applyIdentityPatch(get().collabIdentity, patch);
+    if (!next) return;
     persistIdentity(next);
     set({ collabIdentity: next });
-    // Reflect the rename into a live session's presence immediately.
     const session = get().collabSession;
     if (session) {
       const user: UserIdentity = { id: next.id, name: next.name, color: next.color };

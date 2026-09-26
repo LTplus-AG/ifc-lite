@@ -15,10 +15,8 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import {
-  Map as MapIcon, ExternalLink, Loader2, MapPinOff, Globe2,
-  Search, Mountain, MapPin, X, Check,
-} from 'lucide-react';
+import { Map as MapIcon, ExternalLink, MapPinOff, Globe2, Search, Mountain, MapPin, X, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -681,7 +679,7 @@ export function LocationMap({
       {/* Map container */}
       {mapState === 'loading' && (
         <div className="flex items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50">
-          <Loader2 className="h-4 w-4 text-teal-500 animate-spin" />
+          <Spinner size="md" className="text-teal-500" />
           <span className="text-[10px] text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
@@ -767,7 +765,7 @@ export function LocationMap({
                 </div>
                 <div className="text-foreground text-right tabular-nums">
                   {elevationLoading ? (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin inline" />
+                    <Spinner className="h-2.5 w-2.5 inline" />
                   ) : pickedElevation !== null ? (
                     t('properties.locationMap.elevationMeters', { value: formatLocaleNumber(locale, pickedElevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
                   ) : (

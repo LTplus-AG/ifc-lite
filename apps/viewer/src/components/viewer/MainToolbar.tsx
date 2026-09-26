@@ -6,45 +6,8 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
 import { BottomPanelMenuItems } from './toolbar/BottomPanelMenuItems.js';
 import React, { useCallback, useMemo } from 'react';
-import {
-  FolderOpen,
-  Download,
-  MousePointer2,
-  PersonStanding,
-  Ruler,
-  Scissors,
-  StickyNote,
-  Eye,
-  EyeOff,
-  Equal,
-  Crosshair,
-  GitCompareArrows,
-  Home,
-  Maximize2,
-  Grid3x3,
-  HelpCircle,
-  Loader2,
-  Info,
-  Plus,
-  MessageSquare,
-  ClipboardCheck,
-  Palette,
-  Orbit,
-  Layout,
-  Layers,
-  LayoutTemplate,
-  Globe2,
-  Sun,
-  Move,
-  Move3d,
-  PenLine,
-  PanelTop,
-  Undo2,
-  Redo2,
-  RefreshCw,
-  Share2,
-  Users,
-} from 'lucide-react';
+import { FolderOpen, Download, MousePointer2, PersonStanding, Ruler, Scissors, StickyNote, Eye, EyeOff, Equal, Crosshair, GitCompareArrows, Home, Maximize2, Grid3x3, HelpCircle, Info, Plus, MessageSquare, ClipboardCheck, Palette, Orbit, Layout, Layers, LayoutTemplate, Globe2, Sun, Move, Move3d, PenLine, PanelTop, Undo2, Redo2, RefreshCw, Share2, Users } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -58,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
@@ -258,13 +222,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
   const {
     loading,
-    progress,
     geometryProgress,
     metadataProgress,
     geometryResult,
     ifcDataStore,
     models,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   // Shared command surfaces (also drive the ribbon toolbar): file
   // open/add/refresh incl. the global `ifc-lite:*` load listeners and
@@ -372,7 +336,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             disabled={loading}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="md" />
             ) : (
               <FolderOpen className="h-4 w-4" />
             )}
@@ -1061,20 +1025,18 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ExtensionToolbarSlot slot="toolbar.right" />
 
       {/* Loading Progress */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-2 mr-4">
           <span className="text-xs text-muted-foreground">
-            {(geometryProgress ?? metadataProgress ?? progress)?.phase}
+            {activeProgress.phase}
             {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
           </span>
-          {(geometryProgress ?? metadataProgress ?? progress)?.indeterminate ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          {activeProgress.indeterminate ? (
+            <Spinner size="sm" className="text-muted-foreground" />
           ) : (
             <>
-              <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-32 h-2" />
-              <span className="text-xs text-muted-foreground">
-                {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
-              </span>
+              <Progress value={activeProgress.percent} className="w-32 h-2" />
+              <span className="text-xs text-muted-foreground">{Math.round(activeProgress.percent)}%</span>
             </>
           )}
         </div>

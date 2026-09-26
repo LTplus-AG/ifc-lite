@@ -21,9 +21,10 @@
  * `SearchableSelect`.
  */
 
-import { Loader2, MapPin, X } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent, PopoverPortal } from '@/components/ui/popover';
 import { usePortalContainer } from '@/components/ui/portal-container';
+import { Spinner } from '@/components/ui/spinner';
 import type { GeocodeResult } from './location-map-geocode';
 
 interface LocationMapSearchBarProps {
@@ -66,7 +67,7 @@ export function LocationMapSearchBar({
                 onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
               />
               {loading && (
-                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-teal-500 animate-spin" />
+                <Spinner size="xs" className="absolute right-2 top-1/2 -translate-y-1/2 text-teal-500" />
               )}
             </div>
           </PopoverAnchor>

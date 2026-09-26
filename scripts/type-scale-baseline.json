@@ -25,7 +25,6 @@
   "apps/viewer/src/components/viewer/ComparePanel.tsx": 1,
   "apps/viewer/src/components/viewer/CustomBasemapEditor.tsx": 9,
   "apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx": 11,
-  "apps/viewer/src/components/viewer/EntityContextMenu.tsx": 3,
   "apps/viewer/src/components/viewer/EnvironmentPanel.tsx": 13,
   "apps/viewer/src/components/viewer/ExportChangesReviewDialog.tsx": 2,
   "apps/viewer/src/components/viewer/FilterGroupEditor.tsx": 1,

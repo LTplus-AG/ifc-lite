@@ -231,7 +231,9 @@ export const miscPanelsBEn = {
   'geometryAxisRow.decreaseAriaLabel': 'Decrease {label}',
   'geometryAxisRow.increaseAriaLabel': 'Increase {label}',
 
-  // ---- EntityContextMenu.tsx (shortcut-hinted items + DuplicateRow, see doc comment)
+  // ---- EntityContextMenu.tsx (shortcut-hinted items + DuplicateItems)
+  'entityContextMenu.entityActions': 'Entity actions',
+  'entityContextMenu.canvasActions': 'Canvas actions',
   'entityContextMenu.duplicateDefaultTitle': 'Duplicate one bbox-width along +X (default)',
   'entityContextMenu.duplicateLabel': 'Duplicate',
   'entityContextMenu.frameSelection': 'Frame selection',

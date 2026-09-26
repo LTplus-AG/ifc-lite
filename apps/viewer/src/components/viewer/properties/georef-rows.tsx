@@ -152,7 +152,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
   const valueCellContent = (
     <>
       <span
-        className={`text-[11px] font-mono tabular-nums break-all text-right ${
+        className={`text-2xs font-mono tabular-nums break-all text-right ${
           isMutated
             ? 'text-foreground font-semibold'
             : 'text-teal-700 dark:text-teal-400'
@@ -170,11 +170,11 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
 
   const rowBody = (
     <>
-      <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
+      <span className="text-2xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         {isComputed && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-[10px] text-teal-500">*</span>
+              <span className="text-2xs text-teal-500">*</span>
             </TooltipTrigger>
             <TooltipContent>{t('properties.georef.computedTooltip')}</TooltipContent>
           </Tooltip>
@@ -184,7 +184,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
       <div className="flex-1 flex flex-col items-end gap-0.5 min-w-0">
         <div className="flex items-start gap-1 w-full justify-end">
           {isMutated && !editing && (
-            <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-overlay-accent-soft text-foreground border-overlay-accent/40 shrink-0 mt-0.5">
+            <Badge variant="secondary" className="h-4 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40 shrink-0 mt-0.5">
               {t('properties.georef.editedBadge')}
             </Badge>
           )}
@@ -197,7 +197,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     aria-label={label}
                     value={editValue}
                     onChange={e => { setEditValue(e.target.value); }}
-                    className="flex-1 text-[11px] font-mono px-1.5 py-1 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400"
+                    className="flex-1 text-2xs font-mono px-1.5 py-1 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400"
                   >
                     <option value="">{t('properties.georef.selectPlaceholder')}</option>
                     {hint.suggestions?.map(s => <option key={s} value={s}>{s}</option>)}
@@ -210,7 +210,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={hint.placeholderKey ? t(hint.placeholderKey) : undefined}
-                    className="flex-1 min-w-0 text-[11px] font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                    className="flex-1 min-w-0 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
                   />
                 )}
                 <button onClick={() => commitEdit()} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
@@ -227,7 +227,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     <button
                       key={s}
                       onClick={() => selectSuggestion(s)}
-                      className="text-[9px] font-mono px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-teal-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+                      className="text-2xs font-mono px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-teal-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
                     >
                       {s}
                     </button>
@@ -236,7 +236,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
               )}
               {/* Help text */}
               {hint.helpTextKey && (
-                <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
+                <span className="text-2xs text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
               )}
             </div>
           ) : (
@@ -298,7 +298,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const rowClassName = 'flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
   const valueCellContent = (
     <>
-      <span className="text-[11px] font-mono tabular-nums text-teal-700 dark:text-teal-400">
+      <span className="text-2xs font-mono tabular-nums text-teal-700 dark:text-teal-400">
         {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
         <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
       </span>
@@ -310,10 +310,10 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   const rowBody = (
     <>
-      <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
+      <span className="text-2xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-[10px] text-teal-500">*</span>
+            <span className="text-2xs text-teal-500">*</span>
           </TooltipTrigger>
           <TooltipContent>{editable ? t('properties.georef.angleEditTooltip') : t('properties.georef.computedTooltip')}</TooltipContent>
         </Tooltip>
@@ -330,9 +330,9 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="0.0"
-                className="w-28 text-[11px] font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                className="w-28 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
               />
-              <span className="text-[10px] text-zinc-400">{t('properties.georef.degUnit')}</span>
+              <span className="text-2xs text-zinc-400">{t('properties.georef.degUnit')}</span>
               <button onClick={commitEdit} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                 <Check className="h-3 w-3" />
               </button>
@@ -340,7 +340,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 <X className="h-3 w-3" />
               </button>
             </div>
-            <span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
+            <span className="text-2xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>
         ) : (
           <ValueCell clickable={editable} onClick={startEdit}>{valueCellContent}</ValueCell>
@@ -378,7 +378,7 @@ export function TerrainHeightButton({ modelId, editable, onApply }: {
             e.stopPropagation();
             onApply(terrainSaveHeight);
           }}
-          className="flex items-center gap-0.5 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors mt-0.5"
+          className="flex items-center gap-0.5 text-2xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors mt-0.5"
         >
           <Mountain className="h-2.5 w-2.5" />
           <span>{t('properties.georef.heightMeters', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>

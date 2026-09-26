@@ -33,7 +33,7 @@ import { useTranslation } from '@/i18n';
 // The structural "Reassign class" action is elevated as a distinct accent
 // affordance — it transforms the element rather than adding data to it.
 const RECLASS_TOOL_CLS =
-  'h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-300/70 bg-indigo-500/10 shadow-none transition-colors hover:bg-indigo-500/20 hover:text-indigo-800 dark:text-indigo-300 dark:ring-indigo-700/60 dark:bg-indigo-500/10 dark:hover:text-indigo-200';
+  'h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-2xs font-semibold text-sky-700 ring-1 ring-inset ring-sky-300/70 bg-sky-500/10 shadow-none transition-colors hover:bg-sky-500/20 hover:text-sky-800 dark:text-sky-300 dark:ring-sky-700/60 dark:bg-sky-500/10 dark:hover:text-sky-200';
 
 interface ReassignClassDialogProps {
   modelId: string;
@@ -116,13 +116,13 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
 
         <div className="grid gap-4 py-4">
           {/* current → target */}
-          <div className="flex items-center gap-2 rounded-md border border-indigo-200/70 bg-indigo-50/40 px-3 py-2.5 dark:border-indigo-900/60 dark:bg-indigo-950/20">
-            <code className="flex-1 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
-            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+          <div className="flex items-center gap-2 rounded-md border border-sky-200/70 bg-sky-50/40 px-3 py-2.5 dark:border-sky-900/60 dark:bg-sky-950/20">
+            <code className="flex-1 truncate font-mono text-2xs text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-sky-400" />
             <code
               className={cn(
-                'flex-1 truncate text-right font-mono text-[11px] font-medium',
-                targetChanged ? 'text-indigo-600 dark:text-indigo-300' : 'text-zinc-400 dark:text-zinc-600',
+                'flex-1 truncate text-right font-mono text-2xs font-medium',
+                targetChanged ? 'text-sky-600 dark:text-sky-300' : 'text-zinc-400 dark:text-zinc-600',
               )}
               title={trimmedTarget || undefined}
             >
@@ -133,7 +133,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {/* quick picks */}
           {quickTargets.length > 0 && (
             <div className="space-y-1.5">
-              <span className="block text-[11px] font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</span>
+              <span className="block text-2xs font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {quickTargets.map((t) => (
                   <button
@@ -141,10 +141,10 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
                     type="button"
                     onClick={() => setTarget(t)}
                     className={cn(
-                      'rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors',
+                      'rounded-full border px-2.5 py-1 font-mono text-2xs transition-colors',
                       trimmedTarget === t
-                        ? 'border-indigo-400 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
-                        : 'border-zinc-200 text-zinc-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-indigo-950/30',
+                        ? 'border-sky-400 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                        : 'border-zinc-200 text-zinc-600 hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-sky-950/30',
                     )}
                   >
                     {t.replace(/^Ifc/, '')}
@@ -177,7 +177,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
             </Field>
           )}
 
-          <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
+          <p className="text-2xs leading-relaxed text-zinc-400 dark:text-zinc-500">
             {t('propertyEditor.reassign.help')}
           </p>
         </div>
@@ -216,13 +216,13 @@ export function ReassignBadge({ modelId, entityId, entityType }: { modelId: stri
 
   if (!pending) return null;
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-indigo-200/70 bg-indigo-50/50 px-2 py-1 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/25">
-      <Replace className="h-3 w-3 shrink-0 text-indigo-500" />
+    <div className="flex items-center gap-1.5 rounded-md border border-sky-200/70 bg-sky-50/50 px-2 py-1 text-2xs dark:border-sky-900/60 dark:bg-sky-950/25">
+      <Replace className="h-3 w-3 shrink-0 text-sky-500" />
       <span className="text-zinc-500 dark:text-zinc-400">{t('propertyEditor.reassign.badge')}</span>
-      <ArrowRight className="h-3 w-3 shrink-0 text-indigo-400" />
-      <code className="font-mono font-medium text-indigo-600 dark:text-indigo-300">{pending.newType}</code>
+      <ArrowRight className="h-3 w-3 shrink-0 text-sky-400" />
+      <code className="font-mono font-medium text-sky-600 dark:text-sky-300">{pending.newType}</code>
       {pending.predefinedType && (
-        <code className="font-mono text-indigo-500/80 dark:text-indigo-300/70">· {pending.predefinedType}</code>
+        <code className="font-mono text-sky-500/80 dark:text-sky-300/70">· {pending.predefinedType}</code>
       )}
       <span className="ml-auto text-zinc-400 dark:text-zinc-500">{t('propertyEditor.reassign.onExport')}</span>
     </div>

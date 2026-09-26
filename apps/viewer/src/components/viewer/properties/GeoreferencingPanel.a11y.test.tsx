@@ -19,15 +19,24 @@
  *   one interactive element inside another.
  */
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { GeoreferencingPanel } from './GeoreferencingPanel.js';
 
+// Two tests below set Cesium terrain fields on the global store; restore the
+// snapshot from before this file ran so they don't leak into later files.
+let initialState: ReturnType<typeof useViewerStore.getState>;
+
+before(() => {
+  initialState = useViewerStore.getState();
+});
+
 afterEach(() => {
   cleanup();
+  useViewerStore.setState(initialState, true);
 });
 
 const MAP_CONVERSION: MapConversion = {

@@ -19,6 +19,15 @@
  * `Checkbox` with no `label` is expected to be labelled by a surrounding
  * `<Field>` or an explicit `aria-label` instead.
  *
+ * `description`, when given, renders inside that same `<label>` (so
+ * clicking it still toggles the checkbox) but must NOT become part of the
+ * checkbox's accessible NAME — label-wraps-control name computation uses
+ * the label's entire text content, description included, unless overridden.
+ * So the input gets an explicit `aria-labelledby` pointing at only the
+ * `label` text's own id (which wins over the implicit wrapping-label
+ * name), and a separate `aria-describedby` pointing at `description`'s id
+ * — named by `label` alone, described by `label` + `description` together.
+ *
  * Space toggles it via an explicit `onKeyDown`, not the browser's native
  * default action: this is a CONTROLLED input (`checked` always comes from
  * the caller), so a native toggle followed by React re-asserting the old
@@ -57,12 +66,16 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       id,
       onKeyDown,
       disabled,
+      'aria-labelledby': ariaLabelledBy,
+      'aria-describedby': ariaDescribedBy,
       ...props
     },
     ref
   ) => {
     const generatedId = React.useId();
     const inputId = id ?? generatedId;
+    const labelId = `${inputId}-label`;
+    const descriptionId = `${inputId}-description`;
     const innerRef = React.useRef<HTMLInputElement | null>(null);
 
     React.useImperativeHandle(ref, () => innerRef.current as HTMLInputElement);
@@ -83,24 +96,35 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       [onKeyDown, disabled, onCheckedChange, checked]
     );
 
-    const input = (
-      <input
-        ref={innerRef}
-        id={inputId}
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onCheckedChange?.(event.target.checked)}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          'h-4 w-4 shrink-0 rounded-sm border border-input accent-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-          className
-        )}
-        {...props}
-      />
-    );
+    // Without `label` there is no wrapping <label> to override, so pass
+    // through whatever the caller (or a surrounding `<Field>`) gave.
+    if (!label) {
+      return (
+        <input
+          ref={innerRef}
+          id={inputId}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onCheckedChange?.(event.target.checked)}
+          onKeyDown={handleKeyDown}
+          aria-labelledby={ariaLabelledBy}
+          aria-describedby={ariaDescribedBy}
+          className={cn(
+            'h-4 w-4 shrink-0 rounded-sm border border-input accent-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+            className
+          )}
+          {...props}
+        />
+      );
+    }
 
-    if (!label) return input;
+    // `label`'s own id, referenced by `aria-labelledby` below, wins over the
+    // implicit label-wraps-control name computation — which would otherwise
+    // pull `description` into the accessible NAME instead of just the
+    // description, since both sit inside the same `<label>` (kept together
+    // so clicking either still toggles the checkbox).
+    const describedBy = [ariaDescribedBy, description ? descriptionId : null].filter(Boolean).join(' ') || undefined;
 
     return (
       <label
@@ -111,10 +135,25 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           containerClassName
         )}
       >
-        {input}
+        <input
+          ref={innerRef}
+          id={inputId}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onCheckedChange?.(event.target.checked)}
+          onKeyDown={handleKeyDown}
+          aria-labelledby={ariaLabelledBy ?? labelId}
+          aria-describedby={describedBy}
+          className={cn(
+            'h-4 w-4 shrink-0 rounded-sm border border-input accent-primary shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+            className
+          )}
+          {...props}
+        />
         <span className="text-sm">
-          {label}
-          {description && <span className="block text-xs text-muted-foreground">{description}</span>}
+          <span id={labelId}>{label}</span>
+          {description && <span id={descriptionId} className="block text-xs text-muted-foreground">{description}</span>}
         </span>
       </label>
     );

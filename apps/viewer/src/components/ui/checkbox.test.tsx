@@ -100,4 +100,31 @@ describe('Checkbox', () => {
     assert.equal(host.querySelectorAll('label').length, 0);
     assert.equal(host.querySelector('input')!.getAttribute('aria-label'), 'Standalone');
   });
+
+  it("the accessible name (via aria-labelledby) excludes description, even though both sit inside the same <label>", () => {
+    const host = render(
+      <Checkbox
+        label="Heights are ellipsoidal"
+        description="Skip the geoid correction for files whose heights are already ellipsoidal."
+        checked={false}
+      />,
+    );
+    const input = host.querySelector('input')!;
+    const label = host.querySelector('label')!;
+    // Both are visible inside the same clickable <label> ...
+    assert.ok(label.textContent?.includes('Heights are ellipsoidal'));
+    assert.ok(label.textContent?.includes('Skip the geoid correction'));
+    // ... but the accessible NAME (aria-labelledby) resolves to only the
+    // label text, not label-wraps-control's default "whole subtree" name,
+    // which would otherwise fold the description into it too.
+    const labelledBy = input.getAttribute('aria-labelledby');
+    assert.ok(labelledBy, 'input has an explicit aria-labelledby');
+    const nameSource = document.getElementById(labelledBy);
+    assert.equal(nameSource?.textContent, 'Heights are ellipsoidal');
+    assert.ok(!nameSource?.textContent?.includes('Skip the geoid correction'));
+    // The description is still available as the accessible DESCRIPTION.
+    const describedBy = input.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'input has an aria-describedby');
+    assert.equal(document.getElementById(describedBy)?.textContent, 'Skip the geoid correction for files whose heights are already ellipsoidal.');
+  });
 });

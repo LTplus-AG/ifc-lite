@@ -139,7 +139,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
     <Button
       variant="ghost"
       size="sm"
-      className="h-6 px-2 text-[10px]"
+      className="h-6 px-2 text-2xs"
       onClick={() => { setIsCustomQto(!isCustomQto); setQtoName(''); setCustomQtoName(''); setQuantityName(''); setCustomQuantityName(''); }}
     >
       {isCustomQto ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
@@ -198,14 +198,14 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   <SelectContent>
                     {existingStandardQtos.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                           {t('propertyEditor.shared.onElement')}
                         </div>
                         {existingStandardQtos.map((def) => (
                           <SelectItem key={def.name} value={def.name}>
                             <div className="flex items-center gap-2">
                               <span>{def.name}</span>
-                              <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
+                              <Badge variant="secondary" className="h-4 px-1 text-2xs">{t('propertyEditor.shared.existing')}</Badge>
                             </div>
                           </SelectItem>
                         ))}
@@ -213,7 +213,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                     )}
                     {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                           {t('propertyEditor.shared.existingCustom')}
                         </div>
                         {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).map((name) => (
@@ -225,7 +225,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                     )}
                     {availableStandardQtos.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                           {t('propertyEditor.quantity.standardGroup', { entityType })}
                         </div>
                         {availableStandardQtos.map((def) => (
@@ -233,9 +233,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{def.name}</span>
-                                <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
+                                <Badge variant="outline" className="h-4 px-1 text-2xs border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                               </div>
-                              <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardSetDescription') ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
+                              <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardSetDescription') ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -262,9 +262,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{qty.name}</span>
-                              <Badge variant="secondary" className="h-4 px-1 text-[9px]">{qty.unit}</Badge>
+                              <Badge variant="secondary" className="h-4 px-1 text-2xs">{qty.unit}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardQuantityDescription') ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
+                            <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardQuantityDescription') ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
                           </div>
                         </SelectItem>
                       ))}

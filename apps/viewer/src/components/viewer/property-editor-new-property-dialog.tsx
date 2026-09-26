@@ -149,7 +149,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
     <Button
       variant="ghost"
       size="sm"
-      className="h-6 px-2 text-[10px]"
+      className="h-6 px-2 text-2xs"
       onClick={() => { setIsCustomPset(!isCustomPset); setPsetName(''); setCustomPsetName(''); setPropName(''); setCustomPropName(''); }}
     >
       {isCustomPset ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
@@ -203,14 +203,14 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                     {/* Existing psets on this entity */}
                     {existingStandardPsets.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                           {t('propertyEditor.shared.onElement')}
                         </div>
                         {existingStandardPsets.map((def) => (
                           <SelectItem key={def.name} value={def.name}>
                             <div className="flex items-center gap-2">
                               <span>{def.name}</span>
-                              <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
+                              <Badge variant="secondary" className="h-4 px-1 text-2xs">{t('propertyEditor.shared.existing')}</Badge>
                             </div>
                           </SelectItem>
                         ))}
@@ -219,7 +219,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                     {/* Non-standard existing psets */}
                     {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                           {t('propertyEditor.shared.existingCustom')}
                         </div>
                         {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).map((name) => (
@@ -232,7 +232,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                     {/* Available standard psets for this type */}
                     {availableStandardPsets.length > 0 && (
                       <>
-                        <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                           {t('propertyEditor.property.standardGroup', { schema: schemaVersion || 'IFC4', entityType })}
                         </div>
                         {availableStandardPsets.map((def) => (
@@ -240,9 +240,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{def.name}</span>
-                                <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
+                                <Badge variant="outline" className="h-4 px-1 text-2xs border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                               </div>
-                              <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
+                              <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -253,7 +253,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               </Field>
             )}
             {inheritedFrom && isInheritedOnly({ inheritedFrom }, effectivePsetName) && (
-              <p className="text-[11px] text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
+              <p className="text-2xs text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
             )}
           </div>
 
@@ -272,9 +272,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{prop.name}</span>
-                              <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t(getTypeNameKey(prop.type))}</Badge>
+                              <Badge variant="secondary" className="h-4 px-1 text-2xs">{t(getTypeNameKey(prop.type))}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
+                            <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                           </div>
                         </SelectItem>
                       ))}

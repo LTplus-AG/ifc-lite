@@ -209,13 +209,13 @@ describe('ComparePanel localization (#4918)', () => {
       const report = stampAnalysisReport(oneModifiedEntryResult(), captureAnalysisStamp());
       useViewerStore.setState({ compareResult: report });
       const ui = render(<ComparePanel />);
-      assert.equal(ui.querySelector('[role="status"]'), null);
+      assert.equal(ui.querySelector('output'), null);
 
       act(() => useViewerStore.setState({ mutationVersion: 11 }));
       assert.equal(useViewerStore.getState().compareResult, report);
-      assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /model changed/i);
+      assert.match(ui.querySelector('output')?.textContent ?? '', /model changed/i);
       assert.ok(ui.querySelector('.opacity-60'), 'the old comparison is dimmed');
-      const rerun = ui.querySelector<HTMLButtonElement>('[role="status"] button');
+      const rerun = ui.querySelector<HTMLButtonElement>('output button');
       assert.equal(rerun?.textContent?.trim(), 'Re-run');
       if (modelCount === 2) {
         assert.ok(rerun);

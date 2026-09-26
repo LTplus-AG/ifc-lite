@@ -167,13 +167,13 @@ for (const modelCount of [1, 2] as const) {
 
       await act(async () => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
       assert.equal(useViewerStore.getState().clashResult, previous);
-      const banner = container!.querySelector('[role="status"]');
+      const banner = container!.querySelector('output');
       assert.match(banner?.textContent ?? '', /model changed/i);
       const rerun = banner?.querySelector('button');
       assert.ok(rerun);
       await clickAndSettle(rerun);
       assert.notEqual(useViewerStore.getState().clashResult, previous);
-      assert.equal(container!.querySelector('[role="status"]'), null, 'fresh result clears the stale banner');
+      assert.equal(container!.querySelector('output'), null, 'fresh result clears the stale banner');
     });
 
     it('repeats the duplicate scan after "Find duplicates"', async () => {

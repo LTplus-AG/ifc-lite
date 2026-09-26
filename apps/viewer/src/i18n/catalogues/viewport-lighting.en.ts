@@ -74,6 +74,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadErrorCard.title': 'Could not load the model',
   'viewportLighting.container.loadErrorCard.retry': 'Retry',
   'viewportLighting.container.loadErrorCard.dismiss': 'Dismiss',
+  'viewportLighting.container.loadErrorCard.webgpuChecking': 'WebGPU support is still being checked. Try opening the model again in a moment.',
   'viewportLighting.container.loadErrorCard.webgpuUnsupported':
     "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link below.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',

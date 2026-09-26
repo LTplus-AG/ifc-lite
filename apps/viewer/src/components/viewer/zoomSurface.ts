@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The surface a zoom-in approaches (#5393, #5547), shared by every zoom entry
- * point: the wheel (`wheelZoom.ts`, which trackpad pinch also arrives as) and
- * touch pinch (`useTouchControls.ts`). Each picks a point here and hands it to
- * `Camera.zoom(..., surfacePoint)`, which stops short of it instead of passing
- * through thin objects.
+ * The surface a zoom-in approaches (#5393, #5547, #5924), shared by every zoom
+ * entry point: the wheel (`wheelZoom.ts`, which trackpad pinch also arrives
+ * as), touch pinch (`useTouchControls.ts`), and the cursorless toolbar zoom-in
+ * and SpaceMouse dolly ({@link createCentreSurfaceZoom}). Each picks a point
+ * here and hands it to `Camera.zoom(..., surfacePoint)`, which stops short of
+ * it instead of passing through thin objects.
  */
 
 import { isPivotRaycastTooExpensive, type PivotCensusScene } from './orbitPivotCensus.js';
@@ -62,4 +63,65 @@ export interface ZoomPoseCamera {
 export function cameraPoseKey(c: ZoomPoseCamera): string {
   const p = c.getPosition(), t = c.getTarget();
   return `${p.x},${p.y},${p.z}|${t.x},${t.y},${t.z}`;
+}
+
+/**
+ * How stale a cached surface pick may get. Past it the scene may have changed
+ * under the camera (an element hidden, isolated or streamed in), so the next
+ * zoom-in picks afresh. The wheel measures it from its last notch (a pause
+ * ends the gesture); the cursorless zoom from the pick itself, so a held
+ * SpaceMouse re-picks at this rate rather than never.
+ */
+export const SURFACE_PICK_IDLE_MS = 400;
+
+/** The part of `Camera` a surface zoom drives. */
+export interface SurfaceZoomCamera extends ZoomPoseCamera {
+  zoom(
+    delta: number,
+    addVelocity?: boolean,
+    mouseX?: number,
+    mouseY?: number,
+    canvasWidth?: number,
+    canvasHeight?: number,
+    fastZoom?: boolean,
+    surfacePoint?: SurfacePoint,
+  ): void;
+}
+
+/**
+ * Zoom with no cursor to anchor it (#5924): the toolbar zoom-in and the
+ * SpaceMouse dolly. Both zoom along the view axis, so the surface they
+ * approach is the one at the centre of `canvas` (CSS px). Zoom-in picks it
+ * through the gated {@link createZoomSurfacePicker} and stops short of it;
+ * zoom-out and a miss keep the plain zoom, unchanged.
+ *
+ * The surface step translates the camera along the centre ray, so a pick stays
+ * valid while only this zoom moves the camera: it is reused while the pose is
+ * the one the last step left and the pick is under
+ * {@link SURFACE_PICK_IDLE_MS} old. A SpaceMouse held forward therefore
+ * raycasts a few times a second, not once per frame, and a hold that began
+ * with no pick (streaming, a miss) picks again while still held; an orbit,
+ * pan or other zoom in between forces a re-pick.
+ */
+export function createCentreSurfaceZoom(
+  renderer: ZoomSurfaceRenderer,
+  camera: SurfaceZoomCamera & { getOrbitAnchorBounds(): unknown },
+  canvas: Pick<HTMLCanvasElement, 'getBoundingClientRect'>,
+  getPickOptions: () => ZoomSurfacePickOptions,
+): (delta: number) => void {
+  const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
+  let last: { point: SurfacePoint | null; pose: string; pickedAt: number } | null = null;
+  return (delta) => {
+    if (!(delta < 0)) {
+      camera.zoom(delta, false);
+      return;
+    }
+    const now = Date.now();
+    if (!last || last.pose !== cameraPoseKey(camera) || now - last.pickedAt >= SURFACE_PICK_IDLE_MS) {
+      const { width, height } = canvas.getBoundingClientRect();
+      last = { point: width > 0 && height > 0 ? pickSurface(width / 2, height / 2) : null, pose: '', pickedAt: now };
+    }
+    camera.zoom(delta, false, undefined, undefined, undefined, undefined, false, last.point ?? undefined);
+    last.pose = cameraPoseKey(camera);
+  };
 }

@@ -36,7 +36,7 @@ import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
+import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
@@ -2723,8 +2723,9 @@ export class Scene {
       return;
     }
 
-    // Defensive copy: callers may mutate/reuse `overrides`; the tuples are treated as immutable by every consumer.
-    this.colorOverrides = new Map(overrides);
+    // A caller can mutate a clash-tint tuple after this call (#5490). Keep the
+    // retained map and the uploaded table in sync by copying its values.
+    this.colorOverrides = cloneOverrides(overrides);
     this.entityColorTable.write(device, this.colorOverrides);
 
     // Instanced occurrences carry the override colour in their records; no-op without instanced data.

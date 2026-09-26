@@ -78,7 +78,7 @@ export function MeasureToolbar() {
   return (
     <HudItem region="top-center" order={0}>
       <HudToolbar data-testid="measure-toolbar">
-        <span className="flex items-center gap-1 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           <Ruler aria-hidden className="h-3.5 w-3.5 text-overlay-accent" />
           {t('measure.panelTitle')}
         </span>

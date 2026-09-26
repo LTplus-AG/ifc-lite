@@ -33,13 +33,13 @@ export function PointCloudLegend({ colorMode }: PointCloudLegendProps) {
   if (colorMode === 'intensity') {
     return (
       <div className="flex flex-col gap-0.5 mt-1">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.intensityLabel')}</span>
+        <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.intensityLabel')}</span>
         <div
           className="h-2 rounded-sm border border-foreground/10"
           style={{ background: 'linear-gradient(to right, rgb(0,0,0), rgb(255,255,255))' }}
           aria-label={t('pointCloudLegend.intensityRampAriaLabel')}
         />
-        <div className="flex justify-between text-[9px] text-muted-foreground">
+        <div className="flex justify-between text-2xs text-muted-foreground">
           <span>{t('pointCloudLegend.low')}</span>
           <span>{t('pointCloudLegend.high')}</span>
         </div>
@@ -50,13 +50,13 @@ export function PointCloudLegend({ colorMode }: PointCloudLegendProps) {
   if (colorMode === 'height') {
     return (
       <div className="flex flex-col gap-0.5 mt-1">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.heightLabel')}</span>
+        <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudLegend.heightLabel')}</span>
         <div
           className="h-2 rounded-sm border border-foreground/10"
           style={{ background: HEIGHT_GRADIENT }}
           aria-label={t('pointCloudLegend.heightRampAriaLabel')}
         />
-        <div className="flex justify-between text-[9px] text-muted-foreground">
+        <div className="flex justify-between text-2xs text-muted-foreground">
           <span>{t('pointCloudLegend.low')}</span>
           <span>{t('pointCloudLegend.high')}</span>
         </div>

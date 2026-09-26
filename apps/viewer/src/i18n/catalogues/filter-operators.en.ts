@@ -20,6 +20,7 @@ export const filterOperatorsEn = {
   'filterOperators.lte': '≤',
   'filterOperators.isSet': 'is set',
   'filterOperators.isNotSet': 'is not set',
+  'filterOperators.isNonEmpty': 'is not empty',
   'filterOperators.isNull': 'is null',
   'filterOperators.isNotNull': 'is not null',
   'filterOperators.hasAny': 'has any of',

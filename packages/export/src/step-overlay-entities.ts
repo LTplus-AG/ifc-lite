@@ -42,8 +42,13 @@ import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { convertStepLine } from './schema-converter.js';
+import { STYLE_RESCUE_TYPES } from './style-closure.js';
+import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
+import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
+import { styleEntityWithheldWarning } from './step-export-types.js';
 import { retypeArgTokens } from './retype.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
+import { detachRelatedObjects } from './step-pset-copy-on-write.js';
 import { serializeEntityArgs, serializeAttributeSlot } from './attribute-real-slots.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 
@@ -183,7 +188,9 @@ export function writeOverlayCreatedEntities(
           ),
       );
     }
-    let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
+    // Same copy-on-write narrowing as a source relation (#5794).
+    let line: string | null = detachRelatedObjects(pass, entity.expressId, `#${entity.expressId}=${upperType}(${argsText});`);
+    if (line === null) continue;
     // Same gap as the source-iteration pass, for an overlay-authored
     // relationship instead of a parsed one (#2398).
     //
@@ -200,6 +207,18 @@ export function writeOverlayCreatedEntities(
         pass.warnings.push(ctx.relationshipWithheldWarning(entity.expressId, upperType));
         continue;
       }
+    } else if (mayNameOmittedRefs && STYLE_RESCUE_TYPES.has(upperType)) {
+      // The same two branches the source pass runs (`step-source-iteration.ts`):
+      // a created styled item, layer assignment or texture map naming an
+      // omitted (e.g. deleted) entity is narrowed or withheld exactly as a
+      // source one is, instead of shipping a dangling `#N` (#5941 review).
+      line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput, pass.sourceSchema);
+      if (line === null) {
+        pass.warnings.push(styleEntityWithheldWarning(entity.expressId, upperType));
+        continue;
+      }
+    } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(upperType)) {
+      line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
     if (pass.converting) {
       const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom, pass.slotFill, pass.withheldRefIds, pass.ifc4Slots, pass.enums);

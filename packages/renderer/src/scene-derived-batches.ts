@@ -57,3 +57,22 @@ export function cloneOverrides(
   for (const [id, c] of overrides) copy.set(id, [c[0], c[1], c[2], c[3]]);
   return copy;
 }
+
+/** Repaint installed clash tints when the overlay theme changes (#5490). */
+export function remapOverrideColors(
+  overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
+  pairs: ReadonlyArray<readonly [from: readonly number[], to: readonly number[]]>,
+): Map<number, [number, number, number, number]> | null {
+  const same = (a: readonly number[], b: readonly number[]) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+  const moving = pairs.filter(([from, to]) => !same(from, to));
+  if (moving.length === 0) return null;
+  let changed = false;
+  const next = new Map<number, [number, number, number, number]>();
+  for (const [id, c] of overrides) {
+    const hit = moving.find(([from]) => same(from, c));
+    if (hit) changed = true;
+    const out = hit ? hit[1] : c;
+    next.set(id, [out[0], out[1], out[2], out[3]]);
+  }
+  return changed ? next : null;
+}

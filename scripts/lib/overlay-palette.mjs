@@ -81,6 +81,11 @@ export const VIEWPORT_OVERLAY_FILES = [
   'apps/viewer/src/components/viewer/MergeLayersBanner.tsx',
   'apps/viewer/src/components/viewer/GeometryModeBanner.tsx',
   'apps/viewer/src/components/viewer/LandXmlUnitsRefusalPrompt.tsx',
+  // Overlays drawn over the canvas that the list above missed (#5490): the
+  // axis helper reads `IFC_AXIS_COLORS`, so a hard-coded triad coming back is
+  // a new hex literal here; the model-origin markers' status colours are frozen.
+  'apps/viewer/src/components/viewer/AxisHelper.tsx',
+  'apps/viewer/src/components/viewer/BasepointOverlay.tsx',
 ];
 
 /** Directory used to scope the whole-viewer purple-family scan. */

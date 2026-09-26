@@ -14,6 +14,7 @@
 
 import { Ruler, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore, type Measurement } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StaleMeasurementBadge } from '../reposition/StaleMeasurementBadge';
@@ -83,6 +84,7 @@ export function MeasurementList() {
           measurement={m}
           index={i}
           onDelete={deleteMeasurement}
+          deleteLabel={t('measure.list.deleteDistance', { index: i + 1 })}
           geoAnchor={geoAnchor}
           unitDisplayOverrides={unitDisplayOverrides}
         />
@@ -97,9 +99,9 @@ export function MeasurementList() {
       {activePolyline && (
         <div className={ROW_LIVE}>
           <span className="tabular-nums">{t('measure.polyline.inProgress', { count: activePolyline.points.length })}</span>
-          <Button variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={cancelPolyline} title={t('measure.cancelEsc')}>
+          <IconButton label={t('measure.cancelEsc')} variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={cancelPolyline}>
             <X className="h-3 w-3" />
-          </Button>
+          </IconButton>
         </div>
       )}
       {polylineMeasurements.map((pl, i) => (
@@ -110,9 +112,9 @@ export function MeasurementList() {
               <StaleMeasurementBadge id={pl.id} />
             </span>
             <span className="ml-auto font-medium tabular-nums">{formatDistance(pl.length, unitDisplayOverrides)}</span>
-            <Button variant="ghost" size="icon-sm" className={DELETE} onClick={() => deletePolylineMeasurement(pl.id)}>
+            <IconButton label={t('measure.list.deletePolyline', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deletePolylineMeasurement(pl.id)}>
               <X className="h-3 w-3" />
-            </Button>
+            </IconButton>
           </div>
         </div>
       ))}
@@ -126,9 +128,9 @@ export function MeasurementList() {
             </span>
             {/* Derived on render, never stored (see measure-modes/readouts). */}
             <span className="ml-auto font-medium tabular-nums">{formatAngleMeasurement(a)}</span>
-            <Button variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteAngleMeasurement(a.id)}>
+            <IconButton label={t('measure.list.deleteAngle', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteAngleMeasurement(a.id)}>
               <X className="h-3 w-3" />
-            </Button>
+            </IconButton>
           </div>
         </div>
       ))}
@@ -153,9 +155,9 @@ export function MeasurementList() {
               <StaleMeasurementBadge id={r.id} />
             </span>
             <span className="ml-auto text-right font-medium tabular-nums">{formatRadiusPoints(r.points, unitDisplayOverrides)}</span>
-            <Button variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteRadiusMeasurement(r.id)}>
+            <IconButton label={t('measure.list.deleteRadius', { index: i + 1 })} variant="ghost" size="icon-sm" className={DELETE} onClick={() => deleteRadiusMeasurement(r.id)}>
               <X className="h-3 w-3" />
-            </Button>
+            </IconButton>
           </div>
         </div>
       ))}
@@ -167,9 +169,9 @@ export function MeasurementList() {
           <span className="tabular-nums">
             {t('measure.radius.inProgress', { count: activeRadius.points.length })} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
           </span>
-          <Button variant="ghost" size="icon-sm" className={`h-5 w-5 shrink-0 ${HIT_SLOP}`} onClick={cancelRadius} title={t('measure.cancelEsc')}>
+          <IconButton label={t('measure.cancelEsc')} variant="ghost" size="icon-sm" className={`h-5 w-5 shrink-0 ${HIT_SLOP}`} onClick={cancelRadius}>
             <X className="h-3 w-3" />
-          </Button>
+          </IconButton>
         </div>
       )}
     </div>
@@ -180,13 +182,14 @@ interface MeasurementItemProps {
   measurement: Measurement;
   index: number;
   onDelete: (id: string) => void;
+  deleteLabel: string;
   /** When set, show real-world E/N/H for the measurement's two endpoints. */
   geoAnchor: AnchorGeoreference | null;
   /** The user's per-unit-type display override (#1573). */
   unitDisplayOverrides: Record<string, string>;
 }
 
-function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayOverrides }: MeasurementItemProps) {
+function MeasurementItem({ measurement, index, onDelete, deleteLabel, geoAnchor, unitDisplayOverrides }: MeasurementItemProps) {
   // Pure display: derived from the stored endpoints, nothing is persisted.
   const components = distanceComponents(measurement.start, measurement.end);
   return (
@@ -197,11 +200,11 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayO
           <StaleMeasurementBadge id={measurement.id} />
         </span>
         <span className="ml-auto font-medium tabular-nums">{formatDistance(measurement.distance, unitDisplayOverrides)}</span>
-        <Button variant="ghost" size="icon-sm" className={DELETE} onClick={() => onDelete(measurement.id)}>
+        <IconButton label={deleteLabel} variant="ghost" size="icon-sm" className={DELETE} onClick={() => onDelete(measurement.id)}>
           <X className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
-      <div className="overflow-x-auto whitespace-nowrap font-mono text-[10px] leading-tight text-muted-foreground">
+      <div className="overflow-x-auto whitespace-nowrap font-mono text-2xs leading-tight text-muted-foreground">
         <div>{formatAxisDeltas(components, unitDisplayOverrides)}</div>
         <div>{formatHorizontalVertical(components, unitDisplayOverrides)}</div>
         {/* Inclination, derived from the same two endpoints (#2199 §4). */}

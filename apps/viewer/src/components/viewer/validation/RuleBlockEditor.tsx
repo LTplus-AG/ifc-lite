@@ -60,7 +60,7 @@ export function RuleBlockEditor({ block, onChange, allowedKinds, models, schemaV
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
           <button
             type="button"
             onClick={() => onChange({ ...block, authoredAs: 'chips' })}
@@ -82,7 +82,7 @@ export function RuleBlockEditor({ block, onChange, allowedKinds, models, schemaV
           </button>
         </div>
         {exactClassForced && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-500">
+          <span className="inline-flex items-center gap-1 text-2xs text-amber-600 dark:text-amber-500">
             <AlertTriangle className="h-3 w-3" />
             {t('validationEditor.ruleBlockEditor.exactClassNotice')}
           </span>

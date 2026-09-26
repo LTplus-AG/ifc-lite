@@ -51,6 +51,17 @@ export interface LoadingSlice {
    * prompt from a previous failed load never survives into the next one.
    */
   landXmlUnitsRefusal: { fileName: string; retry: (assumedLinearUnit: string) => void } | null;
+  /**
+   * Re-runs the load that most recently set `error` (#5851), same File,
+   * URL, or buffers, through the same call. Set ONLY by
+   * `lib/analytics.ts`'s `showLoadError`, alongside the message it sets —
+   * never independently, and `setError` clears it whenever `error` is
+   * cleared (see `setError` below), so a stale retry from a PREVIOUS,
+   * unrelated failure can never survive to sit next to a new one. `null`
+   * when nothing can usefully be retried; the card then renders without a
+   * Retry button. The load-error card's Retry button is the one reader.
+   */
+  lastLoadRetry: (() => void) | null;
 
   // Actions
   setLoading: (loading: boolean) => void;
@@ -63,6 +74,7 @@ export interface LoadingSlice {
   setActiveLoadCanceller: (cancel: (() => void) | null) => void;
   setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
+  setLastLoadRetry: (retry: (() => void) | null) => void;
 }
 
 export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice> = (set) => ({
@@ -77,6 +89,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   activeLoadCanceller: null,
   loadingFileName: null,
   landXmlUnitsRefusal: null,
+  lastLoadRetry: null,
 
   // Actions
   setLoading: (loading) => set({ loading }),
@@ -84,11 +97,16 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setProgress: (progress) => set({ progress }),
   setGeometryProgress: (geometryProgress) => set({ geometryProgress }),
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
-  setError: (error) => set({ error }),
+  // Clearing `error` always clears `lastLoadRetry` with it (#5851 review):
+  // the only other writer of `lastLoadRetry` is `showLoadError`, which sets
+  // both together, so this is the one place a stale retry could otherwise
+  // survive its error and attach itself to whatever sets a new one next.
+  setError: (error) => set(error === null ? { error, lastLoadRetry: null } : { error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
   setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
   setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
+  setLastLoadRetry: (lastLoadRetry) => set({ lastLoadRetry }),
 });
 
 /**
@@ -106,13 +124,14 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  * that registered it, and dropping it here would silently orphan an in-flight
  * stream's only stop button.
  *
- * `landXmlUnitsRefusal` follows `error`'s lifecycle: a session reset ends
- * whatever load prompted it, so the stale retry closure (and the `File` it
- * holds) goes with it rather than outliving the load it belongs to.
+ * `landXmlUnitsRefusal` and `lastLoadRetry` follow `error`'s lifecycle: a
+ * session reset ends whatever load prompted them, so the stale retry
+ * closures (and the `File` they hold) go with it rather than outliving the
+ * load they belong to.
  */
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
-  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal'],
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal', 'lastLoadRetry'],
   {
     'session-reset': () => ({
       loading: false,
@@ -123,6 +142,7 @@ export const loadingTeardown = defineSliceTeardown(
       error: null,
       loadingFileName: null,
       landXmlUnitsRefusal: null,
+      lastLoadRetry: null,
     }),
     'model-removed': notApplicable,
     'all-models-cleared': notApplicable,

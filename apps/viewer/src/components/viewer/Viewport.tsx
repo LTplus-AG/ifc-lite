@@ -75,6 +75,7 @@ import { subscribeViewportHealth } from './device-loss-report.js';
 import { runGpuUpload } from './gpu-upload-guard.js';
 import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
 import { useTranslation } from '@/i18n';
+import { createCentreSurfaceZoom } from './zoomSurface.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -112,6 +113,7 @@ export function Viewport({
 }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const annotationLineVertexCountRef = useRef(0);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const { t } = useTranslation();
@@ -857,9 +859,8 @@ export function Viewport({
           console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
         });
       }
-      // Read-only debug/e2e hooks (same convention as __ifc_lite_viewer_store__),
-      // cleared on viewport teardown below.
-      installViewportDebugHooks(renderer);
+      // Read-only debug/e2e hooks, cleared on viewport teardown below.
+      installViewportDebugHooks(renderer, () => ({ hiddenIds: hiddenEntitiesRef.current, isolatedIds: isolatedEntitiesRef.current }), () => annotationLineVertexCountRef.current);
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
@@ -997,6 +998,9 @@ export function Viewport({
         return resolved;
       };
 
+      // The toolbar zoom-in stops short of the surface at the viewport centre (#5924).
+      const centreZoom = createCentreSurfaceZoom(renderer, camera, canvas, getPickOptions);
+      const zoomStep = (delta: number) => { centreZoom(delta); renderCurrent(); calculateScale(); };
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
@@ -1039,16 +1043,8 @@ export function Viewport({
           );
           calculateScale();
         },
-        zoomIn: () => {
-          camera.zoom(-50, false);
-          renderCurrent();
-          calculateScale();
-        },
-        zoomOut: () => {
-          camera.zoom(50, false);
-          renderCurrent();
-          calculateScale();
-        },
+        zoomIn: () => zoomStep(-50),
+        zoomOut: () => zoomStep(50),
         setInteractionMode: (mode) => {
           camera.setInteractionMode(mode);
         },
@@ -1427,12 +1423,11 @@ export function Viewport({
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
     const v = symbolicLineChannels.annotation;
-    renderer.setLineOverlay('annotation', symbolicLineVertexData(v).length === 0 ? null : v);
+    const vertices = symbolicLineVertexData(v);
+    renderer.setLineOverlay('annotation', vertices.length === 0 ? null : v);
+    annotationLineVertexCountRef.current = vertices.length / 3;
   }, [symbolicLineChannels.annotation, isInitialized]);
-
-  // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
-  // on — see useAlignmentLines3D. Upload/clear mirrors the annotation overlay;
-  // a separate renderer buffer keeps alignment visibility independent.
+  // IfcAlignment centerlines use a separate buffer; see useAlignmentLines3D.
   const alignmentVertices3D = useAlignmentLines3D();
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -1623,7 +1618,7 @@ export function Viewport({
     calculateScale,
   });
 
-  useSpaceMouseControls({ rendererRef, isInitialized, geometryRef, selectedEntityIdRef, calculateScale });
+  useSpaceMouseControls({ rendererRef, isInitialized, geometryRef, selectedEntityIdRef, calculateScale, getPickOptions });
 
   useAnimationLoop({
     canvasRef,

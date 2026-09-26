@@ -26,8 +26,13 @@ impl IfcAPI {
     /// when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
     /// set, the forward `#`-reference closure is added so the subset never dangles
     /// a reference.
-    /// `mutations_json` carries `MutablePropertyView` edits (attribute updates +
-    /// property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+    /// `mutations_json` carries `MutablePropertyView` edits; empty ⇒ none. It is
+    /// either the mutation log `MutablePropertyView.exportMutations()` returns
+    /// (an object with a `mutations` array, optionally `newEntities` and
+    /// `georefMutations`), written with byte parity to the TypeScript
+    /// `StepExporter` (#5941), or the older pre-serialized
+    /// `{ attributeUpdates, propertyMutations }` shape. A log does not combine
+    /// with `included`. See `export_step_json` for both shapes.
     /// A non-empty but malformed `mutations_json` throws rather than silently
     /// exporting the model with none of the caller's edits applied — mirrors
     /// `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
@@ -38,16 +43,21 @@ impl IfcAPI {
         schema: String,
         included: Option<Vec<u32>>,
         mutations_json: String,
-    ) -> Vec<u8> {
-        match ifc_lite_export::export_step_json(
+    ) -> Result<Vec<u8>, JsError> {
+        // Returned as `Err`, not thrown with `throw_str`: a throw from inside a
+        // `&self` method leaves the instance's borrow flag held, so the host's
+        // later `free()` fails with "attempted to take ownership of Rust value
+        // while it was borrowed". An `Err` is thrown by the glue after the
+        // borrow is released, and the JS contract (it throws, message prefixed
+        // `exportStep:`) is unchanged.
+        ifc_lite_export::export_step_json(
             content,
             if schema.is_empty() { None } else { Some(schema) },
             included,
             &mutations_json,
-        ) {
-            Ok(step) => step.into_bytes(),
-            Err(msg) => wasm_bindgen::throw_str(&format!("exportStep: {msg}")),
-        }
+        )
+        .map(String::into_bytes)
+        .map_err(|msg| JsError::new(&format!("exportStep: {msg}")))
     }
 
     /// Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).

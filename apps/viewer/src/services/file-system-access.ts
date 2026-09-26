@@ -151,5 +151,8 @@ export function handlesFromDataTransfer(dataTransfer: DataTransfer): Promise<Ope
       }
     }
     return opened.length > 0 ? opened : null;
-  })();
+  })().catch((err) => {
+    console.warn('[file-system-access] drag handle request failed; using dropped files instead', err);
+    return null;
+  });
 }

@@ -361,7 +361,7 @@ export interface ExportPass {
   // ---- the collection passes' output ----
   readonly modifiedEntities: Set<number>;
   readonly modifiedAttributes: Map<number, Map<string, string>>;
-  readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[] }>;
+  readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[]; sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>> }>; // set → property → reusable source atom (#5794)
   readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }>;
   readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;
   readonly typeOwnedPsetIdsByEntity: Map<number, number[]>;
@@ -370,6 +370,7 @@ export interface ExportPass {
   readonly overlayTypeOwnedPsets: Map<number, IfcAttributeValue>;
   readonly skipPropertySetIds: Set<number>;
   readonly skipRelationshipIds: Set<number>;
+  readonly detachedRelatedObjects: Map<number, Set<number>>; // shared rel → elements copied on write off it (#5794)
   readonly newGeorefLines: string[];
   readonly warnings: string[];
   /** The slots an IFC2X3 downgrade must settle: `OwnerHistory` by reuse

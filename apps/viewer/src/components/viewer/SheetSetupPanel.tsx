@@ -25,6 +25,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -436,22 +437,24 @@ export function SheetSetupPanel({ onOpenTitleBlockEditor }: SheetSetupPanelProps
                         >
                           <span className="truncate flex-1">{template.name}</span>
                           <div className="flex gap-1">
-                            <Button
+                            <IconButton
+                              label={t('sheetsPdf.sheetSetup.loadTemplate', { name: template.name })}
                               variant="ghost"
                               size="icon-sm"
                               className="h-6 w-6"
                               onClick={() => loadTemplate(template.id)}
                             >
                               <Plus className="h-3 w-3" />
-                            </Button>
-                            <Button
+                            </IconButton>
+                            <IconButton
+                              label={t('sheetsPdf.sheetSetup.deleteTemplate', { name: template.name })}
                               variant="ghost"
                               size="icon-sm"
                               className="h-6 w-6 text-destructive hover:text-destructive"
                               onClick={() => deleteTemplate(template.id)}
                             >
                               <Trash2 className="h-3 w-3" />
-                            </Button>
+                            </IconButton>
                           </div>
                         </div>
                       ))}

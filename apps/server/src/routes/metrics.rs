@@ -19,11 +19,12 @@ use axum::extract::State;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 
+use crate::error::ApiError;
 use crate::AppState;
 
 pub async fn metrics(State(state): State<AppState>) -> Response {
     if !state.config.metrics_enabled {
-        return (StatusCode::NOT_FOUND, "metrics disabled").into_response();
+        return ApiError::NotFound("metrics disabled".to_owned()).into_response();
     }
 
     let mut body = state.admission.metrics_text();

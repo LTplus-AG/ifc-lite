@@ -55,7 +55,11 @@ export function generatePropertyAndQuantitySetEntities(
 ): void {
   // Generate new property entities for mutations (these REPLACE the skipped ones)
   const generatedTypeOwnedPsetIds = new Map<number, Map<string, number>>();
-  for (const { entityId, psets } of pass.newPropertySets) {
+  // A reused source member must actually be written, and survive a schema
+  // downgrade, or the copy would name a line the file does not have (#5794).
+  const canReferenceSourceMember = (id: number): boolean =>
+    pass.willBeEmitted(id) && !pass.withheldRefIds.has(id) && !pass.skipPropertySetIds.has(id);
+  for (const { entityId, psets, sourceMembers } of pass.newPropertySets) {
     // Nothing may be emitted FOR an entity that gets no defining line —
     // see `willBeEmitted` (#1978, #2030, #2012).
     if (!pass.willBeEmitted(entityId)) continue;
@@ -66,7 +70,9 @@ export function generatePropertyAndQuantitySetEntities(
       pass.willBeEmitted,
       pass.effective,
       pass.typeOwnedPsetNamesByEntity.get(entityId),
-      options.guidRandom
+      options.guidRandom,
+      sourceMembers,
+      canReferenceSourceMember,
     );
     pass.entities.push(...newEntities.lines);
     pass.newEntityCount += newEntities.count;

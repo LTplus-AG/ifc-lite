@@ -153,7 +153,8 @@ pub async fn get_symbolic(
 ///
 /// Response:
 /// - 200: File is cached (geometry available)
-/// - 404: File not cached (needs upload)
+/// - 404: File not cached (needs upload), in the shared error envelope
+///   (#5750; the body was empty before)
 pub async fn check_cache(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
@@ -193,11 +194,12 @@ pub async fn check_cache(
                 geometry_cached = cached.is_some(),
                 "Cache check MISS"
             );
-            let response = Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
-            Ok(response)
+            // The hash is caller-supplied and unvalidated here, so it is not
+            // echoed back (as `not_a_file_digest` does not echo it either).
+            Err(ApiError::NotFound(
+                "Nothing cached for this hash under this opening_filter / tessellation_quality / parquet_layout"
+                    .to_owned(),
+            ))
         }
     }
 }
@@ -263,10 +265,11 @@ pub async fn get_cached_geometry(
         }
         _ => {
             tracing::debug!(hash = %hash, "Cached geometry not found");
-            Err(ApiError::NotFound(format!(
-                "Cache entry not found for hash: {}",
-                hash
-            )))
+            // Caller-supplied and unvalidated: logged, not echoed (as in
+            // `check_cache` above).
+            Err(ApiError::NotFound(
+                "No cached geometry for this hash".to_owned(),
+            ))
         }
     }
 }

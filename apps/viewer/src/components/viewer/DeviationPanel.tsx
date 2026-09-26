@@ -173,7 +173,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
 
   return (
     <div className="flex flex-col gap-1 mt-1 pt-1 border-t border-border/40">
-      <span className="text-[9px] uppercase text-muted-foreground tracking-wider">
+      <span className="text-2xs uppercase text-muted-foreground tracking-wider">
         {t('deviationPanel.sectionLabel')}
       </span>
       <button
@@ -195,10 +195,10 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             : t('deviationPanel.computeLabel')}
       </button>
       {error && (
-        <span className="text-[10px] text-destructive">{error}</span>
+        <span className="text-2xs text-destructive">{error}</span>
       )}
       {stats && (
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           {t('deviationPanel.statsLine', {
             points: stats.points.toLocaleString(),
             triangles: stats.triangles.toLocaleString(),
@@ -220,7 +220,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
           {/* Range slider: half-width in mm. Range from 1 mm to 1 m
               (logarithmic feel via the millimetre conversion). */}
           <label className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] text-muted-foreground w-12 shrink-0">
+            <span className="text-2xs text-muted-foreground w-12 shrink-0">
               {t('deviationPanel.sliderValueLabel', { value: (halfRange * 1000).toFixed(halfRange < 0.01 ? 1 : 0) })}
             </span>
             <input
@@ -242,7 +242,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             style={{ background: DEVIATION_RAMP_CSS_GRADIENT }}
             aria-label={t('deviationPanel.rampAriaLabel')}
           />
-          <div className="flex justify-between text-[9px] text-muted-foreground">
+          <div className="flex justify-between text-2xs text-muted-foreground">
             <span>{t('deviationPanel.legendMinLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
             <span>0</span>
             <span>{t('deviationPanel.legendMaxLabel', { value: (halfRange * 1000).toFixed(0) })}</span>
@@ -252,7 +252,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
             <button
               type="button"
               onClick={() => setColorMode('deviation')}
-              className="text-[10px] text-teal-600 hover:text-teal-500 underline text-left mt-0.5"
+              className="text-2xs text-teal-600 hover:text-teal-500 underline text-left mt-0.5"
             >
               {t('deviationPanel.switchToDeviationButton')}
             </button>

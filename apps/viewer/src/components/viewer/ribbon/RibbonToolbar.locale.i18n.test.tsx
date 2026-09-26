@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, mouseDown, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { useViewerStore, type RibbonTabId } from '@/store';
@@ -26,7 +26,7 @@ const TABS: RibbonTabId[] = ['file', 'home', 'view', 'elements', 'analyze', 'aut
 function showTab(container: HTMLElement, tab: RibbonTabId): void {
   const target = container.querySelectorAll('[role="tab"]')[TABS.indexOf(tab)];
   assert.ok(target, `tab ${tab} is rendered`);
-  click(target);
+  mouseDown(target, { button: 0 });
   assert.equal(useViewerStore.getState().ribbonTab, tab);
 }
 

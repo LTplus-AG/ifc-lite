@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
-import { cleanup, click, mouseDown, render } from '@/test/render.js';
+import { advance, cleanup, click, mouseDown, press, render } from '@/test/render.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
@@ -90,10 +90,29 @@ it('switching tabs re-docks the panel and keeps its state — the document open 
 
   const documentTab = [...ui.querySelectorAll('[role="tab"]')].find((el) => el.textContent?.includes('Document'))!;
   assert.ok(documentTab, 'the Document tab is still in the row');
-  click(documentTab);
+  mouseDown(documentTab);
   await act(async () => {});
   assert.equal(useViewerStore.getState().documentPanelVisible, true, 'clicking the background tab re-activates it');
   assert.equal(useViewerStore.getState().activeDocumentId, doc.id, 'switching back finds the same document, not a fresh blank one');
+});
+
+it('#5815 ArrowLeft selects the preceding bottom tab and labels its panel', async () => {
+  seed(bottomPanelFlags('lists'));
+  const ui = render(<Harness />);
+  await act(async () => {});
+  act(() => useViewerStore.getState().openPanelInHome('document'));
+  await act(async () => {});
+  const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
+  assert.equal(tabs.length, 2);
+  tabs[1].focus();
+  press(tabs[1], 'ArrowLeft');
+  await advance(5);
+  await act(async () => {});
+  assert.equal(useViewerStore.getState().listPanelVisible, true);
+  assert.equal(document.activeElement, tabs[0]);
+  const panel = ui.querySelector('[role="tabpanel"]');
+  assert.ok(panel);
+  assert.equal(panel.getAttribute('aria-labelledby'), tabs[0].id);
 });
 
 it('closing the active tab promotes a neighbour; closing the last tab clears its flag and empties the strip', async () => {

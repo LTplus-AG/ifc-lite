@@ -189,7 +189,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
     <div className="my-2 rounded-md border bg-muted/30 overflow-hidden">
       {/* Code header with action buttons */}
       <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 border-b">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase">
+        <span className="text-2xs font-mono text-muted-foreground uppercase">
           {block.language || t('chat.codeBlock.languageFallback')}
         </span>
         <div className="flex-1" />
@@ -255,7 +255,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               <ChevronRight className="h-3 w-3 shrink-0" />
             )}
             <Terminal className="h-3 w-3 shrink-0" />
-            <span className="text-[10px] font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
+            <span className="text-2xs font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
             {isRunning && (
               <Spinner size="xs" className="ml-1 text-blue-500" />
             )}
@@ -266,7 +266,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               <AlertCircle className="h-3 w-3 ml-1 text-destructive" />
             )}
             {result?.durationMs !== undefined && result.status !== 'running' && (
-              <span className="text-[10px] font-mono text-muted-foreground ml-auto">
+              <span className="text-2xs font-mono text-muted-foreground ml-auto">
                 {t('chat.codeBlock.durationBadge', { ms: result.durationMs })}
               </span>
             )}

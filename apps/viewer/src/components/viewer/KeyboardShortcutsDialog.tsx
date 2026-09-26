@@ -85,8 +85,8 @@ export function PrivacyBanner() { // exported for ViewportWelcomeCard.privacy.te
             </a>
             {' '}{t('keyboardShortcuts.privacy.outro')}
           </p>
-          <p className="text-[11px] italic">
-            {t('keyboardShortcuts.privacy.verifyIntro')} <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-[10px]">{t('keyboardShortcuts.privacy.verifyKey')}</kbd> {t('keyboardShortcuts.privacy.verifyOutro')}
+          <p className="text-2xs italic">
+            {t('keyboardShortcuts.privacy.verifyIntro')} <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-2xs">{t('keyboardShortcuts.privacy.verifyKey')}</kbd> {t('keyboardShortcuts.privacy.verifyOutro')}
           </p>
         </div>
       )}
@@ -158,7 +158,7 @@ function AboutTab() {
         ].map((tag) => (
           <span
             key={tag}
-            className="px-2 py-0.5 text-[11px] rounded-full bg-muted/60 text-muted-foreground"
+            className="px-2 py-0.5 text-2xs rounded-full bg-muted/60 text-muted-foreground"
           >
             {tag}
           </span>
@@ -297,7 +297,7 @@ function WhatsNewTab() {
         <span className="text-sm font-semibold">
           {t('keyboardShortcuts.whatsNew.currentVersion', { version: viewerVersion })}
         </span>
-        <span className="text-[11px] text-muted-foreground shrink-0">
+        <span className="text-2xs text-muted-foreground shrink-0">
           {t('keyboardShortcuts.whatsNew.perPackageHint')}
         </span>
       </div>
@@ -317,7 +317,7 @@ function WhatsNewTab() {
               )}
               <span className="text-sm font-semibold">{t('keyboardShortcuts.whatsNew.releaseVersionLabel', { version: release.version })}</span>
               {release.isViewerVersion && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded">
+                <span className="px-1.5 py-0.5 text-2xs font-medium bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded">
                   {t('keyboardShortcuts.whatsNew.viewerBadge')}
                 </span>
               )}
@@ -355,7 +355,7 @@ function WhatsNewTab() {
       })}
 
       {/* Legend */}
-      <div className="pt-3 border-t flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
+      <div className="pt-3 border-t flex items-center justify-center gap-4 text-2xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Plus className="h-3 w-3 text-emerald-500" /> {t('keyboardShortcuts.whatsNew.legendFeature')}
         </span>

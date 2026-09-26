@@ -192,7 +192,7 @@ export function SearchModalFilterBuilder() {
         {/* ── Toolbar: Limit · promote-query · Presets · Save · Reset ── */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="flex items-center gap-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <label className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('searchModal.filterBuilder.limitLabel')}
             </label>
             <Input
@@ -202,7 +202,7 @@ export function SearchModalFilterBuilder() {
               onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
               className="h-7 w-20 text-xs"
             />
-            <span className="text-[10px] text-muted-foreground">{t('searchModal.filterBuilder.limitZeroHint')}</span>
+            <span className="text-2xs text-muted-foreground">{t('searchModal.filterBuilder.limitZeroHint')}</span>
           </div>
 
           {searchQuery.trim().length > 0 && (
@@ -211,7 +211,7 @@ export function SearchModalFilterBuilder() {
               variant="ghost"
               size="sm"
               onClick={promoteSearchQuery}
-              className="h-7 gap-1 text-[11px]"
+              className="h-7 gap-1 text-2xs"
               title={t('searchModal.filterBuilder.promoteQueryTitle')}
             >
               <Plus className="h-3 w-3" />
@@ -231,7 +231,7 @@ export function SearchModalFilterBuilder() {
               size="sm"
               onClick={handleSavePreset}
               disabled={totalRules === 0}
-              className="h-7 gap-1 text-[11px]"
+              className="h-7 gap-1 text-2xs"
               title={t('searchModal.filterBuilder.savePresetTitle')}
             >
               <Save className="h-3 w-3" /> {t('searchModal.filterBuilder.save')}
@@ -242,7 +242,7 @@ export function SearchModalFilterBuilder() {
                 variant="ghost"
                 size="sm"
                 onClick={clearFilterRules}
-                className="h-7 gap-1 text-[11px] text-muted-foreground"
+                className="h-7 gap-1 text-2xs text-muted-foreground"
               >
                 <X className="h-3 w-3" /> {t('searchModal.filterBuilder.reset')}
               </Button>
@@ -281,7 +281,7 @@ function PresetMenu({
         variant="ghost"
         size="sm"
         disabled
-        className="h-7 gap-1 text-[11px] text-muted-foreground"
+        className="h-7 gap-1 text-2xs text-muted-foreground"
         title={t('searchModal.filterBuilder.savePresetFirstTitle')}
       >
         <Bookmark className="h-3 w-3" /> {t('searchModal.filterBuilder.presets')}
@@ -295,13 +295,13 @@ function PresetMenu({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 text-[11px]"
+          className="h-7 gap-1 text-2xs"
         >
           <Bookmark className="h-3 w-3" /> {t('searchModal.filterBuilder.presets')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-[10px] uppercase">{t('searchModal.filterBuilder.savedPresets')}</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-2xs uppercase">{t('searchModal.filterBuilder.savedPresets')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {presets.map((p) => (
           <DropdownMenuItem
@@ -311,7 +311,7 @@ function PresetMenu({
           >
             <div className="flex flex-col">
               <span className="font-medium">{p.name}</span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 {t('searchModal.filterBuilder.presetRuleCount', { count: totalRuleCount(p.groups) })}
                 {' · '}
                 {p.groups.length > 1 ? t('filterGroups.groupCountOr', { count: p.groups.length }) : p.combinator}

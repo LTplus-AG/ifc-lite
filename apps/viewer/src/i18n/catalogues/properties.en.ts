@@ -308,6 +308,8 @@ export const propertiesEn = {
   // GeoreferencingPanel: GeorefRow / AngleRow
   'properties.georef.computedTooltip': 'Computed from XAxisAbscissa and XAxisOrdinate',
   'properties.georef.editedBadge': 'edited',
+  'properties.georef.saveField': 'Save {field}',
+  'properties.georef.cancelField': 'Cancel editing {field}',
   'properties.georef.selectPlaceholder': '-- select --',
   'properties.georef.hint.crsName': 'e.g. EPSG:4326',
   'properties.georef.hint.epsgLookup': 'Use EPSG lookup to search',

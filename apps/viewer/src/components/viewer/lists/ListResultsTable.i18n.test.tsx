@@ -285,4 +285,16 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     press(menuTrigger, 'Enter');
     assert.ok(document.body.textContent?.includes('Sort ascending'), 'the options menu still opens');
   });
+
+  it('#5814 keeps pivot headers available when a schedule has no visible rows', () => {
+    const container = render(<Harness />);
+    const scheduleToggle = container.querySelector('button[aria-label="Switch to schedule (pivot) table view"]');
+    assert.ok(scheduleToggle);
+    click(scheduleToggle);
+    const headerButtons = [...container.querySelectorAll('button')].map((button) => button.textContent?.trim());
+    assert.ok(headerButtons.includes('Name'), 'the grouping column stays sortable');
+    assert.ok(headerButtons.some((label) => label?.startsWith('Net Volume')), 'the sum column stays sortable');
+    assert.ok(container.textContent?.includes('Count'), 'the pivot count header stays visible');
+    assert.ok(container.textContent?.includes('No matching rows'), 'the empty message remains visible');
+  });
 });

@@ -382,9 +382,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
-      {scheduleMode && sortedRows.length === 0 ? (
-        <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />
-      ) : scheduleMode ? (
+      {scheduleMode ? (
         <ListScheduleTable
           scheduleRows={scheduleRows}
           groupChips={groupChips}

@@ -6,8 +6,8 @@
  * Property set display component with edit support.
  */
 
-import { useState, useEffect } from 'react';
-import { Sparkles, PenLine, Building2 } from 'lucide-react';
+import { useEffect } from 'react';
+import { Sparkles, PenLine, Building2, ChevronDown } from 'lucide-react';
 import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -19,6 +19,8 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
 import { useTranslation } from '@/i18n';
+import { usePersistentDisclosure } from './usePersistentDisclosure';
+import { PropertySearchHighlight } from './PropertySearchHighlight';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -39,9 +41,11 @@ export interface PropertySetCardProps {
    *  renders CONVERTED into that unit instead of the file's raw value.
    *  Omitted (or empty) keeps the existing unconverted-file-unit display. */
   unitDisplayOverrides?: Record<string, string>;
+  searchQuery?: string;
+  sectionScope?: string;
 }
 
-export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides }: PropertySetCardProps) {
+export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides, searchQuery, sectionScope = 'default' }: PropertySetCardProps) {
   const { t } = useTranslation();
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
@@ -55,7 +59,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
 
   // Self-control the collapse so a focused row can't hide inside a pset the user
   // previously collapsed — force it open when this card holds the focus target.
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = usePersistentDisclosure(`pset:${sectionScope}:${pset.name}`);
   useEffect(() => {
     if (containsFocused) setOpen(true);
   }, [containsFocused]);
@@ -78,8 +82,8 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
     : 'bg-white dark:bg-zinc-950';
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
+    <Collapsible open={open || !!searchQuery} onOpenChange={searchQuery ? undefined : setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
         {isNewPset && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -104,8 +108,9 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipContent>{t('properties.propertySetCard.inheritedFromTypeTooltip')}</TooltipContent>
           </Tooltip>
         )}
-        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{setDisplayName(pset.name, t('properties.propertySet.unnamed'))}</span>
+        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0"><PropertySearchHighlight text={setDisplayName(pset.name, t('properties.propertySet.unnamed'))} query={searchQuery} /></span>
         <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -152,7 +157,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className={`font-medium cursor-help break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                            {prop.name}
+                            <PropertySearchHighlight text={prop.name} query={searchQuery} />
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-[10px]">
@@ -164,7 +169,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       </Tooltip>
                     ) : (
                       <span className={`font-medium break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                        {prop.name}
+                        <PropertySearchHighlight text={prop.name} query={searchQuery} />
                       </span>
                     )}
                   </div>
@@ -181,7 +186,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     />
                   ) : (
                     <span className={`font-mono select-all break-words ${isMutated ? 'text-foreground font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      {disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue}
+                      <PropertySearchHighlight text={disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue} query={searchQuery} />
                       {unit && parsed.displayValue !== '\u2014' && (
                         <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>
                       )}

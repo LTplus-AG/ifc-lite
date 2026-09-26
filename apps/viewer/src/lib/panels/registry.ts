@@ -20,7 +20,7 @@
 import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
- *  Information panel (the right pane's default fallback). Each panel opens in
+ *  Properties panel (the right pane's default fallback). Each panel opens in
  *  its home {@link WorkspacePanelDef.region} — `side` panels in the right pane,
  *  `bottom` panels (Script / Schedule / Lists) in the bottom strip, and the
  *  `left` panel (Hierarchy) in the left navigation slot (#1267). */
@@ -77,7 +77,7 @@ export interface WorkspacePanelDef {
 
 export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Alt+1..9 / Alt+0 — order frozen since #1200 for the first seven.
-  { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
+  { id: 'properties', title: 'Properties', short: 'Props', Icon: Info, group: 'inspect', region: 'side' },
   { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
   { id: 'bcf', title: 'BCF topics', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
   // Renamed from 'ids' (#5138): the panel now covers both IDS validation and
@@ -231,7 +231,7 @@ export function workspacePanelForShortcutCode(code: string): WorkspacePanelId | 
 }
 
 /** The analysis / tool panels that toggle in the sidebar (everything except
- *  the Information fallback, which shows when no other panel is open). */
+ *  the Properties fallback, which shows when no other panel is open). */
 export type AnalysisPanelId = Exclude<WorkspacePanelId, 'properties'>;
 
 export function isAnalysisPanel(id: WorkspacePanelId): id is AnalysisPanelId {

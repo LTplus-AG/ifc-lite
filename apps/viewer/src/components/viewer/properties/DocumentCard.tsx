@@ -6,8 +6,8 @@
  * Document display component for IFC document references.
  */
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { FileText } from 'lucide-react';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, FileText } from 'lucide-react';
 import type { DocumentInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import {
@@ -19,6 +19,7 @@ import {
   EXPRESS_PURPOSE_ATTRIBUTE,
   EXPRESS_REVISION_ATTRIBUTE,
 } from './express-labels';
+import { PersistentCollapsible } from './PersistentCollapsible';
 
 export function DocumentCard({ document }: { document: DocumentInfo }) {
   const { t } = useTranslation();
@@ -26,8 +27,8 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
   const isUrl = document.location?.startsWith('http://') || document.location?.startsWith('https://');
 
   return (
-    <Collapsible defaultOpen className="border-2 border-sky-200 dark:border-sky-800 bg-sky-50/20 dark:bg-sky-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-sky-50 dark:hover:bg-sky-900/30 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id={`document:${document.identification ?? displayName}`} className="border-2 border-sky-200 dark:border-sky-800 bg-sky-50/20 dark:bg-sky-950/20 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-sky-50 dark:hover:bg-sky-900/30 text-left transition-colors overflow-hidden">
         <FileText className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
         <span className="font-bold text-xs text-sky-700 dark:text-sky-400 truncate flex-1 min-w-0">
           {displayName}
@@ -37,6 +38,7 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
             {document.revision}
           </span>
         )}
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-sky-200 dark:border-sky-800 divide-y divide-sky-100 dark:divide-sky-900/30">
@@ -95,6 +97,6 @@ export function DocumentCard({ document }: { document: DocumentInfo }) {
           )}
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 }

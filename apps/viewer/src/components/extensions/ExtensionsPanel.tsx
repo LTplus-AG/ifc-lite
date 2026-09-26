@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Switch } from '@/components/ui/switch';
@@ -410,8 +411,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     />
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}
-                      onClick={() => {
-                        if (!confirm(t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }))) return;
+                      onClick={async () => {
+                        if (!await confirmDialog({ description: t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }), destructive: true })) return;
                         host.uninstall(record.id).catch((err) => {
                           toast.error(t('extensionsFlavors.extensionsPanel.toast.operationFailed', {
                             operation: t('extensionsFlavors.extensionsPanel.operation.uninstall'),
@@ -450,7 +451,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       </div>
       )}
       </div>
-
       {pending && (
         <CapabilityReview
           open

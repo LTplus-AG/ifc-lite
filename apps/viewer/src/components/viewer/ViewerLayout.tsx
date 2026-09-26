@@ -17,6 +17,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
@@ -290,7 +291,6 @@ export function ViewerLayout() {
   useMobileLayoutMode();
 
   useThemeDocumentClass();
-
   const safeMode = isSafeMode();
 
   return (
@@ -308,6 +308,7 @@ export function ViewerLayout() {
         )}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
+        <ConfirmDialogHost />
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
@@ -530,4 +531,3 @@ export function ViewerLayout() {
     </TooltipProvider>
   );
 }
-

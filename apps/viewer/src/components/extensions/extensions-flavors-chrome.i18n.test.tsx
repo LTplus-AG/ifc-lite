@@ -25,6 +25,7 @@ import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { DEFAULT_FLAVOR_ID, type Bundle, type BundleFile, type Flavor } from '@ifc-lite/extensions';
 import { cleanup, render, click } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
 import { registerLocale, setLocale } from '@/i18n';
@@ -358,18 +359,13 @@ describe('ExtensionsPanel localization (#4918)', () => {
       ),
     );
     assert.ok(uninstall);
-    const originalConfirm = globalThis.confirm;
-    let prompt = '';
-    globalThis.confirm = (message) => {
-      prompt = String(message);
-      return false;
-    };
-    try {
-      click(uninstall);
-    } finally {
-      globalThis.confirm = originalConfirm;
-    }
-    assert.equal(prompt, r('extensionsFlavors.extensionsPanel.confirmUninstall', { id: 'ext.demo' }));
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<ConfirmDialogHost />);
+    click(uninstall);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', new RegExp(r('extensionsFlavors.extensionsPanel.confirmUninstall', { id: 'ext.demo' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    click(dialog.querySelector('button')!);
   });
 });
 
@@ -418,19 +414,13 @@ describe('FlavorDialog localization (#4918)', () => {
     );
     assert.ok(deleteButton, 'the inactive flavor delete button must render');
 
-    const originalConfirm = globalThis.confirm;
-    let prompt: string | undefined;
-    globalThis.confirm = (message) => {
-      prompt = String(message);
-      return false;
-    };
-    try {
-      click(deleteButton);
-    } finally {
-      globalThis.confirm = originalConfirm;
-    }
-
-    assert.equal(prompt, r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }));
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<ConfirmDialogHost />);
+    click(deleteButton);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', new RegExp(r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    click(dialog.querySelector('button')!);
   });
 
   it('uses localized canonical metadata when duplicating the baseline flavor', async () => {

@@ -13,7 +13,11 @@ export function EmptyVisibilityNotice({ visible }: { visible: boolean }) {
   const { t } = useTranslation();
   if (!visible) return null;
   const store = getViewerStoreApi();
-  const reasons = activeVisibilityReasons(store.getState()).map((reason) => t(reason.labelKey));
+  // `section` / `measurements` (#5893) narrow or annotate the view; unlike
+  // the other rows they don't, by themselves, explain an EMPTY one.
+  const reasons = activeVisibilityReasons(store.getState())
+    .filter((reason) => reason.id !== 'section' && reason.id !== 'measurements')
+    .map((reason) => t(reason.labelKey));
   return (
     <HudItem region="top-center" order={13}>
       <HudNotice

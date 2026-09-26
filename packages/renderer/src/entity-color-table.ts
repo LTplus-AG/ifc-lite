@@ -17,11 +17,12 @@
  * alone is ambiguous across models. Each draw therefore also passes an
  * ANCHOR, the smallest full id it draws (`uniforms.overrideParams.x`), and the
  * shader rebuilds the full id as `anchor + ((lane - anchor) mod 2^24)`. That is
- * exact whenever the draw's ids span less than 2^24, which holds for every
- * bucket batch (a bucket belongs to one model) and fails only for a model with
- * more than 16.7M express ids, whose lanes already collide for picking
- * (`mergeGeometry` warns). {@link entityIdAnchor} returns null for such a draw
- * and the renderer leaves it unpainted rather than paint the wrong entity.
+ * exact whenever the draw's ids span less than 2^24. Scene bucket keys carry
+ * each id's 2^24 page ({@link entityIdPageKey}), so every bucket batch,
+ * streaming fragment and partial sub-batch lies inside one page and meets
+ * that by construction. {@link entityIdAnchor} still returns null for a draw
+ * that does not (a hand-built batch), and the renderer then leaves it
+ * unpainted rather than paint the wrong entity.
  *
  * TABLE LAYOUT: an open-addressing hash table keyed by the full id, one
  * `array<u32>` storage buffer:
@@ -40,8 +41,8 @@
  * sized by the number of overridden entities only.
  *
  * MEMORY BOUND: 20 bytes per slot plus a 16-byte header, capacity =
- * nextPow2(2n) (minimum 16), so under 80 bytes per overridden entity and at
- * least 40. 100,000 overridden entities take 262,144 slots = 5.0 MiB. The
+ * nextPow2(2n) with a 16-slot minimum (336 bytes), so past that minimum
+ * (n >= 8) under 80 bytes per overridden entity and at least 40. 100,000 overridden entities take 262,144 slots = 5.0 MiB. The
  * capacity is capped by `maxStorageBufferBindingSize` and `maxBufferSize`
  * (2,097,152 entries at the 128 MiB default); past that the extra entries are
  * dropped with one console warning.
@@ -186,6 +187,16 @@ export function resolveLaneEntityId(anchor: number, lane: number): number {
   return (anchor + (((lane >>> 0) - anchor) & 0x00FFFFFF)) >>> 0;
 }
 
+/**
+ * `key` qualified by the 2^24 page of `id` (unchanged for ids below 2^24).
+ * Scene bucket keys go through this, so no batch holds ids from two pages and
+ * {@link entityIdAnchor} never refuses a bucket batch or its fragments.
+ */
+export function entityIdPageKey(id: number, key: string): string {
+  const page = Math.floor(id / ENTITY_LANE_ID_SPAN);
+  return page > 0 ? `p${page}~${key}` : key;
+}
+
 const anchorCache = new WeakMap<object, number | null>();
 
 /** {@link entityIdAnchor} of a batch, cached per batch object (a batch's `expressIds` never change). */
@@ -240,8 +251,6 @@ interface TableDevice {
   readonly queue: { writeBuffer(buffer: GPUBuffer, offset: number, data: Uint32Array): void };
 }
 
-let warnedDropped = false;
-
 /** Owns the table's CPU image and its GPU buffer. One per `Scene`. */
 export class EntityColorTable {
   private image: EntityColorTableImage = EMPTY_IMAGE;
@@ -249,6 +258,7 @@ export class EntityColorTable {
   private bufferDevice: TableDevice | null = null;
   private bufferBytes = 0;
   private uploadedBytes = 0;
+  private warnedDropped = false; // per table, i.e. per scene
 
   /** Replace the table with `overrides` and upload it. */
   write(device: TableDevice, overrides: ReadonlyMap<number, Rgba>): void {
@@ -258,8 +268,8 @@ export class EntityColorTable {
       limits?.maxBufferSize ?? DEFAULT_MAX_TABLE_BYTES,
     );
     this.image = buildEntityColorTableImage(overrides, maxBytes);
-    if (this.image.dropped > 0 && !warnedDropped) {
-      warnedDropped = true;
+    if (this.image.dropped > 0 && !this.warnedDropped) {
+      this.warnedDropped = true;
       console.warn(`[EntityColorTable] ${this.image.dropped} colour overrides exceed the device's storage-buffer limit and are not painted.`);
     }
     const bytes = this.image.words.byteLength;

@@ -9,10 +9,11 @@ import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
+import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
-import { OVERRIDE_PARAM_EMPHASIZE, OVERRIDE_PARAM_PAINT, lookupEntityColor } from './entity-color-table.js';
+import { ENTITY_LANE_ID_SPAN, OVERRIDE_PARAM_EMPHASIZE, OVERRIDE_PARAM_PAINT, lookupEntityColor, resolveLaneEntityId } from './entity-color-table.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -1884,6 +1885,53 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(overrideLanes(h, late.uniformBuffer), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 9), GREEN);
     });
+
+    it('paints entities of one bucket whose ids span 2^24, and still promotes them (#6076 review)', () => {
+        // Same model, colour and cell: before page-keyed buckets these two
+        // shared one batch whose ids span more than 2^24, the anchor was
+        // refused, and both drew unpainted — while routing still promoted them.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const low = 10;
+        const high = 10 + ENTITY_LANE_ID_SPAN + 100;
+        const glass: [number, number, number, number] = [0.6, 0.8, 0.9, 0.4];
+        scene.appendToBatches([triangle(low, glass), triangle(high, glass)], h.renderer['device'].getDevice(), h.renderer['pipeline']!, false);
+        const batches = scene.getBatchedMeshes();
+        for (const b of batches) b.bounds = undefined;
+        setOverrides(h, new Map([[low, [1, 0, 0, 1]], [high, [1, 0, 0, 1]]]));
+        h.render();
+        for (const id of [low, high]) {
+            const batch = batches.find((b) => b.expressIds.includes(id));
+            assert.ok(batch, `batch for ${id}`);
+            assert.deepEqual(overrideLanes(h, batch.uniformBuffer), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
+            assert.equal(resolveLaneEntityId(Math.min(...batch.expressIds), id & 0xFFFFFF), id, `${id} resolves to itself`);
+            assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), id), [1, 0, 0, 1]);
+            assert.equal(pipelineOfDraw(h, batch.vertexBuffer), OPAQUE_PIPELINE, `${id} is promoted to opaque`);
+        }
+    });
+
+    for (const [label, finalize] of [
+        ['finalizeStreaming', (s: Scene, d: GPUDevice, p: RenderPipeline) => { s.finalizeStreaming(d, p); }],
+        ['finalizeStreamingAsync', (s: Scene, d: GPUDevice, p: RenderPipeline) => s.finalizeStreamingAsync(d, p)],
+    ] as const) {
+        it(`paints the batch ${label} installs after a mid-stream override, with no re-apply`, async () => {
+            const h = makeHarness();
+            const scene = sceneOf(h);
+            const device = h.renderer['device'].getDevice();
+            const pipeline = h.renderer['pipeline']!;
+            scene.appendToBatches([triangle(11, GREY), triangle(12, GREY)], device, pipeline, true);
+            setOverrides(h, new Map([[12, GREEN]]));
+            const table = scene.getEntityColorTable().getBuffer();
+            await finalize(scene, device, pipeline);
+            const finalBatch = scene.getBatchedMeshes().find((b) => b.expressIds.includes(12));
+            assert.ok(finalBatch, 'finalized batch holds entity 12');
+            finalBatch.bounds = undefined;
+            assert.equal(scene.getEntityColorTable().getBuffer(), table, 'finalize does not touch the table');
+            h.stats.writes.length = 0;
+            h.render();
+            assert.deepEqual(overrideLanes(h, finalBatch.uniformBuffer), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
+        });
+    }
 
     it('keeps the opaque promotion of a transparent entity with an override at alpha >= 0.2, and paints only there', () => {
         const h = makeHarness();

@@ -37,7 +37,7 @@ import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
-import { EntityColorTable } from './entity-color-table.js';
+import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -930,10 +930,14 @@ export class Scene {
    * partial-batch piece filter) must go through this so a mesh always
    * resolves to the same bucket. `color` overrides the mesh's own colour for
    * recolour routing.
+   *
+   * Ids past 2^24 also key by their 2^24 page (#6076): a batch then never
+   * spans 2^24 ids, which the entity colour table needs to rebuild a full id
+   * from the 24-bit vertex lane (`entityIdAnchor`, entity-color-table.ts).
    */
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
-    const key = bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking);
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking));
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 

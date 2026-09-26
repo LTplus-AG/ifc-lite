@@ -29,16 +29,21 @@ interface SpecificationCardProps {
   correctable?: boolean;
 }
 
+function entityKey(entity: EntityResult): string {
+  return `${entity.modelId}:${entity.expressId}`;
+}
+
 function EntityResultsList({ entities, onEntityClick }: {
   entities: EntityResult[];
   onEntityClick: (modelId: string, expressId: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(() => new Set());
   const virtualizer = useVirtualizer({
     count: entities.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 60,
-    getItemKey: (index) => `${entities[index].modelId}:${entities[index].expressId}`,
+    getItemKey: (index) => entityKey(entities[index]),
     overscan: 5,
   });
 
@@ -47,6 +52,7 @@ function EntityResultsList({ entities, onEntityClick }: {
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
         {virtualizer.getVirtualItems().map((row) => {
           const entity = entities[row.index];
+          const key = entityKey(entity);
           return (
             <div
               key={row.key}
@@ -58,6 +64,13 @@ function EntityResultsList({ entities, onEntityClick }: {
               <EntityResultRow
                 entity={entity}
                 onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+                detailsOpen={expandedEntities.has(key)}
+                onToggleDetails={() => setExpandedEntities((current) => {
+                  const next = new Set(current);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                })}
               />
             </div>
           );

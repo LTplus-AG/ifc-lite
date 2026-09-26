@@ -108,6 +108,10 @@ describe('IDS entity results beyond the old 100-row cap (#5830)', () => {
       const first = entityButton(ui, 'Wall 1');
       assert.ok(first, `the first result must be reachable; rows=${rendered.length}; firstIndex=${rendered[0]?.getAttribute('data-index')}; lastIndex=${rendered.at(-1)?.getAttribute('data-index')}; scrollTop=${scroller.scrollTop}; spacer=${scroller.firstElementChild?.getAttribute('style')}`);
       click(first);
+      const details = first.parentElement?.querySelector<HTMLButtonElement>('[aria-label="Show details"]');
+      assert.ok(details);
+      click(details);
+      assert.equal(details.getAttribute('aria-expanded'), 'true');
 
       assert.equal(entityButton(ui, 'Wall 200'), null, 'distant rows should be virtualized');
       act(() => {
@@ -117,7 +121,15 @@ describe('IDS entity results beyond the old 100-row cap (#5830)', () => {
 
       const distant = entityButton(ui, 'Wall 200');
       assert.ok(distant, 'entity 200 should render after scrolling');
+      assert.equal(entityButton(ui, 'Wall 1'), null, 'near rows should leave the virtual window');
       click(distant);
+      act(() => {
+        scroller.scrollTop = 0;
+        scroller.dispatchEvent(new window.Event('scroll'));
+      });
+      const firstAgain = entityButton(ui, 'Wall 1');
+      assert.ok(firstAgain, 'the first result should return after scrolling back');
+      assert.equal(firstAgain.parentElement?.querySelector('[aria-label="Hide details"]')?.getAttribute('aria-expanded'), 'true', 'expanded details should survive virtualization');
       assert.deepEqual(focused, [
         ['model-a', 1],
         modelCount === 1 ? ['model-a', 200] : ['model-b', 75],

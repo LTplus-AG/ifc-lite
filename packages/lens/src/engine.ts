@@ -45,7 +45,6 @@ export function evaluateLens(
       executionTime: performance.now() - startTime,
     };
   }
-
   const colorMap = new Map<number, RGBAColor>();
   const hiddenIds = new Set<number>();
   const ruleCounts = new Map<string, number>();
@@ -62,7 +61,7 @@ export function evaluateLens(
     // First matching rule wins
     for (const rule of enabledRules) {
       const selected = matchedByRule?.get(rule.id);
-      if (selected ? selected.has(globalId) : matchesCriteria(rule.criteria, globalId, provider)) {
+      if (selected ? selected.has(globalId) : !!rule.criteria && !rule.unreadableLegacy && matchesCriteria(rule.criteria, globalId, provider)) {
         matched = true;
         ruleCounts.set(rule.id, (ruleCounts.get(rule.id) ?? 0) + 1);
         ruleEntityIds.get(rule.id)!.push(globalId);

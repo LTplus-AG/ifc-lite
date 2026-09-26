@@ -237,18 +237,18 @@ export interface LensCriteria {
    *  IfcGroup whose name contains this value (#1075). */
   groupName?: string;
 }
-
 /** A single rule within a Lens */
 export interface LensRule {
   id: string;
   name: string;
   enabled: boolean;
   criteria: LensCriteria;
+  groups?: import('@ifc-lite/rules').FilterGroup[];
+  unreadableLegacy?: { criteria: unknown; reason: string };
   action: 'colorize' | 'hide' | 'transparent';
   /** Hex color for colorize/transparent actions (e.g. "#E53935") */
   color: string;
 }
-
 /**
  * Data source specification for automatic coloring.
  *

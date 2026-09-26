@@ -5,7 +5,7 @@
 /**
  * The Lens panel's own chrome (#4918 slice: viewer-panels). Covers
  * `LensPanel.tsx`: the header and its export/import/clear/close controls,
- * the rule-based lens list (`RuleRow`, `RuleEditor`, `LensEditor`), the
+ * the rule-based lens list (`RuleRow`, `LensRuleEditor`, `LensEditor`), the
  * auto-color lens editor (`AutoColorEditor`), the read-only lens card
  * (`LensCard`, its legend sort control and per-lens action tooltips), and
  * the footer status line.

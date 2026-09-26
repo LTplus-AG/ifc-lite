@@ -18,10 +18,10 @@
  * Performance notes:
  * - Does NOT subscribe to `models` or `ifcDataStore` directly — reads them
  *   from getState() only when the active lens changes OR the loaded MODEL
- *   SET changes (add/remove — tracked via a cheap id-set fingerprint, see
+ *   SET changes (add/remove/store-ready — tracked via a cheap fingerprint, see
  *   `modelSetKey` below). This prevents re-evaluation on every in-place model
  *   field patch during loading (progress, visibility, …) while still
- *   invalidating when a model is actually added or removed (#2853-class:
+ *   invalidating when a model is added, removed, or finishes parsing (#2853-class:
  *   removeModel/clearAllModels can leave colorMap/hiddenIds/ruleEntityIds
  *   referencing entities that no longer exist, or — after clearAllModels
  *   resets the federation registry's offset counter — that a NEW model now
@@ -34,10 +34,13 @@
 
 import { useEffect, useRef, useMemo } from 'react';
 import { evaluateLens, evaluateAutoColorLens, rgbaToHex, isGhostColor } from '@ifc-lite/lens';
-import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
+import type { AutoColorEvaluationResult, LensEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
+import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
+import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+import { toast } from '@/components/ui/toast';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
 
 const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
@@ -56,12 +59,12 @@ export function useLens(): void {
   // Track the previously active lens to detect deactivation
   const prevLensIdRef = useRef<string | null>(null);
 
-  // Fingerprint of the loaded MODEL SET (add/remove only) — deliberately not
+  // Fingerprint of the loaded MODEL SET and each model's store readiness — not
   // `models` itself, which gets a new Map reference on every in-place field
   // patch (loading progress, visibility, etc.) and would defeat the whole
   // point of reading models from getState() instead of subscribing to them.
   // Two string values with the same content are `===` in JS, so this selector
-  // only actually changes the deps array when the id SET changes.
+  // only changes the deps array when membership or store readiness changes.
   //
   // Why this matters: `removeModel` / `clearAllModels` can drop or replace
   // every model the last evaluation's colorMap/hiddenIds/ruleEntityIds refer
@@ -71,9 +74,11 @@ export function useLens(): void {
   // a stale lens color then keeps "matching" whatever unrelated entity now
   // occupies that id, not just dangling harmlessly.
   const modelSetKey = useViewerStore((s) => {
-    const ids = Array.from(s.models.keys()).sort().join('\x00');
+    const ids = Array.from(s.models, ([id, model]) => `${id}\x1f${model.ifcDataStore ? 1 : 0}`)
+      .sort().join('\x00');
     return `${ids}|${s.ifcDataStore ? 1 : 0}`;
   });
+  const prevModelSetKeyRef = useRef(modelSetKey);
 
   // Re-evaluate after a live property/attribute/quantity edit (#5207) — the
   // provider now reads the mutation overlay, so a rule keyed on an edited
@@ -82,6 +87,20 @@ export function useLens(): void {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   useEffect(() => {
+    const modelSetChanged = prevModelSetKeyRef.current !== modelSetKey;
+    prevModelSetKeyRef.current = modelSetKey;
+
+    // A removed model can release its global-ID range for immediate reuse.
+    // Clear its old overlay before the chunked group evaluator yields.
+    if (modelSetChanged) {
+      const state = useViewerStore.getState();
+      state.setLensColorMap(new Map());
+      state.setLensHiddenIds(new Set());
+      state.setLensRuleCounts(new Map());
+      state.setLensRuleEntityIds(new Map());
+      state.setLensAppliedColors(null);
+      state.setPendingColorUpdates(new Map());
+    }
 
     // Lens deactivated — clear overlay (instant, no batch rebuild)
     if (!activeLens && prevLensIdRef.current !== null) {
@@ -102,7 +121,8 @@ export function useLens(): void {
 
     // Read data sources from getState() — NOT subscribed, so model loading
     // doesn't trigger re-evaluation
-    const { models, ifcDataStore, mutationViews } = useViewerStore.getState();
+    const state = useViewerStore.getState();
+    const { models, ifcDataStore, mutationViews } = state;
     if (models.size === 0 && !ifcDataStore) {
       // Every model the last evaluation referenced is gone. Its
       // colorMap/hiddenIds/ruleEntityIds are not just dangling — after
@@ -132,48 +152,59 @@ export function useLens(): void {
       (globalId) => useViewerStore.getState().resolveGlobalIdFromModels(globalId),
     );
 
-    // Dispatch: auto-color mode vs. rule-based mode
     const isAutoColor = !!activeLens.autoColor;
-    const result = isAutoColor
-      ? evaluateAutoColorLens(activeLens.autoColor!, provider)
-      : evaluateLens(activeLens, provider);
+    const applyResult = (result: LensEvaluationResult | AutoColorEvaluationResult) => {
+      const { colorMap, hiddenIds, ruleCounts, ruleEntityIds } = result;
 
-    const { colorMap, hiddenIds, ruleCounts, ruleEntityIds } = result;
-
-    // Build hex color map for UI legend (exclude ghost entries)
-    const hexColorMap = new Map<number, string>();
-    for (const [id, rgba] of colorMap) {
-      if (!isGhostColor(rgba)) {
-        hexColorMap.set(id, rgbaToHex(rgba));
+      // Build hex color map for UI legend (exclude ghost entries)
+      const hexColorMap = new Map<number, string>();
+      for (const [id, rgba] of colorMap) {
+        if (!isGhostColor(rgba)) {
+          hexColorMap.set(id, rgbaToHex(rgba));
+        }
       }
-    }
-    useViewerStore.getState().setLensColorMap(hexColorMap);
-    useViewerStore.getState().setLensHiddenIds(hiddenIds);
-    useViewerStore.getState().setLensRuleCounts(ruleCounts);
-    useViewerStore.getState().setLensRuleEntityIds(ruleEntityIds);
+      useViewerStore.getState().setLensColorMap(hexColorMap);
+      useViewerStore.getState().setLensHiddenIds(hiddenIds);
+      useViewerStore.getState().setLensRuleCounts(ruleCounts);
+      useViewerStore.getState().setLensRuleEntityIds(ruleEntityIds);
 
-    // Store auto-color legend entries for UI display
-    if (isAutoColor && 'legend' in result) {
-      useViewerStore.getState().setLensAutoColorLegend((result as AutoColorEvaluationResult).legend);
-    } else {
-      useViewerStore.getState().setLensAutoColorLegend([]);
-    }
+      // Store auto-color legend entries for UI display.
+      useViewerStore.getState().setLensAutoColorLegend('legend' in result ? result.legend : []);
 
     // Apply colors via overlay system — original batches are never modified.
     // Remember the exact overlay so the compare overlay can restore it on
     // teardown instead of blanking the channel the lens still owns.
-    useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
-    if (colorMap.size > 0) {
+      useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
       useViewerStore.getState().setPendingColorUpdates(colorMap);
+
+      posthog.capture('lens_applied', {
+        mode: isAutoColor ? 'auto_color' : 'rules',
+        rule_count: activeLens.rules.length,
+        auto_color_source: isAutoColor ? activeLens.autoColor?.source : undefined,
+        matched_entity_count: colorMap.size,
+        hidden_entity_count: hiddenIds.size,
+      });
+    };
+
+    if (activeLens.autoColor) {
+      applyResult(evaluateAutoColorLens(activeLens.autoColor, provider));
+      return;
     }
 
-    posthog.capture('lens_applied', {
-      mode: isAutoColor ? 'auto_color' : 'rules',
-      rule_count: activeLens.rules.length,
-      auto_color_source: isAutoColor ? activeLens.autoColor?.source : undefined,
-      matched_entity_count: colorMap.size,
-      hidden_entity_count: hiddenIds.size,
+    const controller = new AbortController();
+    const evaluatorModels = models.size > 0
+      ? evaluatorModelsFromState(state)
+      : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy') }];
+    void evaluateLensGroups(
+      activeLens, evaluatorModels, models, definedModelTagIdsOf(state), controller.signal,
+    ).then((matched) => {
+      if (!controller.signal.aborted) applyResult(evaluateLens(activeLens, provider, matched));
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      console.error('[useLens] FilterGroup evaluation failed:', error);
+      toast.error('Could not apply this lens.');
     });
+    return () => controller.abort();
   }, [activeLensId, activeLens, modelSetKey, mutationVersion]);
 
   // Identity, not `.size`: the evaluation above replaces the Set on every

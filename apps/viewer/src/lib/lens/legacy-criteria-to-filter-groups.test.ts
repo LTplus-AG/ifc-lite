@@ -59,14 +59,35 @@ async function fixture() {
 
 describe('#5896 legacy lens criteria migration', () => {
   it('preserves every built-in manual rule on one parsed IFC store', async () => {
-    const { before, after } = await fixture();
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
+    // Recorded from the v1 built-ins through matchesCriteria before the
+    // migration. Keep the old selection sets independent of new group code.
+    const expected: Record<string, number[]> = {
+      'lens-structural:col': [40], 'lens-structural:beam': [],
+      'lens-structural:slab': [], 'lens-structural:footing': [],
+      'lens-envelope:roof': [], 'lens-envelope:curtwall': [],
+      'lens-envelope:window': [], 'lens-envelope:door': [20],
+      'lens-envelope:wall': [10, 30],
+      'lens-openings:door': [20], 'lens-openings:window': [],
+      'lens-openings:stair': [], 'lens-openings:ramp': [],
+      'lens-openings:railing': [],
+    };
+    let seen = 0;
     for (const lens of BUILTIN_LENSES) for (const rule of lens.rules) {
-      assert.deepEqual(after(rule.criteria), before(rule.criteria), `${lens.name}: ${rule.name}`);
+      const key = `${lens.id}:${rule.id}`;
+      assert.ok(Object.hasOwn(expected, key), `new built-in rule ${key} needs a v1 oracle`);
+      assert.ok(rule.groups, `built-in rule ${key} must use shared groups`);
+      const selected = evaluateFilterGroups('legacy', store, rule.groups, {
+        candidateExpressIds: IDS, limit: Number.POSITIVE_INFINITY,
+      }).map((row) => row.expressId).sort((a, b) => a - b);
+      assert.deepEqual(selected, expected[key], key);
+      seen++;
     }
+    assert.equal(seen, Object.keys(expected).length, 'all v1 built-in rules are still present');
   });
 
   it('preserves a nested imported rule after bounded DNF normalization', async () => {
-    const { before, after } = await fixture();
+    const { after } = await fixture();
     const saved: LensCriteria = {
       type: 'or', conditions: [
         { type: 'and', conditions: [
@@ -77,23 +98,20 @@ describe('#5896 legacy lens criteria migration', () => {
         { type: 'ifcType', ifcType: 'IfcDoor' },
       ],
     };
-    assert.deepEqual(before(saved), [10, 20]);
-    assert.deepEqual(after(saved), before(saved));
+    assert.deepEqual(after(saved), [10, 20]);
   });
 
   it('preserves GlobalId equality and Name substring matching', async () => {
-    const { before, after } = await fixture();
+    const { after } = await fixture();
     const saved: LensCriteria = {
       type: 'attribute', attributeName: 'GlobalId', operator: 'equals',
       attributeValue: '0Wall000000000000000010',
     };
-    assert.deepEqual(before(saved), [10]);
-    assert.deepEqual(after(saved), before(saved));
+    assert.deepEqual(after(saved), [10]);
     const byName: LensCriteria = {
       type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: 'FIRE',
     };
-    assert.deepEqual(before(byName), [10]);
-    assert.deepEqual(after(byName), before(byName));
+    assert.deepEqual(after(byName), [10]);
   });
 
   it('preserves numeric quantity, type-inherited quantity, and group membership', async () => {

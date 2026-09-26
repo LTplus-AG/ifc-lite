@@ -26,6 +26,11 @@ const result = evaluateLens(BUILTIN_LENSES[0], provider);
 
 ## Features
 
+The viewer stores manual rules as shared `FilterGroup[]` chips. Programmatic
+callers can pass the selected global IDs for each rule as the optional third
+argument to `evaluateLens`; existing `criteria` callers remain supported
+during the migration.
+
 - `evaluateLens` / `evaluateAutoColorLens`: turn a `Lens` definition into color and visibility maps
 - Auto-color mode: assign distinct colors per IFC class, property value, or material automatically, with a generated legend
 - `matchesCriteria` for standalone rule matching

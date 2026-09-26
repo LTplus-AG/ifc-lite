@@ -49,6 +49,13 @@ The `provider` is a `LensDataProvider`, an adapter interface over your parsed mo
 
 ## Rule Criteria
 
+The viewer Lens editor now authors `FilterGroup[]` chips using the same selector
+as Search and Lists. Saved v1 `criteria` are converted when their meaning is
+exactly representable; other saved conditions remain visible with a warning
+until the user explicitly replaces them. For programmatic evaluation, pass a
+map of rule IDs to selected global IDs as the optional third argument to
+`evaluateLens`. Legacy `criteria` remain accepted during this migration.
+
 `LensCriteria.type` selects the axis, and the matching fields provide the values:
 
 | Type | Fields | Matches |

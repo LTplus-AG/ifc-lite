@@ -22,8 +22,8 @@ describe('#5896 saved Lens rule migration', () => {
     const saved = { ...core, criteria: { type: 'ifcType', ifcType: 'IfcWall' } };
     const result = migrateSavedLensRule(saved);
     assert.equal(result?.id, core.id);
-    assert.equal(result?.groups.length, 1);
-    const rule = result?.groups[0].rules[0];
+    assert.equal(result?.groups?.length, 1);
+    const rule = result?.groups?.[0].rules[0];
     assert.equal(rule?.kind, 'ifcType');
     if (rule?.kind === 'ifcType') {
       assert.equal(rule.op, 'in');
@@ -59,7 +59,7 @@ describe('#5896 saved Lens rule migration', () => {
     const migrateSavedLensRule = await loadMigration();
     assert.equal(migrateSavedLensRule({ ...core, action: 'explode', groups: [] }), null);
     const result = migrateSavedLensRule({ ...core, groups: [{ combinator: 'AND', rules: [null] }] });
-    assert.equal(result?.groups.length, 0);
+    assert.equal(result?.groups?.length, 0);
     assert.ok(result?.unreadableLegacy);
   });
 });

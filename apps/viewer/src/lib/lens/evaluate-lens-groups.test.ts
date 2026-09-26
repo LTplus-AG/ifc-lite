@@ -5,9 +5,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { evaluateLens, type LensDataProvider } from '@ifc-lite/lens';
+import { evaluateLens, type Lens, type LensDataProvider } from '@ifc-lite/lens';
 import type { EvaluatorModel } from '@ifc-lite/rules';
-import type { GroupLens } from './evaluate-lens-groups.js';
 
 const IFC = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('lens-5896','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
@@ -22,11 +21,13 @@ async function parsedStore(): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
 }
 
-const lens: GroupLens = {
+const lens: Lens = {
   id: 'group-lens', name: 'Shared groups', rules: [
     { id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#ff0000',
+      criteria: { type: 'and', conditions: [] },
       groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] },
     { id: 'columns', name: 'Columns', enabled: true, action: 'hide', color: '#000000',
+      criteria: { type: 'and', conditions: [] },
       groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcColumn'] }] }] },
   ],
 };

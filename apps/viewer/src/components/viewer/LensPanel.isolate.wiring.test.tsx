@@ -55,7 +55,8 @@ const LENS: Lens = {
       id: 'rule-assembly',
       name: 'Assemblies',
       enabled: true,
-      criteria: { type: 'ifcType', ifcType: 'IfcElementAssembly' },
+      criteria: { type: 'and', conditions: [] },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcElementAssembly'] }] }],
       action: 'colorize',
       color: '#ff0000',
     },
@@ -63,7 +64,8 @@ const LENS: Lens = {
       id: 'rule-wall',
       name: 'Walls',
       enabled: true,
-      criteria: { type: 'ifcType', ifcType: 'IfcWall' },
+      criteria: { type: 'and', conditions: [] },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }],
       action: 'colorize',
       color: '#00ff00',
     },
@@ -75,7 +77,8 @@ const LENS: Lens = {
       id: 'rule-precast',
       name: 'Precast',
       enabled: true,
-      criteria: { type: 'property', propertySet: 'Pset_ConcreteElementGeneral', propertyName: 'Precast', operator: 'equals', propertyValue: 'TRUE' },
+      criteria: { type: 'and', conditions: [] },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'property', setName: 'Pset_ConcreteElementGeneral', propertyName: 'Precast', op: 'eq', value: 'TRUE' }] }],
       action: 'colorize',
       color: '#ffff00',
     },
@@ -85,7 +88,8 @@ const LENS: Lens = {
       id: 'rule-mixed',
       name: 'Level 1',
       enabled: true,
-      criteria: { type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: 'L1' },
+      criteria: { type: 'and', conditions: [] },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'name', op: 'contains', value: 'L1' }] }],
       action: 'colorize',
       color: '#0000ff',
     },
@@ -126,9 +130,9 @@ function seedLens(options: {
     models: new Map(),
     activeModelId: null,
     ifcDataStore: null,
-    cameraCallbacks: {
-      ...(options.resolveHighlightIds ? { resolveHighlightIds: options.resolveHighlightIds } : {}),
-    } as never,
+    cameraCallbacks: (options.resolveHighlightIds
+      ? { resolveHighlightIds: options.resolveHighlightIds }
+      : {}) as never,
   });
 }
 

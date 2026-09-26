@@ -5,23 +5,16 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Copy, GripVertical, X } from 'lucide-react';
 import type { LensRule } from '@ifc-lite/lens';
-import { emptyFilterGroup, type FilterGroup } from '@ifc-lite/rules';
+import { emptyFilterGroup } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
 
-/** The group editor can be prepared independently of the persisted Lens v1 API.
- * The stacked migration makes this the LensRule shape at its cutover. */
-type GroupLensRule = Omit<LensRule, 'criteria'> & {
-  groups: FilterGroup[];
-  unreadableLegacy?: { criteria: unknown; reason: string };
-};
-
 export interface LensRuleEditorProps {
-  rule: GroupLensRule;
+  rule: LensRule;
   index: number;
-  onChange: (patch: Partial<GroupLensRule>) => void;
+  onChange: (patch: Partial<LensRule>) => void;
   onRemove: () => void;
   onDuplicate: () => void;
   isDragging?: boolean;
@@ -44,9 +37,9 @@ export function LensRuleEditor({
     id: model.id, name: model.name, sourceFingerprint: model.sourceFingerprint,
   })), [models]);
   const [activeGroup, setActiveGroup] = useState(0);
-  const groupStateRef = useRef<FilterGroupEditorState>({ groups: rule.groups, activeGroup });
+  const groupStateRef = useRef<FilterGroupEditorState>({ groups: rule.groups ?? [], activeGroup });
   useLayoutEffect(() => {
-    groupStateRef.current.groups = rule.groups;
+    groupStateRef.current.groups = rule.groups ?? [];
   }, [rule.groups]);
 
   const changeGroups = (updater: (prev: FilterGroupEditorState) => FilterGroupEditorState) => {
@@ -133,7 +126,7 @@ export function LensRuleEditor({
       ) : (
         <div className="pl-7">
           <FilterGroupEditor
-            groups={rule.groups}
+            groups={rule.groups ?? []}
             activeGroup={activeGroup}
             onChange={changeGroups}
             models={modelOptions}

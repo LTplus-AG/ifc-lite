@@ -7,6 +7,8 @@ import type { Lens, LensRule, LensCriteria, AutoColorSpec } from '@/store/slices
 // a circular value import: lensSlice imports the helpers from this module.
 import { AUTO_COLOR_SOURCES, MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
 
+// TODO(remove-by: final #5896 stack merge, viewer team): drop v1-only criteria helpers after the grouped editor lands.
+
 /**
  * Runtime shape guard for one compound member: must be a non-null object so
  * `.type` can be read safely. Mirrors the engine's own `isCriteriaRecord`
@@ -94,7 +96,12 @@ export function cloneCriteria(criteria: LensCriteria, depth = 0): LensCriteria {
  * silently reopen the aliasing bug this whole file exists to close.
  */
 export function cloneLensRules(rules: readonly LensRule[]): LensRule[] {
-  return rules.map((r) => ({ ...r, criteria: cloneCriteria(r.criteria) }));
+  return rules.map((r) => ({
+    ...r,
+    criteria: cloneCriteria(r.criteria),
+    ...(r.groups ? { groups: structuredClone(r.groups) } : {}),
+    ...(r.unreadableLegacy ? { unreadableLegacy: structuredClone(r.unreadableLegacy) } : {}),
+  }));
 }
 
 /**
@@ -227,6 +234,8 @@ export function compoundCriteriaSummary(
  * for why this is reachable via hand-edited import JSON) is invalid.
  */
 export function isRuleValid(rule: LensRule): boolean {
+  if (rule.unreadableLegacy) return true;
+  if (rule.groups) return rule.groups.some((group) => group.rules.length > 0);
   return isCriteriaValid(rule.criteria, 0);
 }
 
@@ -264,6 +273,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Validate a single rule from imported JSON before it enters the store. A
  *  malformed rule (e.g. `null`, or missing criteria) would otherwise break
  *  rule rendering and matching. */
+// TODO(remove-by: final #5896 stack merge, viewer team): delete the v1 import helper and its tests.
 function isImportableRule(item: unknown): item is LensRule {
   if (!isRecord(item)) return false;
   return typeof item.id === 'string'

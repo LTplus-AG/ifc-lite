@@ -12,15 +12,14 @@ import { BulkQueryEngine, MutablePropertyView, type FilterOperator, type Propert
 import { evaluateFilterRules } from './filter-evaluate.js';
 import { matchPropertyRule } from './filter-match.js';
 import type { PropertyRule } from './filter-rules.js';
-
-// The revert oracle removes new production files. Keep this table loadable in
-// that state so the existing-API observer below can fail on behavior, rather
-// than ending at module collection before any assertion runs.
-const adapters = await import('./legacy-operator-adapters.js').catch((error: unknown) => {
-  if (error instanceof Error && error.message.includes('Cannot find module')
-    && error.message.includes('legacy-operator-adapters.js')) return null;
-  throw error;
-});
+import {
+  legacyLensOperatorToFilterRule,
+  legacyListOperatorToFilterRule,
+  legacyBulkOperatorToFilterRule,
+  filterRuleToLegacyLensOperator,
+  filterRuleToLegacyListOperator,
+  filterRuleToLegacyBulkOperator,
+} from './legacy-operator-adapters.js';
 
 it('#5892 canonical exact comparison preserves the saved Lens text behavior', () => {
   const rule: PropertyRule = {
@@ -118,18 +117,6 @@ const bulkCases = {
 } satisfies Record<FilterOperator, [string, PropertyValue | undefined]>;
 
 describe('#5892 legacy operator adapters over one parsed IFC store', () => {
-  if (!adapters) {
-    it.skip('new adapter module absent in the reverted production tree', () => {});
-    return;
-  }
-  const {
-    legacyLensOperatorToFilterRule,
-    legacyListOperatorToFilterRule,
-    legacyBulkOperatorToFilterRule,
-    filterRuleToLegacyLensOperator,
-    filterRuleToLegacyListOperator,
-    filterRuleToLegacyBulkOperator,
-  } = adapters;
   it('every LensOperator selects the same elements as the Lens evaluator', async () => {
     const { store, lens } = await fixture();
     for (const operator of LENS_OPERATORS) {

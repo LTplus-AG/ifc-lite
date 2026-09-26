@@ -11,10 +11,18 @@ use super::*;
 
 /// Build the drop plan for `models` exactly as `export_merged_models` does.
 fn plan(models: &[&str]) -> DropPlan {
+    plan_visible(&models.iter().map(|m| (*m, None)).collect::<Vec<_>>())
+}
+
+/// One model's text and its optional visible-id set.
+type Visible<'a> = (&'a str, Option<Vec<u32>>);
+
+/// [`plan`], with an optional visible-id set per model.
+fn plan_visible(models: &[Visible]) -> DropPlan {
     let inputs: Vec<MergedModel> = models
         .iter()
         .enumerate()
-        .map(|(i, m)| MergedModel { content: m.as_bytes(), id: i.to_string(), included: None })
+        .map(|(i, (m, included))| MergedModel { content: m.as_bytes(), id: i.to_string(), included: included.clone() })
         .collect();
     let first = ModelIndex::build(inputs[0].content);
     let order: Vec<u32> = first.order.clone();
@@ -25,12 +33,16 @@ fn plan(models: &[&str]) -> DropPlan {
     );
     let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
     let modes = crate::merged::units::resolve_model_modes(&inputs, opts.unit_reconciliation, 1.0);
-    plan_drops(&inputs, &opts, &lookup, &modes, 1.0, "IFC4").expect("flag is set")
+    plan_drops(&inputs, &opts, &lookup, &modes).expect("flag is set")
 }
 
 fn file(entities: &str) -> String {
+    file_in("IFC4", entities)
+}
+
+fn file_in(schema: &str, entities: &str) -> String {
     format!(
-        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{entities}ENDSEC;\nEND-ISO-10303-21;\n"
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n{entities}ENDSEC;\nEND-ISO-10303-21;\n"
     )
 }
 
@@ -79,28 +91,62 @@ fn drops_an_empty_ifc4x3_facility_part_and_keeps_a_populated_one() {
     assert_eq!(dropped.count, 2);
 }
 
-/// #5937: a later storey (another name and elevation, so it does not unify)
-/// whose only element repeats the first model's contained wall by GlobalId. The
-/// emit loop withholds that containment (#5923), so the storey holds nothing
-/// and is dropped; the plan sees it only by resolving the wall's GlobalId.
-#[test]
-fn drops_a_storey_whose_only_element_unifies_by_globalid() {
-    let later = file(concat!(
+/// A later model's storey (another name, so it does not unify) holding one
+/// element `element` (#6).
+fn later_storey_holding(element: &str) -> String {
+    file(&format!(concat!(
         "#1=IFCPROJECT('p1',$,'P',$,$,$,$,$,$);\n",
         "#2=IFCSITE('s1',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n",
         "#3=IFCBUILDING('b1',$,'Building',$,$,$,$,$,$,$,$,$);\n",
         "#4=IFCBUILDINGSTOREY('l9',$,'Mezzanine',$,$,$,$,$,$,7000.);\n",
-        "#6=IFCWALL('0aBcDeFgHiJkLmNoPqRsT1',$,'Wall',$,$,$,$,$,$);\n",
+        "{element}\n",
         "#7=IFCRELAGGREGATES('q0',$,$,$,#1,(#2));\n",
         "#8=IFCRELAGGREGATES('q1',$,$,$,#2,(#3));\n",
         "#9=IFCRELAGGREGATES('q2',$,$,$,#3,(#4));\n",
         "#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('q3',$,$,$,(#6),#4);\n",
-    ));
-    // The first model's wall carries a real (22-character) GlobalId to unify on.
-    let first = one_populated_storey().replace("IFCWALL('w0'", "IFCWALL('0aBcDeFgHiJkLmNoPqRsT1'");
-    let dropped = plan(&[&first, &later]);
+    ), element = element))
+}
+
+const SHARED_WALL: &str = "#6=IFCWALL('0aBcDeFgHiJkLmNoPqRsT1',$,'Wall',$,$,$,$,$,$);";
+
+/// The first model with its wall carrying the shared 22-character GlobalId.
+fn first_with_shared_wall() -> String {
+    one_populated_storey().replace("IFCWALL('w0'", "IFCWALL('0aBcDeFgHiJkLmNoPqRsT1'")
+}
+
+/// #5937: the later storey's only element repeats the first model's contained
+/// wall by GlobalId. The emit loop withholds that containment (#5923), so the
+/// storey holds nothing and is dropped; the plan sees it only by resolving the
+/// wall's GlobalId.
+#[test]
+fn drops_a_storey_whose_only_element_unifies_by_globalid() {
+    let dropped = plan(&[&first_with_shared_wall(), &later_storey_holding(SHARED_WALL)]);
     assert!(dropped.per_model[1].contains(&4), "the later storey holds only a unified wall");
     assert_eq!(dropped.per_model[0], HashSet::from([5]));
+}
+
+/// …and never where the emit loop's verdict is out of the plan's sight, which
+/// only keeps the storey: a writer exported across schemas (a placeholder may
+/// replace its GlobalId), and a GlobalId its model repeats (the emit loop
+/// re-stamps all but the first copy, and here both are contained).
+#[test]
+fn keeps_the_storey_when_the_globalid_verdict_is_out_of_sight() {
+    let first = first_with_shared_wall();
+    let later = later_storey_holding(SHARED_WALL);
+    let converted = file_in("IFC2X3", &first.replace("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n", "").replace("ENDSEC;\nEND-ISO-10303-21;\n", ""));
+    let repeated = first
+        .replace("#10=", "#11=IFCWALL('0aBcDeFgHiJkLmNoPqRsT1',$,'Wall 2',$,$,$,$,$,$);\n#10=")
+        .replace("(#6),#4", "(#6,#11),#4");
+    let base = file("#1=IFCPROJECT('p0',$,'P',$,$,$,$,$,$);\n");
+    let cases: Vec<(&str, Vec<Visible>)> = vec![
+        ("converted writer", vec![(&base, None), (&converted, None), (&later, None)]),
+        ("repeated GlobalId", vec![(&repeated, None), (&later, None)]),
+    ];
+    for (case, models) in cases {
+        let later_index = models.len() - 1;
+        let dropped = plan_visible(&models);
+        assert!(!dropped.per_model[later_index].contains(&4), "{case}: the later storey must stay");
+    }
 }
 
 #[test]

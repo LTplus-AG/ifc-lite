@@ -43,7 +43,8 @@ function button(label: RegExp): HTMLButtonElement {
   return el;
 }
 function statusText(): string {
-  return Array.from(document.querySelectorAll('[role="status"]'))
+  // <output> has an implicit status role, which querySelector cannot resolve.
+  return Array.from(document.querySelectorAll('output, [role="status"]'))
     .map((el) => el.textContent ?? '')
     .join(' ');
 }

@@ -240,20 +240,20 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'ChunkErrorBoundary panel-tone error detail',
       file: CHUNK_ERROR_BOUNDARY,
-      anchor: "className={night ? 'max-w-[280px] text-[11px]' : ",
+      anchor: "className={night ? 'max-w-[280px] text-2xs' : ",
       surface: 'bg-background',
       extractor: extractFirstStringLiteralAfter,
     },
     {
       name: 'IDSAuditSummary "path" label',
       file: IDS_AUDIT_SUMMARY,
-      anchor: '{issue.path && (\n                <div className="flex gap-2 font-mono text-[11px]">\n                  <span ',
+      anchor: '{issue.path && (\n                <div className="flex gap-2 font-mono text-2xs">\n                  <span ',
       surface: 'bg-card',
     },
     {
       name: 'IDSAuditSummary "facet" label',
       file: IDS_AUDIT_SUMMARY,
-      anchor: '{issue.facetType && (\n                <div className="flex gap-2 font-mono text-[11px]">\n                  <span ',
+      anchor: '{issue.facetType && (\n                <div className="flex gap-2 font-mono text-2xs">\n                  <span ',
       surface: 'bg-card',
     },
     {
@@ -359,7 +359,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'ModelSelector contextWindow readout',
       file: MODEL_SELECTOR,
-      anchor: '<span>{m.name}</span>\n                  <span className="text-muted-foreground text-[10px]">{m.provider}</span>\n                  <span ',
+      anchor: '<span>{m.name}</span>\n                  <span className="text-muted-foreground text-2xs">{m.provider}</span>\n                  <span ',
       surface: 'bg-popover',
     },
     {

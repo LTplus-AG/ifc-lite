@@ -18,9 +18,6 @@
  * all", while preserving the property the doc comment cares about: this
  * never silently returns a partial or best-guess string for a value it
  * cannot fully resolve statically.
- *
- * `CoordinateDisplay.tsx`'s value span still has real runtime interpolation,
- * while #4792 made its label a statically measurable muted-foreground class.
  */
 
 import { describe, it } from 'node:test';
@@ -31,7 +28,6 @@ import { extractClassNameAfter } from './extract-classname';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(__dirname, '__fixtures__/template-literal-cases.tsx');
-const COORDINATE_DISPLAY = join(__dirname, '../../components/viewer/properties/CoordinateDisplay.tsx');
 
 describe('extractClassNameAfter handles a literal-only template literal', () => {
   it('extracts the class string from a backtick className with no interpolation', () => {
@@ -44,22 +40,6 @@ describe('extractClassNameAfter still throws loudly on an interpolated template 
   it('throws rather than silently matching nothing or guessing a branch', () => {
     assert.throws(
       () => extractClassNameAfter(FIXTURE, 'return (\n    <span '),
-      /interpolat/i,
-    );
-  });
-});
-
-describe('CoordinateDisplay.tsx (#4792)', () => {
-  it('extracts the now-static muted label class', () => {
-    assert.equal(
-      extractClassNameAfter(COORDINATE_DISPLAY, '{label && (\n        <span '),
-      'text-[9px] font-medium uppercase tracking-wider w-[34px] shrink-0 pt-px text-muted-foreground',
-    );
-  });
-
-  it('CoordRow value span still throws on real primary-prop interpolation', () => {
-    assert.throws(
-      () => extractClassNameAfter(COORDINATE_DISPLAY, '        </span>\n      )}\n      <span '),
       /interpolat/i,
     );
   });

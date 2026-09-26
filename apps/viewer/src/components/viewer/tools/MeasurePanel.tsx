@@ -21,11 +21,13 @@
 import React, { useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
+import { AngleRadiusVisuals } from './AngleRadiusVisuals';
 import { MeasureToolbar } from './MeasureToolbar';
 import { MeasureGeoReadout, MeasureHint } from './MeasureHudReadouts';
 
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
+  const finishedVisible = useViewerStore((s) => s.sceneState.measurements.visible);
   const pendingMeasurePoint = useViewerStore((s) => s.pendingMeasurePoint);
   const activeMeasurement = useViewerStore((s) => s.activeMeasurement);
   const snapTarget = useViewerStore((s) => s.snapTarget);
@@ -35,6 +37,8 @@ export function MeasureOverlay() {
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const activePolyline = useViewerStore((s) => s.activePolyline);
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
+  const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
+  const radiusMeasurements = useViewerStore((s) => s.radiusMeasurements);
 
   // Cursor position lives in a ref (no re-renders on mouse move); the snap
   // indicator position is state, updated only when the snap target changes.
@@ -90,7 +94,7 @@ export function MeasureOverlay() {
       <MeasureGeoReadout />
       <MeasureHint />
       <MeasurementOverlays
-        measurements={measurements}
+        measurements={finishedVisible ? measurements : []}
         pending={pendingMeasurePoint}
         activeMeasurement={activeMeasurement}
         snapTarget={snapTarget}
@@ -103,8 +107,9 @@ export function MeasureOverlay() {
         constraintEdge={measurementConstraintEdge}
         unitDisplayOverrides={unitDisplayOverrides}
         activePolyline={activePolyline}
-        polylineMeasurements={polylineMeasurements}
+        polylineMeasurements={finishedVisible ? polylineMeasurements : []}
       />
+      {finishedVisible && <AngleRadiusVisuals angles={angleMeasurements} radii={radiusMeasurements} unitDisplayOverrides={unitDisplayOverrides} />}
     </>
   );
 }

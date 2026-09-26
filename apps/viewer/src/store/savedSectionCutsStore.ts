@@ -105,18 +105,23 @@ export function saveCurrentSectionCut(name: string): string {
 
 /**
  * Put a saved cut ON SCREEN. Restores its full geometry (axis/position/
- * flipped/custom/cap style) into `sectionPlane` and, like
- * `basketViewActivator.ts`'s section branch, opens the Section tool so the
- * store-held invariant (`section-active.ts`: `enabled` only true while the
- * tool is active) resumes it rather than leaving it parked.
+ * flipped/custom/cap style) into `sectionPlane`, un-hides it
+ * (`sceneState.section.visible`, #5893 — like `basketViewActivator.ts`'s
+ * section branch, a stale `visible: false` left by an earlier chip-hide must
+ * not survive a saved cut being applied fresh, or it renders nothing with
+ * no chip open to explain why), and opens the Section tool so the user can
+ * see and edit what they just applied.
  */
 export function applySavedSectionCut(id: string): void {
   const cut = useSavedSectionCuts.getState().cuts.find((c) => c.id === id);
   if (!cut) return;
-  const current = useViewerStore.getState().sectionPlane;
+  const state = useViewerStore.getState();
   // A saved cut is a plane: leaving a live section box in place would keep
   // the box as the cut (#5513, `sectionRenderClip`), so it is dropped.
-  useViewerStore.setState({ sectionPlane: { ...current, ...cut.plane, box: undefined, enabled: true, parked: false } });
+  useViewerStore.setState({
+    sectionPlane: { ...state.sectionPlane, ...cut.plane, box: undefined, enabled: true, parked: false },
+    sceneState: { ...state.sceneState, section: { visible: true } },
+  });
   if (useViewerStore.getState().activeTool !== 'section') {
     useViewerStore.getState().setActiveTool('section');
   }

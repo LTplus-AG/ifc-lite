@@ -75,6 +75,8 @@ it('enumerates the visibility-bearing store fields and gives each mechanism a ro
     'storey', // selectionSlice.selectedStoreys
     'modelHidden', // modelSlice.models[].visible
     'isolation', // pinboardSlice.activeBasketViewId and ownership records
+    'section', // sectionSlice.sectionPlane.enabled + sceneStateSlice.sceneState.section.visible (#5893)
+    'measurements', // all finished measurement kinds + sceneState.measurements.visible (#5893, #6144)
   ]);
   assert.deepEqual(reasons, new Set(VISIBILITY_REASONS.map((reason) => reason.id)));
 });
@@ -101,6 +103,16 @@ const ACTIVATE: Record<VisibilityReasonId, (lastModelOffset: number) => Partial<
   typeVisibility: () => ({ typeVisibility: { ...useViewerStore.getState().typeVisibility, site: false } }),
   typeViewMode: () => ({ typeViewMode: 'types', hasTypeGeometry: true }),
   hostTypes: () => ({ hostHiddenIfcTypes: new Set(['IFCSPACE']) }),
+  // Lasting scene state (#5893): the cut/measurements and the visibility
+  // toggle are independent, so activating the reason means both are on.
+  section: () => ({
+    sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: true },
+    sceneState: { ...useViewerStore.getState().sceneState, section: { visible: true } },
+  }),
+  measurements: (o) => ({
+    measurements: [{ id: 'm', start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, end: { x: o, y: 0, z: 0, screenX: o, screenY: 0 }, distance: o }],
+    sceneState: { ...useViewerStore.getState().sceneState, measurements: { visible: true } },
+  }),
 };
 
 let initial: ViewerState;
@@ -126,6 +138,25 @@ function seedModels(count: number): number {
   });
   return (count - 1) * OFFSET;
 }
+
+it('reports angle- and radius-only scene measurements as a visibility reason (#6144)', () => {
+  seedModels(1);
+  const point = { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 };
+  const visible = { ...useViewerStore.getState().sceneState, measurements: { visible: true } };
+  useViewerStore.setState({
+    measurements: [], polylineMeasurements: [], radiusMeasurements: [],
+    angleMeasurements: [{ id: 'a', kind: 'faces', picks: [
+      { kind: 'faces', point, normal: { x: 1, y: 0, z: 0 } },
+      { kind: 'faces', point, normal: { x: 0, y: 1, z: 0 } },
+    ] }],
+    sceneState: visible,
+  });
+  assert.ok(ids(useViewerStore.getState()).includes('measurements'));
+  useViewerStore.setState({ angleMeasurements: [], radiusMeasurements: [{ id: 'r', points: [point, point, point] }] });
+  assert.ok(ids(useViewerStore.getState()).includes('measurements'));
+  useViewerStore.setState({ sceneState: { ...visible, measurements: { visible: false } } });
+  assert.ok(!ids(useViewerStore.getState()).includes('measurements'));
+});
 
 for (const modelCount of [1, 3]) {
   describe(`visibility reasons at ${modelCount} model(s) (#5869)`, () => {

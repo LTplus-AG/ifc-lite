@@ -27,6 +27,10 @@ import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
+import type { NodeActivationModifiers, UseTreeKeyboardResult } from './hierarchy/useTreeKeyboard';
+import { useHierarchyTreeKeyboard } from './hierarchy/useHierarchyTreeKeyboard';
+import { HierarchyFooterStatus } from './hierarchy/HierarchyFooterStatus';
 import { HierarchySearchEmptyState } from './hierarchy/HierarchySearchEmptyState';
 import { useStrippedHierarchyNodes } from './hierarchy/useStrippedHierarchyNodes';
 import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
@@ -302,8 +306,9 @@ export function HierarchyPanel() {
     [addFilterRule, updateFilterRule, removeFilterRule, setSearchFilterAutoRunPending],
   );
 
-  // Handle node click - for selection/isolation or expand/collapse
-  const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent | React.KeyboardEvent) => {
+  // Handle node click - for selection/isolation or expand/collapse. Typed on the narrow modifier
+  // shape so the keyboard path (Enter/Space, #5883) can drive it too — `React.MouseEvent` satisfies it.
+  const handleNodeClick = useCallback((node: TreeNode, e: NodeActivationModifiers) => {
     try {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
@@ -673,6 +678,16 @@ export function HierarchyPanel() {
     }
   }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility, markFromTreeClick]);
 
+  // ARIA tree semantics + roving-tabIndex keyboard nav (#5883), see `useHierarchyTreeKeyboard.ts`.
+  const {
+    storeysAriaAttrs, modelsAriaAttrs, filteredAriaAttrs,
+    storeysTreeKeyboard, modelsTreeKeyboard, legacyTreeKeyboard, singleTreeSectionTitle,
+  } = useHierarchyTreeKeyboard({
+    storeysRef, modelsRef, parentRef,
+    storeysNodes, modelsNodes, filteredNodes, storeysVirtualizer, modelsVirtualizer, virtualizer,
+    toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
+  });
+
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
     // `selectedStoreys` drops the modelId pairing (#3506/#3508) — guard with `activeStorey` below.
@@ -766,12 +781,14 @@ export function HierarchyPanel() {
     );
   }
 
-  // Helper to render a node via the extracted HierarchyNode component
-  const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }) => {
+  // Helper to render a node. `keyboard`/`ariaAttrs` are whichever of the three lists this row
+  // belongs to (#5883) — each virtualized section is its own tree.
+  const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }, keyboard: UseTreeKeyboardResult, ariaAttrs: AriaTreeAttrs[]) => {
     const { isSelected, nodeHidden, modelVisible } = computeNodeState(node);
     const modelId = node.type === 'model-header' && node.id.startsWith('model-')
       ? node.modelIds[0]
       : undefined;
+    const attrs = ariaAttrs[virtualRow.index] ?? { level: node.depth + 1, posInSet: 1, setSize: 1 };
 
     return (
       <HierarchyNode
@@ -793,6 +810,10 @@ export function HierarchyPanel() {
         onModelHeaderClick={handleModelHeaderClick}
         sourceBacked={modelId ? sourceTags.has(modelId) : false}
         sourceSyncing={modelId ? syncingSourceModelIds.has(modelId) : false}
+        ariaLevel={attrs.level} ariaSetSize={attrs.setSize} ariaPosInSet={attrs.posInSet}
+        tabIndex={keyboard.getTabIndex(node.id)}
+        rowRef={(el) => keyboard.registerRow(node.id, el)}
+        onRowFocus={() => keyboard.onRowFocus(node.id)}
       />
     );
   };
@@ -906,7 +927,7 @@ export function HierarchyPanel() {
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
             <StoreyDisplayControls />
-            <div ref={storeysRef} role="tree" aria-label={t('hierarchy.panel.buildingStoreysTitle')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={storeysRef} role="tree" tabIndex={storeysTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.panel.buildingStoreysTitle')} onKeyDown={storeysTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${storeysVirtualizer.getTotalSize()}px`,
@@ -916,7 +937,7 @@ export function HierarchyPanel() {
               >
                 {storeysVirtualizer.getVirtualItems().map((virtualRow) => {
                   const node = storeysNodes[virtualRow.index];
-                  return renderNode(node, virtualRow);
+                  return renderNode(node, virtualRow, storeysTreeKeyboard, storeysAriaAttrs);
                 })}
               </div>
             </div>
@@ -945,7 +966,7 @@ export function HierarchyPanel() {
           {/* Models Section */}
           <div style={{ height: `${(1 - splitRatio) * 100}%` }} className="flex flex-col min-h-0">
             <ModelsSectionHeader count={models.size} />
-            <div ref={modelsRef} role="tree" aria-label={t('hierarchy.modelsSection.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+            <div ref={modelsRef} role="tree" tabIndex={modelsTreeKeyboard.containerTabIndex} aria-label={t('hierarchy.modelsSection.title')} onKeyDown={modelsTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
                   height: `${modelsVirtualizer.getTotalSize()}px`,
@@ -955,7 +976,7 @@ export function HierarchyPanel() {
               >
                 {modelsVirtualizer.getVirtualItems().map((virtualRow) => {
                   const node = modelsNodes[virtualRow.index];
-                  return renderNode(node, virtualRow);
+                  return renderNode(node, virtualRow, modelsTreeKeyboard, modelsAriaAttrs);
                 })}
               </div>
             </div>
@@ -963,53 +984,13 @@ export function HierarchyPanel() {
         </div>}
 
         {/* Footer status */}
-        {hasActiveFilters ? (
-          <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 bg-primary text-white dark:bg-primary">
-            <div className="flex items-center justify-between text-xs font-medium gap-2">
-              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                {selectedStoreys.size > 0 && (
-                  <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                    {t('hierarchy.panel.storeyCount', { count: selectedStoreys.size })}
-                    <button onClick={clearStoreySelection} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>&times;</button>
-                  </span>
-                )}
-                {classFilter !== null && (
-                  <>
-                    {selectedStoreys.size > 0 && <span className="text-[10px] opacity-50">+</span>}
-                    <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                      {classFilter.label}
-                      <button onClick={clearClassFilter} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearClassFilterAriaLabel')}>&times;</button>
-                    </span>
-                  </>
-                )}
-                {isolatedEntities !== null && (
-                  <>
-                    {(selectedStoreys.size > 0 || classFilter !== null) && <span className="text-[10px] opacity-50">+</span>}
-                    <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                      {typeIsolationLabel}
-                      <button onClick={clearIsolation} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearTypeFilterAriaLabel')}>&times;</button>
-                    </span>
-                  </>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="opacity-70 text-[10px] font-mono">{t('hierarchy.panel.escHint')}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[10px] uppercase border border-white/20 hover:bg-white/20 hover:text-white rounded-none px-2"
-                  onClick={() => { clearStoreySelection(); clearAllFilters(); }}
-                >
-                  {t('hierarchy.panel.clearAllButton')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
-            {t('hierarchy.panel.modelsFooterHint', { count: models.size })}
-          </div>
-        )}
+        <HierarchyFooterStatus
+          hasActiveFilters={hasActiveFilters} selectedStoreys={selectedStoreys} classFilter={classFilter}
+          isolatedEntities={isolatedEntities} typeIsolationLabel={typeIsolationLabel}
+          clearStoreySelection={clearStoreySelection} clearClassFilter={clearClassFilter}
+          clearIsolation={clearIsolation} clearAllFilters={clearAllFilters}
+          idleHint={t('hierarchy.panel.modelsFooterHint', { count: models.size })} idleHintLightShade="500"
+        />
       </div>
     );
   }
@@ -1046,7 +1027,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-label={t('hierarchy.panel.title')} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -1056,59 +1037,19 @@ export function HierarchyPanel() {
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const node = filteredNodes[virtualRow.index];
-            return renderNode(node, virtualRow);
+            return renderNode(node, virtualRow, legacyTreeKeyboard, filteredAriaAttrs);
           })}
         </div>
       </div>}
 
       {/* Footer status */}
-      {hasActiveFilters ? (
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 bg-primary text-white dark:bg-primary">
-          <div className="flex items-center justify-between text-xs font-medium gap-2">
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-              {selectedStoreys.size > 0 && (
-                <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                  {t('hierarchy.panel.storeyCount', { count: selectedStoreys.size })}
-                  <button onClick={clearStoreySelection} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearStoreyFilterAriaLabel')}>&times;</button>
-                </span>
-              )}
-              {classFilter !== null && (
-                <>
-                  {selectedStoreys.size > 0 && <span className="text-[10px] opacity-50">+</span>}
-                  <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                    {classFilter.label}
-                    <button onClick={clearClassFilter} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearClassFilterAriaLabel')}>&times;</button>
-                  </span>
-                </>
-              )}
-              {isolatedEntities !== null && (
-                <>
-                  {(selectedStoreys.size > 0 || classFilter !== null) && <span className="text-[10px] opacity-50">+</span>}
-                  <span className="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                    {typeIsolationLabel}
-                    <button onClick={clearIsolation} className="ml-0.5 opacity-60 hover:opacity-100 text-xs leading-none" aria-label={t('hierarchy.panel.clearTypeFilterAriaLabel')}>&times;</button>
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="opacity-70 text-[10px] font-mono">{t('hierarchy.panel.escHint')}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-[10px] uppercase border border-white/20 hover:bg-white/20 hover:text-white rounded-none px-2"
-                onClick={() => { clearStoreySelection(); clearAllFilters(); }}
-              >
-                {t('hierarchy.panel.clearAllButton')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-600 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
-          {t('hierarchy.panel.clickToFilterHint')}
-        </div>
-      )}
+      <HierarchyFooterStatus
+        hasActiveFilters={hasActiveFilters} selectedStoreys={selectedStoreys} classFilter={classFilter}
+        isolatedEntities={isolatedEntities} typeIsolationLabel={typeIsolationLabel}
+        clearStoreySelection={clearStoreySelection} clearClassFilter={clearClassFilter}
+        clearIsolation={clearIsolation} clearAllFilters={clearAllFilters}
+        idleHint={t('hierarchy.panel.clickToFilterHint')}
+      />
     </div>
   );
 }

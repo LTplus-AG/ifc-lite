@@ -731,8 +731,11 @@ fn duplicate_globalids_are_reconciled_no_dupes() {
     assert_eq!(type_count(&merged, "=IFCSITE("), 1);
     assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1);
     assert_eq!(type_count(&merged, "=IFCWALL("), 1, "duplicate wall unified");
-    // The objectified relationship is re-stamped (kept), not dropped.
-    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 2);
+    // The second model's containment only restates the unified wall's, which
+    // `ContainedInStructure : SET [0:1]` allows once (#5923), so it is not
+    // written. Relationships are still never unified by GlobalId: see
+    // `within_model_duplicate_globalids_are_restamped`.
+    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 1);
     assert_eq!(stats.federated_model_count, 0);
     assert!(!stats.unit_rescale_required);
     assert_no_dangling(&merged);
@@ -1503,3 +1506,34 @@ ENDSEC;\nEND-ISO-10303-21;\n";
     }
 }
 
+
+/// #5937 end to end: the later storey whose only element unifies by GlobalId
+/// is dropped, its aggregation goes with it, and nothing dangles.
+#[test]
+fn drop_empty_containers_drops_a_storey_emptied_by_globalid_unification() {
+    let model = |tag: &str, storey: &str, elevation: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{tag}PROJ00000000000000000',$,'P',$,$,$,$,$,$);\n\
+#2=IFCSITE('{tag}SITE00000000000000000',$,'Site',$,$,$,$,$,$,$,$,$,$,$);\n\
+#3=IFCBUILDING('{tag}BLDG00000000000000000',$,'Building',$,$,$,$,$,$,$,$,$);\n\
+#4=IFCBUILDINGSTOREY('{tag}STOREY000000000000000',$,'{storey}',$,$,$,$,$,$,{elevation});\n\
+#6=IFCWALL('0aBcDeFgHiJkLmNoPqRsT1',$,'Wall',$,$,$,$,$,$);\n\
+#7=IFCRELAGGREGATES('{tag}R0000000000000000000',$,$,$,#1,(#2));\n\
+#8=IFCRELAGGREGATES('{tag}R1000000000000000000',$,$,$,#2,(#3));\n\
+#9=IFCRELAGGREGATES('{tag}R2000000000000000000',$,$,$,#3,(#4));\n\
+#10=IFCRELCONTAINEDINSPATIALSTRUCTURE('{tag}R300000000000000000',$,$,$,(#6),#4);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let a = model("A", "Level 0", "0.");
+    let b = model("B", "Mezzanine", "7000.");
+    let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+    assert!(merged.contains("ASTOREY"), "the first storey keeps its wall");
+    assert!(!merged.contains("BSTOREY"), "the later storey held only a unified wall:\n{merged}");
+    assert!(!merged.contains("BR2000000000000000000"), "its aggregation goes with it");
+    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 1);
+    assert_eq!(stats.dropped_container_count, 1);
+    assert_no_dangling(&merged);
+}

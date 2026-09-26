@@ -19,6 +19,7 @@ import type { RenderVisibilitySnapshot, SceneOwnerSnapshot } from '../../apps/vi
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
   var __ifc_lite_render_visibility__: () => RenderVisibilitySnapshot;
+  var __ifc_lite_annotation_line_vertices__: () => number;
   var __ifc_lite_visibility_reasons__: () => Array<{ id: string; resetPolicy: 'cleared' | 'kept' }>;
   var __ifc_lite_scene_owner__: (globalId: number) => SceneOwnerSnapshot;
 }
@@ -39,6 +40,7 @@ async function load(page: Page, file: string, count: number): Promise<void> {
   await page.waitForFunction((expected) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     return !!globalThis.__ifc_lite_scene_owner__ && !!globalThis.__ifc_lite_render_visibility__
+      && !!globalThis.__ifc_lite_annotation_line_vertices__
       && !!globalThis.__ifc_lite_visibility_reasons__
       && state.models.size === expected && !state.loading && !state.geometryStreamingActive
       && [...state.models.values()].every((model) =>
@@ -139,10 +141,14 @@ for (const federated of [false, true]) {
       if (localId === undefined) throw new Error('Annotation is not resolved to an IFC entity');
       return model.ifcDataStore!.entities.getName(localId) || `IfcAnnotation #${localId}`;
     }, annotation);
+    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_annotation_line_vertices__())).toBeGreaterThan(0);
+    const annotationLinesBefore = await page.evaluate(() => globalThis.__ifc_lite_annotation_line_vertices__());
     const hierarchySearch = page.getByPlaceholder('Search...', { exact: true });
     await hierarchySearch.fill(annotationName);
     await page.getByRole('button', { name: `Hide ${annotationName}`, exact: true }).click();
     await expect.poll(() => page.evaluate((id) => globalThis.__ifc_lite_render_visibility__().hiddenIds.includes(id), annotation)).toBe(true);
+    // Only this owner changed: a drop in the uploaded channel proves its authored curves were present before Hide.
+    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_annotation_line_vertices__())).toBeLessThan(annotationLinesBefore);
     await hierarchySearch.clear();
     if (federated) {
       const terrain = await modelIds(page, 1, 'IFCGEOGRAPHICELEMENT');

@@ -91,6 +91,7 @@ function snapshot(part: MeshData): ScenePartSnapshot {
 export function installViewportDebugHooks(
   renderer: Renderer,
   visibility: () => { hiddenIds: ReadonlySet<number>; isolatedIds: ReadonlySet<number> | null },
+  annotationLineVertexCount: () => number,
 ): void {
   const host = globalThis as Record<string, unknown>;
   host.__ifc_lite_render_stats__ = () => ({
@@ -106,6 +107,7 @@ export function installViewportDebugHooks(
     const current = visibility();
     return { hiddenIds: [...current.hiddenIds], isolatedIds: current.isolatedIds ? [...current.isolatedIds] : null };
   };
+  host.__ifc_lite_annotation_line_vertices__ = annotationLineVertexCount;
   host.__ifc_lite_visibility_reasons__ = () => activeVisibilityReasons(useViewerStore.getState())
     .map(({ id, resetPolicy }) => ({ id, resetPolicy }));
   host.__ifc_lite_scene_owner__ = (globalId: number): SceneOwnerSnapshot => {
@@ -172,6 +174,7 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_render_visibility__;
+  delete host.__ifc_lite_annotation_line_vertices__;
   delete host.__ifc_lite_visibility_reasons__;
   delete host.__ifc_lite_scene_owner__;
   delete host.__ifc_lite_scene_face_hits__;

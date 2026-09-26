@@ -83,10 +83,14 @@ function passesCastGate(
   return passes;
 }
 
-// #6117: "no value" (ifctester parity) is null/undefined/''/UNKNOWN;
-// `optional`/`prohibited` reading it as "absent" is in `checkRequirement`.
-function isAbsentPropertyValue(value: string | number | boolean | null | undefined): boolean {
-  return value === null || value === undefined || value === '' || value === 'UNKNOWN';
+// #6117: an unknown IfcLogical is absent, but IFCLABEL('UNKNOWN') is a
+// present string. `optional`/`prohibited` interpret absence in checkRequirement.
+function isAbsentPropertyValue(
+  value: string | number | boolean | null | undefined,
+  dataType: string | undefined
+): boolean {
+  return value === null || value === undefined || value === '' ||
+    (value === 'UNKNOWN' && dataType?.toUpperCase() === 'IFCLOGICAL');
 }
 
 // The property's dataType decides `stringOnly` when known, else the
@@ -124,7 +128,7 @@ function singlePropertyPasses(
   schemaVersion: string | undefined
 ): boolean {
   // "No value" fails any check, including existence-only ones (#6117).
-  if (isAbsentPropertyValue(prop.value)) return false;
+  if (isAbsentPropertyValue(prop.value, prop.dataType)) return false;
 
   if (facet.dataType && !dataTypePasses(facet.dataType, prop)) return false;
 
@@ -358,7 +362,7 @@ function checkSingleProperty(
 ): FacetCheckResult {
   // `PROPERTY_EMPTY` still fails REQUIRED, but `checkRequirement` reads
   // it as "missing" under `optional` (#6117).
-  if (isAbsentPropertyValue(prop.value)) {
+  if (isAbsentPropertyValue(prop.value, prop.dataType)) {
     const expected = facet.value ? formatConstraint(facet.value) : `property "${pset.name}.${prop.name}" must have a value`;
     return emptyValueFailure(pset, prop, expected);
   }
@@ -372,7 +376,7 @@ function checkSingleProperty(
     const propValue = prop.value;
 
     // Same `PROPERTY_EMPTY` reasoning as above.
-    if (isAbsentPropertyValue(propValue)) {
+    if (isAbsentPropertyValue(propValue, prop.dataType)) {
       return emptyValueFailure(pset, prop, formatConstraint(facet.value));
     }
 

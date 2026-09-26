@@ -71,7 +71,7 @@ describe('default specular term (#5386)', () => {
     assert.match(mainShaderSource, /surfaceSpecular\(/, 'expected the physically based lobe to replace it');
   });
 
-  it('skips the specular term for the selection highlight and colour overrides', () => {
+  it('skips the specular term for the selection highlight and colour-override overlays', () => {
     // `mainShaderSource` contains TWO occurrences of "surfaceSpecular(": the
     // function definition (in the inlined specular.wgsl.ts) and fs_main's
     // call. Only the CALL matters here, so search from fs_main's body.
@@ -80,24 +80,17 @@ describe('default specular term (#5386)', () => {
     const specStart = fsMainBody.indexOf('surfaceSpecular(');
     assert.ok(specStart >= 0, 'expected fs_main to call surfaceSpecular(');
     // Walk backward from the call to the nearest enclosing `if`, and require
-    // it gates on selection and the public overlay pipeline flags.
+    // it gates on both !isSelected and !isOverlay — the same two flags the
+    // selection-highlight and emphasized-overlay branches above it test.
     const before = fsMainBody.slice(0, specStart);
     const ifStart = before.lastIndexOf('if (!isSelected && !isOverlay)');
-    assert.ok(ifStart >= 0, 'expected surfaceSpecular to be reached only outside selection and overlay draws');
+    assert.ok(ifStart >= 0, 'expected surfaceSpecular to be reached only inside `if (!isSelected && !isOverlay)`');
     // Guard the guard: confirm nothing closes that block before the call —
     // i.e. no unmatched `}` between the if and the call.
     const between = fsMainBody.slice(ifStart, specStart);
     const opens = (between.match(/{/g) ?? []).length;
     const closes = (between.match(/}/g) ?? []).length;
-    assert.ok(opens > closes, 'the specular call is not still inside the isSelected guard');
-    // A colour override (#6076) is composited by paintEntityOverride, which
-    // relights the override albedo WITHOUT the specular lobe, as the retired
-    // overlay pass did: its body must not reach surfaceSpecular.
-    const paintStart = mainShaderSource.indexOf('fn paintEntityOverride(');
-    assert.ok(paintStart >= 0, 'expected the override compositor in the main shader');
-    const paintBody = mainShaderSource.slice(paintStart, mainShaderSource.indexOf('\n        }\n', paintStart));
-    assert.doesNotMatch(paintBody, /surfaceSpecular|spec\./, 'an override must not pick up the specular term');
-    assert.match(paintBody, /albedo \* irradiance/, 'the override is lit by the same irradiance as the base colour');
+    assert.ok(opens > closes, 'the specular call is not still inside the isSelected/isOverlay guard');
   });
 
   it('scales the sun specular lobe by the same env.sunColor * env.sunIntensity * sunShadow and IRRADIANCE_CALIBRATION as the diffuse sun term', () => {

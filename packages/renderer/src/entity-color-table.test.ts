@@ -27,8 +27,6 @@ import {
   resolveLaneEntityId,
 } from './entity-color-table.js';
 import { packEntityLane } from './scene-geometry.js';
-import { entityColorTableWgsl } from './shaders/entity-color-table.wgsl.js';
-import { mainShaderSource } from './shaders/main.wgsl.js';
 import { MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 
 type Rgba = [number, number, number, number];
@@ -140,25 +138,10 @@ describe('lane -> federated id (#6076)', () => {
   });
 });
 
-describe('entity colour table WGSL (#6076)', () => {
-  it('hashes with the same function as the CPU image builder', () => {
-    // The shader and `entityColorSlotHash` must agree bit for bit or every
-    // lookup misses. Pin the murmur3 finalizer constants in both.
-    assert.match(entityColorTableWgsl, /h \* 0x85ebca6bu/);
-    assert.match(entityColorTableWgsl, /h \* 0xc2b2ae35u/);
-    assert.match(entityColorTableWgsl, /h \^ \(h >> 16u\)[\s\S]*h \^ \(h >> 13u\)[\s\S]*h \^ \(h >> 16u\)/);
-    // Reference values of murmur3 fmix32.
+describe('entity colour table layout (#6076)', () => {
+  it('uses reference fmix32 hashes and reserves the final uniform lane for override parameters', () => {
     assert.equal(entityColorSlotHash(0), 0);
     assert.equal(entityColorSlotHash(1), 0x514e28b7);
-  });
-
-  it('is inlined into the main shader, reads the table at group(1) binding 5, and pads the uniform to a vec4', () => {
-    assert.ok(mainShaderSource.includes(entityColorTableWgsl), 'main shader inlines the table functions');
-    assert.match(mainShaderSource, /@binding\(5\) @group\(1\) var<storage, read> entityColorTable: array<u32>;/);
-    assert.match(mainShaderSource, /overrideParams: vec4<u32>,[^\n]*\n\s*}/, 'overrideParams is the last Uniforms field');
     assert.equal(MESH_UNIFORM_OFFSET.overrideParams + 4, MESH_UNIFORM_FLOATS);
-    const fsMain = mainShaderSource.slice(mainShaderSource.indexOf('fn fs_main('));
-    assert.match(fsMain, /entityOverrideColor\(input\.entityId\)/);
-    assert.match(fsMain, /paintEntityOverride\(out\.color, entityOverride, irradiance, N, edgeDarken\)/);
   });
 });

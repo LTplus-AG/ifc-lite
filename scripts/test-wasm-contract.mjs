@@ -62,19 +62,16 @@ if (!existsSync(WASM_BIN)) {
   console.log('⚠️  wasm runtime missing — run `bash scripts/build-wasm.sh`. Skipping.');
   process.exit(0);
 }
+/** Whether a fixture is present, warning once (naming what is skipped) when it is not. */
+function fixtureAvailable(path, what, skipped) {
+  if (existsSync(path)) return true;
+  console.log(`⚠️  ${what} fixture missing — run \`pnpm fixtures\`. ${skipped} will be skipped.`);
+  return false;
+}
 const COLUMN_AVAILABLE = existsSync(COLUMN_IFC);
-const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
-if (!GEOREF_AVAILABLE) {
-  console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
-}
-const LAYERED_AVAILABLE = existsSync(LAYERED_IFC);
-if (!LAYERED_AVAILABLE) {
-  console.log('⚠️  layered-wall fixture missing — run `pnpm fixtures`. geometryClass pin will be skipped.');
-}
-const SPACES_AVAILABLE = existsSync(SPACES_IFC);
-if (!SPACES_AVAILABLE) {
-  console.log('⚠️  spaces fixture missing — run `pnpm fixtures`. Energy-model tests will be skipped.');
-}
+const GEOREF_AVAILABLE = fixtureAvailable(GEOREF_IFC, 'georef', 'Georef tests');
+const LAYERED_AVAILABLE = fixtureAvailable(LAYERED_IFC, 'layered-wall', 'geometryClass pin');
+const SPACES_AVAILABLE = fixtureAvailable(SPACES_IFC, 'spaces', 'Energy-model tests');
 
 // Initialize WASM
 console.log('📦 Loading WASM...');

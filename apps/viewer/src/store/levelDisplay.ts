@@ -5,7 +5,7 @@
 /**
  * Level-display transitions — the ONE place that maps Stacked / Exploded /
  * Solo onto state, so every entry point (the storey-tab control, the command
- * palette, the in-viewport chip, a hierarchy storey click) behaves identically.
+ * palette, the in-viewport chip, a hierarchy storey action) behaves identically.
  *
  * Solo and "isolate this storey" are the same thing, so they share ONE channel:
  * the storey isolation filter (`selectedStoreys`). Solo isolates the active (or
@@ -16,6 +16,7 @@
  */
 
 import { useViewerStore } from './index.js';
+import { toGlobalIdFromModels } from './globalId.js';
 import type { EntityRef } from './types.js';
 import type { LevelDisplayMode } from './slices/levelDisplaySlice.js';
 
@@ -60,24 +61,29 @@ function storeyExists(ref: EntityRef): boolean {
  * Apply a level-display mode through the single unified storey-isolation
  * channel.
  *
- * - `solo`  : focus + isolate one storey (the passed ref, else the active
- *             storey, else the top storey). Sets `activeStorey` +
- *             `selectedStoreys` so the hierarchy row highlights and the
- *             renderer isolates via the existing `computedIsolatedIds` path.
+ * - `solo`  : focus + isolate the passed storeys (one logical unified level
+ *             can contain contributions from several models), else the active
+ *             storey, else the top storey. Sets `activeStorey` +
+ *             `selectedStoreys` so the renderer isolates every contribution
+ *             via the existing `computedIsolatedIds` path.
  * - others  : clear the storey isolation so Stacked / Exploded show every
  *             storey (Exploded then lifts them apart via the offset effect).
  */
-export function applyLevelDisplayMode(mode: LevelDisplayMode, soloRef?: EntityRef | null): void {
+export function applyLevelDisplayMode(mode: LevelDisplayMode, soloRefs?: readonly EntityRef[]): void {
   const s = useViewerStore.getState();
   if (mode === 'solo') {
-    // Prefer an explicit ref, then the active storey — but only if it still
-    // resolves to a loaded storey (it may be stale after a model removal /
-    // reset). Otherwise fall back to the top storey of the current scene.
-    const candidate = soloRef ?? s.activeStorey;
-    const ref = candidate && storeyExists(candidate) ? candidate : pickTopStorey();
-    if (!ref) return; // nothing to solo (no storeys) — leave the mode unchanged
-    s.setActiveStorey(ref);
-    s.setStoreysSelection([ref.expressId]);
+    // A unified storey has one ref per model. Keep every loaded contribution;
+    // stale refs after a model removal are ignored. With no valid explicit
+    // target, fall back to the active or highest storey as before.
+    const requested = soloRefs?.length ? soloRefs : s.activeStorey ? [s.activeStorey] : [];
+    const refs = requested.filter(storeyExists);
+    if (refs.length === 0) {
+      const fallback = pickTopStorey();
+      if (fallback) refs.push(fallback);
+    }
+    if (refs.length === 0) return; // nothing to solo (no storeys) — leave the mode unchanged
+    s.setActiveStorey(refs[0]);
+    s.setStoreysSelection(refs.map((ref) => toGlobalIdFromModels(s.models, ref.modelId, ref.expressId)));
     s.setLevelDisplayMode('solo');
   } else {
     s.clearStoreySelection();

@@ -1168,6 +1168,7 @@ export function buildGroupTree(
     ifcType: string;
     typeRank: number;
     memberRows: MemberRow[];
+    memberGlobalIds: number[];
     isolationGlobalIds: number[];
   }
 
@@ -1246,6 +1247,7 @@ export function buildGroupTree(
           ifcType: typeName,
           typeRank: rank,
           memberRows: Array.from(rowByGlobalId.values()),
+          memberGlobalIds: [...new Set(members.map((member) => toGlobal(member.id)))],
           isolationGlobalIds: Array.from(isolation),
         });
       }
@@ -1279,6 +1281,7 @@ export function buildGroupTree(
       id: nodeId,
       expressIds: [entry.groupExpressId],
       globalIds: entry.isolationGlobalIds,
+      memberGlobalIds: entry.memberGlobalIds,
       entityExpressId: entry.groupExpressId,
       modelIds: [entry.modelId],
       modelId: entry.modelId,

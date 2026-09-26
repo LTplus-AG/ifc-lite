@@ -30,8 +30,8 @@ END-ISO-10303-21;
 
 afterEach(cleanup);
 
-describe('HierarchyPanel group click over the edited model (#5249)', () => {
-  it('reveals a hidden space added by a rewritten assignment', async () => {
+describe('HierarchyPanel group click over the edited model (#5249, #5885)', () => {
+  it('selects a hidden space added by a rewritten assignment without changing its visibility', async () => {
     const dataStore = await new IfcParser().parseColumnar(
       new TextEncoder().encode(FIXTURE).buffer as ArrayBuffer,
       { disableWorkerScan: true },
@@ -54,7 +54,10 @@ describe('HierarchyPanel group click over the edited model (#5249)', () => {
     assert.ok(group, 'the group row is rendered from the edited model');
     click(group);
 
-    assert.equal(useViewerStore.getState().typeVisibility.spaces, true,
-      'clicking the group reveals the space from its rewritten assignment');
+    const state = useViewerStore.getState();
+    assert.equal(state.selectedEntityIds.has(11), true,
+      'clicking the group selects the space from its rewritten assignment');
+    assert.equal(state.typeVisibility.spaces, false,
+      'ordinary row activation leaves the hidden-space visibility policy unchanged');
   });
 });

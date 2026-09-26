@@ -32,7 +32,9 @@ export function generatePropertySetEntities(
   willBeEmitted: (id: number) => boolean,
   effective: EffectiveEntityIndex,
   typeOwnedPsetNames?: Set<string>,
-  random?: RandomSource
+  random?: RandomSource,
+  sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>>,
+  canReferenceSourceMember: (id: number) => boolean = willBeEmitted,
 ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
   const lines: string[] = [];
   let count = 0;
@@ -53,9 +55,19 @@ export function generatePropertySetEntities(
     // (#5199).
     if (pset.properties.length === 0) continue;
     const propertyIds: number[] = [];
+    const members = sourceMembers?.get(pset.name);
 
     // Create IfcPropertySingleValue for each property
     for (const prop of pset.properties) {
+      // A property the session did not edit keeps its source atom, and with
+      // it its IFC class: a list, enumerated, bounded, table, reference or
+      // complex member re-serialized below would come back as flattened
+      // single-value text (#5794).
+      const sourceMemberId = members?.get(prop.name);
+      if (sourceMemberId !== undefined && canReferenceSourceMember(sourceMemberId)) {
+        propertyIds.push(sourceMemberId);
+        continue;
+      }
       const propId = ctx.allocateExpressId();
       count++;
 

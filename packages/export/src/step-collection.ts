@@ -164,7 +164,7 @@ export function collectModifications(
     collectPropertyAndQuantitySetMutations(
       pass,
       options,
-      { entityPropMutations, entityQuantMutations, relDefinesByEntity },
+      { entityPropMutations, entityQuantMutations, relDefinesByEntity, relatedByRel },
       ctx.propertySetContext(),
     );
 

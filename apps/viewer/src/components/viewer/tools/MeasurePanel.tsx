@@ -21,6 +21,7 @@
 import React, { useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
+import { AngleRadiusVisuals } from './AngleRadiusVisuals';
 import { MeasureToolbar } from './MeasureToolbar';
 import { MeasureGeoReadout, MeasureHint } from './MeasureHudReadouts';
 
@@ -36,6 +37,8 @@ export function MeasureOverlay() {
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const activePolyline = useViewerStore((s) => s.activePolyline);
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
+  const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
+  const radiusMeasurements = useViewerStore((s) => s.radiusMeasurements);
 
   // Cursor position lives in a ref (no re-renders on mouse move); the snap
   // indicator position is state, updated only when the snap target changes.
@@ -106,6 +109,7 @@ export function MeasureOverlay() {
         activePolyline={activePolyline}
         polylineMeasurements={finishedVisible ? polylineMeasurements : []}
       />
+      {finishedVisible && <AngleRadiusVisuals angles={angleMeasurements} radii={radiusMeasurements} unitDisplayOverrides={unitDisplayOverrides} />}
     </>
   );
 }

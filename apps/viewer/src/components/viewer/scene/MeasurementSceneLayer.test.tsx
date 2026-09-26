@@ -25,12 +25,21 @@ const A_MEASUREMENT = {
   end: { x: 3, y: 0, z: 0, screenX: 40, screenY: 10 },
   distance: 3,
 };
+const P = (x: number, y: number, screenX: number, screenY: number) => ({ x, y, z: 0, screenX, screenY });
+const ANGLE = { id: 'ang-1', kind: 'points' as const, picks: [
+  { kind: 'points' as const, point: P(1, 0, 10, 10) },
+  { kind: 'points' as const, point: P(0, 0, 20, 20) },
+  { kind: 'points' as const, point: P(0, 1, 30, 10) },
+] };
+const RADIUS = { id: 'rad-1', points: [P(1, 0, 10, 20), P(0, 1, 20, 10), P(-1, 0, 30, 20)] };
 
 beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'select',
     measurements: [],
     polylineMeasurements: [],
+    angleMeasurements: [],
+    radiusMeasurements: [],
     sceneState: { ...s().sceneState, measurements: { visible: true } },
   });
 });
@@ -47,6 +56,35 @@ describe('MeasurementSceneLayer (#5893)', () => {
     useViewerStore.setState({ measurements: [A_MEASUREMENT] });
     const container = render(<MeasurementSceneLayer />);
     assert.ok(container.querySelector('svg'), 'the overlay SVG mounts outside the tool (#5893)');
+  });
+
+  it('draws finished angle and radius picks after the Measure tool closes (#6144)', () => {
+    useViewerStore.setState({ angleMeasurements: [ANGLE], radiusMeasurements: [RADIUS] });
+    const container = render(<MeasurementSceneLayer />);
+    assert.equal(container.querySelectorAll('path[stroke-dasharray="6,3"]').length, 2);
+    assert.equal(container.querySelectorAll('circle').length, 6);
+  });
+
+  it('keeps angle and radius hidden after switching back into Measure (#6144)', () => {
+    useViewerStore.setState({ angleMeasurements: [ANGLE], radiusMeasurements: [RADIUS], activeTool: 'measure',
+      sceneState: { ...s().sceneState, measurements: { visible: false } } });
+    const container = render(<><ViewportHud /><MeasureOverlay /><MeasurementSceneLayer /></>);
+    assert.equal(container.querySelector('path[stroke-dasharray="6,3"]'), null);
+  });
+
+  it('reveals the scene after finishing an angle or radius (#6144)', () => {
+    useViewerStore.setState({ sceneState: { ...s().sceneState, measurements: { visible: false } } });
+    s().setAngleKind('points');
+    for (const point of [P(1, 0, 10, 10), P(0, 0, 20, 20), P(0, 1, 30, 10)]) {
+      s().addAnglePick({ kind: 'points', point });
+    }
+    assert.equal(s().sceneState.measurements.visible, true);
+    s().setMeasurementsVisible(false);
+    s().startRadius(P(1, 0, 10, 20));
+    s().addRadiusPoint(P(0, 1, 20, 10));
+    s().addRadiusPoint(P(-1, 0, 30, 20));
+    assert.equal(s().finishRadius(), true);
+    assert.equal(s().sceneState.measurements.visible, true);
   });
 
   it('renders nothing while the Measure tool is open, to avoid double-drawing with MeasureOverlay', () => {

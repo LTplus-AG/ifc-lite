@@ -21,7 +21,7 @@ import { HudChip, HudItem } from '../../viewport-ui/hud';
 
 export function MeasurementsVisibilityChip() {
   const shown = useViewerStore(
-    (s) => s.activeTool !== 'measure' && (s.measurements.length > 0 || s.polylineMeasurements.length > 0),
+    (s) => s.activeTool !== 'measure' && (s.measurements.length > 0 || s.polylineMeasurements.length > 0 || s.angleMeasurements.length > 0 || s.radiusMeasurements.length > 0),
   );
   if (!shown) return null;
   return <MeasurementsChipBody />;
@@ -29,7 +29,7 @@ export function MeasurementsVisibilityChip() {
 
 function MeasurementsChipBody() {
   const { t } = useTranslation();
-  const count = useViewerStore((s) => s.measurements.length + s.polylineMeasurements.length);
+  const count = useViewerStore((s) => s.measurements.length + s.polylineMeasurements.length + s.angleMeasurements.length + s.radiusMeasurements.length);
   const visible = useViewerStore((s) => s.sceneState.measurements.visible);
   const setMeasurementsVisible = useViewerStore((s) => s.setMeasurementsVisible);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);

@@ -631,26 +631,28 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return { angleKind: kind, activeAngle: null };
   }),
 
-  addAnglePick: (pick) => set((state) => {
-    const kind = state.angleKind;
-    // Defence in depth: the handler filters by kind, but a mismatched pick
-    // reaching the store would produce an angle measured from the wrong sort
-    // of input, silently.
-    if (pick.kind !== kind) return {};
-    const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
-    const picks = [...prior, pick];
-    if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
-      return { activeAngle: { kind, picks } };
-    }
-    measurementCounter++;
-    return {
-      activeAngle: null,
-      angleMeasurements: [
-        ...state.angleMeasurements,
-        { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks },
-      ],
-    };
-  }),
+  addAnglePick: (pick) => {
+    let recorded = false;
+    set((state) => {
+      const kind = state.angleKind;
+      // Defence in depth: the handler filters by kind, but a mismatched pick
+      // reaching the store would produce an angle measured from the wrong sort
+      // of input, silently.
+      if (pick.kind !== kind) return {};
+      const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
+      const picks = [...prior, pick];
+      if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
+        return { activeAngle: { kind, picks } };
+      }
+      measurementCounter++;
+      recorded = true;
+      return {
+        activeAngle: null,
+        angleMeasurements: [...state.angleMeasurements, { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks }],
+      };
+    });
+    if (recorded) revealMeasurements();
+  },
 
   cancelAngle: () => set({ activeAngle: null }),
 
@@ -775,6 +777,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
         activeRadius: null,
       };
     });
+    if (recorded) revealMeasurements();
     return recorded;
   },
 

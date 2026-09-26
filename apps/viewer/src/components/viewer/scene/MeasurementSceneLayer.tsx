@@ -14,7 +14,7 @@
  * This component is mounted unconditionally from the scene layer
  * (`ViewportContainer`'s `SceneOverlayRoot`, alongside `AnnotationLayer` /
  * `BCFOverlay` / `CollabPresenceLayer`), not from the tool. It draws the
- * FINISHED measurements only (`measurements`, `polylineMeasurements`) —
+ * FINISHED measurements only (distance, polyline, angle and radius) —
  * never the in-progress gesture (pending point, active drag, snap
  * indicator, live polyline), which stays `MeasureOverlay`'s job and only
  * exists while the Measure tool itself is open. It renders nothing while
@@ -32,28 +32,34 @@
 import type { ReactNode } from 'react';
 import { useViewerStore } from '@/store';
 import { MeasurementOverlays } from '../tools/MeasurementVisuals';
+import { AngleRadiusVisuals } from '../tools/AngleRadiusVisuals';
 
 export function MeasurementSceneLayer(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const visible = useViewerStore((s) => s.sceneState.measurements.visible);
   const measurements = useViewerStore((s) => s.measurements);
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
+  const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
+  const radiusMeasurements = useViewerStore((s) => s.radiusMeasurements);
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
 
   if (activeTool === 'measure' || !visible) return null;
-  if (measurements.length === 0 && polylineMeasurements.length === 0) return null;
+  if (measurements.length === 0 && polylineMeasurements.length === 0 && angleMeasurements.length === 0 && radiusMeasurements.length === 0) return null;
 
   return (
-    <MeasurementOverlays
-      measurements={measurements}
-      pending={null}
-      activeMeasurement={null}
-      snapTarget={null}
-      snapVisualization={null}
-      projectToScreen={projectToScreen}
-      unitDisplayOverrides={unitDisplayOverrides}
-      polylineMeasurements={polylineMeasurements}
-    />
+    <>
+      <MeasurementOverlays
+        measurements={measurements}
+        pending={null}
+        activeMeasurement={null}
+        snapTarget={null}
+        snapVisualization={null}
+        projectToScreen={projectToScreen}
+        unitDisplayOverrides={unitDisplayOverrides}
+        polylineMeasurements={polylineMeasurements}
+      />
+      <AngleRadiusVisuals angles={angleMeasurements} radii={radiusMeasurements} unitDisplayOverrides={unitDisplayOverrides} />
+    </>
   );
 }

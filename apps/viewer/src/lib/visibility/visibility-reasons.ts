@@ -195,7 +195,7 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
     labelKey: 'visibilityReasons.measurements',
     resetPolicy: 'cleared',
     isActive: (s) =>
-      (s.measurements.length > 0 || s.polylineMeasurements.length > 0) && s.sceneState.measurements.visible,
+      (s.measurements.length > 0 || s.polylineMeasurements.length > 0 || s.angleMeasurements.length > 0 || s.radiusMeasurements.length > 0) && s.sceneState.measurements.visible,
     clear: (store) => store.getState().setMeasurementsVisible(false),
   },
 ];

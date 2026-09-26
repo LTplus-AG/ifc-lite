@@ -32,6 +32,8 @@ beforeEach(() => {
     activeTool: 'select',
     measurements: [],
     polylineMeasurements: [],
+    angleMeasurements: [],
+    radiusMeasurements: [],
     sceneState: { ...s().sceneState, measurements: { visible: true } },
   });
 });
@@ -53,6 +55,18 @@ describe('measurements chip (#5893)', () => {
     render(<><ViewportHud /><MeasurementsVisibilityChip /></>);
     act(() => useViewerStore.setState({ measurements: [A_MEASUREMENT] }));
     assert.equal(chip()?.textContent?.trim(), '1 measured');
+  });
+
+  it('counts angle and radius measurements even with no distances (#6144)', () => {
+    render(<><ViewportHud /><MeasurementsVisibilityChip /></>);
+    act(() => useViewerStore.setState({
+      angleMeasurements: [{ id: 'ang-1', kind: 'faces', picks: [
+        { kind: 'faces', point: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, normal: { x: 1, y: 0, z: 0 } },
+        { kind: 'faces', point: { x: 1, y: 0, z: 0, screenX: 1, screenY: 0 }, normal: { x: 0, y: 1, z: 0 } },
+      ] }],
+      radiusMeasurements: [{ id: 'rad-1', points: [] }],
+    }));
+    assert.equal(chip()?.textContent?.trim(), '2 measured');
   });
 
   it('the eye toggle hides measurements without deleting them (#5893)', () => {

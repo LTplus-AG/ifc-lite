@@ -281,6 +281,26 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.deepEqual(saved?.conditions, []);
   });
 
+  it('keeps a malformed saved condition visible and removable without evaluating its fields (#5894)', () => {
+    const store = buildStore();
+    const initial: ListDefinition = {
+      id: 'malformed-filter', name: 'Malformed filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [], conditions: [], groups: [],
+      unreadableConditions: [{ condition: null, reason: 'invalid-condition' }],
+    };
+    let saved: ListDefinition | undefined;
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
+        onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    assert.ok(container.querySelector('[role="alert"]')?.textContent?.includes('Malformed saved condition'));
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.conditions, []);
+    assert.deepEqual(saved?.unreadableConditions, initial.unreadableConditions);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Remove saved filter') as Element);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+  });
+
   it('saves group edits from the shared FilterGroupEditor (#5894)', () => {
     const store = buildStore();
     let saved: ListDefinition | undefined;

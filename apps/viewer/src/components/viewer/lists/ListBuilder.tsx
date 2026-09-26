@@ -156,9 +156,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
   const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
   // Location zones remain available for quick-add columns.
   const zoneSets = useViewerStore((s) => s.zoneSets);
-  const filterModels = useMemo(() => [...models.values()].map(({ id, name, sourceFingerprint }) => ({
-    id, name, sourceFingerprint,
-  })), [models]);
+  const filterModels = useMemo(() => [...models.values()].map(({ id, name, sourceFingerprint }) => ({ id, name, sourceFingerprint })), [models]);
   // Ordered group-by columns, outermost first (multi-criteria grouping #1790).
   const [groupByColumnIds, setGroupByColumnIds] = useState<string[]>(
     () => groupingColumnIds(initial?.grouping)
@@ -299,7 +297,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
       modelTagScope,
-      conditions: unreadableConditions.map(({ condition }) => condition),
+      conditions: unreadableConditions.flatMap((row) => row.reason === 'invalid-condition' ? [] : [row.condition]),
       groups: filterState.groups,
       unreadableConditions,
       columns,
@@ -403,7 +401,8 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
                 <ul className="space-y-1">
                   {unreadableConditions.map(({ condition, reason }, index) => (
                     <li key={index} className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background px-2 py-1">
-                      <span>{condition.source}: {condition.psetName ? `${condition.psetName}.` : ''}{condition.propertyName} {condition.operator} {String(condition.value)} ({reason})</span>
+                      <span>{reason === 'invalid-condition' ? t('lists.builder.malformedCondition')
+                        : `${condition.source}: ${condition.psetName ? `${condition.psetName}.` : ''}${condition.propertyName} ${condition.operator} ${String(condition.value)} (${reason})`}</span>
                       <Button type="button" variant="ghost" size="sm" onClick={() => setUnreadableConditions((current) => current.filter((_, i) => i !== index))}>
                         {t('lists.builder.removeUnreadable')}
                       </Button>

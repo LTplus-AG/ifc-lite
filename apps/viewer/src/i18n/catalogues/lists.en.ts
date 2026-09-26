@@ -166,6 +166,7 @@ export const listsEn = {
   'lists.builder.groupCountHint': 'Each group shows its element count.',
   'lists.builder.totalsHint': 'Σ Totals — sum these columns per group and overall',
   'lists.builder.sumIcon': 'Σ',
-  'lists.builder.unreadableWarning': 'These saved filters could not be converted. They still narrow results until you remove them.',
+  'lists.builder.unreadableWarning': 'These saved filters could not be converted. Remove malformed entries before running; other entries still narrow results.',
+  'lists.builder.malformedCondition': 'Malformed saved condition',
   'lists.builder.removeUnreadable': 'Remove saved filter',
 } as const satisfies Record<string, TranslationValue>;

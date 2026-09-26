@@ -355,7 +355,7 @@ export type FailureType =
   | 'ATTRIBUTE_PATTERN_MISMATCH'
   // Property failures
   | 'PSET_MISSING'
-  | 'PROPERTY_MISSING'
+  | 'PROPERTY_MISSING' | 'PROPERTY_EMPTY' // empty: null/''/UNKNOWN, not "wrong" (#6117)
   | 'PROPERTY_VALUE_MISMATCH'
   | 'PROPERTY_DATATYPE_MISMATCH'
   | 'PROPERTY_DATATYPE_UNKNOWN' // property found, its dataType is not known here (#5224)

@@ -19,6 +19,15 @@ export interface MatchOptions {
    * (property values, classification values, etc.) are case-sensitive.
    */
   caseInsensitive?: boolean;
+  /**
+   * The actual value's declared type is string-flavoured (IfcLabel,
+   * IfcText, IfcIdentifier, …): disable the numeric/boolean coercion
+   * fallback in `matchSimpleValue`/`matchEnumeration` so an
+   * exact-string comparison is the only way to match (#6117). The
+   * property facet is the only caller that knows enough about the
+   * value's declared type to set this.
+   */
+  stringOnly?: boolean;
 }
 
 /**
@@ -34,8 +43,9 @@ export function matchConstraint(
   }
 
   const ci = options?.caseInsensitive ?? false;
+  const stringOnly = options?.stringOnly ?? false;
 
-  if (!matchOneFamily(constraint, actualValue, ci)) return false;
+  if (!matchOneFamily(constraint, actualValue, ci, stringOnly)) return false;
 
   // XSD facets declared in the same `<xs:restriction>` are conjunctive.
   // `parseRestriction` keeps the first family as the constraint itself
@@ -45,7 +55,7 @@ export function matchConstraint(
   const siblings = conjunctiveFacetsOf(constraint);
   if (siblings === undefined) return true;
   for (const sibling of siblings) {
-    if (!matchOneFamily(sibling, actualValue, ci)) return false;
+    if (!matchOneFamily(sibling, actualValue, ci, stringOnly)) return false;
   }
   return true;
 }

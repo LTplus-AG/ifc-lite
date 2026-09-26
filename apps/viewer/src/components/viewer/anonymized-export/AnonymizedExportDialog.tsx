@@ -138,7 +138,10 @@ export function AnonymizedExportDialog({ surface = 'classic', trigger }: Anonymi
   // reopened dialog never shows a stale success/error.
   const wasOpenRef = useRef(open);
   useEffect(() => {
-    if (open && !wasOpenRef.current) setExportResult(null);
+    if (open && !wasOpenRef.current) {
+      setExportResult(null);
+      setLastResult(null);
+    }
     wasOpenRef.current = open;
   }, [open]);
 
@@ -174,6 +177,7 @@ export function AnonymizedExportDialog({ surface = 'classic', trigger }: Anonymi
     if (!set.targetModelId || set.includedIds.size === 0) return;
     setIsExporting(true);
     setExportResult(null);
+    setLastResult(null);
     try {
       const dataStore = await ensureModelExportReady(set.targetModelId);
       if (!dataStore) throw new Error(t('anonymizedExport.dialog.modelDataUnavailableError'));

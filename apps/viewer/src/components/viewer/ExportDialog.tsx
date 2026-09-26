@@ -21,16 +21,14 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  * - Below IFC5 → .json
  * - IFC5 → .ifcx
  *
- * Chrome (open/busy/result state, the Dialog shell, the result alert, the
- * guarded Cancel/Export footer) lives in `ExportDialogShell.tsx` (#5848);
- * this component keeps its own options (moved into the sibling
- * `export-dialog-*-options.tsx` presentational modules to stay readable) and
- * its own export logic.
+ * `ExportDialogShell` owns open/busy/result state and guarded chrome (#5848).
+ * This component owns the options and export logic.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
+import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
@@ -87,11 +85,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  // Not read directly below — `resolveExportVisibility` reads the live store
-  // snapshot at export time — but subscribed so the dialog re-renders (and the
-  // memoized visibility getters below get fresh identities) when the Class
-  // tab filter, storey selection, or a type-visibility toggle changes while
-  // the dialog is open (#4328).
+  // Keep visibility subscriptions so the options refresh when Class, storey,
+  // or type filters change; export reads the live store snapshot (#4328).
   const classFilter = useViewerStore((s) => s.classFilter);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -120,10 +115,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     entitiesTotal: number;
     currentModel?: string;
   } | null>(null);
-  // Anchors the auto-scroll-to-bottom below. The shell owns the scrollable
-  // container now (its own internal `overflow-y-auto` div), so rather than a
-  // ref on that container (no longer reachable from here) this scrolls the
-  // marker into view, which bubbles to whichever ancestor actually scrolls.
+  // Scroll progress into the shell's own scrollable container.
   const progressAnchorRef = useRef<HTMLDivElement>(null);
   const prevProgressRef = useRef<typeof exportProgress>(null);
 
@@ -300,6 +292,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     }
     if (!exportAllowed) {
       const message = t('exportDialog.landXml.error');
+      toast.error(message);
       return { success: false, message };
     }
 
@@ -383,6 +376,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
             ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
             : '');
         exportedFormat = 'ifc';
+        toast.success(msg);
         return { success: true, message: msg };
       }
 
@@ -399,6 +393,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
         const jsonMsg = exportChangesJson(
           selectedModelId, selectedModel.name, mutationView?.getMutations() || []);
         exportedFormat = 'json';
+        toast.success(jsonMsg);
         return { success: true, message: jsonMsg };
       }
 
@@ -479,6 +474,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
 
         const losses = unrepresentedPsetsNote(result.stats.skippedCount) + lostPropertyCollisionsNote(result.stats.propertyCollisions);
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties${losses}`;
+        if (losses) toast.info(ifcxMsg); // #5201, #5376: not a plain success
+        else toast.success(ifcxMsg);
         exportedFormat = 'ifcx';
         return { success: true, message: ifcxMsg };
 
@@ -534,11 +531,13 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         exportedFormat = artifact.ext;
+        toast.success(stepMsg);
         return { success: true, message: stepMsg };
       }
     } catch (error) {
       console.error('Export failed:', error);
       const errMsg = `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      toast.error(errMsg);
       return { success: false, message: errMsg };
     } finally {
       if (exportedFormat) {

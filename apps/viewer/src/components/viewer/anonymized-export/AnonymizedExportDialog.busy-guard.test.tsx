@@ -27,9 +27,10 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
+import { IfcParser } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import { AnonymizedExportDialog } from './AnonymizedExportDialog.js';
-import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export-fixture.test-support.js';
+import { parseFixtureModel, FIXTURE_MODEL, FIXTURE_WALL_A, guid } from './anonymized-export-fixture.test-support.js';
 
 const ID_OFFSET = 1_000_000;
 const globalId = (localId: number): number => localId + ID_OFFSET;
@@ -122,6 +123,32 @@ describe('AnonymizedExportDialog close guard and result clearing (#5848)', () =>
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
     assert.ok(dialogIsOpen(), 'precondition: the dialog reopened');
     assert.equal(alerts().length, 0, 'a reopened dialog must not show the previous run\'s result');
+  });
+
+  it('clears warning details from the previous export on reopen (#6157 review)', async () => {
+    // A real parsed IFC record with an absent mandatory GlobalId makes the
+    // anonymizer report that this root could not have its GUID regenerated.
+    const source = FIXTURE_MODEL.replace(
+      `#${FIXTURE_WALL_A}=IFCWALL('${guid(FIXTURE_WALL_A)}'`,
+      `#${FIXTURE_WALL_A}=IFCWALL($`,
+    );
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+    useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', store)]]) });
+
+    const warningDetails = () => [...document.body.querySelectorAll('details')]
+      .find((detail) => detail.textContent?.includes('GlobalId could not be read'));
+    render(<AnonymizedExportDialog />);
+    click(button('Export .ifc'));
+    await waitFor(() => !!warningDetails(), 'the malformed IFC root must produce a visible warning');
+
+    act(() => { useViewerStore.getState().setAnonymizedExportRequested(false); });
+    assert.equal(dialogIsOpen(), false);
+    act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
+    assert.ok(dialogIsOpen());
+    assert.equal(warningDetails(), undefined, 'the reopened dialog must not show old warnings');
   });
 
   it('clears the previous result the instant another export starts', async () => {

@@ -72,8 +72,8 @@ function renderDialog(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HT
 /**
  * Open the dialog, pick `format` on the segmented control, then press Export.
  *
- * The format picker is a plain segmented group of `<button>`s (only the model
- * selector is a Radix `Select`), so the real control is driven here rather
+ * The format picker is a radio group (the model selector is a Radix `Select`),
+ * so the real control is driven here rather
  * than a test-only prop. The footer button is matched on its exact
  * `Export DFJSON` / `Export HBJSON` label, so a segmented click that failed to
  * switch format fails the test instead of silently exporting the other one.
@@ -87,13 +87,12 @@ async function clickExport(container: HTMLElement, format: 'HBJSON' | 'DFJSON'):
     trigger.click();
   });
 
-  const formatButton = [...document.body.querySelectorAll('button')].find(
-    (b) => b.textContent?.trim() === format,
-  );
-  assert.ok(formatButton, `the "${format}" segmented option must render`);
+  const formatRadio = document.body.querySelector<HTMLInputElement>(`input[type="radio"][value="${format.toLowerCase()}"]`);
+  assert.ok(formatRadio, `the "${format}" segmented option must render`);
   await act(async () => {
-    formatButton.click();
+    formatRadio.click();
   });
+  assert.equal(formatRadio.checked, true, 'the chosen format is announced as selected');
 
   const exportButton = [...document.body.querySelectorAll('button')].find(
     (b) => b.textContent?.trim() === `Export ${format}`,

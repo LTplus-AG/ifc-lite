@@ -487,7 +487,8 @@ export function SearchInline() {
                 openAdvancedFilter();
               }}
               className={cn(
-                'flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors',
+                // Height-only hit-slop to 24px (#5826); `inset-x-0` avoids the 2px neighbour gap.
+                'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:inset-x-0 after:-top-px after:-bottom-px after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                 hasFilters
                   ? 'bg-primary/10 text-primary hover:bg-primary/15'
                   : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',

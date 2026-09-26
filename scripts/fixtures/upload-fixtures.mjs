@@ -57,6 +57,13 @@ if (manifestErrors.length) {
 }
 const TAG = manifest.release_tag;
 const REPO = process.env.IFC_LITE_FIXTURE_REPO || 'LTplus-AG/ifc-lite';
+// Upstream archives are downloaded from their authors' pinned source. They
+// must never be copied into this project's public fixture release.
+const releaseEntries = manifest.files.filter((entry) => !entry.upstream_archive);
+if (releaseEntries.length === 0) {
+  console.error('No release-hosted fixtures to upload; upstream-only fixtures remain with their authors.');
+  process.exit(0);
+}
 
 /** Resolve a manifest-relative path, refusing anything that would escape
  *  `tests/models/`. Defends against a tampered manifest causing the upload
@@ -84,10 +91,10 @@ async function sha256OfFile(path) {
 }
 
 // Verify every file is present locally and matches the manifest.
-console.error(`Verifying local copies against manifest (${manifest.files.length} files)...`);
+console.error(`Verifying local release fixtures against manifest (${releaseEntries.length} files)...`);
 const missing = [];
 const wrong = [];
-for (const entry of manifest.files) {
+for (const entry of releaseEntries) {
   let abs;
   try {
     abs = resolveFixturePath(entry.path);
@@ -181,7 +188,7 @@ let uploaded = 0;
 let skipped = 0;
 const failed = [];
 try {
-  for (const entry of manifest.files) {
+  for (const entry of releaseEntries) {
     const assetName = entry.sha256;
     if (existing.has(assetName)) {
       skipped++;

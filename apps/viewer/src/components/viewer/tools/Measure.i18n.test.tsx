@@ -131,7 +131,7 @@ function openSection(container: HTMLElement, label: string): void {
   const button = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.trim() === label);
   assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
-    button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
   });
 }
 

@@ -34,6 +34,12 @@ written. The fetcher is parallel (default 6 concurrent connections; override
 with `FIXTURE_CONCURRENCY=N`) and uses streaming writes, so big fixtures don't
 buffer in memory.
 
+`buildingsmart/Viadotto_Acerno.ifc` is fetched from the buildingSMART
+Implementers Forum's commit-pinned `Viadotto Acerno.zip` and extracted locally.
+The catalogue pins both the ZIP and IFC hashes. The model is an ACCA Software
+export for MINnD; no redistribution license was declared in the source
+repository, so `fixtures:upload` excludes it from this project's release.
+
 ## Why not Git LFS?
 
 LFS is bandwidth-metered; the project's quota was exhausted in early 2026,

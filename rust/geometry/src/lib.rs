@@ -75,7 +75,10 @@
 // wiring; external consumers reach its types through the root-level `pub use`
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
+pub(crate) mod alignment_arc_length;
 pub mod analytic;
+pub(crate) mod gradient;
+pub(crate) mod curve_segment;
 pub(crate) mod bool2d;
 /// General 2D booleans over contour sets (union/difference/intersection),
 /// keeping every disjoint output shape. Distinct from `bool2d`, which is the

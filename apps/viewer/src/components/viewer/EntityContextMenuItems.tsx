@@ -78,7 +78,7 @@ export function DuplicateItems({ onDuplicate }: { onDuplicate: (dir: DuplicateDi
       <ContextMenuSub>
         <ContextMenuSubTrigger>
           <CopyPlus className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span className="flex-1">{t('entityContextMenu.duplicateLabel')}</span>
+          <span className="flex-1">{t('entityContextMenu.duplicateDirectionLabel')}</span>
           <ChevronRight className="h-4 w-4" />
         </ContextMenuSubTrigger>
         <ContextMenuSubContent>

@@ -7,6 +7,8 @@ same resolved entity ID used by viewport picking.
 
 `tests/e2e/entity-context-menu.e2e.spec.ts` checks the rendered action list,
 keyboard navigation into and out of the Duplicate submenu, Escape focus
-return, shortcut hint contrast, and the Hide action's effect on viewer state.
-The existing mounted context-menu action suites cover export, frame selection,
+return, shortcut hint contrast, and the actions' effects on real viewer state:
+visibility, basket set/add/remove/save, type and storey selection, clipboard,
+default and directional duplication, deletion, and anonymized export. The
+existing mounted context-menu suites cover frame selection, export selection,
 same-storey selection, and federation resolution.

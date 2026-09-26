@@ -236,6 +236,7 @@ export const miscPanelsBEn = {
   'entityContextMenu.canvasActions': 'Canvas actions',
   'entityContextMenu.duplicateDefaultTitle': 'Duplicate one bbox-width along +X (default)',
   'entityContextMenu.duplicateLabel': 'Duplicate',
+  'entityContextMenu.duplicateDirectionLabel': 'Duplicate in direction',
   'entityContextMenu.frameSelection': 'Frame selection',
   'entityContextMenu.hide': 'Hide',
   'entityContextMenu.setBasket': 'Set Collection',

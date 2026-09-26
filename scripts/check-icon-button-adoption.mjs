@@ -44,11 +44,9 @@ const BASELINE = {
   'viewer/drawing/DrawingExportMenu.tsx': 1,
   'viewer/drawing/DrawingPanel.tsx': 2,
   'viewer/drawing/DrawingToolbar.tsx': 1,
-  'viewer/placement/PlacementPanel.tsx': 1,
   'viewer/presentation/PresentationPanel.tsx': 9,
   'viewer/presentation/PresentationViewCard.tsx': 3,
   'viewer/ribbon/RibbonToolbar.tsx': 2,
-  'viewer/tools/MeasurePointReadout.tsx': 2,
   'viewer/tools/MeasureToolbar.tsx': 2,
   'viewer/tools/SectionToolbar.tsx': 1,
 };

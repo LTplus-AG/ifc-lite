@@ -24,7 +24,7 @@ installLayout();
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { cleanup, press, render } from '@/test/render.js';
+import { advance, cleanup, press, render } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -82,6 +82,19 @@ function byName(tree: HTMLElement, name: string): HTMLElement {
 }
 
 describe('HierarchyPanel ARIA tree (#5883)', () => {
+  it('does not steal focus from another control when the panel mounts', async () => {
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    outside.focus();
+    try {
+      mountHierarchy();
+      await advance(30);
+      assert.ok(document.activeElement === outside, 'mounting a tree must preserve existing focus');
+    } finally {
+      outside.remove();
+    }
+  });
+
   it('exposes role="tree" with an accessible label, and treeitems with correct aria-level', () => {
     const { tree } = mountHierarchy();
     assert.equal(tree.getAttribute('role'), 'tree');
@@ -170,5 +183,19 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
     press(tree, 'Enter');
 
     assert.equal(useViewerStore.getState().selectedStoreys.has(4), true, 'Enter selects the focused storey, like a click');
+  });
+
+  it('leaves Enter on a nested chevron button to that button', () => {
+    const { tree } = mountHierarchy();
+    press(tree, 'ArrowDown'); // Site
+    press(tree, 'ArrowDown'); // Building
+    press(tree, 'ArrowDown'); // Storey
+    const chevron = byName(tree, 'Storey 1').querySelector('button[aria-label="Expand Storey 1"]');
+    assert.ok(chevron, 'the storey has its own expand button');
+
+    press(chevron, 'Enter');
+
+    assert.equal(useViewerStore.getState().selectedStoreys.size, 0,
+      'a nested button key press must not activate the tree row');
   });
 });

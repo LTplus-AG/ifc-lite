@@ -139,7 +139,9 @@ export function useTreeKeyboard({
   // window), so poll a few animation frames after asking the virtualizer to
   // scroll to it rather than assuming one render is enough.
   useEffect(() => {
-    if (activeNodeId == null) return;
+    // The first row is tabbable on mount, but focus stays wherever the user
+    // left it until they actually navigate or focus a tree row.
+    if (activeNodeId == null || requestedActiveId == null) return;
     let cancelled = false;
     let frame = 0;
     const tryFocus = () => {
@@ -156,7 +158,7 @@ export function useTreeKeyboard({
     return () => {
       cancelled = true;
     };
-  }, [activeNodeId]);
+  }, [activeNodeId, requestedActiveId]);
 
   const moveTo = useCallback(
     (index: number) => {
@@ -170,6 +172,10 @@ export function useTreeKeyboard({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // A row contains real buttons (chevron, visibility, actions). Their
+      // own key handlers must not also activate or navigate the tree row.
+      if (e.target !== e.currentTarget &&
+          (!(e.target instanceof Element) || e.target.getAttribute('role') !== 'treeitem')) return;
       const currentIndex = nodes.findIndex((n) => n.id === activeNodeId);
       if (currentIndex === -1) return;
       const node = nodes[currentIndex];

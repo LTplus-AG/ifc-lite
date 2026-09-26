@@ -159,7 +159,10 @@ export function stringifyValue(value: unknown): string {
 }
 
 export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
-  if (rule.legacyListFirst) {
+  // V1 Lists only stored value comparisons and isNonEmpty. Rules presence
+  // operators keep their ordinary row-presence semantics on this public flag.
+  if (rule.legacyListFirst && rule.op !== 'isSet' && rule.op !== 'isNotSet'
+    && rule.op !== 'isNull' && rule.op !== 'isNotNull') {
     const first = rows.find((r) =>
       nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&
       nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind, rule.nameCaseMode));

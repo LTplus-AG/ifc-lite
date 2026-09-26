@@ -73,14 +73,20 @@ describe('list definitions persistence', () => {
     assert.deepEqual(loadListDefinitions(), [migrated], 'round-trip does not duplicate groups or unreadable rows');
   });
 
-  it('keeps neighboring saved lists visible when one v1 condition member is null (#5894)', () => {
-    const damaged = { ...legacy, id: 'damaged', conditions: [null] };
+  it('migrates valid members beside malformed v1 conditions without hiding neighboring lists (#5894)', async () => {
+    const damaged = { ...legacy, id: 'damaged', conditions: [legacy.conditions[0], null] };
     localStorage.setItem(STORAGE_KEY, JSON.stringify([damaged, legacy]));
 
     const loaded = loadListDefinitions();
     assert.equal(loaded.length, 2);
-    assert.deepEqual(loaded[0], damaged, 'leave the damaged entry intact for recovery');
+    assert.equal(loaded[0].groups?.[0].rules[0].kind, 'property');
+    assert.deepEqual(loaded[0].unreadableConditions, [{ condition: null, reason: 'invalid-condition' }]);
+    assert.deepEqual(loaded[0].conditions, damaged.conditions, 'keep the original JSON recoverable');
     assert.equal(loaded[1].groups?.[0].rules[0].kind, 'property');
+
+    const imported = await importListDefinition(new File([JSON.stringify(damaged)], 'mixed.list.json', { type: 'application/json' }));
+    assert.deepEqual(imported.groups, loaded[0].groups);
+    assert.deepEqual(imported.unreadableConditions, loaded[0].unreadableConditions);
   });
 
   it('imports the same v1 condition conversion from a .list.json file (#5894)', async () => {

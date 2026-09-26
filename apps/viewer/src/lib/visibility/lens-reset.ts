@@ -5,17 +5,19 @@
 /**
  * What the viewer's visibility reset (`resetVisibilityForHomeFromStore`: Home
  * and every Show all control) leaves in the hidden channel:
- * exactly the active lens's hides, all owned by the lens (#5877).
+ * exactly the active lens's hides, preserving their existing ownership (#5877).
  *
- * A reset removes the user's hides, but the lens stays active and keeps its
- * colours, so its hides must survive too. Every surviving id is lens-owned,
- * which is what lets a later deactivation restore all of them. With no active
- * lens the channel is simply empty.
+ * A reset removes manual-only hides, but the lens stays active and keeps its
+ * colours, so its hides must survive too. An id the user hid before the lens
+ * matched it remains unowned, so deactivating the lens cannot reveal it.
+ * With no active lens the channel is simply empty.
  */
 export function hiddenChannelAfterReset(
   activeLensId: string | null,
   lensHiddenIds: ReadonlySet<number>,
+  lensAppliedHiddenIds: readonly number[],
 ): { hiddenEntities: Set<number>; lensAppliedHiddenIds: number[] } {
   const kept = activeLensId ? [...lensHiddenIds] : [];
-  return { hiddenEntities: new Set(kept), lensAppliedHiddenIds: kept };
+  const owned = new Set(lensAppliedHiddenIds);
+  return { hiddenEntities: new Set(kept), lensAppliedHiddenIds: kept.filter((id) => owned.has(id)) };
 }

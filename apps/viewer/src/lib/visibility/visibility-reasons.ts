@@ -69,17 +69,18 @@ export const VISIBILITY_REASONS: readonly VisibilityReason[] = [
   {
     id: 'hidden',
     policy: 'cleared',
-    // The active lens's own hides live in the same channel, owned by the lens
-    // (#5877); they are the lens row's, not this one's.
+    // Hides matched by the active lens are attributed to the lens while it is
+    // active. An overlapping manual hide keeps its ownership for teardown.
     isActive: (s) => {
-      const lensOwned = new Set(s.activeLensId ? s.lensAppliedHiddenIds : []);
-      for (const id of s.hiddenEntities) if (!lensOwned.has(id)) return true;
+      for (const id of s.hiddenEntities) {
+        if (!s.activeLensId || !s.lensHiddenIds.has(id)) return true;
+      }
       return false;
     },
-    // What stays is exactly the active lens's hides, all lens-owned (#5877).
+    // Keep the lens's hides without claiming manually hidden overlaps.
     clear: (store) => {
-      const { activeLensId, lensHiddenIds } = store.getState();
-      store.setState(hiddenChannelAfterReset(activeLensId, lensHiddenIds));
+      const { activeLensId, lensHiddenIds, lensAppliedHiddenIds } = store.getState();
+      store.setState(hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds));
     },
   },
   {

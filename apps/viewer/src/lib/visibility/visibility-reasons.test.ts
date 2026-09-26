@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { planLensHiddenSync } from '@/components/viewer/lens-visibility-ownership';
 import {
   VISIBILITY_REASONS,
   activeVisibilityReasons,
@@ -73,6 +74,34 @@ function seedModels(count: number): number {
 
 for (const modelCount of [1, 3]) {
   describe(`visibility reasons at ${modelCount} model(s) (#5869)`, () => {
+    it('Home preserves a manual hide overlapping the lens without giving the lens ownership', () => {
+      const offset = seedModels(modelCount);
+      const manualOverlap = offset + 10;
+      const manualOnly = offset + 11;
+      const lensOwned = offset + 12;
+      useViewerStore.setState({
+        hiddenEntities: new Set([manualOverlap, manualOnly, lensOwned]),
+        activeLensId: 'lens',
+        lensHiddenIds: new Set([manualOverlap, lensOwned]),
+        lensAppliedHiddenIds: [lensOwned],
+      });
+
+      resetVisibilityForHomeFromStore('home');
+      const afterHome = useViewerStore.getState();
+      assert.deepEqual(afterHome.hiddenEntities, new Set([manualOverlap, lensOwned]));
+      assert.deepEqual(afterHome.lensAppliedHiddenIds, [lensOwned]);
+      assert.deepEqual(ids(afterHome), ['lens'], 'Home clears manual-only hides');
+
+      const teardown = planLensHiddenSync({
+        applied: afterHome.lensAppliedHiddenIds,
+        hiddenEntities: afterHome.hiddenEntities,
+        lensHiddenIds: new Set(),
+      });
+      assert.deepEqual(teardown.show, [lensOwned]);
+      assert.deepEqual(new Set([...afterHome.hiddenEntities].filter((id) => !teardown.show.includes(id))),
+        new Set([manualOverlap]), 'deactivating the lens must leave the manual hide in place');
+    });
+
     it('a fresh federation has no active reason', () => {
       seedModels(modelCount);
       assert.deepEqual(ids(useViewerStore.getState()), []);

@@ -665,7 +665,7 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 
 **What Show All clears.** Show All, the `A` key, the Home button and the context menu's Show all all run the same reset, driven by one table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). At 1 model and at N models alike, it clears:
 
-- manual hides;
+- manual hides outside the active lens's hide set;
 - isolation (and leaves the basket view);
 - X-ray ghosting;
 - the Class filter;
@@ -678,6 +678,10 @@ It deliberately **keeps** four settings that are preferences rather than filters
 - the class-type toggles (Spaces, Openings, Site, …), which are remembered between sessions;
 - the Model/Types view mode;
 - classes an embedding page hid.
+
+If you manually hid an element before the active lens also hid it, the element
+stays manually hidden when you turn the lens off. Show All keeps that overlap
+with the lens without transferring ownership of your hide to the lens.
 
 ## Render Options
 

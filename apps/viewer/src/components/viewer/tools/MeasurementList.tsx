@@ -201,7 +201,7 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayO
           <X className="h-3 w-3" />
         </Button>
       </div>
-      <div className="overflow-x-auto whitespace-nowrap font-mono text-[10px] leading-tight text-muted-foreground">
+      <div className="overflow-x-auto whitespace-nowrap font-mono text-2xs leading-tight text-muted-foreground">
         <div>{formatAxisDeltas(components, unitDisplayOverrides)}</div>
         <div>{formatHorizontalVertical(components, unitDisplayOverrides)}</div>
         {/* Inclination, derived from the same two endpoints (#2199 §4). */}

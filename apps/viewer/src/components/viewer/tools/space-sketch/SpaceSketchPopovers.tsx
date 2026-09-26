@@ -67,7 +67,7 @@ export function OptionsPopover(props: OptionsPopoverProps) {
     label: <span title={!hasWallData && m !== 'center' ? t('spaceSketch.options.boundary.noWallData') : t(BOUNDARY_MODE_LABEL_KEY[m])}>{t(BOUNDARY_MODE_SHORT_LABEL_KEY[m])}</span>,
   }));
   return (
-    <div className="space-y-3 text-[11px] text-muted-foreground">
+    <div className="space-y-3 text-2xs text-muted-foreground">
       <div className="space-y-1.5">
         <div className="font-medium text-foreground">{t('spaceSketch.options.boundaryHeading')}</div>
         <HudSegmented<BoundaryMode>
@@ -123,7 +123,7 @@ const HELP_ROWS: [TranslationKey, TranslationKey][] = [
 export function HelpPopover() {
   const { t } = useTranslation();
   return (
-    <div className="space-y-1.5 text-[11px]">
+    <div className="space-y-1.5 text-2xs">
       <div className="mb-1 font-medium text-foreground">{t('spaceSketch.help.heading')}</div>
       {HELP_ROWS.map(([k, v]) => (
         <div key={k} className="flex gap-2">
@@ -150,7 +150,7 @@ export interface MorePopoverProps {
 export function MorePopover(p: MorePopoverProps) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-2 text-[11px]">
+    <div className="space-y-2 text-2xs">
       <div className="space-y-0.5">
         <button type="button" className={MORE_ROW} onClick={p.onUndo} disabled={!p.canUndo}>
           <Undo2 aria-hidden className={MORE_ICON} />{t('spaceSketch.tools.undoTitle')}

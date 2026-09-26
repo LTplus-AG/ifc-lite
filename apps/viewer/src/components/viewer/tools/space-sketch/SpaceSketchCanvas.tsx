@@ -92,7 +92,7 @@ export function SpaceSketchCanvas(props: SpaceSketchCanvasProps) {
       {/* Live action preview — tells you what the next click will do, colour-keyed
           to the on-canvas cues (green draw · blue cut · red remove/merge). */}
       {intent && (
-        <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5 rounded-md border border-border bg-popover/[.94] px-2 py-1 text-[11px] font-medium shadow-sm backdrop-blur-md">
+        <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5 rounded-md border border-border bg-popover/[.94] px-2 py-1 text-2xs font-medium shadow-sm backdrop-blur-md">
           <span className={`h-1.5 w-1.5 rounded-full ${INTENT_DOT_CLASS[intent.tone]}`} />
           <span className={INTENT_TEXT_CLASS[intent.tone]}>{intent.text}</span>
         </div>

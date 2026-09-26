@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
-import type { SpecificationResult, SetResult } from '@ifc-lite/ids';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import type { EntityResult, SpecificationResult, SetResult } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
@@ -26,6 +27,57 @@ interface SpecificationCardProps {
    *  a rule-set spec has no correctable IDS facet to write through. */
   onCorrect?: () => void;
   correctable?: boolean;
+}
+
+function entityKey(entity: EntityResult): string {
+  return `${entity.modelId}:${entity.expressId}`;
+}
+
+function EntityResultsList({ entities, onEntityClick }: {
+  entities: EntityResult[];
+  onEntityClick: (modelId: string, expressId: number) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(() => new Set());
+  const virtualizer = useVirtualizer({
+    count: entities.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 60,
+    getItemKey: (index) => entityKey(entities[index]),
+    overscan: 5,
+  });
+
+  return (
+    <div ref={scrollRef} data-ids-entity-results className="max-h-64 overflow-auto">
+      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((row) => {
+          const entity = entities[row.index];
+          const key = entityKey(entity);
+          return (
+            <div
+              key={row.key}
+              data-index={row.index}
+              ref={virtualizer.measureElement}
+              className="absolute top-0 left-0 w-full border-b border-border/60"
+              style={{ transform: `translateY(${row.start}px)` }}
+            >
+              <EntityResultRow
+                entity={entity}
+                onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+                detailsOpen={expandedEntities.has(key)}
+                onToggleDetails={() => setExpandedEntities((current) => {
+                  const next = new Set(current);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                })}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function SpecificationCard({
@@ -223,28 +275,13 @@ export function SpecificationCard({
         <CollapsibleContent>
           <Separator />
           <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">{t('idsPanel.byEntity')}</div>
-          <div className="max-h-64 overflow-auto">
-            {filteredEntities.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                {t(filterMode === 'failed' ? 'idsPanel.noFailedEntities' : filterMode === 'passed' ? 'idsPanel.noPassedEntities' : 'idsPanel.noEntities')}
-              </div>
-            ) : (
-              <div className="divide-y">
-                {filteredEntities.slice(0, 100).map((entity) => (
-                  <EntityResultRow
-                    key={`${entity.modelId}:${entity.expressId}`}
-                    entity={entity}
-                    onClick={() => onEntityClick(entity.modelId, entity.expressId)}
-                  />
-                ))}
-                {filteredEntities.length > 100 && (
-                  <div className="p-2 text-xs text-muted-foreground text-center">
-                    {t('idsPanel.showingEntities', { count: filteredEntities.length, shown: formatLocaleNumber(locale, 100), total: formatLocaleNumber(locale, filteredEntities.length) })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {filteredEntities.length === 0 ? (
+            <div className="p-3 text-sm text-muted-foreground text-center">
+              {t(filterMode === 'failed' ? 'idsPanel.noFailedEntities' : filterMode === 'passed' ? 'idsPanel.noPassedEntities' : 'idsPanel.noEntities')}
+            </div>
+          ) : (
+            <EntityResultsList entities={filteredEntities} onEntityClick={onEntityClick} />
+          )}
         </CollapsibleContent>
       </div>
     </Collapsible>

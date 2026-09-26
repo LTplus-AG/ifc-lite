@@ -7,6 +7,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
+import { installLayout } from '@/test/dom-layout.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
@@ -14,6 +15,7 @@ import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationRe
 import { IDSPanel } from './IDSPanel.js';
 
 const initial = useViewerStore.getState();
+installLayout();
 
 const documentFixture: IDSDocument = {
   info: { title: 'Fixture IDS', version: '1.0', description: 'Fixture description' },
@@ -108,7 +110,6 @@ describe('IDSPanel localization (#4918)', () => {
       'idsPanel.specificationsPassed': { one: 'SPECS ONE', other: 'SPECS OTHER' },
       'idsPanel.checkingEntities': { one: 'CHECK ONE', other: 'CHECK OTHER' },
       'idsPanel.scanningCandidates': { one: 'SCAN ONE', other: 'SCAN OTHER' },
-      'idsPanel.showingEntities': { one: 'SHOW ONE', other: 'SHOW OTHER' },
     });
     setLocale('ru-x-ids-counts');
 
@@ -142,17 +143,9 @@ describe('IDSPanel localization (#4918)', () => {
     assert.match(render(<IDSPanel />).textContent ?? '', /SCAN ONE/);
     cleanup();
 
-    const entity = reportFixture.specificationResults[0].entityResults[0];
-    const entityResults = Array.from({ length: 101 }, (_, index) => ({
-      ...entity,
-      expressId: index + 1,
-    }));
     useViewerStore.setState({
       idsDocument: documentFixture,
-      idsValidationReport: {
-        ...reportFixture,
-        specificationResults: [{ ...reportFixture.specificationResults[0], entityResults }],
-      },
+      idsValidationReport: reportFixture,
       idsAuditReport: null,
       idsError: null,
       idsLoading: false,
@@ -163,7 +156,6 @@ describe('IDSPanel localization (#4918)', () => {
     const card = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Wall requirements'));
     assert.ok(card);
     click(card!);
-    assert.match(ui.textContent ?? '', /SHOW ONE/, 'Russian 101 selects one only when the raw total is present');
   });
 
   it('keeps entity selection and detail disclosure as separate keyboard-focusable controls', () => {

@@ -1389,3 +1389,65 @@ describe('predefinedType matching agrees between entity and partOf facets', () =
     expect(checkEntityFacet(byRawToken, 61, accessor).passed).toBe(true);
   });
 });
+
+// ============================================================================
+// Property facet — EXPRESS-base string-only classification (#6153 review)
+// ============================================================================
+
+describe('checkPropertyFacet: string-only classification by EXPRESS base', () => {
+  it('an IfcDuration value does not numerically match an enumeration option (cast gate only guards simpleValue, not enumeration)', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 70,
+        type: 'IfcWall',
+        properties: [{ psetName: 'Foo_Bar', propName: 'Dur', value: '5.0', dataType: 'IFCDURATION' }],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Dur'),
+      value: { type: 'enumeration', values: ['5'] },
+    };
+    // ifctester: '5.0' is not string-equal to '5', and IfcDuration is
+    // EXPRESS STRING (an ISO-8601 duration lexical form), not numeric —
+    // so numeric coercion must not apply.
+    expect(checkPropertyFacet(facet, 70, accessor).passed).toBe(false);
+  });
+
+  it('an unrecognised dataType name falls to exact-string comparison, not numeric coercion', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 71,
+        type: 'IfcWall',
+        properties: [
+          { psetName: 'Foo_Bar', propName: 'Weird', value: '1.0000001', dataType: 'IFCNOTAREALTYPE' },
+        ],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Weird'),
+      value: sv('1'),
+    };
+    expect(checkPropertyFacet(facet, 71, accessor).passed).toBe(false);
+  });
+
+  it('control: a real numeric measure (IfcReal) still gets the 1e-6 tolerance', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 72,
+        type: 'IfcWall',
+        properties: [{ psetName: 'Foo_Bar', propName: 'Num', value: '1.0000001', dataType: 'IFCREAL' }],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Num'),
+      value: sv('1'),
+    };
+    expect(checkPropertyFacet(facet, 72, accessor).passed).toBe(true);
+  });
+});

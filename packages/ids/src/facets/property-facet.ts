@@ -14,6 +14,7 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
+import { isExpressStringOnlyMeasure } from '../constraints/express-base.js';
 import { dataTypeFailure, dataTypePasses } from './property-datatype.js';
 
 /**
@@ -88,22 +89,18 @@ function isAbsentPropertyValue(value: string | number | boolean | null | undefin
   return value === null || value === undefined || value === '' || value === 'UNKNOWN';
 }
 
-// True iff an IFC dataType (e.g. "IFCLABEL") is a pure xs:string value
-// space — no numeric/boolean fallback. IFCLOGICAL is correctly excluded.
-function isStringOnlyMeasure(measure: string | undefined, schemaVersion?: string): boolean {
-  const t = ifcMeasureToXsdTypes(measure, schemaVersion);
-  return t.length === 1 && t[0] === 'xs:string';
-}
-
 // The property's dataType decides `stringOnly` when known, else the
 // requirement's `dataType` facet, else — conservatively — exact string.
+// `isExpressStringOnlyMeasure` classifies by EXPRESS base, not the XSD
+// backing type: IfcDate/IfcDateTime/IfcDuration are EXPRESS STRING under
+// an xs:date/xs:dateTime/xs:duration backing type (#6153 review).
 function isStringOnlyValue(
   facet: IDSPropertyFacet,
   prop: PropertySetInfo['properties'][number],
   schemaVersion: string | undefined
 ): boolean {
-  if (prop.dataType !== undefined) return isStringOnlyMeasure(prop.dataType, schemaVersion);
-  if (facet.dataType?.type === 'simpleValue') return isStringOnlyMeasure(facet.dataType.value, schemaVersion);
+  if (prop.dataType !== undefined) return isExpressStringOnlyMeasure(prop.dataType, schemaVersion);
+  if (facet.dataType?.type === 'simpleValue') return isExpressStringOnlyMeasure(facet.dataType.value, schemaVersion);
   return true;
 }
 

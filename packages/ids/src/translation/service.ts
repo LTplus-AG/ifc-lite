@@ -427,9 +427,7 @@ class IDSTranslationServiceImpl implements TranslationService {
             available: context.availablePsets,
           });
         }
-        return this.interpolate(t.psetMissing, {
-          pset: field || expected || '?',
-        });
+        return this.interpolate(t.psetMissing, { pset: field || expected || '?' });
 
       case 'PROPERTY_MISSING':
         if (context?.availableProperties) {
@@ -444,7 +442,9 @@ class IDSTranslationServiceImpl implements TranslationService {
           pset: context?.propertySet || '?',
         });
 
-      case 'PROPERTY_VALUE_MISMATCH': case 'PROPERTY_EMPTY':
+      case 'PROPERTY_EMPTY':
+        return this.interpolate(t.propertyEmpty, { pset: this.extractPsetFromField(field), property: this.extractPropertyFromField(field) });
+      case 'PROPERTY_VALUE_MISMATCH':
         return this.interpolate(t.propertyValueMismatch, {
           pset: this.extractPsetFromField(field),
           property: this.extractPropertyFromField(field),

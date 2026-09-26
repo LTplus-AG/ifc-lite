@@ -115,6 +115,25 @@ describe('effective empty visibility (#5879)', () => {
     assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), false);
   });
 
+  it('reports a loaded model when every mesh type is filtered out', () => {
+    const entry = model('m', 0);
+    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), true);
+  });
+
+  it('does not report an empty result for a scan asset with zero points', () => {
+    const entry = model('m', 0);
+    entry.geometryResult = {
+      ...entry.geometryResult!, meshes: [], totalTriangles: 0,
+      pointClouds: [{ expressId: 101, chunk: {
+        positions: new Float32Array(), pointCount: 0,
+        bbox: { min: [0, 0, 0], max: [0, 0, 0] },
+      } }],
+    };
+    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), false);
+  });
+
   it('avoids a false notice for unenumerated GPU shards but accepts a proven empty intersection', () => {
     const entry = model('m', 0);
     entry.geometryResult = { ...entry.geometryResult!, meshes: [] };

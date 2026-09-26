@@ -74,7 +74,7 @@ export function isVisibleResultEmpty(state: VisibleResultState, geometry: Effect
   const sources = [...state.models.values()].map((model) =>
     model.geometryResult ?? (state.models.size === 1 ? state.geometryResult : null));
   const hasSource = sources.some((source) => source && (
-    source.meshes.length > 0 || (source.pointClouds?.length ?? 0) > 0
+    source.meshes.length > 0 || source.pointClouds?.some((asset) => asset.chunk.pointCount > 0)
     || (source.instancedGeometryHashes?.size ?? 0) > 0 || source.totalTriangles > 0
   ));
   if (!hasSource) return false;

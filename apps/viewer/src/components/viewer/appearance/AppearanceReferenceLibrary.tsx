@@ -189,7 +189,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       <span>{t('appearance.referenceLibrary.openingFile')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { pending.current?.abort(); pending.current = undefined; setBusy(false); }}>{t('appearance.referenceLibrary.cancelFileOperation')}</Button>
     </div>}
     {error && <p role="alert" className="text-2xs leading-relaxed text-destructive">{'key' in error ? t(error.key) : error.text}</p>}
-    {noticeKey && <output className="block text-2xs leading-relaxed text-muted-foreground">{t(noticeKey)}</output>}
+    {noticeKey && <output role="status" className="block text-2xs leading-relaxed text-muted-foreground">{t(noticeKey)}</output>}
   </section>;
 }
 

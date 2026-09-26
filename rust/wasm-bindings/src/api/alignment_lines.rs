@@ -167,7 +167,3 @@ fn append_alignment_segments(
         out.extend_from_slice(&w[1]);
     }
 }
-
-#[cfg(test)]
-#[path = "alignment_lines_tests.rs"]
-mod tests;

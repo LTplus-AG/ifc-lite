@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Tests for `alignment_lines.rs`, kept in a `*_tests.rs` sibling (exempt from
-//! the module-size ratchet) per the house pattern.
+//! Alignment line regressions included from `api::mod_tests` so they still run
+//! when the changed-test oracle reverts `alignment_lines.rs`.
 
-use super::*;
+use super::super::alignment_lines::extract_alignment_line_vertices;
+use ifc_lite_core::EntityScanner;
+use ifc_lite_processing::MeshFrame;
 
 // Minimal IFC4X1 alignment: IfcAlignment whose Axis (attr 7) is a
 // 3-point IfcPolyline directrix (0,0,0)->(10,0,0)->(10,10,0), metres.

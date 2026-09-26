@@ -164,6 +164,14 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     const result = await runListFederated(def, [model], state);
     assert.deepEqual(result.rows, [], 'the unreadable Name predicate still excludes the Blue wall');
   });
+
+  it('reports a malformed saved condition for removal instead of evaluating it (#5894)', async () => {
+    const [model] = await parsedPairs();
+    const migrated = migrateLegacyListConditions([null]);
+    const def = definition({ conditions: [], ...migrated });
+    await assert.rejects(() => runListFederated(def, [model], state),
+      /malformed condition.*Remove it in the list editor/);
+  });
 });
 
 const noTags = { modelTags: new Map<string, ModelTag>(), modelTagAssignments: new Map<string, ReadonlySet<string>>() };

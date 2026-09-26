@@ -61,7 +61,13 @@ export async function runListFederated(
     // scope plus only v1 predicates that lack a lossless Rules representation.
     // Once `groups` exists it is authoritative, even when the user cleared
     // every rule. `conditions` retains readable v1 rows only during migration.
-    const unreadable = definition.unreadableConditions?.map(({ condition }) => condition) ?? [];
+    const unreadable: ListDefinition['conditions'] = [];
+    for (const row of definition.unreadableConditions ?? []) {
+      if (row.reason === 'invalid-condition') {
+        throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');
+      }
+      unreadable.push(row.condition);
+    }
     const candidates = new Map(scoped.map(({ modelId, provider }) => [modelId, executeList({
       ...definition, conditions: unreadable, columns: [], grouping: undefined, sortBy: undefined,
     }, provider, modelId).rows.map(({ entityId }) => entityId)] as const));

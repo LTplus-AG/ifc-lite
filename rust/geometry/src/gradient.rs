@@ -13,10 +13,10 @@
 //! - `Location` = (start station, start height)
 //! - `RefDirection` = start grade direction (dx, dz) → grade = dz / dx
 //!
-//! A segment's horizontal length and end grade are the next segment's start
-//! station and start grade (IFC4x3 closes the list with a zero-length
-//! marker segment, so the last real segment always has a successor). The
-//! `ParentCurve` then only picks the shape between the two ends:
+//! Where a following segment exists, its start station and grade close the
+//! current segment. Some exports include a final zero-length marker; a final
+//! circular segment can instead use its own radius and length. The
+//! `ParentCurve` picks the shape between the two ends:
 //!
 //! - `IfcLine` → constant grade
 //! - `IfcCircle` → circular arc tangent to both grades (exact)

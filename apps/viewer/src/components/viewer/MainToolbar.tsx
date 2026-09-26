@@ -6,45 +6,8 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
 import { BottomPanelMenuItems } from './toolbar/BottomPanelMenuItems.js';
 import React, { useCallback, useMemo } from 'react';
-import {
-  FolderOpen,
-  Download,
-  MousePointer2,
-  PersonStanding,
-  Ruler,
-  Scissors,
-  StickyNote,
-  Eye,
-  EyeOff,
-  Equal,
-  Crosshair,
-  GitCompareArrows,
-  Home,
-  Maximize2,
-  Grid3x3,
-  HelpCircle,
-  Loader2,
-  Info,
-  Plus,
-  MessageSquare,
-  ClipboardCheck,
-  Palette,
-  Orbit,
-  Layout,
-  Layers,
-  LayoutTemplate,
-  Globe2,
-  Sun,
-  Move,
-  Move3d,
-  PenLine,
-  PanelTop,
-  Undo2,
-  Redo2,
-  RefreshCw,
-  Share2,
-  Users,
-} from 'lucide-react';
+import { FolderOpen, Download, MousePointer2, PersonStanding, Ruler, Scissors, StickyNote, Eye, EyeOff, Equal, Crosshair, GitCompareArrows, Home, Maximize2, Grid3x3, HelpCircle, Info, Plus, MessageSquare, ClipboardCheck, Palette, Orbit, Layout, Layers, LayoutTemplate, Globe2, Sun, Move, Move3d, PenLine, PanelTop, Undo2, Redo2, RefreshCw, Share2, Users } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -372,7 +335,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             disabled={loading}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="md" />
             ) : (
               <FolderOpen className="h-4 w-4" />
             )}
@@ -1068,7 +1031,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
           </span>
           {(geometryProgress ?? metadataProgress ?? progress)?.indeterminate ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <Spinner size="sm" className="text-muted-foreground" />
           ) : (
             <>
               <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-32 h-2" />

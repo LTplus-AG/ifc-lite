@@ -20,7 +20,8 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Download, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Download, AlertCircle, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -244,7 +245,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
           <Button onClick={handleExport} disabled={isExporting || !selectedModel}>
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('geometryExport.usd.exportingButton')}
               </>
             ) : (

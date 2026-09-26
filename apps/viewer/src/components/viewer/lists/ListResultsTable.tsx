@@ -17,6 +17,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { IconButton } from '@/components/ui/icon-button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
@@ -33,12 +34,9 @@ import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu'; import { formatLocaleCount } from './formatLocaleCount';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
-import {
-  formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
+import { formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
   buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
-  type DisplayItem, type Totals, type ScheduleRow,
-} from './list-table-utils';
-
+  type DisplayItem, type Totals, type ScheduleRow } from './list-table-utils';
 interface ListResultsTableProps {
   result: ListResult;
   /** List name — used as the export title / filename. */
@@ -384,7 +382,9 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
-      {scheduleMode ? (
+      {sortedRows.length === 0 ? (
+        <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />
+      ) : scheduleMode ? (
         <ListScheduleTable
           scheduleRows={scheduleRows}
           groupChips={groupChips}

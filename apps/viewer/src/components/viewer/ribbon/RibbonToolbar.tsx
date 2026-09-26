@@ -18,7 +18,8 @@
  */
 
 import React from 'react';
-import { ChevronDown, ChevronUp, HelpCircle, Loader2, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, HelpCircle, Search } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -135,7 +136,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
             </span>
             {activeProgress.indeterminate ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <Spinner size="sm" className="text-muted-foreground" />
             ) : (
               <>
                 <Progress value={activeProgress.percent ?? 0} className="h-2 w-28" />

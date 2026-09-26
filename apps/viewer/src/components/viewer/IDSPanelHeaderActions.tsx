@@ -17,7 +17,8 @@
  * meant reloading the `.ids` file.
  */
 
-import { Eraser, Loader2, RotateCw, Square, Trash2, Upload } from 'lucide-react';
+import { Eraser, RotateCw, Square, Trash2, Upload } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -63,7 +64,7 @@ export function IDSPanelHeaderActions({
     <>
       {reportModelId !== null && (
         <HeaderAction label={t(validating ? 'idsPanel.cancel' : 'idsPanel.rerun')} onClick={validating ? onCancel : () => onRerun(reportModelId)} disabled={loading && !validating}>
-          {validating ? <Square className="h-3 w-3" /> : loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+          {validating ? <Square className="h-3 w-3" /> : loading ? <Spinner size="xs" /> : <RotateCw className="h-3 w-3" />}
         </HeaderAction>
       )}
       <HeaderAction label={t('idsPanel.loadNew')} onClick={onLoadNew}>

@@ -9,17 +9,8 @@
  * views) to keep that file under the module-size budget.
  */
 
-import {
-  Plus,
-  Play,
-  FileSpreadsheet,
-  Trash2,
-  Download,
-  Upload,
-  Loader2,
-  Pencil,
-  Copy,
-} from 'lucide-react';
+import { Plus, Play, FileSpreadsheet, Trash2, Download, Upload, Pencil, Copy } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -164,7 +155,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
       </div>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         {executing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Spinner size="sm" />
         ) : (
           <>
             <IconButton

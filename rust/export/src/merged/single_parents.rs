@@ -95,6 +95,13 @@ fn read_side(line: &str, index: usize) -> Option<Side> {
     arg.strip_prefix('#')?.parse().ok().map(Side::Single)
 }
 
+/// The express id of a final line `#N=…`, tolerating STEP whitespace around
+/// `=` (`#4 = IFCREL…`). `claim` and `apply_folds` must read it the same way,
+/// or a fold recorded against an owner never finds its line.
+fn rel_id(line: &str) -> Option<u32> {
+    line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
+}
+
 /// Which final ids already fill each single-valued inverse of the output
 /// schema. One instance per merge.
 pub(super) struct ParentClaims {
@@ -129,7 +136,7 @@ impl ParentClaims {
         if rules.is_empty() {
             return Some(line);
         }
-        let Some(rel) = line.strip_prefix('#').and_then(|l| l.split('=').next()).and_then(|n| n.trim().parse::<u32>().ok()) else {
+        let Some(rel) = rel_id(&line) else {
             return Some(line);
         };
         let mut strip: HashSet<u32> = HashSet::new();
@@ -212,7 +219,7 @@ impl ParentClaims {
         let mut pending: HashMap<u32, &(usize, Vec<u32>)> = self.folds.iter().map(|(k, v)| (*k, v)).collect();
         let mut rebuilt = String::with_capacity(out.len() + 64 * pending.len());
         for line in out.split_inclusive('\n') {
-            let id = line.strip_prefix('#').and_then(|l| l.split('=').next()).and_then(|n| n.parse::<u32>().ok());
+            let id = rel_id(line);
             let patched = id.and_then(|id| pending.get(&id).map(|fold| (id, *fold))).and_then(|(id, (partner, ids))| {
                 append_to_list_attr(line.trim_end_matches('\n'), *partner, ids).map(|text| (id, text))
             });
@@ -226,7 +233,9 @@ impl ParentClaims {
             }
         }
         *out = rebuilt;
-        warnings.extend(pending.iter().map(|(rel, (_, ids))| format!(
+        let mut unwritten: Vec<(&u32, &&(usize, Vec<u32>))> = pending.iter().collect();
+        unwritten.sort_by_key(|(rel, _)| **rel); // a stable warning order, not the map's
+        warnings.extend(unwritten.into_iter().map(|(rel, (_, ids))| format!(
             "Could not add {} object(s) to relationship #{rel}, which a later model's duplicate relationship was merged into; those objects lost that relationship.",
             ids.len()
         )));

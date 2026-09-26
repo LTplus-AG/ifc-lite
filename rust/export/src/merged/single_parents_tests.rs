@@ -110,3 +110,17 @@ fn never_folds_into_an_override_or_across_rel_types() {
         assert_eq!(warnings.len(), 1, "{owner_type}");
     }
 }
+
+/// A STEP line may space its `=` (`#4 = IFCREL…`): the fold must still find the
+/// owner it was recorded against (CodeRabbit on #6042).
+#[test]
+fn folds_into_an_owner_whose_line_spaces_its_equals_sign() {
+    let mut parents = ParentClaims::new(true);
+    let first = "#4 = IFCRELDEFINESBYPROPERTIES('a',$,$,$,(#10),#3);".to_string();
+    parents.claim("IFCRELDEFINESBYPROPERTIES", first.clone(), false);
+    let later = "#24 = IFCRELDEFINESBYPROPERTIES('b',$,$,$,(#10,#30),#3);".to_string();
+    assert_eq!(parents.claim("IFCRELDEFINESBYPROPERTIES", later, true), None);
+    let mut out = format!("{first}\n");
+    assert!(parents.apply_folds(&mut out).is_empty());
+    assert_eq!(out, "#4 = IFCRELDEFINESBYPROPERTIES('a',$,$,$,(#10,#30),#3);\n");
+}

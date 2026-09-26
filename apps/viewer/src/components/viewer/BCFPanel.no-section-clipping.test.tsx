@@ -3,16 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A BCF viewpoint carries `<ClippingPlanes>` only when a section is on screen (#4806).
+ * A BCF viewpoint carries `<ClippingPlanes>` only when a section is on screen
+ * (#4806, revised by #5893).
  *
- * The reporter never cut the model while reviewing clashes, yet every exported
- * viewpoint had a section plane, which BIMcollab and usBIM then applied. Opening
- * the Section tool restores the last cut and sets `sectionPlane.enabled`, and
- * switching to another tool leaves that flag on while the renderer stops drawing
- * the cut. `useBCF` read the flag alone.
+ * #4806: the reporter never cut the model while reviewing clashes, yet every
+ * exported viewpoint had a section plane, because `sectionPlane.enabled`
+ * stayed on after the Section tool closed while the renderer stopped drawing
+ * it — `useBCF` read the flag alone, so an invisible cut still exported.
  *
- * The store here is seeded with exactly that leftover: `enabled: true` with the
- * Select tool active. The assertions read the written `viewpoint.bcfv`.
+ * #5893 makes the cut lasting scene state: `enabled: true` with the Select
+ * tool active is no longer a leftover, it is the cut genuinely on screen
+ * (`sceneState.section.visible` defaults `true`, independent of the tool) —
+ * that combination now correctly exports. What #4806 actually protects is
+ * still true and still tested below: `sceneState.section.visible: false`
+ * (the chip's hide toggle) is the real "not on screen" signal now, and a
+ * hidden cut must still export no `<ClippingPlanes>`.
  */
 
 import '@/test/setup-dom.js';
@@ -46,7 +51,7 @@ const renderer = {
   }),
 } as unknown as Renderer;
 
-function seed(activeTool: string, enabled: boolean): void {
+function seed(activeTool: string, enabled: boolean, visible = true): void {
   const geometryResult: GeometryResult = {
     meshes: [],
     totalVertices: 0,
@@ -70,6 +75,7 @@ function seed(activeTool: string, enabled: boolean): void {
     clashHighlightColors: null,
     activeTool,
     sectionPlane: { ...useViewerStore.getState().sectionPlane, axis: 'down', position: 25, flipped: false, enabled, custom: undefined },
+    sceneState: { ...useViewerStore.getState().sceneState, section: { visible } },
   });
 }
 
@@ -127,8 +133,15 @@ async function captureXml(): Promise<string> {
 }
 
 for (const [label, xmlOf] of [['New topic', newTopicXml], ['Capture viewpoint', captureXml]] as const) {
-  test(`BCF panel "${label}" writes no <ClippingPlanes> when the section left enabled is not on screen (#4806)`, async () => {
+  test(`BCF panel "${label}" writes <ClippingPlanes> for a cut left enabled across a tool switch — lasting scene state (#5893)`, async () => {
     seed('select', true);
+    const xml = await xmlOf();
+    assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
+    assert.match(xml, /<ClippingPlane>/, 'the cut is genuinely on screen now (#5893), so it exports');
+  });
+
+  test(`BCF panel "${label}" writes no <ClippingPlanes> when the cut is hidden by the visibility toggle (#4806, #5893)`, async () => {
+    seed('select', true, false);
     const xml = await xmlOf();
     assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
     assert.doesNotMatch(xml, /<ClippingPlanes>|<ClippingPlane>/, 'BUG: a section the user cannot see was exported');

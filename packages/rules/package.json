@@ -22,6 +22,7 @@
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/encoding": "workspace:*",
     "@ifc-lite/ids": "workspace:*",
+    "@ifc-lite/lens": "workspace:*",
     "@ifc-lite/lists": "workspace:*",
     "@ifc-lite/mutations": "workspace:*",
     "@ifc-lite/parser": "workspace:*"

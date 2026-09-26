@@ -434,7 +434,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       </DropdownMenu>
 
       {/* Export modified IFC… Button - shows when there are pending mutations */}
-      <ExportChangesButton />
+      <ExportChangesButton surface="classic" />
 
       {/* Share — link-based multiuser collaboration (behind the collab flag) */}
       {collabEnabled && (

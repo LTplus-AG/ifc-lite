@@ -11,7 +11,7 @@ import { FilePlus, Sheet } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { exportClashTableCsv } from '@/lib/clash/export-table';
@@ -33,7 +33,7 @@ export function ClashExportActions({ selectedId, creatingTopic, createBcfTopic }
       return;
     }
     // Counts only — never model or element names (confidential).
-    posthog.capture('export_completed', { format: 'csv', surface: 'clash_results', row_count: outcome.rows });
+    trackExportCompleted({ format: 'csv', surface: 'clash_results', row_count: outcome.rows });
     toast.success(t('clashTools.export.csvSuccessToast', { count: outcome.rows, filename: outcome.filename }));
   };
 

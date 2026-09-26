@@ -50,7 +50,7 @@ export const settingsEn = {
   'settings.performance.geometryTier': 'Geometry detail',
   'settings.performance.geometryWorkers': 'Geometry workers',
   'settings.performance.tierIgnoredInExact': 'Low detail is ignored in Exact mode.',
-  'settings.performance.workersMayClamp': 'The engine may lower this count to fit memory.',
+  'settings.performance.workersMayClamp': 'Changes apply on the next model load. The engine may lower this count to fit memory.',
   'settings.performance.sourceUrl': 'From this URL',
   'settings.performance.sourceSaved': 'Saved in this browser',
   'settings.performance.reset': 'Reset',

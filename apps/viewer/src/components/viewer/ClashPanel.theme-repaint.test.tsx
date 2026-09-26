@@ -15,7 +15,8 @@
  * `useClash` it mounts, `useColorOverlaySync` handing the paint to a real
  * `Renderer`'s `Scene`, the theme effect in `useRenderUpdates`, and the dots'
  * colour as the app's compiled stylesheet resolves it. Only the GPU objects are
- * stand-ins: a scene with no meshes builds no batches, so they are never used.
+ * stand-ins: this test observes the colors sent to the scene and does not
+ * exercise GPU uploads.
  * What the scene was HANDED is recorded per rebuild, as a copy, because that is
  * what its batches are built from.
  */
@@ -118,10 +119,8 @@ function makeRenderer(): { renderer: Renderer; builds: Array<Map<number, number[
   fields['pipeline'] = { selectionColorUniform: { update() { /* not asserted */ } } };
   const scene = renderer.getScene() as unknown as { setColorOverrides(o: Map<number, Rgba>, d: unknown, p: unknown): void };
   const builds: Array<Map<number, number[]>> = [];
-  const real = scene.setColorOverrides.bind(scene);
-  scene.setColorOverrides = (o, d, p) => {
+  scene.setColorOverrides = (o) => {
     builds.push(new Map([...o].map(([id, c]) => [id, [...c]])));
-    real(o, d, p);
   };
   return { renderer, builds };
 }

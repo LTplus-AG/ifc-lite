@@ -98,6 +98,8 @@ export function isVisibleResultEmpty(state: VisibleResultState, geometry: Effect
     for (const id of source.instancedGeometryHashes?.keys() ?? []) {
       if (isEntityVisible(id, hidden, isolated)) return false;
     }
+    if (source.totalTriangles > 0 && source.meshes.length === 0
+      && !source.instancedGeometryHashes?.size && isolated?.size !== 0) return false;
   }
   if (geometry.hasUnenumeratedInstances && isolated?.size !== 0) return false;
   return true;

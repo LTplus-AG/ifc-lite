@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useViewerStore } from '@/store';
@@ -142,11 +143,12 @@ function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
  * appearance planner to write draped imagery), so its download lands after
  * the click returns. Keep the seams patched until it has.
  */
-async function captureAsyncDownload(run: () => void): Promise<{ filename: string }> {
+async function captureAsyncDownload(run: () => void): Promise<{ filename: string; bytes?: Blob }> {
   const originalCreate = URL.createObjectURL;
   const originalClick = HTMLAnchorElement.prototype.click;
   let filename = '';
-  URL.createObjectURL = (() => 'blob:landxml-test') as typeof URL.createObjectURL;
+  let bytes: Blob | undefined;
+  URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
   URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
   try {
@@ -156,7 +158,7 @@ async function captureAsyncDownload(run: () => void): Promise<{ filename: string
     URL.createObjectURL = originalCreate;
     HTMLAnchorElement.prototype.click = originalClick;
   }
-  return { filename };
+  return { filename, bytes };
 }
 
 describe('ExportDialog LandXML source-format export (#5175)', () => {
@@ -276,6 +278,20 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     } finally {
       analytics.mock.restore();
     }
+  });
+
+  it('writes the loaded source\'s SHA-256 as SourceHash in the file it downloads (#5942 follow-up)', async () => {
+    const source = '<?xml version="1.0"?><LandXML version="1.2"><Surfaces/></LandXML>\n';
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.sourceFile = new File([source], 'survey.xml', { type: 'application/xml' });
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const { bytes } = await captureAsyncDownload(() => click(exportButton()));
+    assert.ok(bytes, 'the conversion was downloaded');
+    const expected = createHash('sha256').update(source).digest('hex');
+    assert.match(await bytes.text(), new RegExp(`'SourceHash',\\$,IFCLABEL\\('${expected}'\\)`));
   });
 
   it('offers the conversion, by record count, for a covered source', () => {

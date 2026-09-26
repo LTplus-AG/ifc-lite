@@ -21,11 +21,18 @@ import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client.
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 import type { UseTranslationResult } from '@/i18n';
+import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
 
 export interface LandXmlIfcDownloadInput {
   document: LandXmlTinDocument;
   /** The model's display name; seeds the filename and the file's provenance. */
   name: string;
+  /**
+   * The LandXML bytes as loaded. Hashed into `LandXML_Conversion.SourceHash`
+   * (§7) with the same SHA-256 the imagery's `ImagerySourceHash` uses; absent
+   * when the viewer no longer holds them, and then the hash is left empty.
+   */
+  source?: Blob;
   /** Imagery draped on the terrain (#5942); written when it came from a file. */
   imagery?: TerrainImageryDrape;
   /** The appearance planner; the browser's worker unless a caller supplies one. */
@@ -47,10 +54,11 @@ export type LandXmlIfcDownloadResult =
 export function landXmlDownloadInput(
   plan: LandXmlExportPlan | null,
   schema: string | null | undefined,
-  model: { name: string; landXmlDocument?: LandXmlTinDocument; terrainImagery?: TerrainImageryDrape } | undefined,
+  model: { name: string; landXmlDocument?: LandXmlTinDocument; terrainImagery?: TerrainImageryDrape; sourceFile?: Blob } | undefined,
 ): LandXmlIfcDownloadInput | null {
   if (!plan?.covered || schema !== 'IFC4X3' || !model?.landXmlDocument) return null;
-  return { document: model.landXmlDocument, name: model.name, imagery: model.terrainImagery };
+  // `source` feeds LandXML_Conversion.SourceHash (mapping §7).
+  return { document: model.landXmlDocument, name: model.name, imagery: model.terrainImagery, source: model.sourceFile };
 }
 
 /** The browser's planner: the appearance worker, one job, then released. */
@@ -79,8 +87,10 @@ export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Prom
   // check does not run — see `crsName` in `landXmlIfcPlan.ts` for why, and the
   // dialog says so before the user commits.
   const datum = input.document.coordinateSystem?.horizontalDatum;
+  const sourceHash = input.source ? await computeFullSourceHashFromBlob(input.source) : null;
   const options: LandXmlIfcOptions = {
     sourceFileName: input.name,
+    ...(sourceHash ? { sourceHash } : {}),
     ...(datum ? { crs: { Name: datum, VerticalDatum: input.document.coordinateSystem?.verticalDatum } } : {}),
   };
   const stem = stripExtension(input.name) || 'landxml';

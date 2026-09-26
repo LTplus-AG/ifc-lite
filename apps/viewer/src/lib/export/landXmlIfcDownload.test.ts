@@ -19,6 +19,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { downloadLandXmlAsIfc, landXmlIfcExportOutcome } from './landXmlIfcDownload.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 
@@ -110,6 +111,18 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
     // A placeholder CRS would be worse than none: it reads as a claim.
     assert.doesNotMatch(text, /IFCPROJECTEDCRS/);
     assert.doesNotMatch(text, /IFCMAPCONVERSION/);
+  });
+
+  it('records the SHA-256 of the source bytes as LandXML_Conversion.SourceHash (#5942 follow-up)', async () => {
+    // The real-data run found `SourceHash` empty in every viewer export.
+    const bytes = '<?xml version="1.0"?><LandXML version="1.2"><Surfaces/></LandXML>\n';
+    const expected = createHash('sha256').update(bytes).digest('hex');
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({
+        document: document(), name: 'terrain.xml', source: new File([bytes], 'terrain.xml'),
+      });
+    });
+    assert.match(text, new RegExp(`IFCPROPERTYSINGLEVALUE\\('SourceHash',\\$,IFCLABEL\\('${expected}'\\)`));
   });
 
   it('reports the converter refusal instead of downloading an empty file', async () => {

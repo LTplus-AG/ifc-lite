@@ -4,7 +4,7 @@
 
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
-import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown, Search, X } from 'lucide-react';
+import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
@@ -62,8 +62,9 @@ import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
-import { filterPropertySets, filterQuantitySets, matchesPropertySearch } from './properties/propertySearch';
+import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch } from './properties/propertySearch';
 import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
+import { PropertyFindBox } from './properties/PropertyFindBox';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
 import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
 export function PropertiesPanel() {
@@ -1122,15 +1123,7 @@ export function PropertiesPanel() {
   const foundOccurrence = filterPropertySets(renderedOccurrenceProperties, findQuery);
   const foundInherited = filterPropertySets(renderedInheritedTypeProperties, findQuery);
   const foundQuantities = filterQuantitySets(renderedQuantities, findQuery);
-  const foundMaterialProperties = renderedMaterialProperties.flatMap((group) => {
-    const psets = filterPropertySets(group.psets.map((pset) => ({
-      name: pset.name,
-      properties: pset.properties.map((property) => ({
-        name: property.name, value: property.value, dataType: property.dataType,
-      })),
-    })), findQuery);
-    return psets.length > 0 ? [{ ...group, psets }] : [];
-  });
+  const foundMaterialProperties = filterMaterialPropertyGroups(renderedMaterialProperties, findQuery);
   const hasPropertyHits = foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
     + foundOccurrence.length + foundInherited.length + foundMaterialProperties.length > 0;
   // A query can match a quantity while the Properties tab is selected (and
@@ -1423,17 +1416,7 @@ export function PropertiesPanel() {
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-b px-3 py-2 text-muted-foreground">
-        <Search className="size-4 shrink-0" aria-hidden="true" />
-        <input type="text" role="searchbox" value={find} onChange={(event) => setFind(event.target.value)}
-          aria-label={t('properties.panel.findLabel')} placeholder={t('properties.panel.findPlaceholder')}
-          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground" />
-        {find && <IconButton label={t('properties.panel.clearFindLabel')} size="icon-xs" className="size-6 shrink-0" onClick={() => setFind('')}><X className="size-3" /></IconButton>}
-      </div>
-      {findQuery && foundAttributes.length + (foundStructure?.length ?? 0) + (foundZones?.length ?? 0)
-        + foundOccurrence.length + foundInherited.length + foundQuantities.length + foundMaterialProperties.length === 0 && (
-        <output className="block border-b p-3 text-sm text-muted-foreground">{t('properties.panel.findEmpty')}</output>
-      )}
+      <PropertyFindBox value={find} onChange={setFind} hasMatches={hasPropertyHits || foundQuantities.length > 0} />
 
       {/* IFC Attributes */}
       {foundAttributes.length > 0 && (

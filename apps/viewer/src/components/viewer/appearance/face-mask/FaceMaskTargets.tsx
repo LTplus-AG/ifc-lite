@@ -18,11 +18,11 @@ function FaceMaskRow({ target, editing, disabled, onEdit, onClear }: { target: F
   const selected = target.selected?.length ?? 0;
   return <li className="flex flex-wrap items-center gap-2">
     <span className="whitespace-nowrap"><span className="text-muted-foreground">{t('appearance.faceMask.ifcObject')}</span> <span className="font-medium">#{target.productId}</span></span>
-    <span className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground" role="status">
+    <output className="rounded-full border px-2 py-0.5 text-2xs text-muted-foreground">
       {selected
         ? t('appearance.faceMask.someSelected', { count: formatLocaleNumber(locale, selected), total: formatLocaleNumber(locale, target.triangleCount) })
         : t('appearance.faceMask.allSelectedSummary', { total: formatLocaleNumber(locale, target.triangleCount) })}
-    </span>
+    </output>
     {selected > 0 && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={onClear}>{t('appearance.faceMask.allFaces')}</Button>}
     <Button type="button" size="sm" variant={editing ? 'secondary' : 'outline'} aria-pressed={editing} disabled={disabled} onClick={onEdit}>{editing ? t('appearance.faceMask.done') : t('appearance.faceMask.selectFaces')}</Button>
   </li>;
@@ -62,12 +62,12 @@ export function FaceMaskEditor({ target, disabled, onChange }: { target: FaceMas
         onClick={() => setActiveTool(activeTool === 'appearance-face' ? 'select' : 'appearance-face')}>
         {activeTool === 'appearance-face' ? t('appearance.faceMask.pickingInModel') : t('appearance.faceMask.pickInModel')}
       </Button>
-      {activeTool === 'appearance-face' && <span className="text-[11px] text-muted-foreground" role="status">{t('appearance.faceMask.pickingStatus')}</span>}
+      {activeTool === 'appearance-face' && <output className="text-2xs text-muted-foreground">{t('appearance.faceMask.pickingStatus')}</output>}
     </div>
     <AppearanceMeshPreview mesh={target.mesh} triangles={selected} disabled={disabled} faceSelection={faceSelection} canvasLabel={t('appearance.faceMask.previewCanvasLabel', { label: target.label })}
       onRegion={region} onReady={setReady} onError={message => { setReady(false); setError(message); }} />
-    {error && <p className="text-[11px] text-destructive" role="alert">{error}</p>}
-    <p className="text-[11px] text-muted-foreground">{t('appearance.faceMask.editorNote')}</p>
+    {error && <p className="text-2xs text-destructive" role="alert">{error}</p>}
+    <p className="text-2xs text-muted-foreground">{t('appearance.faceMask.editorNote')}</p>
   </div>;
 }
 
@@ -76,12 +76,12 @@ export function FaceMaskTargets({ controls, disabled }: { controls: FaceMaskCont
   const { t } = useTranslation();
   const editing = controls.targets.find(target => target.productId === controls.editing);
   return <div className="space-y-2" aria-label={t('appearance.faceMask.selectionsAriaLabel')}>
-    <ul className="space-y-1 text-[11px]">
+    <ul className="space-y-1 text-2xs">
       {controls.targets.map(target => <FaceMaskRow key={target.productId} target={target} disabled={disabled} editing={target.productId === controls.editing}
         onEdit={() => controls.onEdit(target.productId === controls.editing ? null : target.productId)} onClear={() => controls.onChange(target.productId, null)} />)}
     </ul>
     {editing && <FaceMaskEditor key={editing.productId} target={editing} disabled={disabled} onChange={triangles => controls.onChange(editing.productId, triangles)} />}
-    {controls.diagnostics.length > 0 && <ul className="space-y-1 text-[11px] text-destructive" role="alert" aria-label={t('appearance.faceMask.diagnosticsAriaLabel')}>
+    {controls.diagnostics.length > 0 && <ul className="space-y-1 text-2xs text-destructive" role="alert" aria-label={t('appearance.faceMask.diagnosticsAriaLabel')}>
       {controls.diagnostics.map((message, index) => <li key={`${index}:${message}`}>{message}</li>)}
     </ul>}
   </div>;

@@ -195,7 +195,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             <button
               type="button"
               onClick={() => setFlavorDialogRequested(true)}
-              className="shrink-0 text-[10px] uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors max-w-[110px] truncate"
+              className="shrink-0 text-2xs uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors max-w-[110px] truncate"
               title={t('extensionsFlavors.extensionsPanel.activeFlavorTitle', { name: activeFlavorName })}
               aria-label={t('extensionsFlavors.extensionsPanel.activeFlavorAriaLabel', { name: activeFlavorName })}
             >
@@ -344,7 +344,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               </Button>
             </div>
 
-            <div className="mt-2 text-[10px] text-muted-foreground text-center">
+            <div className="mt-2 text-2xs text-muted-foreground text-center">
               {t('extensionsFlavors.extensionsPanel.emptyState.cliHint')}
             </div>
           </div>
@@ -355,7 +355,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono text-xs break-all">{record.id}</div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 text-2xs text-muted-foreground">
                       {t('extensionsFlavors.extensionsPanel.row.stats', {
                         version: record.version,
                         count: record.grantedCapabilities.length,
@@ -418,13 +418,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     {record.grantedCapabilities.slice(0, 4).map((cap) => (
                       <code
                         key={cap}
-                        className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono"
+                        className="rounded bg-muted px-1.5 py-0.5 text-2xs font-mono"
                       >
                         {cap}
                       </code>
                     ))}
                     {record.grantedCapabilities.length > 4 && (
-                      <span className="text-[10px] text-muted-foreground self-center">
+                      <span className="text-2xs text-muted-foreground self-center">
                         {t('extensionsFlavors.extensionsPanel.row.moreCapabilities', {
                           count: formatLocaleNumber(locale, record.grantedCapabilities.length - 4),
                         })}

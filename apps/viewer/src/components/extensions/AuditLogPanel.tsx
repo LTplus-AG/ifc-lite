@@ -131,7 +131,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
           <h2 className="text-sm font-semibold">{t('extensionsPanels.auditLogPanel.title')}</h2>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {t('extensionsPanels.auditLogPanel.eventCount', {
               count: events.length,
               filtered: formatLocaleNumber(locale, filtered.length),
@@ -183,7 +183,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
           Lets the user narrow "show only events for this extension". */}
       {!extensionId && distinctExtensionIds.length > 1 && (
         <div className="flex items-center gap-1 border-b px-4 py-2 overflow-x-auto">
-          <span className="text-[10px] text-muted-foreground shrink-0">{t('extensionsPanels.auditLogPanel.extensionFilterLabel')}</span>
+          <span className="text-2xs text-muted-foreground shrink-0">{t('extensionsPanels.auditLogPanel.extensionFilterLabel')}</span>
           <FilterChip
             label={t('extensionsPanels.auditLogPanel.filterAll')}
             active={extensionFilter === undefined}
@@ -213,8 +213,8 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
                   {t(KIND_LABEL_KEYS[event.kind])}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[11px] break-all">{event.extensionId}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="font-mono text-2xs break-all">{event.extensionId}</div>
+                  <div className="text-2xs text-muted-foreground">
                     {auditMetadata(event, t, locale)}
                   </div>
                 </div>
@@ -232,7 +232,7 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+      className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${
         active
           ? 'bg-primary text-primary-foreground'
           : 'bg-muted text-muted-foreground hover:bg-muted/70'

@@ -39,7 +39,10 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { measureTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { CountBadge, LISTED_STATES } from '../../components/viewer/compare/CompareResultsList';
+import { measureTextContrastOnSurface, measureRenderedTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
 import { extractClassNameAfter, extractFirstStringLiteralAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -66,7 +69,6 @@ const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
 const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
 const RIBBON_PRIMITIVES = join(VIEWER_DIR, 'ribbon/primitives.tsx');
 const CHANGE_DETAIL_VIEW = join(VIEWER_DIR, 'compare/ChangeDetailView.tsx');
-const COMPARE_RESULTS_LIST = join(VIEWER_DIR, 'compare/CompareResultsList.tsx');
 const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 
 // Post-merge audit of #4792/#4794 (this file's own remaining `/NN` grep
@@ -328,12 +330,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-background',
     },
     {
-      name: 'compare/CompareResultsList CountBadge hint',
-      file: COMPARE_RESULTS_LIST,
-      anchor: '<span className="text-[10px] text-muted-foreground">{label}</span>\n      {hint && <span ',
-      surface: 'bg-background',
-    },
-    {
       name: 'LayersPanel "drop .ifcx files anywhere" hint',
       file: LAYERS_PANEL,
       anchor: '/>\n          </div>\n          <p ',
@@ -396,6 +392,20 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
         );
       });
     }
+  }
+
+  for (const theme of THEMES) {
+    it(`compare/CompareResultsList CountBadge hint clears AA in ${theme} theme`, async () => {
+      const hint = '4 type objects';
+      const markup = renderToStaticMarkup(createElement(CountBadge, {
+        label: 'Changed', value: 4, color: LISTED_STATES[0].color, hint,
+      }));
+      const ratio = await measureRenderedTextContrastOnSurface(
+        theme, 'bg-background', markup, '#surface span:nth-of-type(3)',
+      );
+      assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+        `rendered CountBadge hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+    });
   }
 });
 

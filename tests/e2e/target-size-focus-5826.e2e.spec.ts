@@ -138,7 +138,9 @@ test.describe('#5826 target size and focus visibility', () => {
     // wait for at least one model to register, then let the toolbar/panel
     // chrome that only renders once a model is loaded settle.
     await page.waitForFunction((key) => {
-      const store = (globalThis as Record<string, any>)[key];
+      const store = (globalThis as Record<string, unknown>)[key] as
+        | { getState: () => { models: Map<unknown, unknown> } }
+        | undefined;
       return !!store && store.getState().models.size > 0;
     }, STORE, { timeout: 120000 });
     await page.waitForTimeout(2000);

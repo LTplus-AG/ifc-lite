@@ -125,6 +125,7 @@ export function ExportDialogShell({
   });
 
   const handleExport = useCallback(async () => {
+    setResult(null);
     setIsExporting(true);
     try {
       setResult(await onExport());

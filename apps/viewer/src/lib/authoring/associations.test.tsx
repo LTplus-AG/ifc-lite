@@ -19,9 +19,12 @@ import assert from 'node:assert/strict';
 import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
+import { resolveEntityRef } from '@/store/resolveEntityRef.js';
+import { pathForEntity, pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, click, render } from '@/test/render.js';
 import { AddMaterialDialog } from '@/components/viewer/PropertyEditor.js';
+import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 
 // Guarded: both modules are new in #5876. With the fix reverted they are
 // absent, and the tests must fail on an assertion, not on a load error.
@@ -52,7 +55,8 @@ const IFC4 = step('IFC4', `#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,
 #11=IFCWALL('0Wall00000000000000011',$,'Wall B',$,$,$,$,$,$);
 #12=IFCWALL('0Wall00000000000000012',$,'Wall C',$,$,$,$,$,$);
 #20=IFCMATERIAL('Concrete',$,$);
-#21=IFCRELASSOCIATESMATERIAL('0Rel000000000000000021',$,$,$,(#11),#20);`);
+#21=IFCRELASSOCIATESMATERIAL('0Rel000000000000000021',$,$,$,(#11),#20);
+#30=IFCCLASSIFICATION($,$,$,'OmniClass',$,$,$);`);
 
 const IFC2X3 = (withOwnerHistory: boolean) => step('IFC2X3', `${withOwnerHistory ? '#5=IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n' : ''}#1=IFCPROJECT('0Project0000000000000a',${withOwnerHistory ? '#5' : '$'},'P',$,$,$,$,$,$);
 #10=IFCWALL('0Wall00000000000000010',${withOwnerHistory ? '#5' : '$'},'Wall A',$,$,$,$,$);`);
@@ -137,6 +141,14 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal([...view().getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')].length, 2);
     });
 
+    it('reuses a source IfcClassification by Name and the panel resolves its system', async () => {
+      assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'OmniClass', identification: '23-11' }), { ok: true });
+      assert.equal([...view().getNewEntitiesOfType('IFCCLASSIFICATION')].length, 0);
+      const { reparsed } = await exportAndReparse(store, 'IFC4');
+      assert.deepEqual(extractClassificationsOnDemand(reparsed, 10).map((c) => [c.system, c.identification]), [['OmniClass', '23-11']]);
+      assert.deepEqual(api().overlayClassifications(view(), [10], 'IFC4', store).map((c) => c.system), ['OmniClass']);
+    });
+
     it('a material exports as IfcMaterial + IfcRelAssociatesMaterial and reads back with its category', async () => {
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Steel', category: 'Metal' }), { ok: true });
       const { text, reparsed } = await exportAndReparse(store, 'IFC4');
@@ -146,11 +158,81 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4').map((m) => m.name), ['Steel']);
     });
 
-    it('a same-named material with another category is a new IfcMaterial, not the first one reused', () => {
+    it('a same-named material reuses its entity and association, preserving its original fields', async () => {
       api().addMaterialAssociation('m', 10, { name: 'Steel', category: 'Metal' });
       api().addMaterialAssociation('m', 12, { name: 'Steel', category: 'Wood' });
-      assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 2);
-      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Wood']);
+      assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 1);
+      assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 1);
+      assert.deepEqual(api().overlayMaterials(view(), [12], 'IFC4').map((m) => m.category), ['Metal']);
+      const { reparsed } = await exportAndReparse(store, 'IFC4');
+      assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 12).map((m) => m.category), ['Metal']);
+    });
+
+    it('extends a source material association and one undo restores its original RelatedObjects', async () => {
+      assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
+      assert.equal(view().getNewEntities().length, 0, 'source material and relationship are reused');
+      assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), [11, '#10']);
+      assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4', store).map((m) => m.name), ['Concrete']);
+      const { reparsed } = await exportAndReparse(store, 'IFC4');
+      assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);
+      useViewerStore.getState().undo('m');
+      assert.equal(view().getPositionalMutationsForEntity(21), null, 'one undo removes the extension');
+      const undone = await exportAndReparse(store, 'IFC4');
+      assert.deepEqual(extractAllMaterialsOnDemand(undone.reparsed, 10), []);
+      assert.deepEqual(extractAllMaterialsOnDemand(undone.reparsed, 11).map((m) => m.name), ['Concrete']);
+    });
+
+    it('the mounted Properties panel shows source-reused classification and material associations', () => {
+      assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'OmniClass', identification: '23-11' }), { ok: true });
+      assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
+      useViewerStore.setState({
+        selectedEntity: { modelId: 'm', expressId: 10 }, selectedEntityId: 10,
+        selectedModelId: null, selectedEntities: [], selectedEntityIds: new Set([10]),
+      });
+      const panel = render(<PropertiesPanel />);
+      assert.match(panel.textContent ?? '', /OmniClass/);
+      assert.match(panel.textContent ?? '', /23-11/);
+      assert.match(panel.textContent ?? '', /Concrete/);
+      cleanup();
+    });
+
+    it('mirrors authored relationships and source material extensions only for the shared model', () => {
+      registerStoreSlot(store, { slotId: 'm0', pathPrefix: '/m0' });
+      const original = useViewerStore.getState();
+      const creates: Array<{ id: number; type: string }> = [];
+      const attributes: Array<{ id: number; name: string; value: unknown }> = [];
+      useViewerStore.setState({
+        collabRoomId: 'room',
+        collabRoomModels: new Map([['m', { slotId: 'm0', pathPrefix: '/m0' }]]),
+        mirrorEntityCreate: (_modelId, id, type, roomKey) => {
+          creates.push({ id, type });
+          if (roomKey) registerEntityPath(store, id, pathForGuid(store, roomKey));
+        },
+        mirrorAttributeEdit: (_modelId, id, name, value) => {
+          attributes.push({ id, name, value });
+        },
+      });
+      try {
+        assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'OmniClass', identification: '23-11' }), { ok: true });
+        assert.ok(creates.some((call) => call.type.toUpperCase() === 'IFCCLASSIFICATIONREFERENCE'));
+        assert.ok(creates.some((call) => call.type.toUpperCase() === 'IFCRELASSOCIATESCLASSIFICATION'));
+        const wallPath = pathForEntity(store, 10);
+        assert.ok(wallPath);
+        assert.ok(attributes.some((call) => call.name === 'bsi::ifc::prop::RelatedObjects'
+          && JSON.stringify(call.value).includes(wallPath)), 'relationship references are room paths, not sender-local ids');
+        const beforeExtension = creates.length;
+        assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
+        assert.equal(creates.length, beforeExtension, 'extending source IfcRelAssociatesMaterial creates no duplicate entity');
+        assert.ok(attributes.some((call) => call.id === 21 && call.name === 'bsi::ifc::prop::RelatedObjects'
+          && JSON.stringify(call.value).includes(wallPath)), 'the source relationship extension is mirrored');
+      } finally {
+        useViewerStore.setState({
+          collabRoomId: original.collabRoomId,
+          collabRoomModels: original.collabRoomModels,
+          mirrorEntityCreate: original.mirrorEntityCreate,
+          mirrorAttributeEdit: original.mirrorAttributeEdit,
+        });
+      }
     });
 
     it('an element sees the session associations of the base it aliases', () => {
@@ -161,7 +243,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(api().overlayMaterials(view(), [99, 10], 'IFC4').length, 1);
     });
 
-    it('refuses a second material association on an element that already has one', () => {
+    it('refuses a conflicting material association on an element that already has one', () => {
       assert.deepEqual(api().addMaterialAssociation('m', 11, { name: 'Steel' }), { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' });
       api().addMaterialAssociation('m', 10, { name: 'Steel' });
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Wood' }), { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' });
@@ -172,6 +254,29 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: '.STEEL.' }), { ok: false, reasonKey: 'propertyEditor.association.stepToken' });
       assert.equal(view()?.getNewEntities().length ?? 0, 0);
     });
+  });
+
+  it('keeps source reuse and authored association IDs in the selected model of a federation', async () => {
+    const first = await parse(IFC4);
+    const second = await parse(IFC4);
+    const a = { ...fixtureModel('a', { idOffset: 0 }), ifcDataStore: first, maxExpressId: 30 };
+    const b = { ...fixtureModel('b', { idOffset: 1_000_000 }), ifcDataStore: second, maxExpressId: 30 };
+    useViewerStore.setState({
+      ...fixtureModels(a, b), activeModelId: 'b', mutationViews: new Map(), storeEditors: new Map(),
+      undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), dirtyModels: new Set(), collabRole: null,
+    });
+    assert.deepEqual(api().addClassificationAssociation('b', 10, { system: 'OmniClass', identification: '23-11' }), { ok: true });
+    assert.deepEqual(api().addMaterialAssociation('b', 10, { name: 'Concrete' }), { ok: true });
+    const created = [...useViewerStore.getState().mutationViews.get('b')!.getNewEntitiesOfType('IFCCLASSIFICATIONREFERENCE')][0];
+    assert.deepEqual(resolveEntityRef(1_000_000 + created.expressId), { modelId: 'b', expressId: created.expressId });
+    assert.equal(useViewerStore.getState().mutationViews.get('a'), undefined, 'the other model has no overlay');
+    const result = new StepExporter(second, useViewerStore.getState().mutationViews.get('b')!).export({ schema: 'IFC4', visibleOnly: false, hiddenEntityIds: new Set<number>() });
+    const exported = typeof result.content === 'string' ? result.content : new TextDecoder().decode(result.content);
+    const reparsed = await parse(exported);
+    assert.deepEqual(extractClassificationsOnDemand(reparsed, 10).map((c) => c.system), ['OmniClass']);
+    assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);
+    assert.deepEqual(extractClassificationsOnDemand(first, 10), [], 'the first model remains unchanged');
+    assert.deepEqual(extractAllMaterialsOnDemand(first, 10), [], 'the first model remains unchanged');
   });
 
   describe('IFC2X3', () => {

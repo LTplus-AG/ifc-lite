@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Spinner } from '@/components/ui/spinner';
+
 /**
  * The Drawing panel's status line (#5494): the active tool's hint on the
  * left, regeneration progress and the markup facts on the right. It replaces
@@ -9,7 +11,7 @@
  * "Updating…" chip, so nothing but the text editor sits over the canvas.
  */
 
-import { Loader2 } from 'lucide-react';
+
 import type { Annotation2DTool, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -70,7 +72,7 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
       {p.snapped && <span className="shrink-0">{t('section2d.status.snapped')}</span>}
       {p.updating && (
         <span className="inline-flex shrink-0 items-center gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Spinner size="xs" />
           {t('section2d.updating')}
         </span>
       )}

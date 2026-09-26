@@ -22,29 +22,23 @@ import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, 
 import { discoverDataSources, LENS_OPERATORS } from '@ifc-lite/lens';
 import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
-import { useLens } from '@/hooks/useLens';
+import { useLensDiscovery } from '@/hooks/useLensDiscovery';
 import { createLensDataProvider } from '@/lib/lens';
-import {
-  buildAutoColorLensToSave, moveItem, cloneCriteria, cloneLensRules, isCompoundCriteria,
-  deriveRuleName, compoundCriteriaSummary, isRuleValid,
-} from './lens-editor-utils';
+import { buildAutoColorLensToSave, moveItem, cloneCriteria, cloneLensRules, isCompoundCriteria,
+  deriveRuleName, compoundCriteriaSummary, isRuleValid } from './lens-editor-utils';
 import { importLensFile } from './lens-import';
-import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
+import { ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
-import {
-  LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES,
-} from '@/store/slices/lensSlice';
+import { LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n';
 import { OPERATOR_LABEL_KEYS, TYPE_LABEL_KEYS } from './lens-editor-labels';
-
-/** Stable empty set for the hidden-sync effect when no lens is active. */
-const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
 
 /** Format large counts compactly: 1234 → "1.2k" */
 function formatCount(n: number): string {
@@ -1216,7 +1210,11 @@ function LensCard({
 
 export function LensPanel({ onClose }: LensPanelProps) {
   const { t } = useTranslation();
-  const { activeLensId, savedLenses } = useLens();
+  const activeLensId = useViewerStore((s) => s.activeLensId);
+  const savedLenses = useViewerStore((s) => s.savedLenses);
+  // Discovery feeds this panel's rule pickers only; evaluation is the
+  // always-mounted `LensRuntimeHost`'s.
+  useLensDiscovery();
   const setActiveLens = useViewerStore((s) => s.setActiveLens);
   const createLens = useViewerStore((s) => s.createLens);
   const updateLens = useViewerStore((s) => s.updateLens);
@@ -1224,24 +1222,18 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const duplicateLens = useViewerStore((s) => s.duplicateLens);
   const importLenses = useViewerStore((s) => s.importLenses);
   const exportLenses = useViewerStore((s) => s.exportLenses);
-  const hideEntities = useViewerStore((s) => s.hideEntities);
-  // Un-hide only the lens-owned ids (delta) instead of showAll(), which would
-  // also wipe the user's manual hides / isolation / class filter / ghost.
-  const showEntities = useViewerStore((s) => s.showEntities);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   // Viewport's aggregation resolver (#2531): rule isolation runs a rule's
   // matches through it so a geometry-less assembly isolates as its parts.
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
-  // Ownership bookkeeping lives in the STORE (not component state/refs) so a
-  // panel unmount/remount neither loses which hidden ids the lens owns nor
-  // strands a rule isolation it can no longer release.
-  const setLensAppliedHiddenIds = useViewerStore((s) => s.setLensAppliedHiddenIds);
+  // Rule-isolation ownership lives in the STORE (not component state/refs) so
+  // a panel unmount/remount cannot strand an isolation it can no longer release.
   const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);
   const setLensRuleIsolation = useViewerStore((s) => s.setLensRuleIsolation);
   // Footer count only: useLens pushes colours via pendingColorUpdates, so no effect keys off this and `.size` is safe (#5206).
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
-  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds); // drives the hide-sync effect: identity, not `.size` (#5206)
+  const lensHiddenCount = useViewerStore((s) => s.lensHiddenIds.size); // footer count only
   const lensRuleCounts = useViewerStore((s) => s.lensRuleCounts);
   const lensAutoColorLegend = useViewerStore((s) => s.lensAutoColorLegend);
   // Discovered data from loaded models (classes = instant, rest = lazy)
@@ -1412,13 +1404,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
   }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
 
-  // Safety net: if the lens got deactivated while the panel was unmounted
-  // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation
-  // has no owner anymore — release it so the model isn't stuck isolated.
-  useEffect(() => {
-    if (activeLensId === null) releaseRuleIsolation();
-  }, [activeLensId, releaseRuleIsolation]);
-
   const handleNewLens = useCallback(() => {
     setCreatingAutoColor(false);
     setEditingLens({
@@ -1484,26 +1469,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const result = deleteLens(id);
     if (!result.ok) toast.error(result.message);
   }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
-
-  // Sync the active lens's hidden ids into the GLOBAL hiddenEntities channel.
-  // planLensHiddenSync computes minimal show/hide deltas plus the ids the lens
-  // OWNS afterwards (only ids it newly hid — an id the user manually hid
-  // before or during the lens stays hidden after teardown). Ownership is
-  // persisted in the store so a panel remount re-runs this as a no-op instead
-  // of losing track of (or double-claiming) the lens's hides.
-  useEffect(() => {
-    const state = useViewerStore.getState();
-    const plan = planLensHiddenSync({
-      applied: state.lensAppliedHiddenIds,
-      hiddenEntities: state.hiddenEntities,
-      lensHiddenIds: activeLensId ? state.lensHiddenIds : EMPTY_LENS_HIDDEN,
-    });
-    if (plan.show.length > 0) showEntities(plan.show);
-    if (plan.hide.length > 0) hideEntities(plan.hide);
-    if (plan.nextApplied.length > 0 || state.lensAppliedHiddenIds.length > 0) {
-      setLensAppliedHiddenIds(plan.nextApplied);
-    }
-  }, [activeLensId, lensHiddenIds, hideEntities, showEntities, setLensAppliedHiddenIds]);
 
   const handleExport = useCallback(() => {
     const data = exportLenses();
@@ -1595,6 +1560,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
       {/* Lens list + editor */}
       <div className="flex-1 overflow-auto p-3 space-y-2" {...tourAnchor(TOUR_ANCHORS.lensList)}>
+        {savedLenses.length === 0 && !editingLens && !creatingAutoColor && (
+          <EmptyState icon={<Palette className="size-8" />} title={t('lensPanel.emptyTitle')} description={t('lensPanel.emptyDescription')} />
+        )}
         {savedLenses.map(lens => (
           editingLens?.id === lens.id ? (
             editingLens.autoColor ? (
@@ -1681,8 +1649,8 @@ export function LensPanel({ onClose }: LensPanelProps) {
         {activeLensId
           ? t('lensPanel.footer.active', {
               colored: lensColorMapSize,
-              hidden: lensHiddenIds.size > 0
-                ? t('lensPanel.footer.hiddenCount', { count: lensHiddenIds.size })
+              hidden: lensHiddenCount > 0
+                ? t('lensPanel.footer.hiddenCount', { count: lensHiddenCount })
                 : t('lensPanel.footer.ghosted'),
             })
           : t('lensPanel.footer.clickToActivate')}

@@ -663,6 +663,10 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 | `A` | Show all (reset hidden, isolation and basket) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
+Show All and Home keep the active lens's hides. If you manually hid an element
+before the lens also hid it, turning off the lens still leaves your hide in
+place. Other manual hides are cleared by Show All.
+
 ## Render Options
 
 ```typescript

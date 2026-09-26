@@ -64,9 +64,46 @@ export interface FlatItem {
 
 export const RECENT_KEY = 'ifc-lite:cmd-palette:recent';
 export const MAX_RECENT = 5;
-export const CATEGORY_ORDER: Category[] = [
-  'Recent', 'File', 'View', 'Tools', 'Visibility', 'Panels', 'Export', 'Automation', 'Preferences',
-];
+const CATEGORY_POSITION = {
+  Recent: 0,
+  File: 1,
+  View: 2,
+  Tools: 3,
+  Visibility: 4,
+  Panels: 5,
+  Export: 6,
+  Automation: 7,
+  Preferences: 8,
+  Extensions: 9,
+  Learn: 10,
+} satisfies Record<Category, number>;
+
+/** Every category must have a browse position, including extension rows. */
+export const CATEGORY_ORDER = (Object.keys(CATEGORY_POSITION) as Category[])
+  .sort((a, b) => CATEGORY_POSITION[a] - CATEGORY_POSITION[b]);
+
+/** Group browse rows, including extension and Learn commands, in one place. */
+export function browseCommands(commands: readonly Command[], recentIds: readonly string[]) {
+  const grouped: { category: Category; items: FlatItem[] }[] = [];
+  const flatItems: FlatItem[] = [];
+  const addGroup = (category: Category, rows: readonly Command[]) => {
+    if (rows.length === 0) return;
+    const items = rows.map((cmd) => {
+      const item = { cmd, flatIdx: flatItems.length };
+      flatItems.push(item);
+      return item;
+    });
+    grouped.push({ category, items });
+  };
+
+  addGroup('Recent', recentIds.slice(0, MAX_RECENT)
+    .map((id) => commands.find((command) => command.id === id))
+    .filter((command): command is Command => command !== undefined));
+  for (const category of CATEGORY_ORDER) {
+    if (category !== 'Recent') addGroup(category, commands.filter((command) => command.category === category));
+  }
+  return { grouped, flatItems };
+}
 
 // ── Search scoring ─────────────────────────────────────────────────────
 
@@ -85,7 +122,7 @@ export function score(query: string, text: string): number {
   if (t.includes(q)) return 100;
 
   // Word-start initials (e.g. "cs" → "Color Spaces")
-  const words = t.split(/[\s\-_:\/,]+/);
+  const words = t.split(/[\s_:,\u002F-]+/);
   let wi = 0, qi = 0;
   while (wi < words.length && qi < q.length) {
     if (words[wi].length > 0 && words[wi][0] === q[qi]) qi++;

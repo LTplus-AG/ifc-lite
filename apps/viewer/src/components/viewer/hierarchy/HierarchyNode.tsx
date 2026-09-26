@@ -40,6 +40,7 @@ export interface HierarchyNodeProps {
   nodeHidden: boolean;
   isMultiModel: boolean;
   modelsCount: number;
+  searchActive?: boolean;
   modelVisible?: boolean;
   onNodeClick: (node: TreeNode, e: React.MouseEvent) => void;
   onToggleExpand: (nodeId: string) => void;
@@ -59,6 +60,7 @@ export function HierarchyNode({
   nodeHidden,
   isMultiModel,
   modelsCount,
+  searchActive = false,
   modelVisible,
   onNodeClick,
   onToggleExpand,
@@ -169,6 +171,7 @@ export function HierarchyNode({
         {/* Expand/Collapse */}
         {node.hasChildren ? (
           <button
+            disabled={searchActive}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.id);

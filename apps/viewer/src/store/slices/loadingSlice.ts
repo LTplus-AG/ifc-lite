@@ -27,6 +27,21 @@ export interface LoadingSlice {
    */
   activeStreamCanceller: (() => void) | null;
   /**
+   * Cancel for the active primary or federated model load (#5849), published by
+   * `hooks/modelLoadCanceller.ts`. A slot of its own, NOT
+   * `activeStreamCanceller`: GPU device-loss recovery cancels whatever is in
+   * that slot (a scan must not publish a handle into a torn-down renderer),
+   * and a model load must survive a device loss. UI reads either slot through
+   * `selectLoadCanceller`.
+   */
+  activeLoadCanceller: (() => void) | null;
+  /**
+   * The file the most recently started load is reading (#5849), primary or
+   * federated. The loading card names it; a federated add registers no model
+   * record until it finalizes, so the models map cannot say which file it is.
+   */
+  loadingFileName: string | null;
+  /**
    * #5175: set exactly when a LandXML load fails because the source declares
    * no `<Units>` (the LXML009 refusal). Lets a banner offer the user a
    * linear-unit choice and retry the same load with it — the ONLY UI path
@@ -45,6 +60,8 @@ export interface LoadingSlice {
   setMetadataProgress: (progress: { phase: string; percent: number; indeterminate?: boolean } | null) => void;
   setError: (error: string | null) => void;
   setActiveStreamCanceller: (cancel: (() => void) | null) => void;
+  setActiveLoadCanceller: (cancel: (() => void) | null) => void;
+  setLoadingFileName: (fileName: string | null) => void;
   setLandXmlUnitsRefusal: (value: LoadingSlice['landXmlUnitsRefusal']) => void;
 }
 
@@ -57,6 +74,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   metadataProgress: null,
   error: null,
   activeStreamCanceller: null,
+  activeLoadCanceller: null,
+  loadingFileName: null,
   landXmlUnitsRefusal: null,
 
   // Actions
@@ -67,6 +86,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
   setMetadataProgress: (metadataProgress) => set({ metadataProgress }),
   setError: (error) => set({ error }),
   setActiveStreamCanceller: (activeStreamCanceller) => set({ activeStreamCanceller }),
+  setActiveLoadCanceller: (activeLoadCanceller) => set({ activeLoadCanceller }),
+  setLoadingFileName: (loadingFileName) => set({ loadingFileName }),
   setLandXmlUnitsRefusal: (landXmlUnitsRefusal) => set({ landXmlUnitsRefusal }),
 });
 
@@ -79,7 +100,8 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  *
  * `error` is THIS slice's field, not `chatSlice`'s — that one is `chatError`.
  *
- * `activeStreamCanceller` is deliberately absent from `owns`: no teardown path
+ * `activeStreamCanceller` and `activeLoadCanceller` are deliberately absent
+ * from `owns`: no teardown path
  * resets it today. It is a live cancellation hook owned by the loader hook
  * that registered it, and dropping it here would silently orphan an in-flight
  * stream's only stop button.
@@ -90,7 +112,7 @@ export const createLoadingSlice: StateCreator<LoadingSlice, [], [], LoadingSlice
  */
 export const loadingTeardown = defineSliceTeardown(
   'loadingSlice',
-  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'landXmlUnitsRefusal'],
+  ['loading', 'geometryStreamingActive', 'progress', 'geometryProgress', 'metadataProgress', 'error', 'loadingFileName', 'landXmlUnitsRefusal'],
   {
     'session-reset': () => ({
       loading: false,
@@ -99,9 +121,27 @@ export const loadingTeardown = defineSliceTeardown(
       geometryProgress: null,
       metadataProgress: null,
       error: null,
+      loadingFileName: null,
       landXmlUnitsRefusal: null,
     }),
     'model-removed': notApplicable,
     'all-models-cleared': notApplicable,
   },
 );
+
+type LoadProgressFields = Pick<LoadingSlice, 'progress' | 'geometryProgress' | 'metadataProgress'>;
+
+/**
+ * The one progress a load surface shows: geometry streaming, then metadata
+ * hydration, then the generic load phase. Every progress UI (ribbon, classic
+ * and mobile toolbars, the in-viewport loading card) reads this rather than
+ * repeating the fallback chain (#5849).
+ */
+export function selectActiveLoadProgress(state: LoadProgressFields): LoadingSlice['progress'] {
+  return state.geometryProgress ?? state.metadataProgress ?? state.progress;
+}
+
+/** The Cancel the load UI offers: the model load's, else a point-cloud stream's. */
+export function selectLoadCanceller(state: Pick<LoadingSlice, 'activeLoadCanceller' | 'activeStreamCanceller'>): (() => void) | null {
+  return state.activeLoadCanceller ?? state.activeStreamCanceller;
+}

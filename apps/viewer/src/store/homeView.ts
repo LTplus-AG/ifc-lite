@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from './index.js';
+import { hiddenChannelAfterReset } from '@/lib/visibility/lens-reset';
 import { trackUiEvent } from '@/lib/analytics';
 import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 
@@ -10,6 +11,7 @@ import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void {
   trackUiEvent('view_reset', { trigger });
   const state = useViewerStore.getState();
+  const hiddenBeforeReset = state.hiddenEntities;
   state.showAllInAllModels();
   state.clearStoreySelection();
   state.clearHierarchyBasketSelection();
@@ -27,8 +29,14 @@ export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void
   // (#2574 review). Called rather than re-listing the fields so this path
   // cannot drift out of sync with the others (#2654 review).
   state.clearClashFocus();
+  // The lens stays active through a reset — its colours are re-sent above —
+  // so its hides stay too, retaining manual overlap ownership (#5877).
+  const { lensHiddenIds, lensAppliedHiddenIds, activeLensId } = useViewerStore.getState();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-  useViewerStore.setState({ activeBasketViewId: null });
+  useViewerStore.setState({
+    activeBasketViewId: null,
+    ...hiddenChannelAfterReset(activeLensId, lensHiddenIds, lensAppliedHiddenIds, hiddenBeforeReset),
+  });
 }
 
 export function goHomeFromStore(): void {

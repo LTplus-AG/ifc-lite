@@ -14,7 +14,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   PRECISION_GRIDS,
@@ -109,7 +110,7 @@ export function PrecisionGridBadge({ crsName }: PrecisionGridBadgeProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-medium border border-amber-300/60 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 shrink-0">
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          <Spinner className="h-2.5 w-2.5" />
           {t('properties.precisionGrid.loadingBadge')}
         </span>
       </TooltipTrigger>

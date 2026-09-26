@@ -11,7 +11,8 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
+import { BookOpen, Plus, Check, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { addToPropertySet, type InheritedSets } from '@/lib/properties/add-to-property-set';
@@ -26,7 +27,6 @@ import {
 } from '@/services/bsdd';
 import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
 import { formatLocaleNumber, localeCount, useTranslation } from '@/i18n';
-
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
 // ---------------------------------------------------------------------------
@@ -341,7 +341,7 @@ export function BsddCard({
   if (loading) {
     return (
       <div className="flex items-center gap-2 px-3 py-6 text-xs text-zinc-400">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Spinner size="sm" />
         <span>{t('properties.bsdd.loading', { entityType })}</span>
       </div>
     );

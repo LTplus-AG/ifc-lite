@@ -18,7 +18,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
 import { resolveTreeGlobalId } from './productTree';
-import type { TreeNode, HierarchySortMode } from './types';
+import type { TreeNode, HierarchySortMode, ExpansionLookup } from './types';
 
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level
  *  10" — the same convention `treeDataBuilder.ts`'s storey sort uses. A
@@ -87,7 +87,7 @@ export function emitElementSubtree(
   models: Map<string, FederatedModel>,
   dataStore: IfcDataStore,
   depth: number,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   nodes: TreeNode[],
   ancestors: Set<number>,
   sortMode: HierarchySortMode,
@@ -178,7 +178,7 @@ export function emitElementsWithOtherBucket(
   models: Map<string, FederatedModel>,
   dataStore: IfcDataStore,
   depth: number,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   nodes: TreeNode[],
   sortMode: HierarchySortMode,
   hasShape: ((id: number) => boolean) | null,

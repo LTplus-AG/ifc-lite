@@ -25,6 +25,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Camera, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
 
 const NOTCH_DELTA_Y = 120;
@@ -35,9 +36,10 @@ const NOTCH_DELTA_Y = 120;
  * both. Same reasoning as in `wheelZoom.test.ts`; without it the ctrl cases
  * would quietly test the unmodified path.
  */
-function wheelEvent(init: { ctrlKey?: boolean } = {}): WheelEvent {
+function wheelEvent(init: { ctrlKey?: boolean; deltaX?: number; deltaY?: number } = {}): WheelEvent {
   const e = new WheelEvent('wheel', {
-    deltaY: NOTCH_DELTA_Y,
+    deltaX: init.deltaX ?? 0,
+    deltaY: init.deltaY ?? NOTCH_DELTA_Y,
     deltaMode: 0,
     bubbles: true,
     cancelable: true,
@@ -201,6 +203,7 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
       host.remove();
     }
     document.body.innerHTML = '';
+    useViewerStore.setState({ navigationPreset: 'default' });
   });
 
   it('cancels the browser default on a ctrl+wheel, so the page does not zoom', () => {
@@ -249,6 +252,30 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
 
     assert.equal(pinch, plain, 'pinch-zoom must keep its usual speed');
   });
+
+  for (const modelCount of [1, 2]) {
+    it(`trackpad wheel pans the camera without zooming across ${modelCount} model(s) (#5889)`, () => {
+      const previous = useViewerStore.getState();
+      const models = Array.from({ length: modelCount }, (_, i) => fixtureModel(`m-${i}`, { idOffset: i * 1_000_000 }));
+      useViewerStore.setState({ ...fixtureModels(...models), navigationPreset: 'trackpad' });
+      try {
+        const { canvas, camera } = mountViewport();
+        const target = camera.getTarget();
+        const distance = camera.getDistance();
+        const pan = wheelEvent({ deltaX: 30, deltaY: 0 });
+        canvas.dispatchEvent(pan);
+        assert.equal(pan.defaultPrevented, true);
+        assert.notDeepEqual(camera.getTarget(), target, 'horizontal swipe must pan');
+        assert.equal(camera.getDistance(), distance, 'pan preserves orbit distance');
+
+        const pinch = wheelEvent({ ctrlKey: true, deltaY: 120 });
+        canvas.dispatchEvent(pinch);
+        assert.notEqual(camera.getDistance(), distance, 'Ctrl + wheel must zoom');
+      } finally {
+        useViewerStore.setState({ models: previous.models, activeModelId: previous.activeModelId, navigationPreset: previous.navigationPreset });
+      }
+    });
+  }
 });
 
 describe('useMouseControls wheel zoom - surface pick gate (#5393)', () => {

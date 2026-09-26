@@ -35,6 +35,8 @@ export const lensPanelEn = {
   'lensPanel.closeAriaLabel': 'Close',
   'lensPanel.newRuleLensButton': 'New Rule Lens',
   'lensPanel.newAutoColorLensButton': 'New Auto-Color Lens',
+  'lensPanel.emptyTitle': 'No lenses yet',
+  'lensPanel.emptyDescription': 'Create a lens to color or focus model elements.',
 
   // Footer status
   'lensPanel.footer.active': 'Active · {colored} colored · {hidden}',

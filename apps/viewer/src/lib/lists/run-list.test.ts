@@ -145,6 +145,11 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     });
     const result = await runListFederated(def, [model], state);
     assert.deepEqual(result.rows.map(({ entityId }) => entityId), [10, 30]);
+    for (const groups of [[], [{ combinator: 'AND' as const, rules: [] }]]) {
+      const cleared = await runListFederated({ ...def, groups }, [model], state);
+      assert.deepEqual(cleared.rows.map(({ entityId }) => entityId), [10, 20, 30, 40],
+        'clearing Rules filters cannot reapply stale readable v1 conditions');
+    }
   });
 
   it('keeps an unreadable v1 predicate active alongside new Rules groups', async () => {

@@ -59,6 +59,8 @@ export async function runListFederated(
     // `executeList` remains the source-set and column engine. Its first pass
     // has no columns or presentation work: it applies the list's type/snapshot
     // scope plus only v1 predicates that lack a lossless Rules representation.
+    // Once `groups` exists it is authoritative, even when the user cleared
+    // every rule. `conditions` retains readable v1 rows only during migration.
     const unreadable = definition.unreadableConditions?.map(({ condition }) => condition) ?? [];
     const candidates = new Map(scoped.map(({ modelId, provider }) => [modelId, executeList({
       ...definition, conditions: unreadable, columns: [], grouping: undefined, sortBy: undefined,

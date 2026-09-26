@@ -312,10 +312,10 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	43810	SweptSolid	11	1385	1	0	11	0	16	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	45388	SweptSolid	0	16	0	0	0	-	0	399151
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	52001	SweptSolid	0	232	0	0	0	-	0	2994072
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	52476	SweptSolid	0	112	0	0	0	-	0	2466252
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	52944	SweptSolid	0	276	0	0	0	-	0	46764143
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	52944	SweptSolid	4	552	0	0	4	0	4	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53237	Clipping	0	76	0	0	0	-	0	1783491
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53374	SweptSolid	0	346	1	0	0	-	0	22344773
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53592	SweptSolid	0	156	0	0	0	-	0	49207333
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53592	SweptSolid	3	247	0	0	3	0	3	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53772	SweptSolid	0	44	0	0	0	-	0	1307831
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	53921	SweptSolid	0	278	0	0	0	-	0	48791514
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	54410	Clipping	0	44	0	0	0	-	0	1400976
@@ -331,7 +331,7 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	143491	SweptSolid	0	260	0	0	0	-	0	37223814
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	143664	SweptSolid	0	360	0	0	0	-	0	35579487
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	143837	SweptSolid	7	1073	1	0	7	0	7	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	144344	SweptSolid	3	114	1	0	3	0	4	-
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	144568	SweptSolid	0	158	0	0	0	-	0	13421818
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	144568	SweptSolid	26	226	0	0	26	0	26	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	144736	SweptSolid	0	80	0	0	0	-	0	19490752
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	145112	SweptSolid	0	28	0	0	0	-	0	739810
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	145365	Clipping	0	20	0	0	0	-	0	675612
@@ -430,7 +430,7 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	423069	Clipping	3	51	0	0	3	0	3	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	426240	Clipping	0	60	0	0	0	-	0	1112549
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	426336	SweptSolid	0	28	0	0	0	-	0	2991620
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	426679	Clipping	0	28	0	0	0	-	0	554601
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	426780	SweptSolid	0	24	0	0	0	-	0	242854
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	426780	SweptSolid	14	50	0	0	14	0	14	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	431974	SweptSolid	0	28	0	0	0	-	0	3434031
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	442318	Clipping	0	44	0	0	0	-	0	597242
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	448086	Clipping	0	76	0	0	0	-	0	2180155
@@ -558,10 +558,10 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	890707	Clipping	0	28	0	0	0	-	0	897342
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	890860	Clipping	0	28	0	0	0	-	0	1673807
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	891016	Clipping	0	28	0	0	0	-	0	660656
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	891221	SweptSolid	0	40	0	0	0	-	0	2767955
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	891553	SweptSolid	0	84	0	0	0	-	0	13162237
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	891553	SweptSolid	10	84	0	0	10	0	10	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	891721	SweptSolid	0	28	0	0	0	-	0	1264417
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	892212	Brep	0	234	0	0	0	-	0	21624668
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	892717	Brep	0	304	0	0	0	-	0	38503629
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	892717	Brep	27	303	0	0	0	29	27	-
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	892891	SweptSolid	0	52	0	0	0	-	0	26320657
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	893133	SweptSolid	0	246	1	0	0	-	0	14141694
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	896693	SweptSolid	0	28	0	0	0	-	0	708429
@@ -604,7 +604,7 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1247270	SweptSolid	0	12	0	0	0	-	0	220242
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1247537	SweptSolid	0	12	0	0	0	-	0	180187
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1247720	SweptSolid	0	12	0	0	0	-	0	209665
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1256100	Clipping	0	82	0	0	0	-	0	1671528
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1265258	Brep	0	252	0	0	0	-	0	32266606
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1265258	Brep	0	306	0	0	0	-	0	32266889
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1280178	Clipping	0	120	0	0	0	-	0	2415944
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1287307	SweptSolid	0	28	0	0	0	-	0	365357
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1293702	SweptSolid	0	96	0	0	0	-	0	496113855
@@ -643,11 +643,11 @@ ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1398327	Brep	0	236	0	0	0	-	0	7144475
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1399367	SweptSolid	0	28	0	0	0	-	0	1144544
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1399725	SweptSolid	0	36	0	0	0	-	0	25343
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400126	SweptSolid	0	36	0	0	0	-	0	25343
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400391	SweptSolid	0	36	0	0	0	-	0	23227
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400573	SweptSolid	0	36	0	0	0	-	0	25347
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400391	SweptSolid	0	77	1	0	0	-	0	23229
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400573	SweptSolid	0	144	1	0	0	-	5	25343
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1400840	SweptSolid	0	74	0	0	0	-	0	22702
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401021	SweptSolid	0	176	0	0	0	-	0	26922
-ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401204	SweptSolid	0	36	0	0	0	-	0	25347
+ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401204	SweptSolid	0	144	1	0	0	-	5	25339
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401471	SweptSolid	0	36	0	0	0	-	0	30097
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401653	SweptSolid	0	118	1	0	0	-	0	25609
 ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc	1401920	SweptSolid	0	292	1	0	0	-	0	23105

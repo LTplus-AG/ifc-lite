@@ -811,19 +811,29 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     torn elements.
   - A cheap world-quantized final gate alone leaves the 61° wall open.
 
-  **Shipped instead (option B):** only the wall-frame closure test judged as
-  emitted and the world-magnitude snap tolerance. Against merge-base a20989951:
-  - Pinned single-thread user CPU, min of 6 (base vs branch):
-    - ISSUE_098: world 7.65 vs 7.85 s, local 9.80 vs 9.30 s
-    - ISSUE_129: world 2.19 vs 2.12 s, local 2.17 vs 2.29 s
-    - Holter: world 3.74 vs 3.63 s, local 3.76 vs 3.97 s
+  **Shipped instead (option B, local frame only):** two changes, both scoped
+  to hosts stored relative to a per-element origin:
+  - the wall-frame closure test judges the cut as emitted;
+  - the snap tolerance uses the world magnitude.
+
+  World-frame code and output are unchanged: 33/33 fixture output hashes match
+  base, including ISSUE_098 and Holter. An earlier unscoped version cost a
+  consistent +1.7-2.7% on ISSUE_098 in the world frame, where it was not
+  needed.
+
+  Local frame against merge-base a20989951:
+  - Pinned single-thread user CPU, 6 interleaved runs:
+    - ISSUE_098: 9.05-9.89 s base vs 8.99-10.74 s branch
+    - ISSUE_129: 2.11-2.66 vs 2.12-2.54 s
+    - Holter: 3.30-3.89 vs 3.11-3.70 s
     - AC20: 0.03 s both
-  - Multi-threaded geometry, 8 interleaved rounds: every range overlaps base.
-    ISSUE_098 world was re-run over 12 rounds: median 1099 vs 1129 ms, min 764
-    vs 777 ms, with equal CSG subtract counts (338).
-  - No element got less watertight on ISSUE_098, ISSUE_129, rvt01, ISSUE_171 or
-    02_BIMcollab in either frame. ISSUE_098 world goes 361 -> 357 torn, local
-    306 -> 305.
+  - Multi-threaded geometry, median of 8 interleaved rounds:
+    - ISSUE_098: 866 vs 854 ms
+    - ISSUE_129: 971 vs 1010 ms (overlapping ranges; output identical)
+    - Holter: 602 vs 612 ms
+    - AC20: 21 vs 22 ms
+  - Closure: ISSUE_098 local goes from 306 to 305 torn elements, with none
+    worse.
   - The 61° wall stays open in the local frame; it is pinned as a known
     residual.
 

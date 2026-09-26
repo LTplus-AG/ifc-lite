@@ -160,6 +160,5 @@ describe('entity colour table WGSL (#6076)', () => {
     const fsMain = mainShaderSource.slice(mainShaderSource.indexOf('fn fs_main('));
     assert.match(fsMain, /entityOverrideColor\(input\.entityId\)/);
     assert.match(fsMain, /paintEntityOverride\(out\.color, entityOverride, irradiance, N, edgeDarken\)/);
-    assert.doesNotMatch(mainShaderSource, /isOverlay/, 'the equal-depth overlay flag is retired');
   });
 });

@@ -438,9 +438,12 @@ export const mainShaderSource = `
           var color = baseColor * irradiance;
 
           // flags.x bit 0 (value 1) = isSelected → selection highlight, forced opaque.
+          // bit 1 (value 2) = isOverlay → legacy overlay pipeline callers;
+          // preserve alpha and skip specular for their blended draw.
           // Selected via the per-draw flag (flat path) OR the per-occurrence flag
           // (instanced path — vs_instanced reads it from the instance buffer).
           let isSelected = ((uniforms.flags.x & 1u) == 1u) || ((input.instSelected & 1u) == 1u);
+          let isOverlay = (uniforms.flags.x & 2u) == 2u;
 
           // Selection highlight — a blue albedo RE-LIT by the scene lighting.
           //
@@ -476,16 +479,23 @@ export const mainShaderSource = `
             color = selectionColor.rgb * shade;
           }
 
-          // Force alpha to 1.0 for selected objects so the highlight is fully
-          // opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(input.color.a, 1.0, isSelected);
+          // Public getOverlayPipeline() callers can still use the emphasized
+          // overlay bit even though internal colour overrides now use a table.
+          let emphasizedOverlay = isOverlay && (uniforms.flags.x & 32u) != 0u;
+          if (emphasizedOverlay) {
+            let facet = 0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2))));
+            color = baseColor * facet;
+          }
+
+          // Selected objects and emphasized overlays draw fully opaque.
+          var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
 
           // Specular (#5386; specular.wgsl.ts), after the diffuse above. Not
-          // on the selection highlight (it would wash the blue out); a colour
-          // override is composited without it (paintEntityOverride below). The
+          // on the selection highlight or legacy overlay (it would wash out
+          // their colours); a table override is composited without it below. The
           // sun lobe is scaled exactly like the diffuse sun term, and both
           // terms like irradiance, so a preset's highlights and diffuse move together.
-          if (!isSelected) {
+          if (!isSelected && !isOverlay) {
             // Glass is an authored translucent material (mesh-material.ts
             // also gives it its smooth roughness). An X-Ray or compare fade
             // only lowers the alpha and stays a fade. Instanced occurrences

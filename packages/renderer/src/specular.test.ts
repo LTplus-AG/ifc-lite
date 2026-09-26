@@ -80,10 +80,10 @@ describe('default specular term (#5386)', () => {
     const specStart = fsMainBody.indexOf('surfaceSpecular(');
     assert.ok(specStart >= 0, 'expected fs_main to call surfaceSpecular(');
     // Walk backward from the call to the nearest enclosing `if`, and require
-    // it gates on !isSelected — the flag the selection-highlight branch tests.
+    // it gates on selection and the public overlay pipeline flags.
     const before = fsMainBody.slice(0, specStart);
-    const ifStart = before.lastIndexOf('if (!isSelected)');
-    assert.ok(ifStart >= 0, 'expected surfaceSpecular to be reached only inside `if (!isSelected)`');
+    const ifStart = before.lastIndexOf('if (!isSelected && !isOverlay)');
+    assert.ok(ifStart >= 0, 'expected surfaceSpecular to be reached only outside selection and overlay draws');
     // Guard the guard: confirm nothing closes that block before the call —
     // i.e. no unmatched `}` between the if and the call.
     const between = fsMainBody.slice(ifStart, specStart);

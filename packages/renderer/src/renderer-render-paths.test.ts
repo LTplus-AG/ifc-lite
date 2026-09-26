@@ -1864,6 +1864,19 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [0, 0, 0, 0], 'nothing to paint after clearing');
     });
 
+    it('keeps colour overrides available after CPU geometry is released (#6148 review)', () => {
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.releaseGeometryData();
+        assert.equal(scene.isGeometryDataReleased(), true);
+
+        setOverrides(h, new Map([[2, GREEN]]));
+        assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 2), GREEN);
+        h.render();
+        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
+    });
+
     it('paints a mesh that streams in AFTER the override without another setColorOverrides call', () => {
         const h = makeHarness();
         seedBatches(h);

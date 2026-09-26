@@ -150,7 +150,7 @@ scene.setColorOverrides(lensResult.colorMap, device, pipeline);
 scene.clearColorOverrides();
 ```
 
-Color overrides are shaded from a per-entity color table the renderer reads in its normal draw, so the base model is never modified or copied, and a mesh that streams in after the call is painted too; `hiddenIds` is applied separately through your visibility mechanism. Ghosted (unmatched) entries carry a shared ghost color you can detect with `isGhostColor` if you want to filter them out of legends.
+Color overrides are shaded from a per-entity color table during opaque model draws, so the base model is never modified or copied. An eligible opaque mesh that streams in after the call is painted too; `hiddenIds` is applied separately through your visibility mechanism. Ghosted (unmatched) entries carry a shared ghost color you can detect with `isGhostColor` if you want to filter them out of legends.
 
 This is exactly how the viewer wires it: the Lens panel evaluates the active lens, pushes `colorMap` into the store, and the geometry streaming hook calls `scene.setColorOverrides` on the next frame. See [Rendering](rendering.md) for the renderer setup.
 

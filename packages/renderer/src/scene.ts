@@ -2288,7 +2288,8 @@ export class Scene {
    *  - Bounding boxes are precomputed and cached for all entities
    *  - meshDataMap and bucket meshData arrays are cleared (typed arrays become GC-eligible)
    *  - Color updates (updateMeshColors) are no longer available
-   *  - Partial batch creation and color overlays are no longer available
+   *  - Partial batch creation is no longer available; color overrides still
+   *    work through the GPU-resident per-entity table
    *  - CPU raycasting falls back to bounding-box-only (no triangle intersection)
    *  - Selection highlighting must use GPU picking instead of CPU mesh reconstruction
    *
@@ -2716,12 +2717,6 @@ export class Scene {
     // The override set is changing — invalidate the partial-batch cache epoch so
     // the render loop rebuilds any promotion-split sub-batches (see render loop).
     this.colorOverrideGeneration++;
-
-    if (this.geometryReleased) {
-      console.warn('[Scene] setColorOverrides called after geometry data was released — skipping.');
-      this.clearColorOverrideState();
-      return;
-    }
 
     if (overrides.size === 0) {
       this.clearColorOverrideState();

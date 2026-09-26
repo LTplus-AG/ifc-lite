@@ -6,10 +6,9 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Per-field rows (`GeorefRow`, `AngleRow`, `TerrainHeightButton`) live in
- * `./georef-rows` (#5812): they carry the panel's actual labelling fixes
- * (see that file's header), and were extracted rather than edited in place
- * so this file — already over the repo's ~400-line module guideline before
+ * Per-field rows (`GeorefRow`, `AngleRow`) live in `./georef-rows` (#5812),
+ * and `TerrainHeightButton` lives in `./georef-terrain-height-button`.
+ * They were extracted so this file — already over the repo's ~400-line module guideline before
  * this change — does not grow.
  */
 
@@ -40,7 +39,8 @@ import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
-import { GeorefRow, AngleRow, TerrainHeightButton } from './georef-rows';
+import { GeorefRow, AngleRow } from './georef-rows';
+import { TerrainHeightButton } from './georef-terrain-height-button';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 

@@ -112,9 +112,18 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     assert.ok(scaleLabel?.parentElement, 'Scale row renders');
     const row = scaleLabel.parentElement;
     assert.equal(row.getAttribute('role'), null, 'the row div itself is never interactive');
+    const valueButton = row.querySelector('button');
+    assert.equal(valueButton?.getAttribute('aria-label'), 'Scale: 1');
     clickRow(row);
     const input = getByRoleTextbox(container, 'Scale');
     assert.equal(input, row.querySelector('input'), 'the labelled control is the one this same row now shows');
+    const helpId = input.getAttribute('aria-describedby');
+    assert.ok(helpId, 'Scale guidance is associated with its input');
+    assert.ok(document.getElementById(helpId)?.textContent, 'the description target contains guidance');
+    const cancel = [...row.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.includes('Cancel'));
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(document.activeElement, valueButton, 'focus returns to the field value after editing');
   });
 
   it('keeps the row a single DOM node across the non-editing -> editing switch (regression)', () => {
@@ -156,6 +165,33 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     clickRow(mapUnitLabel.parentElement);
     const select = getByRoleTextbox(container, 'MapUnit');
     assert.equal(select.tagName, 'SELECT');
+  });
+
+  it('names the angle value and restores focus after its editor closes', () => {
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    openCoordinateOperation(container);
+    const label = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Angle to Grid North');
+    assert.ok(label?.parentElement);
+    const row = label.parentElement;
+    const valueButton = row.querySelector('button[aria-label]');
+    assert.match(valueButton?.getAttribute('aria-label') ?? '', /^Angle to Grid North: /);
+    assert.ok(valueButton);
+    click(valueButton);
+    const input = getByRoleTextbox(row, 'Angle to Grid North');
+    const noteId = input.getAttribute('aria-describedby');
+    assert.ok(noteId);
+    assert.match(document.getElementById(noteId)?.textContent ?? '', /XAxisAbscissa/);
+    const cancel = [...row.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.includes('Cancel'));
+    assert.ok(cancel);
+    click(cancel);
+    assert.equal(document.activeElement, valueButton);
   });
 
   it('the "heights are ellipsoidal" Checkbox is reachable by getByLabelText', () => {
@@ -216,7 +252,7 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
 
     // Both the edit-value trigger and the terrain button are still
     // separately reachable by getByRole('button', { name }).
-    const editButton = getByRoleButtonName(row, '12m');
+    const editButton = getByRoleButtonName(row, 'OrthogonalHeight: 12m');
     assert.ok(editButton);
     const terrainButton = getByRoleButtonName(row, '42.5 m');
     assert.ok(terrainButton);

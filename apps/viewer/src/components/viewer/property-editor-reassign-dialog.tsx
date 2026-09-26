@@ -157,7 +157,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {/* searchable full list */}
           <Field
             label={t('propertyEditor.reassign.targetClass')}
-            error={trimmedTarget.length > 0 && !knownTarget ? t('propertyEditor.reassign.nonStandard', { schema }) : undefined}
+            hint={trimmedTarget.length > 0 && !knownTarget ? t('propertyEditor.reassign.nonStandard', { schema }) : undefined}
           >
             <ComboInput value={target} onChange={setTarget} options={targets} placeholder={t('propertyEditor.reassign.searchPlaceholder')} />
           </Field>

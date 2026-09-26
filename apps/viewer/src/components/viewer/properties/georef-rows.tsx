@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Per-field rows for `GeoreferencingPanel`: `GeorefRow`, `AngleRow` and
- * `TerrainHeightButton`, extracted here so `GeoreferencingPanel.tsx` does not
- * grow past its size (#5812).
+ * Per-field rows for `GeoreferencingPanel`: `GeorefRow` and `AngleRow`,
+ * extracted here so `GeoreferencingPanel.tsx` does not grow past its size (#5812).
  *
  * #5812 labelling: the visible label renders regardless of editing state,
  * so `<Field label>` around the editor would duplicate it; `aria-label` on
@@ -21,21 +20,20 @@
  * clickable; the row also never swaps host element type on `editing`.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Check, X, PenLine, Mountain } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef, useEffect, useId } from 'react';
+import { Check, X, PenLine } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
-import { useViewerStore } from '@/store';
 import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { parseLocalizedRotationDegrees } from './georeference-angle';
 
 /** The value cell: a `<button>` when `clickable` (sibling of `children`, never its ancestor), else a plain `<div>`. */
-function ValueCell({ clickable, onClick, children }: { clickable: boolean | undefined; onClick: () => void; children: React.ReactNode }) {
+function ValueCell({ clickable, onClick, label, buttonRef, children }: { clickable: boolean | undefined; onClick: () => void; label: string; buttonRef: React.Ref<HTMLButtonElement>; children: React.ReactNode }) {
   const className = 'group/valuecell flex items-start gap-1 min-w-0 text-right';
   if (!clickable) return <div className={className}>{children}</div>;
-  return <button type="button" onClick={onClick} className={`${className} bg-transparent border-0 p-0 cursor-pointer`}>{children}</button>;
+  return <button ref={buttonRef} type="button" aria-label={label} onClick={onClick} className={`${className} bg-transparent border-0 p-0 cursor-pointer`}>{children}</button>;
 }
 
 // ── Field-specific assistance data ─────────────────────────────────────
@@ -97,6 +95,9 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
   const [editing, setEditing] = useState(false), [editValue, setEditValue] = useState('');
   const seededValue = useRef(''); // a commit still equal to the seed is a no-op, never a re-parse of a rounded display string
   const editControlRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
+  const valueButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
+  const helpId = useId();
 
   const hint = useMemo(() => getFieldHint(fieldEntity ?? '', fieldName ?? ''), [fieldEntity, fieldName]);
 
@@ -104,12 +105,17 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
     if (!editable || isComputed) return;
     seededValue.current = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 20, useGrouping: false }) : String(value ?? ''); // locale-formatted seed (#4918), commitEdit parses via parseLocaleNumber
     setEditValue(seededValue.current);
+    restoreFocusRef.current = true;
     setEditing(true);
   }, [value, editable, isComputed, locale]);
 
   // See the file header re: `autoFocus`.
   useEffect(() => {
     if (editing) editControlRef.current?.focus();
+    else if (restoreFocusRef.current) {
+      valueButtonRef.current?.focus();
+      restoreFocusRef.current = false;
+    }
   }, [editing]);
 
   const commitEdit = useCallback((overrideValue?: string) => {
@@ -207,6 +213,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                   <input
                     ref={editControlRef as React.Ref<HTMLInputElement>}
                     aria-label={label}
+                    aria-describedby={hint.helpTextKey ? helpId : undefined}
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -237,11 +244,11 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
               )}
               {/* Help text */}
               {hint.helpTextKey && (
-                <span className="text-2xs text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
+                <span id={helpId} className="text-2xs text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
               )}
             </div>
           ) : (
-            <ValueCell clickable={clickable} onClick={startEdit}>{valueCellContent}</ValueCell>
+            <ValueCell clickable={clickable} onClick={startEdit} label={`${label}: ${displayValue}${suffix ?? ''}`} buttonRef={valueButtonRef}>{valueCellContent}</ValueCell>
           )}
         </div>
         {children}
@@ -266,16 +273,24 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const valueButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
+  const axesNoteId = useId();
   const label = t('properties.georef.angleToGridNorth');
 
   const startEdit = useCallback(() => {
     if (!editable) return;
     setEditValue(angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6, useGrouping: false }) : ''); // locale-formatted seed (#4918), see GeorefRow.startEdit
+    restoreFocusRef.current = true;
     setEditing(true);
   }, [angle, editable, locale]);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
+    else if (restoreFocusRef.current) {
+      valueButtonRef.current?.focus();
+      restoreFocusRef.current = false;
+    }
   }, [editing]);
 
   const commitEdit = useCallback(() => {
@@ -327,6 +342,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
               <input
                 ref={inputRef}
                 aria-label={label}
+                aria-describedby={axesNoteId}
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -341,10 +357,10 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 <X className="h-3 w-3" />
               </IconButton>
             </div>
-            <span className="text-2xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
+            <span id={axesNoteId} className="text-2xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>
         ) : (
-          <ValueCell clickable={editable} onClick={startEdit}>{valueCellContent}</ValueCell>
+          <ValueCell clickable={editable} onClick={startEdit} label={`${label}: ${angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}${t('properties.georef.degUnit')}`} buttonRef={valueButtonRef}>{valueCellContent}</ValueCell>
         )}
       </div>
     </>
@@ -352,44 +368,4 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   // Always a plain <div>: see GeorefRow's return for why.
   return <div className={rowClassName}>{rowBody}</div>;
-}
-
-/** Small button to apply Cesium terrain height to OrthogonalHeight field */
-export function TerrainHeightButton({ modelId, editable, onApply }: {
-  modelId?: string;
-  editable?: boolean;
-  onApply: (height: number) => void;
-}) {
-  const { t, locale } = useTranslation();
-  const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
-  const terrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
-  // Geoid-inverted snap target (#1456); display still uses terrainHeight.
-  const terrainSaveHeight = useViewerStore(s => s.cesiumTerrainSaveHeight);
-  const terrainSource = useViewerStore(s => s.cesiumTerrainSource);
-  const sourceModelId = useViewerStore(s => s.cesiumSourceModelId);
-
-  // Only the active Cesium model, once the geoid-corrected snap target is ready (#1456).
-  if (!cesiumEnabled || terrainHeight === null || terrainSaveHeight === null || !editable || !modelId || modelId !== sourceModelId) return null;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onApply(terrainSaveHeight);
-          }}
-          className="flex items-center gap-0.5 text-2xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors mt-0.5"
-        >
-          <Mountain className="h-2.5 w-2.5" />
-          <span>{t('properties.georef.heightMeters', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {terrainSource
-          ? t('properties.georef.setOrthogonalHeightTooltipViaSource', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }), source: terrainSource })
-          : t('properties.georef.setOrthogonalHeightTooltip', { value: formatLocaleNumber(locale, terrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
-      </TooltipContent>
-    </Tooltip>
-  );
 }

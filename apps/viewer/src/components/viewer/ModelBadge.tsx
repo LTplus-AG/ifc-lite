@@ -23,10 +23,12 @@ export function ModelBadge({ modelId, className }: { modelId: string; className?
   if (!name) return null;
   return (
     <span
+      role="note"
+      aria-label={name}
       className={cn('inline-flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground', className)}
       title={name}
     >
-      <FileBox className="h-3 w-3 shrink-0" />
+      <FileBox className="h-3 w-3 shrink-0 text-primary" />
       <span className="truncate font-mono">{name}</span>
     </span>
   );

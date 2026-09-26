@@ -29,6 +29,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
@@ -110,8 +111,8 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
     toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 
-  const handleClear = () => {
-    if (!confirm(t('extensionsPanels.auditLogPanel.clearConfirm'))) return;
+  const handleClear = async () => {
+    if (!await confirmDialog({ description: t('extensionsPanels.auditLogPanel.clearConfirm'), destructive: true })) return;
     host.audit.clear();
     // Wipe the IDB mirror too — otherwise reload resurrects what the
     // user just asked to forget.

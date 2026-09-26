@@ -18,7 +18,8 @@
  */
 
 import React from 'react';
-import { ChevronDown, ChevronUp, HelpCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, HelpCircle, Search } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -40,6 +41,7 @@ import { AnalyzeTab } from './tabs/AnalyzeTab';
 import { AuthorTab } from './tabs/AuthorTab';
 import { RibbonSwitchNotice } from './RibbonSwitchNotice';
 import { useRibbonContextualTab } from './useRibbonContextualTab';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 const RIBBON_TABS: { id: RibbonTabId; labelKey: TranslationKey }[] = [
   { id: 'file', labelKey: 'ribbon.tab.file' },
@@ -134,7 +136,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
             </span>
             {activeProgress.indeterminate ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <Spinner size="sm" className="text-muted-foreground" />
             ) : (
               <>
                 <Progress value={activeProgress.percent ?? 0} className="h-2 w-28" />
@@ -179,6 +181,16 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
         <ExportChangesButton />
 
         <div className="ml-1 flex items-center gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700/60">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 whitespace-nowrap text-xs"
+            onClick={emitOpenCommandPalette}
+          >
+            <Search className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('ribbon.commands')}
+            <kbd className="text-xs text-muted-foreground">{t('ribbon.commandsShortcut')}</kbd>
+          </Button>
           <Tooltip>
             <TooltipTrigger asChild>
               <div>

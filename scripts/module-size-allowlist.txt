@@ -83,9 +83,9 @@
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1660 apps/viewer/src/components/viewer/LensPanel.tsx
   1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
-   541 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
+   539 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx
-   713 apps/viewer/src/components/viewer/measureHandlers.ts
+   594 apps/viewer/src/components/viewer/measureHandlers.ts
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
@@ -104,7 +104,7 @@
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
-  1134 apps/viewer/src/components/viewer/selectionHandlers.ts
+  1131 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    524 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
@@ -113,7 +113,7 @@
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   916 apps/viewer/src/components/viewer/useMouseControls.ts
+   914 apps/viewer/src/components/viewer/useMouseControls.ts
    533 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1776 apps/viewer/src/components/viewer/Viewport.tsx
   1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
@@ -148,7 +148,6 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   491 apps/viewer/src/lib/scripts/templates/create-building.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
    440 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
@@ -173,7 +172,6 @@
    536 apps/viewer/src/store/slices/scriptSlice.ts
    498 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
-   412 apps/viewer/src/store/slices/uiSlice.ts
    415 apps/viewer/src/store/teardown.ts
    688 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts

@@ -32,6 +32,44 @@ import { join } from 'path';
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
+test('#5813 Measure Clear all uses the themed dialog', async ({ page }, testInfo) => {
+  test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
+  await page.goto('/');
+  await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
+  await page.locator('input[type="file"]').first().setInputFiles(join(process.cwd(), FIXTURE));
+  await page.waitForFunction((key) => {
+    const store = (globalThis as Record<string, { getState(): { models: Map<string, unknown> } }>)[key];
+    return store.getState().models.size > 0;
+  }, STORE, { timeout: 180000 });
+  await page.evaluate((key) => {
+    const store = (globalThis as Record<string, { setState(value: object): void }>)[key];
+    store.setState({
+      activeTool: 'measure',
+      measurements: [{
+        id: 'dialog-measurement',
+        start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 },
+        end: { x: 1, y: 0, z: 0, screenX: 1, screenY: 0 },
+        distance: 1,
+      }],
+    });
+  }, STORE);
+
+  const clear = page.locator('[data-testid="measure-toolbar"] button[aria-label="Clear all"]');
+  await expect(clear).toBeVisible();
+  await clear.click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Clear every measurement? This cannot be undone.');
+  await testInfo.attach('measure-clear-dialog.png', { body: await page.screenshot(), contentType: 'image/png' });
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await dialog.getByRole('button', { name: 'Confirm' }).click();
+  await expect(clear).toHaveCount(0);
+});
+
 type StoreState = Record<string, (...args: never[]) => unknown> & {
   models: Map<string, { ifcDataStore: { entityIndex: { byType: Map<string, number[]> } } | null }>;
 };

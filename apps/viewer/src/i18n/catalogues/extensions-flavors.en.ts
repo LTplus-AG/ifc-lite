@@ -94,7 +94,6 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.tab.ideas': 'Ideas',
   'extensionsFlavors.extensionsPanel.tab.repair': 'Repair',
   'extensionsFlavors.extensionsPanel.tab.audit': 'Audit',
-  'extensionsFlavors.extensionsPanel.tab.privacy': 'Privacy',
   'extensionsFlavors.extensionsPanel.emptyState.title': 'No extensions installed',
   'extensionsFlavors.extensionsPanel.emptyState.description':
     'Extensions are sandboxed bundles that add commands, lenses, panels, or exporters. You can install one three ways:',

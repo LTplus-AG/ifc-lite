@@ -230,7 +230,6 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.helpOverlay':
     'The prompt overlay on the active flavor is appended to every chat system prompt — use it for stable preferences. Extract from chat scans the current session for explicit preferences and proposes them.',
   'extensionsPanels.privacyPanel.extractFromChat': 'Extract from chat',
-  'extensionsPanels.privacyPanel.closeAriaLabel': 'Close',
   'extensionsPanels.privacyPanel.storeHeading': 'What we store locally',
   'extensionsPanels.privacyPanel.storeBody1':
     'ifc-lite keeps a content-free action log of the high-level intents you perform (model loads, lens applies, exports). We use it to mine recurring patterns and surface one-click tool suggestions. The log never records model content, chat content, file names, or API keys.',

@@ -19,7 +19,6 @@ import {
   Home,
   Maximize2,
   Crosshair,
-  Loader2,
   MoreHorizontal,
   Plus,
   Download,
@@ -27,7 +26,9 @@ import {
   Sun,
   Moon,
   PersonStanding,
+  Search,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -179,7 +181,7 @@ export function MobileToolbar() {
         aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner size="md" />
         ) : (
           <FolderOpen className="h-4 w-4" />
         )}
@@ -279,6 +281,11 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={emitOpenCommandPalette}>
+            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+            {t('shellChrome.mobileToolbar.commands')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
             checked={activeTool === 'walk'}

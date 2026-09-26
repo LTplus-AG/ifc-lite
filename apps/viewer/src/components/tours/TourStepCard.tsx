@@ -14,7 +14,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { computePosition, autoUpdate, offset, flip, shift, type Placement } from '@floating-ui/dom';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
@@ -146,7 +147,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
               disabled={demoLoading}
               onClick={() => void runStepAction()}
             >
-              {demoLoading && <Loader2 className="animate-spin" />}
+              {demoLoading && <Spinner />}
               {step.action.label}
             </Button>
           )}

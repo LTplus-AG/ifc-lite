@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `PrivacyPanel` — local privacy controls.
+ * `PrivacyPanel` — local privacy controls shown in Settings.
  *
  * Surfaces the no-content rule from RFC §06 §7 in prose, plus three
  * actions the user can take any time:
@@ -13,13 +13,14 @@
  *   - Edit the prompt overlay (their personal notes the assistant
  *     sees alongside the system prompt).
  *
- * Everything here is local. Nothing here triggers a network call.
+ * The action-log and overlay controls are local. Analytics consent updates
+ * the browser's capture policy without sending a consent event.
  *
  * Spec: docs/architecture/ai-customization/06-self-improvement.md §7.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Brain, Download, Eraser, ScrollText, Save, Shield, X } from 'lucide-react';
+import { Brain, Download, Eraser, ScrollText, Save, Shield } from 'lucide-react';
 import {
   clampOverlay,
   extractMemoryProposals,
@@ -31,21 +32,17 @@ import {
 import { useViewerStore } from '@/store';
 import { downloadFile } from '@/lib/export/download';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { localizedFlavorName } from './localized-flavor-metadata';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { AnalyticsConsentSection } from '@/components/viewer/settings/AnalyticsConsentSection';
 
-interface PrivacyPanelProps {
-  onClose?: () => void;
-}
-
-export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
+export function PrivacyPanel() {
   const { t, locale } = useTranslation();
   const host = useExtensionHost();
   const [logSize, setLogSize] = useState({ events: 0, bytes: 0 });
@@ -94,8 +91,8 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
     toast.success(t('extensionsPanels.privacyPanel.exportLogToast'));
   };
 
-  const handleClearLog = () => {
-    if (!confirm(t('extensionsPanels.privacyPanel.clearLogConfirm'))) return;
+  const handleClearLog = async () => {
+    if (!await confirmDialog({ description: t('extensionsPanels.privacyPanel.clearLogConfirm'), destructive: true })) return;
     host.actionLog.clear();
     // Wipe the IDB mirror too — otherwise reload would resurrect the
     // events the user just asked to forget.
@@ -167,7 +164,8 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="space-y-4">
+      <AnalyticsConsentSection />
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
@@ -181,15 +179,9 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
             </p>
           </HelpHint>
         </div>
-        {onClose && (
-          <IconButton label={t('extensionsPanels.privacyPanel.closeAriaLabel')} onClick={onClose}>
-            <X className="h-3.5 w-3.5" />
-          </IconButton>
-        )}
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="px-4 py-3 space-y-4 text-xs">
+      <div className="px-4 py-3 space-y-4 text-xs">
           <section className="space-y-1.5">
             <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
               {t('extensionsPanels.privacyPanel.storeHeading')}
@@ -314,8 +306,7 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
               </>
             )}
           </section>
-        </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

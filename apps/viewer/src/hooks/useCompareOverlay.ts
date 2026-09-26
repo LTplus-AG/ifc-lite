@@ -20,6 +20,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import { analysisStampOf, useAnalysisStaleness } from './useAnalysisStaleness';
 import { buildCompareOverlay } from '@/lib/compare/overlay';
 
 type ViewerStore = ReturnType<typeof useViewerStore.getState>;
@@ -82,11 +83,12 @@ export function useCompareOverlay(): void {
 
   const compareResult = useViewerStore((s) => s.compareResult);
   const showUnchanged = useViewerStore((s) => s.compareShowUnchanged);
+  const stale = useAnalysisStaleness(analysisStampOf(compareResult));
 
   useEffect(() => {
     const store = useViewerStore.getState();
 
-    if (!compareResult) {
+    if (!compareResult || stale) {
       if (colorActiveRef.current) {
         handBackColorChannel(store);
         colorActiveRef.current = false;
@@ -107,7 +109,7 @@ export function useCompareOverlay(): void {
     // override map clobbered any prior lens colours — so teardown must hand the
     // channel back regardless of the map size (don't gate on `.size`).
     colorActiveRef.current = true;
-  }, [compareResult, showUnchanged]);
+  }, [compareResult, showUnchanged, stale]);
 
   // Teardown on unmount (panel closed) — restore the scene we touched.
   useEffect(() => {

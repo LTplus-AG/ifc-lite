@@ -107,8 +107,8 @@ export const comparePanelEn = {
   'comparePanel.runControls.matchByContentLabel': 'Match re-exported elements by content',
   'comparePanel.runControls.matchByContentHint':
     'Re-pairs elements whose GlobalId changed but whose content did not.',
-  'comparePanel.runControls.comparing': 'Comparing…',
   'comparePanel.runControls.runComparison': 'Run comparison',
+  'comparePanel.runControls.cancel': 'Cancel comparison',
   'comparePanel.runControls.geometryUnavailablePlacementOnly':
     'Neither model has mesh geometry fingerprints (loaded outside the WASM mesh path), so SHAPE changes can’t be detected. Placement-driven moves and data changes are still compared.',
   'comparePanel.runControls.geometryUnavailableFull':

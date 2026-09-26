@@ -22,7 +22,8 @@
  */
 
 import { useCallback, useState } from 'react';
-import { EyeOff, Download, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { EyeOff, Download, AlertCircle, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { AnonymizeResult, RelatedEntityOptions } from '@ifc-lite/export';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -276,7 +277,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
 
             {isExporting && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner size="md" />
                 {t('anonymizedExport.dialog.exportingStatus')}
               </div>
             )}
@@ -330,7 +331,7 @@ export function AnonymizedExportDialog({ trigger }: AnonymizedExportDialogProps)
             <Button onClick={() => void handleExport()} disabled={isExporting || !set.hasSelection || set.includedIds.size === 0}>
               {isExporting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner size="md" className="mr-2" />
                   {t('anonymizedExport.dialog.exportingButton')}
                 </>
               ) : (

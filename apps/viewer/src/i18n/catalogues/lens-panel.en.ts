@@ -10,10 +10,8 @@
  * (`LensCard`, its legend sort control and per-lens action tooltips), and
  * the footer status line.
  *
- * The `TYPE_LABELS` (rule-criteria / auto-color source) and
- * `OPERATOR_LABELS` display tables moved to the same data-table-plus-
- * `labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and the clash-panel
- * catalogue's `SEVERITY`/`REVIEW_STATUS` tables use.
+ * Criteria and auto-color source names use the type-label table here;
+ * operator names come from the shared filter-operator catalogue (#5892).
  *
  * Deliberately out of scope: the `'New Rule'` default rule name and the
  * `'Color by '` auto-color name prefix are equality-checked SENTINELS this
@@ -85,16 +83,6 @@ export const lensPanelEn = {
   'lensPanel.ruleEditor.classificationSystemPlaceholder': 'System...',
   'lensPanel.ruleEditor.classificationCodePlaceholder': 'Code...',
   'lensPanel.ruleEditor.valuePlaceholder': 'Value...',
-
-  // Lens operators (`LensOperator`)
-  'lensPanel.operator.exists': 'Exists',
-  'lensPanel.operator.equals': 'Equals',
-  'lensPanel.operator.contains': 'Contains',
-  'lensPanel.operator.notEqual': 'Not Equal',
-  'lensPanel.operator.gt': '>',
-  'lensPanel.operator.gte': '>=',
-  'lensPanel.operator.lt': '<',
-  'lensPanel.operator.lte': '<=',
 
   // Rule action (`LensRule['action']`)
   'lensPanel.action.colorize': 'Color',

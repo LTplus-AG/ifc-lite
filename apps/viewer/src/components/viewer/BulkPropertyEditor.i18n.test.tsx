@@ -22,6 +22,22 @@ afterEach(() => {
 });
 
 describe('BulkPropertyEditor localization (#4918)', () => {
+  it('#5892 uses the shared operator label after a live locale change', async () => {
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    click(container.querySelector('button')!);
+    await advance(0);
+    const addFilter = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Add Filter'));
+    assert.ok(addFilter);
+    click(addFilter);
+    const operator = [...document.body.querySelectorAll('[role="combobox"]')]
+      .find((element) => element.textContent?.trim() === '=');
+    assert.ok(operator, 'new property filter shows the equality operator');
+
+    registerLocale('bulk-shared-operator-witness', { 'filterOperators.eq': '[equal]' });
+    act(() => setLocale('bulk-shared-operator-witness'));
+    assert.equal(operator.textContent?.trim(), '[equal]');
+  });
+
   it('names the property-filter remove action after adding a filter (#5811)', async () => {
     const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
     click(container.querySelector('button')!);

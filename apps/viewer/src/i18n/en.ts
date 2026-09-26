@@ -31,6 +31,7 @@ import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { geometryExportDialogsEn } from './catalogues/geometry-export-dialogs.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
+import { filterOperatorsEn } from './catalogues/filter-operators.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
@@ -102,6 +103,7 @@ export const en = {
   ...commandPaletteEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
+  ...filterOperatorsEn,
   ...chartsEn,
   ...listsEn,
   ...clashGroupsEn,

@@ -27,7 +27,10 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
   const { t } = useTranslation();
   const models = useViewerStore((state) => state.models);
   const [activeGroup, setActiveGroup] = useState(0);
-  const groups = filter ?? [emptyFilterGroup()];
+  // Empty groups are an editing state. Persist only once a rule exists, but
+  // keep tabs usable when the user adds groups before the first rule.
+  const [emptyGroups, setEmptyGroups] = useState<ClashSetFilter>([emptyFilterGroup()]);
+  const groups = filter ?? emptyGroups;
   const editorState = useRef<FilterGroupEditorState>({ groups, activeGroup });
   editorState.current = { groups, activeGroup };
   const unreadable = unreadableRuleCount(filter);
@@ -42,8 +45,9 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
     // render (e.g. add two groups, then add a rule to the newest group).
     editorState.current = preview;
     setActiveGroup(preview.activeGroup);
+    if (!activeClashSetFilter(preview.groups)) setEmptyGroups(preview.groups);
     onChange((previous) => {
-      const previousGroups = previous ?? [emptyFilterGroup()];
+      const previousGroups = previous ?? previousState.groups;
       const next = updater({ groups: previousGroups, activeGroup: previousState.activeGroup });
       if (next.groups === previousGroups) return previous; // Selecting a tab is not an edit.
       // As before #5898, an explicit edit discards unreadable entries only
@@ -65,7 +69,13 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
             variant="ghost"
             size="sm"
             className="h-7 gap-1 text-2xs text-muted-foreground"
-            onClick={() => onChange(() => undefined)}
+            onClick={() => {
+              const reset = [emptyFilterGroup()];
+              editorState.current = { groups: reset, activeGroup: 0 };
+              setEmptyGroups(reset);
+              setActiveGroup(0);
+              onChange(() => undefined);
+            }}
             title={t('clashTools.setFilter.clearTooltip')}
           >
             <Trash2 className="h-3 w-3" /> {t('clashTools.setFilter.clearLabel')}

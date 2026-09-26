@@ -107,6 +107,28 @@ describe('ClashSetFilterEditor', () => {
     assert.ok(labels.some((l) => l.includes('Add rule')));
   });
 
+  it('keeps empty group tabs while a new side is being composed (#5898)', () => {
+    const { container, commits } = mount(undefined);
+    click(buttonByText(container, 'Add group'));
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim());
+    assert.deepEqual(tabs, ['Group 1(0)', 'Group 2(0)']);
+    assert.equal(commits.length, 1);
+    assert.equal(commits[0], undefined, 'no rule means selector fallback remains persisted');
+    assert.equal(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim(), 'Group 2(0)');
+
+    act(() => {
+      buttonByText(container, 'Add rule').dispatchEvent(new window.PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, button: 0,
+      }));
+    });
+    const ifcType = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.trim() === 'IFC Type');
+    assert.ok(ifcType, 'shared rule menu must offer IFC Type');
+    click(ifcType);
+    assert.equal(commits.at(-1)?.length, 2);
+    assert.equal(commits.at(-1)?.[1]?.rules[0]?.kind, 'ifcType');
+  });
+
   it('shows model names and commits the selected durable source identity (#4019)', () => {
     type ModelRule = ReturnType<typeof Rule.model>;
     const commits: ModelRule[] = [];

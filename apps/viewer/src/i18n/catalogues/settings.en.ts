@@ -31,6 +31,9 @@ export const settingsEn = {
 
   'settings.display.navigationTitle': 'Navigation',
   'settings.display.spaceMouseTitle': 'SpaceMouse',
+  'settings.display.performanceTitle': 'Performance',
+  'settings.display.performanceStats': 'Show performance stats',
+  'settings.display.performanceStatsHint': 'Show FPS, memory use and triangle count in the status bar.',
 
   'settings.privacy.analyticsTitle': 'Product analytics',
   'settings.privacy.analyticsDisclosure': 'The hosted viewer sends anonymous usage and error events, such as the command used, model schema, counts and build version.',

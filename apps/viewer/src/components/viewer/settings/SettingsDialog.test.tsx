@@ -67,4 +67,17 @@ describe('Settings dialog (#5857)', () => {
     click(dark);
     assert.equal(useViewerStore.getState().theme, 'dark');
   });
+
+  it('Display → performance stats defaults off and toggles the persisted setting (#5868)', () => {
+    assert.equal(useViewerStore.getState().showPerformanceStats, false);
+    const dialog = mountAndOpen('display');
+    const toggle = dialog.querySelector<HTMLElement>('#settings-performance-stats');
+    assert.ok(toggle, 'Display settings show the performance toggle');
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    click(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(useViewerStore.getState().showPerformanceStats, true);
+    assert.equal(localStorage.getItem('ifc-lite:show-performance-stats'), 'true');
+    act(() => useViewerStore.getState().setShowPerformanceStats(false));
+  });
 });

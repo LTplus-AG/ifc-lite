@@ -26,6 +26,7 @@ import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/re
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
+import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
@@ -122,6 +123,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
+  showPerformanceStats: boolean;
   visualEnhancementsEnabled: boolean;
   edgeContrastEnabled: boolean;
   edgeContrastIntensity: number;
@@ -171,6 +173,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleColorful: () => void;
   setIsMobile: (isMobile: boolean) => void;
   toggleHoverTooltips: () => void;
+  setShowPerformanceStats: (enabled: boolean) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setEdgeContrastEnabled: (enabled: boolean) => void;
   setEdgeContrastIntensity: (intensity: number) => void;
@@ -201,23 +204,6 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setAnonymizedExportRequested: (requested: boolean) => void;
 }
 
-/** Apply the correct CSS classes on <html> for the given theme */
-function applyThemeClasses(theme: ThemeMode) {
-  const el = document.documentElement;
-  el.classList.toggle('dark', theme === 'dark');
-  el.classList.toggle('colorful', theme === 'colorful');
-}
-
-/**
- * True when any geometry is loaded — federated model map has entries, or
- * the legacy single-model `geometryResult` has a mesh. Centralised so the
- * merge-layers toggle has one source of truth for "is a model loaded?".
- */
-function hasLoadedModel(state: UICrossSliceState): boolean {
-  if (state.models.size > 0) return true;
-  return (state.geometryResult?.meshes.length ?? 0) > 0;
-}
-
 export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UISlice> = (set, get) => ({
   ...geometryLoadSettingsInitialState,
   ...createGeometryLoadSettings(set, get, () => hasLoadedModel(get())),
@@ -233,6 +219,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
+  showPerformanceStats: initialShowPerformanceStats(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
   edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
@@ -365,6 +352,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setIsMobile: (isMobile) => set({ isMobile }),
   toggleHoverTooltips: () => set((state) => ({ hoverTooltipsEnabled: !state.hoverTooltipsEnabled })),
+  setShowPerformanceStats: (showPerformanceStats) => {
+    persistShowPerformanceStats(showPerformanceStats);
+    set({ showPerformanceStats });
+  },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setEdgeContrastEnabled: (edgeContrastEnabled) => set({ edgeContrastEnabled }),
   setEdgeContrastIntensity: (edgeContrastIntensity) => set({ edgeContrastIntensity }),

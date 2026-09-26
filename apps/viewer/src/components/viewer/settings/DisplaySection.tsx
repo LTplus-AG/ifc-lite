@@ -9,15 +9,34 @@
  */
 
 import { useTranslation } from '@/i18n';
+import { useViewerStore } from '@/store';
+import { Switch } from '@/components/ui/switch';
 import { SpaceMousePanel } from '../SpaceMousePanel';
-import { SettingsGroup } from './SettingsGroup';
+import { SettingsGroup, SettingsRow } from './SettingsGroup';
 
 export function DisplaySection() {
   const { t } = useTranslation();
+  const showPerformanceStats = useViewerStore((s) => s.showPerformanceStats);
+  const setShowPerformanceStats = useViewerStore((s) => s.setShowPerformanceStats);
   return (
-    <SettingsGroup title={t('settings.display.navigationTitle')}>
-      <h4 className="mb-2 text-xs font-semibold">{t('settings.display.spaceMouseTitle')}</h4>
-      <SpaceMousePanel />
-    </SettingsGroup>
+    <div className="space-y-4">
+      <SettingsGroup title={t('settings.display.performanceTitle')}>
+        <SettingsRow
+          label={t('settings.display.performanceStats')}
+          hint={t('settings.display.performanceStatsHint')}
+          htmlFor="settings-performance-stats"
+        >
+          <Switch
+            id="settings-performance-stats"
+            checked={showPerformanceStats}
+            onCheckedChange={setShowPerformanceStats}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title={t('settings.display.navigationTitle')}>
+        <h4 className="mb-2 text-xs font-semibold">{t('settings.display.spaceMouseTitle')}</h4>
+        <SpaceMousePanel />
+      </SettingsGroup>
+    </div>
   );
 }

@@ -8,7 +8,7 @@
  *
  * Same pseudo-locale oracle shape as `MainToolbar.i18n.test.tsx`: every
  * static key is marked `⟦key|…⟧`, the bar is rendered with no model loaded
- * (the "Ready" / empty-count / WebGPU-status branch this render exercises),
+ * and diagnostics enabled (the "Ready" / empty-count / WebGPU-status branch),
  * the locale is switched live, and every marked string readable in English
  * must reappear marked. The count-driven `elementsCount` / `trisCount`
  * plural keys and the `appVersion` / `ifcliteLinkLabel` keys are checked by
@@ -31,6 +31,7 @@ import type { PluralTranslation, TranslationValue } from '@/i18n/types';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { StatusBar } from './StatusBar.js';
+import { useViewerStore } from '@/store';
 
 // Guarded dynamic import (#4918 revert-oracle): a plain static import would
 // fail the whole FILE's load if this catalogue is reverted/deleted (zero
@@ -119,10 +120,14 @@ function markedPlural(key: ShellChromeKey): string {
   return `⟦${key}|${value.other}⟧`;
 }
 
-beforeEach(() => setLocale('en'));
+beforeEach(() => {
+  setLocale('en');
+  useViewerStore.setState({ showPerformanceStats: true });
+});
 afterEach(() => {
   cleanup();
   setLocale('en');
+  useViewerStore.setState({ showPerformanceStats: false });
 });
 
 describe('StatusBar localization (#4918)', () => {

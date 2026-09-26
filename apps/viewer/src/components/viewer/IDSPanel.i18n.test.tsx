@@ -11,7 +11,7 @@ import { installLayout } from '@/test/dom-layout.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
-import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport } from '@ifc-lite/ids';
+import type { IDSDocument, IDSRequirement, IDSRequirementResult, IDSValidationReport, ValidationProgress } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
 
 const initial = useViewerStore.getState();
@@ -64,6 +64,11 @@ const reportFixture: IDSValidationReport = {
       requirementResults: [],
     }],
   }],
+};
+
+const activeProgress: ValidationProgress = {
+  phase: 'filtering', specificationIndex: 0, totalSpecifications: 1,
+  entitiesProcessed: 0, totalEntities: 2, percentage: 0,
 };
 
 function pseudoCatalogue(): Catalogue {
@@ -331,7 +336,7 @@ describe('IDSPanel localization (#4918)', () => {
   });
 
   it('turns the first-run control into Cancel while validation is active (#5831)', () => {
-    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null, idsLoading: true });
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null, idsLoading: true, idsProgress: activeProgress });
     const ui = render(<IDSPanel />);
     const cancel = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Cancel validation'));
     assert.ok(cancel);
@@ -340,12 +345,19 @@ describe('IDSPanel localization (#4918)', () => {
   });
 
   it('turns Re-run into Cancel and keeps the previous report (#5831)', () => {
-    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true });
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true, idsProgress: activeProgress });
     const ui = render(<IDSPanel />);
     const cancel = ui.querySelector<HTMLButtonElement>('[aria-label="Cancel validation"]');
     assert.ok(cancel);
     click(cancel);
     assert.equal(useViewerStore.getState().idsLoading, false);
     assert.strictEqual(useViewerStore.getState().idsValidationReport, reportFixture);
+  });
+
+  it('keeps Re-run disabled during file reading rather than offering validation Cancel (#5831)', () => {
+    useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFixture, idsLoading: true, idsProgress: null });
+    const ui = render(<IDSPanel />);
+    assert.equal(ui.querySelector('[aria-label="Cancel validation"]'), null);
+    assert.equal(ui.querySelector<HTMLButtonElement>('[aria-label="Re-run validation"]')?.disabled, true);
   });
 });

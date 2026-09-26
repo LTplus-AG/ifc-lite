@@ -48,7 +48,8 @@ interface IDSPanelStatesProps {
 
 export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }: IDSPanelStatesProps) {
   const { t, locale } = useTranslation();
-  const { document, report, auditReport, auditing, loading, runValidation, cancelValidation } = ids;
+  const { document, report, auditReport, auditing, loading, progress, runValidation, cancelValidation } = ids;
+  const validating = loading && progress !== null;
   if (!document) {
     const hasAuditIssues = auditReport !== null && auditReport.issues.length > 0;
     return (
@@ -85,9 +86,9 @@ export function IDSPanelStates({ ids, fileInputRef, onFileSelect, onLoadClick }:
         </div>
       </div>
       <IDSAuditSummary report={auditReport} auditing={auditing} />
-      <Button className="w-full" onClick={loading ? cancelValidation : () => { void runValidation(); }} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
-        {loading ? <Square className="h-4 w-4 mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-        {t(loading ? 'idsPanel.cancel' : 'idsPanel.runValidation')}
+      <Button className="w-full" onClick={validating ? cancelValidation : () => { void runValidation(); }} disabled={loading && !validating} {...tourAnchor(TOUR_ANCHORS.idsRun)}>
+        {validating ? <Square className="h-4 w-4 mr-2" /> : loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+        {t(validating ? 'idsPanel.cancel' : 'idsPanel.runValidation')}
       </Button>
       {auditErrorCount > 0 && (
         <p className="text-xs text-muted-foreground">

@@ -17,7 +17,7 @@
  * meant reloading the `.ids` file.
  */
 
-import { Eraser, RotateCw, Square, Trash2, Upload } from 'lucide-react';
+import { Eraser, Loader2, RotateCw, Square, Trash2, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -47,6 +47,7 @@ interface IDSPanelHeaderActionsProps {
   /** Model the report on screen was validated against; `null` before the first run. */
   reportModelId: string | null;
   loading: boolean;
+  validating: boolean;
   onRerun: (modelId: string) => void;
   onCancel: () => void;
   onLoadNew: () => void;
@@ -55,14 +56,14 @@ interface IDSPanelHeaderActionsProps {
 }
 
 export function IDSPanelHeaderActions({
-  reportModelId, loading, onRerun, onCancel, onLoadNew, onClearResults, onUnload,
+  reportModelId, loading, validating, onRerun, onCancel, onLoadNew, onClearResults, onUnload,
 }: IDSPanelHeaderActionsProps) {
   const { t } = useTranslation();
   return (
     <>
       {reportModelId !== null && (
-        <HeaderAction label={t(loading ? 'idsPanel.cancel' : 'idsPanel.rerun')} onClick={loading ? onCancel : () => onRerun(reportModelId)}>
-          {loading ? <Square className="h-3 w-3" /> : <RotateCw className="h-3 w-3" />}
+        <HeaderAction label={t(validating ? 'idsPanel.cancel' : 'idsPanel.rerun')} onClick={validating ? onCancel : () => onRerun(reportModelId)} disabled={loading && !validating}>
+          {validating ? <Square className="h-3 w-3" /> : loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
         </HeaderAction>
       )}
       <HeaderAction label={t('idsPanel.loadNew')} onClick={onLoadNew}>

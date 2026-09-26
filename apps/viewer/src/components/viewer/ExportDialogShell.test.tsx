@@ -116,6 +116,26 @@ describe('ExportDialogShell (#5848)', () => {
     assert.equal(alerts().length, 0, 'a reopened dialog must not show the previous run\'s error');
   });
 
+  it('clears the previous result when another export starts (#5848)', async () => {
+    const second = deferred<ExportDialogShellResult>();
+    let runs = 0;
+    mountShell(() => ++runs === 1
+      ? Promise.resolve({ success: false, message: 'first run failed' })
+      : second.promise);
+    click(trigger());
+    click(button('Export'));
+    await waitFor(() => alerts().length === 1, 'first run must show its error');
+
+    click(button('Export'));
+    await waitFor(() => button('Cancel').disabled, 'second export must be in flight');
+    assert.equal(alerts().length, 0, 'previous result must clear while the next export is pending');
+
+    await act(async () => {
+      second.resolve({ success: true, message: 'second run done' });
+      await second.promise;
+    });
+  });
+
   it('renders a success and an error result with the same Alert structure', async () => {
     mountShell(async () => ({ success: true, message: 'it worked' }));
     click(trigger());

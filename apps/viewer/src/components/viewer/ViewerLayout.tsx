@@ -319,7 +319,7 @@ export function ViewerLayout() {
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
-        <AnonymizedExportDialog />
+        <AnonymizedExportDialog surface="context_menu" />
 
         {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
             user picks classic strip vs tabbed ribbon (issue #1686). */}

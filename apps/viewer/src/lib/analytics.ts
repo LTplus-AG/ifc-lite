@@ -6,6 +6,7 @@ import posthogClient from 'posthog-js';
 import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
+import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
 import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
@@ -49,7 +50,7 @@ export const beforeSend = <
   // fix (#4939). Lives in its own module for the same reason as the other two.
   if (shouldSuppressForeignScriptNoise(event)) return null;
   // UI interaction events (#5618) keep only their declared id properties.
-  return scrubEvent(scrubUiEvent(event));
+  return scrubEvent(scrubExportEvent(scrubUiEvent(event)));
 };
 
 // PostHog's own `DOMExceptionCoercer` (posthog-js -> @posthog/core) does
@@ -194,4 +195,9 @@ export function setAnalyticsOptOut(value: boolean): void {
  */
 export function trackUiEvent<E extends UiEventName>(event: E, properties: UiEventProperties[E]): void {
   posthog.capture(event, properties);
+}
+
+/** The sole capture path for completed exports (#5844). */
+export function trackExportCompleted(properties: ExportCompletedProperties): void {
+  posthog.capture('export_completed', properties);
 }

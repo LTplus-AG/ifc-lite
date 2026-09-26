@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
@@ -53,7 +55,7 @@ import { useViewerStore, countGeneratedTasks } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
@@ -81,9 +83,10 @@ type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
 interface ExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
-export function ExportDialog({ trigger }: ExportDialogProps) {
+export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -332,15 +335,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
     if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
-        { t, setExportResult, setIsExporting });
+      if (finishLandXmlIfcExport({ document: selectedModel.landXmlDocument, name: selectedModel.name },
+        { t, setExportResult, setIsExporting })) {
+        trackExportCompleted({ format: 'ifc', surface });
+      }
       return;
     }
 
     // Set per success branch; captured once in `finally` so a thrown export
     // never counts. Format reflects what was actually written (the IFC5 vs
     // STEP vs changes-JSON branch), not just the schema-derived extension.
-    let exportedFormat: string | null = null;
+    let exportedFormat: ExportFormat | null = null;
     try {
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
@@ -567,7 +572,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     } finally {
       setIsExporting(false);
       if (exportedFormat) {
-        posthog.capture('export_completed', {
+        trackExportCompleted({
+          surface,
           format: exportedFormat,
           scope: exportScope,
           changes_only: changesOnly,
@@ -576,7 +582,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t, surface]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

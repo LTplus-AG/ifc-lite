@@ -7,6 +7,7 @@ import { AlertCircle, FileCheck2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { buildExportFilename, downloadBlob, stripExtension } from '@/lib/export/download';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useTranslation } from '@/i18n';
 import type { LandXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
 
@@ -58,6 +59,7 @@ export function LandXmlExportRefusal({ plan, schemaSupported, sourceFile }: Land
       sourceFile,
       buildExportFilename(stripExtension(sourceFile.name) || 'landxml-source', extension),
     );
+    trackExportCompleted({ format: 'xml', surface: 'landxml_refusal' });
   }, [sourceFile]);
 
   if (plan.covered && schemaSupported) {

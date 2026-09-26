@@ -9,6 +9,7 @@
  */
 
 import { downloadBlob, sanitizeFilename } from '../../export/download';
+import { trackExportCompleted } from '../../analytics';
 import { toCsv } from './csv';
 import type { ExportModel } from './model';
 
@@ -31,6 +32,11 @@ export async function exportList(format: ExportFormat, model: ExportModel): Prom
     const { toPdf } = await import('./pdf');
     downloadBlob(await toPdf(model), `${name}.pdf`);
   }
+  // The results table is this exporter's only UI caller. Count the file once,
+  // after the chosen writer and browser download have both succeeded.
+  trackExportCompleted({
+    format, surface: 'list_results', row_count: model.totals.count, column_count: model.columns.length,
+  });
 }
 
 export { buildExportModel } from './model';

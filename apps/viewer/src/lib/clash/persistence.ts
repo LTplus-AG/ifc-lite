@@ -16,6 +16,7 @@
  *   on load.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import {
   CLASH_RULE_PRESETS,
   CLASH_REVIEW_STATUSES,
@@ -527,12 +528,10 @@ export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
 // presets and reviews — never wiped by a re-run or by `clearClash`, because the
 // decision outlives any one detection run. Rule semantics live in
 // `./exclusions.ts`; this section only reads and writes them.
-
 // A rule whose `kind` this build does not know is dropped rather than guessed
 // at: the safe failure for a suppression rule is to show the clashes, never to
 // hide something on a semantics we cannot read.
 const EXCLUSION_KINDS: ClashExclusionKind[] = ['typeAny', 'typePair', 'elementPair'];
-
 function isValidStoredExclusion(v: unknown): v is ClashExclusionRule {
   if (!v || typeof v !== 'object') return false;
   const r = v as Record<string, unknown>;
@@ -608,6 +607,7 @@ export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
   const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
   downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'clash_results' });
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */

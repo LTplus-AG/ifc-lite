@@ -8,6 +8,7 @@
  * the panel; and the `.ifclite-dashboard.json` file a dashboard is shared as
  * (#3944).
  */
+import { trackExportCompleted } from '@/lib/analytics';
 import { migrateDashboardSpec, validateDashboardSpec, type DashboardSpec } from '@ifc-lite/charts';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
@@ -46,6 +47,7 @@ export const DASHBOARD_FILE_SUFFIX = '.ifclite-dashboard.json';
 
 export function exportDashboard(dashboard: DashboardSpec): void {
   downloadFile(JSON.stringify(dashboard, null, 2), `${sanitizeFilename(dashboard.name, { fallback: 'dashboard' })}${DASHBOARD_FILE_SUFFIX}`, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'charts_report' });
 }
 
 /**

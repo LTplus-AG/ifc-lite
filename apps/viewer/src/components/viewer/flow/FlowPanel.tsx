@@ -9,6 +9,7 @@
  * executes — Export writes it unchanged.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
@@ -37,6 +38,7 @@ const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled
 
 function download(name: string, text: string): void {
   downloadBlob(new Blob([text], { type: 'application/json' }), `${sanitizeFilename(name, { fallback: 'flow' })}.flow.json`);
+  trackExportCompleted({ format: 'json', surface: 'flow_panel' });
 }
 
 function PaletteWithDrop({ onAdd }: { onAdd: (type: string, pos: [number, number]) => void }) {

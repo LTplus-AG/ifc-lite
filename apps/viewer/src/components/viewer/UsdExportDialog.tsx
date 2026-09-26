@@ -19,6 +19,8 @@
  * model name, so the dialog is a picker + a short description.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Download, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -55,10 +57,11 @@ import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 
 interface UsdExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
+export function UsdExportDialog({ surface = 'classic', trigger }: UsdExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -129,6 +132,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
       // text is downloaded — there is no registered USD mime in the codebase).
       const blob = new Blob([usd as BlobPart], { type: 'text/plain' });
       downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), 'usda'));
+      trackExportCompleted({ format: 'usda', surface, size_kb: Math.round(blob.size / 1024) });
 
       const msg = t('geometryExport.usd.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
@@ -143,7 +147,7 @@ export function UsdExportDialog({ trigger }: UsdExportDialogProps) {
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, getMutationView, t]);
+  }, [selectedModel, getMutationView, t, surface]);
 
   const handleOpenChange = useExportDialogOpenGuard({
     busy: isExporting,

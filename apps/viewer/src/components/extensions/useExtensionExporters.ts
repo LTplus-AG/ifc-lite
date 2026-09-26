@@ -23,6 +23,8 @@ import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
 import { activeModelName, downloadFile, modelExportFilename, normalizeExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
+import { trackExportCompleted } from '@/lib/analytics';
+import type { UiSurface } from '@/lib/analytics-ui-events';
 
 /** One installed exporter, as the export surfaces render it. */
 export interface ExtensionExporter {
@@ -38,7 +40,7 @@ export interface ExtensionExporter {
   running: boolean;
 }
 
-export function useExtensionExporters() {
+export function useExtensionExporters(surface: UiSurface) {
   const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const contributions = useSlotContributions<ExporterContribution>('exportMenu');
@@ -72,6 +74,7 @@ export function useExtensionExporters() {
         modelExportFilename(activeModelName(useViewerStore.getState()), payload.extension),
         payload.mimeType || 'application/octet-stream',
       );
+      trackExportCompleted({ format: 'extension', surface });
       toast.success(t('exportCommands.extension.exportedToast', { name: payload.name }));
     } catch (err) {
       console.error(`Extension exporter ${key} failed:`, err);
@@ -82,7 +85,7 @@ export function useExtensionExporters() {
     } finally {
       setRunningKey(null);
     }
-  }, [host, exporters, t]);
+  }, [host, exporters, t, surface]);
 
   return { exporters, extensionExportRunning: runningKey !== null, runExtensionExporter };
 }

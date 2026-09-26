@@ -56,7 +56,7 @@ function RibbonExportButton({
 
   if (command.kind === 'dialog') {
     const { Dialog } = command;
-    return <Dialog trigger={<Button {...shared} />} />;
+    return <Dialog surface="ribbon" trigger={<Button {...shared} />} />;
   }
 
   if (command.kind === 'table-menu') {
@@ -94,7 +94,7 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
   const { t } = useTranslation();
   const {
     commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
-  } = useExportCommands();
+  } = useExportCommands('ribbon');
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
 
   return (

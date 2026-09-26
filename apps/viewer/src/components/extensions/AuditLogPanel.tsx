@@ -20,6 +20,7 @@
  * Spec: docs/architecture/ai-customization/02-security.md §12.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useState } from 'react';
 import { Download, Trash2, FileText, Filter, X } from 'lucide-react';
 import type { AuditEvent, AuditEventKind } from '@ifc-lite/extensions';
@@ -108,6 +109,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
   const handleExport = () => {
     const json = host.audit.exportJson();
     downloadFile(json, `ifclite-audit-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'extension_panel' });
     toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 

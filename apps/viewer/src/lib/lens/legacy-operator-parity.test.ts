@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcTypeEnum, type PropertySet } from '@ifc-lite/data';
 import { matchesCriteria, LENS_OPERATORS, type LensDataProvider } from '@ifc-lite/lens';
 import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
@@ -41,6 +41,10 @@ DATA;
 #44=IFCPROPERTYLISTVALUE('Colors',$,(IFCLABEL('Red'),IFCLABEL('Blue')),$);
 #45=IFCPROPERTYSET('0Pset000000000000000045',$,'Pset_Test',$,(#44));
 #46=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000046',$,$,$,(#10),#45);
+#50=IFCWALLTYPE('0Type00000000000000050',$,'WT',$,$,(#52),$,$,$,.NOTDEFINED.);
+#51=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('TYPE'),$);
+#52=IFCPROPERTYSET('0Pset000000000000000052',$,'Pset_Test',$,(#51));
+#53=IFCRELDEFINESBYTYPE('0Rel000000000000000053',$,$,$,(#10),#50);
 #20=IFCWALL('0Wall000000000000000020',$,'Blue wall',$,$,$,$,$,$);
 #21=IFCPROPERTYSINGLEVALUE('Text',$,IFCLABEL('Blue'),$);
 #22=IFCPROPERTYSINGLEVALUE('Number',$,IFCREAL(20.),$);
@@ -68,6 +72,8 @@ async function fixture() {
   const sets = (id: number): PropertySet[] => (psets.get(id) ?? []).map((set) => ({
     name: set.name, globalId: set.globalId ?? '', properties: set.properties,
   }));
+  const typeSets = (id: number): PropertySet[] => (extractTypePropertiesOnDemand(store, id)?.properties ?? [])
+    .map((set) => ({ name: set.name, globalId: set.globalId ?? '', properties: set.properties }));
   const property = (id: number, name: string) => psets.get(id)?.flatMap((set) => set.properties)
     .find((row) => row.name === name)?.value;
   const lens: LensDataProvider = {
@@ -86,6 +92,7 @@ async function fixture() {
     getEntityTag: () => '',
     getEntityTypeName: (id) => store.entities.getTypeName(id),
     getPropertySets: sets,
+    getTypePropertySets: typeSets,
     getQuantitySets: () => [],
   };
   const view = new MutablePropertyView(null, 'm');
@@ -163,19 +170,22 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
       .flatMap((set) => set.properties.filter((property) => property.name === 'FireRating'));
     assert.deepEqual(matching.map((property) => property.value), ['1HR', '2HR']);
 
-    for (const operator of ['equals', 'notEquals'] as const) {
+    assert.equal(lists.getTypePropertySets?.(10)?.[0]?.properties[0]?.value, 'TYPE');
+    for (const [operator, value] of [
+      ['equals', '2HR'], ['notEquals', '2HR'], ['equals', 'TYPE'], ['notEquals', 'TYPE'],
+    ] as const) {
       const definition: ListDefinition = {
         id: 'first-pset', name: 'First pset', createdAt: 0, updatedAt: 0,
         entityTypes: [], expressIdsByModel: { m: [10] }, columns: [],
         conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'FireRating',
-          operator, value: '2HR' }],
+          operator, value }],
       };
       const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
       const migrated = migrateLegacyListConditions(definition.conditions);
       assert.deepEqual(migrated.unreadableConditions, []);
       const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: [10], limit: 1 })
         .map((row) => row.expressId);
-      assert.deepEqual(actual, old, `${operator} must not inspect the second property set`);
+      assert.deepEqual(actual, old, `${operator} ${value} must read own sets before the type`);
     }
   });
 

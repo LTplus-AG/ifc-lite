@@ -381,26 +381,26 @@ function evaluateOneEntity(
   // rules check first; AND short-circuit on a cheap miss skips the
   // parse entirely.
   let psetCache: PsetRows | null = null;
+  let legacyPsetCache: PsetRows | null = null;
+  let sourcePsets: [TypePsetList, TypePsetList] | null = null;
   let qtyCache: QtyRows | null = null;
   let matCache: string[] | null = null;
   let classCache: readonly ClassificationInfo[] | null = null;
   let attrCache: AttrRows | null = null;
-  const psetsFor = (): PsetRows => {
-    if (!psetCache) {
-      const ownSets = ownPropertySetsFor(ctx.store, expressId, ctx.mutationView); // #4946, mutation-aware
-      const typeSets = getInheritedTypePsets(ctx, expressId);
-      // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
-      // own value wins on a name collision — same rule the IDS bridge
-      // already applies (`mergeInheritedPropertySets`, packages/parser).
-      // A type-only pset (nothing on the instance) is appended as-is, so
-      // `isSet`/`isNotSet` now also see properties that exist ONLY on the
-      // type — a deliberate presence-semantics change (was instance-only).
-      psetCache = flattenPsets(
-        mergeInheritedPropertySets(ownSets, typeSets),
-        orderedRules.some((rule) => rule.kind === 'property' && rule.legacyListFirst === true),
-      );
+  const psetsFor = (legacyListFirst = false): PsetRows => {
+    sourcePsets ??= [
+      ownPropertySetsFor(ctx.store, expressId, ctx.mutationView), // #4946, mutation-aware
+      getInheritedTypePsets(ctx, expressId),
+    ];
+    if (legacyListFirst) {
+      // V1 Lists search ALL occurrence sets before the TYPE fallback. A
+      // per-property merge could insert a type value into the first own set
+      // ahead of a matching value in the second own set.
+      return legacyPsetCache ??= flattenPsets([...sourcePsets[0], ...sourcePsets[1]], true);
     }
-    return psetCache;
+    // Canonical Rules inheritance is per-property: own values win a name
+    // collision, while type-only properties remain visible in a shared set.
+    return psetCache ??= flattenPsets(mergeInheritedPropertySets(sourcePsets[0], sourcePsets[1]));
   };
   const qtysFor = (): QtyRows => {
     if (!qtyCache) qtyCache = flattenQtys(quantitySetsFor(ctx.store, expressId, ctx.mutationView));
@@ -487,7 +487,7 @@ function evaluateRule(
   rule: FilterRule,
   ctx: EvalContext,
   expressId: number,
-  psetsFor: (() => PsetRows) | null,
+  psetsFor: ((legacyListFirst?: boolean) => PsetRows) | null,
   qtysFor: (() => QtyRows) | null,
   matNamesFor: (() => string[]) | null,
   classFor: (() => readonly ClassificationInfo[]) | null,
@@ -528,7 +528,7 @@ function evaluateRule(
     }
     case 'property':
       if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
-      return psetsFor ? matchPropertyRule(rule, psetsFor()) : false;
+      return psetsFor ? matchPropertyRule(rule, psetsFor(rule.legacyListFirst)) : false;
     case 'quantity':
       if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
       return qtysFor ? matchQuantityRule(rule, qtysFor()) : false;

@@ -39,6 +39,7 @@ import {
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
@@ -63,13 +64,11 @@ export function MobileToolbar() {
   const {
     loadFile,
     loading,
-    progress,
-    geometryProgress,
-    metadataProgress,
     geometryResult,
     models,
     loadFilesSequentially,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
@@ -254,11 +253,11 @@ export function MobileToolbar() {
       <div className="flex-1 min-w-2" />
 
       {/* Loading progress (compact) */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-16 h-1.5" />
+          <Progress value={activeProgress.percent} className="w-16 h-1.5" />
           <span className="text-[10px] text-muted-foreground tabular-nums">
-            {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
+            {Math.round(activeProgress.percent)}%
           </span>
         </div>
       )}

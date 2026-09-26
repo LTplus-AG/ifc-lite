@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
@@ -221,13 +222,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
   const {
     loading,
-    progress,
     geometryProgress,
     metadataProgress,
     geometryResult,
     ifcDataStore,
     models,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   // Shared command surfaces (also drive the ribbon toolbar): file
   // open/add/refresh incl. the global `ifc-lite:*` load listeners and
@@ -1024,20 +1025,18 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ExtensionToolbarSlot slot="toolbar.right" />
 
       {/* Loading Progress */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-2 mr-4">
           <span className="text-xs text-muted-foreground">
-            {(geometryProgress ?? metadataProgress ?? progress)?.phase}
+            {activeProgress.phase}
             {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
           </span>
-          {(geometryProgress ?? metadataProgress ?? progress)?.indeterminate ? (
+          {activeProgress.indeterminate ? (
             <Spinner size="sm" className="text-muted-foreground" />
           ) : (
             <>
-              <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-32 h-2" />
-              <span className="text-xs text-muted-foreground">
-                {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
-              </span>
+              <Progress value={activeProgress.percent} className="w-32 h-2" />
+              <span className="text-xs text-muted-foreground">{Math.round(activeProgress.percent)}%</span>
             </>
           )}
         </div>

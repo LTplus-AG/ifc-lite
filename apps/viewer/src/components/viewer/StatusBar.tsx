@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -35,12 +36,12 @@ interface CountedModel {
 export function StatusBar() {
   const { t } = useTranslation();
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
-  const progress = useViewerStore((s) => s.progress);
+  const progress = useViewerStore(selectActiveLoadProgress);
   const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
-  const activeStreamCanceller = useViewerStore((s) => s.activeStreamCanceller);
+  const activeStreamCanceller = useViewerStore(selectLoadCanceller);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const showPerformanceStats = useViewerStore((s) => s.showPerformanceStats);
@@ -215,9 +216,8 @@ export function StatusBar() {
         ) : (
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
-        {/* Cancel button — only visible while a long-running stream
-            (LAS/LAZ/PLY/PCD/E57) is in flight. The loader hooks
-            register/clear the canceller around `await ingest.done`. */}
+        {/* Cancel: shown while a model load (#5849) or point-cloud stream
+            has published a canceller; the loading card uses the same selector. */}
         {activeStreamCanceller && (
           <button
             type="button"

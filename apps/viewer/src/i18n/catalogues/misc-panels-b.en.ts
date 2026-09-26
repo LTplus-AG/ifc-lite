@@ -62,6 +62,7 @@ import type { TranslationValue } from '../types';
 export const miscPanelsBEn = {
   // ---- PointCloudPanel.tsx --------------------------------------------
   'pointCloudPanel.title': 'Point Cloud',
+  'pointCloudPanel.close': 'Close point cloud panel',
   'pointCloudPanel.assetCount': { one: '{count} asset', other: '{count} assets' },
   'pointCloudPanel.colourSectionLabel': 'Colour',
   'pointCloudPanel.colorMode.rgb.label': 'RGB',

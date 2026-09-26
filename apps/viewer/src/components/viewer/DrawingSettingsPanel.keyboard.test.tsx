@@ -34,3 +34,12 @@ for (const key of ['Enter', ' '] as const) {
     assert.ok(ui.querySelector('input[value="Keyboard rule"]'), 'the rule name becomes editable');
   });
 }
+
+it('#5811 names the drawing-rule toggle for its current action', () => {
+  useViewerStore.setState({ customOverrideRules: [rule] });
+  const ui = render(<DrawingSettingsPanel />);
+  const disable = ui.querySelector<HTMLButtonElement>('button[aria-label="Disable Keyboard rule"]');
+  assert.ok(disable);
+  activate(disable, 'Enter');
+  assert.ok(ui.querySelector('button[aria-label="Enable Keyboard rule"]'));
+});

@@ -15,8 +15,7 @@ import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './sl
 import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 import { registerSectionVisibility } from './section-active.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
-export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
-export type { LastSectionMode } from './slices/sectionSlice.js';
+export { customPlaneCenter, loadLastSectionMode, type LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
@@ -75,7 +74,7 @@ import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
-
+import { registerOverlayThemeSync } from '@/lib/viewport-ui/overlay-theme-sync';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -484,6 +483,7 @@ export function getViewerStoreApi() {
   registerDrawingInspectorSheetSync(store);
   registerSectionVisibility(store); // `sectionPlane.enabled` === the cut is on screen (#4910)
   registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
+  registerOverlayThemeSync(store); // `--overlay-*` on <html> follow `theme` in every app that holds the store (#5490)
   reconcileInitialStoreSync(store);
   return store;
 }

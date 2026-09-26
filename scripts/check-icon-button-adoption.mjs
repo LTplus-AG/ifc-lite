@@ -36,15 +36,9 @@ import { fileURLToPath } from 'node:url';
 
 /** Allowed `<Button size="icon…">` count per file, relative to components/. */
 const BASELINE = {
-  'viewer/DrawingSettingsPanel.tsx': 1,
-  'viewer/GeometryAxisRow.tsx': 2,
-  'viewer/GeometryEditCard.tsx': 3,
   'viewer/KeyboardShortcutsDialog.tsx': 1,
   'viewer/MainToolbar.tsx': 21,
-  'viewer/MeasurementsPanel.tsx': 2,
   'viewer/MobileToolbar.tsx': 7,
-  'viewer/PointCloudPanel.tsx': 1,
-  'viewer/SheetSetupPanel.tsx': 2,
   'viewer/ViewportOverlays.tsx': 3,
   'viewer/chat/ExecutableCodeBlock.tsx': 1,
   'viewer/drawing/DrawingExportMenu.tsx': 1,
@@ -56,7 +50,6 @@ const BASELINE = {
   'viewer/ribbon/RibbonToolbar.tsx': 2,
   'viewer/tools/MeasurePointReadout.tsx': 2,
   'viewer/tools/MeasureToolbar.tsx': 2,
-  'viewer/tools/MeasurementList.tsx': 6,
   'viewer/tools/SectionToolbar.tsx': 1,
 };
 

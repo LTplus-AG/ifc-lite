@@ -80,6 +80,10 @@ export const measureEn = {
 
   'measure.list.empty': 'No measurements',
   'measure.list.totalCurrent': 'Total (current)',
+  'measure.list.deleteDistance': 'Delete distance measurement {index}',
+  'measure.list.deletePolyline': 'Delete polyline measurement {index}',
+  'measure.list.deleteAngle': 'Delete angle measurement {index}',
+  'measure.list.deleteRadius': 'Delete radius measurement {index}',
   'measure.polyline.inProgress': {
     one: 'Polyline in progress — {count} pt',
     other: 'Polyline in progress — {count} pts',

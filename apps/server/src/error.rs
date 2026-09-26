@@ -54,11 +54,28 @@ pub enum ApiError {
 /// file it failed on, which is the absolute `CACHE_DIR` layout.
 const CACHE_CLIENT_MESSAGE: &str = "Cache error: the server's cache store failed";
 
-/// Error response body.
+/// The one error body every route answers with (#5750): `{"error", "code"}`,
+/// `error` a human-readable message and `code` a stable `SCREAMING_SNAKE`
+/// identifier a client can branch on. [`ApiError`] renders it for every
+/// handler failure, and `middleware::error_envelope` renders it for the
+/// responses no handler writes (extractor rejections, unknown routes, wrong
+/// methods, timeouts, panics), so a client decodes one shape for every
+/// non-2xx status. Documented in `docs/guide/server.md` ("Error envelope").
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
     pub code: String,
+}
+
+/// Render the shared envelope. The one builder of an error body: `ApiError`
+/// goes through it, and so do the responses written outside a handler (the
+/// bearer layer's `401`, `middleware::error_envelope`).
+pub fn error_response(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
+    let body = ErrorResponse {
+        error: error.into(),
+        code: code.to_owned(),
+    };
+    (status, Json(body)).into_response()
 }
 
 impl IntoResponse for ApiError {
@@ -94,12 +111,7 @@ impl IntoResponse for ApiError {
             }
             _ => self.to_string(),
         };
-        let body = ErrorResponse {
-            error,
-            code: code.to_string(),
-        };
-
-        let mut response = (status, Json(body)).into_response();
+        let mut response = error_response(status, code, error);
         if let Some(secs) = retry_after {
             if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
                 response.headers_mut().insert(axum::http::header::RETRY_AFTER, v);

@@ -9,12 +9,14 @@
  * `IFCLENGTHMEASURE` as `IFCREAL`.
  *
  * Every case here parses a file, drives `StepExporter` over it and reads the
- * emitted lines back. That is the whole point of them: the load-bearing case is
- * the first one below, and it asserts the emitted line of a property the session
- * never touched. That assertion cannot pass vacuously — the property is only in
- * the file at all BECAUSE the set was regenerated, so a generator that ignores
- * `dataType` writes a line that is present, correct in its value, and wrong in
- * exactly the way #2482 describes.
+ * emitted lines back. Since #5794 a regenerated set references the SOURCE atom
+ * of every property the session left alone, so an untouched neighbour normally
+ * never reaches the serializer. It still does whenever that reuse is refused,
+ * and the cases about untouched neighbours force exactly that through
+ * {@link withSecondSameNamedSet}: a second, distinct set of the same name on the
+ * same element, which reuse cannot attribute members for. Each of those cases
+ * also asserts the neighbour was REGENERATED (a new express id), so it cannot
+ * pass on the reused source line.
  *
  * The gate itself — which source tokens `declaredNominalValueType` writes back,
  * and which it refuses — is a pure predicate over the schema registry with no
@@ -101,6 +103,29 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
+/**
+ * `source` plus a second, distinct `setName` on the wall. Two same-named source
+ * sets on one element turn member reuse off for that name (#5794), so every
+ * untouched member of the first set goes back through `serializeNominalValue`
+ * and its `dataType` — the path these tests pin.
+ */
+function withSecondSameNamedSet(source: string, setName: string): string {
+  return source.replace('ENDSEC;\nEND-ISO', [
+    `#90=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSu9',$,'${setName}',$,(#91));`,
+    "#91=IFCPROPERTYSINGLEVALUE('Other',$,IFCLABEL('o'),$);",
+    "#92=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSu8',$,$,$,(#8),#90);",
+    'ENDSEC;\nEND-ISO',
+  ].join('\n'));
+}
+
+/** The express id the export wrote `line` under, asserting there is one. */
+function idOfLine(text: string, line: string): number {
+  const at = text.indexOf(`=${line}`);
+  expect(at, line).toBeGreaterThan(0);
+  const start = text.lastIndexOf('#', at);
+  return Number(text.slice(start + 1, at));
+}
+
 async function parse(source: string): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(toArrayBuffer(new TextEncoder().encode(source)));
 }
@@ -119,7 +144,7 @@ function exportText(store: IfcDataStore, view: MutablePropertyView): string {
 
 describe('a regeneration leaves its neighbours’ declared types alone', () => {
   it('every property the session did NOT touch keeps the type its source line declared', async () => {
-    const store = await parse(BASE_IFC);
+    const store = await parse(withSecondSameNamedSet(BASE_IFC, 'Pset_Mixed'));
     const view = sourceBackedView(store);
     // ONE edit, to a property that is not any of the ones asserted below.
     // Adding a property to an existing pset regenerates that pset wholesale,
@@ -147,6 +172,24 @@ describe('a regeneration leaves its neighbours’ declared types alone', () => {
     expect(text).not.toContain("IFCLABEL('A-01')");
     expect(text).not.toContain('IFCREAL(2500.)');
     expect(text).not.toContain('IFCREAL(12.5)');
+
+    // Regenerated, not the source atoms: every one got a fresh express id.
+    for (const line of [
+      "IFCPROPERTYSINGLEVALUE('Notes',$,IFCTEXT('a long prose value'),$)",
+      "IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(2500.),$)",
+      "IFCPROPERTYSINGLEVALUE('Leaves',$,IFCCOUNTMEASURE(3.),$)",
+    ]) {
+      expect(idOfLine(text, line)).toBeGreaterThan(92);
+    }
+  });
+
+  it('with reuse available, an untouched neighbour is its own source line (#5794)', async () => {
+    const store = await parse(BASE_IFC);
+    const view = sourceBackedView(store);
+    view.setProperty(WALL_ID, 'Pset_Mixed', 'Mark', 'W-01', PropertyValueType.Label);
+    const text = exportText(store, view);
+    expect(idOfLine(text, "IFCPROPERTYSINGLEVALUE('Length',$,IFCLENGTHMEASURE(2500.),$)")).toBe(53);
+    expect(text).toMatch(/IFCPROPERTYSET\('[^']*',[^,]*,'Pset_Mixed',\$,\(#51,#52,#53,#54,#55,#56,#57,#\d+\)\);/);
   });
 
   it('control: the property the session DID author is written as it was authored', async () => {
@@ -189,31 +232,34 @@ describe('a regeneration leaves its neighbours’ declared types alone', () => {
   it('a token that is not an IfcValue member is NOT written back', async () => {
     const store = await parse(BASE_IFC);
     const view = sourceBackedView(store);
-    view.setProperty(WALL_ID, 'Pset_Mixed', 'Mark', 'W-01', PropertyValueType.Label);
+    view.setProperty(WALL_ID, 'Pset_Mixed', 'Vendor', 'Y', PropertyValueType.Label);
 
     // `IFCACMEWIDGETCODE` parses, survives extraction and reaches the generator
-    // in `dataType` like any other token. `NominalValue` is declared as
-    // `IfcValue`, so writing it back would put a non-member in a SELECT slot —
-    // faithful to the input and invalid. The lossy-but-valid fallback wins.
+    // in `dataType` like any other token, and an edit keeps the source
+    // `dataType` when it names none. `NominalValue` is declared as `IfcValue`,
+    // so writing it back would put a non-member in a SELECT slot. The
+    // lossy-but-valid fallback wins.
     const text = exportText(store, view);
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Vendor',$,IFCLABEL('X'),$)");
+    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Vendor',$,IFCLABEL('Y'),$)");
     expect(text).not.toContain('IFCACMEWIDGETCODE');
   });
 
-  it('a BOUNDED property’s measure dataType is not wrapped around its display string', async () => {
+  it('a BOUNDED neighbour is kept as the bounded value it is, not collapsed', async () => {
     const store = await parse(BOUNDED_IFC);
     const view = sourceBackedView(store);
     view.setProperty(WALL_ID, 'Pset_Bounded', 'Mark', 'W-01', PropertyValueType.Label);
 
     // An `IfcPropertyBoundedValue` is extracted as a measure `dataType` over a
-    // DISPLAY string (`'12.5 [1 – 20]'`) and a `Real` shape — the one place
-    // where the two disagree about a source property nobody edited. Collapsing
-    // such a property to a single value is lossy and older than this change
-    // (#2482 calls the multi-valued kinds a separate question); what must not
-    // happen is `IFCLENGTHMEASURE('12.5 [1 – 20]')`, a measure holding prose.
+    // DISPLAY string (`'12.5 [1 – 20]'`), which no single value can carry.
+    // #2482 left the multi-valued kinds as a separate question and they were
+    // collapsed to an empty single value; since #5794 the regenerated set
+    // references the source atom, so the bounds survive verbatim.
     const text = exportText(store, view);
-    expect(text).toContain("IFCPROPERTYSINGLEVALUE('Span',$,$,$)");
-    expect(text).not.toContain('IFCLENGTHMEASURE');
+    expect(text).toContain(
+      "#51=IFCPROPERTYBOUNDEDVALUE('Span',$,IFCLENGTHMEASURE(20.),IFCLENGTHMEASURE(1.),$,IFCLENGTHMEASURE(12.5));",
+    );
+    expect(text).toMatch(/IFCPROPERTYSET\('[^']*',[^,]*,'Pset_Bounded',\$,\(#51,#\d+\)\);/);
+    expect(text).not.toContain("IFCPROPERTYSINGLEVALUE('Span'");
   });
 });
 
@@ -258,10 +304,10 @@ describe('a constrained declared type is not reused for a value it cannot hold',
   });
 
   it('control: a value the WHERE rule ALLOWS keeps the constrained type', async () => {
-    const store = await parse(CONSTRAINED_IFC);
+    const store = await parse(withSecondSameNamedSet(CONSTRAINED_IFC, 'Pset_Constrained'));
     const view = sourceBackedView(store);
-    // One in-range edit; the other five are untouched neighbours regenerated by
-    // it. Without this the test above is satisfied by a gate that refuses every
+    // One in-range edit; the other five are untouched neighbours, regenerated
+    // because the second same-named set turns reuse off. Without this the test above is satisfied by a gate that refuses every
     // constrained member outright — which would re-inflict #2482 on the entire
     // constrained half of `IfcValue`.
     view.setProperty(WALL_ID, 'Pset_Constrained', 'Thickness', 7.5, PropertyValueType.Real);
@@ -274,5 +320,6 @@ describe('a constrained declared type is not reused for a value it cannot hold',
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Scale',$,IFCPOSITIVERATIOMEASURE(2.),$)");
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Slope',$,IFCPOSITIVEPLANEANGLEMEASURE(0.4),$)");
     expect(text).toContain("IFCPROPERTYSINGLEVALUE('Leaves',$,IFCPOSITIVEINTEGER(3),$)");
+    expect(idOfLine(text, "IFCPROPERTYSINGLEVALUE('Clearance',$,IFCNONNEGATIVELENGTHMEASURE(4.),$)")).toBeGreaterThan(92);
   });
 });

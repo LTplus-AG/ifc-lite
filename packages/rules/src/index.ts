@@ -23,6 +23,7 @@ export * from './filter/filter-groups.js';
 export { MODEL_FACTS, type ModelFact } from './filter/filter-model-fact.js';
 export * from './filter/filter-rule-guards.js';
 export * from './filter/filter-ops.js';
+export * from './filter/legacy-operator-adapters.js';
 export * from './filter/filter-match.js';
 export * from './filter/read-subject.js';
 export * from './filter/filter-evaluate.js';

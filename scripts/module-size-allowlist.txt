@@ -304,7 +304,7 @@
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
    743 packages/sdk/src/types.ts
-  1011 packages/server-client/src/client.ts
+  1007 packages/server-client/src/client.ts
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
@@ -347,5 +347,5 @@
    559 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2165 scripts/test-wasm-contract.mjs
+  2163 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

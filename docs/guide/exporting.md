@@ -804,6 +804,49 @@ All four take `undefined` for "no isolation filter" and an empty
 exports nothing rather than everything. Pass `undefined`, not
 `new Uint32Array()`, when you do not want to filter.
 
+## Saving Edits Through the Rust Writer
+
+`StepExporter` needs the whole file as one buffer in the JS heap, which fails
+past V8's ArrayBuffer ceiling (~2 GB). `exportStep` takes the session's edits
+as the mutation log `MutablePropertyView.exportMutations()` returns and writes
+them natively, streaming every record the log does not touch:
+
+```typescript
+// `view` is the session's MutablePropertyView, `bytes` the source file.
+const saved = gp.exportStep(bytes, '', undefined, view.exportMutations());
+```
+
+The output is byte-identical to `new StepExporter(store, view).export(...)`
+for the same edits, except the GlobalIds of the records the export generates
+(regenerated property and quantity sets and their relationships), which the
+Rust writer derives instead of drawing at random. The shared parity fixture
+`rust/export/tests/fixtures/step_log_parity_vectors.json` pins this from both
+sides. The log applies property and quantity edits (create, update, delete, whole-set
+deletion), root-attribute and positional edits, retypes, entity deletion (with
+the same reference cleanup: list slots narrowed, relationships withheld) and
+created entities, whose payloads travel in the log's `newEntities` member
+(`view.getNewEntities()`), since a `CREATE_ENTITY` record carries only the id:
+
+```typescript
+const log = { ...JSON.parse(view.exportMutations()), newEntities: view.getNewEntities() };
+const savedWithCreations = gp.exportStep(bytes, '', undefined, JSON.stringify(log));
+```
+
+Georeferencing edits travel in `georefMutations` (the `StepExportOptions`
+shape): an existing `IfcProjectedCRS` / `IfcMapConversion` is edited in place,
+a missing one is created. Like `StepExporter`, the writer refuses them for an
+IFC2X3 output; an IFC2X3 model's georeferencing is its `ePSet_MapConversion` /
+`ePSet_ProjectedCRS` property sets, which are ordinary property edits.
+
+A log the TypeScript replay would throw on (an invalid class name in a retype)
+is refused with an error rather than exported, and so is a log it would save
+WITHOUT an edit: a mutation `type` the writer does not recognise, an attribute
+edit whose value is `null` (clear an attribute with `''`), or a `CREATE_ENTITY`
+whose payload is missing from `newEntities`. A log does not combine with an
+isolation set. Native hosts merging several models pass one log per model to
+`ifc_lite_export::export_merged_models_with_logs`, which bakes each edited model
+the way `MergedExporter.exportAsync` does.
+
 ## Export Pipeline
 
 Chain multiple exports:

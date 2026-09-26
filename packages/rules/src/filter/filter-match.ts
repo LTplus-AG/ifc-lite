@@ -64,7 +64,13 @@ export function nameMatches(rulePattern: string, rowName: string, kind?: TextKin
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
-export interface PsetRow { setName: string; propertyName: string; value: string }
+export interface PsetRow {
+  setName: string;
+  propertyName: string;
+  value: string;
+  /** Retain primitive type so a converted Bulk condition cannot match a different typed value. */
+  valueType?: 'string' | 'number' | 'boolean' | 'null';
+}
 export type PsetRows = ReadonlyArray<PsetRow>;
 
 export interface QtyRow { setName: string; quantityName: string; value: number }
@@ -91,6 +97,10 @@ export function flattenPsets(
   const out: PsetRow[] = [];
   for (const set of psets) {
     for (const p of set.properties) {
+      const valueType: PsetRow['valueType'] = p.value === null || p.value === undefined ? 'null'
+        : typeof p.value === 'string' ? 'string'
+        : typeof p.value === 'number' ? 'number'
+        : typeof p.value === 'boolean' ? 'boolean' : undefined;
       for (const value of propertyCandidates(p)) out.push({
         setName: set.name,
         propertyName: p.name,
@@ -103,6 +113,7 @@ export function flattenPsets(
         // are case-insensitive, so this doesn't change matching outcomes
         // for either the search chips or free-typed "true"/"false".
         value,
+        valueType,
       });
     }
   }
@@ -133,28 +144,30 @@ export function stringifyValue(value: unknown): string {
 }
 
 export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
-  // isSet / isNotSet are presence checks against (setName, propertyName).
-  if (rule.op === 'isSet' || rule.op === 'isNotSet') {
-    const present = rows.some(
-      (r) =>
-        nameMatches(rule.setName, r.setName, rule.setNameKind) &&
-        nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
-    );
-    return rule.op === 'isSet' ? present : !present;
-  }
-
   const matching = rows.filter(
     (r) =>
       nameMatches(rule.setName, r.setName, rule.setNameKind) &&
       nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
   );
+  // Presence, non-null and non-empty are distinct in imported filters.
+  if (rule.op === 'isSet') return matching.length > 0;
+  if (rule.op === 'isNotSet') return matching.length === 0;
+  if (rule.op === 'isNull') return matching.length === 0 || matching.some((r) => r.valueType === 'null');
+  if (rule.op === 'isNotNull') return matching.some((r) => r.valueType !== 'null');
+  if (rule.op === 'isNonEmpty') return matching.some((r) => r.valueType !== 'null' && r.value.length > 0);
+  const comparable = rule.comparison ? matching.filter((r) => r.valueType !== 'null') : matching;
+
   // A negated op holds when NO candidate has the value (a list [A, B] is
   // not "!= A"), the ANY/NONE convention `material` and `parent` use and
   // validation's `checkValueOp` applies (#5475). With a single candidate
   // this is the same answer as before.
   const positive = NEGATED_VALUE_OP[rule.op];
-  if (positive) return matching.length > 0 && !matching.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind));
-  return matching.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind));
+  if (positive) return comparable.length > 0 && !comparable.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, {
+    ...rule.comparison, candidateType: r.valueType,
+  }));
+  return comparable.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, {
+    ...rule.comparison, candidateType: r.valueType,
+  }));
 }
 
 /** A negated value op's positive form: the negation holds when NO candidate satisfies it (#5475). */
@@ -181,8 +194,16 @@ export function matchAttributeRule(rule: AttributeRule, attrs: AttrRows): boolea
     const present = (stringified ?? '').length > 0;
     return rule.op === 'isSet' ? present : !present;
   }
+  if (rule.op === 'isNull') return found === undefined;
+  if (rule.op === 'isNotNull') return found !== undefined;
+  if (rule.op === 'isNonEmpty') return (stringified ?? '').length > 0;
   if (stringified === undefined) return false;
-  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind);
+  const candidateType = typeof found?.value;
+  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind, {
+    ...rule.comparison,
+    candidateType: candidateType === 'string' || candidateType === 'number' || candidateType === 'boolean'
+      ? candidateType : undefined,
+  });
 }
 
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {

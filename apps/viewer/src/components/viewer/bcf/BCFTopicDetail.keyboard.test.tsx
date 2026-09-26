@@ -29,9 +29,9 @@ it('#5823 activates snapshot, placeholder, and comment thumbnails from the keybo
       hasIsolation={false} hasHiddenEntities={false}
     />,
   );
-  const snapshot = ui.querySelector('img[alt="Viewpoint"]')?.closest('button');
-  const placeholder = ui.querySelector('button[aria-label="Viewpoint"]');
-  const thumbnail = ui.querySelector('img[alt="Associated viewpoint"]')?.closest('button');
+  const snapshot = ui.querySelector('img[alt="Viewpoint"]')?.closest<HTMLButtonElement>('button');
+  const placeholder = ui.querySelector<HTMLButtonElement>('button[aria-label="Viewpoint"]');
+  const thumbnail = ui.querySelector('img[alt="Associated viewpoint"]')?.closest<HTMLButtonElement>('button');
   assert.ok(snapshot && placeholder && thumbnail);
   activate(snapshot, 'Enter');
   activate(placeholder, ' ');

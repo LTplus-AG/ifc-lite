@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useTranslation } from '@/i18n';
+import type { SearchResult } from '@/lib/search/tier0-scan';
 import { FIELD_FILTERS, ROW_HEIGHT, resultOptionId, type SearchModalTextProps } from './SearchModal.text.model';
 export type { SearchModalTextProps } from './SearchModal.text.model';
 

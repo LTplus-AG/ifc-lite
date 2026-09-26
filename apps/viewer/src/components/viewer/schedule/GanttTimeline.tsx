@@ -192,6 +192,22 @@ export const GanttTimeline = memo(function GanttTimeline({
     onScrubSeek(range.start + pct * (range.end - range.start));
   }, [pixelWidth, range, onScrubSeek]);
 
+  const handleTimelineKeyDown = useCallback((event: React.KeyboardEvent<SVGSVGElement>) => {
+    let nextTime: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown': nextTime = playbackTime - MS_PER_TICK_FOR_SCALE[scale]; break;
+      case 'ArrowRight':
+      case 'ArrowUp': nextTime = playbackTime + MS_PER_TICK_FOR_SCALE[scale]; break;
+      case 'Home': nextTime = range.start; break;
+      case 'End': nextTime = range.end; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onScrubSeek(Math.min(range.end, Math.max(range.start, nextTime)));
+  }, [playbackTime, scale, range, onScrubSeek]);
+
   return (
     <div
       ref={containerRef}
@@ -242,6 +258,13 @@ export const GanttTimeline = memo(function GanttTimeline({
         height={rowsHeight}
         className="block cursor-crosshair"
         onClick={handleTimelineClick}
+        onKeyDown={handleTimelineKeyDown}
+        role="slider"
+        tabIndex={0}
+        aria-label={t('schedule.toolbar.playbackPosition')}
+        aria-valuemin={range.start}
+        aria-valuemax={range.end}
+        aria-valuenow={Math.min(range.end, Math.max(range.start, playbackTime))}
       >
         {/* Non-working-day shading (#4830) — painted first so grid lines,
             row highlights and bars all draw on top of it. */}
@@ -359,4 +382,3 @@ export const GanttTimeline = memo(function GanttTimeline({
     </div>
   );
 });
-

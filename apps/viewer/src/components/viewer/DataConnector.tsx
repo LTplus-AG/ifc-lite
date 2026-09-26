@@ -526,20 +526,20 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   // Drag-and-drop handlers
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   }, []);
 
   const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
+    (e: DragEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);

@@ -13,10 +13,13 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ListDataProvider, ListDefinition } from '@ifc-lite/lists';
+import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition, type PropertyCondition } from '@ifc-lite/lists';
 import { IfcTypeEnum, QuantityType, type QuantitySet } from '@ifc-lite/data';
-import type { IfcDataStore } from '@ifc-lite/parser';
-import type { ModelTag } from '@ifc-lite/rules';
+import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { Rule, type ModelTag } from '@ifc-lite/rules';
+import { IFC, IDS, listCases } from '../lens/__fixtures__/legacy-operator.js';
+import { createListDataProvider } from './adapter.js';
 import { runListFederated, type ModelProviderPair } from './run-list.js';
 
 /** One IfcWall per model, named after the model, with a NetVolume quantity. */
@@ -52,37 +55,143 @@ const definition = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
   ...extra,
 });
 
+async function parsedPairs(): Promise<ModelProviderPair[]> {
+  const bytes = new TextEncoder().encode(IFC);
+  const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const edited = new MutablePropertyView(store.properties, 'm2');
+  edited.setOnDemandExtractor((id) => extractPropertiesOnDemand(store, id));
+  edited.setProperty(10, 'Pset_Test', 'Text', 'Blue');
+  return [
+    { modelId: 'm1', store, provider: createListDataProvider(store, 'Model 1') },
+    { modelId: 'm2', store, provider: createListDataProvider(store, 'Model 2', undefined, edited), mutationView: edited },
+  ];
+}
+
+describe('#5894 Rules-backed Lists over parsed IFC', () => {
+  const state = {
+    models: new Map([['m1', {}], ['m2', {}]]),
+    modelTags: new Map<string, ModelTag>(),
+    modelTagAssignments: new Map<string, ReadonlySet<string>>(),
+  };
+  const property: PropertyCondition = {
+    source: 'property', psetName: 'Pset_Test', propertyName: 'Text', operator: 'equals', value: 'Blue',
+  };
+  const name: PropertyCondition = { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'wall' };
+
+  it('preserves saved v1 rows and order in one and two models, including a live property edit', async () => {
+    const pairs = await parsedPairs();
+    const conditions = [property, name];
+    const migrated = migrateLegacyListConditions(conditions);
+    const def = definition({
+      entityTypes: [IfcTypeEnum.IfcWall], conditions, ...migrated,
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'text', source: 'property', psetName: 'Pset_Test', propertyName: 'Text' },
+      ],
+    });
+    for (const selected of [pairs.slice(0, 1), pairs]) {
+      const old = selected.flatMap(({ modelId, provider }) => executeList(def, provider, modelId).rows);
+      const result = await runListFederated(def, selected, state, {
+        evaluatorModels: selected.map(({ modelId, store, mutationView }) => ({ id: modelId, store, mutationView })),
+      });
+      assert.deepEqual(result.rows, old, 'Rules groups, unreadable Name predicate, and live edit retain each model’s rows');
+      assert.equal(result.rows[0]?.modelId, 'm1');
+      assert.equal(result.rows[0]?.entityId, 20);
+      if (selected.length === 2) {
+        assert.ok(result.rows.some(({ modelId, entityId }) => modelId === 'm2' && entityId === 10),
+          'the edited property also matches in the second model');
+        assert.ok(result.rows.some(({ modelId, entityId }) => modelId === 'm2' && entityId === 20),
+          'an untouched base property remains visible beside the live edit');
+      }
+    }
+  });
+
+  it('keeps all eight migrated v1 operator results through the actual federated runner', async () => {
+    const [model] = await parsedPairs();
+    for (const [operator, [field, value]] of Object.entries(listCases) as [ConditionOperator, [string, string]][]) {
+      const conditions: PropertyCondition[] = [{
+        source: 'property', psetName: 'Pset_Test', propertyName: field, operator, value,
+      }];
+      const def = definition({ conditions, expressIdsByModel: { m1: IDS }, ...migrateLegacyListConditions(conditions) });
+      const old = executeList(def, model.provider, model.modelId).rows.map(({ entityId }) => entityId);
+      const result = await runListFederated(def, [model], state);
+      assert.deepEqual(result.rows.map(({ entityId }) => entityId), old, operator);
+    }
+  });
+
+  it('applies model tags and snapshot IDs without cross-model Express ID mixing', async () => {
+    const pairs = await parsedPairs();
+    const tagged = {
+      ...state,
+      modelTags: new Map<string, ModelTag>([['architecture', { id: 'architecture', name: 'Architecture' }]]),
+      modelTagAssignments: new Map<string, ReadonlySet<string>>([['m2', new Set(['architecture'])]]),
+    };
+    const def = definition({
+      entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+      expressIdsByModel: { m1: [10], m2: [20] },
+      groups: [{ combinator: 'AND', rules: [Rule.modelTag('hasAny', ['architecture'])] }],
+    });
+    const result = await runListFederated(def, pairs, tagged, {
+      evaluatorModels: pairs.map(({ modelId, store, mutationView }) => ({ id: modelId, store, mutationView })),
+    });
+    assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]), [['m2', 20]]);
+  });
+
+  it('uses edited Rules groups instead of stale readable v1 conditions', async () => {
+    const [model] = await parsedPairs();
+    const def = definition({
+      conditions: [property],
+      groups: [{ combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Red')] }],
+    });
+    const result = await runListFederated(def, [model], state);
+    assert.deepEqual(result.rows.map(({ entityId }) => entityId), [10, 30]);
+  });
+
+  it('keeps an unreadable v1 predicate active alongside new Rules groups', async () => {
+    const [model] = await parsedPairs();
+    const migrated = migrateLegacyListConditions([{
+      source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Missing',
+    }]);
+    const def = definition({
+      conditions: [], ...migrated,
+      groups: [{ combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] }],
+    });
+    const result = await runListFederated(def, [model], state);
+    assert.deepEqual(result.rows, [], 'the unreadable Name predicate still excludes the Blue wall');
+  });
+});
+
 const noTags = { modelTags: new Map<string, ModelTag>(), modelTagAssignments: new Map<string, ReadonlySet<string>>() };
 
 describe('runListFederated (#5142)', () => {
-  it('merges the rows of every model in scope and sums execution time', () => {
+  it('merges the rows of every model in scope and sums execution time', async () => {
     const pairs = [pair('a'), pair('b')];
-    const result = runListFederated(definition(), pairs, { models: new Map([['a', {}], ['b', {}]]), ...noTags });
+    const result = await runListFederated(definition(), pairs, { models: new Map([['a', {}], ['b', {}]]), ...noTags });
     assert.deepEqual(result.rows.map((r) => [r.modelId, r.values[0]]), [['a', 'Wall of a'], ['b', 'Wall of b']]);
     assert.equal(result.totalCount, 2);
     assert.ok(Number.isFinite(result.executionTime) && result.executionTime >= 0);
   });
 
-  it('carries the unit annotation executeList resolved onto the result columns (#1573)', () => {
+  it('carries the unit annotation executeList resolved onto the result columns (#1573)', async () => {
     const qto: QuantitySet[] = [{ name: 'Qto', quantities: [{ name: 'NetVolume', value: 2.5, type: QuantityType.Volume }] }];
     // Only the second model carries the quantity — first-defined-wins across parts.
     const def = definition();
-    const result = runListFederated(def, [pair('a'), pair('b', qto)], { models: new Map([['a', {}], ['b', {}]]), ...noTags });
+    const result = await runListFederated(def, [pair('a'), pair('b', qto)], { models: new Map([['a', {}], ['b', {}]]), ...noTags });
     assert.equal(result.columns[1].quantityType, QuantityType.Volume);
     assert.equal(def.columns[1].quantityType, undefined, 'the authoring definition is never annotated');
   });
 
-  it('derives groups and the summary over the merged rows, across models', () => {
+  it('derives groups and the summary over the merged rows, across models', async () => {
     const def = definition({ grouping: { columnId: 'storey', columnIds: ['storey'], sumColumnIds: [] } });
-    const result = runListFederated(def, [pair('a'), pair('b')], { models: new Map([['a', {}], ['b', {}]]), ...noTags });
+    const result = await runListFederated(def, [pair('a'), pair('b')], { models: new Map([['a', {}], ['b', {}]]), ...noTags });
     assert.deepEqual(result.groups?.map((g) => [g.label, g.count]), [['Level 1', 1], ['Level 2', 1]]);
     assert.equal(result.summary?.count, 2);
   });
 
-  it('throws the scope reason instead of returning an empty result when no model is in scope', () => {
+  it('throws the scope reason instead of returning an empty result when no model is in scope', async () => {
     const tags = new Map<string, ModelTag>([['t-mep', { id: 't-mep', name: 'MEP' }]]);
     const def = definition({ modelTagScope: { op: 'hasAny', tagIds: ['t-mep'] } });
-    assert.throws(
+    await assert.rejects(
       () => runListFederated(def, [pair('a')], { models: new Map([['a', {}]]), modelTags: tags, modelTagAssignments: new Map() }),
       /No loaded model matches this list's model tag scope/,
     );

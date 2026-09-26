@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -89,45 +89,44 @@ interface TreeBuildParams {
   mutationVersion: number;
 }
 
-/** Memoise the ACTIVE grouping's fully expanded tree on exactly the inputs
- *  `useHierarchyTree.ts`'s `treeData` memo uses (plus `groupingMode`, which
- *  is already one of them) — a perf-review finding (#5881): building this
- *  from scratch on every reveal cost ~13.5 ms/call on a 500 storeys x 100
- *  elements tree, paid even when the target row was already on screen. With
- *  this memo, repeated picks against an unchanged model pay only the O(n)
- *  `findNodePath` walk (~1.4 ms on that fixture), and a target already in
- *  the CURRENTLY RENDERED (collapsed-aware) list — checked by the caller via
- *  `matchesRevealTarget` before ever reaching this tree — pays neither. */
-export function useExpandedTreeForGrouping(params: TreeBuildParams): TreeNode[] {
+/** Build the fully expanded projection on the first reveal lookup for a set
+ *  of tree inputs. Streamed geometry updates invalidate the cache without
+ *  rebuilding it during render when nobody has asked to reveal (#6133). */
+export function useExpandedTreeForGrouping(params: TreeBuildParams): () => TreeNode[] {
   const {
     groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
     classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
     mutationViews, mutationVersion,
   } = params;
-  return useMemo(
-    () => buildTreeForGrouping(
+  const cacheRef = useRef<{ inputs: readonly unknown[]; tree: TreeNode[] } | null>(null);
+  const inputs = [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
+    geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
+    georefMutations, mutationViews, mutationVersion] as const;
+  return () => {
+    const cached = cacheRef.current;
+    if (cached && cached.inputs.every((value, i) => Object.is(value, inputs[i]))) return cached.tree;
+    const tree = buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
-    ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutationVersion tracks mutationViews' content
-    [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
-  );
+    );
+    cacheRef.current = { inputs, tree };
+    return tree;
+  };
 }
 
 /** Reveal a selection made outside the tree (viewport click, search, BCF,
- *  context menu): find the node under `expandedTree` (the ACTIVE grouping's
- *  fully expanded projection, memoised by `useExpandedTreeForGrouping` — this
- *  hook no longer builds it) via `findNodePath` (reusing `filterNodes`'s
+ *  context menu): find the node under the ACTIVE grouping's fully expanded
+ *  projection, built lazily by `getExpandedTree`, via `findNodePath` (reusing `filterNodes`'s
  *  ancestor walk, not a second one), and expand only the ancestors that are
  *  missing so an already-visible target doesn't trigger a needless render
  *  (#5881). */
 export function useRevealGlobalId(
-  expandedTree: TreeNode[],
+  getExpandedTree: () => TreeNode[],
   expandedNodes: Set<string>,
   setExpandedNodes: Dispatch<SetStateAction<Set<string>>>,
 ): (globalId: number) => string | null {
   return useCallback((globalId: number): string | null => {
-    const found = findNodePath(expandedTree, (node) => matchesRevealTarget(node, globalId));
+    const found = findNodePath(getExpandedTree(), (node) => matchesRevealTarget(node, globalId));
     if (!found) return null;
     if (found.ancestorIds.some((id) => !expandedNodes.has(id))) {
       setExpandedNodes((prev) => {
@@ -137,5 +136,5 @@ export function useRevealGlobalId(
       });
     }
     return found.targetId;
-  }, [expandedTree, expandedNodes, setExpandedNodes]);
+  }, [getExpandedTree, expandedNodes, setExpandedNodes]);
 }

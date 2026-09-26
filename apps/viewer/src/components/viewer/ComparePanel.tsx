@@ -17,6 +17,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
@@ -28,6 +29,7 @@ import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { CompareExportBar } from './compare/CompareExportBar';
+import { StaleResultBanner } from './StaleResultBanner';
 import { useCompareSuggestions } from './compare/useCompareSuggestions';
 import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
@@ -74,6 +76,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // THIS wrapper get called, so every clear in this panel must go through it
   // or a stale result can resurrect itself once the run resolves.
   const { running, result, error, runComparison, cancelComparison, clearCompare } = useCompare();
+  const stale = useAnalysisStaleness(analysisStampOf(result));
   // Row names and change details read the stores the diff was computed from (#5312).
   const models = useMemo(() => modelsAsCompared(liveModels, result?.comparedStores), [liveModels, result]);
 
@@ -271,6 +274,12 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onClearExcludedTypes={clearExcludedTypes}
               />
 
+              {result && stale && (
+                <StaleResultBanner disabled={running} onRerun={() => { void runComparison(); }} />
+              )}
+
+              <div className={cn('flex-1 min-h-0 flex flex-col', stale && 'opacity-60')}>
+
               {/* Counts. The Matched badge appears when the content pass RAN, not
                   when it found something (#1891) — added/deleted are lower BECAUSE
                   of it, so the number explaining the drop sits next to them. */}
@@ -336,6 +345,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
               {/* What-changed detail for the selected element */}
               {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
+              </div>
             </>
           )}
 

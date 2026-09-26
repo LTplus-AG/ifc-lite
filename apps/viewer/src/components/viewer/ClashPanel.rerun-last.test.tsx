@@ -159,6 +159,23 @@ afterEach(async () => {
 
 for (const modelCount of [1, 2] as const) {
   describe(`ClashPanel Re-run repeats the last run kind (#5818), ${modelCount} model(s)`, () => {
+    it('#5820 keeps a stale result and the banner re-runs the same analysis', async () => {
+      await seed(modelCount);
+      await clickAndSettle(buttonByText('Find duplicates'));
+      const previous = useViewerStore.getState().clashResult;
+      assert.ok(previous);
+
+      await act(async () => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+      assert.equal(useViewerStore.getState().clashResult, previous);
+      const banner = container!.querySelector('[role="status"]');
+      assert.match(banner?.textContent ?? '', /model changed/i);
+      const rerun = banner?.querySelector('button');
+      assert.ok(rerun);
+      await clickAndSettle(rerun);
+      assert.notEqual(useViewerStore.getState().clashResult, previous);
+      assert.equal(container!.querySelector('[role="status"]'), null, 'fresh result clears the stale banner');
+    });
+
     it('repeats the duplicate scan after "Find duplicates"', async () => {
       await seed(modelCount);
       await clickAndSettle(buttonByText('Find duplicates'));

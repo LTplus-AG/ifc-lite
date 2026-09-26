@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useMemo, useRef } from 'react';
+import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import type {
   IDSAuditReport,
@@ -181,6 +182,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     workerAbortRef.current?.abort();
     const abortController = new AbortController();
     workerAbortRef.current = abortController;
+    const stamp = captureAnalysisStamp();
 
     try {
       setIdsLoading(true);
@@ -251,7 +253,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // A newer call may have started (and even published) while this one
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
-      setIdsValidationReport(validationReport);
+      setIdsValidationReport(stampAnalysisReport(validationReport, stamp));
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,

@@ -146,6 +146,7 @@ export function HierarchyNode({
     >
       <div
         role="treeitem"
+        data-hierarchy-node-type={node.type}
         tabIndex={0}
         aria-level={node.depth + 1}
         aria-expanded={node.hasChildren ? node.isExpanded : undefined}

@@ -231,7 +231,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
-    let mut parents = single_parents::ParentClaims::new(crate::schema_convert::targets_ifc2x3(&schema)); // one parent per inverse (#5727, #5802)
+    let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
@@ -409,7 +409,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
     stats.warnings.extend(checks.warnings());
-
+    stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)
 }

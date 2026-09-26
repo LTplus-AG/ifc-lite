@@ -731,8 +731,11 @@ fn duplicate_globalids_are_reconciled_no_dupes() {
     assert_eq!(type_count(&merged, "=IFCSITE("), 1);
     assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1);
     assert_eq!(type_count(&merged, "=IFCWALL("), 1, "duplicate wall unified");
-    // The objectified relationship is re-stamped (kept), not dropped.
-    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 2);
+    // The second model's containment only restates the unified wall's, which
+    // `ContainedInStructure : SET [0:1]` allows once (#5923), so it is not
+    // written. Relationships are still never unified by GlobalId: see
+    // `within_model_duplicate_globalids_are_restamped`.
+    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 1);
     assert_eq!(stats.federated_model_count, 0);
     assert!(!stats.unit_rescale_required);
     assert_no_dangling(&merged);

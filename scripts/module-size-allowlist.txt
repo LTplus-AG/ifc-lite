@@ -89,7 +89,7 @@
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
    985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
-   857 apps/viewer/src/components/viewer/properties/LocationMap.tsx
+   855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
   2164 apps/viewer/src/components/viewer/PropertiesPanel.tsx
@@ -99,7 +99,7 @@
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
    614 apps/viewer/src/components/viewer/ScriptPanel.tsx
-   567 apps/viewer/src/components/viewer/SearchInline.tsx
+   578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx

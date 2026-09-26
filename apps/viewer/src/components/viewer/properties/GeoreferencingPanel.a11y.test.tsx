@@ -123,7 +123,9 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     const cancel = [...row.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.includes('Cancel'));
     assert.ok(cancel);
     click(cancel);
-    assert.equal(document.activeElement, valueButton, 'focus returns to the field value after editing');
+    const restoredValueButton = row.querySelector('button[aria-label="Scale: 1"]');
+    assert.ok(restoredValueButton, 'the value control renders again after editing');
+    assert.ok(document.activeElement === restoredValueButton, 'focus returns to the field value after editing');
   });
 
   it('keeps the row a single DOM node across the non-editing -> editing switch (regression)', () => {
@@ -177,7 +179,7 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
       />,
     );
     openCoordinateOperation(container);
-    const label = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Angle to Grid North');
+    const label = [...container.querySelectorAll('span')].find((span) => span.textContent?.endsWith('Angle to Grid North'));
     assert.ok(label?.parentElement);
     const row = label.parentElement;
     const valueButton = row.querySelector('button[aria-label]');
@@ -191,7 +193,9 @@ describe('GeoreferencingPanel accessibility (#5812)', () => {
     const cancel = [...row.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.includes('Cancel'));
     assert.ok(cancel);
     click(cancel);
-    assert.equal(document.activeElement, valueButton);
+    const restoredValueButton = row.querySelector('button[aria-label]');
+    assert.ok(restoredValueButton, 'the angle value control renders again after editing');
+    assert.ok(document.activeElement === restoredValueButton, 'focus returns to the angle value after editing');
   });
 
   it('the "heights are ellipsoidal" Checkbox is reachable by getByLabelText', () => {

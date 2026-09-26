@@ -25,7 +25,7 @@ use crate::api::IfcAPI;
 use crate::zero_copy::MeshCollection;
 use wasm_bindgen::prelude::*;
 
-use super::batch::PartitionedBatch;
+use super::partitioned_batch::PartitionedBatch;
 
 impl IfcAPI {
     /// Clone the held session source `Arc` (a cheap refcount bump), or an empty

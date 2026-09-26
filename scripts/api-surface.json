@@ -8264,6 +8264,7 @@
     "Material: interface",
     "MathUtils: class",
     "Mesh: interface",
+    "MeshFinish: type",
     "ModelRange: interface",
     "OPAQUE_ALPHA_CUTOFF: const",
     "OverlayTheme: interface",

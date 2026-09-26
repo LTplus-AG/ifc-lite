@@ -506,7 +506,7 @@ fn take_back_rejected_counts_pushes_not_the_length_of_its_input() {
     let instanced = vec![plain_mesh(), plain_mesh()];
     let rejected = [0usize, 1, 5];
     let mut collection = MeshCollection::new();
-    let taken = take_back_rejected(instanced, &rejected, &mut collection);
+    let taken = take_back_rejected(instanced, &rejected, &mut collection, None);
     assert_eq!(taken, 2, "only the two in-range entries were pushed");
     assert_eq!(collection.length(), 2, "and the collection holds exactly those");
     assert_ne!(

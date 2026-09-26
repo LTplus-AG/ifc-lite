@@ -34,6 +34,7 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { computeWorkerCount } from './worker-count.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
+import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
 // The compiled-module memo lives in its own module so the main-thread
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
@@ -365,10 +366,6 @@ export async function* processParallel(
   let stylesSlicesSettled = false;
   let finalizeSettled = false;
   // Shard-resolved styled-item slices (see onAllStyleSlicesReceived).
-  interface StylesSlice {
-    orphanIds: Uint32Array; orphanColors: Float32Array;
-    geomIds: Uint32Array; geomColors: Float32Array; error?: string;
-  }
   const stylesSliceResults: (StylesSlice | null)[] = [];
   let stylesSlicesRemaining = 0;
   // Support spans extracted from the shard classes (sharded mode only).
@@ -380,10 +377,7 @@ export async function* processParallel(
   // Deferred finalize: needs BOTH the merged style slices and the meta event's
   // planeAngleToRadians (finalize seeds its decoder with it, exactly like the
   // serial styles block).
-  let mergedStylesForFinalize: {
-    orphanIds: Uint32Array; orphanColors: Float32Array;
-    geomIds: Uint32Array; geomColors: Float32Array;
-  } | null = null;
+  let mergedStylesForFinalize: MergedShardStyles | null = null;
   let finalizeDispatched = false;
   // Forward ref: assigned at the pre-pass dispatch site (which executes during
   // synchronous setup, long before any shard result can arrive).
@@ -463,6 +457,7 @@ export async function* processParallel(
           orphanColors: msg.orphanColors as Float32Array,
           geomIds: msg.geomIds as Uint32Array,
           geomColors: msg.geomColors as Float32Array,
+          geomFinishes: msg.geomFinishes as Float32Array | undefined, // #5582
           error: msg.error as string | undefined,
         };
         stylesSlicesRemaining--;
@@ -1101,37 +1096,8 @@ export async function* processParallel(
     // A late straggler slice may land after the #4902 bound already merged.
     if (stylesSlicesSettled) return;
     stylesSlicesSettled = true;
-    const orphan = new Map<number, number>(); // id -> base float index (slice,i)
-    const geom = new Map<number, number>();
-    // First pass: count winners to size the merged columns.
-    const orphanWin: Array<[number, Float32Array, number]> = [];
-    const geomWin: Array<[number, Float32Array, number]> = [];
-    for (const slice of stylesSliceResults) {
-      if (!slice) continue;
-      if (slice.error) console.warn(`[stream][shard] style slice failed (degraded colours possible): ${slice.error}`);
-      for (let i = 0; i < slice.orphanIds.length; i++) {
-        const id = slice.orphanIds[i];
-        if (!orphan.has(id)) { orphan.set(id, 1); orphanWin.push([id, slice.orphanColors, i * 4]); }
-      }
-      for (let i = 0; i < slice.geomIds.length; i++) {
-        const id = slice.geomIds[i];
-        if (!geom.has(id)) { geom.set(id, 1); geomWin.push([id, slice.geomColors, i * 4]); }
-      }
-    }
-    const orphanIds = new Uint32Array(orphanWin.length);
-    const orphanColors = new Float32Array(orphanWin.length * 4);
-    orphanWin.forEach(([id, colors, o], i) => {
-      orphanIds[i] = id;
-      orphanColors.set(colors.subarray(o, o + 4), i * 4);
-    });
-    const geomIds = new Uint32Array(geomWin.length);
-    const geomColors = new Float32Array(geomWin.length * 4);
-    geomWin.forEach(([id, colors, o], i) => {
-      geomIds[i] = id;
-      geomColors.set(colors.subarray(o, o + 4), i * 4);
-    });
-    console.log(`[stream][shard] styles merged: ${geomWin.length} geometry + ${orphanWin.length} orphan @ ${elapsed()}ms`);
-    mergedStylesForFinalize = { orphanIds, orphanColors, geomIds, geomColors };
+    mergedStylesForFinalize = mergeShardStyleSlices(stylesSliceResults);
+    console.log(`[stream][shard] styles merged: ${mergedStylesForFinalize.geomIds.length} geometry + ${mergedStylesForFinalize.orphanIds.length} orphan @ ${elapsed()}ms`);
     maybeDispatchFinalize();
   };
 
@@ -1154,10 +1120,11 @@ export async function* processParallel(
         orphanColors: m.orphanColors,
         geomIds: m.geomIds,
         geomColors: m.geomColors,
+        geomFinishes: m.geomFinishes,
         ...supportSpans,
         planeAngleToRadians: prepassMeta.planeAngleToRadians ?? 1,
       },
-      [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer],
+      [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer, m.geomFinishes.buffer],
     );
     console.log(`[stream][shard] styles finalize dispatched to worker[0] @ ${elapsed()}ms`);
     // #4902 bound: replay the empty-styles event (stall-phase.ts) so every
@@ -1318,6 +1285,8 @@ export async function* processParallel(
         // resolved colors — uniform shading across the whole stream.
         const styleIds = evt.styleIds as Uint32Array;
         const styleColors = evt.styleColors as Uint8Array;
+        // #5582: absent from an older wasm ⇒ empty ⇒ no finishes.
+        const styleFinishes = (evt.styleFinishes as Float32Array | undefined) ?? new Float32Array(0);
         const voidKeys = evt.voidKeys as Uint32Array;
         const voidCounts = evt.voidCounts as Uint32Array;
         const voidValues = evt.voidValues as Uint32Array;
@@ -1333,6 +1302,7 @@ export async function* processParallel(
           try {
             const sIds = styleIds.slice();
             const sColors = styleColors.slice();
+            const sFinishes = styleFinishes.slice();
             const vKeys = voidKeys.slice();
             const vCounts = voidCounts.slice();
             const vValues = voidValues.slice();
@@ -1344,6 +1314,7 @@ export async function* processParallel(
                 type: 'set-styles' as const,
                 styleIds: sIds,
                 styleColors: sColors,
+                styleFinishes: sFinishes,
                 voidKeys: vKeys,
                 voidCounts: vCounts,
                 voidValues: vValues,
@@ -1352,7 +1323,7 @@ export async function* processParallel(
                 materialColors: mColors,
               },
               [
-                sIds.buffer, sColors.buffer, vKeys.buffer, vCounts.buffer, vValues.buffer,
+                sIds.buffer, sColors.buffer, sFinishes.buffer, vKeys.buffer, vCounts.buffer, vValues.buffer,
                 mIds.buffer, mCounts.buffer, mColors.buffer,
               ],
             );

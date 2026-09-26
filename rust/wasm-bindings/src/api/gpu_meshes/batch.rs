@@ -6,9 +6,11 @@ use super::batch_partition::{
     encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
     take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
 };
+use super::partitioned_batch::PartitionedBatch;
+use super::style_finishes::mesh_js_with_finish;
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
-use crate::zero_copy::{GeometryFingerprint, MeshCollection, MeshDataJs};
+use crate::zero_copy::{GeometryFingerprint, MeshCollection};
 use wasm_bindgen::prelude::*;
 
 /// Per-element output of [`IfcAPI::produce_batch`] — the canonical producer's
@@ -671,6 +673,8 @@ impl IfcAPI {
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, false,
         );
+        // #5582: the finishes `setStyleFinishes` installed for this style wire.
+        let finishes = self.style_finishes_for(style_ids);
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
@@ -679,7 +683,7 @@ impl IfcAPI {
             // Taken BEFORE the meshes are moved out of `out` below.
             let fingerprint = out.fingerprint();
             for mesh_data in out.meshes {
-                mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
+                mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
             }
             if let Some(fp) = fingerprint {
                 mesh_collection.push_geometry_hash(fp);
@@ -816,6 +820,9 @@ impl IfcAPI {
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, true,
         );
+        // #5582: stamped on the flat side only; the IFNS shard has no material
+        // slot, so an instanced occurrence keeps the renderer's default finish.
+        let finishes = self.style_finishes_for(style_ids);
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
@@ -851,7 +858,7 @@ impl IfcAPI {
                     }
                     candidates.push(mesh_data);
                 } else {
-                    mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
+                    mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
                 }
             }
             // The element-level geometry-diff record is path-independent metadata;
@@ -874,7 +881,7 @@ impl IfcAPI {
             if meets_instance_threshold(&mesh_data, &counts) {
                 instanced.push(mesh_data);
             } else {
-                mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
+                mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
             }
         }
         // Each materialized instanced mesh is one shard instance; each kept don't-bake
@@ -930,7 +937,7 @@ impl IfcAPI {
             encode_shard_routing_refusals_back(&refs, instanced.len(), rtc);
         drop(refs);
         // Handed back = drawn flat; DROPPED = drawn nowhere. Both leave the count.
-        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection);
+        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection, finishes.as_deref());
         let instanced_occurrences = instanced_occurrences - dropped - taken;
         mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {
@@ -938,41 +945,6 @@ impl IfcAPI {
             shard,
             instanced_occurrences,
         }
-    }
-}
-
-/// Result of [`IfcAPI::process_geometry_batch_partitioned`]: the flat
-/// MeshCollection (transparent + type geometry) and the instanced IFNS shard
-/// (opaque ordinary occurrences) from ONE produce_batch. Take-once accessors so
-/// the JS side moves each out without a clone.
-#[wasm_bindgen]
-pub struct PartitionedBatch {
-    meshes: Option<MeshCollection>,
-    shard: Vec<u8>,
-    instanced_occurrences: usize,
-}
-
-#[wasm_bindgen]
-impl PartitionedBatch {
-    /// The flat MeshCollection (transparent glass + type-product geometry).
-    /// Moves out — call once.
-    #[wasm_bindgen(js_name = takeMeshes)]
-    pub fn take_meshes(&mut self) -> Option<MeshCollection> {
-        self.meshes.take()
-    }
-
-    /// The instanced IFNS shard bytes (opaque ordinary occurrences). Moves out.
-    #[wasm_bindgen(js_name = takeShard)]
-    pub fn take_shard(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.shard)
-    }
-
-    /// Number of occurrences routed into the instanced shard this batch. The viewer
-    /// folds this into its total mesh count so the count reflects ALL rendered
-    /// geometry (flat + instanced), not just the flat MeshCollection.
-    #[wasm_bindgen(getter, js_name = instancedOccurrences)]
-    pub fn instanced_occurrences(&self) -> usize {
-        self.instanced_occurrences
     }
 }
 

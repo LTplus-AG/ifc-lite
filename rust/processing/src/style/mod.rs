@@ -47,7 +47,7 @@ pub use material::{
     pick_material_style_for_submesh, pick_opaque_first, resolve_material_ids,
     resolve_submesh_color,
 };
-pub use surface::extract_surface_style_colors;
+pub use surface::{extract_surface_style_colors, extract_surface_style_specular, SpecularMaterial};
 
 /// Alpha at or above which a color is treated as opaque.
 ///

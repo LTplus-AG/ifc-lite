@@ -21,7 +21,7 @@
 //! lives here exactly once. The historic #858/#913-class drift was always in
 //! this resolution layer, not in the span stashing.
 
-use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
+use crate::style::{FullIndexedColourMap, GeometryStyleInfo, SpecularMaterial};
 use ifc_lite_core::{
     express_id::parse_express_id, find_keyword, keyword_eq, DecodedEntity, EntityDecoder,
 };
@@ -143,7 +143,7 @@ pub struct ResolvedPrepass {
     pub deferred_attached_styled_spans: Vec<(usize, usize)>,
 }
 
-pub use crate::prepass_styled::{resolve_styled_items_into, StyleSeeds};
+pub use crate::prepass_styled::{resolve_geometry_finishes, resolve_styled_items_into, StyleSeeds};
 
 /// THE canonical post-scan resolution (file-order, first-wins precedence).
 pub fn resolve_prepass(
@@ -553,6 +553,54 @@ pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder
         rgba.extend_from_slice(&crate::style::Rgba::from_array(color).to_rgba8());
     }
     (ids, rgba)
+}
+
+/// [`flat_styles_rgba8`] plus the parallel `styleFinishes` wire (#5582): two
+/// `f32` per style id, `[metallic, roughness]`, in the SAME order as `ids`,
+/// `f32::NAN` for an unauthored field. The id order is decided once, by the
+/// rgba8 flatten; the finishes are a per-id lookup over it into
+/// `geometry_finishes` ([`crate::prepass_styled::resolve_geometry_finishes`]
+/// over the same styled items). A geometry style always wins its id in that
+/// flatten, so only geometry-style entries can carry a finish; the
+/// indexed-colour, material and element-colour fallbacks are colour-only and
+/// get `[NAN, NAN]`.
+pub fn flat_styles_with_finishes(
+    resolved: &ResolvedPrepass,
+    geometry_finishes: &FxHashMap<u32, SpecularMaterial>,
+    decoder: &mut EntityDecoder,
+) -> (Vec<u32>, Vec<u8>, Vec<f32>) {
+    let (ids, rgba) = flat_styles_rgba8(resolved, decoder);
+    let finishes = style_finishes_for_ids(&ids, |id| geometry_finishes.get(&id).copied());
+    (ids, rgba, finishes)
+}
+
+/// The `styleFinishes` wire for an already-ordered id list: `finish_of(id)`'s
+/// [`finish_to_wire`] pair per id, in `ids` order. Shared by the serial
+/// flatten and the sharded finalize so both encode identically.
+pub fn style_finishes_for_ids(
+    ids: &[u32],
+    mut finish_of: impl FnMut(u32) -> Option<SpecularMaterial>,
+) -> Vec<f32> {
+    let mut out = Vec::with_capacity(ids.len() * 2);
+    for &id in ids {
+        out.extend_from_slice(&finish_to_wire(finish_of(id)));
+    }
+    out
+}
+
+/// One style's `[metallic, roughness]` wire pair; `f32::NAN` marks a field the
+/// file did not author. Inverse: [`finish_from_wire`].
+pub fn finish_to_wire(finish: Option<SpecularMaterial>) -> [f32; 2] {
+    let f = finish.unwrap_or_default();
+    [f.metallic.unwrap_or(f32::NAN), f.roughness.unwrap_or(f32::NAN)]
+}
+
+/// Decode one `[metallic, roughness]` wire pair. A non-finite field is
+/// unauthored; a pair with neither field authored is no finish at all.
+pub fn finish_from_wire(pair: [f32; 2]) -> Option<SpecularMaterial> {
+    let field = |v: f32| v.is_finite().then_some(v);
+    let (metallic, roughness) = (field(pair[0]), field(pair[1]));
+    (metallic.is_some() || roughness.is_some()).then_some(SpecularMaterial { metallic, roughness })
 }
 
 /// Flat wire encoding of the void index: `(keys, counts, values)` in the

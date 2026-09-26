@@ -1460,6 +1460,7 @@ export class Renderer {
             })(),
             rteOrigin: so ? [so[0], so[1], so[2]] : [ox, oy, oz],
             color: meshData.color,
+            ...(meshData.material ? { finish: meshData.material } : {}), // #5582
             hydrated: true,
         });
     }
@@ -2019,7 +2020,7 @@ export class Renderer {
                     meshBuf[34] = mesh.color[2];
                     // Selected meshes always keep their own alpha so highlights stay opaque
                     meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
-                    packMeshMaterial(meshBuf, mesh.color[3], mesh.material);
+                    packMeshMaterial(meshBuf, mesh.color[3], mesh.finish ?? mesh.material);
 
                     // Section plane data (offset 40-43)
                     if (sectionPlaneData) {
@@ -2564,7 +2565,7 @@ export class Renderer {
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
-                    packMeshMaterial(tpl, batch.color[3]);
+                    packMeshMaterial(tpl, batch.color[3], batch.finish);
 
                     // Per-batch local frame: the batch's vertices are stored
                     // RELATIVE to batch.origin (f32-small), so set the model
@@ -2961,7 +2962,7 @@ export class Renderer {
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                         tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
-                        packMeshMaterial(tpl, mesh.color[3], mesh.material);
+                        packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
                         if (sectionPlaneData) {
                             tpl[40] = sectionPlaneData.normal[0];
                             tpl[41] = sectionPlaneData.normal[1];
@@ -3021,7 +3022,7 @@ export class Renderer {
                     tpl.set(mesh.transform.m, 16);
                     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
-                    packMeshMaterial(tpl, mesh.color[3], mesh.material);
+                    packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
                     if (sectionPlaneData) {
                         tpl[40] = sectionPlaneData.normal[0];
                         tpl[41] = sectionPlaneData.normal[1];

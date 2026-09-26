@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { chunkCellKey, bucketBaseKeyFor } from './chunk-grid.js';
+import { chunkCellKey, bucketBaseKeyFor, colorKey } from './chunk-grid.js';
 
 const mesh = (firstVertex: [number, number, number], origin?: [number, number, number]) => ({
   positions: new Float32Array([...firstVertex, 999, 999, 999]),
@@ -40,23 +40,23 @@ describe('chunkCellKey', () => {
 });
 
 describe('bucketBaseKeyFor', () => {
-  const colorKey = '500|500|500|1000';
+  const baseColorKey = '500|500|500|1000';
 
   it('is the plain colour key when chunking is off', () => {
-    assert.strictEqual(bucketBaseKeyFor(mesh([1, 2, 3]), colorKey, null), colorKey);
+    assert.strictEqual(bucketBaseKeyFor(mesh([1, 2, 3]), baseColorKey, null), baseColorKey);
   });
 
   it('prefixes the cell when chunking is on', () => {
     assert.strictEqual(
-      bucketBaseKeyFor(mesh([33, 2, 3]), colorKey, { cellSize: 32 }),
-      `1,0,0~${colorKey}`,
+      bucketBaseKeyFor(mesh([33, 2, 3]), baseColorKey, { cellSize: 32 }),
+      `1,0,0~${baseColorKey}`,
     );
   });
 
   it('separates same colour in different cells and same cell in different colours', () => {
     const cfg = { cellSize: 32 };
-    const a = bucketBaseKeyFor(mesh([1, 0, 0]), colorKey, cfg);
-    const b = bucketBaseKeyFor(mesh([100, 0, 0]), colorKey, cfg);
+    const a = bucketBaseKeyFor(mesh([1, 0, 0]), baseColorKey, cfg);
+    const b = bucketBaseKeyFor(mesh([100, 0, 0]), baseColorKey, cfg);
     const c = bucketBaseKeyFor(mesh([1, 0, 0]), '0|0|0|1000', cfg);
     assert.notStrictEqual(a, b);
     assert.notStrictEqual(a, c);
@@ -65,9 +65,55 @@ describe('bucketBaseKeyFor', () => {
   it('round-trips through the "#N" overflow-suffix strip (lastIndexOf contract)', () => {
     // resolveActiveBucket appends "#N"; baseColorKey strips at the LAST "#".
     // Neither cell keys nor colour keys may contain "#".
-    const base = bucketBaseKeyFor(mesh([33, 2, 3], [-64, 0, 0]), colorKey, { cellSize: 32 });
+    const base = bucketBaseKeyFor(mesh([33, 2, 3], [-64, 0, 0]), baseColorKey, { cellSize: 32 });
     assert.ok(!base.includes('#'));
     const suffixed = `${base}#7`;
     assert.strictEqual(suffixed.substring(0, suffixed.lastIndexOf('#')), base);
+  });
+});
+
+/**
+ * #5582: `colorKey` folds an IFC-authored metallic/roughness into the batch
+ * key, quantized to the same 1/1000 precision as colour, so two pieces
+ * sharing a colour but authoring finishes that differ by 0.001 or more never
+ * merge into the same batch (a merged batch draws with a single material
+ * row — see `createSceneBatch`, `scene-batch-upload.ts`). Finishes closer
+ * than that share a batch and its first piece's exact value — not visually
+ * distinguishable, so intentional, same as the pre-#5582 colour quantization.
+ */
+describe('colorKey', () => {
+  const white: [number, number, number, number] = [1, 1, 1, 1];
+
+  it('matches the pre-#5582 plain "r|g|b|a" shape when no material is given', () => {
+    assert.strictEqual(colorKey([0.5, 0.5, 0.5, 1]), '500|500|500|1000');
+  });
+
+  it('is unchanged for a piece that authors no specular evidence (the common case)', () => {
+    assert.strictEqual(colorKey(white, {}), colorKey(white));
+    assert.strictEqual(colorKey(white, undefined), colorKey(white));
+  });
+
+  it('separates two pieces with the same colour but different metallic', () => {
+    const glass = colorKey(white, { roughness: 0.05 });
+    const metal = colorKey(white, { metallic: 1, roughness: 0.05 });
+    assert.notStrictEqual(glass, metal);
+  });
+
+  it('separates two pieces with the same colour but different roughness', () => {
+    const glossy = colorKey(white, { metallic: 0, roughness: 0.05 });
+    const matte = colorKey(white, { metallic: 0, roughness: 0.9 });
+    assert.notStrictEqual(glossy, matte);
+  });
+
+  it('is deterministic for the same colour and material', () => {
+    const material = { metallic: 0.5, roughness: 0.25 };
+    assert.strictEqual(colorKey(white, { ...material }), colorKey(white, { ...material }));
+  });
+
+  it('treats a metallic/roughness of exactly 0 as authored, not as "absent"', () => {
+    // A naive `material.metallic || fallback` would conflate a genuine 0
+    // (fully dielectric) with "not authored" and collapse this into the
+    // no-material key, silently merging it back into the common bucket.
+    assert.notStrictEqual(colorKey(white, { metallic: 0, roughness: 0 }), colorKey(white));
   });
 });

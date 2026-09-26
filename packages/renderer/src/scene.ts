@@ -35,7 +35,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
-import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { bucketBaseKeyFor, colorKey, type SpatialChunkingConfig } from './chunk-grid.js';
 import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization } from './scene-derived-batches.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
@@ -107,11 +107,10 @@ export interface TexturedMesh {
   color: [number, number, number, number];
   /**
    * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
-   * this today — `MeshData` (the WASM extraction boundary) carries no
-   * metallic/roughness fields, and IFC-authored specular is not extracted yet
-   * (#5582) — so `packMeshMaterial` falls back to its defaults for every
-   * textured draw. The field exists so a textured mesh has the SAME optional
-   * hook `Mesh` does, ready for #5582 without a second API.
+   * this today: IFC-authored specular (#5582) reaches flat and batched
+   * meshes as `finish`, but the textured path does not carry one yet, so
+   * `packMeshMaterial` falls back to its defaults for every textured draw.
+   * The field is the SAME optional hook `Mesh.material` is.
    */
   material?: Material;
   /**
@@ -934,7 +933,10 @@ export class Scene {
    */
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
-    const key = bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking);
+    // #5582: material is the mesh's OWN authored finish regardless of a
+    // colour override — a recolour changes what a piece looks like, not
+    // what it is physically made of.
+    const key = bucketBaseKeyFor(source, colorKey(color ?? meshData.color, meshData.material), this.spatialChunking);
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1180,21 +1182,6 @@ export class Scene {
       return extracted.length > 0 ? extracted : undefined;
     }
     return pieces;
-  }
-
-  /**
-   * Generate color key for grouping meshes.
-   * Quantizes RGBA to 10-bit per channel and packs into a compact string.
-   * Avoids floating-point template literal overhead of the old approach.
-   */
-  private colorKey(color: readonly [number, number, number, number]): string {
-    // Quantize to 1000 levels (same precision as before, but integer math only)
-    const r = Math.round(color[0] * 1000);
-    const g = Math.round(color[1] * 1000);
-    const b = Math.round(color[2] * 1000);
-    const a = Math.round(color[3] * 1000);
-    // Pack into single string with fixed-width separator for uniqueness
-    return `${r}|${g}|${b}|${a}`;
   }
 
   /**
@@ -2499,7 +2486,9 @@ export class Scene {
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
-      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
+      // A derived batch (no bucketKey) is a subset of ONE material-uniform
+      // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
+      id: this.nextBatchId, colorKey: bucketKey ?? colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
@@ -2747,7 +2736,7 @@ export class Scene {
       (id) => this.meshDataMap.get(id),
       (piece) => this.meshDataBucket.get(piece),
       (piece) => this.bucketBaseKey(piece),
-      (c) => this.colorKey(c),
+      (c) => colorKey(c),
     );
 
     const maxBufferSize = this.getMaxBufferSize(device);

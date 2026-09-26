@@ -22,10 +22,8 @@ interface UseRevealSelectionParams {
   storeysVirtualizer: ScrollableVirtualizer;
   modelsVirtualizer: ScrollableVirtualizer;
   virtualizer: ScrollableVirtualizer;
-  /** Set to `true` at the top of the tree's own click handler. A selection
-   *  that originated from a tree row click must not re-scroll the row that
-   *  produced it (#5881) — it is already on screen. */
-  fromTreeClickRef: { current: boolean };
+  /** Id selected by the tree's last click, or undefined when none is pending. */
+  fromTreeClickRef: { current: number | null | undefined };
 }
 
 /** Expand ancestors and scroll to a selection made outside the tree (3D
@@ -53,10 +51,11 @@ export function useRevealSelection({
   // click, which already put itself on screen.
   useEffect(() => {
     if (selectedEntityId == null) return;
-    if (fromTreeClickRef.current) {
-      fromTreeClickRef.current = false;
+    if (fromTreeClickRef.current === selectedEntityId) {
+      fromTreeClickRef.current = undefined;
       return;
     }
+    fromTreeClickRef.current = undefined;
     pendingTargetRef.current = revealGlobalId(selectedEntityId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId's own deps cover the tree/expansion state it reads
   }, [selectedEntityId]);

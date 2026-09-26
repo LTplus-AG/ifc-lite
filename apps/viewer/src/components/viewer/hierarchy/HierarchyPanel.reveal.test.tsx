@@ -192,6 +192,11 @@ describe('HierarchyPanel reveal selection (#5881)', () => {
       assert.equal(useViewerStore.getState().selectedEntityId, 7, 'the click did select the wall');
       assert.equal(scrollToCalls.length, 0, 'a tree click must not trigger the reveal scroll');
 
+      // Re-clicking the selected row leaves selectedEntityId unchanged. The
+      // following outside selection must still be revealed.
+      click(visibleRow!);
+      assert.equal(useViewerStore.getState().selectedEntityId, 7);
+
       // Positive control: a selection from OUTSIDE the tree, on a currently
       // hidden element, must scroll.
       act(() => {

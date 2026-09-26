@@ -195,10 +195,8 @@ export function HierarchyPanel() {
   const storeysRef = useRef<HTMLDivElement>(null);
   const modelsRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null); // Legacy single-model mode
-  // A selection made by the tree's own click must not re-trigger the reveal
-  // scroll below — it already put itself on screen (#5881).
-  const selectionFromTreeRef = useRef(false);
-
+  // Match the tree's last selected id so a same-id click cannot mask an outside selection.
+  const selectionFromTreeRef = useRef<number | null | undefined>(undefined);
 
   // Virtualizers for both sections
   const storeysVirtualizer = useVirtualizer({
@@ -223,8 +221,7 @@ export function HierarchyPanel() {
     overscan: 10,
   });
 
-  // Reveal a selection made outside the tree (viewport, search, BCF, context
-  // menu) by expanding its ancestors and scrolling it into view (#5881).
+  // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
   useRevealSelection({
     selectedEntityId,
     revealGlobalId,
@@ -368,7 +365,7 @@ export function HierarchyPanel() {
 
   // Handle node click - for selection/isolation or expand/collapse
   const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
-    selectionFromTreeRef.current = true;
+    try {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;
@@ -731,6 +728,9 @@ export function HierarchyPanel() {
         setSelectedEntityId(globalId);
         setSelectedEntity(resolveEntityRef(globalId));
       }
+    }
+    } finally {
+      selectionFromTreeRef.current = useViewerStore.getState().selectedEntityId;
     }
   }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility]);
 

@@ -75,6 +75,7 @@
 // wiring; external consumers reach its types through the root-level `pub use`
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
+pub(crate) mod alignment_arc_length;
 pub mod analytic;
 pub(crate) mod gradient;
 pub(crate) mod curve_segment;

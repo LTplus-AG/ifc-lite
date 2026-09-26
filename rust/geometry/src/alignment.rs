@@ -294,7 +294,7 @@ impl AlignmentCurve {
             breaks.push(v_start(seg) + v_length(seg));
         }
         if let Some(profile) = &self.gradient {
-            breaks.extend(profile.station_breaks());
+            breaks.extend(profile.station_breaks().map(|s| s - profile.first_station()));
         }
         breaks.retain(|s| s.is_finite() && *s >= 0.0 && *s <= self.horizontal_length());
         breaks.sort_by(f64::total_cmp);
@@ -461,7 +461,7 @@ impl AlignmentCurve {
     /// the first segment's start height 10 was right).
     fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
         if let Some(profile) = &self.gradient {
-            return profile.evaluate(station);
+            return profile.evaluate(station + profile.first_station());
         }
         let Some(first) = self.vertical.first() else {
             return (0.0, 0.0);
@@ -513,13 +513,17 @@ impl AlignmentCurve {
         // optional), so we treat each segment's own StartPoint /
         // StartDirection as authoritative and use the cumulative
         // SegmentLength sum as the station axis.
-        for seg in &self.horizontal {
+        // Cumulative ends are monotone because segment lengths are
+        // non-negative. A sampled IFC4x3 base curve may have one segment
+        // per metre, and arc-length inversion evaluates it many times.
+        // Negating the old comparison also preserves its NaN fall-through.
+        let index = self.horizontal.partition_point(|seg| {
+            !(station <= h_cum_start(seg) + h_length(seg) + 1e-9)
+        });
+        if let Some(seg) = self.horizontal.get(index) {
             let len = h_length(seg);
-            let cum = h_cum_start(seg);
-            if station <= cum + len + 1e-9 {
-                let local = (station - cum).max(0.0).min(len);
-                return h_eval(seg, local);
-            }
+            let local = (station - h_cum_start(seg)).max(0.0).min(len);
+            return h_eval(seg, local);
         }
         // Past the end → extrapolate tangentially from the last segment.
         let last = self.horizontal.last().unwrap();

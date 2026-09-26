@@ -2173,6 +2173,11 @@ is therefore not like-for-like. No measurable end-to-end speed verdict follows
 from either fixture. The numeric A/B evidence is in the PR.
 
 The incremental clothoid sampler avoids repeatedly integrating from the
-origin for each station. The lesson is to check complete model output before
-interpreting alignment timings: newly generated geometry changes the amount
-of work even when total time looks similar.
+origin for each station. A follow-up review found that inverting 3D station
+length still rescanned every densely sampled horizontal segment and vertical
+profile segment at each integration point; those lookups now use their sorted
+station keys. The final interleaved A/B kept AC20's output counts identical
+and its phase timings within noise. Viadotto again emitted the intended extra
+geometry, so its timing remains non-comparable. The lesson is to check
+complete model output before interpreting alignment timings and to trace
+the lookup cost inside each repeated station evaluation.

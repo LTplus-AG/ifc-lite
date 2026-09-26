@@ -57,7 +57,8 @@ use nalgebra::{Point2, Point3, Vector3};
 
 #[path = "sectioned_positions.rs"]
 mod sectioned_positions;
-use sectioned_positions::{ArcLengthMap, PositionAlongDirectrix};
+use crate::alignment_arc_length::ArcLengthMap;
+use sectioned_positions::PositionAlongDirectrix;
 
 use crate::{
     alignment::{AlignmentCurve, AlignmentFrame},

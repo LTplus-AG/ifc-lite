@@ -25,6 +25,26 @@ fn line_segment_evaluation() {
     assert!(h.abs() < 1e-9);
 }
 
+/// #5327: a densely sampled IFC4x3 base curve must select the same
+/// segment at boundaries and beyond the end after logarithmic lookup.
+#[test]
+fn dense_horizontal_lookup_preserves_boundary_and_extrapolation() {
+    let horizontal = (0..4_096)
+        .map(|i| HSeg::Line {
+            sx: i as f64,
+            sy: 0.0,
+            heading: 0.0,
+            length: 1.0,
+            cum_start: i as f64,
+        })
+        .collect();
+    let curve = AlignmentCurve { horizontal, vertical: vec![], gradient: None };
+    for (station, expected) in [(0.0, 0.0), (1.0, 1.0), (4_095.5, 4_095.5), (4_100.0, 4_100.0)] {
+        assert!((curve.evaluate(station).origin.x - expected).abs() < 1e-9);
+    }
+    assert!(curve.evaluate(f64::NAN).origin.x.is_nan());
+}
+
 /// Reproduce the issue #828 bridge fixture's first arc: start at
 /// origin, heading 13.36° (= 0.2332 rad), radius 9279, length 2965.68,
 /// CW. Per the file, the next segment starts at #103=(2945.13,216.39),

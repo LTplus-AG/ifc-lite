@@ -53,6 +53,13 @@ pub struct GradientProfile {
 }
 
 impl GradientProfile {
+    /// Authored station of the first vertical segment. Horizontal curve
+    /// evaluation starts at local station zero, while this profile may use
+    /// an absolute chainage such as 1000 m.
+    pub(crate) fn first_station(&self) -> f64 {
+        self.segments[0].start
+    }
+
     /// Parse the vertical profile of an `IfcGradientCurve`. `None` when the
     /// entity is not a gradient curve or carries no usable segment.
     pub fn from_curve(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Self> {
@@ -80,11 +87,9 @@ impl GradientProfile {
         if station <= first.start {
             return (first.height + first.grade * (station - first.start), first.grade);
         }
-        let i = self
-            .segments
-            .iter()
-            .rposition(|s| s.start <= station)
-            .unwrap_or(0);
+        // Segments are sorted at parse time. A long alignment may evaluate
+        // this profile at every metre while building its 3D arc-length map.
+        let i = self.segments.partition_point(|s| s.start <= station).saturating_sub(1);
         let seg = self.segments[i];
         let u = station - seg.start;
         let Some(next) = self.segments.get(i + 1) else {

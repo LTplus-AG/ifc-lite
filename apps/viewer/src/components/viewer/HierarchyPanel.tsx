@@ -22,6 +22,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
@@ -130,6 +131,7 @@ export function HierarchyPanel() {
     modelsNodes: rawModelsNodes,
     toggleExpand,
     getNodeElements,
+    revealGlobalId,
   } = useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult });
 
   // #540: merged parts have no meshes; hide their dead rows here.
@@ -193,6 +195,9 @@ export function HierarchyPanel() {
   const storeysRef = useRef<HTMLDivElement>(null);
   const modelsRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null); // Legacy single-model mode
+  // A selection made by the tree's own click must not re-trigger the reveal
+  // scroll below — it already put itself on screen (#5881).
+  const selectionFromTreeRef = useRef(false);
 
 
   // Virtualizers for both sections
@@ -216,6 +221,21 @@ export function HierarchyPanel() {
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 10,
+  });
+
+  // Reveal a selection made outside the tree (viewport, search, BCF, context
+  // menu) by expanding its ancestors and scrolling it into view (#5881).
+  useRevealSelection({
+    selectedEntityId,
+    revealGlobalId,
+    storeysNodes,
+    modelsNodes,
+    filteredNodes,
+    isMultiModel,
+    storeysVirtualizer,
+    modelsVirtualizer,
+    virtualizer,
+    fromTreeClickRef: selectionFromTreeRef,
   });
 
   // Resize handler for draggable divider
@@ -348,6 +368,7 @@ export function HierarchyPanel() {
 
   // Handle node click - for selection/isolation or expand/collapse
   const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
+    selectionFromTreeRef.current = true;
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;

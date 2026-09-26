@@ -17,6 +17,7 @@ import {
   buildMaterialTree,
   buildGroupTree,
   filterNodes,
+  findNodePath,
   splitNodes,
   type AuthoredProduct,
   type GroupSubFilter,
@@ -246,15 +247,18 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationViews, models, geometricIds, mutationVersion]);
   const searchExpansion = searchQuery.trim() ? EXPAND_ALL : expandedNodes;
-  // hiddenEntities intentionally NOT in deps - visibility computed lazily
-  const treeData = useMemo(
-    (): TreeNode[] => {
+
+  // Same grouping-mode switch used by both the rendered `treeData` (below,
+  // expanded per `searchExpansion`) and `revealGlobalId` (fully expanded, to
+  // locate a node made off-tree without duplicating the switch, #5881).
+  const buildTreeWithExpansion = useCallback(
+    (expansion: ExpansionLookup): TreeNode[] => {
       const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
       if (groupingMode === 'type') {
         return buildTypeTree(
           models,
           ifcDataStore,
-          searchExpansion,
+          expansion,
           isMultiModel,
           classTreeIds,
           authoredProducts,
@@ -263,18 +267,18 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         );
       }
       if (groupingMode === 'ifc-type') {
-        return buildIfcTypeTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
+        return buildIfcTypeTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
       }
       if (groupingMode === 'material') {
-        return buildMaterialTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds);
+        return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds);
       }
       if (groupingMode === 'groups') {
-        return buildGroupTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
+        return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
       }
       return buildTreeData(
         models,
         ifcDataStore,
-        searchExpansion,
+        expansion,
         isMultiModel,
         unifiedStoreys,
         sortMode,
@@ -282,8 +286,37 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         geometryReadyModelIds, georefMutations,
       );
     },
-    [models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
+    [models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
+
+  // hiddenEntities intentionally NOT in deps - visibility computed lazily
+  const treeData = useMemo(
+    (): TreeNode[] => buildTreeWithExpansion(searchExpansion),
+    [buildTreeWithExpansion, searchExpansion]
+  );
+
+  // Reveal a selection made outside the tree (viewport click, search, BCF,
+  // context menu): find the node under the ACTIVE grouping's fully expanded
+  // projection, and expand only the ancestors that are missing so an
+  // already-visible target doesn't trigger a needless render (#5881).
+  const revealGlobalId = useCallback((globalId: number): string | null => {
+    const expandedTree = buildTreeWithExpansion(EXPAND_ALL);
+    const found = findNodePath(
+      expandedTree,
+      (node) =>
+        (node.type === 'element' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone')
+        && node.globalIds.includes(globalId),
+    );
+    if (!found) return null;
+    if (found.ancestorIds.some((id) => !expandedNodes.has(id))) {
+      setExpandedNodes((prev) => {
+        const next = new Set(prev);
+        for (const id of found.ancestorIds) next.add(id);
+        return next;
+      });
+    }
+    return found.targetId;
+  }, [buildTreeWithExpansion, expandedNodes]);
 
   // Filter nodes based on search
   const filteredNodes = useMemo(
@@ -402,5 +435,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     toggleExpand,
     getNodeElements,
     getUnifiedStoreyElements,
+    revealGlobalId,
   };
 }

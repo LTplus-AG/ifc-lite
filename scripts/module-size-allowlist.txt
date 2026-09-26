@@ -54,7 +54,7 @@
 # removed. A hand-picked number fails; a shrink that landed in another PR
 # stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
-   466 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
+   454 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    402 apps/viewer/src/components/extensions/FlavorDialog.tsx
    665 apps/viewer/src/components/mcp/data.ts
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
@@ -64,7 +64,7 @@
    750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    534 apps/viewer/src/components/viewer/BCFPanel.tsx
-  1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   871 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
   1301 apps/viewer/src/components/viewer/ClashPanel.tsx
@@ -86,12 +86,12 @@
    594 apps/viewer/src/components/viewer/measureHandlers.ts
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
-   985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
+   652 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2132 apps/viewer/src/components/viewer/PropertiesPanel.tsx
-  1694 apps/viewer/src/components/viewer/PropertyEditor.tsx
+  2131 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+   581 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts

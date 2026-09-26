@@ -796,7 +796,7 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
             const row = result.rows[vRow.index];
             const clickable = selectionKeyIndex >= 0;
             return (
-              <div
+              <button type="button" disabled={!clickable}
                 key={vRow.key}
                 style={{
                   position: 'absolute',
@@ -807,17 +807,17 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
                   transform: `translateY(${vRow.start}px)`,
                 }}
                 className={cn(
-                  'flex items-center border-b border-zinc-100 px-3 text-[11px] dark:border-zinc-900',
+                  'flex w-full items-center border-b border-zinc-100 px-3 text-left text-[11px] dark:border-zinc-900 focus-visible:ring-2 focus-visible:ring-ring',
                   clickable && 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800',
                 )}
-                onClick={() => clickable && onRowClick(row)}
+                onClick={() => onRowClick(row)}
               >
                 {result.columns.map((_, i) => (
-                  <div key={i} className="flex-1 truncate px-2 font-mono">
+                  <span key={i} className="flex-1 truncate px-2 font-mono">
                     {formatCell(row[i])}
-                  </div>
+                  </span>
                 ))}
-              </div>
+              </button>
             );
           })}
         </div>

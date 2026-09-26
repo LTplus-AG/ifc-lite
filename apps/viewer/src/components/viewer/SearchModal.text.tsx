@@ -21,29 +21,10 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { SearchResult } from '@/lib/search/tier0-scan';
-import type { SearchFieldFilter } from '@/store/slices/searchSlice';
-
-const ROW_HEIGHT = 36;
-
-const FIELD_FILTERS: { value: SearchFieldFilter; labelKey: TranslationKey }[] = [
-  { value: 'all', labelKey: 'searchModal.text.fieldAll' },
-  { value: 'name', labelKey: 'searchModal.text.fieldName' },
-  { value: 'type', labelKey: 'searchModal.text.fieldType' },
-  { value: 'globalId', labelKey: 'searchModal.text.fieldGuid' },
-  { value: 'description', labelKey: 'searchModal.text.fieldDescription' },
-  { value: 'objectType', labelKey: 'searchModal.text.fieldObjectType' },
-];
-
-export interface SearchModalTextProps {
-  /** Full result pool from the parent modal (before filter chips). */
-  results: SearchResult[];
-  /** All modelIds currently loaded (for the model-filter chips). */
-  availableModelIds: readonly string[];
-  /** Close the parent modal — invoked on Enter-commit from a row. */
-  onClose: () => void;
-}
+import { FIELD_FILTERS, ROW_HEIGHT, resultOptionId, type SearchModalTextProps } from './SearchModal.text.model';
+export type { SearchModalTextProps } from './SearchModal.text.model';
 
 export function SearchModalText({ results, availableModelIds, onClose }: SearchModalTextProps) {
   const { t } = useTranslation();
@@ -258,13 +239,25 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       </div>
 
       {/* ── Virtualized results list ── */}
-      <div
+      {/* Rich virtual rows cannot be represented by native select/options. */}
+      {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+      <div role="listbox"
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto"
-        role="listbox"
         aria-label={t('searchModal.text.resultsAriaLabel')}
+        aria-activedescendant={filtered[searchHighlightIndex] ? resultOptionId(filtered[searchHighlightIndex]) : undefined}
         tabIndex={0}
+        onClick={(event) => {
+          const option = (event.target as Element).closest<HTMLElement>('[data-result-index]');
+          if (!option || !event.currentTarget.contains(option)) return;
+          const index = Number(option.dataset.resultIndex);
+          const target = filtered[index];
+          if (!target) return;
+          if (event.shiftKey) toggleAdditive(target);
+          else commit(target, index);
+        }}
         onKeyDown={(e) => {
+          if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') return;
           if (filtered.length === 0) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -274,7 +267,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
             e.preventDefault();
             const next = (searchHighlightIndex - 1 + filtered.length) % filtered.length;
             setSearchHighlightIndex(next);
-          } else if (e.key === 'Enter') {
+          } else if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             const target = filtered[searchHighlightIndex];
             if (target) {
@@ -296,9 +289,13 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
               const isChecked = selectedEntitiesSet.has(key);
               const isHighlighted = vRow.index === searchHighlightIndex;
               return (
-                <div
+                // Virtual options contain a checkbox and rich IFC metadata.
+                // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                <div role="option"
                   key={key}
-                  role="option"
+                  id={resultOptionId(r)}
+                  tabIndex={-1}
+                  data-result-index={vRow.index}
                   aria-selected={isHighlighted}
                   style={{
                     position: 'absolute',
@@ -313,10 +310,6 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     isHighlighted && 'bg-zinc-100 dark:bg-zinc-800',
                   )}
                   onMouseEnter={() => setSearchHighlightIndex(vRow.index)}
-                  onClick={(e) => {
-                    if (e.shiftKey) toggleAdditive(r);
-                    else commit(r, vRow.index);
-                  }}
                 >
                   <input
                     type="checkbox"

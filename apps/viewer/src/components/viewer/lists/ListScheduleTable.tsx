@@ -29,6 +29,7 @@ import {
 } from './list-table-utils';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatLocaleCount } from './formatLocaleCount';
+import { ColumnResizeHandle } from './ColumnResizeHandle';
 
 /** A group-by or summed column reduced to what the pivot header renders. */
 export interface ScheduleChip {
@@ -54,16 +55,13 @@ interface ListScheduleTableProps {
    *  the nested view, so a resize carries across the view toggle). */
   widthOverrides: Record<string, number>;
   setWidthOverrides: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  /** Shared resize handler; `startWidth` is passed because the pivot header
-   *  and the nested header index into different width arrays. */
-  startResize: (e: React.MouseEvent, colId: string, startWidth: number) => void;
   onHeaderClick: (colIndex: number) => void;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
 }
 
 export function ListScheduleTable({
   scheduleRows, groupChips, sumChips, columns, sortCol, sortDir, totals,
-  widthOverrides, setWidthOverrides, startResize, onHeaderClick, virtualizer,
+  widthOverrides, setWidthOverrides, onHeaderClick, virtualizer,
 }: ListScheduleTableProps) {
   const { t, locale } = useTranslation();
   const countLabel = t('lists.scheduleTable.count');
@@ -145,11 +143,11 @@ export function ListScheduleTable({
               ) : (
                 <span className="truncate flex-1" title={t('lists.scheduleTable.countAggregateTitle')}>{col.label}</span>
               )}
-              <div
-                onMouseDown={(e) => startResize(e, widthKey(col), scheduleColumnWidths[colIdx])}
-                onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[widthKey(col)]; return n; })}
-                className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
-                title={t('lists.scheduleTable.dragToResizeTitle')}
+              <ColumnResizeHandle
+                columnId={widthKey(col)}
+                width={scheduleColumnWidths[colIdx]}
+                setWidthOverrides={setWidthOverrides}
+                title={`${col.label}: ${t('lists.scheduleTable.dragToResizeTitle')}`}
               />
             </div>
           );

@@ -9,14 +9,15 @@
  * than a computed layout — no browser needed, so a regression here fails
  * fast, before the Playwright check in tests/e2e even needs a build.
  *
- * The icon-size hit-slop is a `relative` + `after:` pseudo-element pinned
- * with a negative inset, so it survives a caller shrinking the visual box
- * via a `className` override (`size="icon-sm" className="h-5 w-5"`, a real
- * pattern in this codebase — see e.g. MeasurementList.tsx) without touching
- * that caller's file: `cn()` only lets a later className win on classes that
- * target the SAME CSS property (tailwind-merge), and nothing in this
- * codebase sets `after:` or `relative`/`absolute` on a Button override, so
- * the hit-slop always survives.
+ * The icon sizes (36/32/28 px) carry NO hit-slop pseudo-element: they are
+ * already at or above the 24px minimum on their own `h-*`/`w-*` classes, and
+ * a uniform pseudo-element on every icon button was tried and reverted — it
+ * overlapped adjacent toolbar buttons spaced by `gap-1`, a click-stealing
+ * regression measured via `elementFromPoint` at the midpoint between two
+ * neighbouring buttons. A caller that shrinks the visual box below 24px via
+ * a `className` override (a real, shipped pattern —
+ * `size="icon-sm" className="h-5 w-5"`) needs its OWN hit-slop at its own
+ * call site (see MeasurementList.tsx's `DELETE` constant), not one here.
  */
 
 import { describe, it } from 'node:test';
@@ -25,6 +26,19 @@ import { buttonVariants } from './button.js';
 
 const ICON_SIZES = ['icon', 'icon-sm', 'icon-xs'] as const;
 const ALL_VARIANTS = ['default', 'destructive', 'outline', 'secondary', 'ghost', 'link'] as const;
+/** Each icon size's own `h-*`/`w-*` pixel value — all >=24px unaided. */
+const ICON_SIZE_PX: Record<(typeof ICON_SIZES)[number], number> = {
+  icon: 36,
+  'icon-sm': 32,
+  'icon-xs': 28,
+};
+
+function parseTailwindLengthClass(classes: string, prefix: 'h' | 'w'): number | null {
+  const match = classes.match(new RegExp(`(?:^|\\s)${prefix}-(\\d+(?:\\.\\d+)?)(?:\\s|$)`));
+  if (!match) return null;
+  // Tailwind's default spacing scale: N -> N * 0.25rem -> N * 4px.
+  return parseFloat(match[1]) * 4;
+}
 
 describe('buttonVariants', () => {
   it('keeps the focus-visible ring token on every variant, regardless of size', () => {
@@ -50,35 +64,27 @@ describe('buttonVariants', () => {
     }
   });
 
-  it('gives every icon size a hit-slop pseudo-element that survives a smaller visual box', () => {
+  it('gives every icon size a >=24px CSS px box on its own h-*/w-* classes', () => {
     for (const size of ICON_SIZES) {
       const classes = buttonVariants({ size });
-      assert.match(classes, /\brelative\b/, `size=${size} needs position:relative for the hit-slop pseudo`);
-      assert.match(
-        classes,
-        /after:absolute/,
-        `size=${size} needs an absolutely positioned ::after for the hit-slop`,
-      );
-      assert.match(
-        classes,
-        /after:-inset-2/,
-        `size=${size} needs a negative inset pulling the hit-slop outward from the (possibly shrunk) visual box`,
-      );
-      assert.match(
-        classes,
-        /after:content-\[.?"?.?\]/,
-        `size=${size}'s ::after needs content to actually generate a box`,
-      );
+      const height = parseTailwindLengthClass(classes, 'h');
+      const width = parseTailwindLengthClass(classes, 'w');
+      assert.ok(height !== null, `size=${size} must declare an explicit h-* class`);
+      assert.ok(width !== null, `size=${size} must declare an explicit w-* class`);
+      assert.ok(height! >= 24, `size=${size} height ${height}px is under the 24px WCAG 2.2 2.5.8 minimum`);
+      assert.ok(width! >= 24, `size=${size} width ${width}px is under the 24px WCAG 2.2 2.5.8 minimum`);
+      assert.equal(height, ICON_SIZE_PX[size], `size=${size} height drifted from its documented pixel value`);
+      assert.equal(width, ICON_SIZE_PX[size], `size=${size} width drifted from its documented pixel value`);
     }
   });
 
-  it('leaves the non-icon sizes without hit-slop (their own visual box already clears 24px)', () => {
-    for (const size of ['default', 'sm', 'lg'] as const) {
+  it('carries no hit-slop pseudo-element on any size (that belongs at the call site, not the shared variant)', () => {
+    for (const size of [...ICON_SIZES, 'default', 'sm', 'lg'] as const) {
       const classes = buttonVariants({ size });
       assert.doesNotMatch(
         classes,
         /after:absolute/,
-        `size=${size} does not need hit-slop and should not carry the pseudo-element cost`,
+        `size=${size} must not carry a shared hit-slop pseudo-element — it overlaps neighbouring toolbar buttons`,
       );
     }
   });

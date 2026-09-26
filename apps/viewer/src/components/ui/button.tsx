@@ -23,20 +23,19 @@ const buttonVariants = cva(
         default: 'h-9 px-4 py-2',
         sm: 'h-8 rounded-md px-3 text-xs',
         lg: 'h-10 rounded-md px-8',
-        // The icon sizes below all keep a >=24x24 CSS px HIT AREA (WCAG 2.2
-        // 2.5.8) via the `after:` hit-slop pseudo-element, independent of
-        // their visual box. `relative` gives the pseudo-element something to
-        // position against; `after:-inset-2` (8px a side) pulls its invisible
-        // box outward from the actual rendered button, so a caller that
-        // shrinks the visual size with a `className` override (a real,
-        // shipped pattern: `size="icon-sm" className="h-5 w-5"`, see #5826)
-        // still gets >=24px of clickable area — the pseudo has no border or
-        // background, so the VISUAL footprint in a dense toolbar is
-        // untouched. -8px covers every icon-only override down to ~8px
-        // visually (8 + 2*8 = 24); nothing in this codebase goes smaller.
-        icon: 'relative h-9 w-9 after:absolute after:-inset-2 after:content-[""]',
-        'icon-sm': 'relative h-8 w-8 after:absolute after:-inset-2 after:content-[""]',
-        'icon-xs': 'relative h-7 w-7 after:absolute after:-inset-2 after:content-[""]',
+        // 36/32/28 px — all already at or above the WCAG 2.2 2.5.8 24x24 CSS
+        // px minimum, so no hit-slop belongs HERE (#5826 review round): a
+        // uniform pseudo-element on every icon button overlapped adjacent
+        // toolbar buttons spaced by `gap-1` (measured — `elementFromPoint` at
+        // the visual midpoint between two neighbouring icon buttons resolved
+        // to the wrong one), a real click-stealing regression. A caller that
+        // shrinks the visual box below 24px via a `className` override (a
+        // real, shipped pattern: `size="icon-sm" className="h-5 w-5"`) needs
+        // its OWN hit-slop, sized to reach 24px and no further, at its own
+        // call site — see MeasurementList.tsx's `DELETE` for the pattern.
+        icon: 'h-9 w-9',
+        'icon-sm': 'h-8 w-8',
+        'icon-xs': 'h-7 w-7',
       },
     },
     defaultVariants: {

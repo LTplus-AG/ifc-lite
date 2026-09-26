@@ -32,10 +32,11 @@ export function StatusBarPresentationButton() {
       aria-pressed={basketPresentationVisible}
       title={t('shellChrome.statusBar.presentationTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
       className={cn(
-        // `relative` + `after:-inset-1.5`: the status bar's compact text
-        // height is well under the 24px WCAG 2.2 2.5.8 minimum (#5826); the
-        // hit-slop restores it without growing the status bar's row height.
-        'relative flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground after:absolute after:-inset-1.5 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        // Width (~71px) already clears 24px; the status bar's compact text
+        // height (~16px) does not (#5826). `inset-x-0` keeps width
+        // unchanged — the surrounding row separates items with dedicated
+        // `Separator`s, so only height needs the hit-slop.
+        'relative flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground after:absolute after:inset-x-0 after:-top-1 after:-bottom-1 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         basketPresentationVisible && 'text-foreground',
       )}
     >

@@ -77,10 +77,11 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
           : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }
       className={cn(
-        // `relative` + `after:-inset-1`: the chip's own box (~21px tall) is
-        // under the 24px WCAG 2.2 2.5.8 minimum (#5826); the hit-slop
-        // restores it without growing the visible status-bar chip.
-        'relative flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors after:absolute after:-inset-1 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        // Width (~71px) already clears 24px; the chip's own height (~21px)
+        // is short by ~3px (#5826). `inset-x-0` keeps width unchanged — the
+        // surrounding row separates items with dedicated `Separator`s, so
+        // only height needs the hit-slop.
+        'relative flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors after:absolute after:inset-x-0 after:-top-0.5 after:-bottom-0.5 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         flavor
           ? 'border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10'
           : 'border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground',

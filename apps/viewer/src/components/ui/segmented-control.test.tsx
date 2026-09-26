@@ -42,6 +42,10 @@ it('#5815 segmented radio group moves selection and focus with arrows, skipping 
   press(last, 'ArrowRight');
   assert.equal(first.checked, true, 'arrow selection wraps around the enabled options');
   assert.equal(document.activeElement, first);
+  press(first, 'End');
+  assert.equal(last.checked, true, 'End chooses the last enabled radio');
+  press(last, 'Home');
+  assert.equal(first.checked, true, 'Home chooses the first enabled radio');
 });
 
 it('#5815 arrows advance from the focused radio when the selected value becomes disabled', () => {

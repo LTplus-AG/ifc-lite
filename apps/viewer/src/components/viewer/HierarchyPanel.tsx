@@ -277,24 +277,24 @@ export function HierarchyPanel() {
     const rows = selectionRows[section][index];
     if (!rows?.length) return;
     try {
-    const sectionKey = section === 'filtered' ? `filtered:${groupingMode}` : section;
-    if (anchorSection.current !== sectionKey) {
-      setMultiSelectAnchor(-1);
-      anchorSection.current = sectionKey;
-    }
-    selectGroups(selectionRows[section], index, event);
-    const refs = rows.map(({ modelId, expressId }) => ({ modelId, expressId }));
-    setHierarchyBasketSelection(refs);
-    if (node.type === 'unified-storey' && refs.length > 1 &&
-        !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-      // Preserve the combined properties view for a multi-model storey.
-      setSelectedEntities(refs);
-    }
-    const owners = new Set(rows.map((row) => row.modelId));
-    if (owners.size === 1) {
-      const modelId = rows[0].modelId;
-      if (modelId !== 'legacy') setActiveModel(modelId);
-    }
+      const sectionKey = section === 'filtered' ? `filtered:${groupingMode}` : section;
+      if (anchorSection.current !== sectionKey) {
+        setMultiSelectAnchor(-1);
+        anchorSection.current = sectionKey;
+      }
+      selectGroups(selectionRows[section], index, event);
+      const refs = rows.map(({ modelId, expressId }) => ({ modelId, expressId }));
+      setHierarchyBasketSelection(refs);
+      if (node.type === 'unified-storey' && refs.length > 1 &&
+          !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        // Preserve the combined properties view for a multi-model storey.
+        setSelectedEntities(refs);
+      }
+      const owners = new Set(rows.map((row) => row.modelId));
+      if (owners.size === 1) {
+        const modelId = rows[0].modelId;
+        if (modelId !== 'legacy') setActiveModel(modelId);
+      }
     } finally {
       markFromTreeClick();
     }

@@ -41,3 +41,33 @@ test('uploader refuses an unreviewed v2 fixture before invoking GitHub', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('uploader excludes a source-hosted IFC even when its bytes are absent locally', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fixupload-upstream-'));
+  const scriptsDir = join(root, 'scripts', 'fixtures');
+  const modelsDir = join(root, 'tests', 'models');
+  try {
+    mkdirSync(scriptsDir, { recursive: true });
+    mkdirSync(modelsDir, { recursive: true });
+    copyFileSync(UPLOAD, join(scriptsDir, 'upload-fixtures.mjs'));
+    copyFileSync(VALIDATOR, join(scriptsDir, 'manifest-validation.mjs'));
+    const commit = '0123456789abcdef0123456789abcdef01234567';
+    writeFileSync(join(modelsDir, 'manifest.json'), JSON.stringify({
+      version: 1,
+      release_tag: 'fixtures-v1',
+      base_url: 'https://example.invalid/fixtures',
+      files: [{
+        path: 'buildingsmart/bridge.ifc', sha256: 'a'.repeat(64), size: 32,
+        upstream_archive: {
+          blob_url: `https://github.com/example/models/blob/${commit}/bridge.zip`,
+          commit, sha256: 'b'.repeat(64), size: 128, member: 'bridge.ifc',
+        },
+      }],
+    }));
+    const result = spawnSync(process.execPath, [join(scriptsDir, 'upload-fixtures.mjs')], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /No release-hosted fixtures to upload/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

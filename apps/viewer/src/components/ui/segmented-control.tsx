@@ -34,7 +34,9 @@ export function SegmentedControl<Value extends string>({
     const available = options.map((option, index) => !option.disabled ? index : -1).filter((index) => index >= 0);
     if (available.length === 0) return;
     event.preventDefault();
-    const current = available.findIndex((index) => options[index]?.value === value);
+    const selected = available.findIndex((index) => options[index]?.value === value);
+    const current = selected >= 0 ? selected
+      : available.findIndex((index) => inputs.current[index] === event.target);
     const next = event.key === 'Home' ? available[0]
       : event.key === 'End' ? available[available.length - 1]
         : available[(current + direction + available.length) % available.length];

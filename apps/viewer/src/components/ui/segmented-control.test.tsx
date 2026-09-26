@@ -43,3 +43,30 @@ it('#5815 segmented radio group moves selection and focus with arrows, skipping 
   assert.equal(first.checked, true, 'arrow selection wraps around the enabled options');
   assert.equal(document.activeElement, first);
 });
+
+it('#5815 arrows advance from the focused radio when the selected value becomes disabled', () => {
+  function FormatChoice() {
+    const [value, setValue] = useState<'first' | 'middle' | 'last'>('middle');
+    return (
+      <SegmentedControl
+        label="Export format"
+        value={value}
+        options={[
+          { value: 'first', label: 'First' },
+          { value: 'middle', label: 'Middle', disabled: true },
+          { value: 'last', label: 'Last' },
+        ]}
+        onValueChange={setValue}
+      />
+    );
+  }
+
+  const ui = render(<FormatChoice />);
+  const first = ui.querySelector<HTMLInputElement>('input[value="first"]');
+  const last = ui.querySelector<HTMLInputElement>('input[value="last"]');
+  assert.ok(first && last);
+  first.focus();
+  press(first, 'ArrowRight');
+  assert.equal(last.checked, true);
+  assert.equal(document.activeElement, last);
+});

@@ -106,6 +106,13 @@ describe('SearchModalFilterBuilder — groups (#4904)', () => {
     const panel = container.querySelector('[role="tabpanel"]');
     assert.ok(panel);
     assert.equal(panel.getAttribute('aria-labelledby'), tabs[0].id);
+    const tablist = container.querySelector('[role="tablist"]');
+    assert.ok(tablist);
+    assert.equal(tablist.querySelectorAll('button').length, 2, 'the tablist contains only tab controls');
+    const removeGroup = container.querySelector('button[aria-label="Remove group 2"]');
+    assert.ok(removeGroup);
+    assert.ok(panel.compareDocumentPosition(removeGroup) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the rule panel follows the active tab before removal controls in keyboard order');
   });
 
   it('removing a group clamps the active index and never drops the last group', () => {

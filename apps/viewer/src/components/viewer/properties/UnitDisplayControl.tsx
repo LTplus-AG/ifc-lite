@@ -78,7 +78,7 @@ export function UnitDisplayControl() {
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {t('properties.unitDisplay.trigger')}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -92,7 +92,7 @@ export function UnitDisplayControl() {
                 <span className="flex-1 truncate">
                   {UNIT_KIND_LABEL_KEYS[unitType] ? t(UNIT_KIND_LABEL_KEYS[unitType]) : unitType}
                 </span>
-                <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">
+                <span className="text-2xs font-mono text-zinc-400 dark:text-zinc-500">
                   {current ? current.symbol : options[0].symbol}
                 </span>
               </DropdownMenuSubTrigger>

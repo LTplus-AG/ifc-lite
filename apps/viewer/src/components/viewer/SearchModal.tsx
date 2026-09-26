@@ -211,8 +211,8 @@ export function SearchModal() {
                 {t('searchModal.shell.filterTab')}
               </TabsTrigger>
             </TabsList>
-            <div className="text-[11px] text-muted-foreground">
-              <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.shell.escKey')}</kbd>
+            <div className="text-2xs text-muted-foreground">
+              <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.shell.escKey')}</kbd>
               <span className="ml-1">{t('searchModal.shell.closeHint')}</span>
             </div>
           </div>

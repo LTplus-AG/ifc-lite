@@ -53,7 +53,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
         <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 min-w-0">
           {t('properties.relationships.heading')}
         </span>
-        <span className="text-[10px] font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
+        <span className="text-2xs font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
           {formatLocaleNumber(locale, totalCount)}
         </span>
       </CollapsibleTrigger>
@@ -61,7 +61,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
         <div className="border-t-2 border-zinc-300 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-800">
           {voids.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 {t('properties.relationships.openings', { count: voids.length, countDisplay: formatLocaleNumber(locale, voids.length) })}
               </div>
               {voids.map((item) => (
@@ -71,7 +71,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           )}
           {fills.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 {t('properties.relationships.fills', { count: fills.length, countDisplay: formatLocaleNumber(locale, fills.length) })}
               </div>
               {fills.map((item) => (
@@ -81,7 +81,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           )}
           {groups.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 {t('properties.relationships.groupsAndZones', { count: groups.length, countDisplay: formatLocaleNumber(locale, groups.length) })}
               </div>
               {groups.map((item) => (
@@ -96,7 +96,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           )}
           {connections.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 {t('properties.relationships.connections', { count: connections.length, countDisplay: formatLocaleNumber(locale, connections.length) })}
               </div>
               {connections.map((item) => (
@@ -106,7 +106,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           )}
           {exactRelations.length > 0 && (
             <div className="px-3 py-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+              <div className="text-2xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                 {t('relationshipCard.exactRecords', { count: exactRelations.length })}
               </div>
               {visibleExactRelations.map((relation, index) => (
@@ -149,13 +149,13 @@ function RelationshipEdgeItem({ relation, onSelect }: {
       type="button"
       title={`#${relation.relationshipId} ${relation.relationshipType}`}
     >
-      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">
+      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">
         {relation.direction === 'forward' ? '→' : '←'} #{relation.entity.id}
       </span>
       <span className="text-zinc-600 dark:text-zinc-400 truncate">
         {relation.entity.name || relation.entity.type}
       </span>
-      <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{relation.relationshipType}</span>
+      <span className="text-2xs text-zinc-400 ml-auto shrink-0">{relation.relationshipType}</span>
     </button>
   );
 }
@@ -170,9 +170,9 @@ function RelItem({ item, onSelect }: {
       onClick={() => onSelect?.(item.id)}
       type="button"
     >
-      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">#{item.id}</span>
+      <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">#{item.id}</span>
       <span className="text-zinc-600 dark:text-zinc-400 truncate">{item.name || item.type}</span>
-      <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{item.type}</span>
+      <span className="text-2xs text-zinc-400 ml-auto shrink-0">{item.type}</span>
     </button>
   );
 }
@@ -194,11 +194,11 @@ function GroupItem({ item, onSelect, onIsolateMembers }: {
         type="button"
         title={t('properties.relationships.showGroupAttributesTooltip')}
       >
-        <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">#{item.id}</span>
+        <span className="font-mono text-zinc-500 dark:text-zinc-500 text-2xs">#{item.id}</span>
         <span className="text-zinc-600 dark:text-zinc-400 truncate">
           {item.name || t('properties.relationships.groupFallbackName', { id: item.id })}
         </span>
-        {item.type && <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{item.type}</span>}
+        {item.type && <span className="text-2xs text-zinc-400 ml-auto shrink-0">{item.type}</span>}
       </button>
       {onIsolateMembers && (
         <button

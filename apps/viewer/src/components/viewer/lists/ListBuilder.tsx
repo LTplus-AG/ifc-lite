@@ -440,7 +440,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
                 : t('lists.builder.scopeAllElementsHint')}
           >
             {isSnapshot ? (
-              <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-2xs leading-relaxed text-muted-foreground">
                 <strong className="font-medium text-foreground">{t('lists.builder.filterSnapshotLabel')}</strong>{' '}
                 {t('lists.builder.filterSnapshotHint', { count: snapshotCount, countDisplay: formatLocaleCount(snapshotCount, locale) })}
               </p>
@@ -459,7 +459,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
                   ))}
                 </div>
                 {selectedTypes.size === 0 && (
-                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                  <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">
                     {t('lists.builder.noTypeSelected')}
                   </p>
                 )}
@@ -650,7 +650,7 @@ function colSourceTag(col: ColumnDefinition): string {
 
 function ColSourceTag({ col }: { col: ColumnDefinition }) {
   return (
-    <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+    <span className="shrink-0 rounded bg-muted px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
       {colSourceTag(col)}
     </span>
   );
@@ -813,7 +813,7 @@ function CustomColumnEntry({
         className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
       >
         <Plus className="h-3.5 w-3.5" /> {t('lists.builder.customColumn')}
-        <span className="ml-auto font-mono text-[10px] opacity-70">{t('lists.builder.customColumnHint')}</span>
+        <span className="ml-auto font-mono text-2xs opacity-70">{t('lists.builder.customColumnHint')}</span>
       </button>
     );
   }
@@ -910,7 +910,7 @@ function ColumnEditorPanel({
         <Chip selected={source === 'property'} onClick={() => setSource('property')}>{t('lists.builder.property')}</Chip>
         <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>{t('lists.builder.quantity')}</Chip>
         {preview.isPattern && (
-          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-primary">
             {t('lists.builder.regexBadge')}
           </span>
         )}
@@ -973,7 +973,7 @@ function PickerGroup({
       >
         {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
         <span className="truncate font-medium">{title}</span>
-        <span className="ml-auto rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="ml-auto rounded bg-muted px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
           {badge}
         </span>
       </button>
@@ -1002,7 +1002,7 @@ function PickerItem({
     >
       {selected ? <Check className="h-3 w-3 text-primary" /> : <Plus className="h-3 w-3" />}
       <span className="truncate">{label}</span>
-      {selected && <span className="ml-auto text-[10px]">{t('lists.builder.added')}</span>}
+      {selected && <span className="ml-auto text-2xs">{t('lists.builder.added')}</span>}
     </button>
   );
 }
@@ -1052,13 +1052,13 @@ function GroupingBody({
           </label>
         ))}
         {groupByColumnIds.length > 0 && (
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             {t('lists.builder.groupCountHint')}
           </div>
         )}
       </div>
       <div>
-        <div className="mb-1 text-[11px] text-muted-foreground">
+        <div className="mb-1 text-2xs text-muted-foreground">
           {t('lists.builder.totalsHint')}
         </div>
         <div className="flex flex-wrap gap-1.5">

@@ -79,7 +79,7 @@ function PlacementField({
 }): React.ReactElement {
   return (
     <div className="flex flex-col gap-0.5">
-      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+      <Label className="text-2xs text-muted-foreground">{label}</Label>
       <Input
         type="number"
         step={step}
@@ -132,7 +132,7 @@ function UnderlayCard({
           >
             {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
           </IconButton>
-          <span className="text-[8px] leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
+          <span className="text-2xs leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
         </div>
         <div className="flex items-center">
           <IconButton
@@ -142,7 +142,7 @@ function UnderlayCard({
           >
             {state.visible3D ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
           </IconButton>
-          <span className="text-[8px] leading-none text-muted-foreground -ml-1">3D</span>
+          <span className="text-2xs leading-none text-muted-foreground -ml-1">3D</span>
         </div>
         <span className="text-xs font-medium truncate flex-1" title={state.name}>{state.name}</span>
         <IconButton
@@ -162,12 +162,12 @@ function UnderlayCard({
         </IconButton>
       </div>
 
-      <div className="text-[10px] text-muted-foreground px-1">
+      <div className="text-2xs text-muted-foreground px-1">
         {t('drawingUnderlay.dxf.summaryLine', { layers: underlay.layers.length, paths: pathCount, texts: textCount })}
       </div>
 
       {underlay.warnings.length > 0 && (
-        <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500 px-1">
+        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
           <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
           <span>{underlay.warnings[0]}{underlay.warnings.length > 1 ? t('drawingUnderlay.dxf.moreWarningsSuffix', { count: underlay.warnings.length - 1 }) : ''}</span>
         </div>
@@ -182,7 +182,7 @@ function UnderlayCard({
           the common case of "most of it imported, N entities of type X
           did not" was previously silent. */}
       {Object.keys(underlay.skipped).length > 0 && (
-        <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500 px-1">
+        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
           <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
           <span>
             {t('drawingUnderlay.dxf.notImportedLabel')} {Object.entries(underlay.skipped)
@@ -204,7 +204,7 @@ function UnderlayCard({
           that explicit rather than leaving the control silently no-op in
           3D. */}
       <div className="flex items-center gap-2 px-1">
-        <Label className="text-[10px] text-muted-foreground w-12" title={t('drawingUnderlay.dxf.opacityHint')}>
+        <Label className="text-2xs text-muted-foreground w-12" title={t('drawingUnderlay.dxf.opacityHint')}>
           {t('drawingUnderlay.dxf.opacityLabel')}
         </Label>
         <input
@@ -217,7 +217,7 @@ function UnderlayCard({
           className="flex-1 h-1.5 accent-primary"
           title={t('drawingUnderlay.dxf.opacityHint')}
         />
-        <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
+        <span className="text-2xs text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
       </div>
 
       {/* Georeference alignment (issue #1929) — mirrors the .laz/.las
@@ -241,7 +241,7 @@ function UnderlayCard({
                 : t('drawingUnderlay.dxf.georefManualHint')
             }
           >
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t('drawingUnderlay.dxf.georefToggleLabel')}{isAuto ? t('drawingUnderlay.dxf.georefAutoSuffix') : ''}
             </span>
             <input
@@ -282,10 +282,10 @@ function UnderlayCard({
                     className="w-2.5 h-2.5 rounded-sm border shrink-0"
                     style={{ backgroundColor: layer.color }}
                   />
-                  <span className={`text-[11px] truncate ${layerVisible ? '' : 'text-muted-foreground'}`}>
+                  <span className={`text-2xs truncate ${layerVisible ? '' : 'text-muted-foreground'}`}>
                     {layer.name}
                   </span>
-                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                  <span className="text-2xs text-muted-foreground ml-auto shrink-0">
                     {layer.paths.length + layer.fills.length + layer.texts.length}
                   </span>
                 </button>

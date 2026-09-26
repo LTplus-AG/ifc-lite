@@ -143,7 +143,7 @@ export function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRo
         <StatusIcon status={status} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-[10px] uppercase">{group.facetType}</Badge>
+            <Badge variant="outline" className="text-2xs uppercase">{group.facetType}</Badge>
             <span className="text-xs truncate">{group.checkedDescription}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
@@ -227,7 +227,7 @@ export function SetResultRow({ result, onIsolate }: SetResultRowProps) {
           <StatusIcon status={result.passed ? 'pass' : 'fail'} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className="text-[10px] uppercase">{result.kind}</Badge>
+              <Badge variant="outline" className="text-2xs uppercase">{result.kind}</Badge>
               <span className="text-xs truncate">{result.label}</span>
               {result.groupKey && (
                 <span className="text-xs text-muted-foreground truncate">({result.groupKey})</span>

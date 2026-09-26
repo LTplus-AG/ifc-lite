@@ -34,7 +34,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const setShown = useViewerStore((s) => s.setPanelShownInSidebar);
 
   const hidden = new Set(hiddenIds);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLFieldSetElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -83,22 +83,21 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div
+    <fieldset
       ref={ref}
-      role="group"
       tabIndex={-1}
       aria-label={t('shellChrome.customizeSidebar.ariaLabel')}
-      className="absolute bottom-2 right-14 z-40 w-64 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden outline-none"
+      className="absolute bottom-2 right-14 z-40 min-w-0 w-64 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden outline-none"
     >
       <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('shellChrome.shared.customizeSidebar')}
         </span>
         <button
           type="button"
           onClick={() => resetLayout()}
           title={t('shellChrome.customizeSidebar.resetTitle')}
-          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <RotateCcw className="h-3 w-3" /> {t('shellChrome.customizeSidebar.resetLabel')}
         </button>
@@ -188,7 +187,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
         {/* Hidden: removed from the rail; the only control is Show (restore). */}
         {hiddenList.length > 0 && (
           <>
-            <div className="mt-1 px-3 pt-2 pb-1 border-t border-border/60 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="mt-1 px-3 pt-2 pb-1 border-t border-border/60 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('shellChrome.customizeSidebar.hiddenSectionHeader')}
             </div>
             {hiddenList.map((id) => {
@@ -205,7 +204,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                     onClick={() => setShown(id, true)}
                     aria-label={t('shellChrome.customizeSidebar.showAriaLabel', { title: def.title })}
                     title={t('shellChrome.customizeSidebar.showInSidebarTitle')}
-                    className="h-6 inline-flex items-center gap-1 rounded px-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="h-6 inline-flex items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {t('shellChrome.customizeSidebar.showLabel')}
@@ -217,9 +216,9 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      <div className="px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground select-none">
+      <div className="px-3 py-1.5 border-t border-border text-xs text-muted-foreground select-none">
         {t('shellChrome.customizeSidebar.footerHint')}
       </div>
-    </div>
+    </fieldset>
   );
 }

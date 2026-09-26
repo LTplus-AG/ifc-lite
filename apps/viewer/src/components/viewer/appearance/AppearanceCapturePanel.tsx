@@ -135,48 +135,48 @@ export function AppearanceCapturePanel() {
   }
   return <section className="mt-4 space-y-3" aria-label={t('appearance.capture.sectionAriaLabel')} aria-busy={busy || loading}>
     <div><h2 className="text-sm font-semibold">{t('appearance.capture.heading')}</h2>
-      <p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.capture.description')}</p></div>
+      <p className="mt-1 text-2xs text-muted-foreground">{t('appearance.capture.description')}</p></div>
     <div className="space-y-2 rounded-md border bg-muted/20 p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">{t('appearance.capture.step1Heading')}</h3>
         <Button type="button" size="sm" variant="outline" disabled={busy || loading} onClick={() => scanInput.current?.click()}>{t('appearance.capture.addScan')}</Button></div>
       <input ref={scanInput} type="file" multiple accept={CAPTURE_ACCEPT} className="hidden" aria-label={t('appearance.capture.addScanFilesAriaLabel')} onChange={event => {
         const files = Array.from(event.target.files ?? []); if (files.length) prepareAndLoadScan(files); event.target.value = '';
       }}/>
-    <label className="block text-[11px]">{t('appearance.capture.sourceSurfaceLabel')}<select className={appearanceSelectClass} aria-label={t('appearance.capture.sourceSurfaceAriaLabel')} value={candidate?.id ?? ''} disabled={busy || loading}
+    <label className="block text-2xs">{t('appearance.capture.sourceSurfaceLabel')}<select className={appearanceSelectClass} aria-label={t('appearance.capture.sourceSurfaceAriaLabel')} value={candidate?.id ?? ''} disabled={busy || loading}
       onChange={event => setChosen(event.target.value)}>{!candidate && <option value="">{candidates.length ? t('appearance.capture.chooseSourceSurface') : t('appearance.capture.openOrAddModel')}</option>}
       {candidates.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label>
-    {!candidate && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
-    {!candidate && excludedSurfaces > 0 && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', {
+    {!candidate && <p className="text-2xs text-muted-foreground">{t('appearance.capture.formatsNote')}</p>}
+    {!candidate && excludedSurfaces > 0 && <p className="text-2xs text-muted-foreground">{t('appearance.capture.excludedSurfacesNote', {
       count: excludedSurfaces, countDisplay: formatLocaleNumber(locale, excludedSurfaces),
     })}</p>}
     {candidate && assetId && <AppearanceMeshPreview key={candidate.id} mesh={candidate.mesh} assetId={assetId} triangles={triangles} disabled={busy || loading}
       onRegion={ids => { if (ids.length > MAX_CAPTURE_ROWS) { setError(true); setTranslatedMessage('appearance.capture.regionTooLarge'); return; } setPlaceholder(false); setTriangles(ids); }}
       onReady={value => { setReady(value); if (value && !message) { setError(false); setTranslatedMessage('appearance.capture.reviewRegion'); } }} onError={text => { setReady(false); setError(true); setRawMessage(text); }} />}
-    {!!assetId && <p className="text-[11px]" role="status">{t('appearance.capture.trianglesInRegion', {
+    {!!assetId && <output className="block text-2xs">{t('appearance.capture.trianglesInRegion', {
       count: triangles.length, countDisplay: formatLocaleNumber(locale, triangles.length),
-    })}</p>}
+    })}</output>}
     </div>
     <fieldset disabled={busy || loading || !!room} className="space-y-2 rounded-md border bg-muted/20 p-3">
       <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-medium">{t('appearance.capture.step2Heading')}</h3>
         <Button type="button" size="sm" variant="outline" disabled={busy || loading || !!room} onClick={() => { void createDestination(); }}>{t('appearance.capture.newIfc4Model')}</Button></div>
-      <label className="block text-[11px]">{t('appearance.capture.destinationModelLabel')}<select aria-label={t('appearance.capture.destinationModelAriaLabel')} className={appearanceSelectClass} value={target.modelId}
+      <label className="block text-2xs">{t('appearance.capture.destinationModelLabel')}<select aria-label={t('appearance.capture.destinationModelAriaLabel')} className={appearanceSelectClass} value={target.modelId}
         onChange={event => { target.setChosenModel(event.target.value); target.setChosenContainer(undefined); }}>
         {!target.eligible.length && <option value="">{t('appearance.capture.addEditableModel')}</option>}
         {target.eligible.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
       </select></label>
-      <label className="block text-[11px]">{t('appearance.capture.containerLabel')}<select aria-label={t('appearance.capture.containerAriaLabel')} className={appearanceSelectClass} value={target.containerId ?? ''}
+      <label className="block text-2xs">{t('appearance.capture.containerLabel')}<select aria-label={t('appearance.capture.containerAriaLabel')} className={appearanceSelectClass} value={target.containerId ?? ''}
         onChange={event => target.setChosenContainer(Number(event.target.value))}>
         {!target.containers.length && <option value="">{t('appearance.capture.noContainer')}</option>}
         {target.containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || t('appearance.capture.containerFallbackName', { expressId: node.expressId })}</option>)}
       </select></label>
-      <label className="block text-[11px]">{t('appearance.capture.nameLabel')}<Input aria-label={t('appearance.capture.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} /></label>
+      <label className="block text-2xs">{t('appearance.capture.nameLabel')}<Input aria-label={t('appearance.capture.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} /></label>
       <h3 className="pt-1 text-xs font-medium">{t('appearance.capture.step3Heading')}</h3>
       <Button type="button" className="w-full" disabled={!ready || !prepared || !!placement.preview || !target.modelId || target.containerId === undefined || !Name.trim()}
         onClick={() => { void create(); }}>{t('appearance.capture.createIfcObject')}</Button>
     </fieldset>
-    {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
+    {room && <p className="text-2xs text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
     {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setTranslatedMessage('appearance.capture.cancelled'); }}>{t('appearance.capture.cancelCreation')}</Button>}
-    {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, captureMessageParams(message, locale)) : message.text}</p>}
+    {message && <p role={error ? 'alert' : 'status'} className={`text-2xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, captureMessageParams(message, locale)) : message.text}</p>}
   </section>;
 }

@@ -11,9 +11,9 @@
  * matches the Info dialog's `EVENT_SHOW_SHORTCUTS`.
  */
 
-/** Settings sections, in display order. Later sections (Performance,
- *  Collaboration, Privacy, AI) are added here by their own changes. */
-export const SETTINGS_SECTIONS = ['general', 'display', 'privacy'] as const;
+/** Settings sections, in display order. Later sections (Performance, AI)
+ * are added here by their own changes. */
+export const SETTINGS_SECTIONS = ['general', 'display', 'collaboration', 'privacy'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const EVENT_OPEN_SETTINGS = 'ifc-lite:open-settings';

@@ -17,6 +17,7 @@ export const settingsEn = {
   'settings.sections.general': 'General',
   'settings.sections.display': 'Display',
   'settings.sections.privacy': 'Privacy',
+  'settings.sections.collaboration': 'Collaboration',
 
   'settings.general.appearanceTitle': 'Appearance',
   'settings.general.theme': 'Theme',
@@ -43,4 +44,9 @@ export const settingsEn = {
   'settings.privacy.learnMore': 'Read the privacy guide',
   'settings.privacy.toastDisclosure': 'IFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.',
   'settings.privacy.toastAction': 'Privacy settings',
+  'settings.collaboration.identityTitle': 'Your identity',
+  'settings.collaboration.displayName': 'Display name',
+  'settings.collaboration.displayNameHint': 'Shown to other people in a shared session.',
+  'settings.collaboration.saveName': 'Save name',
+  'settings.collaboration.emptyName': 'Enter a display name.',
 } as const satisfies Record<string, TranslationValue>;

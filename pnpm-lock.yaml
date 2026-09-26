@@ -1367,6 +1367,10 @@ importers:
         version: 6.0.3
 
   packages/lens:
+    dependencies:
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
     devDependencies:
       '@ifc-lite/data':
         specifier: workspace:^

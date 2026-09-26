@@ -41,7 +41,8 @@ import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import { useViewerStore } from '@/store';
 import type { Lens, LensRule, AutoColorLegendEntry } from '@/store/slices/lensSlice';
-import { LensPanel, RuleEditor, AutoColorEditor } from './LensPanel.js';
+import { LensPanel, AutoColorEditor } from './LensPanel.js';
+import { LensRuleEditor } from './LensRuleEditor.js';
 
 /**
  * Literal mirror of `lens-panel.en.ts` — deliberately NOT imported from the
@@ -204,7 +205,7 @@ function ifcRule(overrides: Partial<LensRule> = {}): LensRule {
     id: 'rule-ifc',
     name: 'Walls',
     enabled: true,
-    criteria: { type: 'ifcType', ifcType: 'IfcWall' },
+    groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }],
     action: 'colorize',
     color: '#e53935',
     ...overrides,
@@ -330,7 +331,7 @@ describe('Lens panel localization (#4918)', () => {
   it('rule-based lens card: active with two rules (one empty), isolate tooltip, isolated badge, rule count', () => {
     const rules = [
       ifcRule({ id: 'r1', name: 'Walls', color: '#e53935' }),
-      ifcRule({ id: 'r2', name: 'Doors', color: '#1e88e5', criteria: { type: 'ifcType', ifcType: 'IfcDoor' } }),
+      ifcRule({ id: 'r2', name: 'Doors', color: '#1e88e5', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcDoor'] }] }] }),
     ];
     useViewerStore.setState({
       savedLenses: [ruleLens(rules)],
@@ -405,185 +406,23 @@ describe('Lens panel localization (#4918)', () => {
     assertMarked(after, 'lensPanel.card.duplicateBuiltinTooltip');
   });
 
-  it('rule editor (ifcType): criteria-type options, class placeholder, duplicate/remove tooltips, reorder controls, action select', () => {
-    // The IFC class picker (`SearchableSelect`) only renders its `placeholder`
-    // prop as visible text when the value is empty — a chosen value displays
-    // itself instead (see `SearchableSelect.tsx`'s `{value ? display(value) :
-    // placeholder}`). An empty `ifcType` is what actually surfaces "Class...".
+  it('manual rule shell translates action and management controls around the shared FilterGroup editor', () => {
     const container = render(
-      <RuleEditor
-        rule={ifcRule({ criteria: { type: 'ifcType', ifcType: '' } })}
-        index={0}
-        onChange={mock.fn()}
-        onRemove={noop}
-        onDuplicate={noop}
-        discovered={null}
-        onRequestDiscovery={noop}
-        onMove={mock.fn<(from: number, to: number) => void>()}
-      />,
+      <LensRuleEditor rule={ifcRule()} index={0} onChange={mock.fn()}
+        onRemove={noop} onDuplicate={noop} onMove={mock.fn<(from: number, to: number) => void>()} />,
     );
-    const english = chromeStrings(container);
-    for (const key of [
-      'lensPanel.type.ifcType', 'lensPanel.type.attribute', 'lensPanel.type.property', 'lensPanel.type.quantity',
-      'lensPanel.type.classification', 'lensPanel.type.material', 'lensPanel.type.model', 'lensPanel.type.group',
-      'lensPanel.ruleEditor.classPlaceholder', 'lensPanel.ruleEditor.duplicateTooltip', 'lensPanel.ruleEditor.removeTooltip',
-      'lensPanel.ruleEditor.reorderAriaLabel', 'lensPanel.ruleEditor.reorderTooltip', 'lensPanel.ruleEditor.criteriaTypeAriaLabel',
+    const keys = [
+      'lensPanel.ruleEditor.duplicateTooltip', 'lensPanel.ruleEditor.removeTooltip',
+      'lensPanel.ruleEditor.reorderAriaLabel', 'lensPanel.ruleEditor.reorderTooltip',
       'lensPanel.action.colorize', 'lensPanel.action.transparent', 'lensPanel.action.hide',
-    ] as LensPanelKey[]) {
-      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
-    }
-
-    registerLocale(PSEUDO_LOCALE, PSEUDO);
-    act(() => setLocale(PSEUDO_LOCALE));
-    const after = chromeStrings(container);
-    for (const key of [
-      'lensPanel.type.ifcType', 'lensPanel.type.attribute', 'lensPanel.type.property', 'lensPanel.type.quantity',
-      'lensPanel.type.classification', 'lensPanel.type.material', 'lensPanel.type.model', 'lensPanel.type.group',
-      'lensPanel.ruleEditor.classPlaceholder', 'lensPanel.ruleEditor.duplicateTooltip', 'lensPanel.ruleEditor.removeTooltip',
-      'lensPanel.ruleEditor.reorderAriaLabel', 'lensPanel.ruleEditor.reorderTooltip', 'lensPanel.ruleEditor.criteriaTypeAriaLabel',
-      'lensPanel.action.colorize', 'lensPanel.action.transparent', 'lensPanel.action.hide',
-    ] as LensPanelKey[]) {
-      assertMarked(after, key);
-    }
-  });
-
-  it('rule editor (attribute): value placeholder and shared operator labels (#5892)', () => {
-    const rule = ifcRule({ criteria: { type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: '' } });
-    const container = render(
-      <RuleEditor rule={rule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
+    ] as LensPanelKey[];
     const english = chromeStrings(container);
-    for (const key of ['lensPanel.ruleEditor.attributeValuePlaceholder'] as LensPanelKey[]) {
-      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
-    }
-    for (const value of Object.values(SHARED_OPERATOR_EN)) {
-      assert.ok(english.has(value), `expected shared operator label "${value}" visible`);
-    }
+    for (const key of keys) assert.ok(english.has(lensPanelEn[key] as string), key);
 
     registerLocale(PSEUDO_LOCALE, PSEUDO);
     act(() => setLocale(PSEUDO_LOCALE));
     const after = chromeStrings(container);
-    for (const key of ['lensPanel.ruleEditor.attributeValuePlaceholder'] as LensPanelKey[]) {
-      assertMarked(after, key);
-    }
-    for (const [key, value] of Object.entries(SHARED_OPERATOR_EN)) {
-      assert.ok(after.has(`⟦${key}|${value}⟧`), `expected translated shared operator ${key}`);
-    }
-  });
-
-  it('rule editor (property/quantity/classification): full-width set/name/system/code placeholders and value placeholder', () => {
-    const propertyRule = ifcRule({
-      criteria: { type: 'property', propertySet: '', propertyName: '', operator: 'gte', propertyValue: '10' },
-    });
-    const container = render(
-      <RuleEditor rule={propertyRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    const english = chromeStrings(container);
-    for (const key of [
-      'lensPanel.ruleEditor.propertySetPlaceholder', 'lensPanel.ruleEditor.propertyNamePlaceholder', 'lensPanel.ruleEditor.valuePlaceholder',
-    ] as LensPanelKey[]) {
-      assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible`);
-    }
-
-    registerLocale(PSEUDO_LOCALE, PSEUDO);
-    act(() => setLocale(PSEUDO_LOCALE));
-    const after = chromeStrings(container);
-    for (const key of [
-      'lensPanel.ruleEditor.propertySetPlaceholder', 'lensPanel.ruleEditor.propertyNamePlaceholder', 'lensPanel.ruleEditor.valuePlaceholder',
-    ] as LensPanelKey[]) {
-      assertMarked(after, key);
-    }
-    cleanup();
-    act(() => setLocale('en'));
-
-    const quantityRule = ifcRule({ criteria: { type: 'quantity', quantitySet: '', quantityName: '', operator: 'exists' } });
-    const container2 = render(
-      <RuleEditor rule={quantityRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.quantitySetPlaceholder'] as string));
-    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.quantityNamePlaceholder'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.quantitySetPlaceholder');
-    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.quantityNamePlaceholder');
-    cleanup();
-    act(() => setLocale('en'));
-
-    const classificationRule = ifcRule({ criteria: { type: 'classification', classificationSystem: '', classificationCode: '' } });
-    const container3 = render(
-      <RuleEditor rule={classificationRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.classificationSystemPlaceholder'] as string));
-    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.classificationCodePlaceholder'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.classificationSystemPlaceholder');
-    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.classificationCodePlaceholder');
-  });
-
-  it('rule editor (material/group/model): placeholders and the no-models / fallback-name / picker states', () => {
-    const materialRule = ifcRule({ criteria: { type: 'material', materialName: '' } });
-    const container = render(
-      <RuleEditor rule={materialRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container).has(lensPanelEn['lensPanel.ruleEditor.materialPlaceholder'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container), 'lensPanel.ruleEditor.materialPlaceholder');
-    cleanup();
-    act(() => setLocale('en'));
-
-    const groupRule = ifcRule({ criteria: { type: 'group', groupName: '' } });
-    const container2 = render(
-      <RuleEditor rule={groupRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container2).has(lensPanelEn['lensPanel.ruleEditor.groupPlaceholder'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container2), 'lensPanel.ruleEditor.groupPlaceholder');
-    cleanup();
-    act(() => setLocale('en'));
-
-    // No models loaded.
-    useViewerStore.setState({ models: new Map() });
-    const modelRule = ifcRule({ criteria: { type: 'model', modelId: '' } });
-    const container3 = render(
-      <RuleEditor rule={modelRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container3).has(lensPanelEn['lensPanel.ruleEditor.noModelsLoaded'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container3), 'lensPanel.ruleEditor.noModelsLoaded');
-    cleanup();
-    act(() => setLocale('en'));
-
-    // Two models loaded: a <select> with the "Model..." placeholder option.
-    useViewerStore.setState({ models: new Map([['m1', { id: 'm1', name: 'Building A' }], ['m2', { id: 'm2', name: 'Building B' }]]) as never });
-    const container4 = render(
-      <RuleEditor rule={modelRule} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    assert.ok(chromeStrings(container4).has(lensPanelEn['lensPanel.ruleEditor.modelSelectPlaceholder'] as string));
-    act(() => setLocale(PSEUDO_LOCALE));
-    assertMarked(chromeStrings(container4), 'lensPanel.ruleEditor.modelSelectPlaceholder');
-  });
-
-  it('rule editor: compound criteria aria-label and read-only tooltip', () => {
-    const compound = ifcRule({
-      criteria: {
-        type: 'and',
-        conditions: [
-          { type: 'ifcType', ifcType: 'IfcWall' },
-          { type: 'material', materialName: 'Concrete' },
-        ],
-      } as never,
-    });
-    const container = render(
-      <RuleEditor rule={compound} index={0} onChange={mock.fn()} onRemove={noop} onDuplicate={noop} discovered={null} onRequestDiscovery={noop} />,
-    );
-    const english = chromeStrings(container);
-    assert.ok(english.has(lensPanelEn['lensPanel.ruleEditor.compoundTypeAriaLabel'] as string));
-    assert.ok(english.has(lensPanelEn['lensPanel.ruleEditor.compoundReadOnlyTooltip'] as string));
-
-    registerLocale(PSEUDO_LOCALE, PSEUDO);
-    act(() => setLocale(PSEUDO_LOCALE));
-    const after = chromeStrings(container);
-    assertMarked(after, 'lensPanel.ruleEditor.compoundTypeAriaLabel');
-    assertMarked(after, 'lensPanel.ruleEditor.compoundReadOnlyTooltip');
+    for (const key of keys) assertMarked(after, key);
   });
 
   it('auto-color editor: field labels, source options, select placeholders, and the "Show unclassified" toggle', () => {

@@ -54,7 +54,7 @@ const WALL_LENS: Lens = {
       id: 'rule-wall',
       name: 'Walls',
       enabled: true,
-      criteria: { type: 'ifcType', ifcType: 'IfcWall' },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }],
       action: 'colorize',
       color: '#ff0000',
     },

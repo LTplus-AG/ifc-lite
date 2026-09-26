@@ -13,18 +13,16 @@
 import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
-import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
+import { duplicateLensConfig, mergeImportedLenses, migrateSavedLens, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
-// Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
 export type { SaveResult };
 
-// Re-export constants for consumers that import from this file
 export {
   COMMON_IFC_CLASSES, COMMON_IFC_TYPES, LENS_PALETTE,
-  LENS_CRITERIA_TYPES, AUTO_COLOR_SOURCES, ENTITY_ATTRIBUTE_NAMES,
+  AUTO_COLOR_SOURCES, ENTITY_ATTRIBUTE_NAMES,
 } from '@ifc-lite/lens';
 
 /** localStorage key for persisting custom lenses */
@@ -45,9 +43,11 @@ function loadSavedLenses(): { custom: Lens[]; builtinOverrides: Map<string, Lens
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { custom: [], builtinOverrides: new Map() };
-    const parsed = JSON.parse(raw) as Lens[];
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return { custom: [], builtinOverrides: new Map() };
-    const valid = parsed.filter(l => l.id && l.name && Array.isArray(l.rules));
+    const valid = parsed
+      .map(migrateSavedLens)
+      .filter((lens): lens is Lens => lens !== null && lens.id !== undefined);
     const builtinOverrides = new Map<string, Lens>();
     const custom: Lens[] = [];
     for (const l of valid) {
@@ -315,11 +315,15 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     // BY IFC CLASS / STRUCTURAL / etc. The incoming list takes
     // precedence (it may carry user overrides).
     const state = get();
-    const incomingIds = new Set(lenses.map((l) => l.id));
+    const migrated = lenses
+      .map(migrateSavedLens)
+      .filter((lens): lens is Lens => lens !== null && lens.id !== undefined)
+      .map((lens) => ({ ...lens, builtin: BUILTIN_IDS.has(lens.id) }));
+    const incomingIds = new Set(migrated.map((l) => l.id));
     const builtinsToKeep = BUILTIN_LENSES
       .filter((b) => !incomingIds.has(b.id))
       .map((b) => ({ ...b }));
-    const next = [...builtinsToKeep, ...lenses];
+    const next = [...builtinsToKeep, ...migrated];
     const result = saveLenses(next);
     // Leaving the previous set in place beats showing a flavor's lenses that
     // vanish on reload — the caller reports the failure.

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { LensOperator } from '@ifc-lite/lens';
 import type { ConditionOperator } from '@ifc-lite/lists';
 import type { FilterOperator } from '@ifc-lite/mutations';
 import type { ClassificationOp, ModelTagOp, NumericOp, SetOp, StringOp, ValueOp } from '@ifc-lite/rules';
@@ -36,18 +35,6 @@ export const FILTER_OPERATOR_LABEL_KEYS = {
   hasNone: 'filterOperators.hasNone',
   untagged: 'filterOperators.untagged',
 } as const satisfies Record<CanonicalOperator, TranslationKey>;
-
-/** Saved legacy values continue to render while their query shapes migrate. */
-export const LENS_OPERATOR_LABEL_KEYS = {
-  exists: FILTER_OPERATOR_LABEL_KEYS.isSet,
-  equals: FILTER_OPERATOR_LABEL_KEYS.eq,
-  contains: FILTER_OPERATOR_LABEL_KEYS.contains,
-  ne: FILTER_OPERATOR_LABEL_KEYS.ne,
-  gt: FILTER_OPERATOR_LABEL_KEYS.gt,
-  gte: FILTER_OPERATOR_LABEL_KEYS.gte,
-  lt: FILTER_OPERATOR_LABEL_KEYS.lt,
-  lte: FILTER_OPERATOR_LABEL_KEYS.lte,
-} as const satisfies Record<LensOperator, TranslationKey>;
 
 export const LIST_OPERATOR_LABEL_KEYS = {
   exists: FILTER_OPERATOR_LABEL_KEYS.isSet,

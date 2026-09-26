@@ -25,17 +25,33 @@ function createMockProvider(entities: Array<{
   };
 }
 
+/** The engine receives already selected IDs from the shared query evaluator. */
+function selectedByType(lens: Lens, provider: LensDataProvider): Map<string, Set<number>> {
+  const matched = new Map<string, Set<number>>();
+  for (const rule of lens.rules) {
+    const selected = new Set<number>();
+    const classes = rule.groups[0]?.rules[0];
+    if (classes?.kind === 'ifcType') {
+      provider.forEachEntity((id) => {
+        if (classes.values.includes(provider.getEntityType(id) ?? '')) selected.add(id);
+      });
+    }
+    matched.set(rule.id, selected);
+  }
+  return matched;
+}
+
 describe('evaluateLens', () => {
   it('should return empty results for lens with no enabled rules', () => {
     const lens: Lens = {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Disabled', enabled: false, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
+        { id: 'r1', name: 'Disabled', enabled: false, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#FF0000' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     expect(result.colorMap.size).toBe(0);
     expect(result.hiddenIds.size).toBe(0);
@@ -47,14 +63,14 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
+        { id: 'r1', name: 'Walls', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#FF0000' },
       ],
     };
     const provider = createMockProvider([
       { id: 1, type: 'IfcWall' },
       { id: 2, type: 'IfcSlab' },
     ]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     expect(result.colorMap.get(1)).toEqual(hexToRgba('#FF0000', 1));
     expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
@@ -66,14 +82,14 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Hide Slabs', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcSlab' }, action: 'hide', color: '#000000' },
+        { id: 'r1', name: 'Hide Slabs', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }] }], action: 'hide', color: '#000000' },
       ],
     };
     const provider = createMockProvider([
       { id: 1, type: 'IfcSlab' },
       { id: 2, type: 'IfcWall' },
     ]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     expect(result.hiddenIds.has(1)).toBe(true);
     expect(result.hiddenIds.has(2)).toBe(false);
@@ -86,11 +102,11 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Transparent Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'transparent', color: '#00FF00' },
+        { id: 'r1', name: 'Transparent Walls', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'transparent', color: '#00FF00' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     const color = result.colorMap.get(1);
     expect(color).toBeDefined();
@@ -102,12 +118,12 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Walls Red', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
-        { id: 'r2', name: 'Walls Blue', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#0000FF' },
+        { id: 'r1', name: 'Walls Red', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#FF0000' },
+        { id: 'r2', name: 'Walls Blue', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#0000FF' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     // First rule (red) should win
     expect(result.colorMap.get(1)).toEqual(hexToRgba('#FF0000', 1));
@@ -120,8 +136,8 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r-wall', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
-        { id: 'r-slab', name: 'Slabs', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcSlab' }, action: 'colorize', color: '#0000FF' },
+        { id: 'r-wall', name: 'Walls', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#FF0000' },
+        { id: 'r-slab', name: 'Slabs', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }] }], action: 'colorize', color: '#0000FF' },
       ],
     };
     const provider = createMockProvider([
@@ -130,7 +146,7 @@ describe('evaluateLens', () => {
       { id: 3, type: 'IfcSlab' },
       { id: 4, type: 'IfcDoor' },
     ]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     expect(result.ruleCounts.get('r-wall')).toBe(2);
     expect(result.ruleCounts.get('r-slab')).toBe(1);
@@ -143,11 +159,11 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
+        { id: 'r1', name: 'Walls', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#FF0000' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, selectedByType(lens, provider));
 
     expect(typeof result.executionTime).toBe('number');
     expect(result.executionTime).toBeGreaterThanOrEqual(0);
@@ -810,44 +826,26 @@ describe('evaluateAutoColorLens — By Zone', () => {
   });
 });
 
-describe('evaluateLens - compound rule criteria', () => {
-  // Wall 1 has FireRating 90, wall 2 has nothing, slab 3 has FireRating 90.
-  const props = new Map<number, Record<string, Record<string, unknown>>>([
-    [1, { Pset_WallCommon: { FireRating: '90' } }],
-    [3, { Pset_SlabCommon: { FireRating: '90' } }],
+describe('evaluateLens - preselected compound group', () => {
+  const provider = createMockProvider([
+    { id: 1, type: 'IfcWall' }, { id: 2, type: 'IfcWall' }, { id: 3, type: 'IfcSlab' },
   ]);
-  const provider: LensDataProvider = {
-    getEntityCount: () => 3,
-    forEachEntity: (cb) => { for (const id of [1, 2, 3]) cb(id, 'model-1'); },
-    getEntityType: (id) => (id === 3 ? 'IfcSlab' : 'IfcWall'),
-    getPropertyValue: (id, pset, prop) => props.get(id)?.[pset]?.[prop],
-    getPropertySets: () => [],
-  };
 
-  it('colors and counts entities matched by a compound rule like any other rule', () => {
+  it('colors and counts only the IDs selected by the shared group evaluator', () => {
     const lens: Lens = {
-      id: 'l1',
-      name: 'Fire walls',
-      rules: [{
-        id: 'r1',
-        name: 'Rated walls',
-        enabled: true,
-        criteria: {
-          type: 'and',
-          conditions: [
-            { type: 'ifcType', ifcType: 'IfcWall' },
-            { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'gte', propertyValue: '60' },
-          ],
-        },
-        action: 'colorize',
-        color: '#E53935',
+      id: 'l1', name: 'Fire walls', rules: [{
+        id: 'r1', name: 'Rated walls', enabled: true,
+        groups: [{ combinator: 'AND', rules: [
+          { kind: 'ifcType', op: 'in', values: ['IfcWall'] },
+          { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'gte', value: '60' },
+        ] }],
+        action: 'colorize', color: '#E53935',
       }],
     };
-    const result = evaluateLens(lens, provider);
+    const result = evaluateLens(lens, provider, new Map([['r1', new Set([1])]]));
     expect(result.ruleCounts.get('r1')).toBe(1);
     expect(result.ruleEntityIds.get('r1')).toEqual([1]);
     expect(result.colorMap.get(1)).toEqual(hexToRgba('#E53935', 1));
-    // Unmatched entities (wrong pset, or the slab) are ghosted as usual.
     expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
     expect(result.colorMap.get(3)).toEqual(GHOST_COLOR);
   });

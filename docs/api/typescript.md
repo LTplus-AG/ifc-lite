@@ -1015,7 +1015,7 @@ Headless model-diff engine: classifies entities as added / modified / deleted / 
 
 ## @ifc-lite/lens
 
-Rule-based 3D filtering and colorization for IFC models: `evaluateLens`, `evaluateAutoColorLens`, `matchesCriteria`, class/data-source discovery (`discoverClasses`, `discoverDataSources`), and `BUILTIN_LENSES` presets.
+Rule-based 3D filtering and colorization for IFC models: `evaluateLens` applies actions to selected `FilterGroup[]` result IDs, `evaluateAutoColorLens` groups by values, and class/data-source discovery (`discoverClasses`, `discoverDataSources`) supports editors. `BUILTIN_LENSES` supplies presets.
 
 ## @ifc-lite/lists
 

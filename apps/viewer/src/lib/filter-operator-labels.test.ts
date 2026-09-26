@@ -8,7 +8,6 @@ import { en } from '../i18n/en';
 import {
   BULK_OPERATOR_LABEL_KEYS,
   FILTER_OPERATOR_LABEL_KEYS,
-  LENS_OPERATOR_LABEL_KEYS,
   LIST_OPERATOR_LABEL_KEYS,
 } from './filter-operator-labels';
 
@@ -16,7 +15,6 @@ describe('#5892 shared filter operator labels', () => {
   it('resolves every editor operator to a nonempty English label', () => {
     for (const labels of [
       FILTER_OPERATOR_LABEL_KEYS,
-      LENS_OPERATOR_LABEL_KEYS,
       LIST_OPERATOR_LABEL_KEYS,
       BULK_OPERATOR_LABEL_KEYS,
     ]) {
@@ -28,13 +26,12 @@ describe('#5892 shared filter operator labels', () => {
     }
   });
 
-  it('shows the same not-equal label in Search, Lens, Lists, and Bulk', () => {
+  it('shows the same not-equal label in Search, Lists, and Bulk', () => {
     const keys = [
       FILTER_OPERATOR_LABEL_KEYS.ne,
-      LENS_OPERATOR_LABEL_KEYS.ne,
       LIST_OPERATOR_LABEL_KEYS.notEquals,
       BULK_OPERATOR_LABEL_KEYS['!='],
     ];
-    assert.deepEqual(keys.map((key) => en[key]), Array(4).fill(en[FILTER_OPERATOR_LABEL_KEYS.ne]));
+    assert.deepEqual(keys.map((key) => en[key]), Array(3).fill(en[FILTER_OPERATOR_LABEL_KEYS.ne]));
   });
 });

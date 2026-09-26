@@ -38,7 +38,7 @@ function installStubStorage(failWrites: boolean): Map<string, string> {
 const LENS: Lens = {
   id: 'lens-test-1',
   name: 'Test lens',
-  rules: [{ id: 'r1', name: 'walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#ff0000' }],
+  rules: [{ id: 'r1', name: 'walls', enabled: true, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }], action: 'colorize', color: '#ff0000' }],
 };
 
 function makeSlice(): { get: () => LensSlice } {

@@ -1,171 +1,97 @@
 # Lenses
 
-Lenses are rule-based 3D filters: they colorize, hide, or ghost entities based on what the model data says about them. The `@ifc-lite/lens` package evaluates a lens against model data and produces a color map you can apply to any renderer, plus counts and legends for UI.
+Lenses color, hide, or ghost IFC entities according to saved filter groups. The viewer uses the same `FilterGroup[]` query model as Search, Lists, and Bulk editing. Rules run in order: the first matching rule owns each entity's appearance. Unmatched entities receive a faint ghost color.
 
-## How It Works
+A lens may instead use **auto-color** to group entities by a data source, such as IFC class, material, property, classification, model, or zone. Auto-color assigns each distinct value a color and produces a legend.
 
-A **lens** is a named set of rules. Each **rule** has:
-
-- **Criteria** - A single condition on one axis (IFC class, property, material, attribute, quantity, classification, model, or group)
-- **Action** - `colorize`, `hide`, or `transparent`
-- **Color** - A hex color used by `colorize` and `transparent`
-
-`evaluateLens` checks every entity against the enabled rules in order; the first matching rule wins. Entities that match no rule are **ghosted** (a faint neutral color) so the matches stand out.
-
-Alternatively, a lens can use **auto-color**: instead of hand-written rules, it groups entities by the distinct values of one data source (IFC class, a property, a material, ...) and assigns each group a color automatically, producing a legend.
-
-## Quick Start
-
-```typescript
-import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
-
-// BUILTIN_LENSES includes a "Structural" preset:
-// columns red, beams blue, slabs yellow, footings green
-const structural = BUILTIN_LENSES.find((l) => l.id === 'lens-structural')!;
-
-const result = evaluateLens(structural, provider);
-
-result.colorMap;      // Map<expressId (number), [r, g, b, a]> (0-1 range)
-result.hiddenIds;     // Set<expressId (number)> from 'hide' rules
-result.ruleCounts;    // Map<ruleId, matchCount>
-result.executionTime; // ms
-```
-
-The `provider` is a `LensDataProvider`, an adapter interface over your parsed model data (entity types, property values, materials, and so on), so the package is renderer- and parser-agnostic.
-
-## Built-in Lenses
+## Built-in lenses
 
 `BUILTIN_LENSES` ships seven presets:
 
 | Id | Name | What it does |
 |----|------|--------------|
-| `lens-by-class` | By IFC Class | Auto-colors every entity by its IFC class |
-| `lens-structural` | Structural | Columns, beams, slabs, footings in distinct colors |
-| `lens-envelope` | Building Envelope | Roofs, curtain walls, windows, doors, walls |
-| `lens-openings` | Openings & Circulation | Doors, windows, stairs, ramps, railings |
+| `lens-by-class` | By IFC Class | Auto-colors every entity by IFC class |
+| `lens-structural` | Structural | Colors columns, beams, slabs, and footings |
+| `lens-envelope` | Building Envelope | Colors roofs, curtain walls, windows, doors, and walls |
+| `lens-openings` | Openings & Circulation | Colors doors, windows, stairs, ramps, and railings |
 | `lens-auto-material` | By Material | Auto-colors by material name |
-| `lens-by-model` | By Model | Auto-colors by source model (federation) |
-| `lens-by-zone` | By Zone | Auto-colors by IfcZone/IfcGroup membership |
+| `lens-by-model` | By Model | Auto-colors by source model |
+| `lens-by-zone` | By Zone | Auto-colors by IfcZone or IfcGroup membership |
 
-## Rule Criteria
+## Manual rules
 
-`LensCriteria.type` selects the axis, and the matching fields provide the values:
+Each `LensRule` has `groups: FilterGroup[]`, an action (`colorize`, `hide`, or `transparent`), and a hex color for the color actions. Groups are ORed together. Within a group, its `combinator` controls whether all or any rules match. The Lens panel embeds the shared Filter Group editor, including the same property, attribute, quantity, class, GlobalId, and model chips used in other query surfaces.
 
-| Type | Fields | Matches |
-|------|--------|---------|
-| `ifcType` | `ifcType` | Entity class (e.g. `IfcWall`) |
-| `property` | `propertySet`, `propertyName`, `operator?`, `propertyValue?` | A pset property value |
-| `material` | `materialName` | Associated material |
-| `attribute` | `attributeName`, `attributeValue?` | Direct attribute (Name, ObjectType, ...) |
-| `quantity` | `quantitySet`, `quantityName`, `quantityValue?` | A quantity value |
-| `classification` | `classificationSystem`, `classificationCode?` | Classification reference |
-| `model` | `modelId` | Source model in a federation |
-| `group` | `groupName` | IfcZone/IfcGroup membership |
-
-Operators for value comparison (the `property`, `attribute`, and `quantity` criteria types; the other types ignore `operator`): `equals` (exact; booleans compared case-insensitively), `contains` (case-insensitive substring), `exists` (the property is present at all), `ne` (not equal - a case-insensitive string comparison, not a numeric one), and the numeric comparisons `gt`, `gte`, `lt`, `lte` (both sides parsed with `Number.parseFloat`; a non-numeric or non-finite value fails closed rather than matching). The full list is exported as `LENS_OPERATORS`.
-
-A criterion is either a **leaf** (one of the eight types in the table above) or a **compound**: `type: 'and'` or `type: 'or'` with a `conditions` array of member criteria, each a leaf or another nested compound - e.g. `{ type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'gte', propertyValue: '60' }] }` matches walls with FireRating >= 60. `and` requires every member to match, `or` requires at least one; an empty or missing `conditions` array matches nothing (not everything); nesting is capped at `MAX_COMPOUND_DEPTH` (16), beyond which a compound matches nothing rather than recursing further. This is engine-level support only - the viewer's Lens panel does not yet offer an authoring UI for compound rules, though it displays an imported one read-only.
-
-A property rule matches any entity carrying that property, regardless of class. To test a single entity programmatically, use `matchesCriteria(criteria, globalId, provider)`.
-
-## Worked Example: Color by Fire Rating
-
-Hand-authored rules, one per rating value you care about:
+For a single model, evaluate the groups with `@ifc-lite/rules`, then pass each rule's selected IDs to `evaluateLens`. The package handles action priority, ghost colors, hide sets, and legend counts. The viewer's `useLens` hook uses the federated group evaluator and translates model-local IDs to global IDs before this final step.
 
 ```typescript
-import { evaluateLens, type Lens } from '@ifc-lite/lens';
+import { evaluateLens, type Lens, type LensDataProvider } from '@ifc-lite/lens';
+import { evaluateFilterGroups } from '@ifc-lite/rules';
+import type { IfcDataStore } from '@ifc-lite/parser';
+
+function evaluateSingleModelLens(lens: Lens, provider: LensDataProvider, store: IfcDataStore) {
+  const selected = new Map(lens.rules.map((rule) => [
+    rule.id,
+    new Set(evaluateFilterGroups('primary', store, rule.groups, {
+      limit: Number.MAX_SAFE_INTEGER,
+    }).map((row) => row.expressId)),
+  ] as const));
+  return evaluateLens(lens, provider, selected);
+}
+```
+
+`LensDataProvider` enumerates the entities and supplies data for auto-color, rule actions, and legend counts. In a single-model viewer, global IDs equal EXPRESS IDs. Federated applications must translate each result's `(modelId, expressId)` through their global-ID registry.
+
+For example, a fire-rating lens rule can use an AND group containing an IFC class rule and a property comparison:
+
+```typescript
+import type { Lens } from '@ifc-lite/lens';
 
 const fireLens: Lens = {
   id: 'fire-rating',
   name: 'Fire Rating',
-  rules: [
-    {
-      id: 'fr-90',
-      name: 'REI 90',
-      enabled: true,
-      criteria: {
-        type: 'property',
-        propertySet: 'Pset_WallCommon',
-        propertyName: 'FireRating',
-        operator: 'equals',
-        propertyValue: '90',
-      },
-      action: 'colorize',
-      color: '#E53935',
-    },
-    // ...more rules for other rating values
-  ],
+  rules: [{
+    id: 'fr-90', name: 'REI 90', enabled: true,
+    groups: [{ combinator: 'AND', rules: [
+      { kind: 'ifcType', op: 'in', values: ['IfcWall'] },
+      { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: '90' },
+    ] }],
+    action: 'colorize', color: '#E53935',
+  }],
 };
-
-const result = evaluateLens(fireLens, provider);
 ```
 
-Or let auto-color enumerate every distinct rating and build the palette and legend for you:
+## Auto-color
 
 ```typescript
-import { evaluateAutoColorLens, type AutoColorSpec } from '@ifc-lite/lens';
+import { evaluateAutoColorLens, type AutoColorSpec, type LensDataProvider } from '@ifc-lite/lens';
 
-const spec: AutoColorSpec = {
-  source: 'property',
-  psetName: 'Pset_WallCommon',
-  propertyName: 'FireRating',
-};
-
-const result = evaluateAutoColorLens(spec, provider);
-
-result.legend; // [{ label, color, count }, ...] one entry per distinct value
+function colorByRating(provider: LensDataProvider) {
+  const spec: AutoColorSpec = {
+    source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating',
+  };
+  return evaluateAutoColorLens(spec, provider);
+}
 ```
 
-Auto-color groups entities by value in a single pass, sorts groups by size, assigns stable distinct colors, and ghosts entities without a value. `AutoColorSpec.source` accepts `ifcType`, `attribute`, `property`, `quantity`, `classification`, `material`, `model`, or `group`.
+`AutoColorSpec.source` accepts `ifcType`, `attribute`, `property`, `quantity`, `classification`, `material`, `model`, or `group`. Values absent from the selected source are ghosted by default. Use `discoverClasses` and `discoverDataSources` from `@ifc-lite/lens` to populate data-source choices from a loaded model.
 
-Property set and property names are matched as exact strings against whatever the model actually contains; use discovery (below) to find the real names first.
+## Saved v1 lenses
 
-## Discovering What a Model Contains
+Local storage and `lenses.json` imports using `LensCriteria` are migrated when loaded. Small nested AND/OR trees are normalized to equivalent Filter Groups. Conditions with no exact mapping remain in the saved rule as unreadable legacy data: they match nothing, show a warning in the editor, and survive export and re-import until the user explicitly replaces them. An unreadable condition is never guessed into a different query.
 
-To populate a lens editor UI:
+## Applying the result
 
-```typescript
-import { discoverClasses, discoverDataSources } from '@ifc-lite/lens';
+`evaluateLens` returns a `colorMap` of global IDs to normalized RGBA tuples, `hiddenIds`, per-rule counts and ID lists, and evaluation time. `SceneContents.setColorOverrides` in `@ifc-lite/renderer` accepts the color map. The viewer renders it as an overlay over original geometry and synchronizes `hiddenIds` through the visibility owner. Clearing the lens removes the overlay without changing model geometry. See [Rendering](rendering.md).
 
-const classes = discoverClasses(provider);
-// sorted unique IFC class names present in the model
+## Main exports
 
-const sources = discoverDataSources(provider, { properties: true, materials: true });
-// samples entities to list available psets, qsets, classification systems, materials
-```
-
-## Applying Results to the Renderer
-
-`result.colorMap` is a `Map<number, [r, g, b, a]>` with components in the 0-1 range, which is exactly what `SceneContents.setColorOverrides` in `@ifc-lite/renderer` accepts:
-
-```typescript
-import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
-
-const lensResult = evaluateLens(BUILTIN_LENSES[0], provider);
-
-// scene is a SceneContents, from renderer.getScene()
-scene.setColorOverrides(lensResult.colorMap, device, pipeline);
-
-// remove the lens
-scene.clearColorOverrides();
-```
-
-Color overrides are rendered as overlay batches on top of the original geometry, so the base model is never modified; `hiddenIds` is applied separately through your visibility mechanism. Ghosted (unmatched) entries carry a shared ghost color you can detect with `isGhostColor` if you want to filter them out of legends.
-
-This is exactly how the viewer wires it: the Lens panel evaluates the active lens, pushes `colorMap` into the store, and the geometry streaming hook calls `scene.setColorOverrides` on the next frame. See [Rendering](rendering.md) for the renderer setup.
-
-## Key Exports
-
-| Export | Description |
-|--------|-------------|
-| `evaluateLens(lens, provider)` | Run rule-based lens, returns `LensEvaluationResult` |
-| `evaluateAutoColorLens(spec, provider)` | Group-by-value colorization with legend |
-| `matchesCriteria(criteria, globalId, provider)` | Test one entity against one criterion |
-| `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
-| `BUILTIN_LENSES` | The seven built-in presets |
+| Export | Use |
+|--------|-----|
+| `evaluateLens(lens, provider, selectedByRule)` | Apply ordered manual rule actions to selected global IDs |
+| `evaluateAutoColorLens(spec, provider)` | Color by distinct values and return legend entries |
+| `discoverClasses` / `discoverDataSources` | Populate editor choices from model data |
+| `BUILTIN_LENSES` | Seven presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
-| `LENS_OPERATORS` | The eight value operators, for rule-editor dropdowns |
-| `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two compound criteria types |
-| `MAX_COMPOUND_DEPTH` | Nesting cap (16) beyond which a compound matches nothing |
 
-Key types: `Lens`, `LensRule`, `LensCriteria`, `LensOperator`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.
+Key types: `Lens`, `LensRule`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.

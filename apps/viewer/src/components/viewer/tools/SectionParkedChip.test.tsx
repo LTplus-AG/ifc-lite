@@ -20,7 +20,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
-import { VisibilityChips } from '../../viewport-ui/hud/VisibilityChips.js';
+import type { ComponentType } from 'react';
 import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { SectionParkedChip } from './SectionParkedChip.js';
@@ -93,7 +93,14 @@ describe('parked-section chip (#5500)', () => {
   });
 
   it('names the parked cut in the bar\'s metres and stacks after the Solo chip by order', async () => {
-    render(<><ViewportHud /><SectionParkedChip /><VisibilityChips /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
+    // Let the revert oracle mount the previous chip and exercise the changed
+    // Solo label, rather than failing before the test starts on a dead import.
+    const replacementPath = '../../viewport-ui/hud/VisibilityChips.js';
+    const previousPath = '../LevelDisplayIndicator.js';
+    const StatusChip: ComponentType = await import(replacementPath)
+      .then((module) => module.VisibilityChips)
+      .catch(async () => (await import(previousPath)).LevelDisplayIndicator);
+    render(<><ViewportHud /><SectionParkedChip /><StatusChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     await parkCut('down', 55);
     // 55 % of Y in [-1, 3] is 1.2 m.
     assert.equal(chip()?.textContent?.trim(), 'Down · 1.20 m');

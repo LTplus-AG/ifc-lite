@@ -33,7 +33,8 @@ import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
 import { anthropicErrorMessage, createAnthropicClient, type AnthropicCredentials } from '@/lib/llm/anthropic-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, Loader2, RefreshCcw, Wrench } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, ChevronRight, Download, KeyRound, RefreshCcw, Wrench } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { resolveLiveMessage, type LiveTranslationMessage } from '@/i18n/live-message';
@@ -63,7 +64,6 @@ import {
   type UploadedFile,
 } from './playground-uploads';
 import { Paperclip, X } from 'lucide-react';
-
 const MAX_TOOL_CALLS = 25;
 const MAX_TOKENS = 16_384; // Opus 5 thinks by default; 4096 truncated the tool loop. Under the SDK's non-streaming cap.
 const SYSTEM_PROMPT = `You are a BIM/IFC analyst driving @ifc-lite/mcp tools against a pre-loaded model. Be terse — the user is technical and time-pressed.
@@ -459,7 +459,7 @@ export function PlaygroundChat({
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
             aria-label={t('mcp.playgroundChat.send')}
           >
-            {isStreaming ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+            {isStreaming ? <Spinner size="sm" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
         <p className="mt-1.5 text-[10px] text-white/40">
@@ -683,7 +683,7 @@ export function ToolCallView({ call, showDownload = true }: { call: ChatToolCall
         </code>
         <span className="ml-auto inline-flex items-center gap-2 text-[10.5px] text-white/40">
           {call.result == null ? (
-            <Loader2 size={10} className="animate-spin" />
+            <Spinner size="xs" />
           ) : (
             <>
               {ms != null && <span style={{ fontFamily: '"JetBrains Mono", monospace' }}>{t('mcp.playgroundChat.msSuffix', { ms })}</span>}

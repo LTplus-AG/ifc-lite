@@ -411,6 +411,53 @@ for (let x = 0; x < width; x += 3) {
   assert.ok(detached.every((diagnostic) => diagnostic.evidence?.length));
 });
 
+// Regression #6086: prose in the complete creation script looked like missing bindings.
+test('preflight ignores prose, string values, and object keys when checking detached bindings', () => {
+  const diagnostics = validateScriptPreflightDetailed(`
+/* The footprint has width and depth; i and z are indices in the roof discussion. */
+const h = bim.create.project({ Name: 'width depth i z' });
+const storey = bim.create.addIfcBuildingStorey(h, { Name: 'Level 0', Elevation: 0 });
+const footprint = { width: 5, depth: 8 };
+// width, depth, i, z are words in this comment, not missing variables.
+const caption = \`width / depth at \${footprint.width}\`;
+bim.create.addIfcSlab(h, storey, {
+  Position: [0, 0, 0], Width: footprint.width, Depth: footprint.depth, Thickness: 0.3,
+});
+console.log(caption);
+`);
+
+  assert.deepEqual(diagnostics.filter((diagnostic) => diagnostic.code === 'detached_snippet_scope'), []);
+});
+
+test('preflight ignores regular expression literals in scope checks', () => {
+  const code = String.raw`const pattern = /width|depth|i|z/;
+const slashes = /\/\/width/;
+console.log(pattern, slashes);`;
+  const detached = validateScriptPreflightDetailed(code)
+    .filter((diagnostic) => diagnostic.code === 'detached_snippet_scope');
+  assert.deepEqual(detached, []);
+});
+
+test('preflight still flags live bindings inside template expressions and reports their actual location', () => {
+  const code = `// width is described here, not used\nconsole.log(\`span: \${width}\`);`;
+  const detached = validateScriptPreflightDetailed(code)
+    .filter((diagnostic) => diagnostic.code === 'detached_snippet_scope');
+
+  assert.equal(detached.length, 1);
+  assert.equal(detached[0].data?.symbol, 'width');
+  assert.equal(detached[0].evidence?.[0]?.range?.from, code.lastIndexOf('width'));
+});
+
+test('comments cannot supply missing create context', () => {
+  const diagnostics = validateScriptPreflightDetailed(`
+// const h = bim.create.project({ Name: 'Example' });
+// const storey = bim.create.addIfcBuildingStorey(h, { Name: 'Level 0' });
+bim.create.addIfcWall(h, storey, { Start: [0, 0, 0], End: [1, 0, 0], Thickness: 0.2, Height: 3 });
+`);
+  const missing = diagnostics.filter((diagnostic) => diagnostic.code === 'detached_snippet_scope');
+  assert.deepEqual(missing.map((diagnostic) => diagnostic.data?.symbol).sort(), ['h', 'storey']);
+});
+
 test('preflight does not flag destructured loop bindings in complete rewrite scripts as detached snippets', () => {
   const diagnostics = validateScriptPreflightDetailed(`
 const h = bim.create.project({ Name: "3-Story House" });

@@ -64,7 +64,6 @@ export function useModelPlacementSync(
       if (state.clashResult || state.clashSelectedId !== null || state.clashSolidStatus !== 'none') {
         endClashScenePresentation(useViewerStore.getState, 'model-removed'); // Surviving-model cleanup also cancels in-flight solids.
       }
-      if (state.clashResult) { state.setClashResult(null); state.setClashError('Model positions changed. Run clash detection again.'); }
       state.setPointCloudDeviationComputed(false);
       if (state.pointCloudColorMode === 'deviation') state.setPointCloudColorMode('rgb');
     });

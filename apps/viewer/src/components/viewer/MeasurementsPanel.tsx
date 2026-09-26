@@ -18,6 +18,7 @@
 import { useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
@@ -59,8 +60,8 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             variant="ghost"
             size="icon"
             className="h-6 w-6"
-            onClick={() => {
-              if (window.confirm(t('measure.clearAllConfirm'))) clearMeasurements();
+            onClick={async () => {
+              if (await confirmDialog({ description: t('measure.clearAllConfirm'), destructive: true })) clearMeasurements();
             }}
             title={t('measure.clearAll')}
           >

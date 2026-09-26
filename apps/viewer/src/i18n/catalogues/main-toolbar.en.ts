@@ -29,7 +29,7 @@ export const mainToolbarEn = {
   'mainToolbar.bulkPropertyEditor': 'Bulk Property Editor',
   'mainToolbar.importDataCsv': 'Import Data (CSV)',
   'mainToolbar.share': 'Share',
-  'mainToolbar.room': 'Room',
+  'mainToolbar.room': 'Session',
 
   'mainToolbar.panels': 'Panels',
   'mainToolbar.panelsWithLabel': 'Panels: {label}',
@@ -44,7 +44,7 @@ export const mainToolbarEn = {
   'mainToolbar.locationZones': 'Location Zones',
   'mainToolbar.loadReport': 'Load Report',
   'mainToolbar.cost': 'Cost',
-  'mainToolbar.collaborationRoom': 'Collaboration Room',
+  'mainToolbar.collaborationRoom': 'Collaboration Session',
   'mainToolbar.analysisExtensions': 'Analysis extensions',
 
   'mainToolbar.toolSelect': 'Select',
@@ -70,11 +70,11 @@ export const mainToolbarEn = {
 
   'mainToolbar.presentationShow': 'Show Presentation dock',
   'mainToolbar.presentationHide': 'Hide Presentation dock',
-  'mainToolbar.presentationTooltip': 'Basket Presentation Dock (Views: {views}, Entities: {entities})',
+  'mainToolbar.presentationTooltip': 'Collection Presentation Dock (Views: {views}, Entities: {entities})',
 
   'mainToolbar.selectionActionsAriaLabel': 'Selection actions — {count} selected',
   'mainToolbar.selectionCountBadge': '{count} sel',
-  'mainToolbar.isolateSelection': 'Isolate Selection (Set Basket)',
+  'mainToolbar.isolateSelection': 'Isolate Selection (Set Collection)',
   'mainToolbar.hideSelection': 'Hide Selection',
   'mainToolbar.frameSelection': 'Frame Selection',
   'mainToolbar.showAll': 'Show All (Reset Filters)',
@@ -104,6 +104,7 @@ export const mainToolbarEn = {
   'mainToolbar.orthographic': 'Orthographic',
   'mainToolbar.helpers': 'Helpers',
   'mainToolbar.hoverTooltips': 'Hover tooltips',
+  'mainToolbar.openSettings': 'Settings…',
   'mainToolbar.toolbarLabel': 'Toolbar',
   'mainToolbar.ribbonToolbarMenuItem': 'Ribbon toolbar',
 

@@ -63,7 +63,7 @@ const IDS_AUDIT_SUMMARY = join(VIEWER_DIR, 'IDSAuditSummary.tsx');
 const ENTITY_CONTEXT_MENU = join(VIEWER_DIR, 'EntityContextMenu.tsx');
 const ROOM_PANEL = join(VIEWER_DIR, 'RoomPanel.tsx');
 const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
-const SECTION_PANEL = join(VIEWER_DIR, 'tools/SectionPanel.tsx');
+const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
 const RIBBON_PRIMITIVES = join(VIEWER_DIR, 'ribbon/primitives.tsx');
 const CHANGE_DETAIL_VIEW = join(VIEWER_DIR, 'compare/ChangeDetailView.tsx');
 const COMPARE_RESULTS_LIST = join(VIEWER_DIR, 'compare/CompareResultsList.tsx');
@@ -284,10 +284,13 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-popover',
     },
     {
-      name: 'SectionPanel axis prompt',
-      file: SECTION_PANEL,
-      anchor: "{sectionPickMode ? t('sectionTool.pick.activeLabel') : isCustom ? t('sectionTool.pick.customLabel') : t('sectionTool.pick.label')}\n                </span>\n              </Button>\n              <div ",
-      surface: 'bg-background',
+      name: 'SectionToolbar heading caption',
+      file: SECTION_TOOLBAR,
+      anchor: '2D + close — never inside one. */}\n      <span className={GROUP}>\n        <span ',
+      // The caption replaced the Section panel's axis prompt (#5991) and sits
+      // on the HUD toolbar (`HudSurface`); measured on the opaque `bg-popover`
+      // proxy like the other HUD sites here.
+      surface: 'bg-popover',
     },
     {
       name: 'ribbon/primitives RibbonGroup label',
@@ -414,7 +417,7 @@ describe('non-vacuousness proof: reintroducing the old opacity tiers reddens in 
     { name: 'ClashPanel mode label (pre-#4792, /60)', surface: 'bg-background', className: 'normal-case tracking-normal text-muted-foreground/60' },
     { name: 'TourStepCard / HoverTooltip / MeasurePanel (pre-#4792, /80)', surface: 'bg-popover', className: 'text-[11px] text-muted-foreground/80' },
     { name: 'MeasureQuantities / MeasurePointReadout (pre-#4792, /70)', surface: 'bg-background', className: 'font-mono text-[9px] leading-tight text-muted-foreground/70' },
-    { name: 'ChunkErrorBoundary / IDSAuditSummary / EntityContextMenu / RoomPanel / CustomizeSidebar / SectionPanel / ribbon-primitives / compare-panels / LayersPanel (pre-follow-up, /70)', surface: 'bg-background', className: 'text-[10px] text-muted-foreground/70' },
+    { name: 'ChunkErrorBoundary / IDSAuditSummary / EntityContextMenu / RoomPanel / CustomizeSidebar / ribbon-primitives / compare-panels / LayersPanel (pre-follow-up, /70)', surface: 'bg-background', className: 'text-[10px] text-muted-foreground/70' },
     { name: 'compare/ChangeDetailView before/after arrow (pre-follow-up, /60)', surface: 'bg-background', className: 'text-muted-foreground/60 shrink-0' },
     { name: 'ChatPanel empty-state hint / BulkPropertyEditor / MeasurePointReadout / geo-readout (pre-audit-fix, /60)', surface: 'bg-background', className: 'text-xs text-muted-foreground/60' },
     { name: 'LearnTab "X min" (pre-audit-fix, /70)', surface: KEYBOARD_SHORTCUTS_DIALOG_SURFACE, className: 'shrink-0 text-[11px] tabular-nums text-muted-foreground/70' },

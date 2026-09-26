@@ -101,10 +101,10 @@ export const miscPanelsBEn = {
   'pointCloudPanel.splatSizeTitle': 'Splat size in pixels (or upper cap in Auto mode)',
   'pointCloudPanel.worldRadiusMm': '{value}mm',
   'pointCloudPanel.worldRadiusTitle': 'World-space splat radius in millimetres',
-  'pointCloudPanel.edlSectionLabel': 'EDL',
+  'pointCloudPanel.edlSectionLabel': 'Edge shading',
   'pointCloudPanel.edlCheckboxTitle':
-    'Eye-Dome Lighting — adds depth perception via screen-space depth gradient',
-  'pointCloudPanel.edlStrengthTitle': 'EDL strength multiplier',
+    'Edge shading (EDL, Eye-Dome Lighting) adds depth perception to point clouds.',
+  'pointCloudPanel.edlStrengthTitle': 'Edge shading (EDL) strength',
 
   // ---- PointCloudClasses.tsx -------------------------------------------
   'pointCloudClasses.summaryLabel': 'Classes',
@@ -166,28 +166,28 @@ export const miscPanelsBEn = {
   'shareDialog.youSuffix': '{name} (you)',
   'shareDialog.guestName': 'Guest',
   'shareDialog.roomCreationFailed':
-    'No room was created. Close and reopen this dialog to try again.',
+    'No session was created. Close and reopen this dialog to try again.',
   'shareDialog.linkCreationFailed': 'Link creation failed. Check the connection and try again.',
   'shareDialog.joinedViaInvite':
-    'You joined via an invite - sharing it forwards the same access. Only the room admin can mint new links.',
-  'shareDialog.onlyAdminCanCreate': 'Only the room admin can create invite links for this room.',
+    'You joined via an invite - sharing it forwards the same access. Only the session admin can mint new links.',
+  'shareDialog.onlyAdminCanCreate': 'Only the session admin can create invite links for this session.',
   'shareDialog.mintFailedReusing':
     'Could not mint a fresh link - reusing your current invite (same access).',
   'shareDialog.linkField.awaitingScope': 'Choose what to share, then create the link',
   'shareDialog.linkField.awaitingConsent': 'Create the link to share this model',
   'shareDialog.linkField.seedInFlight': 'Link is ready once the upload finishes…',
-  'shareDialog.linkField.creatingRoom': 'Creating room…',
+  'shareDialog.linkField.creatingRoom': 'Creating session…',
   'shareDialog.linkField.generating': 'Generating link…',
 
   // ---- ShareScopeField.tsx -----------------------------------------------
   'shareScopeField.allPartial': 'All {seedable} of {loaded} loaded models',
   'shareScopeField.allFull': 'All {loaded} loaded models',
   'shareScopeField.roomCarries': {
-    one: 'This room carries {count} model.',
-    other: 'This room carries {count} models.',
+    one: 'This session carries {count} model.',
+    other: 'This session carries {count} models.',
   },
   'shareScopeField.partialCanBeShared':
-    '{seedable} of {loaded} loaded models can be shared, each as its own model; a GLB, a point cloud or a model still loading has nothing to put in a room.',
+    '{seedable} of {loaded} loaded models can be shared, each as its own model; a GLB, a point cloud or a model still loading has nothing to put in a session.',
   'shareScopeField.allShared':
     'Every loaded model is shared as its own model, so recipients see the whole workspace.',
   'shareScopeField.onlyActiveShared':
@@ -243,10 +243,10 @@ export const miscPanelsBEn = {
   'entityContextMenu.duplicateLabel': 'Duplicate',
   'entityContextMenu.frameSelection': 'Frame selection',
   'entityContextMenu.hide': 'Hide',
-  'entityContextMenu.setBasket': 'Set Basket',
-  'entityContextMenu.addToBasket': 'Add to Basket',
-  'entityContextMenu.removeFromBasket': 'Remove from Basket',
-  'entityContextMenu.saveBasketView': 'Save Basket View',
+  'entityContextMenu.setBasket': 'Set Collection',
+  'entityContextMenu.addToBasket': 'Add to Collection',
+  'entityContextMenu.removeFromBasket': 'Remove from Collection',
+  'entityContextMenu.saveBasketView': 'Save Collection View',
   'entityContextMenu.showAll': 'Show all',
 
   // ---- TextAnnotationEditor.tsx ---------------------------------------------
@@ -265,12 +265,15 @@ export const miscPanelsBEn = {
   'bottomStrip.maximize': 'Maximize',
   'bottomStrip.restore': 'Restore',
   'bottomStrip.close': 'Close',
+  // Side-by-side 2D/3D layout preset (#5515) — Drawing-only toggle.
+  'bottomStrip.dockBeside': 'Dock beside 3D view',
+  'bottomStrip.dockBelow': 'Dock below 3D view',
 
   // ---- SaveMarkupToModelButton.tsx -------------------------------------------
   'saveMarkupToModelButton.menuItemLabel': 'Save Markup to Model',
 
   // ---- ExportChangesButton.tsx -----------------------------------------------
-  'exportChangesButton.buttonLabel': 'Export Changes',
+  'exportChangesButton.buttonLabel': 'Export modified IFC…',
   'exportChangesButton.tooltipMulti': 'Export changes in {models} models ({count} changes)',
   'exportChangesButton.tooltipSingle': {
     one: 'Export IFC with {count} change applied',

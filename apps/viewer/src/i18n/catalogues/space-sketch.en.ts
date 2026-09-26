@@ -24,6 +24,10 @@ export const spaceSketchEn = {
   'spaceSketch.panel.heading': 'Space Sketch',
   'spaceSketch.bar.storeyAria': 'Storey to sketch on',
   'spaceSketch.bar.drawModeAria': 'Draw mode',
+  // Compact-mode overflow trigger (#5975): shown once the bar no longer
+  // fits the top-center lane at both side panels open, in place of the
+  // inline history/snap/Help controls it replaces.
+  'spaceSketch.bar.moreTitle': 'More: history, snap, help',
   'spaceSketch.panel.helpTitle': 'How it works',
   'spaceSketch.panel.minimizeTitle': 'Minimize (drafts and 3D preview stay live)',
   'spaceSketch.panel.closeTitle': 'Close without creating (Esc)',
@@ -41,6 +45,9 @@ export const spaceSketchEn = {
   'spaceSketch.tools.redoTitle': 'Redo (Ctrl+Shift+Z)',
   'spaceSketch.tools.snapOnTitle': 'Snap to walls + corners: on',
   'spaceSketch.tools.snapOffTitle': 'Snap to walls + corners: off',
+  // The More popover's checkbox row (#5975) needs a state-agnostic label,
+  // unlike the icon button's on/off tooltip pair above.
+  'spaceSketch.tools.snapLabel': 'Snap to walls + corners',
   'spaceSketch.tools.optionsTitle': 'Options: boundary, corner tolerance, underlay, generate all storeys',
   'spaceSketch.tools.cleanupTitle': 'Clean up: remove orphaned inner walls and redundant nodes (room shapes unchanged)',
   'spaceSketch.tools.fitTitle': 'Fit plan to canvas (reset zoom & pan)',

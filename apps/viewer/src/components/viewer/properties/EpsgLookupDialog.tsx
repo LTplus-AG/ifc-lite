@@ -10,7 +10,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Search, Globe, Loader2 } from 'lucide-react';
+import { Search, Globe } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import {
   lookupEpsgByCode,
   searchEpsgIndex,
@@ -379,7 +380,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
             placeholder={t('properties.epsgLookup.searchPlaceholder')}
             value={query}
             onChange={handleInputChange}
-            leftIcon={loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            leftIcon={loading ? <Spinner size="sm" /> : <Search className="h-3.5 w-3.5" />}
             className="h-8 text-xs"
             autoFocus
           />

@@ -13,14 +13,32 @@
  * side panel — mounted elsewhere in the tree — can show the same numbers and
  * drive apply/reset without recomputing the expensive federated-geometry
  * `georef` memo a second time.
+ *
+ * Re-render wake (#5995, following #5510's `GizmoOverlay`/`WallEndpointOverlay`/
+ * `PlacementGizmo` swap): this used to run its own unconditional
+ * `requestAnimationFrame` loop, recomputing the plane/height-handle screen
+ * projection every frame for as long as `editMode` was true — the same
+ * per-component-timer defect class the scene kernel's shared `SceneProjector`
+ * (#5486) exists to fix. `useProjectorTick` subscribes to that one shared
+ * loop instead; the projection itself is now computed directly in the render
+ * body (`projectGizmoGeometry` below) rather than pushed into state from an
+ * effect, so there is no longer a frame of lag between a wake and the new
+ * screen position painting. The projection math itself — `camera.projectToScreen`
+ * against `getGlobalRenderer()`'s camera/canvas — is unchanged; only the
+ * "when do we recompute it" trigger moved onto the kernel. `unprojectToRay`
+ * (the drag math, `rayFromPointerEvent`) stays direct: it is an on-demand,
+ * per-pointer-event call, not a per-frame poll, and the shared projector's
+ * `ProjectorCamera` doesn't expose it anyway (#5486 keeps that interface to
+ * `projectToScreen` only).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import {
   closestYOnVerticalLineFromRay,
   getMapUnitScale,
@@ -48,6 +66,42 @@ interface CesiumPlacementGizmoProps {
 
 type ScreenPoint = { x: number; y: number };
 type WorldPoint = { x: number; y: number; z: number };
+type GizmoProjection = { center: ScreenPoint; heightTip: ScreenPoint; planeCorners: [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint] };
+interface ProjectorCameraLike {
+  projectToScreen(p: WorldPoint, w: number, h: number): ScreenPoint | null;
+}
+
+/**
+ * The plane-corners/height-tip/center screen projection for the drag gizmo,
+ * pure and synchronous — called directly from the render body (see the
+ * module docblock) rather than from an effect, so a `useProjectorTick` wake
+ * repaints in the same frame instead of one frame behind.
+ */
+function projectGizmoGeometry(
+  camera: ProjectorCameraLike,
+  canvas: { clientWidth: number; clientHeight: number },
+  anchorWorld: WorldPoint,
+  gizmoHalfWorldSize: number,
+  deltaAngleDegrees: number,
+): GizmoProjection | null {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  const center = camera.projectToScreen(anchorWorld, w, h);
+  const heightAxisMeters = gizmoHalfWorldSize * 1.25;
+  const heightTip = camera.projectToScreen({ ...anchorWorld, y: anchorWorld.y + heightAxisMeters }, w, h);
+  const rotationRadians = deltaAngleDegrees * Math.PI / 180;
+  const ux = { x: Math.cos(rotationRadians), z: -Math.sin(rotationRadians) };
+  const uz = { x: Math.sin(rotationRadians), z: Math.cos(rotationRadians) };
+  const corner = (sx: number, sz: number) => camera.projectToScreen(
+    { x: anchorWorld.x + ux.x * sx + uz.x * sz, y: anchorWorld.y, z: anchorWorld.z + ux.z * sx + uz.z * sz }, w, h,
+  );
+  const c0 = corner(-gizmoHalfWorldSize, -gizmoHalfWorldSize);
+  const c1 = corner(gizmoHalfWorldSize, -gizmoHalfWorldSize);
+  const c2 = corner(gizmoHalfWorldSize, gizmoHalfWorldSize);
+  const c3 = corner(-gizmoHalfWorldSize, gizmoHalfWorldSize);
+  if (!center || !heightTip || !c0 || !c1 || !c2 || !c3) return null;
+  return { center, heightTip, planeCorners: [c0, c1, c2, c3] };
+}
 
 function getGizmoWorldSize(coordinateInfo: CoordinateInfo | undefined): number {
   const bounds = coordinateInfo?.originalBounds;
@@ -102,12 +156,11 @@ export function CesiumPlacementGizmo({
   const { t } = useTranslation();
   const controller = useCesiumPlacementController({ modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale });
   const { editMode, activeDraft, guardConversion, updateDraft } = controller;
-  const [projection, setProjection] = useState<{
-    center: ScreenPoint;
-    heightTip: ScreenPoint;
-    planeCorners: [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint];
-  } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  // Shared-projector wake (#5995, #5510) — re-renders on real camera motion
+  // via the scene kernel's one shared `SceneProjector` tick instead of a
+  // private `requestAnimationFrame` poll. Skipped while not editing.
+  void useProjectorTick(editMode);
 
   // Publish the context the docked panel's Georeference tab reads, regardless
   // of edit mode — the tab shows the saved anchor and an "edit" toggle even
@@ -121,7 +174,7 @@ export function CesiumPlacementGizmo({
   // an edit session starts (the "Move georef" toolbar/ribbon toggle), the
   // same auto-open `RepositionRuntimeHost` does for the Local tab.
   useEffect(() => {
-    if (editMode) useViewerStore.getState().openPanelInHome('placement');
+    if (editMode) useViewerStore.getState().openPanelInHome('placement', 'programmatic');
   }, [editMode]);
 
   const anchorWorld = useMemo((): WorldPoint => {
@@ -147,36 +200,12 @@ export function CesiumPlacementGizmo({
   }, [guardConversion, coordinateInfo, controller.deltaE, controller.deltaN, controller.deltaH, lengthUnitScale, projectedCRS, storeyElevations]);
   const gizmoHalfWorldSize = useMemo(() => getGizmoWorldSize(coordinateInfo), [coordinateInfo]);
 
-  useEffect(() => {
-    if (!editMode) return;
-    let raf = 0;
-    const project = () => {
-      const renderer = getGlobalRenderer();
-      const camera = renderer?.getCamera();
-      const canvas = renderer?.getCanvas();
-      if (camera && canvas) {
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-        const center = camera.projectToScreen(anchorWorld, w, h);
-        const heightAxisMeters = gizmoHalfWorldSize * 1.25;
-        const heightTip = camera.projectToScreen({ ...anchorWorld, y: anchorWorld.y + heightAxisMeters }, w, h);
-        const rotationRadians = controller.deltaAngle * Math.PI / 180;
-        const ux = { x: Math.cos(rotationRadians), z: -Math.sin(rotationRadians) };
-        const uz = { x: Math.sin(rotationRadians), z: Math.cos(rotationRadians) };
-        const corner = (sx: number, sz: number) => camera.projectToScreen(
-          { x: anchorWorld.x + ux.x * sx + uz.x * sz, y: anchorWorld.y, z: anchorWorld.z + ux.z * sx + uz.z * sz }, w, h,
-        );
-        const c0 = corner(-gizmoHalfWorldSize, -gizmoHalfWorldSize);
-        const c1 = corner(gizmoHalfWorldSize, -gizmoHalfWorldSize);
-        const c2 = corner(gizmoHalfWorldSize, gizmoHalfWorldSize);
-        const c3 = corner(-gizmoHalfWorldSize, gizmoHalfWorldSize);
-        if (center && heightTip && c0 && c1 && c2 && c3) setProjection({ center, heightTip, planeCorners: [c0, c1, c2, c3] });
-      }
-      raf = requestAnimationFrame(project);
-    };
-    project();
-    return () => cancelAnimationFrame(raf);
-  }, [anchorWorld, controller.deltaAngle, editMode, gizmoHalfWorldSize]);
+  const renderer = editMode ? getGlobalRenderer() : null;
+  const camera = renderer?.getCamera();
+  const canvas = renderer?.getCanvas();
+  const projection = editMode && camera && canvas
+    ? projectGizmoGeometry(camera, canvas, anchorWorld, gizmoHalfWorldSize, controller.deltaAngle)
+    : null;
 
   const handleHeightPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (!projection) return;

@@ -7,7 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   X,
   Play,
-  Loader2,
+  Square,
   Trash2,
   Crosshair,
   Copy,
@@ -23,14 +23,18 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
+import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
+import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
 import { ClashExportActions } from '@/components/viewer/clash/ClashExportActions';
@@ -59,8 +63,9 @@ import {
   type ClashSortBy,
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { ClashHelp } from './ClashHelp';
+import { StaleResultBanner } from './StaleResultBanner';
+import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {
   onClose?: () => void;
@@ -280,6 +285,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     runMatrix,
     runPreset,
     runDuplicates,
+    cancelRun,
     focusClash,
     focusClashes,
     selectElement,
@@ -297,6 +303,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     clearExclusions,
     invalidateSolidCompute,
   } = useClash();
+  const rawResult = useViewerStore((s) => s.clashRawResult);
+  const stale = useAnalysisStaleness(analysisStampOf(rawResult));
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
@@ -341,11 +349,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
   useEffect(() => () => {
     const s = useViewerStore.getState();
-    // Fully reset the focus view: a clash focused in isolate/ghost would
-    // otherwise leave the model isolated/ghosted after the panel unmounts.
+    // Release only the isolation/ghost CLASH installed (#5829): a storey isolation
+    // or X-ray set elsewhere survives, as for runs (`discardSolidPresentation`).
     s.clearEntitySelection();
-    s.clearIsolation();
-    s.clearGhost();
+    releaseOwnedClashVisibility(s);
     // One call, not a field list: this cleanup used to clear the selected id,
     // the pair tint, the overlap box and the solid but NOT `clashContactLines`,
     // so a focused clash whose contact interface HAD been built (the preferred
@@ -608,13 +615,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (vp) addViewpoint(topic.guid, vp);
-      setBcfPanelVisible(true);
+      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
     } catch (err) {
       console.error('[clash] BCF topic creation failed', err);
     } finally {
       setCreatingTopic(false);
     }
-  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible]);
+  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
 
   /** Switch the focus mode and immediately re-apply it to the selected clash so
    *  the change is visible without re-clicking the row (#1275). */
@@ -694,54 +701,29 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <Crosshair className="h-4 w-4 text-clash-overlap shrink-0" />
         <span className="text-sm font-semibold tracking-tight min-w-0">{t('clashPanel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('clashPanel.helpTooltip')}
             className={cn('h-7 w-7', showHelp && 'text-primary')}
-            title={t('clashPanel.helpTooltip')}
             onClick={() => setShowHelp((v) => !v)}
           >
             <Info className="h-4 w-4" />
-          </Button>
+          </IconButton>
           <ClashSettingsDialog />
           <ClashRevisionCompareDialog />
           {result && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashPanel.clearResultsTooltip')} onClick={clearAll}>
+            <IconButton label={t('clashPanel.clearResultsTooltip')} className="h-7 w-7" onClick={clearAll}>
               <Trash2 className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashPanel.closeTooltip')} onClick={onClose}>
+            <IconButton label={t('clashPanel.closeTooltip')} className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>
 
-      {/* Help / explanation (#1272, #1274) */}
-      {showHelp && (
-        <div className="px-3 py-2.5 border-b border-border bg-muted/30 text-[11px] leading-relaxed text-muted-foreground space-y-1.5">
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.hardLabel')}</b> {t('clashPanel.help.hardDescription')}{' '}
-            <i>{t('clashPanel.help.tolAbbrev')}</i>).{' '}
-            <b className="text-foreground">{t('clashPanel.help.clearanceLabel')}</b> {t('clashPanel.help.clearanceDescription')}{' '}
-            <i>{t('clashPanel.help.gapAbbrev')}</i> {t('clashPanel.help.gapAddsMore')} <i>{t('clashPanel.help.moreLabel')}</i>{' '}
-            {t('clashPanel.help.resultsNotFiltered')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.tolAbbrev')}</b> {t('clashPanel.help.tolDescription')}{' '}
-            <b className="text-foreground">{t('clashPanel.help.gapAbbrev')}</b> {t('clashPanel.help.gapDescription')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.severityLabel')}</b> {t('clashPanel.help.severityDescription')}{' '}
-            <i>{t('clashPanel.help.notLabel')}</i> {t('clashPanel.help.fromOverlapDepth')}{' '}
-            <i>{t('clashPanel.help.overlapDepthLabel')}</i> {t('clashPanel.help.surfaceWorst')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.touchingLabel')}</b> {t('clashPanel.help.touchingDescription')}
-          </p>
-        </div>
-      )}
+      {showHelp && <ClashHelp />}
 
       {/* Run controls — collapse to a slim bar once a result exists so the list
           gets vertical room; expand (or before the first run) shows full setup. */}
@@ -769,12 +751,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 variant="outline"
                 size="sm"
                 className="h-6 px-2 text-xs"
-                disabled={running}
-                onClick={() => void runAll()}
-                title={t('clashPanel.rerunTooltip')}
+                onClick={running ? cancelRun : () => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
+                title={running ? t('clashPanel.cancel') : rerunTooltip(t, runRequestOf(result))}
               >
-                {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
-                {running ? '' : t('clashPanel.rerun')}
+                {running ? <Square className="h-3.5 w-3.5 mr-1" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
+                {t(running ? 'clashPanel.cancel' : 'clashPanel.rerun')}
               </Button>
             )}
           </div>
@@ -823,9 +804,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               )}
             </div>
 
-            <Button className="w-full h-8" disabled={running} onClick={() => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
-              {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
-              {running ? t('clashPanel.detecting') : t('clashPanel.detectAll')}
+            <Button className="w-full h-8" onClick={running ? cancelRun : () => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
+              {running ? <Square className="h-4 w-4 mr-1.5" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
+              {t(running ? 'clashPanel.cancel' : 'clashPanel.detectAll')}
             </Button>
             <div className="flex gap-2">
               <Button
@@ -907,9 +888,16 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
       <ClashModelTagNotice />
 
+      {result && stale && (
+        <StaleResultBanner
+          disabled={running}
+          onRerun={() => { void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates }); }}
+        />
+      )}
+
       {/* Summary */}
       {result && (
-        <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
+        <div className={cn('px-3 py-2.5 border-b border-border', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
           <ClashResultSummary
             total={total}
             shown={shown}
@@ -1115,7 +1103,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
 
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
-      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+      <div ref={scrollRef} className={cn('flex-1 overflow-auto min-h-0', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashResults)}>
         {!result && !running && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
             <Crosshair className="h-8 w-8 mb-3 opacity-40" />

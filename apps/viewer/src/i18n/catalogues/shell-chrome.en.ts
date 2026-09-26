@@ -45,7 +45,7 @@ export const shellChromeEn = {
 
   // CustomizeSidebar.tsx
   'shellChrome.customizeSidebar.ariaLabel': 'Customize sidebar panels',
-  'shellChrome.customizeSidebar.resetTitle': 'Reset to default order + show all',
+  'shellChrome.customizeSidebar.resetTitle': 'Reset layout: sidebar order and panels, floating panels, panes',
   'shellChrome.customizeSidebar.resetLabel': 'Reset',
   'shellChrome.customizeSidebar.moveUp': 'Move {title} up',
   'shellChrome.customizeSidebar.moveDown': 'Move {title} down',
@@ -89,7 +89,7 @@ export const shellChromeEn = {
 
   // ViewerLayout.tsx
   'shellChrome.layout.safeModeNotice':
-    'Safe mode: extensions and the active flavor are not loaded for this session. Append {flag} or reload without the flag to resume.',
+    'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
   'shellChrome.layout.propertiesLabel': 'Properties',
@@ -102,12 +102,15 @@ export const shellChromeEn = {
   // StatusBar.tsx
   'shellChrome.statusBar.loadingFallback': 'Loading...',
   'shellChrome.statusBar.ready': 'Ready',
-  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the active point cloud stream',
+  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the model or point cloud that is loading',
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },
   'shellChrome.statusBar.hiddenCount': '{count} hidden',
   'shellChrome.statusBar.ghostedCount': '{count} ghosted',
+  // Presentation entry point (#5508) — opens the `presentation` bottom panel.
+  'shellChrome.statusBar.presentationLabel': 'Present',
+  'shellChrome.statusBar.presentationTooltip': 'Presentation (views: {views}, entities: {entities})',
   'shellChrome.statusBar.fpsUnit': 'FPS',
   'shellChrome.statusBar.webgpuChecking': 'Checking...',
   'shellChrome.statusBar.webgpuLabel': 'WebGPU',
@@ -117,6 +120,10 @@ export const shellChromeEn = {
   'shellChrome.statusBar.ifcliteLinkLabel': 'ifclite.dev →',
 
   // MobileToolbar.tsx
+  'shellChrome.mobileToolbar.openFileAriaLabel': 'Open file',
+  'shellChrome.mobileToolbar.addModelAriaLabel': 'Add model',
+  'shellChrome.mobileToolbar.moreActionsAriaLabel': 'More actions',
+  'shellChrome.mobileToolbar.commands': 'Commands…',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
   'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',

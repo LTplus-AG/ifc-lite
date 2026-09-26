@@ -805,10 +805,10 @@ export function SpaceSketchOverlay() {
 
   // Cancel: drop ghosts, restore the prior view (X-ray off, isolation and
   // spaces visibility as they were), and leave WITHOUT creating anything.
-  const closeNow = useCallback(() => {
+  const closeNow = useCallback((via?: import('@/lib/analytics-ui-events').ToolExitVia) => {
     clearGhosts();
     restoreScene({ keepSpacesVisible: false });
-    setActiveTool('select');
+    setActiveTool('select', via);
   }, [clearGhosts, restoreScene, setActiveTool]);
 
   // The single confirm: create EVERY storey's draft as IfcSpace at once. On
@@ -1365,7 +1365,7 @@ export function SpaceSketchOverlay() {
         pendingRooms={pendingRooms}
         pendingStoreys={pendingStoreys}
         onConfirm={confirmCreate}
-        onClose={closeNow}
+        onClose={() => closeNow()}
         onMinimize={() => setMinimized(true)}
       />
 
@@ -1382,11 +1382,7 @@ export function SpaceSketchOverlay() {
         canCleanup={rooms.length > 0}
         onCleanup={cleanupOrphans}
         canFit={derivedStorey != null}
-        onFit={() => fitToPoints(
-          rooms.length > 0
-            ? rooms.flatMap((r) => r.outline)
-            : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners),
-        )}
+        onFit={() => fitToPoints(rooms.length > 0 ? rooms.flatMap((r) => r.outline) : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners))}
         unbounded={unboundedCount > 0 ? { count: unboundedCount, boundaryMode } : null}
         diagnostics={showDiagnostics ? { leak: leakCount, failed: badCount } : null}
         resizeHandlers={resizeHandlers}

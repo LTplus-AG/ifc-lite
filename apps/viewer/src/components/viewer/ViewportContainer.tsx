@@ -6,18 +6,15 @@ import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
-import {
-  initialDragOverlayState,
-  reduceDragOverlay,
-  type DragOverlayEvent,
-  type DragOverlayState,
-} from './dragOverlayState';
+import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -27,9 +24,9 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { BasepointOverlay } from './BasepointOverlay';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
-import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
@@ -60,8 +57,8 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
-import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
-import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
+import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -98,7 +95,6 @@ export function ViewportContainer() {
   // Subscribe to mutationVersion so Cesium reacts to georef edits
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
   const webgpu = useWebGPU();
@@ -310,34 +306,6 @@ export function ViewportContainer() {
     setCesiumSourceModelId(georef?.sourceModelId ?? null);
   }, [georef?.sourceModelId, setCesiumSourceModelId]);
 
-  // Track drag enter/leave depth so the overlay doesn't flicker when the
-  // cursor moves between child elements (each child boundary fires its own
-  // dragenter/dragleave that bubbles to the container). See dragOverlayState.ts.
-  const dragStateRef = useRef<DragOverlayState>(initialDragOverlayState);
-
-  const applyDragEvent = useCallback((event: DragOverlayEvent) => {
-    dragStateRef.current = reduceDragOverlay(dragStateRef.current, event, webgpu.supported);
-    setIsDragging(dragStateRef.current.dragging);
-  }, [webgpu.supported]);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('enter');
-  }, [applyDragEvent]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    // Needed to allow the drop, but does not toggle drag state (avoids flicker)
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('leave');
-  }, [applyDragEvent]);
-
   const isSupportedFile = isSupportedModelFile;
 
   // Single routing point for every ingestion path (picker / drop / input). The
@@ -459,23 +427,17 @@ export function ViewportContainer() {
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
   }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('drop');
-
-    // Block file loading if WebGPU not supported
-    if (!webgpu.supported) {
-      return;
-    }
-
+  // The whole window is the drop target (#5845): a file dropped on the
+  // toolbar, sidebar or a panel loads too, and the browser never navigates to
+  // it. Drops are refused (not loaded) while WebGPU is unsupported.
+  const handleDrop = useCallback((dataTransfer: DataTransfer) => {
     // Capture live handles synchronously — the DataTransferItemList is neutered
-    // once this handler returns, so this must run before any await.
-    const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
+    // once the drop event returns, so this must run before any await.
+    const handlesPromise = handlesFromDataTransfer(dataTransfer);
 
     // DXF reference underlays split off before model routing (issue #1782):
     // a dropped site plan must never replace or federate with the model.
-    const allDropped0 = Array.from(e.dataTransfer.files);
+    const allDropped0 = Array.from(dataTransfer.files);
     const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     if (allDropped.length === 0) return;
@@ -484,12 +446,7 @@ export function ViewportContainer() {
     const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
     if (supportedFiles.length === 0) {
-      // Tell the user *why* — common case is a Recap project / SketchUp
-      // file dropped because they assumed our viewer would understand it.
-      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
-      if (explained) {
-        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
-      }
+      reportFileOpenRejected(allDropped);
       return;
     }
 
@@ -504,7 +461,8 @@ export function ViewportContainer() {
 
       void prepareAndRoute(files, handles);
     });
-  }, [prepareAndRoute, applyDragEvent, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile]);
+  const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -523,13 +481,8 @@ export function ViewportContainer() {
     // live handle, so these models are not refreshable.
     const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
-    if (supportedFiles.length === 0) {
-      e.target.value = '';
-      return;
-    }
-
-    void prepareAndRoute(supportedFiles);
-
+    if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+    else reportFileOpenRejected(modelFiles);
     // Reset input so same file can be selected again
     e.target.value = '';
   }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
@@ -549,7 +502,10 @@ export function ViewportContainer() {
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
     const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-    if (supported.length === 0) return;
+    if (supported.length === 0) {
+      reportFileOpenRejected(opened.map((o) => o.file));
+      return;
+    }
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
@@ -922,10 +878,6 @@ export function ViewportContainer() {
       <div
         className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
         <GridPattern />
 
@@ -938,14 +890,15 @@ export function ViewportContainer() {
           className="hidden"
         />
 
-        {/* Drop overlay */}
-        {isDragging && (
-          <div className="pointer-events-none absolute inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
+        {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
+        {isDragging && createPortal(
+          <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
             <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* WebGPU Not Supported Banner — compact on mobile; tokens, not the hard-coded Tokyo Night hex (#5504). */}
@@ -1033,27 +986,7 @@ export function ViewportContainer() {
               dropped: it repeated toolbar affordances without offering an
               action, and its height pushed the welcome card off-screen. */}
 
-          {/* Footer chips - left: discovery link to the marketing site for first-time
-              visitors, right: shortcuts cue for power users. Both desktop-only.
-              IN FLOW, not absolute: the welcome column scrolls on short
-              viewports, and absolutely-anchored chips ride the scroll and
-              land on top of the content (#1736 follow-up). */}
-          <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
-            <a
-              href="https://ifclite.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
-            >
-              <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
-              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
-            </a>
-            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
-              <Command className="h-3 w-3" />
-              <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>
-              <span className="px-1.5 ml-1 font-bold text-primary bg-primary/20">?</span>
-            </div>
-          </div>
+          <WelcomeFooterChips />
 
           </div>
         </div>
@@ -1066,14 +999,10 @@ export function ViewportContainer() {
     <div
       className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
       data-viewport
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
-      {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
+      {isDragging && createPortal(
+        <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
           <div className="bg-background border-4 border-dashed border-status-ok p-8 shadow-2xl">
             <div className="text-center">
               <Plus className="h-12 w-12 mx-auto text-status-ok mb-4" />
@@ -1083,7 +1012,8 @@ export function ViewportContainer() {
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
@@ -1123,13 +1053,15 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      {/* One scene-overlay kernel per viewport (#5486, #5511): the shared
-          projector (single rAF loop) and SVG+DOM layers every world-anchored
-          consumer below portals into via Pin/AnchoredCard/WorldLabel. */}
+      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
+          two roots until `ToolOverlays` (#5502) consolidated here). */}
       <SceneOverlayRoot>
         <AnnotationLayer />
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
+        <BasepointOverlay />
+        <ZoneOverlay />
+        <ToolOverlays />
       </SceneOverlayRoot>
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
@@ -1142,10 +1074,7 @@ export function ViewportContainer() {
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
       <LevelDisplayIndicator />
-      <ToolOverlays />
-      <ZoneOverlay />
       <ZoneAssignmentSyncMount />
-      <BasketPresentationDock />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />
     </div>

@@ -13,7 +13,8 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Download, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Download, AlertCircle, Check } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -54,7 +55,6 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
-
 type ColorSource = 'rendering' | 'shading';
 
 interface GLBExportDialogProps {
@@ -503,7 +503,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           >
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('geometryExport.glb.exportingButton')}
               </>
             ) : (

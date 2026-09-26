@@ -59,7 +59,7 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'extensions': s.setExtensionsPanelVisible(visible); break;
     case 'sources': s.setSourcesPanelVisible(visible); break;
     // Bottom-strip panels: one row of the table each (`BOTTOM_PANEL_SETTER`).
-    case 'script': case 'gantt': case 'lists': case 'charts': case 'document': case 'flow': case 'drawing': s[BOTTOM_PANEL_SETTER[id]](visible); break;
+    case 'script': case 'gantt': case 'lists': case 'charts': case 'document': case 'flow': case 'drawing': case 'presentation': s[BOTTOM_PANEL_SETTER[id]](visible); break;
     case 'layers': s.setLayersPanelVisible(visible); break;
   }
 }
@@ -130,7 +130,7 @@ export function usePanelControls(): PanelControls {
       useViewerStore.getState().setLeftPanelCollapsed(false);
       return;
     }
-    useViewerStore.getState().openPanelInHome(id);
+    useViewerStore.getState().openPanelInHome(id, 'rail');
   }, []);
 
   const toggle = useCallback((id: WorkspacePanelId) => {
@@ -146,8 +146,8 @@ export function usePanelControls(): PanelControls {
       useViewerStore.getState().setSidebarSecondaryPanel(null);
       return;
     }
-    if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id);
-    else useViewerStore.getState().toggleWorkspacePanel(id);
+    if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id, 'rail');
+    else useViewerStore.getState().toggleWorkspacePanel(id, 'rail');
   }, []);
 
   const floatPanel = useCallback((id: WorkspacePanelId) => {

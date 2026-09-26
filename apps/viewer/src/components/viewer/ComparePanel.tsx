@@ -11,12 +11,13 @@
 
 import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, X, Trash2, ChevronLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
@@ -28,6 +29,7 @@ import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { CompareExportBar } from './compare/CompareExportBar';
+import { StaleResultBanner } from './StaleResultBanner';
 import { useCompareSuggestions } from './compare/useCompareSuggestions';
 import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
@@ -73,7 +75,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // in-flight `runComparison()` only learns "the user cleared" by watching
   // THIS wrapper get called, so every clear in this panel must go through it
   // or a stale result can resurrect itself once the run resolves.
-  const { running, result, error, runComparison, clearCompare } = useCompare();
+  const { running, result, error, runComparison, cancelComparison, clearCompare } = useCompare();
+  const stale = useAnalysisStaleness(analysisStampOf(result));
   // Row names and change details read the stores the diff was computed from (#5312).
   const models = useMemo(() => modelsAsCompared(liveModels, result?.comparedStores), [liveModels, result]);
 
@@ -214,14 +217,14 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
         <span className="text-sm font-semibold tracking-tight min-w-0">{t('comparePanel.panel.title')}</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           {result && !bcfComposing && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.clearResultsTitle')} onClick={clearCompare}>
+            <IconButton label={t('comparePanel.panel.clearResultsTitle')} className="h-7 w-7" onClick={clearCompare}>
               <Trash2 className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" title={t('comparePanel.panel.closeTitle')} onClick={onClose}>
+            <IconButton label={t('comparePanel.panel.closeTitle')} className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -260,6 +263,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 canRun={canRun}
                 running={running}
                 onRun={() => void runComparison()}
+                onCancel={cancelComparison}
                 error={error}
                 geometryUnavailable={!!result?.geometryUnavailable}
                 placementOnlyGeometry={!!result?.placementOnlyGeometry}
@@ -269,6 +273,12 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onRemoveExcludedType={removeExcludedType}
                 onClearExcludedTypes={clearExcludedTypes}
               />
+
+              {result && stale && (
+                <StaleResultBanner disabled={running} onRerun={() => { void runComparison(); }} />
+              )}
+
+              <div className={cn('flex-1 min-h-0 flex flex-col', stale && 'opacity-60')}>
 
               {/* Counts. The Matched badge appears when the content pass RAN, not
                   when it found something (#1891) — added/deleted are lower BECAUSE
@@ -335,6 +345,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
               {/* What-changed detail for the selected element */}
               {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
+              </div>
             </>
           )}
 

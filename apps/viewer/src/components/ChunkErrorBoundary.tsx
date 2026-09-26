@@ -48,6 +48,7 @@ const CHUNK_LABEL_KEYS = {
   'Flow panel': 'viewerShell.chunkLabel.flowPanel',
   'Drawing panel': 'viewerShell.chunkLabel.drawingPanel',
   'Document panel': 'viewerShell.chunkLabel.documentPanel',
+  'Presentation panel': 'viewerShell.chunkLabel.presentationPanel',
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',

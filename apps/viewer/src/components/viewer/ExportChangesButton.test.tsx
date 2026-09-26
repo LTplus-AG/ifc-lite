@@ -62,15 +62,15 @@ function renderButton(): HTMLElement {
 
 /** The toolbar trigger — distinguishable from the dialog's own "Export" button by its badge text. */
 function findToolbarButton(container: HTMLElement): HTMLButtonElement {
-  const btn = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export Changes'));
-  assert.ok(btn, 'toolbar "Export Changes" button must render');
+  const btn = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export modified IFC'));
+  assert.ok(btn, 'toolbar "Export modified IFC" button must render');
   return btn;
 }
 
 /** The dialog's confirm button — Radix portals it into `document.body`. */
 function findDialogExportButton(): HTMLButtonElement {
   const btn = [...document.body.querySelectorAll('button')].find(
-    (b) => b.textContent?.includes('Export') && !b.textContent?.includes('Export Changes'),
+    (b) => b.textContent?.includes('Export') && !b.textContent?.includes('Export modified IFC'),
   );
   assert.ok(btn, 'the dialog Export (confirm) button must render once the review is open');
   return btn;

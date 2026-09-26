@@ -13,7 +13,8 @@
  */
 
 import { useState } from 'react';
-import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck, Building2, GitMerge, Loader2 } from 'lucide-react';
+import { Upload, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, ShieldCheck, Building2, GitMerge } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { fetchDemoProjectFile } from '@/lib/tours/demo-kit';
@@ -135,7 +136,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
         }`}
       >
         {demoLoading
-          ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ? <Spinner size="md" />
           : <Building2 className="h-4 w-4" aria-hidden="true" />}
         <span>{t('viewportLighting.container.emptyState.loadDemo.button')}</span>
       </button>

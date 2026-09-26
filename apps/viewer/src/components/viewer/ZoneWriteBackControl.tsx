@@ -21,6 +21,7 @@
 import { useRef, useState } from 'react';
 import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -152,12 +153,10 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <FileOutput className="h-3 w-3 mr-1" />
           {t('zonesPanel.writeBack.writeButtonLabel')}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('zonesPanel.writeBack.removePropsAriaLabel')}
+          tooltip={t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           className="h-6 w-6"
-          title={t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
-          aria-label={t('zonesPanel.writeBack.removePropsAriaLabel')}
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
             if (blocked === 'collab-role') {
@@ -173,7 +172,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           }}
         >
           <Undo2 className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
       {/* Named here because the next place these are looked for is another
           tool's property browser, not this panel. */}
@@ -262,12 +261,10 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <Box className="h-3 w-3 mr-1" />
           {t('zonesPanel.writeBack.emitZonesLabel')}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
+          tooltip={t('zonesPanel.writeBack.removeEmittedTitle')}
           className="h-6 w-6"
-          title={t('zonesPanel.writeBack.removeEmittedTitle')}
-          aria-label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
             if (blocked === 'collab-role') {
@@ -283,7 +280,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           }}
         >
           <Undo2 className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
     </div>
   );

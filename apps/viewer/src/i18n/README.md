@@ -373,7 +373,7 @@ literals, and stay out of the catalogue. `ChartCard.tsx`'s computed
 aggregation subtitle (`subtitleFor`, `describeAggregation`, `EMPTY_HINTS`),
 the `TYPE_LABELS`/`SOURCE_LABELS`/`FOCUS_LABEL`/`SCOPE_LABEL`/
 `FAMILY_LABELS` select-option data tables, and `DashboardMenu.tsx`'s
-`window.prompt`/toast copy and `ReportExportDialog.tsx`'s toast/error copy
+toast copy and `ReportExportDialog.tsx`'s toast/error copy
 and title-block field table are out of scope for this slice — none of them
 are hardcoded JSX text or a policed attribute the ending gate below flags —
 and remain for a later slice.

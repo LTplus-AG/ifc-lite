@@ -44,8 +44,16 @@ export interface FakeHost {
   readonly entities: FakeEntity[];
   readonly colorized: Array<{ refs: EntityRef[]; color: unknown }>;
   readonly mutations: Array<{ ref: EntityRef; pset?: string; prop: string; value: unknown }>;
+  /** Every `bim.store.add*` call, in order: builder, storey expressId, params. */
+  readonly created: Array<{ builder: string; storey: number; params: Record<string, unknown> }>;
+  /** Store builders named here throw, as a builder rejecting its params would. */
+  readonly failBuilders: Set<string>;
   selection: EntityRef[];
 }
+
+const BUILDERS: Readonly<Record<string, string>> = {
+  addWall: 'IfcWall', addSlab: 'IfcSlab', addRoof: 'IfcRoof', addColumn: 'IfcColumn', addBeam: 'IfcBeam',
+};
 
 const typeOf = (v: string | number | boolean): number => (typeof v === 'number' ? 1 : typeof v === 'boolean' ? 3 : 0);
 
@@ -53,6 +61,29 @@ export function createFakeBim(): FakeHost {
   const entities = fakeEntities();
   const colorized: FakeHost['colorized'] = [];
   const mutations: FakeHost['mutations'] = [];
+  const created: FakeHost['created'] = [];
+  const failBuilders = new Set<string>();
+  let nextExpressId = 1000;
+  // Store builders append a real entity (so query/entityData/properties see
+  // it) and record the call; everything else on the store throws.
+  const store: Record<string, unknown> = Object.fromEntries(
+    Object.entries(BUILDERS).map(([builder, type]) => [
+      builder,
+      (modelId: string, storey: number, params: Record<string, unknown>): EntityRef => {
+        if (failBuilders.has(builder)) throw new Error(`${builder} rejected its params`);
+        const expressId = nextExpressId++;
+        entities.push({ expressId, globalId: String(params.GlobalId ?? `N${expressId}`), type, name: String(params.Name ?? ''), psets: {}, containedIn: storey });
+        created.push({ builder, storey, params });
+        return { modelId, expressId };
+      },
+    ]),
+  );
+  store.removeEntity = (ref: EntityRef): boolean => {
+    const i = entities.findIndex((e) => e.expressId === ref.expressId);
+    if (i < 0) return false;
+    entities.splice(i, 1);
+    return true;
+  };
   const state = { selection: [] as EntityRef[] };
   const byId = (expressId: number) => entities.find((e) => e.expressId === expressId);
   const data = (e: FakeEntity): EntityData => ({ ref: { modelId: MODEL, expressId: e.expressId }, globalId: e.globalId, name: e.name, type: e.type, description: '', objectType: '' });
@@ -113,7 +144,8 @@ export function createFakeBim(): FakeHost {
       setProperty: (ref, pset, prop, value) => {
         mutations.push({ ref, pset, prop, value });
         const e = byId(ref.expressId);
-        if (e) (e.psets[pset] ??= {})[prop] = value;
+        // Null prototype: a property named `__proto__` is an ordinary key here too.
+        if (e) (e.psets[pset] ??= Object.create(null) as Record<string, string | number | boolean>)[prop] = value;
       },
       setAttribute: (ref, prop, value) => { mutations.push({ ref, prop, value }); },
       deleteProperty: (ref, pset, prop) => {
@@ -126,6 +158,7 @@ export function createFakeBim(): FakeHost {
       undo: () => false,
       redo: () => false,
     },
+    store: store as unknown as BimBackend['store'],
     subscribe: () => () => undefined,
   };
   const bim = createBimContext({ backend: backend as BimBackend });
@@ -134,6 +167,8 @@ export function createFakeBim(): FakeHost {
     entities,
     colorized,
     mutations,
+    created,
+    failBuilders,
     get selection() { return state.selection; },
     set selection(refs: EntityRef[]) { state.selection = refs; },
   };

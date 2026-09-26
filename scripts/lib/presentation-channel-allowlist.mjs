@@ -90,6 +90,20 @@ export const REQUIRES_ROUTING_MARKER = new Set([
  */
 export const NO_MARKER_REQUIRED = new Map([
   [
+    // The lens hidden-id sync moved here from LensPanel.tsx with #5877 (the
+    // lens runtime now outlives its panel); the gap below moved with it.
+    'apps/viewer/src/hooks/useLens.ts',
+    'KNOWN GAP, tracked on #3338, not a justification: the lens hidden-id sync writes ' +
+    'planLensHiddenSync deltas over state.lensHiddenIds, which are LENS RULE MATCHES and can ' +
+    'name a geometry-less IfcElementAssembly exactly as LensPanel.tsx rule ISOLATE can -- so this ' +
+    'hide is a silent no-op for that case. Left unrouted here deliberately: hide and show are ' +
+    'two halves of an ownership ledger (lensAppliedHiddenIds records what the lens hid so ' +
+    'teardown releases only that), and expanding one side without the other corrupts it. ' +
+    'Routing both is a behaviour change that needs its own test, not a drive-by.' +
+    ' The paired showEntities is the release half of that ledger: it must pass back exactly ' +
+    'the ids planLensHiddenSync says the lens owns, or it would unhide something the user hid.',
+  ],
+  [
     'apps/viewer/src/components/viewer/HierarchyPanel.tsx',
     "isolates ids from getNodeElements()/node.globalIds, which treeDataBuilder.ts already " +
     'resolved to geometry-bearing members at tree-build time via hasAggregatedGeometry / ' +
@@ -122,32 +136,13 @@ export const NO_MARKER_REQUIRED = new Map([
     'file never installs a non-null set of its own.',
   ],
   [
-    // Moved from CommandPalette.tsx to this sibling data module by #4918
-    // slice 3 (the command TABLE, including the "Hide Selection" command
-    // below, split out so the component stays under its module-size
-    // budget) -- same call site, same justification, new file.
-    'apps/viewer/src/components/viewer/commandPaletteCommandsCore.ts',
-    'The "Hide Selection" command hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best.',
-  ],
-  [
-    'apps/viewer/src/components/viewer/MainToolbar.tsx',
-    'The toolbar Hide button hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best.',
-  ],
-  [
-    'apps/viewer/src/components/viewer/ribbon/tabs/ElementsTab.tsx',
-    'The Elements ribbon Hide button hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best.',
-  ],
-  [
-    'apps/viewer/src/hooks/useKeyboardShortcuts.ts',
-    'Delete/Backspace/Space hide via getAllSelectedGlobalIds(), which hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best.',
-  ],
-  [
-    'apps/viewer/src/components/viewer/MobileToolbar.tsx',
-    'KNOWN GAP, tracked on #3338, not a justification: unlike its four siblings this one hides ' +
-    '[selectedEntityId] -- the SINGULAR id -- rather than the selectedEntityIds set that carries ' +
-    "an assembly's expanded parts, so hiding a selected geometry-less assembly on mobile hides " +
-    'nothing. Routing it means deciding whether the mobile Hide should follow the selection set ' +
-    'like MainToolbar does, which is a behaviour change with its own test, not a drive-by here.',
+    // #5852 collapsed the five per-surface "Hide selection" call sites (the
+    // palette command, MainToolbar, the Elements ribbon tab, the Del /
+    // Backspace / Space keys and the mobile overflow menu) into this one
+    // module, and closed the mobile KNOWN GAP they recorded: mobile used to
+    // hide only the singular selectedEntityId.
+    'apps/viewer/src/store/hideSelection.ts',
+    'hideSelectionFromStore hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best. Every surface\'s Hide (keyboard, ribbon, classic toolbar, palette, mobile, context menu) calls this one function.',
   ],
   [
     'apps/viewer/src/components/viewer/schedule/useOverlayCompositor.ts',
@@ -212,27 +207,6 @@ export const NO_MARKER_REQUIRED = new Map([
  * state `LensPanel.tsx` is in.
  */
 export const EXEMPT_ACTIONS = new Map([
-  [
-    'apps/viewer/src/components/viewer/LensPanel.tsx',
-    new Map([
-      [
-        'hideEntities',
-        'KNOWN GAP, tracked on #3338, not a justification: the lens hidden-id sync writes ' +
-        'planLensHiddenSync deltas over state.lensHiddenIds, which are LENS RULE MATCHES and can ' +
-        'name a geometry-less IfcElementAssembly exactly as the rule ISOLATE above can -- so this ' +
-        'hide is a silent no-op for that case. Left unrouted here deliberately: hide and show are ' +
-        'two halves of an ownership ledger (lensAppliedHiddenIds records what the lens hid so ' +
-        'teardown releases only that), and expanding one side without the other corrupts it. ' +
-        'Routing both is a behaviour change that needs its own test, not a drive-by.',
-      ],
-      [
-        'showEntities',
-        'The release half of the hideEntities ledger above -- it must pass back exactly the ids ' +
-        'planLensHiddenSync says the lens owns, so expanding here would release ids the lens ' +
-        'never hid and unhide something the user hid themselves.',
-      ],
-    ]),
-  ],
 ]);
 
 /** Anti-vacuity floor: fewer total call sites than this means the detection
@@ -261,4 +235,9 @@ export const EXEMPT_ACTIONS = new Map([
 // revision cannot be observed out of sync. Two previously counted action
 // call-site files therefore no longer call a policed action; the audited tree
 // now has 22 real candidate channel files.
-export const CANDIDATE_FLOOR = 22;
+// #5852 then folded five "Hide selection" call-site files (the palette
+// command table, MainToolbar, the Elements ribbon tab, useKeyboardShortcuts and
+// MobileToolbar) into one, store/hideSelection.ts: channels consolidated, not
+// lost -- each old file now calls hideSelectionFromStore and none calls a
+// policed action itself. 22 - 5 + 1 = 18 real candidate channel files.
+export const CANDIDATE_FLOOR = 18;

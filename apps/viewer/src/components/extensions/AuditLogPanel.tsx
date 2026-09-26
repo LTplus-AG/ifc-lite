@@ -24,10 +24,12 @@ import { useEffect, useState } from 'react';
 import { Download, Trash2, FileText, Filter, X } from 'lucide-react';
 import type { AuditEvent, AuditEventKind } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
@@ -109,8 +111,8 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
     toast.success(t('extensionsPanels.auditLogPanel.exportToast'));
   };
 
-  const handleClear = () => {
-    if (!confirm(t('extensionsPanels.auditLogPanel.clearConfirm'))) return;
+  const handleClear = async () => {
+    if (!await confirmDialog({ description: t('extensionsPanels.auditLogPanel.clearConfirm'), destructive: true })) return;
     host.audit.clear();
     // Wipe the IDB mirror too — otherwise reload resurrects what the
     // user just asked to forget.
@@ -154,9 +156,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
             {t('extensionsPanels.auditLogPanel.clearButton')}
           </Button>
           {onClose && (
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('extensionsPanels.auditLogPanel.closeAriaLabel')}>
+            <IconButton label={t('extensionsPanels.auditLogPanel.closeAriaLabel')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

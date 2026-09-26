@@ -56,6 +56,8 @@ const LENS_PANEL_EN = {
   'lensPanel.closeAriaLabel': 'Close',
   'lensPanel.newRuleLensButton': 'New Rule Lens',
   'lensPanel.newAutoColorLensButton': 'New Auto-Color Lens',
+  'lensPanel.emptyTitle': 'No lenses yet',
+  'lensPanel.emptyDescription': 'Create a lens to color or focus model elements.',
   'lensPanel.footer.active': 'Active · {colored} colored · {hidden}',
   'lensPanel.footer.hiddenCount': { one: '{count} hidden', other: '{count} hidden' },
   'lensPanel.footer.ghosted': 'ghosted',
@@ -266,6 +268,7 @@ describe('Lens panel localization (#4918)', () => {
     for (const key of [
       'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
       'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.emptyTitle', 'lensPanel.emptyDescription',
       'lensPanel.footer.clickToActivate',
     ] as LensPanelKey[]) {
       assert.ok(english.has(lensPanelEn[key] as string), `expected "${lensPanelEn[key]}" (${key}) visible before switching locale`);
@@ -277,6 +280,7 @@ describe('Lens panel localization (#4918)', () => {
     for (const key of [
       'lensPanel.title', 'lensPanel.exportTooltip', 'lensPanel.importTooltip',
       'lensPanel.closeAriaLabel', 'lensPanel.newRuleLensButton', 'lensPanel.newAutoColorLensButton',
+      'lensPanel.emptyTitle', 'lensPanel.emptyDescription',
       'lensPanel.footer.clickToActivate',
     ] as LensPanelKey[]) {
       assertMarked(after, key);

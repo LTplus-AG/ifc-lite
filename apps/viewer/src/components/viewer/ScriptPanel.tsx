@@ -33,6 +33,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -224,13 +225,12 @@ export function ScriptPanel() {
           {savedScripts.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
+                <IconButton
+                  label={t('scriptPanel.header.selectScriptAriaLabel')}
                   size="icon-xs"
-                  aria-label={t('scriptPanel.header.selectScriptAriaLabel')}
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
+                </IconButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {savedScripts.map((s) => (
@@ -258,29 +258,16 @@ export function ScriptPanel() {
           )}
 
           {/* AI Chat toggle */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={chatPanelVisible ? 'default' : 'ghost'}
-                size="icon-xs"
-                onClick={toggleChat}
-                className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
-                aria-label={
-                  chatPanelVisible
-                    ? t('scriptPanel.header.hideAiChat')
-                    : t('scriptPanel.header.showAiChat')
-                }
-                {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
-              >
-                <Bot className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {chatPanelVisible
-                ? t('scriptPanel.header.hideAiChat')
-                : t('scriptPanel.header.showAiChat')}
-            </TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
+            variant={chatPanelVisible ? 'default' : 'ghost'}
+            size="icon-xs"
+            onClick={toggleChat}
+            className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
+            {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
+          >
+            <Bot className="h-3.5 w-3.5" />
+          </IconButton>
         </div>
 
         {/* Post-authoring "install as tool" banner — surfaces right
@@ -311,15 +298,14 @@ export function ScriptPanel() {
                 <Wrench className="mr-1 h-3.5 w-3.5" />
                 {t('scriptPanel.toolReady.installButton')}
               </Button>
-              <Button
+              <IconButton
+                label={t('scriptPanel.toolReady.dismissAriaLabel')}
                 size="icon-xs"
-                variant="ghost"
                 onClick={() => setChatToolReady(null)}
-                aria-label={t('scriptPanel.toolReady.dismissAriaLabel')}
                 className="shrink-0"
               >
                 <X className="h-3.5 w-3.5" />
-              </Button>
+              </IconButton>
             </div>
           </div>
         )}
@@ -343,19 +329,14 @@ export function ScriptPanel() {
             <TooltipContent>{t('scriptPanel.toolbar.runTooltip')}</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t('scriptPanel.toolbar.saveAriaLabel')}
-                onClick={handleSave}
-              >
-                <Save className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.saveTooltip')}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('scriptPanel.toolbar.saveAriaLabel')}
+            tooltip={t('scriptPanel.toolbar.saveTooltip')}
+            size="icon-xs"
+            onClick={handleSave}
+          >
+            <Save className="h-3.5 w-3.5" />
+          </IconButton>
 
           {/* Save-as-tool — the explicit, always-visible bridge from a
               one-shot script to a persistent toolbar button. A labelled
@@ -378,53 +359,37 @@ export function ScriptPanel() {
             <TooltipContent>{t('scriptPanel.toolbar.saveAsToolTooltip')}</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={undoScriptEditor}
-                disabled={!scriptCanUndo}
-                aria-label={t('scriptPanel.toolbar.undoAriaLabel')}
-              >
-                <Undo2 className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.undoTooltip')}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('scriptPanel.toolbar.undoAriaLabel')}
+            tooltip={t('scriptPanel.toolbar.undoTooltip')}
+            size="icon-xs"
+            onClick={undoScriptEditor}
+            disabled={!scriptCanUndo}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </IconButton>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={redoScriptEditor}
-                disabled={!scriptCanRedo}
-                aria-label={t('scriptPanel.toolbar.redoAriaLabel')}
-              >
-                <Redo2 className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.redoTooltip')}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('scriptPanel.toolbar.redoAriaLabel')}
+            tooltip={t('scriptPanel.toolbar.redoTooltip')}
+            size="icon-xs"
+            onClick={redoScriptEditor}
+            disabled={!scriptCanRedo}
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </IconButton>
 
           {/* New script dropdown with templates */}
           <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={t('scriptPanel.toolbar.newScript')}
-                    {...tourAnchor(TOUR_ANCHORS.scriptNew)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{t('scriptPanel.toolbar.newScript')}</TooltipContent>
-            </Tooltip>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                label={t('scriptPanel.toolbar.newScript')}
+                size="icon-xs"
+                {...tourAnchor(TOUR_ANCHORS.scriptNew)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </IconButton>
+            </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={() => handleNew('Untitled Script')}>
                 <FileCode2 className="h-3.5 w-3.5 mr-2" />
@@ -440,19 +405,13 @@ export function ScriptPanel() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t('scriptPanel.toolbar.resetSandbox')}
-                onClick={reset}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.resetSandbox')}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('scriptPanel.toolbar.resetSandbox')}
+            size="icon-xs"
+            onClick={reset}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </IconButton>
 
           {/* Status indicator */}
           <div className="flex-1" />

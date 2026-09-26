@@ -9,11 +9,14 @@ import { apsNodes } from './aps-nodes.js';
 import { connectorNodes } from './connector-nodes.js';
 import { coreNodes } from './core-nodes.js';
 import { csvNodes } from './csv-nodes.js';
+import { documentsNodes } from './documents-nodes.js';
 import { elementNodes } from './element-nodes.js';
 import { httpRequestNode } from './http-request-node.js';
 import type { FlowHost } from './host.js';
 import { modelNodes } from './model-nodes.js';
+import { openModelNode } from './open-model-node.js';
 import { scriptListNode, scriptNode } from './script-node.js';
+import { speckleReceiveNode } from './speckle-receive-node.js';
 import { tableNodes } from './table-nodes.js';
 import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
@@ -58,6 +61,9 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     httpRequestNode,
     ...bcfNodes,
     ...apsNodes,
+    speckleReceiveNode,
+    ...documentsNodes,
+    openModelNode,
   ]);
 }
 
@@ -71,7 +77,7 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
  * runs rather than failing mid-run (#5167 phase 3.5).
  */
 export const BROWSER_FEATURES: HostFeatures = {
-  backend: new Set(['viewer', 'visibility', 'selection', 'mutate', 'store', 'files', 'sandbox']),
+  backend: new Set(['viewer', 'visibility', 'selection', 'mutate', 'store', 'files', 'sandbox', 'openModel']),
   network: true,
   secrets: new Set(),
 };
@@ -86,7 +92,9 @@ export const BROWSER_FEATURES: HostFeatures = {
  * grants (see `network-request.ts`). `secrets` is exactly the set of env var
  * names the caller passes (CLI: `Object.keys(process.env)`; MCP: the same —
  * see `flow.ts` in `@ifc-lite/cli` and `@ifc-lite/mcp`), never guessed here.
+ * `openModel` is listed because both headless callers implement
+ * `FlowHost.openModel` (`model.openFromSource`).
  */
 export function headlessFeatures(secrets: Iterable<string> = []): HostFeatures {
-  return { backend: new Set(['mutate', 'store', 'files', 'sandbox']), network: true, secrets: new Set(secrets) };
+  return { backend: new Set(['mutate', 'store', 'files', 'sandbox', 'openModel']), network: true, secrets: new Set(secrets) };
 }

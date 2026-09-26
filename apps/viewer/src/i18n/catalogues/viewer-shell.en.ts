@@ -22,11 +22,18 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',
   'viewerShell.chunkLabel.drawingPanel': 'Drawing panel',
   'viewerShell.chunkLabel.documentPanel': 'Document panel',
+  'viewerShell.chunkLabel.presentationPanel': 'Presentation panel',
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',
   'viewerShell.chunkLabel.mcpPlayground': 'MCP playground',
   'viewerShell.chunkLabel.rteGpuWitness': 'RTE GPU witness',
 
   'viewerShell.dialog.close': 'Close',
+  'viewerShell.dialog.confirmTitle': 'Confirm action',
+  'viewerShell.dialog.promptTitle': 'Enter a value',
+  'viewerShell.dialog.promptValue': 'Value',
+  'viewerShell.dialog.cancel': 'Cancel',
+  'viewerShell.dialog.confirm': 'Confirm',
+  'viewerShell.file.ifcxOverlayRequiresIfcx': 'IFCX overlay files cannot be added to IFC4 models. Load IFCX files separately.',
   'viewerShell.toast.dismiss': 'Dismiss notification',
 } as const;

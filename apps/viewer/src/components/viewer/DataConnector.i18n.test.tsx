@@ -274,6 +274,7 @@ describe('DataConnector localization (#4918)', () => {
       { key: 'dataConnector.columnPlaceholder' },
       { key: 'dataConnector.psetNamePlaceholder' },
       { key: 'dataConnector.propertyPlaceholder' },
+      { key: 'dataConnector.removeMappingLabel' },
     ]);
 
     triggers = comboboxTriggers();

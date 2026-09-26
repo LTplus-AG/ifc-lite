@@ -248,6 +248,14 @@ export interface CustomSectionPlane {
   bitangent: [number, number, number];
 }
 
+/** An axis-aligned world-space section box (#5513): the renderer's `ClipBox` without its flag. */
+export interface SectionBox {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+/** One of the six faces of a `SectionBox`, named by corner and axis. */
+export type SectionBoxFace = 'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ';
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
@@ -273,6 +281,8 @@ export interface SectionPlane {
    * `CustomSectionPlane`).
    */
   custom?: CustomSectionPlane;
+  /** Box mode (#5513): the cut is this box, not a plane; exclusive with `custom`. */
+  box?: SectionBox;
 }
 
 // ============================================================================
@@ -383,6 +393,8 @@ export interface CameraCallbacks {
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
   frameSelection?: (durationMs?: number) => void;
+  /** The world AABB `frameSelection` would frame (same id resolution), or `null` with nothing framable. */
+  selectionBounds?: () => { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /**
    * Resolve ids to what the 3D renderer can actually highlight, expanding a
    * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its

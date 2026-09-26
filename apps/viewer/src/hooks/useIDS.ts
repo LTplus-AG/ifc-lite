@@ -15,7 +15,8 @@
  * for `UseIDSResult`'s callers, none of which have changed shape.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
+import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import type {
   IDSAuditReport,
@@ -77,6 +78,7 @@ export interface UseIDSResult extends Omit<UseValidationResults, 'report'> {
   clearIDS: () => void;
 
   runValidation: (targetModelId?: string) => Promise<IDSValidationReport | null>;
+  cancelValidation: () => void;
   clearValidation: () => void;
 
   setPanelVisible: (visible: boolean) => void;
@@ -130,6 +132,16 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // is still the most recent call before landing, so a superseded run can
   // never resurrect a stale report or clobber a newer one's `finally`.
   const { bump: bumpEpoch, stillWanted } = useValidationEpoch();
+  const workerAbortRef = useRef<AbortController | null>(null);
+
+  const cancelValidation = useCallback(() => {
+    bumpEpoch();
+    workerAbortRef.current?.abort();
+    workerAbortRef.current = null;
+    setIdsLoading(false);
+    setIdsProgress(null);
+    setIdsError(null);
+  }, [bumpEpoch, setIdsLoading, setIdsProgress, setIdsError]);
 
   const translator = useMemo(() => createTranslationService(locale), [locale]);
 
@@ -151,9 +163,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   }, [loadIDS, setIdsLoading, setIdsError]);
 
   const clearIDS = useCallback(() => {
-    bumpEpoch();
+    cancelValidation();
     clearIdsDocument();
-  }, [bumpEpoch, clearIdsDocument]);
+  }, [cancelValidation, clearIdsDocument]);
 
   const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
     if (!document) {
@@ -167,6 +179,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     }
     const { modelId, dataStore } = target;
     const myEpoch = bumpEpoch();
+    workerAbortRef.current?.abort();
+    const abortController = new AbortController();
+    workerAbortRef.current = abortController;
+    const stamp = captureAnalysisStamp();
 
     try {
       setIdsLoading(true);
@@ -185,6 +201,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         requestAnimationFrame(() => requestAnimationFrame(done));
         setTimeout(done, 200);
       });
+      if (!stillWanted(myEpoch)) return null;
 
       const schemaVersion = dataStore.schemaVersion || 'IFC4';
       let lastProgressUpdate = 0;
@@ -215,8 +232,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             source: getWholeSourceForWorker(dataStore),
             document, schemaVersion, modelId, locale,
             includePassingEntities: true, propertyOverlay, entityVisibility, onProgress,
+            signal: abortController.signal,
           });
         } catch (workerErr) {
+          if (!stillWanted(myEpoch)) return null;
           console.warn('[IDS] Worker validation failed; falling back to main thread.', workerErr);
         }
       }
@@ -234,7 +253,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // A newer call may have started (and even published) while this one
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
-      setIdsValidationReport(validationReport);
+      setIdsValidationReport(stampAnalysisReport(validationReport, stamp));
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,
@@ -256,6 +275,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
+      if (workerAbortRef.current === abortController) workerAbortRef.current = null;
       // A superseded call must not report itself as no-longer-loading — the
       // call that superseded it is the one actually in flight (#2802).
       if (stillWanted(myEpoch)) setIdsLoading(false);
@@ -266,9 +286,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   ]);
 
   const clearValidation = useCallback(() => {
-    bumpEpoch();
+    cancelValidation();
     clearIdsValidationReport();
-  }, [bumpEpoch, clearIdsValidationReport]);
+  }, [cancelValidation, clearIdsValidationReport]);
 
   const setPanelVisible = useCallback((visible: boolean) => { setIdsPanelVisible(visible); }, [setIdsPanelVisible]);
   const togglePanel = useCallback(() => { toggleIdsPanel(); }, [toggleIdsPanel]);
@@ -279,7 +299,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     report,
     document, auditReport, auditing, loading, progress, error, locale, panelVisible,
     loadIDS, loadIDSFile, clearIDS,
-    runValidation, clearValidation,
+    runValidation, cancelValidation, clearValidation,
     setPanelVisible, togglePanel, setLocale,
   };
 }

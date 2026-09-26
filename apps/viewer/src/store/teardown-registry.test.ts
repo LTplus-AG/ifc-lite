@@ -62,6 +62,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'lensAppliedHiddenIds', 'lensAutoColorLegend', 'lensColorMap',
   'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
+  'loadingFileName', // #5849 the loading card's file name: dies with the load it names
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
   'measure2DShiftLocked', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup',
   'metadataProgress', 'mutationVersion', 'mutationViews', 'overridesEnabled',
@@ -108,6 +109,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'slabCutAnchor', 'slabCutFootprint', 'slabCutStoreyElevation', 'splitHoverAxisDirection',
   'splitHoverCutPoint', 'splitHoverDistance', 'splitHoverLength', 'splitHoverPoint', 'splitMode',
   'splitTargetExpressId', 'splitTargetModelId',
+  'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 full unload discards the unsaved editor
 ];
 
 /**
@@ -250,6 +252,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'lensAppliedHiddenIds', 'lensAutoColorLegend',
   'lensColorMap', 'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
   'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
+  'loadingFileName', // #5849
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
   'measure2DShiftLocked', 'measure2DSnapPoint', 'measure2DStart', 'meshColorBackup',
   'metadataProgress', 'models', 'mutationVersion', 'mutationViews', 'overridesEnabled',
@@ -279,6 +282,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
+  'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
 ];
 
 

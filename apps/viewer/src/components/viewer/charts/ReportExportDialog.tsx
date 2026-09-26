@@ -11,7 +11,8 @@
  * one click.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { Aggregation, DashboardSpec, ReportPageSetup, ReportSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -144,7 +145,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
         </div>
         <DialogFooter>
           <Button size="sm" className="h-7 px-3 text-xs" disabled={busy || !dashboard} onClick={() => void run()} data-report-export>
-            {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
+            {busy ? <Spinner size="sm" className="mr-1" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
             {t('reportExportDialog.exportButton')}
           </Button>
         </DialogFooter>

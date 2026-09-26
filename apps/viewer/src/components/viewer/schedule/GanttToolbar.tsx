@@ -24,7 +24,7 @@ import {
   Redo2,
   Upload,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
@@ -143,64 +143,44 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b bg-card/40 text-sm">
       <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={goStart}
-              disabled={!hasData}
-              aria-label={t('schedule.toolbar.jumpToStart')}
-            >
-              <SkipBack className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.jumpToStart')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.jumpToStart')}
+          size="icon-sm"
+          onClick={goStart}
+          disabled={!hasData}
+        >
+          <SkipBack className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant={isPlaying ? 'default' : 'ghost'}
-              onClick={togglePlay}
-              disabled={!hasData}
-              aria-label={isPlaying ? t('schedule.toolbar.pause') : t('schedule.toolbar.play')}
-            >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{isPlaying ? t('schedule.toolbar.pauseConstructionSequence') : t('schedule.toolbar.playConstructionSequence')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={isPlaying ? t('schedule.toolbar.pause') : t('schedule.toolbar.play')}
+          tooltip={isPlaying ? t('schedule.toolbar.pauseConstructionSequence') : t('schedule.toolbar.playConstructionSequence')}
+          size="icon-sm"
+          variant={isPlaying ? 'default' : 'ghost'}
+          onClick={togglePlay}
+          disabled={!hasData}
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={goEnd}
-              disabled={!hasData}
-              aria-label={t('schedule.toolbar.jumpToFinish')}
-            >
-              <SkipForward className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.jumpToFinish')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.jumpToFinish')}
+          size="icon-sm"
+          onClick={goEnd}
+          disabled={!hasData}
+        >
+          <SkipForward className="h-4 w-4" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant={playbackLoop ? 'default' : 'ghost'}
-              onClick={() => setLoop(!playbackLoop)}
-              aria-label={playbackLoop ? t('schedule.toolbar.disableLoop') : t('schedule.toolbar.enableLoop')}
-            >
-              {playbackLoop ? <Repeat className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{playbackLoop ? t('schedule.toolbar.looping') : t('schedule.toolbar.oneShot')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={playbackLoop ? t('schedule.toolbar.disableLoop') : t('schedule.toolbar.enableLoop')}
+          tooltip={playbackLoop ? t('schedule.toolbar.looping') : t('schedule.toolbar.oneShot')}
+          size="icon-sm"
+          variant={playbackLoop ? 'default' : 'ghost'}
+          onClick={() => setLoop(!playbackLoop)}
+        >
+          {playbackLoop ? <Repeat className="h-4 w-4" /> : <Repeat2 className="h-4 w-4" />}
+        </IconButton>
       </div>
 
       {/* Scrub bar */}
@@ -280,61 +260,46 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
 
       {/* Generate from spatial hierarchy */}
       {onOpenGenerate && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={onOpenGenerate}
-              disabled={!canGenerate}
-              aria-label={t('schedule.toolbar.generateConstructionSchedule')}
-            >
-              <CalendarPlus className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{canGenerate ? t('schedule.toolbar.generateScheduleEllipsis') : t('schedule.toolbar.noSpatialHierarchy')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.generateConstructionSchedule')}
+          tooltip={canGenerate ? t('schedule.toolbar.generateScheduleEllipsis') : t('schedule.toolbar.noSpatialHierarchy')}
+          size="icon-sm"
+          onClick={onOpenGenerate}
+          disabled={!canGenerate}
+        >
+          <CalendarPlus className="h-4 w-4" />
+        </IconButton>
       )}
 
       {/* Import from MS Project (MSPDI XML) or a Gantt CSV export */}
       {onOpenImport && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={onOpenImport}
-              aria-label={t('schedule.toolbar.importScheduleFromFile')}
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.importScheduleTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.importScheduleFromFile')}
+          tooltip={t('schedule.toolbar.importScheduleTooltip')}
+          size="icon-sm"
+          onClick={onOpenImport}
+        >
+          <Upload className="h-4 w-4" />
+        </IconButton>
       )}
 
       {/* + Task — insert a new task after the currently-selected row
           (or at the end when none is selected). Auto-selects the new
           task so the Inspector's Task card lights up for rename. */}
       {hasData && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => {
-                const afterGlobalId = selectedTaskGlobalIds.size === 1
-                  ? selectedTaskGlobalIds.values().next().value
-                  : undefined;
-                addTaskAction({ afterGlobalId });
-              }}
-              aria-label={t('schedule.toolbar.addTask')}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.addTaskTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.addTask')}
+          tooltip={t('schedule.toolbar.addTaskTooltip')}
+          size="icon-sm"
+          onClick={() => {
+            const afterGlobalId = selectedTaskGlobalIds.size === 1
+              ? selectedTaskGlobalIds.values().next().value
+              : undefined;
+            addTaskAction({ afterGlobalId });
+          }}
+        >
+          <Plus className="h-4 w-4" />
+        </IconButton>
       )}
 
       {/* Undo / Redo for schedule edits. Gated on stack depth so the
@@ -342,34 +307,24 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
           avoids a persistent greyed-out pair on clean schedules. */}
       {(undoDepth > 0 || redoDepth > 0) && (
         <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={undoScheduleEdit}
-                disabled={undoDepth === 0}
-                aria-label={t('schedule.toolbar.undoScheduleEdit')}
-              >
-                <Undo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.undoTooltip')}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={redoScheduleEdit}
-                disabled={redoDepth === 0}
-                aria-label={t('schedule.toolbar.redoScheduleEdit')}
-              >
-                <Redo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('schedule.toolbar.redoTooltip')}</TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('schedule.toolbar.undoScheduleEdit')}
+            tooltip={t('schedule.toolbar.undoTooltip')}
+            size="icon-sm"
+            onClick={undoScheduleEdit}
+            disabled={undoDepth === 0}
+          >
+            <Undo2 className="h-4 w-4" />
+          </IconButton>
+          <IconButton
+            label={t('schedule.toolbar.redoScheduleEdit')}
+            tooltip={t('schedule.toolbar.redoTooltip')}
+            size="icon-sm"
+            onClick={redoScheduleEdit}
+            disabled={redoDepth === 0}
+          >
+            <Redo2 className="h-4 w-4" />
+          </IconButton>
         </div>
       )}
 
@@ -378,25 +333,20 @@ export function GanttToolbar({ onOpenGenerate, onOpenImport, canGenerate }: Gant
           so partial-authoring workflows can still revert just the
           pending tail. */}
       {pendingGeneratedCount > 0 && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => {
-                const removed = clearGeneratedSchedule();
-                if (removed > 0) {
-                  toast.success(t('schedule.toolbar.discardedToast', localizedCount(locale, removed)));
-                }
-              }}
-              aria-label={t('schedule.toolbar.discardPendingAriaLabel', localizedCount(locale, pendingGeneratedCount))}
-              className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('schedule.toolbar.discardPendingTooltip', localizedCount(locale, pendingGeneratedCount))}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('schedule.toolbar.discardPendingAriaLabel', localizedCount(locale, pendingGeneratedCount))}
+          tooltip={t('schedule.toolbar.discardPendingTooltip', localizedCount(locale, pendingGeneratedCount))}
+          size="icon-sm"
+          onClick={() => {
+            const removed = clearGeneratedSchedule();
+            if (removed > 0) {
+              toast.success(t('schedule.toolbar.discardedToast', localizedCount(locale, removed)));
+            }
+          }}
+          className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+        >
+          <Trash2 className="h-4 w-4" />
+        </IconButton>
       )}
 
       {/* Animation settings popover (replaces the bare toggle — gives the

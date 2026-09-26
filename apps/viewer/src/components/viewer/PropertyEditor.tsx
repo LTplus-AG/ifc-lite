@@ -24,6 +24,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,7 +44,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { ComboInput } from '@/components/ui/combo-input';
 import { toast } from '@/components/ui/toast';
@@ -76,6 +76,7 @@ import {
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { hasActiveTranslation } from '@/i18n/registry';
 import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
+import { addToPropertySet, isInheritedOnly, type InheritedSets } from '@/lib/properties/add-to-property-set';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
 // Data-enrichment actions (Property / Quantity / Classification / Material)
@@ -217,19 +218,14 @@ export function PropertyEditor({
         >
           {displayValue}
         </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
-              onClick={() => setIsEditing(true)}
-            >
-              <PenLine className="h-3 w-3 text-overlay-accent" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">{t('propertyEditor.inline.editProperty')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('propertyEditor.inline.editProperty')}
+          tooltipSide="left"
+          className="h-5 w-5 shrink-0 hover:bg-overlay-accent-soft"
+          onClick={() => setIsEditing(true)}
+        >
+          <PenLine className="h-3 w-3 text-overlay-accent" />
+        </IconButton>
       </div>
     );
   }
@@ -284,45 +280,27 @@ export function PropertyEditor({
         )}
 
         {/* Action buttons */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
-              onClick={handleSave}
-            >
-              <Check className="h-3.5 w-3.5 text-green-600" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              onClick={handleCancel}
-            >
-              <X className="h-3.5 w-3.5 text-zinc-500" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('propertyEditor.inline.cancel')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5 text-red-500" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('propertyEditor.inline.delete')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={editScope && !showScopeConfirm && !isUnchanged ? t('propertyEditor.inline.reviewScope') : t('propertyEditor.inline.save')}
+          className="h-6 w-6 hover:bg-green-100 dark:hover:bg-green-900/30"
+          onClick={handleSave}
+        >
+          <Check className="h-3.5 w-3.5 text-green-600" />
+        </IconButton>
+        <IconButton
+          label={t('propertyEditor.inline.cancel')}
+          className="h-6 w-6 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          onClick={handleCancel}
+        >
+          <X className="h-3.5 w-3.5 text-zinc-500" />
+        </IconButton>
+        <IconButton
+          label={t('propertyEditor.inline.delete')}
+          className="h-6 w-6 hover:bg-red-100 dark:hover:bg-red-900/30"
+          onClick={handleDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+        </IconButton>
       </div>
 
       {/* Type selector - always visible */}
@@ -392,14 +370,14 @@ interface NewPropertyDialogProps {
   entityType: string;
   existingPsets: string[];
   schemaVersion?: string;
+  /** Sets the element only inherits from its type (#5966). */
+  inheritedFrom?: InheritedSets | null;
 }
 
 /** Schema-aware dialog for adding new properties: filters available property
  *  sets by IFC entity type and suggests correctly-typed IFC4 properties. */
-export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion }: NewPropertyDialogProps) {
+export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion, inheritedFrom }: NewPropertyDialogProps) {
   const { t, locale } = useTranslation();
-  const setProperty = useViewerStore((s) => s.setProperty);
-  const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [open, setOpen] = useState(false);
@@ -467,16 +445,10 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
       normalizedModelId = '__legacy__';
     }
 
-    // Check if pset exists on entity already
-    const psetExists = existingPsets.includes(effectivePsetName);
-
-    if (!psetExists) {
-      createPropertySet(normalizedModelId, entityId, effectivePsetName, [
-        { name: effectivePropName, value: parsedValue, type: valueType },
-      ]);
-    } else {
-      setProperty(normalizedModelId, entityId, effectivePsetName, effectivePropName, parsedValue, valueType);
-    }
+    const added = addToPropertySet(useViewerStore.getState(), { modelId: normalizedModelId, entityId, existingPsets, inheritedFrom }, effectivePsetName, [
+      { name: effectivePropName, value: parsedValue, type: valueType },
+    ]);
+    if (!added.ok) return toast.error(t('propertyEditor.property.inheritedNotCopyable', { psetName: effectivePsetName, typeName: inheritedFrom?.typeName ?? '', names: added.uncopyable.join(', ') }));
 
     bumpMutationVersion();
 
@@ -489,7 +461,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
     setValueType(PropertyValueType.String);
     setIsCustomPset(false);
     setOpen(false);
-  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, setProperty, createPropertySet, bumpMutationVersion, t]);
+  }, [modelId, entityId, effectivePsetName, effectivePropName, value, valueType, existingPsets, inheritedFrom, bumpMutationVersion, t]);
 
   const resetForm = useCallback(() => {
     setPsetName('');
@@ -504,9 +476,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.property.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.property.trigger')} className={EDIT_TOOL_CLS}>
           <Plus className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -603,6 +575,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   )}
                 </SelectContent>
               </Select>
+            )}
+            {inheritedFrom && isInheritedOnly({ inheritedFrom }, effectivePsetName) && (
+              <p className="text-[11px] text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
             )}
           </div>
 
@@ -762,9 +737,9 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
       if (!o) { setSystem(''); setCustomSystem(''); setIdentification(''); setName(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.classification.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.classification.trigger')} className={EDIT_TOOL_CLS}>
           <Tag className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -904,9 +879,9 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
       if (!o) { setMaterialName(''); setCategory(''); setDescription(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.material.trigger')} className={EDIT_TOOL_CLS}>
           <Layers className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -1083,9 +1058,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" title={t('propertyEditor.quantity.trigger')} className={EDIT_TOOL_CLS}>
+        <IconButton label={t('propertyEditor.quantity.trigger')} className={EDIT_TOOL_CLS}>
           <Ruler className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -1467,13 +1442,14 @@ interface EditToolbarProps {
   existingPsets: string[];
   existingQtos?: string[];
   schemaVersion?: string;
+  inheritedFrom?: InheritedSets | null;
 }
 
 /**
  * Edit mode toolbar with dropdown for adding properties, classifications, materials, and quantities.
  * Schema-aware: filters available property/quantity sets based on entity type.
  */
-export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion }: EditToolbarProps) {
+export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion, inheritedFrom }: EditToolbarProps) {
   // Reassign is only meaningful for occurrence building elements — not type
   // entities, spaces, or materials.
   const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
@@ -1494,6 +1470,7 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
               entityType={entityType}
               existingPsets={existingPsets}
               schemaVersion={schemaVersion}
+              inheritedFrom={inheritedFrom}
             />
             <AddQuantityDialog
               modelId={modelId}
@@ -1563,34 +1540,22 @@ export function UndoRedoButtons({ modelId }: UndoRedoButtonsProps) {
 
   return (
     <div className="flex items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleUndo}
-            disabled={!canUndo(normalizedModelId)}
-          >
-            <Undo className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('propertyEditor.history.undo')}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleRedo}
-            disabled={!canRedo(normalizedModelId)}
-          >
-            <Redo className="h-4 w-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('propertyEditor.history.redo')}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('propertyEditor.history.undo')}
+        className="h-7 w-7"
+        onClick={handleUndo}
+        disabled={!canUndo(normalizedModelId)}
+      >
+        <Undo className="h-4 w-4" />
+      </IconButton>
+      <IconButton
+        label={t('propertyEditor.history.redo')}
+        className="h-7 w-7"
+        onClick={handleRedo}
+        disabled={!canRedo(normalizedModelId)}
+      >
+        <Redo className="h-4 w-4" />
+      </IconButton>
     </div>
   );
 }

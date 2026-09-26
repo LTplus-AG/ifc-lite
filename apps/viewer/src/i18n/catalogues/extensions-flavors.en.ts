@@ -27,29 +27,29 @@ import type { TranslationValue } from '../types';
 export const extensionsFlavorsEn = {
   // ── FlavorListView ──
   'extensionsFlavors.flavorListView.intro':
-    'Flavors bundle your extensions, lenses, queries, clash rules, and layout. Switch to isolate experiments; export to share or back up.',
-  'extensionsFlavors.flavorListView.saveCurrentAriaLabel': 'Save current setup as a new flavor',
-  'extensionsFlavors.flavorListView.createNewAriaLabel': 'Create a new empty flavor',
-  'extensionsFlavors.flavorListView.saveCurrentLabel': 'Save current as flavor',
-  'extensionsFlavors.flavorListView.newFlavorLabel': 'New flavor',
+    'Profiles bundle your extensions, lenses, queries, clash rules, and layout. Switch to isolate experiments; export to share or back up.',
+  'extensionsFlavors.flavorListView.saveCurrentAriaLabel': 'Save current setup as a new profile',
+  'extensionsFlavors.flavorListView.createNewAriaLabel': 'Create a new empty profile',
+  'extensionsFlavors.flavorListView.saveCurrentLabel': 'Save current as profile',
+  'extensionsFlavors.flavorListView.newFlavorLabel': 'New profile',
   'extensionsFlavors.flavorListView.importButton': 'Import',
-  'extensionsFlavors.flavorListView.resetTitle': 'Recreate the Default baseline flavor',
+  'extensionsFlavors.flavorListView.resetTitle': 'Recreate the Default baseline profile',
   'extensionsFlavors.flavorListView.resetButton': 'Reset',
   'extensionsFlavors.flavorListView.nameSnapshotLabel': {
-    one: 'Name this flavor (will snapshot {countDisplay} lens)',
-    other: 'Name this flavor (will snapshot {countDisplay} lenses)',
+    one: 'Name this profile (will snapshot {countDisplay} lens)',
+    other: 'Name this profile (will snapshot {countDisplay} lenses)',
   },
-  'extensionsFlavors.flavorListView.nameEmptyLabel': 'Name this new empty flavor',
+  'extensionsFlavors.flavorListView.nameEmptyLabel': 'Name this new empty profile',
   'extensionsFlavors.flavorListView.placeholderSnapshot': 'Cost estimating',
   'extensionsFlavors.flavorListView.placeholderEmpty': 'Empty workspace',
-  'extensionsFlavors.flavorListView.switchToEmptyTitle': 'Switch to empty flavor',
+  'extensionsFlavors.flavorListView.switchToEmptyTitle': 'Switch to empty profile',
   'extensionsFlavors.flavorListView.switchToSnapshotTitle': 'Switch to snapshot of current state',
   'extensionsFlavors.flavorListView.modeLabelSnapshot': 'snapshot',
   'extensionsFlavors.flavorListView.modeLabelEmpty': 'empty',
   'extensionsFlavors.flavorListView.createButton': 'Create',
   'extensionsFlavors.flavorListView.cancelButton': 'Cancel',
   'extensionsFlavors.flavorListView.emptyState':
-    'No flavors yet. Click {newFlavor} above, {reset} for the baseline, or {import} a .iflv.',
+    'No profiles yet. Click {newFlavor} above, {reset} for the baseline, or {import} a .iflv.',
   'extensionsFlavors.flavorListView.saveNameAriaLabel': 'Save name',
   'extensionsFlavors.flavorListView.cancelRenameAriaLabel': 'Cancel rename',
   'extensionsFlavors.flavorListView.renameAriaLabel': 'Rename {name}',
@@ -77,9 +77,9 @@ export const extensionsFlavorsEn = {
 
   // ── ExtensionsPanel ──
   'extensionsFlavors.extensionsPanel.heading': 'Extensions',
-  'extensionsFlavors.extensionsPanel.activeFlavorTitle': 'Active flavor: {name}. Click to manage.',
+  'extensionsFlavors.extensionsPanel.activeFlavorTitle': 'Active profile: {name}. Click to manage.',
   'extensionsFlavors.extensionsPanel.activeFlavorAriaLabel':
-    'Active flavor: {name}. Click to open the flavor dialog.',
+    'Active profile: {name}. Click to open the profile dialog.',
   'extensionsFlavors.extensionsPanel.helpHint.intro':
     'Extensions are sandboxed bundles of JavaScript that add buttons, panels, lenses, or exporters to the viewer.',
   'extensionsFlavors.extensionsPanel.helpHint.tabStripInfo':
@@ -94,7 +94,6 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.extensionsPanel.tab.ideas': 'Ideas',
   'extensionsFlavors.extensionsPanel.tab.repair': 'Repair',
   'extensionsFlavors.extensionsPanel.tab.audit': 'Audit',
-  'extensionsFlavors.extensionsPanel.tab.privacy': 'Privacy',
   'extensionsFlavors.extensionsPanel.emptyState.title': 'No extensions installed',
   'extensionsFlavors.extensionsPanel.emptyState.description':
     'Extensions are sandboxed bundles that add commands, lenses, panels, or exporters. You can install one three ways:',
@@ -143,25 +142,25 @@ export const extensionsFlavorsEn = {
     'Authored bundle preview failed: {error}',
   'extensionsFlavors.extensionsPanel.toast.installed': '{id} v{version} installed',
   'extensionsFlavors.extensionsPanel.toast.storageFull':
-    'Out of browser storage. Uninstall an extension or clear some flavors, then retry.',
+    'Out of browser storage. Uninstall an extension or clear some profiles, then retry.',
   'extensionsFlavors.extensionsPanel.toast.installRejected': 'Install rejected: {error}',
   'extensionsFlavors.extensionsPanel.toast.installFailed': 'Install failed: {error}',
   'extensionsFlavors.extensionsPanel.toast.operationFailed': '{operation} failed — {error}',
 
   // ── FlavorDialog ──
-  'extensionsFlavors.flavorDialog.title': 'Flavors',
+  'extensionsFlavors.flavorDialog.title': 'Profiles',
   'extensionsFlavors.flavorDialog.helpHint.p1':
-    'A flavor bundles your installed extensions, lenses, saved queries, layout, settings, and prompt overlay into a switchable profile.',
+    'A profile bundles your installed extensions, lenses, saved queries, layout, settings, and prompt overlay into a switchable profile.',
   'extensionsFlavors.flavorDialog.helpHint.p2':
-    'New flavor / Save current as flavor creates one (empty or snapshotted from your current viewer state).',
+    'New profile / Save current as profile creates one (empty or snapshotted from your current viewer state).',
   'extensionsFlavors.flavorDialog.helpHint.p3':
-    'Per-row: Activate switches to it (lenses restore). Camera captures the current viewer state into THAT flavor (not just the active one). Click the name to rename. Copy duplicates, Download exports a .iflv.',
+    'Per-row: Activate switches to it (lenses restore). Camera captures the current viewer state into THAT profile (not just the active one). Click the name to rename. Copy duplicates, Download exports a .iflv.',
   'extensionsFlavors.flavorDialog.helpHint.p4':
     'Import previews a .iflv then offers replace / save-as-new / three-way merge. Reset restores the empty baseline.',
-  'extensionsFlavors.flavorDialog.confirmDelete': 'Delete flavor {id}?',
-  'extensionsFlavors.flavorDialog.confirmReset': 'Reset to baseline flavor? Other flavors are preserved.',
+  'extensionsFlavors.flavorDialog.confirmDelete': 'Delete profile {id}?',
+  'extensionsFlavors.flavorDialog.confirmReset': 'Reset to baseline profile? Other profiles are preserved.',
   'extensionsFlavors.flavorDialog.snapshotDescription': 'Captured from current viewer state.',
-  'extensionsFlavors.flavorDialog.emptyDescription': 'New empty flavor.',
+  'extensionsFlavors.flavorDialog.emptyDescription': 'New empty profile.',
   'extensionsFlavors.flavorDialog.operation.export': 'Export',
   'extensionsFlavors.flavorDialog.operation.activate': 'Activate',
   'extensionsFlavors.flavorDialog.operation.delete': 'Delete',
@@ -188,7 +187,7 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorDialog.toast.switchedPartially':
     'Switched to {id}, but its {parts} could not be applied — {reasons}',
   'extensionsFlavors.flavorDialog.toast.deleted': 'Deleted {id}',
-  'extensionsFlavors.flavorDialog.toast.notFound': 'Flavor "{id}" not found.',
+  'extensionsFlavors.flavorDialog.toast.notFound': 'Profile "{id}" not found.',
   'extensionsFlavors.flavorDialog.toast.captured': {
     one: 'Captured {countDisplay} lens + clash rules + sidebar layout into {name}',
     other: 'Captured {countDisplay} lenses + clash rules + sidebar layout into {name}',
@@ -201,20 +200,20 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorDialog.toast.renamed': 'Renamed to "{name}".',
   'extensionsFlavors.flavorDialog.duplicateName': '{name} (copy)',
   'extensionsFlavors.flavorDialog.toast.duplicated': 'Duplicated as "{name}".',
-  'extensionsFlavors.flavorDialog.toast.reset': 'Reset to baseline flavor',
-  'extensionsFlavors.flavorDialog.toast.expectedFile': 'Expected a .iflv flavor file, got {filename}.',
+  'extensionsFlavors.flavorDialog.toast.reset': 'Reset to baseline profile',
+  'extensionsFlavors.flavorDialog.toast.expectedFile': 'Expected a .iflv profile file, got {filename}.',
   'extensionsFlavors.flavorDialog.toast.imported': 'Imported {name}',
   'extensionsFlavors.flavorDialog.toast.storageFull':
-    'Out of browser storage — delete a flavor or extension and try again.',
+    'Out of browser storage — delete a profile or extension and try again.',
 
   // ── FlavorMergeDialog ──
-  'extensionsFlavors.flavorMergeDialog.title': 'Merge flavor',
+  'extensionsFlavors.flavorMergeDialog.title': 'Merge profile',
   'extensionsFlavors.flavorMergeDialog.noActiveFlavor':
-    'No active flavor — switch to a flavor first, then retry the merge.',
+    'No active profile — switch to a profile first, then retry the merge.',
   'extensionsFlavors.flavorMergeDialog.computing': 'Computing merge…',
   'extensionsFlavors.flavorMergeDialog.cleanMerge': 'Clean merge — no conflicts between {theirs} and {ours}.',
   'extensionsFlavors.flavorMergeDialog.cancelButton': 'Cancel',
-  'extensionsFlavors.flavorMergeDialog.saveButton': 'Save merged flavor',
+  'extensionsFlavors.flavorMergeDialog.saveButton': 'Save merged profile',
   'extensionsFlavors.flavorMergeDialog.conflictSummary': {
     one: '{countDisplay} conflict between {theirs} (theirs) and {ours} (ours).',
     other: '{countDisplay} conflicts between {theirs} (theirs) and {ours} (ours).',
@@ -245,17 +244,17 @@ export const extensionsFlavorsEn = {
   'extensionsFlavors.flavorImportPreview.replaceButton': 'Replace existing',
 
   // ── FlavorIndicator ──
-  'extensionsFlavors.flavorIndicator.activeAriaLabel': 'Active flavor: {name}. Click to manage flavors.',
-  'extensionsFlavors.flavorIndicator.inactiveAriaLabel': 'No active flavor. Click to manage flavors.',
+  'extensionsFlavors.flavorIndicator.activeAriaLabel': 'Active profile: {name}. Click to manage profiles.',
+  'extensionsFlavors.flavorIndicator.inactiveAriaLabel': 'No active profile. Click to manage profiles.',
   'extensionsFlavors.flavorIndicator.activeTitle':
-    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}\nClick to switch / export / import / merge.',
+    'Profiles bundle your extensions, lenses, queries, and overlay.\nActive: {name}\nClick to switch / export / import / merge.',
   'extensionsFlavors.flavorIndicator.activeTitleWithDescription':
-    'Flavors — switchable profiles of your extensions, lenses, queries, and overlay.\nActive: {name}\n{description}\nClick to switch / export / import / merge.',
+    'Profiles bundle your extensions, lenses, queries, and overlay.\nActive: {name}\n{description}\nClick to switch / export / import / merge.',
   'extensionsFlavors.flavorIndicator.inactiveTitle':
-    'Flavors — switchable profiles of your extensions, lenses, and settings.\nClick to manage.',
+    'Profiles bundle your extensions, lenses, and settings.\nClick to manage.',
   'extensionsFlavors.flavorIndicator.defaultLabel': 'Default',
   'extensionsFlavors.flavorIndicator.defaultDescription':
-    'Baseline flavor — no extensions, no overrides.',
+    'Baseline profile — no extensions, no overrides.',
 
   // ── HelpHint ──
   'extensionsFlavors.helpHint.ariaLabel': 'Help: {label}',
@@ -272,11 +271,6 @@ export const extensionsFlavorsEn = {
   // ── ExtensionDockHost ──
   'extensionsFlavors.extensionDockHost.dockAriaLabel': 'Extension dock ({slot})',
   'extensionsFlavors.extensionDockHost.loadingWidget': 'Loading widget…',
-
-  // ── ExtensionExportSlot ──
-  'extensionsFlavors.extensionExportSlot.fromExtensionsLabel': 'From extensions',
-  'extensionsFlavors.extensionExportSlot.exportedToast': 'Exported with {name}',
-  'extensionsFlavors.extensionExportSlot.failedToast': '"{name}" failed: {error}',
 
   // ── ExtensionToolbarSlot ──
   'extensionsFlavors.extensionToolbarSlot.runAriaLabel': 'Run {title}',

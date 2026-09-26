@@ -92,7 +92,8 @@ pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
 pub use fast_parse::{
-    extract_coordinate_list_from_entity, extract_entity_refs_from_list, extract_entity_type_name,
+    extract_coordinate_list_from_entity, extract_coordinate_list_from_entity_f64,
+    extract_entity_refs_from_list, extract_entity_type_name,
     extract_face_indices_from_entity, extract_first_entity_ref, parse_coordinates_direct,
     parse_indices_direct, process_triangulated_faceset_direct, should_use_fast_path, FastMeshData,
 };

@@ -65,6 +65,10 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
   // ── ViewportContainer.tsx — loaded-model "Add Model" drop overlay ────
+  // ── ViewportLoadingCard.tsx — in-viewport load progress + Cancel (#5849) ─
+  'viewportLighting.container.loadingCard.title': 'Loading {name}',
+  'viewportLighting.container.loadingCard.titleFallback': 'Loading model…',
+  'viewportLighting.container.loadingCard.cancel': 'Cancel',
   'viewportLighting.container.dropOverlay.addModelTitle': 'Add Model to Scene',
   'viewportLighting.container.dropOverlay.addModelSubtitle': {
     one: 'Drop to federate with {count} existing model',
@@ -75,9 +79,7 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.mobileNav.homeAria': 'Home view',
   'viewportLighting.overlays.mobileNav.homeTooltip': 'Home (H)',
   'viewportLighting.overlays.mobileNav.zoomInAria': 'Zoom in',
-  'viewportLighting.overlays.mobileNav.zoomInTooltip': 'Zoom In (+)',
   'viewportLighting.overlays.mobileNav.zoomOutAria': 'Zoom out',
-  'viewportLighting.overlays.mobileNav.zoomOutTooltip': 'Zoom Out (-)',
   // ── ViewportOverlays.tsx — selected-storey count (the storeys' own
   // NAMEs are model content and are never routed through this key) ────
   'viewportLighting.overlays.storeyCount': { one: '{count} storey', other: '{count} storeys' },

@@ -12,6 +12,7 @@ import { CountBadgeTooltip } from './CountBadgeTooltip';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
 import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
+import { ModelBadge } from '../ModelBadge';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -39,6 +40,7 @@ export interface HierarchyNodeProps {
   nodeHidden: boolean;
   isMultiModel: boolean;
   modelsCount: number;
+  searchActive?: boolean;
   modelVisible?: boolean;
   onNodeClick: (node: TreeNode, e: React.MouseEvent) => void;
   onToggleExpand: (nodeId: string) => void;
@@ -58,6 +60,7 @@ export function HierarchyNode({
   nodeHidden,
   isMultiModel,
   modelsCount,
+  searchActive = false,
   modelVisible,
   onNodeClick,
   onToggleExpand,
@@ -168,6 +171,7 @@ export function HierarchyNode({
         {/* Expand/Collapse */}
         {node.hasChildren ? (
           <button
+            disabled={searchActive}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.id);
@@ -271,6 +275,10 @@ export function HierarchyNode({
           <span className={cn('flex-1 text-sm truncate ml-1.5', primaryNameClass, strikeWhenHidden)}>
             {node.name}
           </span>
+        )}
+
+        {isMultiModel && node.type !== 'model-header' && node.modelIds.length === 1 && (
+          <ModelBadge modelId={node.modelId ?? node.modelIds[0]} className="max-w-24 shrink-0" />
         )}
 
         {node.ifcType && (node.type === 'element' || node.type === 'group-member') && (

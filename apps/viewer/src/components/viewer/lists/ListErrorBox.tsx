@@ -15,7 +15,7 @@
  */
 
 import { AlertCircle, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n/useTranslation';
 
 export function ListErrorBox({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -28,15 +28,14 @@ export function ListErrorBox({ message, onDismiss }: { message: string; onDismis
           <div className="font-semibold text-red-900 dark:text-red-200">{t('lists.errorBox.listFailed')}</div>
           <div className="mt-1 break-words text-red-800 dark:text-red-300">{message}</div>
         </div>
-        <Button
-          variant="ghost"
+        <IconButton
+          label={t('lists.errorBox.dismissAriaLabel')}
           size="icon-sm"
-          aria-label={t('lists.errorBox.dismissAriaLabel')}
           className="-mt-1 -mr-1 h-5 w-5 shrink-0"
           onClick={onDismiss}
         >
           <X className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
     </div>
   );

@@ -12,8 +12,12 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
+import { downloadedNames, clearDownloads } from '@/test/download-capture';
+import { waitFor } from '@/test/render';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ExportChangesButton } from './ExportChangesButton.js';
+import { FIXTURE_WALL_A, parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 function makeModel(): FederatedModel {
   return {
@@ -45,14 +49,14 @@ function makeView(): MutablePropertyView {
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderButton(): HTMLElement {
+function renderButton(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <TooltipProvider>
-        <ExportChangesButton />
+        <ExportChangesButton surface={surface} />
       </TooltipProvider>,
     );
   });
@@ -82,6 +86,7 @@ function dialogText(): string {
 
 describe('ExportChangesButton — review/export divergence (issue: detect-and-require re-review)', () => {
   beforeEach(() => {
+    clearDownloads();
     for (const { root, container } of mounted.splice(0)) {
       act(() => {
         root.unmount();
@@ -98,6 +103,33 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
       scheduleSourceModelId: null,
       ifcDataStore: null,
     });
+  });
+
+  it('records one completion for the reviewed IFC file after the browser download (#5844)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const model = { ...makeModel(), ifcDataStore, sourceFile: new File([ifcDataStore.source], 'model-1.ifc') };
+    const view = new MutablePropertyView(null, model.id);
+    view.setAttribute(FIXTURE_WALL_A, 'Name', 'Reviewed edit');
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      mutationViews: new Map([[model.id, view]]),
+      mutationVersion: 1,
+    });
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      const container = renderButton('palette');
+      await act(async () => { findToolbarButton(container).click(); });
+      assert.ok(dialogText().includes('Reviewed edit'), 'the review displays the authored change');
+      await act(async () => { findDialogExportButton().click(); });
+      await waitFor(() => downloadedNames().length === 1, 'reviewed IFC file did not download');
+      assert.match(downloadedNames()[0], /\.ifc$/);
+      assert.deepEqual(completions, [{ format: 'ifc', surface: 'palette', model_count: 1, change_count: 1 }]);
+    } finally {
+      analytics.mock.restore();
+    }
   });
 
   it('refuses to export and keeps the dialog open when the overlay changes while the review is open, bypassing tracked set()', async () => {

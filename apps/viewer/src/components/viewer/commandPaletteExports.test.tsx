@@ -19,10 +19,12 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, StrictMode, type ComponentProps } from 'react';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { cleanup, render } from '@/test/render.js';
+import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -34,6 +36,7 @@ import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.j
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
 import { usePaletteExportRunner } from './usePaletteExportRunner.js';
+import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 const PARAMS: CommandPaletteBuildParams = {
   execute: () => {},
@@ -95,6 +98,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearDownloads();
   useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), scheduleIsEdited: false });
   paletteRunner = null;
 });
@@ -187,6 +191,55 @@ describe('command palette exports (#5601)', () => {
     assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
       { event: 'export_completed', properties: { format: 'json', surface: 'palette', row_count: 0 } },
     ]);
+  });
+
+  it('each palette CSV table and screenshot emits one completion for its download (#5844)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const model = { ...fixtureModel('m'), ifcDataStore };
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore });
+    const csv = EXPORT_COMMANDS.find((command) => command.id === 'csv');
+    assert.ok(csv && csv.kind === 'table-menu');
+    const canvas = document.createElement('canvas');
+    canvas.dataset.viewport = 'main';
+    canvas.toDataURL = () => 'data:image/png;base64,AA==';
+    document.body.appendChild(canvas);
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    const init = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportCsv = mock.method(GeometryProcessor.prototype, 'exportCsv', () => new TextEncoder().encode('a,b\n'));
+    const dispose = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}><PaletteRunnerHarness /></BimReactContext.Provider>);
+      for (const item of csv.items) {
+        const before = events.length;
+        await act(async () => {
+          assert.ok(paletteRunner);
+          paletteRunner.runExport({ id: 'csv', table: item.type });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        assert.deepEqual(events.slice(before).filter(({ event }) => event === 'export_completed'), [
+          { event: 'export_completed', properties: { format: 'csv', surface: 'palette' } },
+        ], `CSV ${item.type} must record exactly one completion`);
+      }
+      const before = events.length;
+      await act(async () => {
+        assert.ok(paletteRunner);
+        paletteRunner.runExport({ id: 'screenshot' });
+      });
+      assert.deepEqual(events.slice(before).filter(({ event }) => event === 'export_completed'), [
+        { event: 'export_completed', properties: { format: 'png', surface: 'palette' } },
+      ]);
+      assert.equal(downloadedNames().length, csv.items.length + 1, 'one browser download per completion');
+      assert.equal(exportCsv.mock.callCount(), csv.items.length, 'every registered CSV table reached the writer');
+    } finally {
+      analytics.mock.restore();
+      init.mock.restore();
+      exportCsv.mock.restore();
+      dispose.mock.restore();
+      canvas.remove();
+    }
   });
 
   it('GLB opens the same export dialog the toolbars use', async () => {

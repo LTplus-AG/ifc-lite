@@ -27,7 +27,12 @@ import { ANGLE_REQUIRED_PICKS, formatAngleMeasurement, formatRadiusPoints } from
 
 const ROW = 'rounded bg-muted/50 px-2 py-1 text-xs';
 const ROW_LIVE = 'flex items-center justify-between gap-2 rounded bg-overlay-accent-soft px-2 py-1 text-xs';
-const DELETE = 'h-5 w-5 shrink-0 hover:bg-destructive/20';
+// `size="icon-sm"` (32px) overridden to h-5 w-5 (20px): 2px a side of
+// hit-slop reaches the WCAG 2.2 2.5.8 24px minimum (#5826). Each of these
+// buttons is the last (or only) item in its `justify-between` row, so
+// there is no neighbour to overlap.
+const HIT_SLOP = 'relative after:absolute after:-inset-0.5 after:content-[""]';
+const DELETE = `h-5 w-5 shrink-0 hover:bg-destructive/20 ${HIT_SLOP}`;
 
 export function MeasurementList() {
   const { t } = useTranslation();
@@ -92,7 +97,7 @@ export function MeasurementList() {
       {activePolyline && (
         <div className={ROW_LIVE}>
           <span className="tabular-nums">{t('measure.polyline.inProgress', { count: activePolyline.points.length })}</span>
-          <Button variant="ghost" size="icon-sm" className="h-5 w-5" onClick={cancelPolyline} title={t('measure.cancelEsc')}>
+          <Button variant="ghost" size="icon-sm" className={`h-5 w-5 ${HIT_SLOP}`} onClick={cancelPolyline} title={t('measure.cancelEsc')}>
             <X className="h-3 w-3" />
           </Button>
         </div>
@@ -162,7 +167,7 @@ export function MeasurementList() {
           <span className="tabular-nums">
             {t('measure.radius.inProgress', { count: activeRadius.points.length })} · {formatRadiusPoints(activeRadius.points, unitDisplayOverrides)}
           </span>
-          <Button variant="ghost" size="icon-sm" className="h-5 w-5 shrink-0" onClick={cancelRadius} title={t('measure.cancelEsc')}>
+          <Button variant="ghost" size="icon-sm" className={`h-5 w-5 shrink-0 ${HIT_SLOP}`} onClick={cancelRadius} title={t('measure.cancelEsc')}>
             <X className="h-3 w-3" />
           </Button>
         </div>

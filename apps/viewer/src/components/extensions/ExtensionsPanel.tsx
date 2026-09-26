@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -32,7 +32,6 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
-import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
@@ -72,7 +71,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair' | 'privacy'>('installed');
+  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
@@ -257,7 +256,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             { id: 'ideas', label: t('extensionsFlavors.extensionsPanel.tab.ideas'), Icon: Lightbulb },
             { id: 'repair', label: t('extensionsFlavors.extensionsPanel.tab.repair'), Icon: Wrench },
             { id: 'audit', label: t('extensionsFlavors.extensionsPanel.tab.audit'), Icon: FileText },
-            { id: 'privacy', label: t('extensionsFlavors.extensionsPanel.tab.privacy'), Icon: Shield },
           ] as const
         ).map(({ id, label, Icon }) => {
           const active = view === id;
@@ -291,8 +289,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         <IdeasPanel />
       ) : view === 'repair' ? (
         <RepairQueuePanel />
-      ) : view === 'privacy' ? (
-        <PrivacyPanel />
       ) : (
       <div
         className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${

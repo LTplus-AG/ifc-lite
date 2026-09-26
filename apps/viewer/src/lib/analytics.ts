@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import posthogClient from 'posthog-js';
+import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
@@ -40,6 +41,7 @@ import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
 export const beforeSend = <
   T extends { event?: string; properties?: Record<string, unknown> } | null,
 >(event: T): T | null => {
+  if (isAnalyticsOptedOut()) return null;
   if (shouldSuppressWasmSkewNoise(event)) return null;
   if (shouldSuppressChunkSkewNoise(event)) return null;
   // A third sibling gate, on attribution rather than on a message or a reload:
@@ -122,9 +124,7 @@ if (enabled) {
   try {
     posthogClient.init(key as string, {
       api_host: host,
-      // No consent UI exists, so never build person profiles for anonymous
-      // visitors — events stay anonymous unless an explicit identify() opts
-      // a user in.
+      // Events stay anonymous unless an explicit identify() opts a user in.
       person_profiles: 'identified_only',
       capture_pageview: false,
       capture_pageleave: true,
@@ -135,6 +135,7 @@ if (enabled) {
       // in ./analytics-scrub.ts.
       before_send: beforeSend,
     });
+    if (isAnalyticsOptedOut()) posthogClient.opt_out_capturing();
     // Register build attribution as super-properties so every event (incl.
     // ifc_model_loaded) carries the deploy it was served from — this is what
     // lets field perf regressions be pinned to a specific release. Guarded with
@@ -161,7 +162,29 @@ const noopAnalytics: AnalyticsClient = {
   captureException: () => undefined,
 };
 
-export const posthog: AnalyticsClient = client ?? noopAnalytics;
+/** All explicit capture sites use this facade, so the setting takes effect immediately. */
+export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsClient {
+  return {
+    capture: (event, properties, options) =>
+      isAnalyticsOptedOut() ? undefined : target.capture(event, properties, options),
+    captureException: (error, additionalProperties) =>
+      isAnalyticsOptedOut() ? undefined : target.captureException(error, additionalProperties),
+  };
+}
+
+export const posthog: AnalyticsClient = consentAwareAnalyticsClient(client ?? noopAnalytics);
+
+/** Persist the preference and update PostHog's automatic capture policy. */
+export function setAnalyticsOptOut(value: boolean): void {
+  persistAnalyticsOptOut(value);
+  if (!enabled || !client) return;
+  try {
+    if (value) posthogClient.opt_out_capturing();
+    else posthogClient.opt_in_capturing({ captureEventName: false });
+  } catch (error) {
+    console.warn('[analytics] could not update PostHog consent', error);
+  }
+}
 
 /**
  * The one entry point for UI interaction events (#5618). The event name and

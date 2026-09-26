@@ -13,7 +13,7 @@
 
 /** Settings sections, in display order. Later sections (Performance,
  *  Collaboration, Privacy, AI) are added here by their own changes. */
-export const SETTINGS_SECTIONS = ['general', 'display'] as const;
+export const SETTINGS_SECTIONS = ['general', 'display', 'privacy'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const EVENT_OPEN_SETTINGS = 'ifc-lite:open-settings';

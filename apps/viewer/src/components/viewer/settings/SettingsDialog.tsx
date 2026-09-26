@@ -20,10 +20,12 @@ import {
 } from '@/lib/settings/open-settings';
 import { GeneralSection } from './GeneralSection';
 import { DisplaySection } from './DisplaySection';
+import { PrivacyPanel } from '@/components/extensions/PrivacyPanel';
 
 const SECTIONS: Record<SettingsSection, { label: TranslationKey; Body: ComponentType }> = {
   general: { label: 'settings.sections.general', Body: GeneralSection },
   display: { label: 'settings.sections.display', Body: DisplaySection },
+  privacy: { label: 'settings.sections.privacy', Body: PrivacyPanel },
 };
 
 export interface SettingsDialogProps {

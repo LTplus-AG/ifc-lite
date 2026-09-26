@@ -22,10 +22,21 @@ export function loadListDefinitions(): ListDefinition[] {
     // result (`[...listDefinitions, def]`) on the very first list the user
     // creates, so anything non-array here throws "is not iterable" and
     // bricks the List panel at boot instead of just starting empty.
-    return Array.isArray(parsed)
-      ? parsed.map((definition) => migrateLegacyListDefinition(definition))
-      : [];
-  } catch {
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((definition: unknown) => {
+      if (typeof definition !== 'object' || definition === null) {
+        console.warn('[Lists] Skipping a malformed saved list entry');
+        return [];
+      }
+      try {
+        return [migrateLegacyListDefinition(definition as ListDefinition)];
+      } catch (error) {
+        console.warn('[Lists] Skipping a saved list that could not be migrated', error);
+        return [];
+      }
+    });
+  } catch (error) {
+    console.warn('[Lists] Failed to read list definitions from localStorage', error);
     return [];
   }
 }

@@ -133,11 +133,11 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
       const definition: ListDefinition = {
         id: 'first-pset', name: 'First pset', createdAt: 0, updatedAt: 0,
         entityTypes: [], expressIdsByModel: { m: [10] }, columns: [],
-        conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'FireRating',
+        groups: [], legacyConditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'FireRating',
           operator, value }],
       };
       const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
-      const migrated = migrateLegacyListConditions(definition.conditions);
+      const migrated = migrateLegacyListConditions(definition.legacyConditions ?? []);
       assert.deepEqual(migrated.unreadableConditions, []);
       const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: [10], limit: 1 })
         .map((row) => row.expressId);
@@ -158,10 +158,10 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
       const definition: ListDefinition = {
         id: 'list-value', name: 'List value', createdAt: 0, updatedAt: 0,
         entityTypes: [], expressIdsByModel: { m: [10] }, columns: [],
-        conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'Colors', operator, value }],
+        groups: [], legacyConditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'Colors', operator, value }],
       };
       const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
-      const migrated = migrateLegacyListConditions(definition.conditions);
+      const migrated = migrateLegacyListConditions(definition.legacyConditions ?? []);
       const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: [10], limit: 1 })
         .map((row) => row.expressId);
       assert.deepEqual(actual, old, `${operator} must compare the displayed list, not an individual member`);

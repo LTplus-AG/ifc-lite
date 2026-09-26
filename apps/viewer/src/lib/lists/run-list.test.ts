@@ -196,7 +196,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
   it('reports a malformed saved condition for removal instead of evaluating it (#5894)', async () => {
     const [model] = await parsedPairs();
     const migrated = migrateLegacyListConditions([null]);
-    const def = definition({ conditions: [], ...migrated });
+    const def = definition({ unreadableConditions: migrated.unreadableConditions });
     await assert.rejects(() => runListFederated(def, [model], state),
       /malformed condition.*Remove it in the list editor/);
   });

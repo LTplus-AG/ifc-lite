@@ -57,9 +57,9 @@ export async function runListFederated(
     // `executeList` remains the source-set and column engine. Its first pass
     // has no columns or presentation work: it applies the list's type/snapshot
     // scope plus only v1 predicates that lack a lossless Rules representation.
-    // Once `groups` exists it is authoritative, even when the user cleared
-    // every rule. `conditions` retains readable v1 rows only during migration.
-    const unreadable: ListDefinition['conditions'] = [];
+    // Rules groups stay authoritative even when the user clears every rule.
+    // Only explicitly unreadable v1 predicates remain on the legacy path.
+    const unreadable: NonNullable<ListDefinition['legacyConditions']> = [];
     for (const row of definition.unreadableConditions ?? []) {
       if (!isEditableCondition(row)) {
         throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');

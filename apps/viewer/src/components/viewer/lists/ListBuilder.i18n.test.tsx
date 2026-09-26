@@ -376,7 +376,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const store = buildStore();
     const initial: ListDefinition = {
       id: 'malformed-filter', name: 'Malformed filter', createdAt: 1, updatedAt: 1,
-      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], conditions: [], groups: [],
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], groups: [],
       unreadableConditions: [{ condition: null, reason: 'invalid-condition' }],
     };
     let saved: ListDefinition | undefined;
@@ -386,10 +386,11 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     );
     assert.ok(container.querySelector('[role="alert"]')?.textContent?.includes('Malformed saved condition'));
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
-    assert.deepEqual(saved?.conditions, []);
     assert.deepEqual(saved?.unreadableConditions, initial.unreadableConditions);
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Remove saved filter') as Element);
     assert.equal(container.querySelector('[role="alert"]'), null);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, []);
   });
 
   it('warns and preserves future source/operator and invalid-value filters instead of rendering broken editors (#5894)', () => {

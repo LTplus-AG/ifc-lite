@@ -72,11 +72,13 @@ export function migrateLegacyListConditions(conditions: readonly unknown[]): Mig
 
 /** Normalize a saved v1 definition before it enters the public Lists API. */
 export function migrateLegacyListDefinition(
-  definition: Omit<ListDefinition, 'groups'> & { groups?: ListDefinition['groups']; conditions?: PropertyCondition[] },
+  definition: Omit<ListDefinition, 'groups'> & { groups?: ListDefinition['groups']; conditions?: unknown },
 ): ListDefinition {
   const { conditions, ...canonical } = definition;
   if (canonical.groups !== undefined) return canonical as ListDefinition;
-  const migrated = migrateLegacyListConditions(conditions ?? []);
+  const migrated = migrateLegacyListConditions(
+    conditions === undefined ? [] : Array.isArray(conditions) ? conditions : [conditions],
+  );
   return { ...canonical, groups: migrated.groups,
     ...(migrated.unreadableConditions.length ? { unreadableConditions: migrated.unreadableConditions } : {}) };
 }

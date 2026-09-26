@@ -92,6 +92,14 @@ describe('list definitions persistence', () => {
     assert.deepEqual(imported.unreadableConditions, loaded[0].unreadableConditions);
   });
 
+  it('skips a malformed whole entry without hiding the neighboring valid list (#5894)', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([null, legacy]));
+    const loaded = loadListDefinitions();
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0].id, legacy.id);
+    assert.equal(loaded[0].groups?.[0].rules[0].kind, 'property');
+  });
+
   it('imports the same v1 condition conversion from a .list.json file (#5894)', async () => {
     const file = new File([JSON.stringify(legacy)], 'saved.list.json', { type: 'application/json' });
     const imported = await importListDefinition(file);

@@ -36,7 +36,7 @@ import { LoadReportPanel } from './LoadReportPanel';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
-import { LevelDisplayIndicator } from './LevelDisplayIndicator';
+import type { ComponentType } from 'react';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
 import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
@@ -237,22 +237,27 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
   assert.ok(container.querySelector('[aria-label="X verringern"]'));
 });
 
-// ---- LevelDisplayIndicator -----------------------------------------------------
+// ---- VisibilityChips -----------------------------------------------------------
 
-it('LevelDisplayIndicator: renders the exploded/solo labels in English and translates them (#4918)', () => {
+it('VisibilityChips: renders the exploded/solo labels in English and translates them (#5882)', async () => {
+  // Reverting #5882 restores the previous chip instead of leaving this test
+  // unable to load; the assertions then compare the actual old/new UI.
+  const replacementPath = '../viewport-ui/hud/VisibilityChips.js';
+  const previousPath = './LevelDisplayIndicator.js';
+  const StatusChip: ComponentType = await import(replacementPath)
+    .then((module) => module.VisibilityChips)
+    .catch(async () => (await import(previousPath)).LevelDisplayIndicator);
   act(() => useViewerStore.setState({ levelDisplayMode: 'exploded', explodedGap: 2 }));
-  // `LevelDisplayIndicator` portals into `ViewportHud`'s top-left region
+  // `VisibilityChips` portals into `ViewportHud`'s top-left region
   // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
-  const exploded = render(<><ViewportHud /><LevelDisplayIndicator /></>);
+  const exploded = render(<><ViewportHud /><StatusChip /></>);
   assert.ok(exploded.textContent?.includes('Exploded · 2 m gap'));
 
-  registerLocale('leveldisplayindicator-de', { 'levelDisplayIndicator.storeyFallback': 'Geschoss' });
+  registerLocale('visibilitychips-de', { 'visibilityChips.soloCount': 'Solo · {count} Geschoss' });
   act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm1', expressId: 1 } }));
-  act(() => setLocale('leveldisplayindicator-de'));
-  const solo = render(<><ViewportHud /><LevelDisplayIndicator /></>);
-  // No matching storey is loaded, so `soloName` falls through to the
-  // translated fallback.
-  assert.ok(solo.textContent?.includes('Solo · Geschoss'));
+  act(() => setLocale('visibilitychips-de'));
+  const solo = render(<><ViewportHud /><StatusChip /></>);
+  assert.ok(solo.textContent?.includes('Solo · 1 Geschoss'));
 });
 
 // ---- EntityContextMenu -----------------------------------------------------

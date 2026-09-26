@@ -839,6 +839,36 @@
       "feature_inventory": [{ "feature": "five coloured survey control points", "expected_capability": "rendered" }]
     },
     {
+      "path": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml",
+      "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87",
+      "size": 4001277,
+      "provenance": {
+        "source": { "blob_url": "https://github.com/buildingSMART-Finland/InfraModel/blob/eb2720b8b909d44f18ee4f84acfb113322405a87/examples/M3_Road/9004_Terrain_models/M3_Terrain.mm.xml", "commit": "eb2720b8b909d44f18ee4f84acfb113322405a87", "sha256": "f860508f96df668bbfb486e0dd920368f20d6fd734d95825b4c2d2faceb9eb87", "fetched_at": "2026-09-26" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://creativecommons.org/licenses/by/4.0/", "attribution": "buildingSMART Finland InfraModel contributors" },
+        "modification": { "status": "unmodified" },
+        "no_customer_data": true
+      },
+      "producer": { "name": "3D-Win", "version": "6.6.4", "export_settings": "InfraModel 4.0.3 ground terrain export: TIN Pnts/Faces with SourceData breaklines coded per InfraBIM (e.g. 121 centreline of road)" },
+      "landxml": { "schema": "InfraModel 4.0.3 (LandXML 1.2 profile)", "namespace": "http://www.inframodel.fi/inframodel", "units": "metric (meter)", "crs": "EPSG:3875 (CoordinateSystem/@epsgCode); vertical N2000" },
+      "feature_inventory": [
+        { "feature": "TIN SourceData, Breaklines, Pnts, and Faces, as supplied (ISO-8859-1 InfraModel profile, #5051)", "expected_capability": "refused" },
+        { "feature": "The same TIN after an in-memory envelope relabel (UTF-8 declaration, LandXML 1.2 namespace; every other byte unchanged), draped with the paired NLS orthophoto (#5942 real-pair acceptance)", "expected_capability": "rendered" }
+      ]
+    },
+    {
+      "path": "landxml/imagery/nls-orthophoto-2022-m3143g-sw-road.tif",
+      "sha256": "ddc28e37b049b19764984ac57d40f64dddbf0b5b8236d95fc7d2f8cbe31b2dee",
+      "size": 193040,
+      "provenance": {
+        "source": { "url": "https://kartat.kapsi.fi/files/orto/etrs-tm35fin/mara_v_25000_50/2022/M31/02m/1/M3143G.jp2", "publisher": "National Land Survey of Finland (Maanmittauslaitos) orthophoto open data, sheet M3143G, 2022 colour, 0.5 m, EPSG:3067; mirrored by Kapsi Internet-kayttajat ry", "fetched_at": "2026-09-26" },
+        "license": { "spdx": "CC-BY-4.0", "url": "https://www.maanmittauslaitos.fi/en/opendata-licence-cc40", "attribution": "Contains data from the National Land Survey of Finland Orthophotos 2022 (CC BY 4.0)" },
+        "modification": { "status": "modified", "description": "320 x 280 px window E 207460-207620, N 6791800-6791940 (EPSG:3067), cut on the source 0.5 m pixel grid from the JPEG 2000 sheet and written as a deflate GeoTIFF (RasterPixelIsArea) with rasterio 1.5.1 / GDAL; pixel values unchanged" },
+        "no_customer_data": true
+      },
+      "format": { "schema": "GeoTIFF", "crs": "EPSG:3067", "ground_sample_distance_m": 0.5, "pairs_with": "landxml/imagery/3d-win-6.6.4-m3-terrain.xml" },
+      "feature_inventory": [{ "feature": "real orthophoto of the terrain's surveyed south-west road (carriageway, cycle path, painted centre line)", "expected_capability": "rendered" }]
+    },
+    {
       "path": "issues/1007_roof_brep_opening_winding.ifc",
       "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
       "size": 129717

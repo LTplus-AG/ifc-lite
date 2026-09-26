@@ -306,7 +306,7 @@ export function HierarchyPanel() {
       ? node.expressIds.map((expressId, index) => ({ modelId: node.modelIds[index] ?? 'legacy', expressId }))
       : [];
     if (action === 'solo') {
-      if (storeyRefs[0]) applyLevelDisplayMode('solo', storeyRefs[0]);
+      if (storeyRefs.length > 0) applyLevelDisplayMode('solo', storeyRefs);
       return;
     }
     if (action === 'isolate') {

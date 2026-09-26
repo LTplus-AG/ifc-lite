@@ -17,9 +17,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { activate, press } from '@/test/render.js';
+import { computeVisibilityIsolation } from '@/lib/visibility/effective-empty.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
 
 // `@tanstack/react-virtual` measures the scroll container's real
@@ -42,6 +44,31 @@ function makeStore(storeyId: number, elevation: number, name: string): IfcDataSt
     },
     entities: {
       getName: (id: number) => (id === storeyId ? name : undefined),
+    },
+  } as unknown as IfcDataStore;
+}
+
+/** A real spatial tree with one drawable element, for the renderer's storey
+ * isolation selector rather than a selection-only state assertion. */
+function makeStoreWithElement(storeyId: number, elementId: number, name: string): IfcDataStore {
+  const storey: SpatialNode = {
+    expressId: storeyId, type: IfcTypeEnum.IfcBuildingStorey, name,
+    children: [], elements: [elementId],
+  };
+  const project: SpatialNode = {
+    expressId: 1, type: IfcTypeEnum.IfcProject, name: 'Project',
+    children: [storey], elements: [],
+  };
+  return {
+    entityCount: 2,
+    spatialHierarchy: {
+      project,
+      byStorey: new Map([[storeyId, [elementId]]]),
+      storeyElevations: new Map([[storeyId, 0]]),
+    },
+    entities: {
+      getName: (id: number) => id === storeyId ? name : id === elementId ? `Wall ${elementId}` : undefined,
+      getTypeName: (id: number) => id === storeyId ? 'IfcBuildingStorey' : id === elementId ? 'IfcWall' : null,
     },
   } as unknown as IfcDataStore;
 }
@@ -231,6 +258,27 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     assert.ok(secondModelRow);
     activate(secondModelRow, ' ');
     assert.equal(useViewerStore.getState().selectedModelId, 'm2');
+  });
+
+  it('Solo on a unified storey isolates every model contribution (#5885)', () => {
+    const m1 = federatedModel('m1', makeStoreWithElement(101, 111, 'Shared Level'));
+    const m2 = federatedModel('m2', makeStoreWithElement(201, 211, 'Shared Level'));
+    m1.maxExpressId = 300;
+    m2.maxExpressId = 300;
+    useViewerStore.setState({ models: new Map([['m1', m1], ['m2', m2]]) });
+
+    const container = renderPanel();
+    const row = storeyRow(container, 'Shared Level');
+    const solo = row.querySelector<HTMLButtonElement>('button[aria-label="Solo storey Shared Level"]');
+    assert.ok(solo, 'the unified row exposes an explicit Solo action');
+    act(() => solo.click());
+
+    const state = useViewerStore.getState();
+    assert.equal(state.levelDisplayMode, 'solo');
+    assert.deepEqual(state.activeStorey, { modelId: 'm1', expressId: 101 });
+    assert.deepEqual(state.selectedStoreys, new Set([101, 1201]), 'both model-aware storey IDs are selected');
+    assert.deepEqual(computeVisibilityIsolation(state), new Set([111, 1211]),
+      'the effective renderer isolation retains elements from both models');
   });
 
   it('Ctrl/Cmd toggles and Shift extends storey entity selection across models (#5885)', () => {

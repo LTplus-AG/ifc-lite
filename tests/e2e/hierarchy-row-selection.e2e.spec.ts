@@ -33,6 +33,8 @@ async function selectionState(page: Page) {
       isolatedIds: state.isolatedEntities ? [...state.isolatedEntities] : null,
       levelDisplayMode: state.levelDisplayMode,
       selectedStoreys: [...state.selectedStoreys],
+      selectedStoreyOwners: [...state.selectedStoreys].map((id) => state.resolveGlobalIdFromModels(id)?.modelId ?? null),
+      activeStorey: state.activeStorey,
     };
   });
 }
@@ -75,6 +77,26 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
   expect((await selectionState(page)).isolatedIds?.length).toBeGreaterThan(0);
 
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clearIsolation());
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('spatial'));
+  const oneModelStorey = page.locator('[data-hierarchy-node-type="IfcBuildingStorey"]').first();
+  for (let depth = 0; depth < 3 && await oneModelStorey.count() === 0; depth++) {
+    const parent = page.locator('[data-hierarchy-node-type="IfcProject"], [data-hierarchy-node-type="IfcSite"], [data-hierarchy-node-type="IfcBuilding"]')
+      .filter({ has: page.locator('button[aria-expanded="false"]') }).first();
+    await parent.locator('button[aria-expanded="false"]').first().click();
+  }
+  await expect(oneModelStorey).toBeVisible();
+  await oneModelStorey.hover();
+  await oneModelStorey.getByRole('button', { name: /^Solo storey / }).click();
+  const oneModelSolo = await selectionState(page);
+  expect(oneModelSolo.levelDisplayMode).toBe('solo');
+  expect(oneModelSolo.selectedStoreys).toHaveLength(1);
+  expect(oneModelSolo.selectedStoreyOwners).toHaveLength(1);
+  expect(oneModelSolo.selectedStoreyOwners[0]).not.toBeNull();
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.clearStoreySelection();
+    state.setLevelDisplayMode('stacked');
+  });
   await page.locator('#file-input-add').setInputFiles(SECOND_MODEL);
   await waitForModels(page, 2);
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('spatial'));
@@ -95,5 +117,9 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
 
   await storeyRow.hover();
   await storeyRow.getByRole('button', { name: /^Solo storey / }).click();
-  expect((await selectionState(page)).levelDisplayMode).toBe('solo');
+  const twoModelSolo = await selectionState(page);
+  expect(twoModelSolo.levelDisplayMode).toBe('solo');
+  expect(twoModelSolo.selectedStoreys).toHaveLength(2);
+  expect(new Set(twoModelSolo.selectedStoreyOwners).size).toBe(2);
+  expect(twoModelSolo.activeStorey?.modelId).toBe(twoModelSolo.selectedStoreyOwners[0]);
 });

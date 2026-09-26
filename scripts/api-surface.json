@@ -8232,6 +8232,7 @@
     "DEFAULT_GHOST_ALPHA: const",
     "DEFAULT_OVERLAY_THEME: const",
     "DecodedPickSample: interface",
+    "DeviationAssetStats: interface",
     "DeviceRecoveryFailureReason: type",
     "DeviceRecoveryOmission: type",
     "DeviceRecoveryResult: type",

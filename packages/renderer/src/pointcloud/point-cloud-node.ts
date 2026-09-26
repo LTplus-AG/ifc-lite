@@ -294,7 +294,7 @@ function appendPointSubBuffer(
   try {
     deviationBuffer = device.createBuffer({
       size: count * 4,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
   } catch (err) {
     try {

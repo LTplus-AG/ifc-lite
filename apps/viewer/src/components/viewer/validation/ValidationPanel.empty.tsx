@@ -119,7 +119,7 @@ export function InformationValidationEntry({
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       {recentRuleSets.length > 0 && (
         <div className="mt-3">
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+          <h4 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
             {t('validationPanel.entry.recent')}
           </h4>
           <ul className="flex flex-col gap-1">

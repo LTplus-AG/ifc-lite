@@ -160,8 +160,8 @@ function ClashReviewControls({
   return (
     <div className="mt-0.5 space-y-1.5 px-7 pb-1.5">
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">{t('clashPanel.review.label')}</span>
-        <div className="inline-flex overflow-hidden rounded-md border border-border text-[11px]">
+        <span className="shrink-0 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashPanel.review.label')}</span>
+        <div className="inline-flex overflow-hidden rounded-md border border-border text-2xs">
           {CLASH_REVIEW_STATUSES.map((s) => (
             <button
               key={s}
@@ -185,7 +185,7 @@ function ClashReviewControls({
         placeholder={t('clashPanel.review.commentPlaceholder')}
         maxLength={2000}
         rows={2}
-        className="w-full resize-y rounded border border-border bg-transparent px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        className="w-full resize-y rounded border border-border bg-transparent px-2 py-1 text-2xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
       />
     </div>
   );
@@ -205,7 +205,7 @@ function ExcludeAnyButton({ tag, count, onExclude }: { tag: string; count: numbe
     <button
       onClick={onExclude}
       title={t('clashPanel.exclude.anyTagTooltip', { tag })}
-      className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      className="rounded border border-dashed border-border px-1.5 py-0.5 text-2xs hover:bg-muted"
     >
       {t('clashPanel.exclude.anyButton', { tag })}
       {count > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({count})</span>}
@@ -233,7 +233,7 @@ function ClashExclusionActions({
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
       <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="text-[10px] text-muted-foreground">{t('clashPanel.exclude.header')}</span>
+      <span className="text-2xs text-muted-foreground">{t('clashPanel.exclude.header')}</span>
       <ExcludeAnyButton tag={clash.a.tag} count={typeAnyCountOf(clash.a.tag)} onExclude={() => onExcludeTypeAny(clash.a.tag)} />
       {clash.b.tag !== clash.a.tag && (
         <ExcludeAnyButton tag={clash.b.tag} count={typeAnyCountOf(clash.b.tag)} onExclude={() => onExcludeTypeAny(clash.b.tag)} />
@@ -241,7 +241,7 @@ function ClashExclusionActions({
       <button
         onClick={onExcludeTypePair}
         title={t('clashPanel.exclude.pairTooltip', { tagA: clash.a.tag, tagB: clash.b.tag })}
-        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+        className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-muted"
       >
         {t('clashPanel.exclude.pairButton', { tagA: clash.a.tag, tagB: clash.b.tag })}
         {typePairCount > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({typePairCount})</span>}
@@ -249,7 +249,7 @@ function ClashExclusionActions({
       <button
         onClick={onExcludeElementPair}
         title={t('clashPanel.exclude.elementTooltip')}
-        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+        className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-muted"
       >
         {t('clashPanel.exclude.elementButton')}
       </button>
@@ -684,8 +684,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     >
       <span data-clash-side={side === 0 ? 'a' : 'b'} className={cn('h-2 w-2 rounded-full shrink-0', SIDE_DOT_CLASS[side])} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] text-foreground">{el.tag}</div>
-        <div className="truncate text-[10px] text-muted-foreground">{el.name ?? shortName(el.key)}</div>
+        <div className="truncate text-2xs text-foreground">{el.tag}</div>
+        <div className="truncate text-2xs text-muted-foreground">{el.name ?? shortName(el.key)}</div>
         {/* Federated clashes carry each side's source model (#1591); show it
             only in a federation so single-model lists stay uncluttered. */}
         {modelCount > 1 && <ModelBadge modelId={el.model} className="mt-0.5 max-w-full" />}
@@ -740,7 +740,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               type="button"
               onClick={() => setControlsOverride(!controlsOpen)}
               aria-expanded={controlsOpen}
-              className="flex flex-1 items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+              className="flex flex-1 items-center gap-1.5 text-2xs uppercase tracking-wide text-muted-foreground hover:text-foreground"
             >
               {controlsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               <span>{t('clashPanel.detectionSectionLabel')}</span>
@@ -840,7 +840,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     onClick={() => void runPreset(p.id)}
                     title={p.description}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
                       'border-border hover:bg-muted disabled:opacity-50',
                     )}
                   >
@@ -863,7 +863,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             : t('clashPanel.progress.preparing');
           return (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between text-2xs text-muted-foreground">
                 <span className="truncate">{label}</span>
                 {determinate && <span className="tabular-nums">{pct}%</span>}
               </div>
@@ -956,7 +956,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-6 px-2 text-[11px]"
+              className="h-6 px-2 text-2xs"
               disabled={selectedClashes.length < 2}
               title={t('clashPanel.groupSelectedTooltip')}
               onClick={openCreateGroupDialog}
@@ -983,7 +983,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   aria-pressed={on}
                   title={t('clashPanel.statusFilterTooltip', { action: t(on ? 'clashPanel.action.hide' : 'clashPanel.action.show'), status: t(REVIEW_STATUS[s].labelKey).toLowerCase() })}
                   className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
                     on ? 'border-transparent text-foreground' : 'border-border opacity-60 hover:opacity-100',
                   )}
                   style={on ? { background: `${REVIEW_STATUS[s].color}1f`, borderColor: `${REVIEW_STATUS[s].color}66` } : undefined}
@@ -1029,7 +1029,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             </div>
           </div>
           {selectedId && clashSolidStatus !== 'none' && (
-            <div className="text-[11px] text-muted-foreground" data-testid="clash-solid-status">
+            <div className="text-2xs text-muted-foreground" data-testid="clash-solid-status">
               {clashSolidStatus === 'computing' && t('clashPanel.solid.computing')}
               {clashSolidStatus === 'solid' && t('clashPanel.solid.shown', { volume: formatClashSolidVolumeM3(clashSolidVolumeM3) })}
               {clashSolidStatus === 'unavailable' && (
@@ -1052,7 +1052,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           Always listed while any rule exists — a suppression the user cannot see
           is indistinguishable from a detector that missed something. */}
       {exclusions.length > 0 && (
-        <div className="border-b border-border bg-muted/20 px-3 py-1.5 text-[11px]">
+        <div className="border-b border-border bg-muted/20 px-3 py-1.5 text-2xs">
           <div className="flex items-center gap-1.5">
             <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
             <span className="font-medium">{t('clashPanel.excluded.header')}</span>
@@ -1063,7 +1063,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="ml-auto h-5 px-1.5 text-[10px]"
+              className="ml-auto h-5 px-1.5 text-2xs"
               title={t('clashPanel.excluded.clearAllTooltip')}
               onClick={() => applyExclusion(clearExclusions)}
             >
@@ -1082,7 +1082,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     aria-label={t('clashPanel.excluded.toggleAriaLabel', { action: t(rule.enabled ? 'clashPanel.action.disable' : 'clashPanel.action.enable'), label: rule.label })}
                     className="h-3 w-3 shrink-0 accent-primary"
                   />
-                  <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">{t(EXCLUSION_KIND_LABEL_KEY[rule.kind])}</span>
+                  <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">{t(EXCLUSION_KIND_LABEL_KEY[rule.kind])}</span>
                   <span className={cn('truncate', !rule.enabled && 'text-muted-foreground line-through')}>{rule.label}</span>
                   <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                     {rule.enabled ? t('clashPanel.excluded.countHidden', { count: n }) : t('clashPanel.excluded.countWouldHide', { count: n })}
@@ -1112,7 +1112,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 ? t('clashPanel.empty.singleModelHint')
                 : t('clashPanel.empty.multiModelHint')}
             </p>
-            <p className="mt-2 text-[11px]">{t('clashPanel.empty.hint')}</p>
+            <p className="mt-2 text-2xs">{t('clashPanel.empty.hint')}</p>
           </div>
         )}
 
@@ -1121,7 +1121,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
             <p className="text-sm font-medium">{t('clashPanel.matrixNoMatch.title')}</p>
             <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.description', { count: result.rulesRun.length })}</p>
-            <p className="mt-1.5 text-[11px] text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.emptyRules', { names: emptyRuleNames.join(', ') })}</p>
+            <p className="mt-1.5 text-2xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.emptyRules', { names: emptyRuleNames.join(', ') })}</p>
           </div>
         )}
 
@@ -1139,7 +1139,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
             <p className="text-sm">{t('clashPanel.noClashes.title')}</p>
             {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
-              <p className="mt-1.5 text-[11px] max-w-xs">
+              <p className="mt-1.5 text-2xs max-w-xs">
                 {t('clashPanel.noClashes.partialRules', { count: emptyRuleNames.length, names: emptyRuleNames.join(', ') })}
               </p>
             )}
@@ -1149,7 +1149,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         {result && total > 0 && shown === 0 && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
             <p className="text-sm">{t('clashPanel.noMatches.title')}</p>
-            <p className="mt-1 text-[11px]">
+            <p className="mt-1 text-2xs">
               {hideTouching && touchingCount > 0 ? t('clashPanel.noMatches.hintWithUntick') : t('clashPanel.noMatches.hintPlain')}
             </p>
           </div>
@@ -1182,7 +1182,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     />
                   ) : row.kind === 'detail' ? (
                     <div className="border-t border-border/40 pb-1.5">
-                      <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
+                      <div className="px-7 py-1 text-2xs text-muted-foreground">{describeClash(row.clash)}</div>
                       <ElementRow el={row.clash.a} side={0} />
                       <ElementRow el={row.clash.b} side={1} />
                       <ClashExclusionActions
@@ -1231,10 +1231,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                             <span className="text-muted-foreground"> × </span>
                             <span className="text-foreground">{row.clash.b.tag}</span>
                             {isTouching(row.clash) && (
-                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">{t('clashPanel.touchBadge')}</span>
+                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashPanel.touchBadge')}</span>
                             )}
                           </div>
-                          <div className="truncate text-[10px] text-muted-foreground">
+                          <div className="truncate text-2xs text-muted-foreground">
                             {row.clash.a.name ?? shortName(row.clash.a.key)} ↔ {row.clash.b.name ?? shortName(row.clash.b.key)}
                           </div>
                         </div>
@@ -1245,7 +1245,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                             <>
                               {rs !== 'open' && (
                                 <span
-                                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                                  className="shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-medium"
                                   style={{ background: `${REVIEW_STATUS[rs].color}1f`, color: REVIEW_STATUS[rs].color }}
                                 >
                                   {t(REVIEW_STATUS[rs].labelKey)}

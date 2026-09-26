@@ -85,9 +85,9 @@ function BasisRows({ breakdown, format }: { breakdown: BasisBreakdown; format: (
   return (
     <div className="px-3 py-2">
       <div className="flex items-baseline gap-2 pb-1">
-        <span className="text-[11px] uppercase tracking-wide font-medium">{volumeBasisLabel(breakdown.basis)}</span>
+        <span className="text-2xs uppercase tracking-wide font-medium">{volumeBasisLabel(breakdown.basis)}</span>
         {breakdown.quantityName && (
-          <span className="text-[11px] text-muted-foreground truncate">{breakdown.quantityName}</span>
+          <span className="text-2xs text-muted-foreground truncate">{breakdown.quantityName}</span>
         )}
         <span className="text-xs font-mono ml-auto">{format(breakdown.totalM3)}</span>
       </div>
@@ -107,7 +107,7 @@ function BasisRows({ breakdown, format }: { breakdown: BasisBreakdown; format: (
           </div>
         )}
       </div>
-      {note && <p className="pt-1 text-[11px] text-muted-foreground">{note}</p>}
+      {note && <p className="pt-1 text-2xs text-muted-foreground">{note}</p>}
     </div>
   );
 }
@@ -186,7 +186,7 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
   return (
     <div className="border-t">
       {apportionment.overlapping && (
-        <p className="px-3 pt-2 text-[11px] text-amber-600 flex items-center gap-1.5">
+        <p className="px-3 pt-2 text-2xs text-amber-600 flex items-center gap-1.5">
           <TriangleAlert className="h-3.5 w-3.5" />
           {t('zonesPanel.volumeBreakdown.overlapWarning')}
         </p>
@@ -194,7 +194,7 @@ export function ZoneVolumeBreakdown({ zoneSet, globalId, quantitySets, projectUn
       {breakdowns?.map((breakdown) => (
         <BasisRows key={breakdown.basis} breakdown={breakdown} format={volume.format} />
       ))}
-      <p className="px-3 pb-2 text-[11px] text-muted-foreground">{VOLUME_BASIS_LEGEND}</p>
+      <p className="px-3 pb-2 text-2xs text-muted-foreground">{VOLUME_BASIS_LEGEND}</p>
     </div>
   );
 }

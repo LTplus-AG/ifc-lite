@@ -240,6 +240,19 @@ function openCollapsibles(container: ParentNode): void {
   }
 }
 
+/**
+ * Clicks a `GerefRow`/`AngleRow`'s value cell to start editing. The row
+ * `<div>` itself (`rowEl`) is never interactive (#5812 review: it must not
+ * nest a `role="button"` around `TerrainHeightButton`'s real `<button>`),
+ * so the click target is the value-cell `<button>` inside it, re-queried
+ * each call since it only exists while not already editing.
+ */
+function clickRow(rowEl: ParentNode): void {
+  const button = rowEl.querySelector('button');
+  assert.ok(button, 'row value-cell button must render to start editing');
+  click(button);
+}
+
 function makeModel(id: string): FederatedModel {
   return {
     id,
@@ -422,14 +435,14 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     assert.ok(container.querySelector('button[aria-label="Save Scale"]'));
     const cancelScale = container.querySelector('button[aria-label="Cancel editing Scale"]');
     assert.ok(cancelScale);
     click(cancelScale);
     const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
     assert.ok(angleLabel?.parentElement);
-    click(angleLabel.parentElement);
+    clickRow(angleLabel.parentElement);
     assert.ok(container.querySelector('button[aria-label="Save Angle to Grid North"]'));
     assert.ok(container.querySelector('button[aria-label="Cancel editing Angle to Grid North"]'));
   });
@@ -474,7 +487,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     type(input, '0,001');
@@ -504,7 +517,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     // The seeded buffer must already be locale-formatted ("0,001", no
@@ -514,7 +527,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     // An unchanged buffer is a no-op: nothing is re-parsed, nothing recorded.
     assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, undefined);
     // Typing the locale form of a new value still commits through parseLocaleNumber.
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const again = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(again);
     type(again, '0,002');
@@ -543,7 +556,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     press(input, 'Enter');
@@ -572,7 +585,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
     assert.ok(angleLabel?.parentElement);
-    click(angleLabel.parentElement);
+    clickRow(angleLabel.parentElement);
     const input = angleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     type(input, '١٢٫٥');

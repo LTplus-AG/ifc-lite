@@ -7,29 +7,48 @@ import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
+import { useFieldContext } from './field';
 
 const Select = SelectPrimitive.Root;
 const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 
+/**
+ * `Select` (`SelectPrimitive.Root`) renders no DOM node, so a `<Field>`
+ * wrapping one cannot label it by cloning `id`/`aria-*` props the way it
+ * does for `Input`/`Textarea` — those would land on `Select`, which never
+ * uses them. `SelectTrigger` is the actual focusable element (an
+ * arbitrarily-nested descendant of `Select`), so it reads the same values
+ * back out of `FieldContext` instead, falling back only where it has no
+ * explicit id/aria-* of its own. `aria-labelledby` (not just `htmlFor`) is
+ * what actually names it: a `<button>`, which this renders, computes its
+ * accessible name from its content by default, not from a `<label for>`.
+ */
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      'flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
-      className
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 opacity-50" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-));
+>(({ className, children, id, 'aria-describedby': describedBy, 'aria-invalid': invalid, 'aria-labelledby': labelledBy, ...props }, ref) => {
+  const field = useFieldContext();
+  return (
+    <SelectPrimitive.Trigger
+      ref={ref}
+      id={id ?? field?.id}
+      aria-describedby={describedBy ?? field?.describedBy}
+      aria-invalid={invalid ?? field?.invalid}
+      aria-labelledby={labelledBy ?? field?.labelId}
+      className={cn(
+        'flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDown className="h-4 w-4 opacity-50" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  );
+});
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 
 const SelectScrollUpButton = React.forwardRef<

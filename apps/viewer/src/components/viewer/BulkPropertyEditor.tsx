@@ -8,10 +8,9 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
+import { Search, Play, Eye, Filter, Plus, Building2, Layers, Tag } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -43,7 +42,6 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
-  BULK_WRITABLE_ATTRIBUTES,
   BulkQueryEngine,
   MutablePropertyView,
   type SelectionCriteria,
@@ -56,21 +54,16 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
+import { IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
 import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
+import { BulkFilterRow, type PropertyFilterUI } from './bulk-property-editor-filter-row';
+import { BulkActionConfig } from './bulk-property-editor-action-config';
+import { Field } from '@/components/ui/field';
 
 export { parseBulkSetPropertyValue } from './bulk-property-value';
-
-interface PropertyFilterUI {
-  id: string;
-  psetName: string;
-  propName: string;
-  operator: FilterOperator;
-  value: string;
-}
 
 type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
 
@@ -671,8 +664,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         ) : (
         <div className="space-y-6">
           {/* Model selector */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">{t('bulkPropertyEditor.model')}</Label>
+          <Field label={t('bulkPropertyEditor.model')}>
             <Select value={selectedModelId} onValueChange={setSelectedModelId}>
               <SelectTrigger>
                 <SelectValue placeholder={t('bulkPropertyEditor.selectModel')} />
@@ -683,7 +675,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
 
           <Separator />
 
@@ -766,15 +758,14 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             )}
 
             {/* Name pattern filter */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.namePattern')}</Label>
+            <Field label={t('bulkPropertyEditor.namePattern')} labelClassName="text-xs text-muted-foreground">
               <Input
                 placeholder={t('bulkPropertyEditor.namePatternPlaceholder')}
                 value={namePattern}
                 onChange={(e) => setNamePattern(e.target.value)}
                 className="h-8 text-sm"
               />
-            </div>
+            </Field>
 
             {/* Property filters */}
             <div className="space-y-2">
@@ -786,44 +777,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 </Button>
               </div>
               {filters.map((filter) => (
-                <div key={filter.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
-                  <Input
-                    placeholder={t('bulkPropertyEditor.psetOptional')}
-                    value={filter.psetName}
-                    onChange={(e) => updateFilter(filter.id, 'psetName', e.target.value)}
-                    className="h-8 text-xs w-28"
-                  />
-                  <Input
-                    placeholder={t('bulkPropertyEditor.propertyName')}
-                    value={filter.propName}
-                    onChange={(e) => updateFilter(filter.id, 'propName', e.target.value)}
-                    className="h-8 text-xs flex-1"
-                  />
-                  <Select
-                    value={filter.operator}
-                    onValueChange={(v) => updateFilter(filter.id, 'operator', v)}
-                  >
-                    <SelectTrigger className="h-8 w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FILTER_OPERATORS.map((op) => (
-                        <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {filter.operator !== 'IS_NULL' && filter.operator !== 'IS_NOT_NULL' && (
-                    <Input
-                      placeholder={t('bulkPropertyEditor.value')}
-                      value={filter.value}
-                      onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                      className="h-8 text-xs w-20"
-                    />
-                  )}
-                  <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </IconButton>
-                </div>
+                <BulkFilterRow key={filter.id} filter={filter} onUpdate={updateFilter} onRemove={removeFilter} />
               ))}
             </div>
           </div>
@@ -837,117 +791,20 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               {t('bulkPropertyEditor.action')}
             </Label>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.actionType')}</Label>
-                <Select value={actionType} onValueChange={(v) => { if ((v === 'SET_ATTRIBUTE') !== (actionType === 'SET_ATTRIBUTE')) setTargetProp(''); setActionType(v as ActionType); }}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SET_PROPERTY">{t('bulkPropertyEditor.setProperty')}</SelectItem>
-                    <SelectItem value="DELETE_PROPERTY">{t('bulkPropertyEditor.deleteProperty')}</SelectItem>
-                    <SelectItem value="SET_ATTRIBUTE">{t('bulkPropertyEditor.setAttribute')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {actionType !== 'SET_ATTRIBUTE' && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    {t('bulkPropertyEditor.propertySet')}
-                    {psetOptions.length > 0 && (
-                      <span className="ml-1 text-muted-foreground">
-                        {t('bulkPropertyEditor.found', { count: psetOptions.length, countDisplay: formatLocaleNumber(locale, psetOptions.length) })}
-                      </span>
-                    )}
-                  </Label>
-                  <Input
-                    list="pset-options"
-                    placeholder={t('bulkPropertyEditor.psetPlaceholder')}
-                    value={targetPset}
-                    onChange={(e) => setTargetPset(e.target.value)}
-                  />
-                  <datalist id="pset-options">
-                    {psetOptions.map((pset) => (
-                      <option key={pset} value={pset} />
-                    ))}
-                  </datalist>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">
-                  {actionType === 'SET_ATTRIBUTE' ? t('bulkPropertyEditor.attribute') : t('bulkPropertyEditor.propertyNameLabel')}
-                  {actionType !== 'SET_ATTRIBUTE' && propOptions.length > 0 && (
-                    <span className="ml-1 text-muted-foreground">
-                      {t('bulkPropertyEditor.found', { count: propOptions.length, countDisplay: formatLocaleNumber(locale, propOptions.length) })}
-                    </span>
-                  )}
-                </Label>
-                {actionType === 'SET_ATTRIBUTE' ? (
-                  <Select value={targetProp} onValueChange={setTargetProp}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('bulkPropertyEditor.selectAttribute')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {/* Exact EXPRESS names, never translated or aliased; the engine's own list (#5867). */}
-                      {BULK_WRITABLE_ATTRIBUTES.map((attribute) => (
-                        <SelectItem key={attribute} value={attribute}>{attribute}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <>
-                    <Input
-                      list="prop-options"
-                      placeholder={t('bulkPropertyEditor.propertyPlaceholder')}
-                      value={targetProp}
-                      onChange={(e) => setTargetProp(e.target.value)}
-                    />
-                    <datalist id="prop-options">
-                      {propOptions.map((prop) => (
-                        <option key={prop} value={prop} />
-                      ))}
-                    </datalist>
-                  </>
-                )}
-              </div>
-
-              {actionType !== 'DELETE_PROPERTY' && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.newValue')}</Label>
-                  <Input
-                    placeholder={t('bulkPropertyEditor.value')}
-                    value={targetValue}
-                    onChange={(e) => setTargetValue(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {actionType === 'SET_PROPERTY' && (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.valueType')}</Label>
-                <Select
-                  value={valueType.toString()}
-                  onValueChange={(v) => setValueType(parseInt(v) as PropertyValueType)}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={PropertyValueType.String.toString()}>{t('bulkPropertyEditor.string')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Real.toString()}>{t('bulkPropertyEditor.real')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Integer.toString()}>{t('bulkPropertyEditor.integer')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Boolean.toString()}>{t('bulkPropertyEditor.boolean')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Label.toString()}>{t('bulkPropertyEditor.label')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <BulkActionConfig
+              actionType={actionType}
+              onActionTypeChange={setActionType}
+              targetPset={targetPset}
+              onTargetPsetChange={setTargetPset}
+              targetProp={targetProp}
+              onTargetPropChange={setTargetProp}
+              targetValue={targetValue}
+              onTargetValueChange={setTargetValue}
+              valueType={valueType}
+              onValueTypeChange={setValueType}
+              psetOptions={psetOptions}
+              propOptions={propOptions}
+            />
           </div>
 
           {/* Preview Result */}

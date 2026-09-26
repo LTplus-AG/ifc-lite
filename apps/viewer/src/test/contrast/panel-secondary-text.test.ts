@@ -82,7 +82,6 @@ const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 // are deliberately excluded (see the sibling-sweep report, not repeated in
 // this file).
 const LEARN_TAB = join(__dirname, '../../components/tours/LearnTab.tsx');
-const BULK_PROPERTY_EDITOR = join(VIEWER_DIR, 'BulkPropertyEditor.tsx');
 const BYOK_KEY_MODAL = join(VIEWER_DIR, 'chat/ByokKeyModal.tsx');
 const MODEL_SELECTOR = join(VIEWER_DIR, 'chat/ModelSelector.tsx');
 const CLASS_VISIBILITY_MENU = join(VIEWER_DIR, 'toolbar/ClassVisibilityMenu.tsx');
@@ -350,12 +349,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       file: LEARN_TAB,
       anchor: 'text-xs text-muted-foreground">{tour.description}</div>\n              </div>\n              <span ',
       surface: KEYBOARD_SHORTCUTS_DIALOG_SURFACE,
-    },
-    {
-      name: 'BulkPropertyEditor "(N found)" annotation',
-      file: BULK_PROPERTY_EDITOR,
-      anchor: "{t('bulkPropertyEditor.propertySet')}\n                    {psetOptions.length > 0 && (\n                      <span ",
-      surface: 'bg-background',
     },
     {
       name: 'ByokKeyModal pricing hint',

@@ -253,12 +253,13 @@ export interface HealthResponse {
 }
 
 /**
- * Error response from the server.
+ * The body of every error response from the server, on every route and
+ * status. The client decodes it into an `IfcServerError`.
  */
 export interface ErrorResponse {
-  /** Error message */
+  /** Human-readable message. */
   error: string;
-  /** Error code */
+  /** Stable identifier to branch on (`NOT_FOUND`, `BAD_REQUEST`, `OVERLOADED`, ...). */
   code: string;
 }
 

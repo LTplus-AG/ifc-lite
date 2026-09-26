@@ -304,7 +304,7 @@
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
    743 packages/sdk/src/types.ts
-  1011 packages/server-client/src/client.ts
+  1007 packages/server-client/src/client.ts
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts

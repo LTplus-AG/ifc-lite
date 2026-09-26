@@ -21,7 +21,7 @@
 //! - `POST /api/v1/parse/parquet/optimized` - ara3d BOS-optimized format (~50x smaller)
 //! - `GET /api/v1/parse/symbolic/:cache_key` - 2D symbol stream (IfcAnnotation + IfcGrid) as JSON
 //! - `GET /api/v1/cache/:key` - Retrieve cached result
-//! - `DELETE /api/v1/cache/:hash` - Invalidate every cache entry for one source file
+//! - `DELETE /api/v1/cache/:key` - Invalidate every cache entry for the source file a `cache_key` names
 
 // Native global allocator (#1623): the platform system heap's global lock was
 // ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
@@ -227,11 +227,19 @@ fn build_router(state: AppState) -> Router {
         .layer(DefaultBodyLimit::max(
             (config.max_file_size_mb + BODY_LIMIT_SLACK_MB) * 1024 * 1024,
         ))
-        .layer(CompressionLayer::new()) // Compress responses (gzip)
         // Note: Request decompression handled manually in extract_file() to support multipart
         .layer(TimeoutLayer::new(Duration::from_secs(
             config.request_timeout_secs,
         )))
+        // One error body for every route (#5750): wraps the responses no
+        // handler writes (extractor rejections, unknown route, wrong method,
+        // the timeout above) in the `{"error", "code"}` envelope `ApiError`
+        // renders. Outside the timeout so its empty `408` is covered, and
+        // INSIDE compression so it only ever reads an uncompressed body.
+        .layer(axum::middleware::map_response(
+            middleware::error_envelope::envelope_errors,
+        ))
+        .layer(CompressionLayer::new()) // Compress responses (gzip)
         .layer(TraceLayer::new_for_http())
         .layer(build_cors_layer(&config))
         // Outermost: turn any panic that unwinds out of a request handler into a
@@ -239,7 +247,11 @@ fn build_router(state: AppState) -> Router {
         // (`panic = "unwind"`), this contains a malformed-IFC panic to the single
         // offending request rather than crashing the whole server. Requires the
         // `tower-http` `catch-panic` feature and a build profile that unwinds.
-        .layer(CatchPanicLayer::new())
+        // Its `500` is rendered as the shared error envelope directly, since it
+        // sits outside the envelope layer; the panic payload stays in the log.
+        .layer(CatchPanicLayer::custom(
+            middleware::error_envelope::panic_response,
+        ))
         .with_state(state)
 }
 
@@ -371,29 +383,4 @@ async fn main() -> anyhow::Result<()> {
 mod auth_and_cache_tests;
 
 #[cfg(test)]
-mod memory_admission_log_level_tests {
-    use super::{memory_admission_log_level, LogDecision};
-
-    /// #1547: unset/unparseable `IFC_MEM_BUDGET_MB` (auto-detection found no
-    /// readable memory ceiling) must warn, not silently stay quiet.
-    #[test]
-    fn unset_warns() {
-        assert_eq!(memory_admission_log_level(None), LogDecision::Warn);
-    }
-
-    /// `IFC_MEM_BUDGET_MB=0` is a deliberate opt-out, not a degradation.
-    #[test]
-    fn explicit_zero_is_opt_out_info() {
-        assert_eq!(memory_admission_log_level(Some(0)), LogDecision::Info);
-    }
-
-    /// A positive explicit budget is neither the info nor the warn "gate
-    /// off" case (main's `config.mem_budget_mb == 0` guard means this
-    /// variant is never actually reached at the call site, but the pure
-    /// function itself must be total and correct over its whole domain).
-    #[test]
-    fn positive_budget_is_active() {
-        assert_eq!(memory_admission_log_level(Some(1)), LogDecision::Active);
-        assert_eq!(memory_admission_log_level(Some(4096)), LogDecision::Active);
-    }
-}
+mod memory_admission_log_level_tests;

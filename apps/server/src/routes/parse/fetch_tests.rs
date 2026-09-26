@@ -71,13 +71,19 @@ async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
 // check_cache
 // ---------------------------------------------------------------------------
 
-/// MISS: no parquet entry under the hash's cache key -> 404, empty body.
+/// MISS: no parquet entry under the hash's cache key -> 404, in the shared
+/// `{"error", "code"}` envelope (#5750; the body was empty before).
 #[tokio::test]
 async fn check_cache_returns_404_when_uncached() {
     let state = test_state("check-cache-miss").await;
     let response = get(&state, "/api/v1/cache/check/nosuchhash").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_bytes(response).await.is_empty());
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
 }
 
 /// HIT: a parquet entry exists under the exact key the writer would have used
@@ -268,6 +274,21 @@ async fn get_cached_geometry_returns_full_payload_when_both_present() {
     assert_eq!(metadata_header, r#"{"cache_key":"fullhash1-default"}"#);
     let body = body_bytes(response).await;
     assert_eq!(body, b"the-parquet-bytes");
+}
+
+/// MISS: the 404 body does not reflect the caller-supplied hash (#5750
+/// review, the sibling of `check_cache_returns_404_when_uncached`).
+#[tokio::test]
+async fn get_cached_geometry_404_does_not_echo_the_hash() {
+    let state = test_state("geometry-miss-no-echo").await;
+    let response = get(&state, "/api/v1/cache/geometry/nosuchgeometryhash").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchgeometryhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
 }
 
 /// Partial state: parquet present, metadata absent -> 404 (not a 200 with a

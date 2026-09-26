@@ -22,12 +22,12 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
       <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-1.5 sticky top-0 bg-background">
         <PencilLine className="h-3.5 w-3.5 text-primary shrink-0" />
         <span className="text-xs font-semibold truncate">{row.name || row.ifcType}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{row.ifcType.replace(/^Ifc/, '')}</span>
+        <span className="ml-auto text-2xs text-muted-foreground shrink-0">{row.ifcType.replace(/^Ifc/, '')}</span>
       </div>
       <div className="px-3 pb-3 space-y-2.5 text-xs">
         {detail.geometry && (
           <div className="space-y-1">
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('comparePanel.changeDetail.geometryLabel')}
             </div>
             <GeometryDetail summary={detail.geometry} />
@@ -35,7 +35,7 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
         )}
         {detail.data.length > 0 ? (
           <div className="space-y-1">
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wide">
               {t('comparePanel.changeDetail.dataLabel')} <span className="text-muted-foreground">({detail.data.length})</span>
             </div>
             <div className="space-y-1">
@@ -43,11 +43,11 @@ export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: Cha
             </div>
           </div>
         ) : detail.dataOnlyGeometric ? (
-          <div className="text-[11px] text-muted-foreground italic">
+          <div className="text-2xs text-muted-foreground italic">
             {t('comparePanel.changeDetail.dataFingerprintOnly')}
           </div>
         ) : !detail.geometry ? (
-          <div className="text-[11px] text-muted-foreground italic">{t('comparePanel.changeDetail.noFieldDetail')}</div>
+          <div className="text-2xs text-muted-foreground italic">{t('comparePanel.changeDetail.noFieldDetail')}</div>
         ) : null}
       </div>
     </div>
@@ -89,7 +89,7 @@ function GeometryDetail({ summary }: { summary: GeometrySummary }) {
         </div>
       )}
       {!moved && !summary.reshaped && (
-        <div className="text-muted-foreground text-[11px]">
+        <div className="text-muted-foreground text-2xs">
           {t('comparePanel.changeDetail.unchangedShapeHash')}
         </div>
       )}
@@ -106,11 +106,11 @@ function FieldDeltaRow({ delta }: { delta: FieldDelta }) {
   return (
     <div className="rounded border border-border/40 px-2 py-1">
       <div className="flex items-baseline gap-1.5 min-w-0">
-        {delta.group && <span className="text-[10px] text-muted-foreground shrink-0 truncate max-w-[40%]">{delta.group}</span>}
-        <span className="text-[11px] font-medium truncate">{delta.name}</span>
-        <span className={cn('ml-auto text-[10px] shrink-0', kindColor[delta.kind])}>{delta.kind}</span>
+        {delta.group && <span className="text-2xs text-muted-foreground shrink-0 truncate max-w-[40%]">{delta.group}</span>}
+        <span className="text-2xs font-medium truncate">{delta.name}</span>
+        <span className={cn('ml-auto text-2xs shrink-0', kindColor[delta.kind])}>{delta.kind}</span>
       </div>
-      <div className="flex items-center gap-1.5 text-[11px] tabular-nums mt-0.5 min-w-0">
+      <div className="flex items-center gap-1.5 text-2xs tabular-nums mt-0.5 min-w-0">
         <span className="text-muted-foreground line-through truncate max-w-[45%]">{delta.before ?? '—'}</span>
         <span className="text-muted-foreground shrink-0">→</span>
         <span className="truncate max-w-[45%]">{delta.after ?? '—'}</span>

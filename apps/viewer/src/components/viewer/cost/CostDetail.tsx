@@ -40,7 +40,7 @@ function DiagnosticList({ diagnostics }: { diagnostics: CostGraphData['Diagnosti
       {diagnostics.map((d, i) => (
         // Diagnostics have no stable id of their own; index is fine — this
         // list is re-derived fresh from the evaluation on every render, never reordered in place.
-        <li key={i} className="flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-400">
+        <li key={i} className="flex items-start gap-1 text-2xs text-amber-700 dark:text-amber-400">
           <AlertTriangle className="mt-0.5 h-2.5 w-2.5 shrink-0" />
           <span>{d.Message}</span>
         </li>
@@ -76,7 +76,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
       <div className="mb-2">
         <div className="text-sm font-semibold">{item.Name || t('costPanel.itemFallbackName', { id: item.ref.expressId })}</div>
         {item.Description && <div className="text-muted-foreground">{item.Description}</div>}
-        <div className="mt-0.5 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap gap-2 text-2xs text-muted-foreground">
           {item.Identification && <span>{t('costPanel.identification', { value: item.Identification })}</span>}
           {item.PredefinedType && <span>{item.PredefinedType}</span>}
           {item.GlobalId && <span className="truncate">{item.GlobalId}</span>}
@@ -84,7 +84,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
       </div>
 
       <div className="mb-3 rounded border p-2">
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.resolvedValue')}</div>
+        <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.resolvedValue')}</div>
         {unresolved ? (
           <div className="mt-1 flex items-center gap-1 text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -101,7 +101,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
 
       {owningSchedules.length > 0 && (
         <div className="mb-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.schedule')}</div>
+          <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.schedule')}</div>
           {owningSchedules.map((s) => (
             <div key={s.ref.expressId} className="mt-0.5">{s.Name || t('costPanel.scheduleFallbackName', { id: s.ref.expressId })}</div>
           ))}
@@ -110,7 +110,7 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
 
       {quantities.length > 0 && (
         <div className="mb-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.quantities')}</div>
+          <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{t('costPanel.quantities')}</div>
           {quantities.map((q) => {
             const value = q.LengthValue ?? q.AreaValue ?? q.VolumeValue ?? q.WeightValue ?? q.CountValue ?? q.TimeValue ?? q.NumberValue;
             return (
@@ -125,11 +125,11 @@ export function CostDetail({ graph, itemRef, backend, onSelectTargets }: CostDet
 
       <div className="mb-3">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('costPanel.assignedTargets')}
           </span>
           {targets.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-[10px]" onClick={() => onSelectTargets(targets)}>
+            <Button variant="ghost" size="sm" className="h-5 gap-1 px-1.5 text-2xs" onClick={() => onSelectTargets(targets)}>
               <Crosshair className="h-2.5 w-2.5" /> {t('costPanel.selectInViewport')}
             </Button>
           )}

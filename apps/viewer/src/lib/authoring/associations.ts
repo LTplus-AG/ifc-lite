@@ -117,14 +117,25 @@ function effectiveMaterialIds(target: Target, entityIds: readonly number[]): Set
 }
 
 /** Reuse one existing relationship for this material instead of duplicating it. */
-function materialRelationship(target: Target, materialId: number): { id: number; related: IfcAttributeValue[] } | null {
+function materialRelationship(target: Target, materialId: number): { id: number; related: string[] } | 'invalid' | null {
   const overlay = target.view.getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL');
   const source = target.store.relationships.forward.getEdges(materialId, RelationshipType.AssociatesMaterial)
     .map((edge) => edge.relationshipId);
   for (const id of [...Array.from(overlay, (entity) => entity.expressId), ...source]) {
     const attrs = effectiveAttributes(target, id);
     const related = relatedObjects(attrs);
-    if (referenceId(attrs?.[5]) === materialId && related) return { id, related };
+    if (referenceId(attrs?.[5]) !== materialId || !related) continue;
+    // EntityNode decodes source #references as numbers, but the STEP writer
+    // serializes numeric array members as numeric literals. Normalize every
+    // preexisting RelatedObjects member before overriding the whole list;
+    // otherwise extending a real source rel drops its original recipients.
+    const refs: number[] = [];
+    for (const value of related) {
+      const ref = referenceId(value);
+      if (ref === null) return 'invalid';
+      refs.push(ref);
+    }
+    return { id, related: refs.map((ref) => `#${ref}`) };
   }
   return null;
 }
@@ -188,6 +199,7 @@ export function addMaterialAssociation(modelId: string, entityId: number, input:
   }
   if (material !== null && current.has(material)) return { ok: true };
   const existingRel = material === null ? null : materialRelationship(target, material);
+  if (existingRel === 'invalid') return { ok: false, reasonKey: 'propertyEditor.association.invalidRelatedObjects' };
   if (existingRel) {
     return editAsOneStep(target, (draft) => {
       draft.setPositionalAttribute(existingRel.id, 4, [...existingRel.related, `#${entityId}`]);

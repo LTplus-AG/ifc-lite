@@ -16,6 +16,7 @@
 import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { IfcParser, extractAllMaterialsOnDemand, extractClassificationsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
@@ -91,6 +92,36 @@ async function exportAndReparse(store: IfcDataStore, schema: 'IFC4' | 'IFC2X3'):
 
 describe('Add Classification / Add Material create real IFC entities (#5876)', () => {
   let store: IfcDataStore;
+
+  it('reuses source definitions and reparses new associations in an authored SketchUp IFC4 model', async () => {
+    // A tracked IFC-manager for SketchUp 2024 export. Its #34 classification,
+    // #62 material and #61 material relationship are independent source data,
+    // not the synthetic STEP rows used by the focused schema tests below.
+    const authored = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url), 'utf8');
+    store = await seed(authored);
+    assert.equal(extractAllMaterialsOnDemand(store, 30).length, 0, 'the building has no source material');
+    assert.deepEqual(extractAllMaterialsOnDemand(store, 52).map((value) => value.name),
+      ['concrete_reinforced_in-situ'], 'the source slab is associated with the material before editing');
+    assert.deepEqual(api().addClassificationAssociation('m', 262, {
+      system: 'CCI Construction', identification: 'E-AAA-WALL', name: 'Outer wall',
+    }), { ok: true });
+    assert.deepEqual(api().addMaterialAssociation('m', 30, { name: 'concrete_reinforced_in-situ' }), { ok: true });
+    assert.equal([...view().getNewEntitiesOfType('IFCCLASSIFICATION')].length, 0, 'source classification reused');
+    assert.equal([...view().getNewEntitiesOfType('IFCMATERIAL')].length, 0, 'source material reused');
+    assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 0, 'source relationship extended');
+    assert.deepEqual(view().getPositionalMutationsForEntity(61)?.get(4), ['#52', '#30']);
+
+    const { text, reparsed } = await exportAndReparse(store, 'IFC4');
+    assert.match(text, /#61=IFCRELASSOCIATESMATERIAL\([^;]*\(#52,#30\),#62\);/,
+      'the exported source relationship still names its original slab');
+    assert.deepEqual(extractClassificationsOnDemand(reparsed, 262)
+      .map((value) => [value.system, value.identification, value.name]),
+    [['CCI Construction', 'E-AAA-WALL', 'Outer wall']]);
+    assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 30).map((value) => value.name),
+      ['concrete_reinforced_in-situ']);
+    assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 52).map((value) => value.name),
+      ['concrete_reinforced_in-situ'], 'the original slab keeps the shared material');
+  });
 
   it('the Add Material dialog writes IfcMaterial + IfcRelAssociatesMaterial, not a property set', async () => {
     store = await seed(IFC4);
@@ -169,7 +200,7 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
     it('extends a source material association and one undo restores its original RelatedObjects', async () => {
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
       assert.equal(view().getNewEntities().length, 0, 'source material and relationship are reused');
-      assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), [11, '#10']);
+      assert.deepEqual(view().getPositionalMutationsForEntity(21)?.get(4), ['#11', '#10']);
       assert.deepEqual(api().overlayMaterials(view(), [10], 'IFC4', store).map((m) => m.name), ['Concrete']);
       const { reparsed } = await exportAndReparse(store, 'IFC4');
       assert.deepEqual(extractAllMaterialsOnDemand(reparsed, 10).map((m) => m.name), ['Concrete']);

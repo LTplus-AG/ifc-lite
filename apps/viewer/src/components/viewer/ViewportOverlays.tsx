@@ -228,10 +228,7 @@ export function ViewportOverlays({
           off-palette accent. The 3D overlays along the bottom edge are
           deliberately plain, and this sits in that row. */}
       {isMobile && (objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
-        <div
-          className="absolute right-4 bottom-4 flex flex-col items-end gap-1"
-          role="status"
-        >
+        <output className="absolute right-4 bottom-4 flex flex-col items-end gap-1">
           <span className="text-xs text-foreground/80 tabular-nums">
             {[
               objectCounts.hidden > 0 && t('shellChrome.statusBar.hiddenCount', { count: objectCounts.hidden }),
@@ -240,7 +237,7 @@ export function ViewportOverlays({
               .filter(Boolean)
               .join(' · ')}
           </span>
-        </div>
+        </output>
       )}
 
       {/* Context Info — Storey names. Desktop shows this in `StatusBar`

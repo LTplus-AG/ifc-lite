@@ -32,13 +32,15 @@ DATA;
 #81= IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI60'),$);
 #82= IFCPROPERTYSINGLEVALUE('AcousticRating',$,IFCLABEL('Rw50'),$);
 #87= IFCPROPERTYSINGLEVALUE('Thickness',$,IFCLENGTHMEASURE(1.),$);
-#80= IFCPROPERTYSET('${guid('PSTA')}',$,'Custom_A',$,(#81,#82,#87));
+#88= IFCPROPERTYSINGLEVALUE('RawLength',$,IFCLENGTHMEASURE(0.125),$);
+#80= IFCPROPERTYSET('${guid('PSTA')}',$,'Custom_A',$,(#81,#82,#87,#88));
 #83= IFCRELDEFINESBYPROPERTIES('${guid('RDA')}',$,$,$,(#72,#73),#80);
 #85= IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
 #84= IFCPROPERTYSET('${guid('PSTB')}',$,'Custom_B',$,(#85));
 #86= IFCRELDEFINESBYPROPERTIES('${guid('RDB')}',$,$,$,(#72,#73),#84);
 #181= IFCQUANTITYLENGTH('Width',$,$,200.);
-#180= IFCELEMENTQUANTITY('${guid('QTO')}',$,'Qto_WallBaseQuantities',$,$,(#181));
+#183= IFCQUANTITYLENGTH('Depth',$,$,0.375);
+#180= IFCELEMENTQUANTITY('${guid('QTO')}',$,'Qto_WallBaseQuantities',$,$,(#181,#183));
 #182= IFCRELDEFINESBYPROPERTIES('${guid('RDQ')}',$,$,$,(#72,#73),#180);
 #200= IFCMATERIAL('Concrete','Load-bearing concrete',$);
 #201= IFCPROPERTYSINGLEVALUE('ThermalConductivity',$,IFCREAL(1.4),$);
@@ -153,6 +155,15 @@ describe('Properties find and section disclosure (#5899)', () => {
     assert.equal(namedButton(panel, 'Qto_WallBaseQuantities').getAttribute('aria-expanded'), 'true');
     assert.equal(panel.querySelector('mark')?.textContent, '200,000 mm');
     assert.doesNotMatch(panel.textContent ?? '', /Thickness/);
+
+    type(find, '0.125');
+    assert.match(panel.querySelector('output')?.textContent ?? '', /No matching properties or attributes/, 'a pre-conversion property value is not a visible hit');
+    type(find, '125 mm');
+    assert.equal(panel.querySelector('mark')?.textContent, '125 mm');
+    type(find, '0.375');
+    assert.match(panel.querySelector('output')?.textContent ?? '', /No matching properties or attributes/, 'a pre-conversion quantity value is not a visible hit');
+    type(find, '375 mm');
+    assert.equal(panel.querySelector('mark')?.textContent, '375 mm');
   });
 
   it('remembers a material section across element selections', async () => {

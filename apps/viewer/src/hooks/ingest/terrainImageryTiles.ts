@@ -33,9 +33,45 @@ export function terrainPlanBounds(model: Pick<FederatedModel, 'landXmlDocument'>
   return Number.isFinite(minX) ? [minX, minY, maxX, maxY] : null;
 }
 
+/**
+ * The server answered, but not with an image. Distinct from a fetch that never
+ * got an answer (a cross-origin refusal or a network failure surfaces as a
+ * bare TypeError), so the two are reported apart (#5942 follow-up): a WMS
+ * reports a CRS it does not serve as an XML `ServiceException` with HTTP 200,
+ * which was being blamed on cross-origin rules.
+ */
+class TileServerAnswer extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+    this.name = 'TileServerAnswer';
+  }
+}
+
+const XML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+
+/** The first OGC exception in a WMS/OWS error document: WMS 1.1.1/1.3.0 `ServiceException`, OWS `ExceptionText`. */
+function ogcException(body: string): { code?: string; text: string } | null {
+  const service = /<ServiceException\b([^>]*)>([\s\S]*?)<\/ServiceException>/i.exec(body);
+  const ows = service ? null : /<(?:\w+:)?Exception\b([^>]*)>[\s\S]*?<(?:\w+:)?ExceptionText>([\s\S]*?)<\/(?:\w+:)?ExceptionText>/i.exec(body);
+  const match = service ?? ows;
+  if (!match) return null;
+  const code = /\b(?:code|exceptionCode)\s*=\s*["']([^"']+)["']/i.exec(match[1])?.[1];
+  const text = match[2].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&(amp|lt|gt|quot|apos);/g, (_, name: string) => XML_ENTITIES[name]).replace(/\s+/g, ' ').trim();
+  return { ...(code ? { code } : {}), text: text.slice(0, 300) };
+}
+
 async function fetchBitmap(url: string): Promise<ImageBitmap> {
   const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
-  if (!response.ok) throw new Error(`${new URL(url).host} answered HTTP ${response.status}`);
+  const host = new URL(url).host;
+  if (!response.ok) throw new TileServerAnswer(`${host} answered HTTP ${response.status}`);
+  const type = response.headers.get('content-type') ?? '';
+  if (!/^image\//i.test(type.trim())) {
+    const exception = ogcException(await response.text());
+    throw exception
+      ? new TileServerAnswer(`${host} answered with an OGC exception${exception.code ? ` (${exception.code})` : ''}: ${exception.text}`, exception.code)
+      : new TileServerAnswer(`${host} answered ${type || 'without a content type'}, not an image`);
+  }
   return createImageBitmap(await response.blob());
 }
 
@@ -91,7 +127,15 @@ export async function drapeTileSource(model: FederatedModel, spec: TileSourceSpe
         : request;
     }
   } catch (error) {
-    // A cross-origin refusal surfaces as a bare TypeError from fetch.
+    if (error instanceof TileServerAnswer) {
+      // A WMS drape is requested in the terrain's own CRS (§15.1): a server
+      // that does not offer it says so with InvalidSRS (1.1.1) / InvalidCRS (1.3.0).
+      const crsHint = spec.kind === 'wms' && /^Invalid(SRS|CRS)$/i.test(error.code ?? '')
+        ? ` This WMS does not serve ${crs.value}; a WMS drape is requested in the terrain's own CRS, so use a service that offers it.`
+        : '';
+      return { ok: false, reason: `The imagery server refused the request: ${error.message.replace(/\.$/, '')}.${crsHint}` };
+    }
+    // No answer at all: a cross-origin refusal surfaces as a bare TypeError from fetch.
     return {
       ok: false,
       reason: `The tiles could not be fetched (${error instanceof Error ? error.message : String(error)}). `

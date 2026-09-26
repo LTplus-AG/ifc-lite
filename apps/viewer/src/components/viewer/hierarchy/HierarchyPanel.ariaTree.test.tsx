@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { advance, cleanup, press, render, waitFor } from '@/test/render.js';
+import { advance, cleanup, press, render, type, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -146,6 +146,21 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
     }
   });
 
+  it('keeps focus on search when filtering removes the active row (#6139 review)', async () => {
+    const { container, tree } = mountHierarchy();
+    press(tree, 'ArrowDown'); // Site
+    press(tree, 'ArrowDown'); // Building
+    press(tree, 'ArrowDown'); // Storey
+    const input = container.querySelector('input');
+    assert.ok(input, 'the hierarchy search input renders');
+    act(() => input.focus());
+
+    type(input, 'nothing matches this');
+    await advance(0);
+
+    assert.equal(document.activeElement, input, 'filtering must not pull focus back into the tree');
+  });
+
   it('exposes role="tree" with an accessible label, and treeitems with correct aria-level', () => {
     const { tree } = mountHierarchy();
     assert.equal(tree.getAttribute('role'), 'tree');
@@ -252,25 +267,19 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
       'a nested button key press must not activate the tree row');
   });
 
-  it('keeps every button inside a treeitem out of the tab order (#6139 review)', () => {
+  it('keeps row actions tabbable while the chevron uses tree arrow keys (#6139 review)', () => {
     const { tree } = mountHierarchy();
     press(tree, 'ArrowDown'); // Site
     press(tree, 'ArrowDown'); // Building
     press(tree, 'ArrowDown'); // Storey
     press(tree, 'ArrowRight'); // expand — mounts the wall row's chevron/eye buttons too
 
-    const rows = treeitems(tree);
-    assert.ok(rows.length > 1);
-    for (const row of rows) {
-      for (const button of [...row.querySelectorAll('button')]) {
-        assert.equal(
-          button.getAttribute('tabindex'), '-1',
-          `a button inside the "${row.textContent}" treeitem must not be in the tab order — Tab from a treeitem must reach the next treeitem`,
-        );
-      }
-    }
-    // The roving tab stop is still exactly one treeitem, not any of the buttons.
-    assert.equal(rows.filter((r) => r.getAttribute('tabindex') === '0').length, 1);
+    const chevron = byName(tree, 'Storey 1').querySelector('button[aria-expanded]');
+    assert.equal(chevron?.getAttribute('tabindex'), '-1', 'ArrowRight exposes the same expand action');
+    const wallAction = byName(tree, 'Target Wall').querySelector('button[aria-label]');
+    assert.ok(wallAction, 'the wall has a visibility action');
+    assert.notEqual(wallAction.getAttribute('tabindex'), '-1', 'visibility cannot be reached through tree shortcuts');
+    assert.equal(treeitems(tree).filter((r) => r.getAttribute('tabindex') === '0').length, 1);
   });
 
   it('Shift+Down twice from a selected wall extends the selection to three rows (#6139 review)', () => {
@@ -298,6 +307,8 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
   it('keeps a tab stop in the tree when the active row is not mounted, and focuses it once it is (virtualization, #6139 review)', async () => {
     const { tree } = mountWallsHierarchy(300);
     focusFirstWall(tree);
+    act(() => byName(tree, 'Wall 0').focus());
+    assert.ok(tree.contains(document.activeElement), 'keyboard navigation begins with focus in the tree');
 
     press(tree, 'End');
 

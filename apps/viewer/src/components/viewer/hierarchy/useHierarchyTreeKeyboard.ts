@@ -9,7 +9,7 @@
  * three times (keeps the panel under its module-size allowlist row).
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type RefObject } from 'react';
 import { useTranslation } from '@/i18n';
 import type { TreeNode } from './types';
 import { computeAriaTreeAttrs, type AriaTreeAttrs } from './ariaTreeAttrs';
@@ -21,6 +21,9 @@ interface ScrollableVirtualizer {
 }
 
 interface UseHierarchyTreeKeyboardParams {
+  storeysRef: RefObject<HTMLDivElement | null>;
+  modelsRef: RefObject<HTMLDivElement | null>;
+  parentRef: RefObject<HTMLDivElement | null>;
   storeysNodes: TreeNode[];
   modelsNodes: TreeNode[];
   filteredNodes: TreeNode[];
@@ -52,6 +55,7 @@ export interface UseHierarchyTreeKeyboardResult {
 }
 
 export function useHierarchyTreeKeyboard({
+  storeysRef, modelsRef, parentRef,
   storeysNodes, modelsNodes, filteredNodes,
   storeysVirtualizer, modelsVirtualizer, virtualizer,
   toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
@@ -71,13 +75,13 @@ export function useHierarchyTreeKeyboard({
   const filteredAriaAttrs = useMemo(() => computeAriaTreeAttrs(filteredNodes), [filteredNodes]);
 
   const storeysTreeKeyboard = useTreeKeyboard({
-    nodes: storeysNodes, virtualizer: storeysVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: storeysNodes, containerRef: storeysRef, virtualizer: storeysVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
   });
   const modelsTreeKeyboard = useTreeKeyboard({
-    nodes: modelsNodes, virtualizer: modelsVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: modelsNodes, containerRef: modelsRef, virtualizer: modelsVirtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
   });
   const legacyTreeKeyboard = useTreeKeyboard({
-    nodes: filteredNodes, virtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
+    nodes: filteredNodes, containerRef: parentRef, virtualizer, onToggleExpand: toggleExpand, onActivate: handleNodeActivate,
   });
 
   const singleTreeSectionTitle = groupingMode === 'spatial' ? t('hierarchy.panel.sectionTitle.spatial')

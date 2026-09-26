@@ -287,7 +287,6 @@ export function HierarchyNode({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
                     onVisibilityToggle(node);

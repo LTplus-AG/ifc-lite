@@ -28,7 +28,7 @@
  * "local to the focused tree" requirement.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { TreeNode } from './types';
 
 /** The subset of a `useVirtualizer` instance this hook needs. Kept narrow
@@ -55,6 +55,7 @@ interface UseTreeKeyboardParams {
   /** The flat, depth-first node list THIS tree instance renders (one of
    *  `storeysNodes` / `modelsNodes` / `filteredNodes` — never mixed). */
   nodes: TreeNode[];
+  containerRef: RefObject<HTMLElement | null>;
   virtualizer: ScrollableVirtualizer;
   /** Expand/collapse one node by id (no-ops during search, same as the
    *  chevron button — the hook doesn't special-case that, it just calls
@@ -126,6 +127,7 @@ function renderedRangeKey(virtualItems: ReadonlyArray<{ index: number }>): strin
 
 export function useTreeKeyboard({
   nodes,
+  containerRef,
   virtualizer,
   onToggleExpand,
   onActivate,
@@ -133,6 +135,7 @@ export function useTreeKeyboard({
 }: UseTreeKeyboardParams): UseTreeKeyboardResult {
   const [requestedActiveId, setRequestedActiveId] = useState<string | null>(null);
   const rowsRef = useRef(new Map<string, HTMLElement>());
+  const pendingFocusRef = useRef(false);
   const typeaheadRef = useRef<{ buffer: string; timeout: ReturnType<typeof setTimeout> | null }>({
     buffer: '',
     timeout: null,
@@ -182,6 +185,16 @@ export function useTreeKeyboard({
     // left it until they actually navigate or focus a tree row — mounting
     // (or re-rendering) the tree must never steal focus from another control.
     if (activeNodeId == null || requestedActiveId == null) return;
+    const container = containerRef.current;
+    const treeOwnsFocus = container != null && container.contains(document.activeElement);
+    // A virtualized row can unmount before its replacement mounts, leaving
+    // focus on body. Keep following that keyboard move, but stop if the user
+    // has focused another control in the meantime.
+    const shouldFollow = treeOwnsFocus ||
+      (pendingFocusRef.current && (
+        document.activeElement === document.body || !document.activeElement?.isConnected
+      ));
+    if (!shouldFollow) pendingFocusRef.current = false;
     // Filtering or collapsing can remove the requested row; the fallback is
     // the first visible node, which may itself be outside the virtualizer's
     // mounted window — ask it to bring index 0 into range. Either way, the
@@ -189,11 +202,20 @@ export function useTreeKeyboard({
     // (the fallback or the originally requested row) actually mounts, so
     // there is no rAF polling: `moveTo` already asked the virtualizer to
     // scroll, and this effect just waits for that to show up in the DOM.
-    if (requestedActiveId !== activeNodeId) virtualizer.scrollToIndex(0, { align: 'auto' });
+    if (requestedActiveId !== activeNodeId) {
+      // Consume the stale request even if search or another control now owns
+      // focus. Only bring the fallback into view when focus is still here.
+      setRequestedActiveId(shouldFollow ? activeNodeId : null);
+      if (shouldFollow) virtualizer.scrollToIndex(0, { align: 'auto' });
+    }
+    if (!shouldFollow) return;
     const el = rowsRef.current.get(activeNodeId);
-    if (el && document.activeElement !== el) el.focus();
+    if (el) {
+      if (document.activeElement !== el) el.focus();
+      pendingFocusRef.current = false;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- renderedKey IS the "rows changed" signal; recomputing it isn't a real new dep
-  }, [activeNodeId, requestedActiveId, renderedKey, virtualizer]);
+  }, [activeNodeId, requestedActiveId, renderedKey, virtualizer, containerRef]);
 
   // Type-ahead buffer's timer must not fire (or leak) after the tree unmounts.
   useEffect(() => {
@@ -206,6 +228,7 @@ export function useTreeKeyboard({
     (index: number, activateWith?: NodeActivationModifiers) => {
       if (index < 0 || index >= nodes.length) return;
       const node = nodes[index];
+      if (containerRef.current?.contains(document.activeElement)) pendingFocusRef.current = true;
       virtualizer.scrollToIndex(index, { align: 'auto' });
       setRequestedActiveId(node.id);
       // Shift+Up/Down extends selection to the newly focused row, exactly
@@ -214,7 +237,7 @@ export function useTreeKeyboard({
       // in this multi-select tree).
       if (activateWith) onActivate(node, activateWith);
     },
-    [nodes, virtualizer, onActivate],
+    [nodes, virtualizer, onActivate, containerRef],
   );
 
   const onKeyDown = useCallback(

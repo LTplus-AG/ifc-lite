@@ -689,6 +689,7 @@ export function HierarchyPanel() {
     storeysAriaAttrs, modelsAriaAttrs, filteredAriaAttrs,
     storeysTreeKeyboard, modelsTreeKeyboard, legacyTreeKeyboard, singleTreeSectionTitle,
   } = useHierarchyTreeKeyboard({
+    storeysRef, modelsRef, parentRef,
     storeysNodes, modelsNodes, filteredNodes, storeysVirtualizer, modelsVirtualizer, virtualizer,
     toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
   });

@@ -85,7 +85,6 @@ export function ModelTagGroupRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                tabIndex={-1}
                 onClick={(e) => { e.stopPropagation(); setModelsVisibility(members, !allVisible); }}
                 aria-label={
                   allVisible

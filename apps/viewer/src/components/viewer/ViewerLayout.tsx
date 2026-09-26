@@ -419,7 +419,7 @@ export function ViewerLayout() {
                 floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('shellChrome.layout.informationFallback')}
+                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('properties.panel.title')}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -467,7 +467,7 @@ export function ViewerLayout() {
                   <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                   </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('shellChrome.layout.propertiesLabel')}</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('properties.panel.title')}</span>
                 </button>
               </div>
             )}

@@ -89,7 +89,6 @@ export const commandPaletteEn = {
   'commandPalette.panel.flow.label': 'Flow',
   'commandPalette.panel.drawing.label': 'Drawing (2D)',
   'commandPalette.panel.document.label': 'Document',
-  'commandPalette.panel.properties.label': 'Information',
   'commandPalette.panel.tree.label': 'Hierarchy',
   'commandPalette.panel.bcf.label': 'BCF Topics',
   'commandPalette.panel.ids.label': 'IDS Validation',

@@ -8,14 +8,16 @@
  * constituent sets, and material lists.
  */
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Layers } from 'lucide-react';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, Layers } from 'lucide-react';
 import type { MaterialInfo } from '@ifc-lite/parser';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { PersistentCollapsible } from './PersistentCollapsible';
+import { associationDisclosureId } from './associationDisclosureId';
 
-const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
+export const TYPE_LABEL_KEYS: Record<MaterialInfo['type'], TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
   MaterialLayerSet: 'properties.material.typeLabel.layerSet',
   MaterialProfileSet: 'properties.material.typeLabel.profileSet',
@@ -23,15 +25,15 @@ const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
   MaterialList: 'properties.material.typeLabel.materialList',
 };
 
-export function MaterialCard({ material }: { material: MaterialInfo }) {
+export function MaterialCard({ material, sectionId }: { material: MaterialInfo; sectionId?: string }) {
   const { t, locale } = useTranslation();
   const typeLabelKey = TYPE_LABEL_KEYS[material.type];
   const typeLabel = typeLabelKey ? t(typeLabelKey) : material.type;
   const displayName = material.name || typeLabel;
 
   return (
-    <Collapsible defaultOpen className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id={sectionId ?? associationDisclosureId('material', material, [material], 0)} className="border-2 border-amber-200 dark:border-amber-800 bg-amber-50/20 dark:bg-amber-950/20 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-left transition-colors overflow-hidden">
         <Layers className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
         <span className="font-bold text-xs text-amber-700 dark:text-amber-400 truncate flex-1 min-w-0">
           {displayName}
@@ -39,6 +41,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
         <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 shrink-0">
           {typeLabel}
         </span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-amber-200 dark:border-amber-800 divide-y divide-amber-100 dark:divide-amber-900/30">
@@ -182,7 +185,7 @@ export function MaterialCard({ material }: { material: MaterialInfo }) {
           )}
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 }
 
@@ -195,7 +198,7 @@ function MaterialRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatThickness(thickness: number, locale: string): string {
+export function formatThickness(thickness: number, locale: string): string {
   if (thickness <= 0) return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   if (thickness >= 1) {
     return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;

@@ -239,6 +239,11 @@ In the IFClite viewer:
 
 ### Properties panel tabs
 
+Use **Find properties** to narrow attributes, property sets, and quantities by
+name or value. Matching rows are highlighted, and matching sections open while
+the search is active. Section chevrons keep your collapsed or expanded choice
+when you select another element or reopen the viewer.
+
 | Tab | Edits | Backed by |
 |---|---|---|
 | **Properties** | IfcRoot named attributes (Name, Description, …), property sets, classifications, materials, documents | `setProperty` / `setAttribute` |

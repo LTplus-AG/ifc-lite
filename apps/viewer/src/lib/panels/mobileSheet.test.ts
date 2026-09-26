@@ -18,7 +18,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveMobileSheet, type MobileSheetInput } from './mobileSheet.js';
 
-/** Nothing open: no extension, plain select tool, Information in the dock. */
+/** Nothing open: no extension, plain select tool, Properties in the dock. */
 const IDLE: MobileSheetInput = {
   hasAnalysisExtension: false,
   activeTool: 'select',

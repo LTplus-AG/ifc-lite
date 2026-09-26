@@ -21,6 +21,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { BCFViewpoint } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
+import { activeSectionPlane } from '@/store/section-active.js';
 import type { FederatedModel } from '@/store/types';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useBCF } from './useBCF.js';
@@ -138,6 +139,33 @@ describe('BCF panel close restores the section cut viewpoints replaced (#5829)',
     await unmount();
     assert.equal(s().sectionPlane.axis, 'side');
     assert.equal(s().sectionPlane.position, 55);
+  });
+
+  it('parks the restored cut if the user left the Section tool after the viewpoint (#5829)', async () => {
+    await mount(true);
+    const vp = await sideViewpoint();
+    await act(async () => {
+      s().setSectionPlaneAxis('front');
+      s().setSectionPlanePosition(30);
+    });
+    assert.equal(s().activeTool, 'section');
+    assert.ok(activeSectionPlane(s()), 'the original cut is visible before the viewpoint');
+
+    await act(async () => api!.applyViewpoint(vp, false));
+    assert.equal(s().sectionPlane.axis, 'side');
+    await act(async () => s().setActiveTool('select'));
+    assert.equal(s().sectionPlane.parked, true, 'the viewpoint cut is parked on tool switch');
+
+    await unmount();
+    assert.equal(s().activeTool, 'select', 'closing BCF keeps the tool chosen by the user');
+    assert.equal(s().sectionPlane.axis, 'front');
+    assert.equal(s().sectionPlane.position, 30);
+    assert.equal(s().sectionPlane.enabled, false, 'the restored cut stays off screen outside Section');
+    assert.equal(s().sectionPlane.parked, true, 'the restored cut can resume later');
+    assert.equal(activeSectionPlane(s()), null);
+
+    await act(async () => s().setActiveTool('section'));
+    assert.equal(activeSectionPlane(s())?.position, 30, 'reopening Section resumes the original cut');
   });
 
   it('restores nothing for a useBCF caller without the option', async () => {

@@ -23,10 +23,11 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
-import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
+import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
 import type { ZoneSet } from '@/lib/zones';
+import { overlayClassifications, overlayMaterials } from '@/lib/authoring/association-overlay';
 import { withInheritedTypeQuantities } from '@/lib/zones/inherited-quantities';
 import { CoordVal, CoordRow } from './properties/CoordinateDisplay';
 import { renderToWorldViewer } from './tools/measure-modes/coordinates';
@@ -121,7 +122,7 @@ export function PropertiesPanel() {
   // the user has the merge-layers load setting active so they
   // understand the displayed solid is the aggregated representation.
   const mergeLayersActive = useViewerStore((s) => s.mergeLayers);
-  const { query, ifcDataStore, geometryResult, models, getQueryForModel } = useIfc();
+  const { query, ifcDataStore, geometryResult, models } = useIfc();
   const overlayAwareQuery = useMemo(() => createQueryAdapter(useViewerStore), []);
 
   // Get model-aware query based on selectedEntity
@@ -656,8 +657,10 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
+    return [...extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId),
+      ...overlayClassifications(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion, dataStore as IfcDataStore)]; // session-created (#5876)
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract materials for the selected entity from the IFC data store —
   // ALL associations, so an element carrying e.g. a layer set AND a fallback
@@ -666,8 +669,10 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
+    return [...extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId),
+      ...overlayMaterials(view, [selectedEntity.expressId, lookupExpressId], dataStore.schemaVersion, dataStore as IfcDataStore)]; // session-created (#5876)
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Property sets attached to the selected entity's material(s) via
   // IfcMaterialProperties (e.g. Pset_MaterialConcrete). These live on the
@@ -1115,37 +1120,6 @@ export function PropertiesPanel() {
     [occurrenceProperties, inheritedTypeProperties]
   );
 
-  // Build a set of existing property keys ("PsetName:PropName") for bSDD deduplication
-  const existingProps = useMemo(() => {
-    const keys = new Set<string>();
-    for (const pset of mergedProperties) {
-      for (const prop of pset.properties) {
-        keys.add(`${pset.name}:${prop.name}`);
-      }
-    }
-    return keys;
-  }, [mergedProperties]);
-
-  // Build a set of existing quantity keys ("QsetName:QuantName") for bSDD deduplication
-  const existingQuants = useMemo(() => {
-    const keys = new Set<string>();
-    for (const qset of quantities) {
-      for (const q of qset.quantities) {
-        keys.add(`${qset.name}:${q.name}`);
-      }
-    }
-    return keys;
-  }, [quantities]);
-
-  // Build a set of existing attribute names for bSDD deduplication
-  const existingAttributeNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const attr of attributes) {
-      if (attr.value) names.add(attr.name);
-    }
-    return names;
-  }, [attributes]);
-
   // Overlay (authored) entities — split halves, duplicates, scripted
   // adds — live only in the StoreEditor overlay, NOT the parsed store.
   // `modelQuery.entity()` always returns a node, and its getters fall
@@ -1156,8 +1130,6 @@ export function PropertiesPanel() {
   const renderedEntityType = overlayEntity?.type ?? entityNode?.type ?? 'Unknown';
   const renderedEntityName = overlayAttr(2) ?? entityNode?.name ?? undefined;
   const renderedEntityGlobalId = overlayAttr(0) ?? entityNode?.globalId;
-  const renderedEntityDescription = overlayAttr(3) ?? entityNode?.description ?? undefined;
-  const renderedEntityObjectType = overlayAttr(4) ?? entityNode?.objectType ?? undefined;
   const renderedSpatialInfo = spatialInfo;
   const renderedOccurrenceProperties = occurrenceProperties;
   const renderedInheritedTypeProperties = inheritedTypeProperties;
@@ -1283,8 +1255,6 @@ export function PropertiesPanel() {
   const entityType = renderedEntityType;
   const entityName = renderedEntityName;
   const entityGlobalId = renderedEntityGlobalId;
-  const entityDescription = renderedEntityDescription;
-  const entityObjectType = renderedEntityObjectType;
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
@@ -1955,7 +1925,7 @@ function MultiEntityPanel({
       {/* Scrollable content with each entity's data */}
       <ScrollArea className="flex-1">
         <div className="divide-y-2 divide-zinc-200 dark:divide-zinc-800">
-          {entities.map((entityRef, index) => (
+          {entities.map((entityRef) => (
             <EntityDataSection
               key={`${entityRef.modelId}-${entityRef.expressId}`}
               entityRef={entityRef}

@@ -162,20 +162,39 @@ function readableStrings(container: HTMLElement): Set<string> {
   return out;
 }
 
-/** `HelpHint`'s body (its `children`) only mounts once its own trigger is
- *  clicked open — a controlled popover, not a hover/focus tooltip. Every
- *  panel's help copy lives there, so the oracle must open each one before
- *  reading strings. The trigger's own aria-label is `Help: {label}`
- *  (`extensionsFlavors.helpHint.ariaLabel`, a different catalogue) — which
- *  is why `foundText` below matches by substring rather than exact value:
- *  a panel's own `helpLabel` catalogue value (e.g. `"Audit log"`) never
- *  appears bare, only wrapped inside that other catalogue's template. */
-function openAllHelpHints(container: HTMLElement): void {
+/**
+ * `HelpHint`'s body (its `children`) only mounts once its own trigger is
+ * clicked open — a controlled popover, not a hover/focus tooltip. Every
+ * panel's help copy lives there, so the oracle must open each one before
+ * reading strings. The trigger's own aria-label is `Help: {label}`
+ * (`extensionsFlavors.helpHint.ariaLabel`, a different catalogue) — which
+ * is why `foundText` below matches by substring rather than exact value:
+ * a panel's own `helpLabel` catalogue value (e.g. `"Audit log"`) never
+ * appears bare, only wrapped inside that other catalogue's template.
+ *
+ * #5817: `HelpHint`'s popover moved onto Radix (`ui/popover.tsx`), whose
+ * non-modal `DismissableLayer` closes a popover on ANY outside pointer
+ * interaction — including a click on a DIFFERENT `HelpHint`'s trigger, since
+ * that trigger sits outside the first one's `PopoverContent`. The old
+ * hand-rolled version had no such cross-instance effect (each one's
+ * outside-click listener only checked its own container), so multiple
+ * `HelpHint`s could stay open at once; under Radix, only the most recently
+ * opened one is. That's the correct, intended behavior for a click-toggled
+ * popover (matches "click elsewhere to dismiss" everywhere else in the
+ * app), not a regression to route around — so this reads each one's text
+ * the instant after IT opens, accumulating into one set the callers merge
+ * with a plain `readableStrings`, rather than assuming every trigger
+ * clicked stays open simultaneously in the live DOM.
+ */
+function openAllHelpHints(container: HTMLElement): Set<string> {
+  const out = new Set<string>();
   for (const button of container.querySelectorAll('button')) {
     if (button.getAttribute('aria-label')?.startsWith('Help: ')) {
       act(() => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+      addReadable(document.body, out);
     }
   }
+  return out;
 }
 
 /** Substring match against a captured string set — tolerates a target
@@ -301,8 +320,13 @@ const NOT_RENDERED_IN_THIS_STATE: ExtKey[] = [
 
 /** Mount all six covered panels in a state that surfaces as much of
  *  their own chrome as possible, open every HelpHint, and reveal
- *  RepairQueuePanel's populated state (it starts with no check run). */
-async function mountFixture(): Promise<{ host: StubExtensionHost; container: HTMLElement }> {
+ *  RepairQueuePanel's populated state (it starts with no check run).
+ *  `helpText` is the union collected while opening each `HelpHint` in turn
+ *  (#5817: only the most recently opened one is still in the live DOM by
+ *  the time this returns) — callers merge it into their own
+ *  `readableStrings(container)` read instead of assuming every panel's
+ *  help copy is simultaneously present. */
+async function mountFixture(): Promise<{ host: StubExtensionHost; container: HTMLElement; helpText: Set<string> }> {
   const host = new StubExtensionHost();
   host.audit.append({
     kind: 'install',
@@ -341,9 +365,9 @@ async function mountFixture(): Promise<{ host: StubExtensionHost; container: HTM
     runCheckButton.click();
     await Promise.resolve();
   });
-  openAllHelpHints(container);
+  const helpText = openAllHelpHints(container);
 
-  return { host, container };
+  return { host, container, helpText };
 }
 
 beforeEach(() => {
@@ -357,12 +381,16 @@ afterEach(() => {
 
 describe('Extensions dock panel chrome localization (#4918)', () => {
   it('translates every static key rendered across the covered panels', async () => {
-    const { container } = await mountFixture();
-    const english = readableStrings(container);
+    const { container, helpText: helpTextEnglish } = await mountFixture();
+    const english = new Set([...readableStrings(container), ...helpTextEnglish]);
 
     registerLocale('extensions-panels-chrome-pseudo', PSEUDO);
     act(() => setLocale('extensions-panels-chrome-pseudo'));
-    const after = readableStrings(container);
+    // Re-open every HelpHint under the switched locale too (#5817: only the
+    // last-opened one is still in the DOM from `mountFixture`'s own open
+    // pass, and that pass ran under English).
+    const helpTextAfter = openAllHelpHints(container);
+    const after = new Set([...readableStrings(container), ...helpTextAfter]);
 
     const covered = new Set<ExtKey>();
     for (const key of STATIC_KEYS) {
@@ -381,8 +409,8 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
   });
 
   it('accounts for every static key: rendered here, a toast/confirm, or a documented other-branch', async () => {
-    const { container } = await mountFixture();
-    const english = readableStrings(container);
+    const { container, helpText } = await mountFixture();
+    const english = new Set([...readableStrings(container), ...helpText]);
 
     const seen = STATIC_KEYS.filter((key) => foundText(english, String(extensionsPanelsEn[key])));
     const unaccounted = STATIC_KEYS.filter(
@@ -710,9 +738,23 @@ describe('Extensions dock panel chrome localization (#4918)', () => {
         </div>
       </ExtensionHostContext.Provider>,
     );
-    openAllHelpHints(container);
-
-    const text = document.body.textContent ?? '';
+    // Three separate `HelpHint`s here (#5817: Radix's non-modal dismissal
+    // closes each one as the next one's trigger is clicked, so no single
+    // live-DOM snapshot holds all three's text at once). Unlike
+    // `openAllHelpHints`'s per-element token Set (fine for the plain-string
+    // checks elsewhere in this file), an interpolated message like
+    // "SNAPSHOT VIA {export}" renders its substitution as a nested element,
+    // splitting the phrase across sibling text nodes — so this instead
+    // concatenates the WHOLE `document.body.textContent` after each open,
+    // exactly mirroring what a single popover's snapshot always did.
+    const snapshots: string[] = [];
+    for (const button of container.querySelectorAll('button')) {
+      if (button.getAttribute('aria-label')?.startsWith('Help: ')) {
+        act(() => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+        snapshots.push(document.body.textContent ?? '');
+      }
+    }
+    const text = snapshots.join('\n');
     assert.match(text, /SNAPSHOT VIA Export/);
     assert.match(text, /BUILT TODAY — CURATED/);
     assert.match(text, /AFTER REPEATED USE — RECURRING/);

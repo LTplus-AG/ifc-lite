@@ -12,23 +12,27 @@ import { cleanup, click, render } from '@/test/render.js';
 import { SpecificationCard } from './IDSSpecificationCard.js';
 
 const restoreLayout = installLayout();
-// The shared layout stub gives every element an 800px box. Entity rows are
-// roughly 60px tall; report that size for measured rows so scrolling through
-// 250 entries has the same range it does in the browser.
+// The shared layout stub gives every element an 800px box. Give collapsed
+// rows a realistic height and let expanded details increase their height.
+function syntheticRowHeight(element: Element): number {
+  return element.querySelector('[aria-label="Hide details"]') ? 84 : 60;
+}
+
 const getBoundingClientRect = Element.prototype.getBoundingClientRect;
 Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
   configurable: true,
   value(this: Element) {
     const rect = getBoundingClientRect.call(this);
     if (!this.hasAttribute('data-index')) return rect;
-    return { ...rect, height: 60, bottom: rect.top + 60 } as DOMRect;
+    const height = syntheticRowHeight(this);
+    return { ...rect, height, bottom: rect.top + height } as DOMRect;
   },
 });
 const offsetHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
   configurable: true,
   get(this: HTMLElement) {
-    if (this.hasAttribute('data-index')) return 60;
+    if (this.hasAttribute('data-index')) return syntheticRowHeight(this);
     return offsetHeightDescriptor?.get?.call(this) ?? 0;
   },
 });
@@ -36,8 +40,25 @@ Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
 // shared stub's immediate one. Measured virtual rows then collapse to 0px.
 // Keep this test's observer tied to the same synthetic rectangles throughout.
 class MeasuredResizeObserver implements ResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
+  private static readonly instances = new Set<MeasuredResizeObserver>();
+  private readonly targets = new Set<Element>();
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    MeasuredResizeObserver.instances.add(this);
+  }
+
   observe(target: Element): void {
+    this.targets.add(target);
+    this.measure(target);
+  }
+  unobserve(target: Element): void {
+    this.targets.delete(target);
+  }
+  disconnect(): void {
+    this.targets.clear();
+    MeasuredResizeObserver.instances.delete(this);
+  }
+  private measure(target: Element): void {
     const rect = target.getBoundingClientRect();
     const box = { inlineSize: rect.width, blockSize: rect.height };
     this.callback([{
@@ -48,8 +69,11 @@ class MeasuredResizeObserver implements ResizeObserver {
       devicePixelContentBoxSize: [box],
     }], this);
   }
-  unobserve(): void {}
-  disconnect(): void {}
+  static refreshAll(): void {
+    for (const observer of MeasuredResizeObserver.instances) {
+      for (const target of observer.targets) observer.measure(target);
+    }
+  }
 }
 Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: MeasuredResizeObserver });
 Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: MeasuredResizeObserver });
@@ -66,7 +90,12 @@ function result(modelCount: 1 | 2): SpecificationResult {
     entityType: 'IfcWall',
     entityName: `Wall ${index + 1}`,
     passed: false,
-    requirementResults: [],
+    requirementResults: index === 0 ? [{
+      requirement: { id: 'required-property', label: 'Required property', optionality: 'required' },
+      status: 'fail',
+      facetType: 'property',
+      checkedDescription: 'Required property',
+    }] : [],
   }));
   return {
     specification: { id: 'spec-1', name: 'Wall requirements' },
@@ -110,8 +139,13 @@ describe('IDS entity results beyond the old 100-row cap (#5830)', () => {
       click(first);
       const details = first.parentElement?.querySelector<HTMLButtonElement>('[aria-label="Show details"]');
       assert.ok(details);
+      const following = scroller.querySelector<HTMLElement>('[data-index="1"]');
+      assert.ok(following);
+      const followingPosition = following.style.transform;
       click(details);
+      act(() => MeasuredResizeObserver.refreshAll());
       assert.equal(details.getAttribute('aria-expanded'), 'true');
+      assert.notEqual(following.style.transform, followingPosition, 'measured detail height should move the next row');
 
       assert.equal(entityButton(ui, 'Wall 200'), null, 'distant rows should be virtualized');
       act(() => {

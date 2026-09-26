@@ -54,7 +54,7 @@ function defWith(conditions: PropertyCondition[], columns?: ListDefinition['colu
   return {
     id: 'adv', name: 'adv', createdAt: 0, updatedAt: 0,
     entityTypes: [IfcTypeEnum.IfcWall],
-    conditions,
+    groups: [], legacyConditions: conditions,
     columns: columns ?? [
       { id: 'name', source: 'attribute', propertyName: 'Name' },
       { id: 'container', source: 'spatial', propertyName: 'Container' },
@@ -184,7 +184,7 @@ describe('engine sortBy binding across an in-place column edit', () => {
     };
     const before: ListDefinition = {
       id: 's', name: 's', createdAt: 0, updatedAt: 0,
-      entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+      entityTypes: [IfcTypeEnum.IfcWall], groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'custom-quantity-Qto_WallBaseQuantities-Length', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },

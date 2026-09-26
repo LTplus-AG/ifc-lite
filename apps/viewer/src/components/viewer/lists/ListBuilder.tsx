@@ -30,7 +30,7 @@ import type {
   DiscoveredColumns,
   UnreadableListCondition,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds, migrateLegacyListConditions } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
 
 /** The `zone` column mode that carries mesh volume. */
 const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
@@ -42,7 +42,6 @@ import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { LegacyListFilters } from './ListBuilder.legacyFilters';
-import { isEditableCondition } from '@/lib/lists/compatibility-condition';
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {
@@ -144,16 +143,13 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     new Set(initial?.entityTypes ?? [])
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
-  const migrated = useMemo(() => initial?.groups === undefined
-    ? migrateLegacyListConditions(initial?.conditions ?? [])
-    : null, [initial]);
   const [filterState, setFilterState] = useState<FilterGroupEditorState>(() => ({
     groups: initial?.groups?.length ? initial.groups
-      : migrated?.groups.length ? migrated.groups : [{ rules: [], combinator: 'AND' }],
+      : [{ rules: [], combinator: 'AND' }],
     activeGroup: 0,
   }));
   const [unreadableConditions, setUnreadableConditions] = useState<UnreadableListCondition[]>(
-    initial?.unreadableConditions ?? migrated?.unreadableConditions ?? [],
+    initial?.unreadableConditions ?? [],
   );
   const promoteLegacy = useCallback((index: number, rule: FilterRule): boolean => {
     if (!filterState.groups.every((group) => group.combinator === 'AND')) return false;
@@ -306,7 +302,6 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
       modelTagScope,
-      conditions: unreadableConditions.flatMap((row) => isEditableCondition(row) ? [row.condition] : []),
       groups: filterState.groups,
       unreadableConditions,
       columns,

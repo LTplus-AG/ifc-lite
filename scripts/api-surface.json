@@ -6430,6 +6430,7 @@
     "isZoneVolumeMode: function",
     "listResultToCSV: function",
     "migrateLegacyListConditions: function",
+    "migrateLegacyListDefinition: function",
     "summariseListRows: function",
     "toScheduleRows: function"
   ],

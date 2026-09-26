@@ -5,12 +5,12 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ListDefinition } from '@ifc-lite/lists';
+import type { ListDefinition, PropertyCondition } from '@ifc-lite/lists';
 import { importListDefinition, loadListDefinitions, saveListDefinitions } from './persistence.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
 
-const legacy: ListDefinition = {
+const legacy: Omit<ListDefinition, 'groups'> & { conditions: PropertyCondition[] } = {
   id: 'v1', name: 'Saved walls', createdAt: 1, updatedAt: 2,
   entityTypes: [], columns: [],
   conditions: [
@@ -25,7 +25,9 @@ describe('list definitions persistence', () => {
   });
 
   it('round-trips a saved list back through load', () => {
-    const defs = [{ id: 'a', name: 'A' } as never];
+    const defs: ListDefinition[] = [{
+      id: 'a', name: 'A', createdAt: 1, updatedAt: 1, entityTypes: [], groups: [], columns: [],
+    }];
     saveListDefinitions(defs);
     assert.deepStrictEqual(loadListDefinitions(), defs);
   });
@@ -67,9 +69,10 @@ describe('list definitions persistence', () => {
     assert.deepEqual(migrated.unreadableConditions, [
       { condition: legacy.conditions[1], reason: 'unsupported-source' },
     ]);
-    assert.deepEqual(migrated.conditions, legacy.conditions, 'the old evaluator can still produce the same rows');
+    assert.equal('conditions' in migrated, false, 'the public definition no longer stores v1 conditions');
 
     saveListDefinitions([migrated]);
+    assert.equal(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]')[0].conditions, undefined);
     assert.deepEqual(loadListDefinitions(), [migrated], 'round-trip does not duplicate groups or unreadable rows');
   });
 
@@ -81,7 +84,7 @@ describe('list definitions persistence', () => {
     assert.equal(loaded.length, 2);
     assert.equal(loaded[0].groups?.[0].rules[0].kind, 'property');
     assert.deepEqual(loaded[0].unreadableConditions, [{ condition: null, reason: 'invalid-condition' }]);
-    assert.deepEqual(loaded[0].conditions, damaged.conditions, 'keep the original JSON recoverable');
+    assert.equal('conditions' in loaded[0], false, 'keep the malformed row visible without retaining v1 fields');
     assert.equal(loaded[1].groups?.[0].rules[0].kind, 'property');
 
     const imported = await importListDefinition(new File([JSON.stringify(damaged)], 'mixed.list.json', { type: 'application/json' }));
@@ -94,11 +97,12 @@ describe('list definitions persistence', () => {
     const imported = await importListDefinition(file);
     assert.equal(imported.groups?.[0].rules[0].kind, 'property');
     assert.equal(imported.unreadableConditions?.[0].reason, 'unsupported-source');
-    assert.deepEqual(imported.conditions, legacy.conditions);
-    const exportedJson = JSON.stringify(imported);
-    const roundTrip = await importListDefinition(new File([exportedJson], 'round-trip.list.json', { type: 'application/json' }));
+    assert.equal('conditions' in imported, false);
+    const roundTrip = await importListDefinition(new File(
+      [JSON.stringify(imported)], 'migrated.list.json', { type: 'application/json' },
+    ));
     assert.deepEqual(roundTrip.groups, imported.groups);
     assert.deepEqual(roundTrip.unreadableConditions, imported.unreadableConditions);
-    assert.deepEqual(roundTrip.conditions, imported.conditions);
+    assert.equal('conditions' in roundTrip, false);
   });
 });

@@ -40,7 +40,8 @@ export function listFingerprint(list: ListDefinition): string {
 
 /** `true` when a list reads world coordinates, whose values move with the geometry and render frame. */
 export function listReadsGeometry(list: ListDefinition): boolean {
-  return list.columns.some((c) => c.source === 'geometry') || list.conditions.some((c) => c.source === 'geometry');
+  return list.columns.some((c) => c.source === 'geometry')
+    || list.unreadableConditions?.some(({ condition }) => condition.source === 'geometry') === true;
 }
 
 /** Counts up each time `value` changes identity between renders. */

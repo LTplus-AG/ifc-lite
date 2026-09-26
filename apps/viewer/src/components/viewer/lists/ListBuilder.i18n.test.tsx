@@ -232,7 +232,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       createdAt: Date.now(),
       updatedAt: Date.now(),
       entityTypes: [],
-      conditions: [],
+      groups: [],
       columns: [],
       expressIdsByModel: { default: [42] },
     } as unknown as ListDefinition;
@@ -257,7 +257,10 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const initial: ListDefinition = {
       id: 'legacy-filter', name: 'Legacy filter', createdAt: 1, updatedAt: 1,
       entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-      conditions: [{ source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' }],
+      groups: [], unreadableConditions: [{
+        condition: { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' },
+        reason: 'unsupported-attribute',
+      }],
     };
     let saved: ListDefinition | undefined;
     const container = render(
@@ -280,7 +283,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.equal(container.querySelector('input[placeholder="value"]'), null);
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
     assert.deepEqual(saved?.unreadableConditions, []);
-    assert.deepEqual(saved?.conditions, []);
+    assert.deepEqual(saved?.unreadableConditions, []);
   });
 
   it('authors zone and exact spatial modes through the retained Lists evaluator (#5894)', () => {
@@ -426,7 +429,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     let saved: ListDefinition | undefined;
     const initial: ListDefinition = {
       id: 'group-edits', name: 'Group edits', createdAt: 1, updatedAt: 1,
-      entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      entityTypes: [], groups: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
     const container = render(
       <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
@@ -437,7 +440,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
     assert.equal(saved?.groups?.length, 2);
     assert.deepEqual(saved?.groups?.map(({ combinator }) => combinator), ['AND', 'AND']);
-    assert.deepEqual(saved?.conditions, []);
+    assert.deepEqual(saved?.unreadableConditions, []);
   });
 
   it('translates the custom-column editor: Property/Quantity chips, placeholders, pattern hint, and add/close actions', () => {

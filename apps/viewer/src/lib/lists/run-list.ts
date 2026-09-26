@@ -51,11 +51,8 @@ export async function runListFederated(
   // unresolved or empty scope throws its reason.
   const scoped = scopeModelPairs(definition, pairs, state);
   let parts: ListResult[];
-  let scanDuration: number | undefined;
-  if (definition.groups === undefined) {
-    // V1 definitions still used by package consumers take their existing path.
-    parts = scoped.map(({ modelId, provider }) => executeList(definition, provider, modelId));
-  } else {
+  let scanDuration: number;
+  {
     const start = performance.now();
     // `executeList` remains the source-set and column engine. Its first pass
     // has no columns or presentation work: it applies the list's type/snapshot
@@ -70,7 +67,7 @@ export async function runListFederated(
       unreadable.push(row.condition);
     }
     const candidates = new Map(scoped.map(({ modelId, provider }) => [modelId, executeList({
-      ...definition, conditions: unreadable, columns: [], grouping: undefined, sortBy: undefined,
+      ...definition, groups: [], legacyConditions: unreadable, columns: [], grouping: undefined, sortBy: undefined,
     }, provider, modelId).rows.map(({ entityId }) => entityId)] as const));
     const hasRules = definition.groups.some((group) => group.rules.length > 0);
     const matchedByModel = new Map<string, Set<number>>();
@@ -94,7 +91,7 @@ export async function runListFederated(
       }
     }
     parts = scoped.map(({ modelId, provider }) => executeList({
-      ...definition, conditions: [],
+      ...definition, groups: [], legacyConditions: [],
       expressIdsByModel: { [modelId]: (candidates.get(modelId) ?? []).filter((id) => !hasRules || matchedByModel.get(modelId)?.has(id)) },
     }, provider, modelId));
     // Include the Rules scan in the user-visible execution time below.
@@ -102,7 +99,7 @@ export async function runListFederated(
   }
 
   const rows = parts.flatMap((r) => r.rows);
-  const executionTime = scanDuration ?? parts.reduce((sum, r) => sum + r.executionTime, 0);
+  const executionTime = scanDuration;
 
   // Re-derive groups/summary over the merged rows so grouping works across
   // federated models (and isn't dropped on the merge).

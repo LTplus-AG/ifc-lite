@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 const saved: ListDefinition = {
   id: 'saved', name: 'My list', createdAt: 0, updatedAt: 0,
-  entityTypes: [], conditions: [], columns: [],
+  entityTypes: [], groups: [], columns: [],
 };
 
 it('#5823 opens a list from its row with the keyboard while actions stay independent', () => {

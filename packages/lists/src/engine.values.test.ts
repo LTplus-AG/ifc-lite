@@ -63,7 +63,7 @@ function providerOver(specs: Map<number, EntitySpec>): ListDataProvider {
 
 const def = (over: Partial<ListDefinition>): ListDefinition => ({
   id: 'd', name: 'D', createdAt: 0, updatedAt: 0,
-  entityTypes: [IfcTypeEnum.IfcWall], conditions: [], columns: [],
+  entityTypes: [IfcTypeEnum.IfcWall], groups: [], legacyConditions: [], columns: [],
   ...over,
 });
 
@@ -245,7 +245,7 @@ describe('boolean-like condition matching includes IfcLogical "Unknown"', () => 
     [2, { name: 'B', type: 'IfcWall', psets: [{ name: 'Pset_X', globalId: 'ps', properties: [{ name: 'Flag', type: 'logical', value: ['IFCLOGICAL', '.T.'] }] }] }],
   ]);
   const condDef = (value: string, operator: 'equals' | 'notEquals') => def({
-    conditions: [{ source: 'property', psetName: 'Pset_X', propertyName: 'Flag', operator, value }],
+    groups: [], legacyConditions: [{ source: 'property', psetName: 'Pset_X', propertyName: 'Flag', operator, value }],
     columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
   });
 
@@ -286,7 +286,7 @@ describe('multi-valued condition operators (material, classification)', () => {
     operator: 'equals' | 'notEquals',
     value: string,
   ) => def({
-    entityTypes: [], conditions: [{ source, propertyName: source, operator, value }],
+    entityTypes: [], groups: [], legacyConditions: [{ source, propertyName: source, operator, value }],
     columns: [{ id: 'n', source: 'attribute', propertyName: 'Name' }],
   });
 

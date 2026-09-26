@@ -192,7 +192,7 @@ export interface ListDefinition {
    * Optional explicit element scope — a snapshot of express IDs per model
    * (e.g. from a search/filter result), keyed by modelId. When present, the
    * list targets exactly these elements per model and `entityTypes` is
-   * ignored; `conditions` still apply on top. Keyed by model so federated
+   * ignored; filter groups still apply on top. Keyed by model so federated
    * snapshots don't over-select when local express IDs collide across files.
    */
   expressIdsByModel?: Record<string, number[]>;
@@ -200,13 +200,11 @@ export interface ListDefinition {
   /** Optional MODEL scope by model tag (#4215, `model-tag-scope.ts`); absent = every model. */
   modelTagScope?: ListModelTagScope;
 
-  /** Optional property-based filter conditions */
-  // TODO(remove-by: #5894 final migration, viewer) Read v1 lists until the
-  // Rules evaluator and editor consume `groups` in every list entry point.
-  conditions: PropertyCondition[];
+  /** Canonical Rules filters for migrated and newly-authored lists. */
+  groups: FilterGroup[];
 
-  /** Canonical filter groups for migrated and newly-authored lists. */
-  groups?: FilterGroup[];
+  /** Only for provider-only execution of v1 predicates with no Rules equivalent. */
+  legacyConditions?: PropertyCondition[];
 
   /** V1 conditions that have no lossless FilterRule form; keep them visible. */
   unreadableConditions?: UnreadableListCondition[];

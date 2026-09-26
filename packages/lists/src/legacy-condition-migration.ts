@@ -3,11 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Decode v1 saved List conditions without claiming that unsupported sources
- * have been converted. The retained rows remain available to the legacy
- * evaluator until the #5894 runtime migration is complete. */
+ * have been converted. Unreadable rows remain explicit and active. */
 import { legacyListOperatorToFilterRule, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
 import { isNamePattern } from './name-pattern.js';
-import type { PropertyCondition, UnreadableListCondition } from './types.js';
+import type { ListDefinition, PropertyCondition, UnreadableListCondition } from './types.js';
 
 type MigrationResult = { groups: FilterGroup[]; unreadableConditions: UnreadableListCondition[] };
 
@@ -69,4 +68,15 @@ export function migrateLegacyListConditions(conditions: readonly unknown[]): Mig
     groups: rules.length > 0 ? [{ rules, combinator: 'AND' }] : [],
     unreadableConditions,
   };
+}
+
+/** Normalize a saved v1 definition before it enters the public Lists API. */
+export function migrateLegacyListDefinition(
+  definition: Omit<ListDefinition, 'groups'> & { groups?: ListDefinition['groups']; conditions?: PropertyCondition[] },
+): ListDefinition {
+  const { conditions, ...canonical } = definition;
+  if (canonical.groups !== undefined) return canonical as ListDefinition;
+  const migrated = migrateLegacyListConditions(conditions ?? []);
+  return { ...canonical, groups: migrated.groups,
+    ...(migrated.unreadableConditions.length ? { unreadableConditions: migrated.unreadableConditions } : {}) };
 }

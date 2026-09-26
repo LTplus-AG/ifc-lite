@@ -48,9 +48,10 @@ async function load(page: Page, file: string, count: number): Promise<void> {
 
 async function modelIds(page: Page, index: number, type: string): Promise<number[]> {
   return page.evaluate(({ index, type }) => {
-    const model = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()][index];
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()][index];
     if (!model?.ifcDataStore) throw new Error(`Model ${index} has no IFC metadata`);
-    return (model.ifcDataStore.entityIndex.byType.get(type) ?? []).map((id) => id + (model.idOffset ?? 0));
+    return (model.ifcDataStore.entityIndex.byType.get(type) ?? []).map((id) => state.toGlobalId(model.id, id));
   }, { index, type });
 }
 
@@ -76,8 +77,8 @@ async function drawingTypeCounts(page: Page, index: number): Promise<Record<stri
     if (!model?.ifcDataStore || !drawing) return {};
     const counts: Record<string, number> = {};
     for (const part of [...drawing.lines, ...drawing.cutPolygons, ...drawing.projectionPolygons]) {
-      const localId = part.entityId - (model.idOffset ?? 0);
-      const type = model.ifcDataStore.entities.getTypeName(localId);
+      const localId = state.resolveGlobalIdInModel(model.id, part.entityId)?.expressId;
+      const type = localId === undefined ? undefined : model.ifcDataStore.entities.getTypeName(localId);
       if (type) counts[type] = (counts[type] ?? 0) + 1;
     }
     return counts;
@@ -112,9 +113,9 @@ for (const federated of [false, true]) {
       const spaceIds = model.ifcDataStore!.entityIndex.byType.get('IFCSPACE') ?? [];
       if (storeyIds.length < 2) throw new Error('The authored model needs two storeys');
       return {
-        storey: storeyIds[0]! + (model.idOffset ?? 0),
-        selected: spaceIds.filter((id) => hierarchy.elementToStorey.get(id) === storeyIds[0]).map((id) => id + (model.idOffset ?? 0)),
-        other: spaceIds.filter((id) => hierarchy.elementToStorey.get(id) !== storeyIds[0]).map((id) => id + (model.idOffset ?? 0)),
+        storey: state.toGlobalId(model.id, storeyIds[0]!),
+        selected: spaceIds.filter((id) => hierarchy.elementToStorey.get(id) === storeyIds[0]).map((id) => state.toGlobalId(model.id, id)),
+        other: spaceIds.filter((id) => hierarchy.elementToStorey.get(id) !== storeyIds[0]).map((id) => state.toGlobalId(model.id, id)),
       };
     });
     expect(selected.length).toBeGreaterThan(0);
@@ -132,8 +133,10 @@ for (const federated of [false, true]) {
     const [annotation] = await modelIds(page, 0, 'IFCANNOTATION');
     if (annotation === undefined) throw new Error('The authored model has no IfcAnnotation');
     const annotationName = await page.evaluate((globalId) => {
-      const model = [...globalThis.__ifc_lite_viewer_store__.getState().models.values()][0];
-      const localId = globalId - (model.idOffset ?? 0);
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const model = [...state.models.values()][0];
+      const localId = state.resolveGlobalIdFromModels(globalId)?.expressId;
+      if (localId === undefined) throw new Error('Annotation is not resolved to an IFC entity');
       return model.ifcDataStore!.entities.getName(localId) || `IfcAnnotation #${localId}`;
     }, annotation);
     const hierarchySearch = page.getByPlaceholder('Search...', { exact: true });
@@ -182,8 +185,8 @@ for (const federated of [false, true]) {
       const model = [...state.models.values()][0];
       const wall = model.ifcDataStore!.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
       if (wall === undefined) throw new Error('The authored model has no wall');
-      state.hideEntity(wall + (model.idOffset ?? 0));
-      state.setStoreySelection([...model.ifcDataStore!.spatialHierarchy!.byStorey.keys()][0]! + (model.idOffset ?? 0));
+      state.hideEntity(state.toGlobalId(model.id, wall));
+      state.setStoreySelection(state.toGlobalId(model.id, [...model.ifcDataStore!.spatialHierarchy!.byStorey.keys()][0]!));
       state.showAll();
     });
     const reset = await page.evaluate(() => {
@@ -200,9 +203,9 @@ for (const federated of [false, true]) {
       const state = globalThis.__ifc_lite_viewer_store__.getState();
       const model = [...state.models.values()][0];
       const walls = model.ifcDataStore!.entityIndex.byType.get('IFCWALLSTANDARDCASE') ?? [];
-      const firstWall = walls[0]! + (model.idOffset ?? 0);
-      const secondWall = walls[1]! + (model.idOffset ?? 0);
-      const firstStorey = [...model.ifcDataStore!.spatialHierarchy!.byStorey.keys()][0]! + (model.idOffset ?? 0);
+      const firstWall = state.toGlobalId(model.id, walls[0]!);
+      const secondWall = state.toGlobalId(model.id, walls[1]!);
+      const firstStorey = state.toGlobalId(model.id, [...model.ifcDataStore!.spatialHierarchy!.byStorey.keys()][0]!);
       const lens = state.savedLenses[0];
       if (walls.length < 2 || !lens || !state.hasTypeGeometry) throw new Error('Authored model lacks visibility controls');
       state.hideEntity(secondWall);

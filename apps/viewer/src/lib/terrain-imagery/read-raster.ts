@@ -57,6 +57,59 @@ function budget(width: number, height: number): string | null {
     : null;
 }
 
+/** Where the first header read stops; a JPEG's frame header can sit behind large APP segments. */
+const HEADER_PROBE_BYTES = 64 * 1024;
+
+/**
+ * Pixel size of a TIFF or BigTIFF from its first image directory, reading only
+ * the header and that directory's leading entries. `ImageWidth` (256) and
+ * `ImageLength` (257) are the lowest baseline tags and entries are sorted, so
+ * they are among the first.
+ */
+async function tiffSize(image: Blob): Promise<{ width: number; height: number } | null> {
+  const head = new DataView(await image.slice(0, 16).arrayBuffer());
+  if (head.byteLength < 8) return null;
+  const order = head.getUint16(0);
+  const le = order === 0x4949;
+  if (!le && order !== 0x4d4d) return null;
+  const big = head.getUint16(2, le) === 43;
+  if (!big && head.getUint16(2, le) !== 42) return null;
+  if (big && head.byteLength < 16) return null;
+  const directory = big ? Number(head.getBigUint64(8, le)) : head.getUint32(4, le);
+  const [countBytes, entryBytes, valueAt] = big ? [8, 20, 12] : [2, 12, 8];
+  const entries = new DataView(await image.slice(directory + countBytes, directory + countBytes + 64 * entryBytes).arrayBuffer());
+  let width: number | null = null;
+  let height: number | null = null;
+  for (let offset = 0; offset + entryBytes <= entries.byteLength; offset += entryBytes) {
+    const tag = entries.getUint16(offset, le);
+    if (tag !== 256 && tag !== 257) continue;
+    const type = entries.getUint16(offset + 2, le);
+    const value = type === 3 ? entries.getUint16(offset + valueAt, le)
+      : type === 4 ? entries.getUint32(offset + valueAt, le)
+        : type === 16 ? Number(entries.getBigUint64(offset + valueAt, le)) : null;
+    if (tag === 256) width = value;
+    else height = value;
+  }
+  return width !== null && height !== null ? { width, height } : null;
+}
+
+/**
+ * The raster's pixel size from its header alone (PNG `IHDR`, JPEG frame
+ * header, first TIFF directory), so the budget refuses an oversized image
+ * before its pixel data is read (§15.2 item 8). Null when the header does not
+ * say; the full read then reports what is wrong with the file.
+ */
+async function headerSize(bundle: GeoRasterBundle): Promise<{ width: number; height: number } | null> {
+  if (bundle.isGeoTiff) return tiffSize(bundle.image);
+  for (let length = HEADER_PROBE_BYTES; ; length *= 4) {
+    const prefix = new Uint8Array(await bundle.image.slice(0, length).arrayBuffer());
+    const size = webImageSize(prefix);
+    // Only a JPEG's frame header can lie beyond the probe; anything else has answered.
+    const jpeg = prefix[0] === 0xff && prefix[1] === 0xd8;
+    if (size || !jpeg || length >= bundle.image.size) return size;
+  }
+}
+
 /** The first CRS sidecar that names an EPSG code, else the first one consulted. */
 async function crsOfSidecar(bundle: GeoRasterBundle): Promise<{ crs: string | null; source: string }> {
   for (const file of bundle.crsFiles) {
@@ -144,6 +197,12 @@ async function readGeoTiff(bundle: GeoRasterBundle, bytes: Uint8Array): Promise<
 
 /** Read and place a raster bundle. The CRS may still be `null`; the drape refuses that. */
 export async function readGeoRasterBundle(bundle: GeoRasterBundle): Promise<Parsed<LoadedGeoRaster>> {
+  // From the header first: a 144 MP sheet used to be read whole (+0.7 GB)
+  // only to be refused (#5942 follow-up). The checks after decoding remain
+  // for a file whose header this cannot size.
+  const size = await headerSize(bundle);
+  const over = size ? budget(size.width, size.height) : null;
+  if (over) return { ok: false, reason: over };
   const bytes = new Uint8Array(await bundle.image.arrayBuffer());
   return bundle.isGeoTiff ? readGeoTiff(bundle, bytes) : readWebImage(bundle, bytes);
 }

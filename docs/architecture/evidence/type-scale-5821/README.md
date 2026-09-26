@@ -16,3 +16,9 @@ The first after-mobile build wrapped the two hero actions. The final after
 capture above uses `text-sm` below the `sm` breakpoint and keeps both actions
 on one row. The mobile document width is 375 CSS pixels within the 390-pixel
 viewport, with no horizontal overflow.
+
+This batch changes typography through generated Tailwind CSS. The changed-test
+revert oracle cannot observe computed fonts without a browser test (browser
+specs are excluded from that oracle). PR #6114 uses the repository's
+`revert-oracle-exempt` label; the production build and these same-viewport
+browser captures are its behavior evidence.

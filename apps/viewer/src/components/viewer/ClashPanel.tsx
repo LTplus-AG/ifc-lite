@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
@@ -61,6 +62,8 @@ import {
   type ClashSortBy,
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
+import { ClashHelp } from './ClashHelp';
+import { StaleResultBanner } from './StaleResultBanner';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {
@@ -299,6 +302,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     clearExclusions,
     invalidateSolidCompute,
   } = useClash();
+  const rawResult = useViewerStore((s) => s.clashRawResult);
+  const stale = useAnalysisStaleness(analysisStampOf(rawResult));
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
@@ -718,30 +723,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         </div>
       </div>
 
-      {/* Help / explanation (#1272, #1274) */}
-      {showHelp && (
-        <div className="px-3 py-2.5 border-b border-border bg-muted/30 text-[11px] leading-relaxed text-muted-foreground space-y-1.5">
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.hardLabel')}</b> {t('clashPanel.help.hardDescription')}{' '}
-            <i>{t('clashPanel.help.tolAbbrev')}</i>).{' '}
-            <b className="text-foreground">{t('clashPanel.help.clearanceLabel')}</b> {t('clashPanel.help.clearanceDescription')}{' '}
-            <i>{t('clashPanel.help.gapAbbrev')}</i> {t('clashPanel.help.gapAddsMore')} <i>{t('clashPanel.help.moreLabel')}</i>{' '}
-            {t('clashPanel.help.resultsNotFiltered')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.tolAbbrev')}</b> {t('clashPanel.help.tolDescription')}{' '}
-            <b className="text-foreground">{t('clashPanel.help.gapAbbrev')}</b> {t('clashPanel.help.gapDescription')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.severityLabel')}</b> {t('clashPanel.help.severityDescription')}{' '}
-            <i>{t('clashPanel.help.notLabel')}</i> {t('clashPanel.help.fromOverlapDepth')}{' '}
-            <i>{t('clashPanel.help.overlapDepthLabel')}</i> {t('clashPanel.help.surfaceWorst')}
-          </p>
-          <p>
-            <b className="text-foreground">{t('clashPanel.help.touchingLabel')}</b> {t('clashPanel.help.touchingDescription')}
-          </p>
-        </div>
-      )}
+      {showHelp && <ClashHelp />}
 
       {/* Run controls — collapse to a slim bar once a result exists so the list
           gets vertical room; expand (or before the first run) shows full setup. */}
@@ -906,9 +888,16 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
       <ClashModelTagNotice />
 
+      {result && stale && (
+        <StaleResultBanner
+          disabled={running}
+          onRerun={() => { void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates }); }}
+        />
+      )}
+
       {/* Summary */}
       {result && (
-        <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
+        <div className={cn('px-3 py-2.5 border-b border-border', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
           <ClashResultSummary
             total={total}
             shown={shown}
@@ -1114,7 +1103,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
 
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
-      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+      <div ref={scrollRef} className={cn('flex-1 overflow-auto min-h-0', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashResults)}>
         {!result && !running && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
             <Crosshair className="h-8 w-8 mb-3 opacity-40" />

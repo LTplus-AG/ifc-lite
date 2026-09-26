@@ -237,7 +237,7 @@ describe('model repositioning user interactions (#4226)', () => {
       const ui = render(<WithPlacementSync renderer={renderer} />);
       type(input(ui, 'Delta X'), '1'); click(button(ui, 'Preview values'));
       assert.ok(useViewerStore.getState().placementStaleMeasurements.has('distance'));
-      assert.equal(useViewerStore.getState().clashResult, null);
+      assert.equal(useViewerStore.getState().clashResult?.summary.total, 0, 'a moving model retains the old report');
       if (finish === 'overwritten-deviation') act(() => {
         noteDeviationWrite(renderer);
         useViewerStore.getState().setPointCloudDeviationComputed(true);
@@ -246,7 +246,7 @@ describe('model repositioning user interactions (#4226)', () => {
       click(button(ui, finish === 'apply' ? 'Apply' : 'Cancel repositioning'));
       const s = useViewerStore.getState();
       assert.equal(s.placementStaleMeasurements.has('distance'), finish === 'apply');
-      assert.equal(s.clashResult?.summary.total, finish === 'apply' ? undefined : 0);
+      assert.equal(s.clashResult?.summary.total, 0, 'the report remains visible after either decision');
       assert.equal(s.pointCloudDeviationComputed, finish === 'cancel');
       assert.equal(s.pointCloudColorMode, finish === 'cancel' ? 'deviation' : 'rgb');
     });

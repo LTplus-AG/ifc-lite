@@ -7,6 +7,7 @@ import { IfcTypeEnum, type EntityTable } from '@ifc-lite/data';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import type { TranslationKey } from '@/i18n';
 import { selectPluralCategory } from '@/i18n/registry';
+import { BULK_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
 
 /**
  * Common IFC product classes offered by the editor, keyed by exact class name.
@@ -35,16 +36,16 @@ export const IFC_TYPE_MAP: Record<string, { labelKey: TranslationKey }> = {
 };
 
 export const FILTER_OPERATORS: { value: FilterOperator; labelKey: TranslationKey }[] = [
-  { value: '=', labelKey: 'bulkPropertyEditor.operator.equals' },
-  { value: '!=', labelKey: 'bulkPropertyEditor.operator.notEquals' },
-  { value: '>', labelKey: 'bulkPropertyEditor.operator.greater' },
-  { value: '<', labelKey: 'bulkPropertyEditor.operator.less' },
-  { value: '>=', labelKey: 'bulkPropertyEditor.operator.greaterOrEqual' },
-  { value: '<=', labelKey: 'bulkPropertyEditor.operator.lessOrEqual' },
-  { value: 'CONTAINS', labelKey: 'bulkPropertyEditor.operator.contains' },
-  { value: 'STARTS_WITH', labelKey: 'bulkPropertyEditor.operator.startsWith' },
-  { value: 'IS_NULL', labelKey: 'bulkPropertyEditor.operator.isNull' },
-  { value: 'IS_NOT_NULL', labelKey: 'bulkPropertyEditor.operator.isNotNull' },
+  { value: '=', labelKey: BULK_OPERATOR_LABEL_KEYS['='] },
+  { value: '!=', labelKey: BULK_OPERATOR_LABEL_KEYS['!='] },
+  { value: '>', labelKey: BULK_OPERATOR_LABEL_KEYS['>'] },
+  { value: '<', labelKey: BULK_OPERATOR_LABEL_KEYS['<'] },
+  { value: '>=', labelKey: BULK_OPERATOR_LABEL_KEYS['>='] },
+  { value: '<=', labelKey: BULK_OPERATOR_LABEL_KEYS['<='] },
+  { value: 'CONTAINS', labelKey: BULK_OPERATOR_LABEL_KEYS.CONTAINS },
+  { value: 'STARTS_WITH', labelKey: BULK_OPERATOR_LABEL_KEYS.STARTS_WITH },
+  { value: 'IS_NULL', labelKey: BULK_OPERATOR_LABEL_KEYS.IS_NULL },
+  { value: 'IS_NOT_NULL', labelKey: BULK_OPERATOR_LABEL_KEYS.IS_NOT_NULL },
 ];
 
 const PLURAL_SUFFIX = {

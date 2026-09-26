@@ -70,7 +70,11 @@ const englishOf = (key: ListsKey): string => {
   return typeof v === 'string' ? v : v.other;
 };
 const mark = (key: ListsKey) => `⟦${key}|${englishOf(key)}⟧`;
-const PSEUDO: Catalogue = Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])) as Catalogue;
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])),
+  'filterOperators.contains': '⟦filterOperators.contains|contains⟧',
+  'filterOperators.isSet': '⟦filterOperators.isSet|is set⟧',
+} as Catalogue;
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -289,9 +293,9 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.source.spatial',
       'lists.builder.source.model',
       'lists.builder.source.zone',
-      'lists.builder.operator.contains',
-      'lists.builder.operator.isSet',
     ]);
+    assert.ok(after.has('⟦filterOperators.contains|contains⟧'));
+    assert.ok(after.has('⟦filterOperators.isSet|is set⟧'));
     act(() => setLocale('en'));
 
     // Switch the row's dimension to "Zone": reveals the zone-set / display

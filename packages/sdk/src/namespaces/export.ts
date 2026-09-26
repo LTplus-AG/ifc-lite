@@ -20,15 +20,6 @@ export interface ExportCsvOptions {
   separator?: string;
 }
 
-/**
- * @deprecated `bim.export` has no glTF/GLB method, so nothing takes these
- * options. Removal shrinks the published surface and needs a major, so it
- * waits for the next `@ifc-lite/sdk` major (#5701).
- */
-export interface ExportGltfOptions {
-  filename?: string;
-}
-
 export interface ExportStepOptions {
   schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   filename?: string;

@@ -8676,7 +8676,6 @@
     "ExportBackendMethods: interface",
     "ExportCsvOptions: interface",
     "ExportDfjsonOptions: interface",
-    "ExportGltfOptions: interface",
     "ExportHbjsonOptions: interface",
     "ExportNamespace: class",
     "ExportStepOptions: interface",

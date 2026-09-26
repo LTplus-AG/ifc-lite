@@ -65,7 +65,7 @@ import {
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
@@ -1249,13 +1249,13 @@ export function useClash() {
         });
         const blob = await writeBCF(project);
         downloadBlob(blob, 'clashes.bcfzip');
+        trackExportCompleted({ format: 'bcfzip', surface: 'clash_results' });
       } finally {
         restore?.();
       }
     },
     [],
   );
-
   const clearAll = useCallback((): void => {
     // Bump the run epoch FIRST: a `run()` / `runDuplicates()` still in flight
     // when the user clears must not be able to resurrect what they just

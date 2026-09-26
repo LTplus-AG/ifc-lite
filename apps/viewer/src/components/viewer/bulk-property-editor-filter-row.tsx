@@ -13,7 +13,7 @@
  */
 
 import { Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -82,9 +82,9 @@ export function BulkFilterRow({ filter, onUpdate, onRemove }: BulkFilterRowProps
           />
         </Field>
       )}
-      <Button aria-label={t('bulkPropertyEditor.removeFilter')} variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(filter.id)}>
+      <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => onRemove(filter.id)}>
         <Trash2 className="h-3 w-3 text-destructive" />
-      </Button>
+      </IconButton>
     </div>
   );
 }

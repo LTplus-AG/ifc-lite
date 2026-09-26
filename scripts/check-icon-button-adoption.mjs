@@ -36,7 +36,6 @@ import { fileURLToPath } from 'node:url';
 
 /** Allowed `<Button size="icon…">` count per file, relative to components/. */
 const BASELINE = {
-  'viewer/BulkPropertyEditor.tsx': 1,
   'viewer/DrawingSettingsPanel.tsx': 1,
   'viewer/GeometryAxisRow.tsx': 2,
   'viewer/GeometryEditCard.tsx': 3,

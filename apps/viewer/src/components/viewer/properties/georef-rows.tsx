@@ -25,6 +25,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Check, X, PenLine, Mountain } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -213,12 +214,12 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     className="flex-1 min-w-0 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
                   />
                 )}
-                <button onClick={() => commitEdit()} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
+                <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                   <Check className="h-3 w-3" />
-                </button>
-                <button onClick={cancelEdit} className="p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
+                </IconButton>
+                <IconButton label={t('properties.georef.cancelField', { field: label })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
                   <X className="h-3 w-3" />
-                </button>
+                </IconButton>
               </div>
               {/* Suggestion chips for fields with common values */}
               {hint.suggestions && !hint.isSelect && (
@@ -333,12 +334,12 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 className="w-28 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
               />
               <span className="text-2xs text-zinc-400">{t('properties.georef.degUnit')}</span>
-              <button onClick={commitEdit} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
+              <IconButton label={t('properties.georef.saveField', { field: t('properties.georef.angleToGridNorth') })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                 <Check className="h-3 w-3" />
-              </button>
-              <button onClick={cancelEdit} className="p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
+              </IconButton>
+              <IconButton label={t('properties.georef.cancelField', { field: t('properties.georef.angleToGridNorth') })} onClick={cancelEdit} className="h-5 w-5 p-0.5 text-red-500 hover:text-red-600 dark:text-red-400 shrink-0">
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </div>
             <span className="text-2xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>

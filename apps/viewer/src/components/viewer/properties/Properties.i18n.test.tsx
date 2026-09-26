@@ -421,6 +421,32 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.doesNotMatch(container.textContent ?? '', /12\.345678/);
   });
 
+  catalogueIt('names georeference icon actions for field and angle edits (#5811)', () => {
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    clickRow(scaleLabel.parentElement);
+    assert.ok(container.querySelector('button[aria-label="Save Scale"]'));
+    const cancelScale = container.querySelector('button[aria-label="Cancel editing Scale"]');
+    assert.ok(cancelScale);
+    click(cancelScale);
+    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
+    assert.ok(angleLabel?.parentElement);
+    clickRow(angleLabel.parentElement);
+    assert.ok(container.querySelector('button[aria-label="Save Angle to Grid North"]'));
+    assert.ok(container.querySelector('button[aria-label="Cancel editing Angle to Grid North"]'));
+  });
+
   catalogueIt('formats coordinate and terrain measurements with the active locale', () => {
     registerLocale('de-DE', {});
     act(() => {

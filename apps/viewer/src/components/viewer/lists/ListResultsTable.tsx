@@ -22,12 +22,12 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
+import { useEntityListMultiSelect, type MultiSelectItem, type SelectModifiers } from '@/hooks/useEntityListMultiSelect';
 import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
-import { posthog } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
@@ -268,8 +268,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
   }, []);
 
-  // Export honours the on-screen view: configured columns, the active
-  // grouping (sections + per-group count/sums), and the grand totals.
+  // Export honours the on-screen columns, grouping, sums, and totals.
   const handleExport = useCallback((format: ExportFormat) => {
     const model = buildExportModel({
       title: listName?.trim() || t('lists.resultsTable.defaultTitle'),
@@ -283,16 +282,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       modelUnits,
       unitDisplayOverrides,
     });
-    void exportList(format, model);
-    // Counts only — never the list title or column/property names (confidential).
-    posthog.capture('export_completed', {
-      format,
-      surface: 'list_results',
-      row_count: sortedRows.length,
-      column_count: columns.length,
+    void exportList(format, model).catch((error) => {
+      console.error('[Lists] export failed:', error);
+      toast.error(t('lists.resultsTable.exportFailed', { message: error instanceof Error ? error.message : 'Unknown error' }));
     });
   }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides, t]);
-
   // Flat, ordered list of the selectable rows (group headers excluded) and a
   // lookup from a row to its position, so Shift+click range-select works over
   // the on-screen order. (#1463)
@@ -314,13 +308,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     selectableItems.forEach((it, idx) => m.set(`${it.modelId}:${it.expressId}`, idx));
     return m;
   }, [selectableItems]);
-
-  const handleRowClick = useCallback((row: ListRow, e: React.MouseEvent) => {
+  const handleRowClick = useCallback((row: ListRow, e: SelectModifiers) => {
     const idx = rowIndexByKey.get(`${row.modelId}:${row.entityId}`);
     if (idx === undefined) return;
     onMultiSelect(selectableItems, idx, e);
   }, [rowIndexByKey, selectableItems, onMultiSelect]);
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Search / actions */}
@@ -441,7 +433,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                       onColorBy={() => handleColorByColumn(col, colIdx)}
                     />
                   )}
-                  <div
+                  {/* A focusable column resizer needs pointer and arrow-key controls. */}
+                  {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+                  <div role="separator" aria-orientation="vertical" aria-label={t('lists.resultsTable.dragToResizeTitle')} tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setWidthOverrides((p) => ({ ...p, [col.id]: Math.max(56, (p[col.id] ?? columnWidths[colIdx]) + (e.key === 'ArrowRight' ? 10 : -10)) })); }
+                    }}
                     onMouseDown={(e) => startResize(e, col.id, columnWidths[colIdx])}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
@@ -452,7 +449,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
               );
             })}
           </div>
-
           {/* Virtualized rows / group headers */}
           {sortedRows.length === 0 && <EmptyState icon={<FileSpreadsheet className="size-8" />} title={t('lists.resultsTable.noRows')} />}
           <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
@@ -463,9 +459,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
               if (item.kind === 'group') {
                 const expanded = expandedGroups.has(item.key);
-                return (
-                  <div
+                // Virtualized group rows contain block cells, which are invalid inside a button.
+                // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                return (<div role="button" tabIndex={0} aria-expanded={expanded}
                     key={vRow.key}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupExpand(item.key); } }}
                     className="absolute left-0 top-0 flex w-full cursor-pointer border-b border-border/40 bg-muted/50 hover:bg-muted/70"
                     style={{ transform }}
                     onClick={() => toggleGroupExpand(item.key)}
@@ -496,9 +494,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
               const row = item.row;
               const globalId = toGlobalIdFromModels(models, row.modelId, row.entityId);
               const isSelected = selectedEntityIds.has(globalId) || globalId === selectedEntityId;
-              return (
-                <div
+              // Virtualized result rows contain block cells, which are invalid inside a button.
+              // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+              return (<div role="button" tabIndex={0} aria-pressed={isSelected}
                   key={vRow.key}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(row, e); } }}
                   className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 hover:bg-muted/40', isSelected && 'bg-primary/10')}
                   style={{ transform }}
                   onClick={(e) => handleRowClick(row, e)}

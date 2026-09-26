@@ -971,6 +971,8 @@ jobs:
         run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      - name: Check export completion calls
+        run: node scripts/check-export-event-calls.mjs
       # Executable proof the wiring gate cannot pass vacuously — the failure
       # mode it exists to catch is exactly the one it could have itself. Its
       # first fixture reconstructs #3062's pre-wiring state (a gate script and

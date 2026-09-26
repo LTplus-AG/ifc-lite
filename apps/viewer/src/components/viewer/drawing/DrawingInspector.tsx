@@ -91,7 +91,7 @@ export function DrawingInspector({ vm, layers, panelWidth }: DrawingInspectorPro
             key={id}
             value={id}
             title={t(labelKey)}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
           >
             <Icon className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t(labelKey)}</span>

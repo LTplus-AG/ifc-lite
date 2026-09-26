@@ -137,9 +137,9 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
         </div>
       </div>
       {message && (
-        <p role="status" className="px-3 pb-2 text-[10px] text-[#e0af68] break-words">
+        <output className="block px-3 pb-2 text-2xs text-[#e0af68] break-words">
           {message}
-        </p>
+        </output>
       )}
     </div>
   );

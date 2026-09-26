@@ -7,7 +7,7 @@
  * Includes schema-aware property addition with IFC4 standard validation.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect, useId } from 'react';
 import {
   X,
   Plus,
@@ -89,7 +89,7 @@ const EDIT_TOOL_CLS =
 // The structural "Reassign class" action is elevated as a distinct accent
 // affordance — it transforms the element rather than adding data to it.
 const RECLASS_TOOL_CLS =
-  'h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-300/70 bg-indigo-500/10 shadow-none transition-colors hover:bg-indigo-500/20 hover:text-indigo-800 dark:text-indigo-300 dark:ring-indigo-700/60 dark:bg-indigo-500/10 dark:hover:text-indigo-200';
+  'h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-2xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-300/70 bg-indigo-500/10 shadow-none transition-colors hover:bg-indigo-500/20 hover:text-indigo-800 dark:text-indigo-300 dark:ring-indigo-700/60 dark:bg-indigo-500/10 dark:hover:text-indigo-200';
 
 interface PropertyEditorProps {
   modelId: string;
@@ -123,6 +123,7 @@ export function PropertyEditor({
   onClose,
 }: PropertyEditorProps) {
   const { t } = useTranslation();
+  const booleanChoiceName = useId();
   const setProperty = useViewerStore((s) => s.setProperty);
   const deleteProperty = useViewerStore((s) => s.deleteProperty);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -244,23 +245,27 @@ export function PropertyEditor({
             {([['', t('propertyEditor.inline.unset')], ['true', t('propertyEditor.inline.true')], ['false', t('propertyEditor.inline.false')]] as const).map(([v, label]) => {
               const active = value === v;
               return (
-                <button
+                <label
                   key={label}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => {
-                    setValue(v);
-                    if (showScopeConfirm) setShowScopeConfirm(false);
-                  }}
-                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                  className={`cursor-pointer px-2 py-0.5 text-xs rounded border transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-ring ${
                     active
                       ? 'bg-overlay-accent text-overlay-halo border-overlay-accent'
                       : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                   } ${v === '' ? 'italic' : ''}`}
                 >
+                  <input
+                    type="radio"
+                    name={booleanChoiceName}
+                    value={v}
+                    checked={active}
+                    onChange={() => {
+                      setValue(v);
+                      if (showScopeConfirm) setShowScopeConfirm(false);
+                    }}
+                    className="sr-only"
+                  />
                   {label}
-                </button>
+                </label>
               );
             })}
           </div>
@@ -311,7 +316,7 @@ export function PropertyEditor({
             key={type}
             variant={valueType === type ? 'default' : 'outline'}
             size="sm"
-            className="h-5 px-2 text-[10px]"
+            className="h-5 px-2 text-2xs"
             onClick={() => {
               setValueType(type);
               if (showScopeConfirm) setShowScopeConfirm(false);
@@ -328,7 +333,7 @@ export function PropertyEditor({
       </div>
 
       {showScopeConfirm && editScope && (
-        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-[11px]">
+        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-2xs">
           <div className="font-medium text-zinc-900 dark:text-zinc-100">
             {editScope.mode === 'type'
               ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
@@ -341,7 +346,7 @@ export function PropertyEditor({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 rounded-none border-indigo-300 text-[10px] uppercase tracking-wide hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950/30"
+              className="h-6 rounded-none border-indigo-300 text-2xs uppercase tracking-wide hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950/30"
               onClick={commitSave}
             >
               {t('propertyEditor.inline.applyToType')}
@@ -349,7 +354,7 @@ export function PropertyEditor({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 rounded-none px-2 text-[10px] uppercase tracking-wide"
+              className="h-6 rounded-none px-2 text-2xs uppercase tracking-wide"
               onClick={() => setShowScopeConfirm(false)}
             >
               {t('propertyEditor.inline.keepEditing')}
@@ -507,7 +512,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-2xs"
                 onClick={() => { setIsCustomPset(!isCustomPset); setPsetName(''); setCustomPsetName(''); setPropName(''); setCustomPropName(''); }}
               >
                 {isCustomPset ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
@@ -529,14 +534,14 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   {/* Existing psets on this entity */}
                   {existingStandardPsets.length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                         {t('propertyEditor.shared.onElement')}
                       </div>
                       {existingStandardPsets.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex items-center gap-2">
                             <span>{def.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-2xs">{t('propertyEditor.shared.existing')}</Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -545,7 +550,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   {/* Non-standard existing psets */}
                   {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                         {t('propertyEditor.shared.existingCustom')}
                       </div>
                       {existingPsets.filter(p => !existingStandardPsets.some(d => d.name === p)).map((name) => (
@@ -558,7 +563,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                   {/* Available standard psets for this type */}
                   {availableStandardPsets.length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                         {t('propertyEditor.property.standardGroup', { schema: schemaVersion || 'IFC4', entityType })}
                       </div>
                       {availableStandardPsets.map((def) => (
@@ -566,9 +571,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{def.name}</span>
-                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
+                              <Badge variant="outline" className="h-4 px-1 text-2xs border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardSetDescription') ? def.description : t('propertyEditor.property.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -578,7 +583,7 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
               </Select>
             )}
             {inheritedFrom && isInheritedOnly({ inheritedFrom }, effectivePsetName) && (
-              <p className="text-[11px] text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
+              <p className="text-2xs text-sky-700 dark:text-sky-300">{t('propertyEditor.property.inheritedOverride', { psetName: effectivePsetName, typeName: inheritedFrom.typeName })}</p>
             )}
           </div>
 
@@ -597,9 +602,9 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{prop.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t(getTypeNameKey(prop.type))}</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-2xs">{t(getTypeNameKey(prop.type))}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
+                          <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.property.standardPropertyDescription') ? prop.description : t('propertyEditor.property.standardPropertyDescription', { name: prop.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -750,7 +755,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
                   <SelectItem key={cs.name} value={cs.name}>
                     <div className="flex flex-col">
                       <span className="font-medium">{cs.name}</span>
-                      <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.classification.standardSystemDescription') ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
+                      <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.classification.standardSystemDescription') ? cs.description : t('propertyEditor.classification.standardSystemDescription', { name: cs.name })}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -778,7 +783,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
               placeholder={t('propertyEditor.classification.codePlaceholder')}
               className="font-mono"
             />
-            <p className="text-[10px] text-zinc-400">{t('propertyEditor.classification.codeHelp')}</p>
+            <p className="text-2xs text-zinc-400">{t('propertyEditor.classification.codeHelp')}</p>
           </div>
 
           {/* Name (optional) */}
@@ -1050,7 +1055,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-2xs"
                 onClick={() => { setIsCustomQto(!isCustomQto); setQtoName(''); setCustomQtoName(''); setQuantityName(''); setCustomQuantityName(''); }}
               >
                 {isCustomQto ? t('propertyEditor.shared.useStandard') : t('propertyEditor.shared.customName')}
@@ -1071,14 +1076,14 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                 <SelectContent>
                   {existingStandardQtos.length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                         {t('propertyEditor.shared.onElement')}
                       </div>
                       {existingStandardQtos.map((def) => (
                         <SelectItem key={def.name} value={def.name}>
                           <div className="flex items-center gap-2">
                             <span>{def.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{t('propertyEditor.shared.existing')}</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-2xs">{t('propertyEditor.shared.existing')}</Badge>
                           </div>
                         </SelectItem>
                       ))}
@@ -1086,7 +1091,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   )}
                   {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-400">
                         {t('propertyEditor.shared.existingCustom')}
                       </div>
                       {existingQtos.filter(q => !existingStandardQtos.some(d => d.name === q)).map((name) => (
@@ -1098,7 +1103,7 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                   )}
                   {availableStandardQtos.length > 0 && (
                     <>
-                      <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      <div className="px-2 py-1.5 text-2xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                         {t('propertyEditor.quantity.standardGroup', { entityType })}
                       </div>
                       {availableStandardQtos.map((def) => (
@@ -1106,9 +1111,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{def.name}</span>
-                              <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
+                              <Badge variant="outline" className="h-4 px-1 text-2xs border-emerald-300 text-emerald-600">{t('propertyEditor.shared.new')}</Badge>
                             </div>
-                            <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardSetDescription') ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
+                            <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardSetDescription') ? def.description : t('propertyEditor.quantity.standardSetDescription', { name: def.name })}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -1134,9 +1139,9 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{qty.name}</span>
-                            <Badge variant="secondary" className="h-4 px-1 text-[9px]">{qty.unit}</Badge>
+                            <Badge variant="secondary" className="h-4 px-1 text-2xs">{qty.unit}</Badge>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardQuantityDescription') ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
+                          <span className="text-2xs text-zinc-400">{locale === 'en' || !hasActiveTranslation('propertyEditor.quantity.standardQuantityDescription') ? qty.description : t('propertyEditor.quantity.standardQuantityDescription', { name: qty.name })}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -1280,11 +1285,11 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
         <div className="grid gap-4 py-4">
           {/* current → target */}
           <div className="flex items-center gap-2 rounded-md border border-indigo-200/70 bg-indigo-50/40 px-3 py-2.5 dark:border-indigo-900/60 dark:bg-indigo-950/20">
-            <code className="flex-1 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
+            <code className="flex-1 truncate font-mono text-2xs text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
             <ArrowRight className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
             <code
               className={cn(
-                'flex-1 truncate text-right font-mono text-[11px] font-medium',
+                'flex-1 truncate text-right font-mono text-2xs font-medium',
                 targetChanged ? 'text-indigo-600 dark:text-indigo-300' : 'text-zinc-400 dark:text-zinc-600',
               )}
               title={trimmedTarget || undefined}
@@ -1296,7 +1301,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           {/* quick picks */}
           {quickTargets.length > 0 && (
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</Label>
+              <Label className="text-2xs font-medium uppercase tracking-wide text-zinc-400">{t('propertyEditor.reassign.common')}</Label>
               <div className="flex flex-wrap gap-1.5">
                 {quickTargets.map((t) => (
                   <button
@@ -1304,7 +1309,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
                     type="button"
                     onClick={() => setTarget(t)}
                     className={cn(
-                      'rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors',
+                      'rounded-full border px-2.5 py-1 font-mono text-2xs transition-colors',
                       trimmedTarget === t
                         ? 'border-indigo-400 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
                         : 'border-zinc-200 text-zinc-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-indigo-950/30',
@@ -1322,7 +1327,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
             <Label className="text-sm font-medium">{t('propertyEditor.reassign.targetClass')}</Label>
             <ComboInput value={target} onChange={setTarget} options={targets} placeholder={t('propertyEditor.reassign.searchPlaceholder')} />
             {trimmedTarget.length > 0 && !knownTarget && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              <p className="text-2xs text-amber-600 dark:text-amber-400">
                 {t('propertyEditor.reassign.nonStandard', { schema })}
               </p>
             )}
@@ -1344,7 +1349,7 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
             </div>
           )}
 
-          <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
+          <p className="text-2xs leading-relaxed text-zinc-400 dark:text-zinc-500">
             {t('propertyEditor.reassign.help')}
           </p>
         </div>
@@ -1383,7 +1388,7 @@ export function ReassignBadge({ modelId, entityId, entityType }: { modelId: stri
 
   if (!pending) return null;
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-indigo-200/70 bg-indigo-50/50 px-2 py-1 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/25">
+    <div className="flex items-center gap-1.5 rounded-md border border-indigo-200/70 bg-indigo-50/50 px-2 py-1 text-2xs dark:border-indigo-900/60 dark:bg-indigo-950/25">
       <Replace className="h-3 w-3 shrink-0 text-indigo-500" />
       <span className="text-zinc-500 dark:text-zinc-400">{t('propertyEditor.reassign.badge')}</span>
       <ArrowRight className="h-3 w-3 shrink-0 text-indigo-400" />

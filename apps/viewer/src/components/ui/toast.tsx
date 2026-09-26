@@ -155,7 +155,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="text-xs font-medium flex-1 min-w-0">{item.message}</span>
         {item.count > 1 && (
-          <span className="shrink-0 text-[10px] font-semibold tabular-nums opacity-70" aria-hidden="true">
+          <span className="shrink-0 text-2xs font-semibold tabular-nums opacity-70" aria-hidden="true">
             ×{item.count}
           </span>
         )}

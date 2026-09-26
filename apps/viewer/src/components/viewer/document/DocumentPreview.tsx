@@ -42,8 +42,8 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
   heading: 'text-base font-semibold mt-2',
   subheading: 'text-sm font-semibold mt-1',
   body: 'text-sm leading-relaxed whitespace-pre-wrap',
-  small: 'text-[11px] leading-relaxed whitespace-pre-wrap',
-  caption: 'text-[10px] text-neutral-500 whitespace-pre-wrap',
+  small: 'text-2xs leading-relaxed whitespace-pre-wrap',
+  caption: 'text-2xs text-neutral-500 whitespace-pre-wrap',
 };
 
 /** Consecutive text/chart/image blocks both at `width: 'half'` render two-up (#4940). */
@@ -128,7 +128,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
               ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={block.height * scale} contentWidth={contentWidth} />
               : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>{t('document.preview.imageEmpty')}</div>}
           </div>
-          {block.caption && <figcaption className="text-[10px] text-neutral-500">{block.caption}</figcaption>}
+          {block.caption && <figcaption className="text-2xs text-neutral-500">{block.caption}</figcaption>}
         </figure>
       );
     }
@@ -149,7 +149,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
         <div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold" title={block.chart.title}>{block.chart.title}</div>
-            <div className="truncate text-[10px] text-neutral-500" title={subtitle}>{subtitle}</div>
+            <div className="truncate text-2xs text-neutral-500" title={subtitle}>{subtitle}</div>
           </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
         </div>
@@ -198,7 +198,7 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
         className={`${DOCUMENT_PREVIEW_PAPER_CLASS} shadow-md`}
         style={{ width, minHeight: width * (size.h / size.w), padding: `${(40 / size.w) * width}px`, fontFamily: 'Helvetica, Arial, sans-serif' }}
       >
-        <div className={`mb-3 text-[9px] ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
+        <div className={`mb-3 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
         <div className="flex flex-col gap-2.5">
           {groupBlocks(document.blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
             const wrap = (block: DocumentBlock) => (

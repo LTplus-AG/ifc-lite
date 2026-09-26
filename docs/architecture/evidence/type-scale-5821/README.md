@@ -64,3 +64,27 @@ show the Add Element wall form over the built-in IFC demo in headful Chrome
 production builds at 1440 × 900. The Type label grows from 10px to the 11px
 `text-2xs` floor. All controls remain visible, and both document widths stay
 at 1440 CSS pixels with no horizontal overflow.
+
+## Properties panel batch
+
+This batch replaces 55 numeric font utilities in the Properties panel and
+Property Editor with the shared 11px `text-2xs` floor. The [light before](properties-panel/before-light.png)
+and [light after](properties-panel/after-light.png) captures, and the [dark before](properties-panel/before-dark.png)
+and [dark after](properties-panel/after-dark.png) captures, show the same
+`building-architecture.ifc` model with its `IfcSlab` selected at 1440 × 900.
+The model has 12 geometric elements. In Chrome, the EPSG label grows from 9px
+to 11px in both themes. All four captures have a 1440 CSS-pixel document width
+without horizontal overflow; the property set remains visible.
+
+## Welcome, search, and secondary panels batch
+
+This batch replaces 30 numeric font utilities in the welcome card, search
+results, document, schedule, chart, drawing, compare, and flow panels. The
+[welcome before](search-welcome/before-welcome-light.png) and [welcome after](search-welcome/after-welcome-light.png)
+captures show the empty viewer at 1440 × 900. The search captures compare
+[light before](search-welcome/before-search-light.png) with [light after](search-welcome/after-search-light.png),
+and [dark before](search-welcome/before-search-dark.png) with [dark after](search-welcome/after-search-dark.png).
+They use the same authored `building-architecture.ifc` model and a `floor`
+query, which returns the `IfcSlab`. The model has 12 geometric elements, the
+result remains visible, and the document width stays at 1440 CSS pixels in
+both themes and both revisions.

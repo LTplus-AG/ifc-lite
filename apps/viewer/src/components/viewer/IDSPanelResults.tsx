@@ -253,7 +253,7 @@ export function IDSPanelResults({
         />
       </div>
 
-      <div className="flex items-center gap-1 px-2 py-1 border-b text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1 px-2 py-1 border-b text-2xs text-muted-foreground">
         <span>{t('idsPanel.onSelect')}</span>
         <div className="inline-flex rounded-md border border-border overflow-hidden">
           {([

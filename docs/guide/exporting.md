@@ -822,10 +822,20 @@ for the same edits, except the GlobalIds of the records the export generates
 Rust writer derives instead of drawing at random. The shared parity fixture
 `rust/export/tests/fixtures/step_log_parity_vectors.json` pins this from both
 sides. The log applies property and quantity edits (create, update, delete, whole-set
-deletion) and root-attribute edits. A log carrying a kind the writer does not
-apply yet, a mutation `type` it does not recognise, or an attribute edit whose
-value is `null` (clear an attribute with `''`) is refused with an error rather
-than exported without that edit; `importMutations` would skip the last two. A log does
+deletion), root-attribute and positional edits, retypes, entity deletion (with
+the same reference cleanup: list slots narrowed, relationships withheld) and
+created entities, whose payloads travel in the log's `newEntities` member
+(`view.getNewEntities()`), since a `CREATE_ENTITY` record carries only the id:
+
+```typescript
+const log = { ...JSON.parse(view.exportMutations()), newEntities: view.getNewEntities() };
+const savedWithCreations = gp.exportStep(bytes, '', undefined, JSON.stringify(log));
+```
+
+A log carrying a mutation `type` the writer does not recognise, an attribute
+edit whose value is `null` (clear an attribute with `''`), or a `CREATE_ENTITY`
+whose payload is missing from `newEntities` is refused with an error rather than
+exported without that edit; `importMutations` would skip all three. A log does
 not combine with an isolation set.
 
 ## Export Pipeline

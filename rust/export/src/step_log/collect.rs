@@ -15,6 +15,8 @@ use super::jsval::JsVal;
 use super::ledger::Kind;
 use super::pass::Pass;
 use super::readers;
+use super::record::effective_record;
+use super::refs::{authored_refs, record_refs, Slot};
 
 /// What the generation phase consumes.
 #[derive(Default)]
@@ -53,16 +55,16 @@ type RelsByEntity = HashMap<u32, Vec<(u32, u32)>>;
 fn rel_index(pass: &Pass<'_, '_>) -> (RelsByEntity, Vec<(u32, Vec<u32>)>) {
     let mut by_entity: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
     let mut related_by_rel = Vec::new();
-    for &rel in pass.src.of_type("IFCRELDEFINESBYPROPERTIES") {
-        if pass.is_deleted(rel) {
-            continue;
-        }
-        let edited = pass.attribute_edits(rel).is_some();
+    for rel in pass.of_type("IFCRELDEFINESBYPROPERTIES") {
+        let edited = pass.is_overlay_created(rel)
+            || pass.attribute_edits(rel).is_some()
+            || !pass.overlay.positionals(rel).is_empty();
         let (set, related) = if edited {
-            match effective_relation(pass, rel) {
-                Some(found) => found,
-                None => continue,
-            }
+            let Some(record) = effective_record(pass, rel) else { continue };
+            let (Some(related), Some(set)) = (record.named("RelatedObjects"), record.named("RelatingPropertyDefinition")) else {
+                continue;
+            };
+            (record_refs(set).first().copied(), record_refs(related))
         } else {
             let Some(line) = pass.src.line(rel) else { continue };
             (readers::related_property_set(&line), readers::related_entities(&line))
@@ -74,27 +76,6 @@ fn rel_index(pass: &Pass<'_, '_>) -> (RelsByEntity, Vec<(u32, Vec<u32>)>) {
         related_by_rel.push((rel, related));
     }
     (by_entity, related_by_rel)
-}
-
-/// `effectiveRelation` for a relationship with queued named edits: its
-/// `RelatedObjects` and `RelatingPropertyDefinition` as the export will write
-/// them.
-fn effective_relation(pass: &Pass<'_, '_>, rel: u32) -> Option<(Option<u32>, Vec<u32>)> {
-    let (ty, attrs) = pass.src.entity(rel)?;
-    let names = super::attrs::attr_names(&ty, pass.schema);
-    let mut authored: HashMap<usize, Vec<u32>> = HashMap::new();
-    for (name, value) in pass.attribute_edits(rel).unwrap_or(&[]) {
-        if let Some(i) = names.iter().position(|n| n == name) {
-            authored.insert(i, readers::authored_entity_refs(value));
-        }
-    }
-    let related_slot = names.iter().position(|n| *n == "RelatedObjects")?;
-    let set_slot = names.iter().position(|n| *n == "RelatingPropertyDefinition")?;
-    let read = |slot: usize| match authored.get(&slot) {
-        Some(ids) => ids.clone(),
-        None => super::base::refs(attrs.get(slot)),
-    };
-    Some((read(set_slot).first().copied(), read(related_slot)))
 }
 
 /// Withhold a source set and its members; `retain_shared_atoms` gives back
@@ -210,13 +191,42 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
     out
 }
 
-/// `getTypeOwnedHasPropertySetIds`: the numeric members of slot 5.
+/// `getTypeOwnedHasPropertySetIds`: the numeric members of slot 5, or a
+/// created type object's authored (and positionally overridden) slot 5.
 fn type_owned_ids(pass: &Pass<'_, '_>, entity: u32) -> Vec<u32> {
+    if let Some(created) = pass.overlay.created(entity) {
+        let authored = created.attributes.get(5).cloned().unwrap_or(serde_json::Value::Null);
+        return authored_refs(&pass.overlay_slot(entity, 5, authored));
+    }
     let Some((_, attrs)) = pass.src.entity(entity) else { return Vec::new() };
     match attrs.get(5) {
         Some(JsVal::Arr(items)) => items.iter().filter_map(|v| v.as_num().map(|n| n as u32)).collect(),
         _ => Vec::new(),
     }
+}
+
+/// The members a KEPT container names, as `retainSharedAtoms`' `memberIds`
+/// reads them: a created container's effective record, a source container's
+/// positional or named override of its member slot, else its own line.
+fn member_ids(pass: &Pass<'_, '_>, container: u32, ty: &str) -> Vec<u32> {
+    let (name, slot) = if ty == "IFCPROPERTYSET" { ("HasProperties", 4) } else { ("Quantities", 5) };
+    if pass.is_overlay_created(container) {
+        let Some(record) = effective_record(pass, container) else { return Vec::new() };
+        return match record.named(name) {
+            Some(Slot::Authored(v)) => authored_refs(v),
+            _ => Vec::new(),
+        };
+    }
+    if let Some((_, v)) = pass.overlay.positionals(container).iter().find(|(i, _)| *i == slot) {
+        return authored_refs(v);
+    }
+    if let Some((_, v)) = pass.attribute_edits(container).unwrap_or(&[]).iter().rev().find(|(n, _)| n == name) {
+        return readers::authored_entity_refs(v);
+    }
+    if pass.src.type_of(container).as_deref() != Some(ty) {
+        return Vec::new();
+    }
+    pass.src.line(container).map(|l| readers::property_ids_in_set(&l)).unwrap_or_default()
 }
 
 /// `retainSharedAtoms`: a withheld member that a KEPT property set or
@@ -227,13 +237,11 @@ pub(crate) fn retain_shared_atoms(pass: &mut Pass<'_, '_>) {
     }
     let mut keep = Vec::new();
     for ty in ["IFCPROPERTYSET", "IFCELEMENTQUANTITY"] {
-        for &container in pass.src.of_type(ty) {
-            if pass.skip.contains(&container) || pass.is_deleted(container) {
+        for container in pass.of_type(ty) {
+            if pass.skip.contains(&container) {
                 continue;
             }
-            if let Some(line) = pass.src.line(container) {
-                keep.extend(readers::property_ids_in_set(&line));
-            }
+            keep.extend(member_ids(pass, container, ty));
         }
     }
     for id in keep {

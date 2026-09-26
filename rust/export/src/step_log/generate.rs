@@ -22,6 +22,7 @@ use super::nominal::serialize_nominal_value;
 use super::pass::Pass;
 use super::readers;
 use super::units::{find_length_unit_reference, normalize_map_unit_name};
+use super::values::Unwritable;
 
 /// `HAS_PROPERTY_SETS_SLOT`.
 const HAS_PROPERTY_SETS_SLOT: usize = 5;
@@ -151,7 +152,7 @@ fn resolve_owned(pass: &Pass<'_, '_>, original: &[u32], affected: &[String], rep
     resolved
 }
 
-pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) {
+pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) -> Result<(), Unwritable> {
     let mut owned_by_host: Vec<(u32, Vec<(String, u32)>)> = Vec::new();
     for (host, psets) in &collected.new_psets {
         if !pass.will_be_emitted(*host) {
@@ -175,13 +176,25 @@ pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) {
         let replacements = owned_by_host.iter().rev().find(|(h, _)| *h == host).map(|(_, r)| r.clone()).unwrap_or_default();
         let original = pass.type_owned_ids.get(&host).cloned().unwrap_or_default();
         let resolved = resolve_owned(pass, &original, &names, &replacements);
+        if pass.is_overlay_created(host) {
+            let value = if resolved.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::Array(resolved.iter().map(|id| serde_json::Value::String(format!("#{id}"))).collect())
+            };
+            match pass.overlay_type_owned.iter_mut().find(|(e, _)| *e == host) {
+                Some(entry) => entry.1 = value,
+                None => pass.overlay_type_owned.push((host, value)),
+            }
+            continue;
+        }
         let Some(source_line) = pass.src.line(host).map(|l| l.into_owned()) else {
             pass.warnings.push(format!(
                 "Type object #{host}: no source bytes were available to rewrite, so its property-set change was not applied and no line was written for it."
             ));
             continue;
         };
-        let (mutated, delivery) = pass.mutate_line(host, &source_line);
+        let (mutated, delivery) = pass.mutate_line(host, &source_line)?;
         let token = if resolved.is_empty() {
             "$".to_string()
         } else {
@@ -218,4 +231,5 @@ pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) {
         pass.new_entity_count += lines.len();
         pass.generated.extend(lines);
     }
+    Ok(())
 }

@@ -51,3 +51,21 @@ fn a_log_does_not_combine_with_the_plain_writer_options() {
     let opts = StepOptions { included: Some(vec![1]), ..StepOptions::default() };
     assert!(export_step_with_log(SOURCE.as_bytes(), &opts, &log).is_err());
 }
+
+#[test]
+fn a_retype_to_a_non_entity_name_is_refused_like_set_entity_type_throws() {
+    let err = refused(r#"{"mutations":[{"type":"UPDATE_ENTITY_TYPE","entityId":1,"entityType":"not a class"}]}"#);
+    assert!(err.contains("not a recognizable IFC entity name"), "{err}");
+}
+
+#[test]
+fn a_create_without_its_payload_is_refused_not_dropped_with_its_edits() {
+    // The replay skips the create and every record against its id; the entity
+    // and its set edit would silently be missing from the saved file.
+    let err = refused(
+        r#"{"mutations":[{"type":"CREATE_ENTITY","entityId":2,"attributeName":"IfcWall"},
+            {"type":"UPDATE_ATTRIBUTE","entityId":2,"attributeName":"Name","newValue":"x"},
+            {"type":"CREATE_PROPERTY","entityId":2,"psetName":"P","propName":"A","newValue":"a","valueType":0}]}"#,
+    );
+    assert!(err.contains("CREATE_ENTITY #2"), "{err}");
+}

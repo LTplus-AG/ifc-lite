@@ -65,6 +65,11 @@ const { declaredNominalValueType, CONSTRAINED_IFC_VALUE_MEMBERS } = await src(
 );
 const { getSelectDefinedLeaves } = await src('packages/export/src/select-qualification.ts');
 const { isTypeClass } = await src('packages/export/src/type-owned-psets.ts');
+const { readRelationshipSlotLowerBound } = await src('packages/export/src/relationship-slot-bounds.ts');
+const { NONREL_REF_LIST_TYPES, NONREL_REF_LIST_REGISTRY_NAMES } = await src('packages/export/src/nonrel-ref-list-types.ts');
+const { STYLE_RESCUE_TYPES } = await src('packages/export/src/style-closure.ts');
+const { resolveExpressBase } = await src('packages/export/src/step-serialization.ts');
+const { getAttributeNamesForSchema, getAllAttributesForEntity, SCHEMA_REGISTRY, getSchemaRegistryForVersion } = await src('packages/parser/dist/index.js');
 const { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, PropertyValueType } = await src('packages/data/dist/index.js');
 const { ENTITY_NAME_ALIASES, getAttributeNamesAcrossSchemas } = await src('packages/parser/dist/ifc-schema.js');
 
@@ -149,12 +154,17 @@ for (const upper of [...universe.keys()].sort()) {
   if ((names[3] ?? []).join('|') !== across.map((n, i) => (across.indexOf(n) === i ? n : '')).join('|')) {
     throw new Error(`${type}: recovered cross-schema names disagree with getAttributeNamesAcrossSchemas`);
   }
+  // `getAttributeNamesForSchema`, which `resolveEffectiveEntityRecord` reads.
+  const registryNames = ['IFC2X3', 'IFC4', 'IFC4X3'].map((v) => {
+    const n = getAttributeNamesForSchema(type, v);
+    return n.length > 0 ? n : null;
+  });
   const enums = mask(getEnumTypedSlots(type), type);
   const strings = mask(getStringTypedSlots(type), type);
   const reals = ['IFC2X3', 'IFC4', 'IFC4X3'].map((v) => mask(getRealTypedSlots(type, v), type));
-  if (names.every((n) => n === null) && enums === 0n && strings === 0n && reals.every((r) => r === 0n)) continue;
+  if (names.every((n) => n === null) && registryNames.every((n) => n === null) && enums === 0n && strings === 0n && reals.every((r) => r === 0n)) continue;
   rows.push(
-    `    (${JSON.stringify(upper)}, [${names.map(listIndex).join(', ')}], ${enums}, ${strings}, [${reals.join(', ')}]),`,
+    `    (${JSON.stringify(upper)}, [${[...names, ...registryNames].map(listIndex).join(', ')}], ${enums}, ${strings}, [${reals.join(', ')}]),`,
   );
 }
 
@@ -175,6 +185,64 @@ leaves.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 // Record types `isTypeClass` answers yes for: the owners of `HasPropertySets`,
 // whose property sets the exporter repoints rather than relates.
 const typeObjects = [...universe.keys()].sort().filter((upper) => isTypeClass(upper));
+
+// Retype (`retype.ts`): each schema table's attribute list and PredefinedType
+// domain, as `lookupEntityInfo` reads them.
+const retypeRows = [];
+for (const [schema, table] of [['IFC2X3', ENTITIES_IFC2X3], ['IFC4', ENTITIES_IFC4_EXPRESS], ['IFC4X3', ENTITIES_IFC4X3]]) {
+  for (const e of table) {
+    retypeRows.push(`    (${JSON.stringify(schema)}, ${JSON.stringify(e.name.toUpperCase())}, ${listIndex([...e.attributes])}, ${listIndex([...e.predefinedTypes])}),`);
+  }
+}
+retypeRows.sort();
+
+// Select qualification (`select-qualification.ts`): non-aggregate SELECT slots
+// of the pinned registry, and each select's defined-type leaves.
+const selectSlotRows = [];
+const selectsUsed = new Set();
+for (const upper of [...universe.keys()].sort()) {
+  getAllAttributesForEntity(universe.get(upper)).forEach((attr, i) => {
+    if (!attr.isArray && !attr.isList && !attr.isSet && Object.hasOwn(SCHEMA_REGISTRY.selects, attr.type)) {
+      selectSlotRows.push(`    (${JSON.stringify(upper)}, ${i}, ${JSON.stringify(attr.type)}),`);
+      selectsUsed.add(attr.type);
+    }
+  });
+}
+const selectLeafRows = [];
+for (const sel of [...selectsUsed].sort()) {
+  for (const [member, base] of getSelectDefinedLeaves(sel)) {
+    selectLeafRows.push(`    (${JSON.stringify(sel)}, ${JSON.stringify(member)}, ${JSON.stringify(base)}),`);
+  }
+}
+const definedBaseRows = Object.keys(SCHEMA_REGISTRY.types)
+  .map((t) => [t, resolveExpressBase(t)])
+  .filter(([, b]) => b !== null)
+  .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  .map(([t, b]) => `    (${JSON.stringify(t)}, ${JSON.stringify(b)}),`);
+
+// Aggregate slot bounds the reference filters read: style records through
+// `readRelationshipSlotLowerBound`, the non-relationship narrowing through
+// the registry slot `readAggregateSlot` reads.
+const styleBoundRows = [];
+const nonrelRows = [];
+for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+  for (const upper of [...STYLE_RESCUE_TYPES].sort()) {
+    for (let i = 0; i < 64; i++) {
+      const lb = readRelationshipSlotLowerBound(upper, i, schema);
+      if (lb !== undefined) styleBoundRows.push(`    (${JSON.stringify(schema)}, ${JSON.stringify(upper)}, ${i}, ${lb}),`);
+    }
+  }
+  const registry = getSchemaRegistryForVersion(schema);
+  for (const upper of [...NONREL_REF_LIST_TYPES].sort()) {
+    const attrs = registry.entities[NONREL_REF_LIST_REGISTRY_NAMES.get(upper)]?.allAttributes ?? [];
+    attrs.forEach((attr, i) => {
+      if (!(attr.isList || attr.isSet)) return;
+      const lb = attr.arrayBounds?.[0];
+      if (lb === undefined || !Number.isFinite(lb)) return;
+      nonrelRows.push(`    (${JSON.stringify(schema)}, ${JSON.stringify(upper)}, ${i}, ${attr.optional}, ${lb}),`);
+    });
+  }
+}
 
 const listRows = [...lists.keys()].map((key) => {
   const names = key.split('\u0000');
@@ -203,13 +271,49 @@ ${listRows.join('\n')}
 /// Index into [\`NAME_LISTS\`], or none.
 pub const NONE: u16 = u16::MAX;
 
-/// \`(UPPERCASE type, name lists for [IFC2X3, IFC4, IFC4X3, no schema],
-/// enum-slot mask, string-slot mask, REAL-slot masks for [IFC2X3, IFC4,
-/// IFC4X3])\`, sorted by type for binary search.
-pub type SlotRow = (&'static str, [u16; 4], u64, u64, [u64; 3]);
+/// \`(UPPERCASE type, name lists [attrIndex for IFC2X3, IFC4, IFC4X3, no
+/// schema; getAttributeNamesForSchema for IFC2X3, IFC4, IFC4X3], enum-slot
+/// mask, string-slot mask, REAL-slot masks for [IFC2X3, IFC4, IFC4X3])\`,
+/// sorted by type for binary search.
+pub type SlotRow = (&'static str, [u16; 7], u64, u64, [u64; 3]);
 
 pub static SLOT_ROWS: &[SlotRow] = &[
 ${rows.join('\n')}
+];
+
+/// \`(schema, UPPERCASE type, attribute list, PredefinedType list)\` from
+/// each schema's entity table (\`retype.ts\`'s \`lookupEntityInfo\`), sorted.
+pub static RETYPE_ROWS: &[(&str, &str, u16, u16)] = &[
+${retypeRows.join('\n')}
+];
+
+/// \`(UPPERCASE type, slot, SELECT name)\` for every non-aggregate SELECT slot
+/// (\`getSelectSlots\`), sorted.
+pub static SELECT_SLOTS: &[(&str, u8, &str)] = &[
+${selectSlotRows.join('\n')}
+];
+
+/// \`(SELECT, defined-type member, EXPRESS base)\` (\`getSelectDefinedLeaves\`),
+/// sorted by SELECT, members in the registry's order.
+pub static SELECT_LEAVES: &[(&str, &str, &str)] = &[
+${selectLeafRows.join('\n')}
+];
+
+/// \`(defined type, EXPRESS base)\` (\`resolveExpressBase\`), sorted.
+pub static DEFINED_TYPE_BASES: &[(&str, &str)] = &[
+${definedBaseRows.join('\n')}
+];
+
+/// \`(schema, UPPERCASE style-record type, slot, lower bound)\`
+/// (\`readRelationshipSlotLowerBound\`).
+pub static STYLE_SLOT_BOUNDS: &[(&str, &str, u8, u32)] = &[
+${styleBoundRows.join('\n')}
+];
+
+/// \`(schema, UPPERCASE type, slot, optional, lower bound)\` for the aggregate
+/// slots of \`NONREL_REF_LIST_TYPES\` (\`readAggregateSlot\`).
+pub static NONREL_AGGREGATE_SLOTS: &[(&str, &str, u8, bool, u32)] = &[
+${nonrelRows.join('\n')}
 ];
 
 /// UPPERCASE record types whose inheritance chain reaches \`IfcTypeObject\`

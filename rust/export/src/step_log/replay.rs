@@ -2,13 +2,16 @@
 //! The quantity setters of the replay, and `applyMutationsBatch` itself; the
 //! property setters and the overlay state are in [`super::overlay`].
 
+use std::collections::HashSet;
+
 use serde_json::Value;
 
 use super::base::{qty, BaseSets, QSet, Quantity};
 use super::jsval::{js_to_number, json_number, json_to_js_string};
 use super::overlay::{Op, Overlay, QuantMut};
 use super::base::pvt;
-use super::wire::{LogMutation, MutationKind};
+use super::entities::is_entity_name;
+use super::wire::{LogMutation, LogNewEntity, MutationKind};
 
 impl Overlay {
     /// `setQuantity`.
@@ -101,38 +104,27 @@ impl Overlay {
 #[derive(Debug)]
 pub(crate) struct Unsupported(pub(crate) String);
 
-/// The kinds this writer applies. A log carrying any other kind is refused
-/// whole rather than exported without it: a file that looks like a saved edit
-/// and silently lacks one is the failure this writer exists to prevent.
-fn supported(kind: MutationKind) -> bool {
-    matches!(
-        kind,
-        MutationKind::CreateProperty
-            | MutationKind::UpdateProperty
-            | MutationKind::DeleteProperty
-            | MutationKind::CreatePropertySet
-            | MutationKind::DeletePropertySet
-            | MutationKind::CreateQuantity
-            | MutationKind::UpdateQuantity
-            | MutationKind::DeleteQuantity
-            | MutationKind::DeleteQuantitySet
-            | MutationKind::UpdateAttribute
-    )
-}
-
 /// `applyMutationsBatch`.
-pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> Result<Overlay, Unsupported> {
-    if let Some(m) = mutations.iter().find(|m| !supported(m.kind)) {
-        return Err(Unsupported(match m.kind {
-            // `applyMutationsBatch` warns and skips a type it does not know,
-            // so the TypeScript save writes the file without that edit. A
-            // native save refuses instead: the record could be an edit a
-            // newer producer made, and dropping it is silent data loss.
-            MutationKind::Unknown => {
-                format!("a mutation of an unrecognised `type` (entity #{}) cannot be applied", m.entity_id)
-            }
-            kind => format!("mutation kind {kind:?} (entity #{}) is not supported by this writer yet", m.entity_id),
-        }));
+///
+/// The log's `newEntities` are restored first, as a host following
+/// `importMutations`' documented recovery flow calls `restoreNewEntity` before
+/// replaying. A `CREATE_ENTITY` record whose payload is missing is refused:
+/// the replay would drop it and every record against its id, writing a file
+/// without the entity.
+pub(crate) fn replay(
+    mutations: &[LogMutation],
+    new_entities: &[LogNewEntity],
+    base: &mut BaseSets<'_, '_>,
+) -> Result<Overlay, Unsupported> {
+    if let Some(m) = mutations.iter().find(|m| m.kind == MutationKind::Unknown) {
+        // `applyMutationsBatch` warns and skips a type it does not know, so
+        // the TypeScript save writes the file without that edit. A native
+        // save refuses instead: the record could be an edit a newer producer
+        // made, and dropping it is silent data loss.
+        return Err(Unsupported(format!(
+            "a mutation of an unrecognised `type` (entity #{}) cannot be applied",
+            m.entity_id
+        )));
     }
     if let Some(m) = mutations.iter().find(|m| {
         m.kind == MutationKind::UpdateAttribute && m.new_value.as_ref().is_some_and(Value::is_null)
@@ -148,8 +140,22 @@ pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> 
         )));
     }
     let mut o = Overlay::default();
+    for entity in new_entities {
+        o.restore(entity.clone());
+    }
+    if let Some(m) = mutations.iter().find(|m| m.kind == MutationKind::CreateEntity && !o.is_created(m.entity_id)) {
+        return Err(Unsupported(format!(
+            "CREATE_ENTITY #{} carries no payload in `newEntities` (MutablePropertyView.getNewEntities()); the entity and every edit recorded against it would be lost",
+            m.entity_id
+        )));
+    }
+    let skipped_creates: HashSet<u32> =
+        mutations.iter().filter(|m| m.kind == MutationKind::CreateEntity).map(|m| m.entity_id).collect();
     for m in mutations {
         let e = m.entity_id;
+        if m.kind != MutationKind::CreateEntity && skipped_creates.contains(&e) && !o.is_created(e) {
+            continue;
+        }
         let set = m.pset_name.as_deref().filter(|s| !s.is_empty());
         let name = m.prop_name.as_deref().filter(|s| !s.is_empty());
         match m.kind {
@@ -199,8 +205,34 @@ pub(crate) fn replay(mutations: &[LogMutation], base: &mut BaseSets<'_, '_>) -> 
                     o.create_property_set(e, set, members);
                 }
             }
-            // Every other kind was refused before the loop.
-            _ => {}
+            MutationKind::UpdatePositionalAttribute => {
+                let attr = m.attribute_name.as_deref().unwrap_or("");
+                let Some(index) = attr.strip_prefix('@') else { continue };
+                let index = js_to_number(&Value::String(index.to_string()));
+                if !(index.is_finite() && index.fract() == 0.0 && index >= 0.0) {
+                    continue;
+                }
+                if let Some(value) = m.new_value.as_ref() {
+                    o.set_positional(e, index as usize, value.clone());
+                }
+            }
+            MutationKind::UpdateEntityType => {
+                let new_type = m.entity_type.clone().or_else(|| m.new_value.as_ref().and_then(Value::as_str).map(str::to_string));
+                let Some(new_type) = new_type.filter(|t| !t.is_empty()) else { continue };
+                let trimmed = new_type.trim();
+                if !is_entity_name(trimmed) {
+                    return Err(Unsupported(format!(
+                        "setEntityType: \"{new_type}\" is not a recognizable IFC entity name (entity #{e})"
+                    )));
+                }
+                o.set_retype(e, trimmed.to_string(), m.predefined_type.clone());
+            }
+            // Restored from `newEntities` before the loop; one without a
+            // payload was refused there.
+            MutationKind::CreateEntity => {}
+            MutationKind::DeleteEntity => o.delete_entity(e),
+            // Refused before the loop.
+            MutationKind::Unknown => {}
         }
     }
     Ok(o)

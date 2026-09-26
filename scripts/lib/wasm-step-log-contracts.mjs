@@ -55,9 +55,9 @@ export function runStepLogContracts(api, test) {
     assert.throws(() => api.exportStep(walls, '', new Uint32Array([21]), JSON.stringify(log)), /exportStep:.*included/);
   });
 
-  test('a log carrying a kind the writer does not apply is refused, not dropped', () => {
-    const unsupported = { mutations: [{ id: 'x', type: 'UPDATE_ENTITY_TYPE', timestamp: 0, modelId: 'm', entityId: 21, entityType: 'IfcColumn' }] };
-    assert.throws(() => api.exportStep(walls, '', undefined, JSON.stringify(unsupported)), /exportStep:.*not supported/);
+  test('a log the TypeScript replay would throw on is refused, not exported', () => {
+    const invalid = { mutations: [{ id: 'x', type: 'UPDATE_ENTITY_TYPE', timestamp: 0, modelId: 'm', entityId: 21, entityType: 'not a class' }] };
+    assert.throws(() => api.exportStep(walls, '', undefined, JSON.stringify(invalid)), /exportStep:.*not a recognizable IFC entity name/);
   });
 
   test(`refuses every shared refused case (${fixture.refusedCases.length} cases)`, () => {

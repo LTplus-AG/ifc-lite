@@ -43,4 +43,14 @@ it('keeps the #5886 class builder invocation count at one through repeated expan
     assert.equal(tree.treeData.length, i % 2 === 0 ? 3 : 1, 'only the visible row projection changes');
   }
   assert.equal(scannedRows, initialScans, 'expansion must never invoke the class builder again');
+
+  act(() => tree.setSearchQuery('Wall B'));
+  assert.ok(tree.filteredNodes.some((node) => node.name === 'Wall B'), 'search sees the complete structure');
+  assert.equal(scannedRows, initialScans, 'search must reuse the same structure');
+
+  act(() => tree.setSearchQuery(''));
+  let revealed: string | null = null;
+  act(() => { revealed = tree.revealGlobalId(8); });
+  assert.ok(revealed, 'an external selection resolves to the full-tree leaf');
+  assert.equal(scannedRows, initialScans, 'reveal must reuse the same structure');
 });

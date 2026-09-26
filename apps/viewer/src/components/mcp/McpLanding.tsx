@@ -135,14 +135,14 @@ function TopBar(): ReactNode {
           {/* Brand also acts as the back-to-viewer affordance, but the
               Viewer link in the nav makes that explicit so it doesn't
               rely on users guessing. */}
-          <a href="/" className="text-[16px] tracking-tight" style={{ color: PAPER, fontWeight: 600 }}>
+          <a href="/" className="text-base tracking-tight" style={{ color: PAPER, fontWeight: 600 }}>
             {t('mcp.mcpLanding.brand')}
           </a>
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.22em]">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.22em]">
             {t('mcp.mcpLanding.navBadge', { version: MCP_VERSION })}
           </span>
         </div>
-        <nav className="hidden items-center gap-7 text-[13.5px] sm:flex" style={{ color: PAPER_DIM, fontWeight: 500 }}>
+        <nav className="hidden items-center gap-7 text-sm sm:flex" style={{ color: PAPER_DIM, fontWeight: 500 }}>
           <a
             href="/"
             className="group inline-flex items-center gap-1 transition-colors hover:text-[var(--paper)]"
@@ -157,7 +157,7 @@ function TopBar(): ReactNode {
         </nav>
         <a
           href="/mcp/playground"
-          className="group relative inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium tracking-tight transition-colors"
+          className="group relative inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium tracking-tight transition-colors"
           style={{ background: ACCENT, color: NIGHT, borderRadius: 999 }}
         >
           <Play size={12} fill={NIGHT} />
@@ -178,12 +178,12 @@ function Hero(): ReactNode {
       <div className="mx-auto max-w-[1280px] px-6 pt-20 pb-32 md:pt-32 md:pb-44">
         <div className="grid grid-cols-12 gap-8">
           <div className="col-span-12 md:col-span-7">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] uppercase tracking-[0.2em]" style={{ borderColor: RULE, color: ACCENT, ...mono }}>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-2xs uppercase tracking-[0.2em]" style={{ borderColor: RULE, color: ACCENT, ...mono }}>
               <Sparkles size={12} />
               {t('mcp.mcpLanding.heroBadge', { version: MCP_VERSION })}
             </div>
             <h1
-              className="text-[58px] leading-[0.92] tracking-[-0.022em] md:text-[112px]"
+              className="text-6xl leading-[0.92] tracking-[-0.022em] md:text-8xl"
               style={{ ...display, color: PAPER }}
             >
               {t('mcp.mcpLanding.heroTitleLine1')}
@@ -191,7 +191,7 @@ function Hero(): ReactNode {
               <span style={{ fontStyle: 'italic', color: ACCENT }}>{t('mcp.mcpLanding.heroTitleLine2')}</span>
             </h1>
             <p
-              className="mt-8 max-w-[34rem] text-[18px] leading-[1.55] md:text-[20px]"
+              className="mt-8 max-w-[34rem] text-lg leading-[1.55] md:text-xl"
               style={{ color: PAPER_DIM, fontWeight: 400 }}
             >
               {t('mcp.mcpLanding.heroSubtitle', { count: stats.total })}
@@ -199,7 +199,7 @@ function Hero(): ReactNode {
             <div className="mt-10 flex flex-wrap items-center gap-3">
               <a
                 href="/mcp/playground"
-                className="group relative inline-flex items-center gap-2 px-7 py-4 text-[15px] font-semibold tracking-tight"
+                className="group relative inline-flex items-center gap-2 px-7 py-4 text-sm font-semibold tracking-tight sm:text-base"
                 style={{ background: ACCENT, color: NIGHT, borderRadius: 6 }}
               >
                 <Play size={14} fill={NIGHT} />
@@ -213,7 +213,7 @@ function Hero(): ReactNode {
               </a>
               <button
                 onClick={() => scrollToAnchor('install')}
-                className="inline-flex items-center gap-2 px-6 py-4 text-[15px] font-medium tracking-tight transition-colors hover:bg-white/5"
+                className="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium tracking-tight transition-colors hover:bg-white/5 sm:text-base"
                 style={{ border: `1px solid ${PAPER}40`, color: PAPER, borderRadius: 6 }}
               >
                 <Terminal size={14} />
@@ -238,18 +238,18 @@ function Hero(): ReactNode {
 }
 
 function statMessage(t: ReturnType<typeof useTranslation>['t'], locale: string, key: Parameters<typeof t>[0], count: number): ReactNode {
-  const number = <span key="countDisplay" style={{ ...display, color: PAPER, fontStyle: 'italic' }} className="text-[44px] leading-none">{formatLocaleCount(count, locale)}</span>;
+  const number = <span key="countDisplay" style={{ ...display, color: PAPER, fontStyle: 'italic' }} className="text-5xl leading-none">{formatLocaleCount(count, locale)}</span>;
   return styleInterpolatedValues(t, key, [['countDisplay', number]], { count });
 }
 
 function Stat({ children, sublabel }: { children: ReactNode; sublabel?: string }): ReactNode {
   return (
     <div className="flex items-baseline gap-2"><div className="flex flex-col leading-tight">
-        <span className="text-[12px] uppercase tracking-[0.18em]" style={{ color: PAPER_DIM, fontWeight: 600 }}>
+        <span className="text-xs uppercase tracking-[0.18em]" style={{ color: PAPER_DIM, fontWeight: 600 }}>
           {children}
         </span>
         {sublabel && (
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px]">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs">
             {sublabel}
           </span>
         )}
@@ -328,7 +328,7 @@ function WireframeStage(): ReactNode {
         <div className="flex items-end gap-4 px-5 py-3">
           <div className="min-w-0 flex-1">
             <div
-              className="mb-0.5 flex items-center gap-2 text-[9.5px] uppercase tracking-[0.22em]"
+              className="mb-0.5 flex items-center gap-2 text-2xs uppercase tracking-[0.22em]"
               style={{ ...mono }}
             >
               <span className="inline-flex items-center gap-1.5" style={{ color: ACCENT }}>
@@ -343,11 +343,11 @@ function WireframeStage(): ReactNode {
             <div className="flex items-baseline gap-3">
               <span
                 style={{ ...display, color: PAPER, fontStyle: 'italic' }}
-                className="truncate text-[28px] leading-none tracking-[-0.01em]"
+                className="truncate text-3xl leading-none tracking-[-0.01em]"
               >
                 {current.verb}.
               </span>
-              <code className="truncate text-[11.5px]" style={{ ...mono, color: PAPER_DIM }}>
+              <code className="truncate text-xs" style={{ ...mono, color: PAPER_DIM }}>
                 {current.line}
               </code>
             </div>
@@ -390,15 +390,15 @@ function HeroOverlay({
     return (
       <div className={chrome} style={{ ...chromeStyle, left: 14, top: 14, width: 132 }}>
         <div className="flex items-baseline gap-1.5">
-          <span style={{ ...display, color: ACCENT }} className="text-[44px] leading-none">{o.score}</span>
-          <span className="text-[9px] uppercase tracking-[0.2em]" style={{ color: PAPER_DIM }}>
+          <span style={{ ...display, color: ACCENT }} className="text-5xl leading-none">{o.score}</span>
+          <span className="text-2xs uppercase tracking-[0.2em]" style={{ color: PAPER_DIM }}>
             / 100
           </span>
         </div>
         <div className="mt-2 h-px w-full" style={{ background: `${PAPER}22` }}>
           <div className="h-px transition-all" style={{ width: `${pct}%`, background: ACCENT }} />
         </div>
-        <div className="mt-1.5 text-[9.5px] uppercase tracking-[0.2em]" style={{ color: PAPER_DIM }}>
+        <div className="mt-1.5 text-2xs uppercase tracking-[0.2em]" style={{ color: PAPER_DIM }}>
           {o.note}
         </div>
       </div>
@@ -415,7 +415,7 @@ function HeroOverlay({
           {o.rows.map((row) => (
             <li key={row.type} className="grid grid-cols-[1fr_auto] items-baseline gap-2">
               <div>
-                <div className="text-[9px] uppercase tracking-[0.22em]" style={{ color: PAPER_DIM }}>
+                <div className="text-2xs uppercase tracking-[0.22em]" style={{ color: PAPER_DIM }}>
                   {t('mcp.mcpLanding.ifcTypeLabel', { type: row.type })}
                 </div>
                 <div className="mt-1 h-[2px] w-full" style={{ background: `${PAPER}18` }}>
@@ -425,7 +425,7 @@ function HeroOverlay({
                   />
                 </div>
               </div>
-              <span style={{ ...display, color: PAPER }} className="text-[22px] leading-none">
+              <span style={{ ...display, color: PAPER }} className="text-2xl leading-none">
                 {row.n}
               </span>
             </li>
@@ -469,10 +469,10 @@ function HeroOverlay({
           className="flex items-baseline justify-between gap-2 px-3 py-2 border-b"
           style={{ borderColor: RULE, background: 'rgba(46,95,199,0.18)' }}
         >
-          <span className="text-[9.5px] uppercase tracking-[0.24em]" style={{ color: '#7aa2f7' }}>
+          <span className="text-2xs uppercase tracking-[0.24em]" style={{ color: '#7aa2f7' }}>
             {t('mcp.mcpLanding.bsddWallBadge')}
           </span>
-          <span className="text-[9.5px]" style={{ color: PAPER_DIM }}>
+          <span className="text-2xs" style={{ color: PAPER_DIM }}>
             {t('mcp.mcpLanding.psetsCount', { count: o.psets.length })}
           </span>
         </header>
@@ -482,7 +482,7 @@ function HeroOverlay({
             return (
               <div key={psetName} className="border-b last:border-b-0" style={{ borderColor: RULE }}>
                 <div
-                  className="px-3 py-1.5 text-[10px] uppercase tracking-[0.18em]"
+                  className="px-3 py-1.5 text-2xs uppercase tracking-[0.18em]"
                   style={{ color: ACCENT, background: 'rgba(255,255,255,0.02)' }}
                 >
                   {psetName}
@@ -492,11 +492,11 @@ function HeroOverlay({
                     <tbody>
                       {rows.map((r) => (
                         <tr key={r.k}>
-                          <td className="px-3 py-0.5 text-[10.5px]" style={{ color: PAPER }}>{r.k}</td>
-                          <td className="px-2 py-0.5 text-right text-[10.5px]" style={{ color: PAPER }}>
+                          <td className="px-3 py-0.5 text-2xs" style={{ color: PAPER }}>{r.k}</td>
+                          <td className="px-2 py-0.5 text-right text-2xs" style={{ color: PAPER }}>
                             {r.v}
                           </td>
-                          <td className="px-3 py-0.5 text-right text-[9px] uppercase tracking-[0.18em]" style={{ color: PAPER_DIM }}>
+                          <td className="px-3 py-0.5 text-right text-2xs uppercase tracking-[0.18em]" style={{ color: PAPER_DIM }}>
                             {r.t}
                           </td>
                         </tr>
@@ -504,7 +504,7 @@ function HeroOverlay({
                     </tbody>
                   </table>
                 ) : (
-                  <div className="px-3 py-1.5 text-[9.5px]" style={{ color: PAPER_DIM }}>
+                  <div className="px-3 py-1.5 text-2xs" style={{ color: PAPER_DIM }}>
                     {t('mcp.mcpLanding.schemaOnly')}
                   </div>
                 )}
@@ -534,7 +534,7 @@ function HeroOverlay({
           background: 'rgba(40,12,12,0.86)',
         }}
       >
-        <span className="text-[10.5px] tracking-[0.08em]" style={{ color: '#ffb6b6' }}>
+        <span className="text-2xs tracking-[0.08em]" style={{ color: '#ffb6b6' }}>
           {o.ref}
         </span>
       </div>
@@ -545,17 +545,17 @@ function HeroOverlay({
   if (o.kind === 'card') {
     return (
       <div className={chrome} style={{ ...chromeStyle, right: 14, bottom: 78, width: 268 }}>
-        <div style={{ ...display, color: PAPER }} className="text-[18px] leading-none">
+        <div style={{ ...display, color: PAPER }} className="text-lg leading-none">
           {o.ref}
         </div>
         <div className="mt-2 h-px w-full" style={{ background: `${PAPER}22` }} />
         <ul className="mt-2 flex flex-col gap-1">
           {o.lines.map((line, i) => (
             <li key={i} className="flex items-baseline gap-2">
-              <span style={{ ...mono, color: ACCENT }} className="text-[9px]">
+              <span style={{ ...mono, color: ACCENT }} className="text-2xs">
                 ↳
               </span>
-              <span className="text-[10.5px] leading-snug" style={{ color: PAPER }}>
+              <span className="text-2xs leading-snug" style={{ color: PAPER }}>
                 {line}
               </span>
             </li>
@@ -576,7 +576,7 @@ function FloatingScrollHint(): ReactNode {
       style={{ color: PAPER_DIM }}
     >
       <ArrowDown size={14} className="animate-bounce" />
-      <span style={{ ...mono }} className="text-[10px] uppercase tracking-[0.2em]">{t('mcp.mcpLanding.scrollHint')}</span>
+      <span style={{ ...mono }} className="text-2xs uppercase tracking-[0.2em]">{t('mcp.mcpLanding.scrollHint')}</span>
     </button>
   );
 }
@@ -611,9 +611,9 @@ function InstallSection(): ReactNode {
             style={{ borderColor: RULE }}
           >
             <div className="flex items-baseline gap-4">
-              <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.2em]">{t('mcp.mcpLanding.alsoLabel')}</span>
-              <span className="text-[16px] font-medium" style={{ color: PAPER }}>{goose.name}</span>
-              <span className="text-[13px]" style={{ color: PAPER_DIM }}>{goose.blurb}</span>
+              <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.2em]">{t('mcp.mcpLanding.alsoLabel')}</span>
+              <span className="text-base font-medium" style={{ color: PAPER }}>{goose.name}</span>
+              <span className="text-sm" style={{ color: PAPER_DIM }}>{goose.blurb}</span>
             </div>
             <ArrowUpRight size={16} style={{ color: PAPER_DIM }} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </button>
@@ -654,28 +654,28 @@ function BigClientCard({
         aria-hidden
       />
       <div className="flex items-baseline justify-between">
-        <span style={{ ...mono, color: ACCENT }} className="text-[10px] uppercase tracking-[0.22em]">
+        <span style={{ ...mono, color: ACCENT }} className="text-2xs uppercase tracking-[0.22em]">
           {t(client.deepLinkPrefix ? 'mcp.mcpLanding.oneClickBadge' : 'mcp.mcpLanding.pasteConfigBadge', {
             index: String(index + 1).padStart(2, '0'),
           })}
         </span>
-        <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px]">
+        <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs">
           {client.deepLinkPrefix ?? t('mcp.mcpLanding.manual')}
         </span>
       </div>
       <div>
         <h3
-          className="text-[36px] leading-[0.95] tracking-[-0.01em] transition-colors group-hover:text-[var(--accent)]"
+          className="text-4xl leading-[0.95] tracking-[-0.01em] transition-colors group-hover:text-[var(--accent)]"
           style={{ ...display, color: PAPER, ['--accent' as never]: ACCENT }}
         >
           {client.name}
         </h3>
-        <p className="mt-3 text-[14.5px] leading-[1.5]" style={{ color: PAPER_DIM }}>
+        <p className="mt-3 text-sm leading-[1.5]" style={{ color: PAPER_DIM }}>
           {client.blurb}
         </p>
       </div>
       <div className="flex items-center justify-between">
-        <code style={{ ...mono, color: PAPER_DIM }} className="text-[10.5px] truncate" title={client.configHint}>
+        <code style={{ ...mono, color: PAPER_DIM }} className="text-2xs truncate" title={client.configHint}>
           {client.configHint.replace(/^~/, '~')}
         </code>
         <ArrowUpRight size={16} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" style={{ color: PAPER }} />
@@ -691,17 +691,17 @@ function BigInstallDetail({ client }: { client: McpClient }): ReactNode {
   return (
     <div className="flex flex-col gap-5 p-6">
       <header>
-        <span style={{ ...mono, color: ACCENT }} className="text-[10px] uppercase tracking-[0.22em]">
+        <span style={{ ...mono, color: ACCENT }} className="text-2xs uppercase tracking-[0.22em]">
           {t('mcp.mcpLanding.installSlash', { name: client.name })}
         </span>
-        <h2 style={{ ...display, color: PAPER }} className="mt-1 text-[34px] leading-[1] tracking-[-0.01em]">
+        <h2 style={{ ...display, color: PAPER }} className="mt-1 text-4xl leading-[1] tracking-[-0.01em]">
           {client.deepLinkPrefix ? t('mcp.mcpLanding.oneClickOrCopy') : t('mcp.mcpLanding.dropInRestart')}
         </h2>
       </header>
       {deepLink && (
         <a
           href={deepLink}
-          className="inline-flex w-fit items-center gap-2 rounded px-4 py-2 text-[13px]"
+          className="inline-flex w-fit items-center gap-2 rounded px-4 py-2 text-sm"
           style={{ background: ACCENT, color: NIGHT, ...mono, fontWeight: 600 }}
         >
           {t('mcp.mcpLanding.openInClient', { name: client.name })} <ArrowUpRight size={13} />
@@ -709,19 +709,19 @@ function BigInstallDetail({ client }: { client: McpClient }): ReactNode {
       )}
       <div className="rounded-lg border" style={{ borderColor: RULE, background: NIGHT }}>
         <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: RULE }}>
-          <code style={{ ...mono, color: PAPER_DIM }} className="text-[10.5px]">
+          <code style={{ ...mono, color: PAPER_DIM }} className="text-2xs">
             {client.configHint}
           </code>
           <button
             onClick={() => copy(snippet, `b-${client.id}`)}
-            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] hover:bg-white/5"
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-2xs hover:bg-white/5"
             style={{ ...mono, color: copiedKey === `b-${client.id}` ? ACCENT : PAPER }}
           >
             {copiedKey === `b-${client.id}` ? <Check size={12} /> : <Copy size={12} />}
             {copiedKey === `b-${client.id}` ? t('mcp.mcpLanding.copied') : t('mcp.mcpLanding.copy')}
           </button>
         </div>
-        <pre className="overflow-x-auto px-4 py-4 text-[12.5px] leading-[1.55]" style={{ ...mono, color: PAPER }}>
+        <pre className="overflow-x-auto px-4 py-4 text-xs leading-[1.55]" style={{ ...mono, color: PAPER }}>
           {snippet}
         </pre>
       </div>
@@ -816,7 +816,7 @@ function RecipesSection(): ReactNode {
               >
                 <span
                   style={{ ...mono, color: FAMILY_ACCENT[recipe.family] }}
-                  className="text-[10px] uppercase tracking-[0.22em]"
+                  className="text-2xs uppercase tracking-[0.22em]"
                 >
                   / {recipe.family}
                 </span>
@@ -825,17 +825,17 @@ function RecipesSection(): ReactNode {
               <div className="flex flex-1 flex-col gap-4 p-5">
                 <h3
                   style={{ ...display, color: PAPER }}
-                  className="text-[26px] leading-[1.05] tracking-[-0.01em]"
+                  className="text-2xl leading-[1.05] tracking-[-0.01em]"
                 >
                   {recipe.title}
                 </h3>
 
                 <div
-                  className="rounded-md border bg-black/40 p-4 text-[12.5px] leading-[1.55]"
+                  className="rounded-md border bg-black/40 p-4 text-xs leading-[1.55]"
                   style={{ ...mono, borderColor: RULE, color: PAPER }}
                 >
                   <div
-                    className="mb-2 flex items-center gap-2 text-[9.5px] uppercase tracking-[0.2em]"
+                    className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.2em]"
                     style={{ color: PAPER_DIM }}
                   >
                     <span
@@ -858,7 +858,7 @@ function RecipesSection(): ReactNode {
                           scrollToAnchor(tool);
                         }}
                         style={{ ...mono, color: PAPER_DIM, borderColor: RULE }}
-                        className="rounded-full border px-2 py-0.5 text-[10px] hover:text-white"
+                        className="rounded-full border px-2 py-0.5 text-2xs hover:text-white"
                       >
                         {tool}
                       </a>
@@ -866,7 +866,7 @@ function RecipesSection(): ReactNode {
                   </div>
                   <button
                     onClick={() => copy(recipe.prompt, `b-r-${recipe.id}`)}
-                    className="inline-flex items-center gap-1 text-[11px]"
+                    className="inline-flex items-center gap-1 text-2xs"
                     style={{ ...mono, color: copiedKey === `b-r-${recipe.id}` ? ACCENT : PAPER_DIM }}
                   >
                     {copiedKey === `b-r-${recipe.id}` ? <Check size={12} /> : <Copy size={12} />}
@@ -899,7 +899,7 @@ function RecipesSection(): ReactNode {
 
       {/* pagination dots */}
       <div className="mx-auto mt-2 flex max-w-[1280px] items-center justify-between gap-3 px-6">
-        <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.2em]">
+        <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.2em]">
           {t('mcp.mcpLanding.recipesScrollCount', { count: RECIPES.length })}
         </span>
         <div className="flex items-center gap-1.5">
@@ -979,7 +979,7 @@ function CatalogSection(): ReactNode {
                     key={cat}
                     onClick={() => setActiveCat(cat)}
                     className={cn(
-                      'group relative flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] transition-all',
+                      'group relative flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-all',
                       isActive ? 'border' : 'opacity-60 hover:opacity-100',
                     )}
                     style={{
@@ -993,7 +993,7 @@ function CatalogSection(): ReactNode {
                     </span>
                     <span
                       style={{ ...mono, color: isActive ? ACCENT : PAPER_DIM }}
-                      className="text-[10.5px]"
+                      className="text-2xs"
                     >
                       {(grouped.get(cat) ?? []).length.toString().padStart(2, '0')}
                     </span>
@@ -1006,10 +1006,10 @@ function CatalogSection(): ReactNode {
           <div className="col-span-12 md:col-span-9">
             <div className="rounded-xl border" style={{ borderColor: RULE, background: NIGHT_2 }}>
               <div className="border-b px-6 py-4" style={{ borderColor: RULE }}>
-                <h3 style={{ ...display, color: PAPER }} className="text-[28px] leading-tight">
+                <h3 style={{ ...display, color: PAPER }} className="text-3xl leading-tight">
                   {activeCat}
                 </h3>
-                <p className="mt-1 text-[13.5px]" style={{ color: PAPER_DIM }}>
+                <p className="mt-1 text-sm" style={{ color: PAPER_DIM }}>
                   {CATEGORY_BLURBS[activeCat]}
                 </p>
               </div>
@@ -1039,11 +1039,11 @@ function CatalogToolRow({ tool }: { tool: CatalogTool }): ReactNode {
         aria-expanded={open}
       >
         <div className="col-span-12 sm:col-span-4 flex items-center gap-3">
-          <span style={{ ...mono, color: ACCENT }} className="text-[14px]">
+          <span style={{ ...mono, color: ACCENT }} className="text-sm">
             {tool.name}
           </span>
         </div>
-        <div className="col-span-12 sm:col-span-7 text-[13px]" style={{ color: PAPER_DIM }}>
+        <div className="col-span-12 sm:col-span-7 text-sm" style={{ color: PAPER_DIM }}>
           {tool.description}
         </div>
         <div className="col-span-12 flex items-center justify-end gap-2 sm:col-span-1">
@@ -1084,31 +1084,31 @@ function CatalogToolDetail({
     <div className="mx-6 mb-5 grid grid-cols-12 gap-4 rounded-md border p-4" style={{ borderColor: RULE, background: NIGHT }}>
       {/* Signature */}
       <div className="col-span-12">
-        <div className="mb-1 text-[10px] uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
+        <div className="mb-1 text-2xs uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
           {t('mcp.mcpLanding.signature')}
         </div>
-        <code className="block break-all text-[13px]" style={{ ...mono, color: ACCENT }}>
+        <code className="block break-all text-sm" style={{ ...mono, color: ACCENT }}>
           {signature}
         </code>
-        <p className="mt-2 text-[13px] leading-[1.55]" style={{ color: PAPER_DIM }}>
+        <p className="mt-2 text-sm leading-[1.55]" style={{ color: PAPER_DIM }}>
           {tool.description}
         </p>
       </div>
 
       {/* Parameter table */}
       <div className="col-span-12 lg:col-span-7">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
+        <div className="mb-2 text-2xs uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
           {t('mcp.mcpLanding.parametersCount', { count: params.length })}
         </div>
         {params.length === 0 ? (
-          <p className="text-[12.5px]" style={{ color: PAPER_DIM }}>
+          <p className="text-xs" style={{ color: PAPER_DIM }}>
             {t('mcp.mcpLanding.noParameters', { token: '{}' })}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
-                <tr style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.18em]">
+                <tr style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.18em]">
                   <th className="border-b py-1.5 pr-4 text-left font-normal" style={{ borderColor: RULE }}>{t('mcp.mcpLanding.colName')}</th>
                   <th className="border-b py-1.5 pr-4 text-left font-normal" style={{ borderColor: RULE }}>{t('mcp.mcpLanding.colType')}</th>
                   <th className="border-b py-1.5 pr-4 text-left font-normal" style={{ borderColor: RULE }}>{t('mcp.mcpLanding.colReq')}</th>
@@ -1119,23 +1119,23 @@ function CatalogToolDetail({
                 {params.map((p) => (
                   <tr key={p.name} className="align-top">
                     <td className="border-b py-2 pr-4" style={{ borderColor: RULE }}>
-                      <code className="text-[12.5px]" style={{ ...mono, color: PAPER }}>{p.name}</code>
+                      <code className="text-xs" style={{ ...mono, color: PAPER }}>{p.name}</code>
                     </td>
                     <td className="border-b py-2 pr-4" style={{ borderColor: RULE }}>
-                      <code className="text-[11.5px]" style={{ ...mono, color: '#73daca' }}>{p.type}</code>
+                      <code className="text-xs" style={{ ...mono, color: '#73daca' }}>{p.type}</code>
                     </td>
                     <td className="border-b py-2 pr-4" style={{ borderColor: RULE }}>
                       {p.required ? (
-                        <span style={{ ...mono, color: ACCENT_2 }} className="text-[10px] uppercase tracking-[0.18em]">
+                        <span style={{ ...mono, color: ACCENT_2 }} className="text-2xs uppercase tracking-[0.18em]">
                           {t('mcp.mcpLanding.yes')}
                         </span>
                       ) : (
-                        <span style={{ ...mono, color: PAPER_DIM }} className="text-[10px] uppercase tracking-[0.18em]">
+                        <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.18em]">
                           —
                         </span>
                       )}
                     </td>
-                    <td className="border-b py-2 text-[12.5px] leading-[1.45]" style={{ borderColor: RULE, color: PAPER_DIM }}>
+                    <td className="border-b py-2 text-xs leading-[1.45]" style={{ borderColor: RULE, color: PAPER_DIM }}>
                       {p.description ?? <span className="opacity-40">—</span>}
                     </td>
                   </tr>
@@ -1149,12 +1149,12 @@ function CatalogToolDetail({
       {/* Example call */}
       <div className="col-span-12 lg:col-span-5">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
+          <span className="text-2xs uppercase tracking-[0.22em]" style={{ ...mono, color: PAPER_DIM }}>
             {t('mcp.mcpLanding.exampleCall')}
           </span>
           <button
             onClick={() => copy(example, `ex-${tool.name}`)}
-            className="inline-flex items-center gap-1 text-[11px]"
+            className="inline-flex items-center gap-1 text-2xs"
             style={{ ...mono, color: copiedKey === `ex-${tool.name}` ? ACCENT : PAPER_DIM }}
           >
             {copiedKey === `ex-${tool.name}` ? <Check size={12} /> : <Copy size={12} />}
@@ -1162,7 +1162,7 @@ function CatalogToolDetail({
           </button>
         </div>
         <pre
-          className="overflow-x-auto rounded-md border p-3 text-[11.5px] leading-[1.55]"
+          className="overflow-x-auto rounded-md border p-3 text-xs leading-[1.55]"
           style={{ ...mono, background: '#070709', borderColor: RULE, color: PAPER }}
         >
           {example}
@@ -1173,7 +1173,7 @@ function CatalogToolDetail({
       <div className="col-span-12 flex flex-wrap items-center justify-between gap-3 border-t pt-3" style={{ borderColor: RULE }}>
         <a
           href={`#${tool.name}`}
-          className="inline-flex items-center gap-1 text-[11px]"
+          className="inline-flex items-center gap-1 text-2xs"
           style={{ ...mono, color: PAPER_DIM }}
           onClick={(e) => {
             e.preventDefault();
@@ -1188,7 +1188,7 @@ function CatalogToolDetail({
         </a>
         <a
           href={`/mcp/playground?prompt=${encodeURIComponent(`Call ${tool.name} with ${JSON.stringify(EXAMPLES[tool.name] ?? {})}`)}`}
-          className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-[11px]"
+          className="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-2xs"
           style={{ ...mono, background: ACCENT, color: NIGHT, fontWeight: 600 }}
         >
           {t('mcp.mcpLanding.tryInPlayground')} <ArrowUpRight size={12} />
@@ -1207,7 +1207,7 @@ function ScopePill({ scope }: { scope: CatalogTool['scope'] }): ReactNode {
   return (
     <span
       style={{ ...mono, color: colors[scope], borderColor: `${colors[scope]}50` }}
-      className="rounded-full border px-2 py-0.5 text-[9.5px] uppercase tracking-[0.18em]"
+      className="rounded-full border px-2 py-0.5 text-2xs uppercase tracking-[0.18em]"
     >
       {scope}
     </span>
@@ -1222,19 +1222,19 @@ function Footer(): ReactNode {
       <div className="mx-auto max-w-[1280px] px-6 py-14">
         <div className="grid grid-cols-12 gap-8">
           <div className="col-span-12 md:col-span-6">
-            <h3 style={{ ...display, color: PAPER }} className="text-[44px] leading-[0.95] tracking-[-0.01em]">
+            <h3 style={{ ...display, color: PAPER }} className="text-5xl leading-[0.95] tracking-[-0.01em]">
               {t('mcp.mcpLanding.bringYourModel')}<br />
               <span style={{ fontStyle: 'italic', color: ACCENT }}>{t('mcp.mcpLanding.weBroughtTools')}</span>
             </h3>
             <a
               href="/mcp/playground"
-              className="mt-6 inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold"
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold"
               style={{ background: ACCENT, color: NIGHT, borderRadius: 6 }}
             >
               {t('mcp.mcpLanding.openPlayground')} <ArrowUpRight size={14} />
             </a>
           </div>
-          <nav className="col-span-12 grid grid-cols-3 gap-6 md:col-span-6 text-[13px]">
+          <nav className="col-span-12 grid grid-cols-3 gap-6 md:col-span-6 text-sm">
             <FooterCol heading={t('mcp.mcpLanding.footerColSource')} links={[
               { href: 'https://github.com/LTplus-AG/ifc-lite', label: 'GitHub' },
               { href: 'https://www.npmjs.com/package/@ifc-lite/mcp', label: 'npm' },
@@ -1250,10 +1250,10 @@ function Footer(): ReactNode {
           </nav>
         </div>
         <div className="mt-12 flex flex-wrap items-center justify-between gap-2 border-t pt-6" style={{ borderColor: RULE }}>
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10.5px]">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs">
             {t('mcp.mcpLanding.footerBrand', { version: MCP_VERSION })}
           </span>
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10.5px] flex items-center gap-1.5">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs flex items-center gap-1.5">
             <Sun size={11} />
             {t('mcp.mcpLanding.darkByIntent')}
           </span>
@@ -1266,11 +1266,11 @@ function Footer(): ReactNode {
 function FooterCol({ heading, links }: { heading: string; links: { href: string; label: string }[] }): ReactNode {
   return (
     <div className="flex flex-col gap-2">
-      <span style={{ ...mono, color: ACCENT }} className="text-[10px] uppercase tracking-[0.22em]">
+      <span style={{ ...mono, color: ACCENT }} className="text-2xs uppercase tracking-[0.22em]">
         {heading}
       </span>
       {links.map((l) => (
-        <a key={l.href} href={l.href} className="text-[13px] transition-colors hover:text-[var(--p)]" style={{ color: PAPER_DIM, ['--p' as never]: PAPER }}>
+        <a key={l.href} href={l.href} className="text-sm transition-colors hover:text-[var(--p)]" style={{ color: PAPER_DIM, ['--p' as never]: PAPER }}>
           {l.label}
         </a>
       ))}
@@ -1295,16 +1295,16 @@ function SectionHeader({
     <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <div className="mb-3 flex items-baseline gap-3">
-          <span style={{ ...mono, color: ACCENT }} className="text-[11px] uppercase tracking-[0.22em]">
+          <span style={{ ...mono, color: ACCENT }} className="text-2xs uppercase tracking-[0.22em]">
             §{number}
           </span>
-          <span style={{ ...mono, color: PAPER_DIM }} className="text-[10.5px] uppercase tracking-[0.2em]">
+          <span style={{ ...mono, color: PAPER_DIM }} className="text-2xs uppercase tracking-[0.2em]">
             {eyebrow}
           </span>
         </div>
         <h2
           style={{ ...display, color: PAPER }}
-          className="max-w-[40rem] text-[44px] leading-[1.02] tracking-[-0.015em] md:text-[60px]"
+          className="max-w-[40rem] text-5xl leading-[1.02] tracking-[-0.015em] md:text-6xl"
         >
           {title}
         </h2>

@@ -49,6 +49,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
+import { trackExportCompleted } from '@/lib/analytics';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
@@ -132,6 +133,7 @@ export function MobileToolbar() {
       const glb = await exportPlacedModelGlb(geometryResult);
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       downloadBlob(blob, modelExportFilename(activeModelName(useViewerStore.getState()), 'glb'));
+      trackExportCompleted({ format: 'glb', surface: 'mobile', size_kb: Math.round(blob.size / 1024) });
       toast.success(t('shellChrome.mobileToolbar.exportGlbSuccess', { size: (blob.size / 1024).toFixed(0) }));
     } catch (err) {
       toast.error(

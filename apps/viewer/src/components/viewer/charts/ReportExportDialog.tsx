@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
@@ -95,7 +95,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
       downloadBlob(result.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
       onSaveReportSetup({ ...dashboard, page, titleBlock: Object.fromEntries(FIELDS.map(([k]) => [k, fields[k] ?? ''])), snapshots });
       // Counts only — never the dashboard name or a chart title.
-      posthog.capture('export_completed', { format: 'pdf', surface: 'charts_report', chart_count: result.charts, page_count: result.pages, snapshot_count: result.snapshots });
+      trackExportCompleted({ format: 'pdf', surface: 'charts_report', chart_count: result.charts, page_count: result.pages, snapshot_count: result.snapshots });
       toast.success(`Report exported: ${result.pages} page${result.pages === 1 ? '' : 's'}, ${result.charts} chart${result.charts === 1 ? '' : 's'}${result.snapshotFailures.length > 0 ? ` (${result.snapshotFailures.length} snapshot${result.snapshotFailures.length === 1 ? '' : 's'} unavailable)` : ''}`);
       setOpen(false);
     } catch (err) {

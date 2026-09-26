@@ -16,6 +16,7 @@
  * not O(elements × meshes).
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { escapeCsvCell } from '@ifc-lite/export';
 import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
@@ -340,4 +341,5 @@ export function downloadCompareReport(
   const body = format === 'csv' ? reportToCsv(report) : reportToJson(report);
   const type = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
   downloadBlob(new Blob([body], { type }), `${name}.${format}`);
+  trackExportCompleted({ format, surface: 'compare_panel' });
 }

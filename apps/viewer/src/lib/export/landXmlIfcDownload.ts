@@ -77,12 +77,12 @@ export interface LandXmlIfcExportUi {
  * because this branch returns early from it; leaving that to the caller is how
  * the dialog would end up stuck on "Exporting...".
  */
-export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandXmlIfcExportUi): void {
+export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandXmlIfcExportUi): boolean {
   try {
     const result = downloadLandXmlAsIfc(input);
     if (result.status === 'refused') {
       ui.setExportResult({ success: false, message: result.reason });
-      return;
+      return false;
     }
     const records = [
       ...(result.surfaces > 0 ? [ui.t('exportDialog.landXml.convertSurfaces', { count: result.surfaces })] : []),
@@ -90,8 +90,10 @@ export function finishLandXmlIfcExport(input: LandXmlIfcDownloadInput, ui: LandX
       ...(result.alignments > 0 ? [ui.t('exportDialog.landXml.convertAlignments', { count: result.alignments })] : []),
     ].join(', ');
     ui.setExportResult({ success: true, message: ui.t('exportDialog.landXml.exported', { records }) });
+    return true;
   } catch (error) {
     ui.setExportResult({ success: false, message: error instanceof Error ? error.message : String(error) });
+    return false;
   } finally {
     ui.setIsExporting(false);
   }

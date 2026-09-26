@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { prepareAppearanceSerialization } from '../../lib/appearance/serialization.js';
 import { packagePortableIfc, portableIfcDownload } from '../../lib/export/portable-ifc.js';
 
@@ -583,4 +584,5 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
   downloadFile(content, filename, mimeType);
+  trackExportCompleted({ format: 'other', surface: 'script' });
 }

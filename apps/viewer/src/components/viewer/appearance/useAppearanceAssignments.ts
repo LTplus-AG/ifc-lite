@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { canResumeAssignmentReview, rememberAssignmentReview, forgetAssignmentReview } from '@/lib/appearance/assignments/session-review.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -249,6 +250,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     try {
       downloadBlob(new Blob([serializeAppearanceAssignments(rows)], { type: 'application/json' }),
         `${sanitizeFilename('appearance-assignments')}.json`);
+      trackExportCompleted({ format: 'json', surface: 'appearance_panel' });
     } catch (error) { setStatus('error'); setNotice(rawMessage(error)); }
   }
   const resolved = useMemo(() => rows.length ? resolveAppearanceAssignments(rows) : [], [rows]);

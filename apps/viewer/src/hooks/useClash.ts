@@ -857,13 +857,11 @@ export function useClash() {
       const globalIds: number[] = [];
       if (a) globalIds.push(clash.a.ref);
       if (b) globalIds.push(clash.b.ref);
-      // Do NOT select the pair. Selecting forced a "selected" state (the 2-SEL
-      // counter, and in isolate/ghost the elements read as selected). Instead we
-      // just glow the two elements in distinct vibrant colours via the clash
-      // highlight channel — the renderer gives highlighted ids the same glow /
-      // opaque / stay-solid-through-ghost treatment as a selection, so the
-      // colours show in highlight, isolate AND ghost with no selection. (#1277/#1339)
+      // Select in both id spaces, with A last as the Inspector primary. The
+      // render loop preserves applied amber/cyan paint (#1277/#1339).
       state.clearEntitySelection();
+      state.setSelectedEntityIds([...globalIds].reverse());
+      state.addEntitiesToSelection([...refs].reverse());
       // Colour the two elements via the renderer COLOUR-OVERRIDE channel (the
       // same path the lens uses) — this repaints their actual albedo, so it
       // works on batched AND GPU-instanced geometry (e.g. Tekla steel members),

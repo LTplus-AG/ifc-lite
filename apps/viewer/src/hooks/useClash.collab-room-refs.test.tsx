@@ -223,7 +223,7 @@ describe('clash results are usable in a collaborative room', () => {
       'the store-state resolver (3D selection) resolves room ids fine');
   });
 
-  it('clicking a clash row FOCUSES the pair (it must not be inert)', async () => {
+  it('clicking a clash row selects its pair and keeps the two focus colours (#5828)', async () => {
     await seedRoom();
     await act(async () => { await api!.run([ALL_RULE]); });
 
@@ -239,6 +239,14 @@ describe('clash results are usable in a collaborative room', () => {
       'the clicked row must become the focused clash — focusClash bailed at refs.length === 0');
     assert.ok(s.clashHighlightColors && s.clashHighlightColors.size === 2,
       'both members of the pair must be painted the clash A/B colours');
+    assert.deepEqual([...s.selectedEntityIds].sort(), [clash!.a.ref, clash!.b.ref].sort(),
+      'selection-scoped commands must see both members');
+    assert.deepEqual([...s.selectedEntitiesSet].sort(),
+      [`${ROOM_MODEL_ID}:${clash!.a.ref}`, `${ROOM_MODEL_ID}:${clash!.b.ref}`].sort(),
+      'model-aware selection must include the same pair');
+    assert.equal(s.selectedEntity?.expressId, clash!.a.ref, 'the Inspector must show element A');
+    assert.deepEqual(s.pendingColorUpdates, s.clashHighlightColors,
+      'selection must not replace the amber/cyan colour overrides');
   });
 
   it('isolating a clash row hides the rest of the room model', async () => {

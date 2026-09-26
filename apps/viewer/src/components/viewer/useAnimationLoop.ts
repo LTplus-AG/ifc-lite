@@ -20,6 +20,7 @@ import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@i
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
+import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
@@ -246,8 +247,13 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       if (willRender) {
         renderer.consumeRenderRequest();
         const renderStart = performance.now();
-        const selection = chartAwareRendererSelectionFromStore(
-          selectedEntityIdRef.current, selectedEntityIdsRef.current, scene.getColorOverrides());
+        const appliedColors = scene.getColorOverrides();
+        const selection = preserveClashPaintInSelection(
+          chartAwareRendererSelectionFromStore(
+            selectedEntityIdRef.current, selectedEntityIdsRef.current, appliedColors),
+          clashHighlightColorsRef.current,
+          appliedColors,
+        );
         // Belt for the renderer's own device-loss latch (#2229). render()
         // contains its failures and degrades to a quiet skip, but this loop
         // must survive even a render-path throw it does not yet contain:

@@ -349,7 +349,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                 severityLabel={(sev) => t(SEVERITY[sev].labelKey)}
                 matchCount={matchCount}
                 hasModel={classes !== null}
-                onChange={setDraft}
+                onChange={(update) => setDraft((previous) => previous ? update(previous) : previous)}
                 onCancel={() => setDraft(null)}
                 onSave={saveDraft}
                 canSave={draftValid}

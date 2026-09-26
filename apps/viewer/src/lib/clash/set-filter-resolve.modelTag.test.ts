@@ -63,14 +63,31 @@ async function state(): Promise<ModelTagState> {
 // The viewer's real mapping offsets by model; any injective function does here.
 const OFFSET: Record<string, number> = { m1: 0, m2: 1000, m3: 2000 };
 const toGlobalId = (modelId: string, expressId: number) => OFFSET[modelId] + expressId;
+const filter = (...rules: ReturnType<typeof Rule.modelTag>[]): ClashSetFilter => [{ combinator: 'AND', rules }];
 
 describe('clash set filters with modelTag rules (#4215)', () => {
+  it('unions two groups across federated models without losing model attribution (#5898)', async () => {
+    const s = await state();
+    const members = await resolveClashSetFilter(
+      evaluatorModelsFromState(s),
+      [
+        { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] },
+        { combinator: 'AND', rules: [Rule.modelTag('hasAny', [ARCH])] },
+      ],
+      toGlobalId,
+      { definedModelTagIds: definedModelTagIdsOf(s) },
+    );
+    assert.deepEqual(new Set(members), new Set(
+      ['m1', 'm2'].flatMap((modelId) => [1, 100, 120].map((id) => clashMemberKey(modelId, toGlobalId(modelId, id)))),
+    ));
+  });
+
   it('A/B membership agrees with the search evaluator for the same rule', async () => {
     const s = await state();
     const models = evaluatorModelsFromState(s);
-    const filter: ClashSetFilter = { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT, ARCH])] };
-    const clash = await resolveClashSetFilter(models, filter, toGlobalId, { definedModelTagIds: definedModelTagIdsOf(s) });
-    const search = await evaluateFilterRulesFederated(models, filter.rules, filter.combinator, { definedModelTagIds: definedModelTagIdsOf(s) });
+    const sideFilter = filter(Rule.modelTag('hasAny', [STRUCT, ARCH]));
+    const clash = await resolveClashSetFilter(models, sideFilter, toGlobalId, { definedModelTagIds: definedModelTagIdsOf(s) });
+    const search = await evaluateFilterRulesFederated(models, sideFilter[0].rules, sideFilter[0].combinator, { definedModelTagIds: definedModelTagIdsOf(s) });
     assert.deepEqual(
       [...clash].sort(),
       search.map((m) => clashMemberKey(m.modelId, toGlobalId(m.modelId, m.expressId))).sort(),
@@ -83,9 +100,9 @@ describe('clash set filters with modelTag rules (#4215)', () => {
     const s = await state();
     const models = evaluatorModelsFromState(s);
     const opts = { definedModelTagIds: definedModelTagIdsOf(s) };
-    const untagged = await resolveClashSetFilter(models, { combinator: 'AND', rules: [Rule.modelTag('untagged', [])] }, toGlobalId, opts);
+    const untagged = await resolveClashSetFilter(models, filter(Rule.modelTag('untagged', [])), toGlobalId, opts);
     assert.deepEqual([...untagged].sort(), [clashMemberKey('m3', 2001), clashMemberKey('m3', 2100), clashMemberKey('m3', 2120)].sort());
-    const notStruct = await resolveClashSetFilter(models, { combinator: 'AND', rules: [Rule.modelTag('hasNone', [STRUCT])] }, toGlobalId, opts);
+    const notStruct = await resolveClashSetFilter(models, filter(Rule.modelTag('hasNone', [STRUCT])), toGlobalId, opts);
     assert.deepEqual(
       [...notStruct].sort(),
       ['m2', 'm3'].flatMap((m) => [1, 100, 120].map((e) => clashMemberKey(m, OFFSET[m] + e))).sort(),
@@ -96,16 +113,16 @@ describe('clash set filters with modelTag rules (#4215)', () => {
   it('REFUSES a filter naming a deleted tag with a named error, instead of resolving that side to nothing', async () => {
     const s = await state();
     const models = evaluatorModelsFromState(s);
-    const filter: ClashSetFilter = { combinator: 'AND', rules: [Rule.modelTag('hasNone', [DELETED])] };
+    const sideFilter = filter(Rule.modelTag('hasNone', [DELETED]));
     await assert.rejects(
-      resolveClashSetFilter(models, filter, toGlobalId, { definedModelTagIds: definedModelTagIdsOf(s) }),
+      resolveClashSetFilter(models, sideFilter, toGlobalId, { definedModelTagIds: definedModelTagIdsOf(s) }),
       /model tag that no longer exists/,
     );
     // Through the preset path too: the rule set is rejected as a whole, so a
     // broken A side cannot quietly run against a resolved B side.
     const rule: ClashRule = { id: 'p1', name: 'Struct vs deleted', selectorA: '!*', selectorB: '!*', severity: 'high' } as unknown as ClashRule;
     await assert.rejects(
-      withResolvedClashSetFilters([rule], [{ id: 'p1', filterA: filter, filterB: { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] } }], models, toGlobalId,
+      withResolvedClashSetFilters([rule], [{ id: 'p1', filterA: sideFilter, filterB: filter(Rule.modelTag('hasAny', [STRUCT])) }], models, toGlobalId,
         { definedModelTagIds: definedModelTagIdsOf(s) }),
       /model tag/,
     );
@@ -114,7 +131,7 @@ describe('clash set filters with modelTag rules (#4215)', () => {
   it('without a defined-tag set every tag reference is refused, never treated as "no tags exist so nothing to check"', async () => {
     const s = await state();
     await assert.rejects(
-      resolveClashSetFilter(evaluatorModelsFromState(s), { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] }, toGlobalId),
+      resolveClashSetFilter(evaluatorModelsFromState(s), filter(Rule.modelTag('hasAny', [STRUCT])), toGlobalId),
       /model tag/,
     );
   });
@@ -128,7 +145,7 @@ describe('clash set filters with modelTag rules (#4215)', () => {
     assert.notDeepEqual(evaluatorModelsFromState(retagged).map((m) => [...(m.tagIds ?? [])]), models.map((m) => [...(m.tagIds ?? [])]));
 
     const opts = { definedModelTagIds: definedModelTagIdsOf(retagged) };
-    const sideA = await resolveClashSetFilter(models, { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] }, toGlobalId, opts);
+    const sideA = await resolveClashSetFilter(models, filter(Rule.modelTag('hasAny', [STRUCT])), toGlobalId, opts);
     assert.deepEqual([...sideA].sort(), [clashMemberKey('m1', 1), clashMemberKey('m1', 100), clashMemberKey('m1', 120)].sort(), 'still m1 — the set the run started with');
   });
 });

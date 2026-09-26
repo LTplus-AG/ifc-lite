@@ -46,10 +46,11 @@ const LEGACY_CUSTOM = {
   builtin: false,
 };
 
-const FILTER: ClashSetFilter = {
-  combinator: 'AND',
+const LEGACY_FILTER = {
+  combinator: 'AND' as const,
   rules: [Rule.ifcType(['IfcWall']), Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')],
 };
+const FILTER: ClashSetFilter = [LEGACY_FILTER];
 
 function write(presets: unknown[]): void {
   (g.localStorage as MemoryStorage).setItem(PRESETS_KEY, JSON.stringify({ version: 1, presets }));
@@ -102,13 +103,13 @@ describe('per-side filters round trip through storage', () => {
     write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }] }, filterB: 'IfcWall' }]);
     const loaded = loadCustom('custom-legacy');
     assert.ok(loaded);
-    assert.deepStrictEqual(loaded.filterA, { combinator: 'AND', rules: [], unreadableRules: [{ kind: 'nope' }] });
+    assert.deepStrictEqual(loaded.filterA, [{ combinator: 'AND', rules: [], unreadableRules: [{ kind: 'nope' }] }]);
     assert.strictEqual(loaded.filterB, undefined);
     assert.strictEqual(loaded.selectorA, 'IfcDuct*');
   });
 
   it('an unreadable rule survives a save/load round trip untouched (#4215)', () => {
-    write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER.rules[0]] } }]);
+    write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER[0].rules[0]] } }]);
     const presets = buildInitialPresets();
     const loaded = presets.find((p) => p.id === 'custom-legacy');
     assert.ok(loaded);
@@ -117,7 +118,7 @@ describe('per-side filters round trip through storage', () => {
     assert.equal(savePresets(presets).ok, true);
     const again = loadCustom('custom-legacy');
     assert.deepStrictEqual(again?.filterA, loaded.filterA);
-    assert.deepStrictEqual(again?.filterA?.unreadableRules, [{ kind: 'nope' }]);
+    assert.deepStrictEqual(again?.filterA?.[0]?.unreadableRules, [{ kind: 'nope' }]);
   });
 
   it('stores a BUILT-IN that differs only by a filter', () => {

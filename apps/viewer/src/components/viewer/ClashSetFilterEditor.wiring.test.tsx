@@ -14,7 +14,7 @@
 
 import '@/test/setup-dom.js';
 import { installLayout } from '@/test/dom-layout.js';
-import { act } from 'react';
+import { act, useState } from 'react';
 
 installLayout();
 
@@ -26,15 +26,23 @@ import type { ClashSetFilter } from '@/lib/clash/set-filter';
 import { ClashSetFilterEditor } from './ClashSetFilterEditor.js';
 import { RuleRow } from './SearchModal.filter.editors.js';
 
-const TWO_RULES: ClashSetFilter = {
+const TWO_RULES: ClashSetFilter = [{
   combinator: 'AND',
   rules: [Rule.ifcType(['IfcWall']), Rule.name('contains', 'EXT')],
-};
+}];
 
 function mount(filter: ClashSetFilter | undefined) {
   const commits: Array<ClashSetFilter | undefined> = [];
+  function Harness() {
+    const [value, setValue] = useState(filter);
+    return <ClashSetFilterEditor label="Set A" filter={value} onChange={(update) => setValue((previous) => {
+      const next = update(previous);
+      commits.push(next);
+      return next;
+    })} />;
+  }
   const container = render(
-    <ClashSetFilterEditor label="Set A" filter={filter} onChange={(next) => commits.push(next)} />,
+    <Harness />,
   );
   return { container, commits };
 }
@@ -59,7 +67,7 @@ describe('ClashSetFilterEditor', () => {
   });
 
   it('commits UNDEFINED, not an empty filter, when the last rule is cleared', () => {
-    const { container, commits } = mount({ combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] });
+    const { container, commits } = mount([{ combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] }]);
     click(buttonByText(container, 'Clear'));
     assert.deepEqual(commits, [undefined]);
   });
@@ -68,16 +76,23 @@ describe('ClashSetFilterEditor', () => {
     const { container, commits } = mount(TWO_RULES);
     click(buttonByText(container, 'OR'));
     assert.equal(commits.length, 1);
-    assert.equal(commits[0]?.combinator, 'OR');
-    assert.deepEqual(commits[0]?.rules, TWO_RULES.rules);
+    assert.equal(commits[0]?.[0]?.combinator, 'OR');
+    assert.deepEqual(commits[0]?.[0]?.rules, TWO_RULES[0].rules);
+  });
+
+  it('adds a second OR group through the shared editor and keeps the first group (#5898)', () => {
+    const { container, commits } = mount(TWO_RULES);
+    click(buttonByText(container, 'Add group'));
+    assert.deepEqual(commits[0], [TWO_RULES[0], { combinator: 'AND', rules: [] }]);
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim());
+    assert.deepEqual(tabs, ['Group 1(2)', 'Group 2(0)']);
   });
 
   it('offers no combinator or clear control when there is no filter yet', () => {
     const { container } = mount(undefined);
     const labels = [...container.querySelectorAll('button')].map((b) => (b.textContent ?? '').trim());
-    assert.ok(!labels.includes('AND'), 'a single-rule-less side has nothing to combine');
     assert.ok(!labels.includes('Clear'));
-    assert.ok(labels.some((l) => l.includes('Add filter rule')));
+    assert.ok(labels.some((l) => l.includes('Add rule')));
   });
 
   it('shows model names and commits the selected durable source identity (#4019)', () => {

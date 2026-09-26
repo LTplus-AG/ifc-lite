@@ -2,139 +2,93 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * A clash set defined as an ADVANCED FILTER (#3902).
- *
- * A clash rule used to describe each of its two sets with one type-name
- * selector (`IfcDuct*|IfcPipe*`), which cannot say "external walls" or
- * "elements whose Pset_Revit_Phase.Phase is Existing". A set may instead be
- * the SAME thing the viewer's advanced filter already is — a list of
- * `FilterRule`s combined with AND/OR.
- *
- * This half is the DEFINITION: the shape, its persisted form, and how it
- * reads. `set-filter-resolve.ts` turns one into element membership, and is
- * deliberately a separate module because it pulls in the search evaluator (and
- * with it the parser) — `persistence.ts` needs only the parsing here, and is
- * imported by the store slice on the boot path.
- *
- * The type selector stays on the rule and stays authoritative for any side
- * with NO filter, so every preset saved before this existed runs exactly as it
- * did.
- */
+/** Clash side definitions share the search editor's OR-of-groups model (#5898). */
+import { isFilterRule, totalRuleCount, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
 
-import { isFilterRule, type Combinator, type FilterRule } from '@ifc-lite/rules';
-
-/** One side of a clash rule, expressed the way the advanced filter is. */
-export interface ClashSetFilter {
-  combinator: Combinator;
-  rules: FilterRule[];
-  /**
-   * Persisted rules THIS build could not read — a rule kind or operator from
-   * a newer build, or a corrupt entry (#4215). Carried verbatim rather than
-   * dropped: dropping one rule out of an AND filter would silently WIDEN the
-   * set (fewer conditions, more members), and a re-save would then make the
-   * widening permanent. While any are present the resolver refuses the run
-   * (`set-filter-resolve.ts`), the editor says so, and a later build that
-   * understands them reads them back out of here.
-   */
+/** A group can carry entries written by a newer build; runs must refuse them. */
+export interface ClashFilterGroup extends FilterGroup {
   unreadableRules?: unknown[];
+  unreadableGroup?: unknown;
 }
 
-/**
- * Cap on how many elements one side may resolve to. Far above any set a
- * coordinator would actually clash (the engine's own pair budget bites long
- * before this), but bounded so a filter over a 4M-entity federation cannot
- * build an unbounded array. The search modal's own default limit is far
- * lower, which is why this is passed explicitly rather than inherited.
- *
- * Reaching it FAILS the run (see `resolveClashSetFilter`). The evaluator
- * stops scanning at its limit, so a capped set is a silently smaller set —
- * and a clash run that quietly examined a fraction of what the user asked for
- * reports fewer clashes with nothing on screen to say so.
- */
+export type ClashSetFilter = ClashFilterGroup[];
+export type ClashSetFilters = { filterA?: ClashSetFilter; filterB?: ClashSetFilter };
+
+/** The evaluator stops at its limit, so ask for one more and refuse overflow. */
 export const CLASH_SET_FILTER_LIMIT = 250_000;
 
-/**
- * The filter if it has anything to say, otherwise undefined — a filter with no
- * rules is not a filter, and the side's selector still decides. The ONE
- * spelling of "does this side have a filter", used by the resolver and by
- * anything that displays one. A filter whose only rules are unreadable still
- * has something to say — "refuse" — so it is active.
- */
-export function activeClashSetFilter(
-  filter: ClashSetFilter | undefined,
-): ClashSetFilter | undefined {
-  return filter && (filter.rules.length > 0 || unreadableRuleCount(filter) > 0) ? filter : undefined;
-}
-
-/** How many persisted rules of `filter` this build cannot read. */
 export function unreadableRuleCount(filter: ClashSetFilter | undefined): number {
-  return filter?.unreadableRules?.length ?? 0;
+  return filter?.reduce(
+    (sum, group) => sum + (group.unreadableRules?.length ?? 0) + ('unreadableGroup' in group ? 1 : 0),
+    0,
+  ) ?? 0;
 }
 
-/** One-line summary for the rule list ("2 rules · OR", "2 rules · OR · 1 unreadable"). */
+/** A rule-less side falls back to its selector; an unreadable side refuses. */
+export function activeClashSetFilter(filter: ClashSetFilter | undefined): ClashSetFilter | undefined {
+  return filter && (totalRuleCount(filter) > 0 || unreadableRuleCount(filter) > 0) ? filter : undefined;
+}
+
 export function describeClashSetFilter(filter: ClashSetFilter): string {
-  const n = filter.rules.length;
+  const n = totalRuleCount(filter);
   const count = `${n} rule${n === 1 ? '' : 's'}`;
-  // The combinator only says something once there are two rules to combine.
-  const base = n > 1 ? `${count} · ${filter.combinator}` : count;
-  const bad = unreadableRuleCount(filter);
-  return bad > 0 ? `${base} · ${bad} unreadable` : base;
+  const activeGroups = filter.filter((group) => group.rules.length > 0).length;
+  const base = activeGroups > 1
+    ? `${count} · ${activeGroups} groups (OR)`
+    : n > 1 ? `${count} · ${filter.find((group) => group.rules.length > 0)?.combinator ?? 'AND'}` : count;
+  const unreadable = unreadableRuleCount(filter);
+  return unreadable > 0 ? `${base} · ${unreadable} unreadable` : base;
 }
 
-/**
- * Read a persisted filter. Returns undefined for anything that is not one —
- * including a preset stored before #3902 (no such field) and a blob from a
- * newer/other app that has no rule list at all.
- *
- * A rule this build does not recognise is NOT dropped (#4215): it is kept in
- * `unreadableRules`, and a filter with nothing but unreadable rules is still
- * a filter (one the resolver will refuse). Entries a previous build parked in
- * `unreadableRules` are re-tried, so a filter that round-tripped through an
- * older build comes back whole in one that understands it.
- */
-export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const r = raw as { combinator?: unknown; rules?: unknown; unreadableRules?: unknown };
-  if (!Array.isArray(r.rules)) return undefined;
-  const candidates = [...r.rules, ...(Array.isArray(r.unreadableRules) ? r.unreadableRules : [])];
+function unreadableGroup(raw: unknown): ClashFilterGroup {
+  return { combinator: 'AND', rules: [], unreadableGroup: raw };
+}
+
+function parseGroup(raw: unknown, legacy: boolean): ClashFilterGroup {
+  if (!raw || typeof raw !== 'object') return unreadableGroup(raw);
+  const value = raw as {
+    combinator?: unknown;
+    rules?: unknown;
+    unreadableRules?: unknown;
+    unreadableGroup?: unknown;
+  };
+  // A previously parked whole group remains opaque for a later build.
+  if ('unreadableGroup' in value) return unreadableGroup(value.unreadableGroup);
+  if (!Array.isArray(value.rules)) return unreadableGroup(raw);
+  if (!legacy && value.combinator !== 'AND' && value.combinator !== 'OR') return unreadableGroup(raw);
+  const candidates = [
+    ...value.rules,
+    ...(Array.isArray(value.unreadableRules) ? value.unreadableRules : []),
+  ];
   const rules: FilterRule[] = [];
-  const unreadable: unknown[] = [];
-  for (const entry of candidates) (isFilterRule(entry) ? rules : unreadable).push(entry);
-  if (rules.length === 0 && unreadable.length === 0) return undefined;
+  const unreadableRules: unknown[] = [];
+  for (const candidate of candidates) {
+    (isFilterRule(candidate) ? rules : unreadableRules).push(candidate);
+  }
   return {
-    combinator: r.combinator === 'OR' ? 'OR' : 'AND',
+    combinator: value.combinator === 'OR' ? 'OR' : 'AND',
     rules,
-    ...(unreadable.length > 0 ? { unreadableRules: unreadable } : {}),
+    ...(unreadableRules.length > 0 ? { unreadableRules } : {}),
   };
 }
 
-/**
- * The selector stored for a side whose definition is its FILTER.
- *
- * A rule always stores a type selector (every reader, validator and older app
- * version expects one), so a filtered side needs a stand-in. It is
- * "match nothing", not `*`: if the filter is ever lost — cleared in the
- * editor, unreadable in storage, opened by a build that does not know about
- * filters — the side then matches NOTHING and the run says so loudly
- * ("matched 0 elements", and `classifyRuleCoverage` reports `no-match`),
- * instead of quietly clashing every element in the model against the other
- * side. `!*` is the selector grammar's own spelling of that (`selectors.ts`).
- */
-export const CLASH_SET_FILTER_SELECTOR = '!*';
+/** Legacy `{ combinator, rules }` values become one group; new arrays retain all groups. */
+export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
+  if (Array.isArray(raw)) {
+    const groups = raw.map((group) => parseGroup(group, false));
+    return activeClashSetFilter(groups);
+  }
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { rules?: unknown }).rules)) return undefined;
+  return activeClashSetFilter([parseGroup(raw, true)]);
+}
 
-/** The A/B filters of one clash set definition. */
-export type ClashSetFilters = { filterA?: ClashSetFilter; filterB?: ClashSetFilter };
-
-/**
- * Read both persisted side filters off a stored preset, omitting whichever is
- * absent or unreadable — so a caller can spread the result into a projection
- * and a preset written before #3902 (or by a newer app) gains no fields.
- */
 export function parseClashSetFilters(raw: unknown): ClashSetFilters {
   if (!raw || typeof raw !== 'object') return {};
-  const r = raw as { filterA?: unknown; filterB?: unknown };
-  const filterA = parseClashSetFilter(r.filterA);
-  const filterB = parseClashSetFilter(r.filterB);
+  const value = raw as { filterA?: unknown; filterB?: unknown };
+  const filterA = parseClashSetFilter(value.filterA);
+  const filterB = parseClashSetFilter(value.filterB);
   return { ...(filterA ? { filterA } : {}), ...(filterB ? { filterB } : {}) };
 }
+
+/** A filtered side's selector is fail-closed if an old app drops its filter. */
+export const CLASH_SET_FILTER_SELECTOR = '!*';

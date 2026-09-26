@@ -113,21 +113,15 @@ test.describe('#5826 target size and focus visibility', () => {
     await page.goto('/');
     await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
 
-    // The welcome card's primary CTA (ViewportWelcomeCard.tsx): the demo-
-    // project button, the first-run primary action (#5840). It renders
-    // disabled until the WebGPU probe resolves, so wait for it to become
-    // the enabled, focusable element before tabbing onto it.
-    const primary = page.getByText('viewportLighting.container.emptyState.loadDemo.button', { exact: false })
-      .locator('xpath=ancestor::button[1]')
-      .first();
-    // The i18n key above is a fallback locator in case translations are
-    // missing in this environment; prefer the real rendered text if present.
-    const primaryByRole = page.locator('button:not([disabled])').filter({ hasText: /./ }).first();
-    const target = (await primary.count()) > 0 ? primary : primaryByRole;
+    // The first button inside the welcome card is its demo-project action.
+    // It starts disabled until the WebGPU probe resolves.
+    const target = page.locator('[data-tour="empty-state-card"] button').first();
 
     await target.waitFor({ state: 'visible' });
     await expect(target).toBeEnabled({ timeout: 15000 });
-    await target.focus();
+    for (let i = 0; i < 150 && !(await target.evaluate((el) => document.activeElement === el)); i++) {
+      await page.keyboard.press('Tab');
+    }
     await expect(target).toBeFocused();
 
     const focus = await hasVisibleFocusIndicator(target);

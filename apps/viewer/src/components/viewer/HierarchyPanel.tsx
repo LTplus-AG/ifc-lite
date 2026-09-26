@@ -25,6 +25,7 @@ import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { HierarchySearchEmptyState } from './hierarchy/HierarchySearchEmptyState';
 import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { useModelRowSize } from './hierarchy/ModelRowTags';
@@ -131,21 +132,15 @@ export function HierarchyPanel() {
     getNodeElements,
   } = useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult });
 
-  // Issue #540: when the user has the merge-layers load setting on,
-  // hide `IfcBuildingElementPart` rows from the tree — the Rust layer
-  // suppresses their meshes, so leaving the rows visible would lead
-  // to dead-clicks. Filter at the consumer (this panel) rather than
-  // in `spatialHierarchy.ts` per the agent coordination plan.
+  // #540: merged parts have no meshes; hide their dead rows here.
+  // Keep the spatial hierarchy itself intact for other consumers.
   const mergeLayersHidesParts = useViewerStore((s) => s.mergeLayers);
   const PART_TYPE_KEY = 'ifcbuildingelementpart';
   const stripPartNodes = useCallback(
     (nodes: TreeNode[]): TreeNode[] => {
       if (!mergeLayersHidesParts) return nodes;
       return nodes.filter((node) => {
-        // Only element rows carry an `ifcType` we can compare. Class
-        // grouping ("IfcBuildingElementPart (N)") and ifc-type nodes
-        // also expose an `ifcType`; we strip those too because they
-        // would expand to empty groups after merge.
+        // Class and IFC-type groups also expose ifcType; hide empty groups.
         const t = node.ifcType?.toLowerCase();
         if (!t) return true;
         return t !== PART_TYPE_KEY;
@@ -156,6 +151,9 @@ export function HierarchyPanel() {
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
   const modelsNodes = useModelTagView(useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes])); // #4215 tag filter / By tag: rows only
+  const searchEmptyState = searchQuery.trim() && filteredNodes.length === 0
+    ? <HierarchySearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
+    : null;
 
   // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
   // toggles, Shift selects the contiguous range in the visible order. Built
@@ -822,6 +820,7 @@ export function HierarchyPanel() {
         nodeHidden={nodeHidden}
         isMultiModel={isMultiModel}
         modelsCount={models.size}
+        searchActive={Boolean(searchQuery.trim())}
         modelVisible={modelVisible}
         onNodeClick={handleNodeClick}
         onToggleExpand={toggleExpand}
@@ -940,7 +939,7 @@ export function HierarchyPanel() {
         </div>
 
         {/* Resizable content area */}
-        <div className="flex-1 flex flex-col min-h-0">
+        {searchEmptyState ?? <div className="flex-1 flex flex-col min-h-0">
           {/* Storeys Section */}
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title={t('hierarchy.panel.buildingStoreysTitle')} count={storeysNodes.length} />
@@ -990,7 +989,7 @@ export function HierarchyPanel() {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Footer status */}
         {hasActiveFilters ? (
@@ -1076,7 +1075,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -1089,7 +1088,7 @@ export function HierarchyPanel() {
             return renderNode(node, virtualRow);
           })}
         </div>
-      </div>
+      </div>}
 
       {/* Footer status */}
       {hasActiveFilters ? (

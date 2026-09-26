@@ -197,6 +197,20 @@ export function trackUiEvent<E extends UiEventName>(event: E, properties: UiEven
   posthog.capture(event, properties);
 }
 
+/**
+ * The one path for surfacing a load failure to the user (#5618, #5851).
+ * `setError` puts the full message on the store, where the in-viewport load-
+ * error card reads it; `code` is a fixed id (never the message itself), so
+ * `error_shown` stays a closed, scrubber-safe vocabulary. Every load path —
+ * `useIfcLoader`, the federated IFCX paths in `useIfcFederation`, and the
+ * `?model=` autoload in `ViewerLayout` — calls this one function so there is
+ * never a second error path.
+ */
+export function showLoadError(setError: (error: string) => void, message: string, code: string): void {
+  setError(message);
+  trackUiEvent('error_shown', { code, surface: 'load_error' });
+}
+
 /** The sole capture path for completed exports (#5844). */
 export function trackExportCompleted(properties: ExportCompletedProperties): void {
   posthog.capture('export_completed', properties);

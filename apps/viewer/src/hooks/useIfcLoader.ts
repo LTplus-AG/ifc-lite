@@ -82,7 +82,7 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog, trackUiEvent } from '../lib/analytics.js';
+import { posthog, showLoadError as reportLoadError } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -452,10 +452,8 @@ export function useIfcLoader() {
 
     // Every load failure the user sees goes through here, so `error_shown`
     // (#5618) covers each path once; `code` is a fixed id, never the message.
-    const showLoadError = (message: string, code: string) => {
-      setError(message);
-      trackUiEvent('error_shown', { code, surface: 'load_error' });
-    };
+    // Delegates to the one shared helper every load path uses (#5851).
+    const showLoadError = (message: string, code: string) => reportLoadError(setError, message, code);
 
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -466,6 +464,8 @@ export function useIfcLoader() {
         // A non-federated load has no layer stack behind it (#1717).
         useViewerStore.getState().clearLayerStack();
       }
+      // Retry re-runs THIS call (#5851); set AFTER the reset above, which clears it.
+      useViewerStore.getState().setLastLoadRetry(() => { void loadFile(file, target, options); });
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();

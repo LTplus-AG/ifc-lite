@@ -27,6 +27,7 @@ import { useTranslation } from '@/i18n';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { EditModeHudChip } from './EditModeHudChip';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
 
 /**
@@ -173,6 +174,7 @@ export function ViewportOverlays({
       <ViewportHud />
       <EditModeHudChip />
       <ViewportLoadingCard />
+      <ViewportLoadErrorCard />
       <SectionParkedChip />
       <FlySpeedIndicator />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar

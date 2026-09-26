@@ -28,13 +28,7 @@ import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
-import { trackUiEvent } from '@/lib/analytics';
-
-/** Show a federated-load error, reported by its fixed id (#5618). */
-const showLoadError = (setError: (error: string) => void, message: string, code: string): void => {
-  setError(message);
-  trackUiEvent('error_shown', { code, surface: 'load_error' });
-};
+import { showLoadError } from '@/lib/analytics';
 
 /**
  * Extended data store type for IFCX (IFC5) files.

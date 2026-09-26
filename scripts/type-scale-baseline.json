@@ -58,7 +58,7 @@
   "apps/viewer/src/components/viewer/LightingTrimControls.tsx": 1,
   "apps/viewer/src/components/viewer/LoadReportPanel.tsx": 6,
   "apps/viewer/src/components/viewer/MainToolbar.tsx": 9,
-  "apps/viewer/src/components/viewer/MobileToolbar.tsx": 2,
+  "apps/viewer/src/components/viewer/MobileToolbar.tsx": 1,
   "apps/viewer/src/components/viewer/ModelBadge.tsx": 1,
   "apps/viewer/src/components/viewer/ModelTagRuleEditor.tsx": 1,
   "apps/viewer/src/components/viewer/PointCloudClasses.tsx": 5,

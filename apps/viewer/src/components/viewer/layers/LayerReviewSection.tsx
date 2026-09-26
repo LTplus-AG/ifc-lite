@@ -11,6 +11,7 @@
  * synthetic per parse and never persisted.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -188,6 +189,7 @@ export function LayerReviewSection({
         if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
       }
       downloadBlob(await writeBCF(project), `review-${review.id.slice(0, 8)}.bcfzip`);
+      trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {

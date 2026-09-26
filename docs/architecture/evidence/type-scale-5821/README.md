@@ -1,0 +1,24 @@
+# MCP type-scale visual check (#5821)
+
+These screenshots compare the MCP landing and playground pages before and after
+the five-file typography migration in PR #6114. The before build uses the
+merged type-scale infrastructure from PR #6113; the after build includes the
+MCP replacements. Both were captured in headful Chrome from production Vite
+builds on the same machine, at 1440 × 900 (desktop) and 390 × 844 (mobile).
+
+| Page | Before | After |
+| --- | --- | --- |
+| Landing, desktop | [before](mcp-before-desktop.png) | [after](mcp-after-desktop.png) |
+| Landing, mobile | [before](mcp-before-mobile.png) | [after](mcp-after-mobile.png) |
+| Playground, desktop | [before](mcp-before-playground.png) | [after](mcp-after-playground.png) |
+
+The first after-mobile build wrapped the two hero actions. The final after
+capture above uses `text-sm` below the `sm` breakpoint and keeps both actions
+on one row. The mobile document width is 375 CSS pixels within the 390-pixel
+viewport, with no horizontal overflow.
+
+This batch changes typography through generated Tailwind CSS. The changed-test
+revert oracle cannot observe computed fonts without a browser test (browser
+specs are excluded from that oracle). PR #6114 uses the repository's
+`revert-oracle-exempt` label; the production build and these same-viewport
+browser captures are its behavior evidence.

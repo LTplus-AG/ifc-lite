@@ -11,6 +11,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -819,9 +820,9 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                       className="h-8 text-xs w-20"
                     />
                   )}
-                  <Button aria-label={t('bulkPropertyEditor.removeFilter')} variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
+                  <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
                     <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
+                  </IconButton>
                 </div>
               ))}
             </div>

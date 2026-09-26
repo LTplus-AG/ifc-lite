@@ -8,6 +8,7 @@
  * location (#1427). Requires a georeferenced model.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Globe2, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -32,7 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, type KmzBuildError } from '@/lib/geo/kmz-export';
 import type { InstancedModelRange } from '@/utils/instancedExport';
@@ -45,6 +46,7 @@ import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import type { TranslationKey } from '@/i18n';
 
 interface KmzExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
@@ -54,7 +56,7 @@ const ERROR_MESSAGE_KEY: Record<KmzBuildError, TranslationKey> = {
   'no-geometry': 'geometryExport.kmz.noGeometryError',
 };
 
-export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
+export function KmzExportDialog({ surface = 'classic', trigger }: KmzExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const georefMutations = useViewerStore((s) => s.georefMutations);
@@ -169,7 +171,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       const msg = t('geometryExport.kmz.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
-      posthog.capture('export_completed', { format: 'kmz', size_kb: Math.round(blob.size / 1024) });
+      trackExportCompleted({ surface, format: 'kmz', size_kb: Math.round(blob.size / 1024) });
     } catch (err) {
       console.error('KMZ export failed:', err);
       const errMsg = t('geometryExport.kmz.failedMessage', {
@@ -180,7 +182,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, selectedModelId, georefMutations, altitudeMode, t]);
+  }, [selectedModel, selectedModelId, georefMutations, altitudeMode, t, surface]);
 
   const handleOpenChange = useExportDialogOpenGuard({
     busy: isExporting,

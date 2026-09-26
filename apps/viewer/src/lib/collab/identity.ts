@@ -17,7 +17,7 @@ export const MAX_COLLAB_DISPLAY_NAME_LENGTH = 64;
 
 /** Keep the display name suitable for local storage and live presence. */
 export function normalizeCollabDisplayName(value: string): string | null {
-  const name = value.trim().slice(0, MAX_COLLAB_DISPLAY_NAME_LENGTH);
+  const name = value.trim().slice(0, MAX_COLLAB_DISPLAY_NAME_LENGTH).trim();
   return name || null;
 }
 

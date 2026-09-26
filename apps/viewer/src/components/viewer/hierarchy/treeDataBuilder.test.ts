@@ -1188,6 +1188,21 @@ describe('buildMaterialTree — type-level material expansion (#1755)', () => {
     assert.ok(wood.every((node) => !node.name.includes('[')), 'model attribution stays outside IFC Name');
     assert.notStrictEqual(wood[0].id, wood[1].id, 'rows remain distinct in the virtual tree');
   });
+
+  it('does not invent a material owner for layers sharing one composed IFCX store (#5888)', () => {
+    const composed = createTypedMaterialDataStore();
+    const models = new Map<string, FederatedModel>([
+      ['A', { ...createModel(0), id: 'A', name: 'Layer A', ifcDataStore: composed }],
+      ['B', { ...createModel(0), id: 'B', name: 'Layer B', ifcDataStore: composed }],
+    ]);
+    useViewerStore.setState({ models });
+    const nodes = buildMaterialTree(models, null, new Set(), true);
+    const wood = nodes.filter((node) => node.name === 'wood1');
+    assert.strictEqual(wood.length, 1, 'one composed material row, not one invented owner per layer');
+    assert.deepStrictEqual(wood[0].modelIds, ['A', 'B']);
+    assert.strictEqual(wood[0].modelId, undefined, 'shared store has no single source model');
+    assert.deepStrictEqual(wood[0].globalIds, [1, 2], 'usage is not duplicated across layers');
+  });
 });
 
 /**

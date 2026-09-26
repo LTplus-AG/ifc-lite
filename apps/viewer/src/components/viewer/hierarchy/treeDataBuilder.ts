@@ -992,8 +992,10 @@ export function buildIfcTypeTree(
 
 /**
  * Build a flat "By Material" tree: one row per base material (IfcMaterial),
- * grouped by name within each model so equal names in a federation keep their
- * own model attribution and representative material entity (#5888).
+ * grouped by name within each independent data store so equal names in a
+ * federation keep their source model and representative material entity.
+ * IFCX layers sharing one composed store yield one row without a false
+ * per-layer badge (#5888).
  * Each row carries the using elements' global ids for click-to-isolate and the
  * representative material express id for the properties panel. Mirrors
  * {@link buildIfcTypeTree} but keyed on the parser's material usage index.
@@ -1008,16 +1010,17 @@ export function buildMaterialTree(
 ): TreeNode[] {
   interface MatEntry {
     name: string;
-    modelId: string;
+    modelIds: string[];
     ifcClass: string;
     materialId: number;          // representative material express id
     elements: Map<number, number>; // globalId -> expressId (deduped)
   }
 
   const byName = new Map<string, MatEntry>();
-  const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
+  const processDataStore = (dataStore: IfcDataStore, ownerModelIds: string[]) => {
+    const modelId = ownerModelIds[0];
     const applyGeomFilter = geometryReadyModelIds
-      ? geometryReadyModelIds.has(modelId)
+      ? ownerModelIds.some((owner) => geometryReadyModelIds.has(owner))
       : !!geometricIds && geometricIds.size > 0;
     const usage = buildMaterialUsageIndex(dataStore);
     for (const u of usage.values()) {
@@ -1026,7 +1029,7 @@ export function buildMaterialTree(
       if (!entry) {
         entry = {
           name: u.name,
-          modelId,
+          modelIds: ownerModelIds,
           ifcClass: u.ifcClass,
           materialId: u.id,
           elements: new Map(),
@@ -1042,24 +1045,31 @@ export function buildMaterialTree(
   };
 
   if (models.size > 0) {
+    // IFCX layers can share one composed store. Its material usage has no
+    // per-layer provenance, so emit one unattributed row for that store.
+    const storeOwners = new Map<IfcDataStore, string[]>();
     for (const [modelId, model] of models) {
-      if (model.ifcDataStore) processDataStore(model.ifcDataStore, modelId);
+      if (!model.ifcDataStore) continue;
+      const owners = storeOwners.get(model.ifcDataStore) ?? [];
+      owners.push(modelId);
+      storeOwners.set(model.ifcDataStore, owners);
     }
+    for (const [store, owners] of storeOwners) processDataStore(store, owners);
   } else if (ifcDataStore) {
-    processDataStore(ifcDataStore, 'legacy');
+    processDataStore(ifcDataStore, ['legacy']);
   }
 
   const nodes: TreeNode[] = [];
-  const entries = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name) || a.modelId.localeCompare(b.modelId));
+  const entries = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name) || a.modelIds[0].localeCompare(b.modelIds[0]));
   for (const entry of entries) {
     if (entry.elements.size === 0) continue; // skip materials with no visible elements (dead clicks)
     nodes.push({
-      id: `material-${entry.modelId}-${entry.materialId}`,
+      id: `material-${entry.modelIds[0]}-${entry.materialId}`,
       expressIds: Array.from(entry.elements.values()),
       globalIds: Array.from(entry.elements.keys()),
       entityExpressId: entry.materialId,
-      modelIds: [entry.modelId],
-      modelId: entry.modelId,
+      modelIds: entry.modelIds,
+      modelId: entry.modelIds.length === 1 ? entry.modelIds[0] : undefined,
       name: entry.name,
       type: 'material-group',
       ifcType: entry.ifcClass,

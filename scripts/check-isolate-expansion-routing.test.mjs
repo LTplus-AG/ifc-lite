@@ -815,23 +815,37 @@ describe('check-isolate-expansion-routing: the hide / show / colour channels are
   });
 
   it('EXEMPT_ACTIONS lets one action opt out of a file that must route another, with a reason', () => {
-    const lens = EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx');
-    assert.ok(lens, 'LensPanel is the mixed case this structure exists for');
-    for (const [action, reason] of lens) {
-      assert.ok(
-        isSufficientAllowlistReason(reason),
-        `${action} exemption needs a reviewable reason, got ${JSON.stringify(reason)}`,
+    // The mixed case this structure exists for: a file in REQUIRES_ROUTING_MARKER
+    // whose isolate routes but whose hide deliberately does not. LensPanel was
+    // the real instance until its hide sync moved to useLens.ts (#5877), so the
+    // shape is exercised with a synthetic entry, restored afterwards.
+    const path = 'apps/viewer/src/components/viewer/LensPanel.tsx';
+    assert.equal(EXEMPT_ACTIONS.has(path), false, 'precondition: no real entry to clobber');
+    EXEMPT_ACTIONS.set(path, new Map([['hideEntities', 'the hide half of an ownership ledger that must not be expanded']]));
+    try {
+      for (const [action, reason] of EXEMPT_ACTIONS.get(path)) {
+        assert.ok(
+          isSufficientAllowlistReason(reason),
+          `${action} exemption needs a reviewable reason, got ${JSON.stringify(reason)}`,
+        );
+      }
+      const verdict = classifyFile(
+        path,
+        'const isolationIds = resolvePresentationIds(r, matchingIds);\n isolateEntities(isolationIds);\n hideEntities(plan.hide);',
       );
+      assert.equal(verdict.ok, true, 'the exempt hide must not fail the routed isolate');
+      EXEMPT_ACTIONS.delete(path);
+      const unexempt = classifyFile(
+        path,
+        'const isolationIds = resolvePresentationIds(r, matchingIds);\n isolateEntities(isolationIds);\n hideEntities(plan.hide);',
+      );
+      assert.equal(unexempt.ok, false, 'without the exemption the same unrouted hide fails');
+    } finally {
+      EXEMPT_ACTIONS.delete(path);
     }
-    const verdict = classifyFile(
-      'apps/viewer/src/components/viewer/LensPanel.tsx',
-      'const isolationIds = resolvePresentationIds(r, matchingIds);\n isolateEntities(isolationIds);\n hideEntities(plan.hide);',
-    );
-    assert.equal(verdict.ok, true, 'the exempt hide must not fail the routed isolate');
   });
 
   it('an EXEMPT_ACTIONS entry with a stub reason fails rather than passing quietly', () => {
-    const original = EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx');
     EXEMPT_ACTIONS.set('apps/viewer/src/hooks/validation/useValidationIsolation.ts', new Map([['hideEntities', 'x']]));
     try {
       const verdict = classifyFile('apps/viewer/src/hooks/validation/useValidationIsolation.ts', 'state.hideEntities(rawIds);');
@@ -839,7 +853,6 @@ describe('check-isolate-expansion-routing: the hide / show / colour channels are
       assert.match(verdict.reason, /no reviewable reason/);
     } finally {
       EXEMPT_ACTIONS.delete('apps/viewer/src/hooks/validation/useValidationIsolation.ts');
-      assert.equal(EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx'), original);
     }
   });
 });

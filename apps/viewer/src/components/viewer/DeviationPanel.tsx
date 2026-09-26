@@ -51,10 +51,12 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const exportingRef = useRef(false);
 
   const handleExport = useCallback(async () => {
     const renderer = getGlobalRenderer();
-    if (!renderer || !computed || !stats) return;
+    if (!renderer || !computed || !stats || running || exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     setError(null);
     const sourceModels = useViewerStore.getState().models;
@@ -86,11 +88,13 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
-  }, [computed, stats, t]);
+  }, [computed, running, stats, t]);
 
   const handleCompute = useCallback(async () => {
+    if (exportingRef.current) return;
     const renderer = getGlobalRenderer();
     if (!renderer) {
       setError(t('deviationPanel.rendererNotReadyError'));
@@ -171,7 +175,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       <button
         type="button"
         onClick={handleCompute}
-        disabled={running}
+        disabled={running || exporting}
         className={cn(
           'text-xs px-2 py-1 rounded transition-colors',
           running

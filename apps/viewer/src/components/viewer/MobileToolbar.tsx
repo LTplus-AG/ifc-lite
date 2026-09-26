@@ -19,7 +19,6 @@ import {
   Home,
   Maximize2,
   Crosshair,
-  Loader2,
   MoreHorizontal,
   Plus,
   Download,
@@ -29,6 +28,7 @@ import {
   PersonStanding,
   Search,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -181,7 +181,7 @@ export function MobileToolbar() {
         aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner size="md" />
         ) : (
           <FolderOpen className="h-4 w-4" />
         )}

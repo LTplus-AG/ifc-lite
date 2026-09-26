@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { Boxes, CheckCircle2, AlertCircle, Loader2, Layers } from 'lucide-react';
+import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -23,7 +24,6 @@ import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
-
 /** One loaded model's store paired with the geometry produced from it. */
 interface CountedModel {
   modelId: string;
@@ -295,7 +295,7 @@ export function StatusBar() {
 
         <div className="flex items-center gap-1">
           {webgpu.checking ? (
-            <Loader2 className="h-3.5 w-3.5 text-zinc-400 animate-spin" />
+            <Spinner size="sm" className="text-zinc-400" />
           ) : webgpu.supported ? (
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           ) : (

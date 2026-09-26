@@ -15,13 +15,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import {
-  FileBox,
-  Loader2,
-  Camera,
-  Focus,
-  Upload,
-} from 'lucide-react';
+import { FileBox, Camera, Focus, Upload } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { Button } from '@/components/ui/button';
@@ -279,7 +274,7 @@ export function IDSExportDialog({
           >
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('idsPanel.export.exporting')}
               </>
             ) : (

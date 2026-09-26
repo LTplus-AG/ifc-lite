@@ -21,14 +21,8 @@ import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  Download,
-  AlertCircle,
-  Check,
-  Loader2,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
+import { Download, AlertCircle, Check, ArrowUp, ArrowDown } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -774,7 +768,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Spinner size="md" />
                   {exportProgress.phase}
                 </span>
                 <span>
@@ -807,7 +801,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           <Button onClick={handleExport} disabled={isExporting || !selectedModel || !schema || !exportAllowed}>
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('exportDialog.exportingLabel')}
               </>
             ) : (

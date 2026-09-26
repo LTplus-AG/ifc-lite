@@ -225,6 +225,7 @@
     "intersection_solid": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "is_valid_contour": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "local_frame_set_enabled_override": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "locate_axis_curve": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "meshed_representations": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "orient_mesh_outward": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "orient_mesh_outward_verdict": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

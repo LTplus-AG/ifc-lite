@@ -242,6 +242,9 @@ impl AlignmentCurve {
         if directrix.ifc_type == IfcType::IfcGradientCurve {
             return Self::from_gradient_curve(directrix, decoder);
         }
+        if directrix.ifc_type == IfcType::IfcCompositeCurve {
+            return Self::from_sampled_curve(directrix, decoder);
+        }
         if directrix.ifc_type != t_alignment_curve() {
             return Ok(None);
         }
@@ -362,6 +365,22 @@ impl AlignmentCurve {
         alignment.vertical.clear();
         alignment.gradient = Some(profile);
         Ok(Some(alignment))
+    }
+
+    /// Any other curve the shared sampler understands (e.g. an IFC4x3
+    /// `'FootPrint'` `IfcCompositeCurve` of line / arc / clothoid segments):
+    /// densely sampled into a point chain, elevation taken from the points.
+    fn from_sampled_curve(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Option<Self>> {
+        let samples = ProfileProcessor::new(IfcSchema::new()).get_curve_points(
+            curve,
+            decoder,
+            TessellationQuality::Medium,
+        )?;
+        if samples.len() < 2 {
+            return Ok(None);
+        }
+        let pts: Vec<(f64, f64, f64)> = samples.iter().map(|p| (p.x, p.y, p.z)).collect();
+        Self::from_points(&pts).map(Some)
     }
 
     /// One horizontal + one vertical Line segment per edge of a 3D point

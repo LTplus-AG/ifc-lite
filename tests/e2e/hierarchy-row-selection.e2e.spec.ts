@@ -11,8 +11,7 @@ declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
 }
 
-const ARCHITECTURE = 'tests/models/buildingsmart/Building-Architecture.ifc';
-const HVAC = 'tests/models/buildingsmart/Building-Hvac.ifc';
+const SECOND_MODEL = 'apps/viewer/public/samples/building-architecture-rev-b.ifc';
 
 async function waitForModels(page: Page, count: number): Promise<void> {
   await page.waitForFunction((n) => {
@@ -39,15 +38,14 @@ async function selectionState(page: Page) {
 }
 
 test('authored IFC hierarchy rows select across 1/N models; actions alone change visibility (#5885)', async ({ page }, info) => {
-  test.skip(!existsSync(ARCHITECTURE) || !existsSync(HVAC), 'buildingSMART fixtures missing — run pnpm fixtures');
+  test.skip(!existsSync(SECOND_MODEL), 'authored revision sample missing');
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto('/');
+  await page.goto('/?model=/samples/building-architecture.ifc');
   await page.waitForFunction(() => !!globalThis.__ifc_lite_viewer_store__, undefined, { timeout: 120_000 });
-  await page.locator('#file-input-open').setInputFiles(ARCHITECTURE);
   await waitForModels(page, 1);
 
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('type'));
-  const classRow = page.locator('[data-hierarchy-node-type="type-group"]').first();
+  const classRow = page.locator('[data-hierarchy-node-type="type-group"]').filter({ hasText: 'IfcWall' }).first();
   await expect(classRow).toBeVisible();
   const beforeClass = await selectionState(page);
   await classRow.click();
@@ -58,6 +56,9 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
   expect(afterClass.filterGroups).toBe(beforeClass.filterGroups);
   expect(afterClass.classFilterNull).toBe(true);
   expect(afterClass.isolatedIds).toBeNull();
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.frameSelection?.(0));
+  await page.waitForTimeout(250);
+  await page.mouse.move(1100, 500);
   await page.screenshot({ path: info.outputPath('hierarchy-class-one-model.png') });
 
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('material'));
@@ -74,7 +75,7 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
   expect((await selectionState(page)).isolatedIds?.length).toBeGreaterThan(0);
 
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clearIsolation());
-  await page.locator('#file-input-add').setInputFiles(HVAC);
+  await page.locator('#file-input-add').setInputFiles(SECOND_MODEL);
   await waitForModels(page, 2);
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setHierarchyMode('spatial'));
   const storeyRow = page.locator('[data-hierarchy-node-type="unified-storey"]').first();
@@ -87,6 +88,9 @@ test('authored IFC hierarchy rows select across 1/N models; actions alone change
   expect(afterStorey.levelDisplayMode).toBe(beforeStorey.levelDisplayMode);
   expect(afterStorey.selectedStoreys).toEqual(beforeStorey.selectedStoreys);
   expect(afterStorey.filterGroups).toBe(beforeStorey.filterGroups);
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.frameSelection?.(0));
+  await page.waitForTimeout(250);
+  await page.mouse.move(1100, 500);
   await page.screenshot({ path: info.outputPath('hierarchy-storey-two-models.png') });
 
   await storeyRow.hover();

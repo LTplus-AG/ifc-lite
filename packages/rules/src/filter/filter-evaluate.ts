@@ -83,8 +83,6 @@ import {
   matchPropertyRule,
   matchQuantityRule,
   matchAttributeRule,
-  defaultStoreyName,
-  storeyMatchesRefs,
   materialNamesOf, materialMatchCandidates,
   matchClassificationRule, matchParentRule,
   elevationOf,
@@ -92,6 +90,7 @@ import {
   type PsetRows,
   type QtyRows,
 } from './filter-match.js';
+import { defaultStoreyName, storeyMatchesRefs } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
 import { matchModelFactRule } from './filter-model-fact.js';
@@ -388,10 +387,8 @@ function evaluateOneEntity(
   let classCache: readonly ClassificationInfo[] | null = null;
   let attrCache: AttrRows | null = null;
   const psetsFor = (legacyListFirst = false): PsetRows => {
-    sourcePsets ??= [
-      ownPropertySetsFor(ctx.store, expressId, ctx.mutationView), // #4946, mutation-aware
-      getInheritedTypePsets(ctx, expressId),
-    ];
+    sourcePsets ??= [ownPropertySetsFor(ctx.store, expressId, ctx.mutationView),
+      getInheritedTypePsets(ctx, expressId)]; // #4946, mutation-aware
     if (legacyListFirst) {
       // V1 Lists search ALL occurrence sets before the TYPE fallback. A
       // per-property merge could insert a type value into the first own set

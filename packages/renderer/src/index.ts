@@ -480,6 +480,8 @@ export class Renderer {
     private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
+    private _xrayAlpha: XRayAlpha | null = null;
+    private _xrayAlphaEpoch: number = -1;
     private _lastColorOverrideGen: number = -1;
     private _xrayVersion: number = 0;
     private _lastHadPartialSources: boolean = false;
@@ -1826,10 +1828,6 @@ export class Renderer {
         // no-op when visibility is unchanged.
         this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
-        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // XRayAlpha snapshots the caller's map so mid-frame mutation can't desync
-        // classification and uniform-write decisions for the same batch/mesh, and
-        // owns the per-entity resolution + the mixed-batch partition (#4129).
         // X-Ray *context* mode (`ghostExceptIds`) feeds the same machinery, so it
         // routes through the transparent pipeline with no extra call sites — and
         // avoids building a Map over every element just to fade "the rest".
@@ -1839,7 +1837,11 @@ export class Renderer {
         // the user asked to fade the building and got a solid facade standing
         // in front of a ghosted interior.
         this.scene.setInstancedGhosting(options.ghostExceptIds ?? null, selectedExpressIds, ghostAlpha);
-        const xray = new XRayAlpha(options, selectedExpressIds);
+        if (this._xrayAlpha === null || this._xrayAlphaEpoch !== this._partialBatchEpoch) {
+            this._xrayAlpha = new XRayAlpha(options, selectedExpressIds);
+            this._xrayAlphaEpoch = this._partialBatchEpoch;
+        }
+        const xray = this._xrayAlpha;
         const alphaForMesh = (expressId: number, fallback: number): number => xray.forEntity(expressId, fallback);
         const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 

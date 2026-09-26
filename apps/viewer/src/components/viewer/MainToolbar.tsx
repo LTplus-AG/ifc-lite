@@ -265,7 +265,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
@@ -1040,11 +1039,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </>
           )}
         </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <span className="text-xs text-destructive mr-4">{error}</span>
       )}
 
       {/* Right Side Actions — /mcp moved to the Info dialog header so

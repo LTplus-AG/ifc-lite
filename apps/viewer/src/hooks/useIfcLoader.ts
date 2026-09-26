@@ -82,7 +82,7 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog, trackUiEvent } from '../lib/analytics.js';
+import { posthog, showLoadError as reportLoadError } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -450,12 +450,11 @@ export function useIfcLoader() {
       return true;
     };
 
-    // Every load failure the user sees goes through here, so `error_shown`
-    // (#5618) covers each path once; `code` is a fixed id, never the message.
-    const showLoadError = (message: string, code: string) => {
-      setError(message);
-      trackUiEvent('error_shown', { code, surface: 'load_error' });
-    };
+    // Every load failure the user sees goes through here (#5618); `retry`
+    // is fixed to THIS call so no call site below can omit or go stale.
+    const retryThisLoad = () => { void loadFile(file, target, options); };
+    const showLoadError = (message: string, code: string) =>
+      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, message, code, retryThisLoad);
 
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A

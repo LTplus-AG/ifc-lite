@@ -75,7 +75,6 @@ export function MobileToolbar() {
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const clearAllModels = useViewerStore((state) => state.clearAllModels);
@@ -262,11 +261,6 @@ export function MobileToolbar() {
             {Math.round(activeProgress.percent)}%
           </span>
         </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <span className="text-[10px] text-destructive mr-1 truncate max-w-24 flex-shrink-0">{error}</span>
       )}
 
       {/* Overflow menu */}

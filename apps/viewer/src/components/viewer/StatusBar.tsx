@@ -37,7 +37,6 @@ export function StatusBar() {
   const { t } = useTranslation();
   const { loading, geometryResult, ifcDataStore, models } = useIfc();
   const progress = useViewerStore(selectActiveLoadProgress);
-  const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
@@ -209,10 +208,10 @@ export function StatusBar() {
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">
       {/* Left: Status */}
       <div className="flex items-center gap-3">
+        {/* A load error shows once, in the viewport's load-error card
+            (#5851) — not here too. */}
         {loading ? (
           <span className="text-primary">{progress?.phase || t('shellChrome.statusBar.loadingFallback')}</span>
-        ) : error ? (
-          <span className="text-destructive">{error}</span>
         ) : (
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}

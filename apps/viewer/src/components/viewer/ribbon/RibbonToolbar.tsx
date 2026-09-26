@@ -74,7 +74,6 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   const fileCommands = useFileCommands();
 
   const { loading, geometryProgress, metadataProgress } = useIfc();
-  const error = useViewerStore((state) => state.error);
   const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const handleTabClick = (id: RibbonTabId) => {
@@ -146,11 +145,6 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
               </>
             )}
           </div>
-        )}
-
-        {/* Error Display */}
-        {error && (
-          <span className="ml-3 max-w-72 truncate text-xs text-destructive">{error}</span>
         )}
 
         <div className="flex-1" />

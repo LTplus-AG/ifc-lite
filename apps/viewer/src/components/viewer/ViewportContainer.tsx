@@ -14,6 +14,7 @@ import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
@@ -38,7 +39,7 @@ import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisi
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
-import { useWebGPU } from '@/hooks/useWebGPU';
+import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
@@ -97,7 +98,7 @@ export function ViewportContainer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
-  const webgpu = useWebGPU();
+  const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
   // switch instead of reading the registry's non-reactive `resolve` default
@@ -429,8 +430,10 @@ export function ViewportContainer() {
 
   // The whole window is the drop target (#5845): a file dropped on the
   // toolbar, sidebar or a panel loads too, and the browser never navigates to
-  // it. Drops are refused (not loaded) while WebGPU is unsupported.
+  // it. While WebGPU is unsupported the drop is refused with the shared
+  // load-error card (#5851), not a silent no-op.
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
+    if (!guardWebGpu()) return;
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
@@ -461,14 +464,13 @@ export function ViewportContainer() {
 
       void prepareAndRoute(files, handles);
     });
-  }, [prepareAndRoute, isSupportedFile]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
+  // `accept` only steers the drop cursor/overlay; handleDrop's own guard (not
+  // this flag) is what shows the load-error card when unsupported (#5851).
   const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Block file loading if WebGPU not supported
-    if (!webgpu.supported) {
-      return;
-    }
+    if (!guardWebGpu()) return;
 
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -485,13 +487,13 @@ export function ViewportContainer() {
     else reportFileOpenRejected(modelFiles);
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;
@@ -509,17 +511,17 @@ export function ViewportContainer() {
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   const handleStartBlank = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
     // Must await: loadFile() calls resetViewerState() internally which
     // resets activeTool back to 'select'. Setting addElement before that
     // races and leaves the user in select mode despite the click.
     await loadFile(file);
     setActiveTool('addElement');
-  }, [webgpu.supported, loadFile, setActiveTool]);
+  }, [guardWebGpu, loadFile, setActiveTool]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
   // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
@@ -962,6 +964,11 @@ export function ViewportContainer() {
             </div>
           </div>
         )}
+
+        {/* One load-error card for every failed open attempt (#5851) —
+            picker, drop, ?model= autoload — shown here too since a failure
+            with nothing loaded yet renders THIS branch, not ViewportOverlays'. */}
+        <ViewportLoadErrorCard />
 
         {/* Empty state content — mobile-optimized padding and scrollable.
             The scroll container must NOT center via justify-center: a flex

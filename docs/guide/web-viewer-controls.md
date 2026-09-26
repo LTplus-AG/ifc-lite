@@ -15,6 +15,12 @@ tool, plain left drag starts a drag measurement; Alt + left drag orbits instead.
 In polyline, angle, and radius measurement modes, a left drag orbits and clicks
 place points. Shift + left drag always pans, even when a measurement is active.
 
+While you orbit, a small accent marker shows the fixed point the camera is
+rotating around. The marker follows that point on screen and fades when you
+release the pointer. Panning does not show a pivot marker.
+
+![Orbit pivot marker on building-architecture.ifc](../architecture/evidence/orbit-pivot-marker-5891/mid-orbit.png)
+
 An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
 ordinary right-button pan mapping used when fly is unavailable.

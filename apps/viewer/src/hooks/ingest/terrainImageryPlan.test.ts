@@ -124,7 +124,10 @@ describe('planTerrainDrape over the real LandXML mesh path (#5942)', () => {
     assert.match(terrainCrsOf({}).ok ? '' : (terrainCrsOf({}) as { reason: string }).reason, /declares no coordinate system/);
     const named = terrainCrsOf({ coordinateSystem: { horizontalDatum: 'CH1903+ / LV95' } });
     assert.equal(named.ok, false);
-    assert.match(named.ok ? '' : named.reason, /not an explicit EPSG code/);
+    assert.match(named.ok ? '' : named.reason, /horizontalDatum 'CH1903\+ \/ LV95'\) does not name one explicit EPSG code/);
+    // Two codes that disagree name no CRS, and the refusal quotes both (#5942 follow-up).
+    const conflicting = terrainCrsOf({ coordinateSystem: { epsgCode: '2056', horizontalDatum: 'EPSG:21781' } });
+    assert.match(conflicting.ok ? '' : conflicting.reason, /epsgCode '2056' and horizontalDatum 'EPSG:21781'/);
     const source = loaded();
     const plan = planTerrainDrape({ ...source, document: { ...source.document, coordinateSystem: undefined } }, orthoProjection());
     assert.equal(plan.ok, false);

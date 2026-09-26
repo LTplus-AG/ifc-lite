@@ -29,7 +29,7 @@ import { useIfcLoader } from '../useIfcLoader.js';
 import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
 import { readGeoRasterBundle } from '@/lib/terrain-imagery/read-raster.js';
 import {
-  FEATURE, ORTHO, orthoPng, orthoTerrainXml, orthoWorldFile,
+  FEATURE, ORTHO, orthoPng, orthoTerrainXml, orthoWorldFile, type OrthoCrsDeclaration,
 } from '@/lib/terrain-imagery/synthetic-orthophoto.fixture.js';
 import { drapeRasterOnTerrains, type DrapeRaster } from './terrainImageryDrape.js';
 
@@ -96,8 +96,11 @@ function installRenderer(): void {
   setGlobalRendererRef({ current: renderer as unknown as Renderer } as RefObject<Renderer | null>);
 }
 
-async function loadTerrain(pointOrder: 'northing-first' | 'easting-first' = 'northing-first'): Promise<string> {
-  const file = new File([orthoTerrainXml(pointOrder)], 'terrain.xml', { type: 'application/xml' });
+async function loadTerrain(
+  pointOrder: 'northing-first' | 'easting-first' = 'northing-first',
+  crsDeclaration: OrthoCrsDeclaration = 'horizontalDatum',
+): Promise<string> {
+  const file = new File([orthoTerrainXml(pointOrder, crsDeclaration)], 'terrain.xml', { type: 'application/xml' });
   await act(async () => hookApi!.loadFile(file, { kind: 'primary' }));
   const model = [...useViewerStore.getState().models.values()][0];
   assert.ok(model?.geometryResult?.meshes.length, 'the terrain loaded and rendered');
@@ -166,6 +169,20 @@ describe('draping imagery through the load path (#5942)', () => {
       }
     }
     assert.deepEqual(featureTexel, [ORTHO.marked.col, ORTHO.marked.row]);
+  });
+
+  // Follow-up to #5942: real producers (Civil 3D 2021/2022, 3D-Win 6.6.4)
+  // declare the CRS as LandXML 1.2's `epsgCode`. It was dropped by the parser,
+  // so every real terrain was refused as having no coordinate system.
+  it('drapes a terrain whose CRS is declared as producers write it, in epsgCode', async () => {
+    const terrainId = await loadTerrain('northing-first', 'epsgCode');
+    const model = useViewerStore.getState().models.get(terrainId)!;
+    assert.equal(model.landXmlDocument?.coordinateSystem?.epsgCode, '2056', 'the real parser keeps epsgCode');
+    installRenderer();
+    const [outcome] = await drapeRasterOnTerrains(await orthoRaster());
+    assert.ok(outcome.result.ok, outcome.result.ok ? '' : outcome.result.reason);
+    assert.equal(outcome.result.value.coveredVertices, 67);
+    assert.equal(outcome.result.value.reprojected, false);
   });
 
   it('refuses the correctly placed image on an easting-first terrain read by the real parser', async () => {

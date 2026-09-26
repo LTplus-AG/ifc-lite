@@ -104,6 +104,23 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
     assert.match(text, /IFCMAPCONVERSION/);
   });
 
+  // Follow-up to #5942: producers (3D-Win, Civil 3D) declare the CRS in
+  // LandXML 1.2's `epsgCode`, and Civil 3D puts a datum NAME in
+  // horizontalDatum. The CRS written is the declared code, the same id the
+  // viewer places and drapes the terrain by — named, not resolved.
+  it('writes the producer epsgCode as the CRS name, ahead of a datum name', async () => {
+    for (const [coordinateSystem, name] of [
+      [{ epsgCode: '3875' }, 'EPSG:3875'],
+      [{ epsgCode: '2269', horizontalDatum: 'NAD83', verticalDatum: 'NAVD88' }, 'EPSG:2269'],
+    ] as const) {
+      const { text } = await captureDownload(async () => {
+        await downloadLandXmlAsIfc({ document: document({ coordinateSystem }), name: 'terrain.xml' });
+      });
+      assert.match(text, new RegExp(`IFCPROJECTEDCRS\\('${name}'`));
+      assert.match(text, /IFCMAPCONVERSION/);
+    }
+  });
+
   it('writes no georeferencing at all when no datum is declared', async () => {
     const { text } = await captureDownload(async () => {
       await downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });

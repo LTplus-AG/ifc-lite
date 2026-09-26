@@ -120,8 +120,18 @@ export function orthoTerrainDocument(
   };
 }
 
+/**
+ * How the CRS is declared: `epsgCode` is LandXML 1.2's attribute and what real
+ * producers write (Civil 3D, 3D-Win); `horizontalDatum="EPSG:<n>"` is the form
+ * some converters use.
+ */
+export type OrthoCrsDeclaration = 'epsgCode' | 'horizontalDatum';
+
 /** The same terrain as LandXML 1.2 text, as a producer would write it. */
-export function orthoTerrainXml(pointOrder: 'northing-first' | 'easting-first' = 'northing-first'): string {
+export function orthoTerrainXml(
+  pointOrder: 'northing-first' | 'easting-first' = 'northing-first',
+  crsDeclaration: OrthoCrsDeclaration = 'horizontalDatum',
+): string {
   const document = orthoTerrainDocument(pointOrder);
   const surface = document.surfaces[0];
   // `orthoTerrainDocument` already holds each point as a reader would parse
@@ -131,7 +141,9 @@ export function orthoTerrainXml(pointOrder: 'northing-first' | 'easting-first' =
   return `<?xml version="1.0"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
   <Units><Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter" temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/></Units>
-  <CoordinateSystem horizontalDatum="${ORTHO.crs}" verticalDatum="EPSG:5728"/>
+  ${crsDeclaration === 'epsgCode'
+    ? `<CoordinateSystem name="CH1903+ / LV95" epsgCode="${ORTHO.crs.slice('EPSG:'.length)}" verticalDatum="EPSG:5728"/>`
+    : `<CoordinateSystem horizontalDatum="${ORTHO.crs}" verticalDatum="EPSG:5728"/>`}
   <Surfaces><Surface name="Existing Ground"><Definition surfType="TIN"><Pnts>${points}</Pnts><Faces>${faces}</Faces></Definition></Surface></Surfaces>
 </LandXML>`;
 }

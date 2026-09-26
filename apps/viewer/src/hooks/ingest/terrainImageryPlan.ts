@@ -52,11 +52,13 @@ export interface TerrainDrapePlan {
 export function terrainCrsOf(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): Parsed<string> {
   const id = spatialMetadataFromLandXml(document).horizontalId;
   if (id) return { ok: true, value: id };
-  const declared = document.coordinateSystem?.horizontalDatum?.trim();
+  const { epsgCode, horizontalDatum } = document.coordinateSystem ?? {};
+  const declared = [epsgCode && `epsgCode '${epsgCode.trim()}'`, horizontalDatum && `horizontalDatum '${horizontalDatum.trim()}'`]
+    .filter(Boolean).join(' and ');
   return {
     ok: false,
     reason: declared
-      ? `The terrain's coordinate system '${declared}' is not an explicit EPSG code, so there is nothing to place imagery against.`
+      ? `The terrain's coordinate system (${declared}) does not name one explicit EPSG code, so there is nothing to place imagery against.`
       : 'The terrain declares no coordinate system, so there is nothing to place imagery against. A raster is never placed by its pixel bounds.',
   };
 }

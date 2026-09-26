@@ -15,7 +15,7 @@
 
 import type { LandXmlIfcOptions } from '@ifc-lite/create';
 import { buildExportFilename, downloadBlob, stripExtension } from './download.js';
-import { landXmlIfcSource, type LandXmlExportPlan } from './landXmlIfcPlan.js';
+import { landXmlCrsName, landXmlIfcSource, type LandXmlExportPlan } from './landXmlIfcPlan.js';
 import { landXmlToIfcArchive, type AppearancePlanRunner } from './landXmlIfcImagery.js';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
@@ -86,7 +86,7 @@ export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Prom
   // never resolved (§4.2). No `Bounds` accompany it, so the transposition
   // check does not run — see `crsName` in `landXmlIfcPlan.ts` for why, and the
   // dialog says so before the user commits.
-  const datum = input.document.coordinateSystem?.horizontalDatum;
+  const datum = landXmlCrsName(input.document);
   const sourceHash = input.source ? await computeFullSourceHashFromBlob(input.source) : null;
   const options: LandXmlIfcOptions = {
     sourceFileName: input.name,

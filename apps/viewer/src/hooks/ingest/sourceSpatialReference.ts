@@ -59,10 +59,19 @@ function metadata(
   };
 }
 
-/** Extract only explicit EPSG declarations from a LandXML CoordinateSystem. */
+/**
+ * Extract only explicit EPSG declarations from a LandXML CoordinateSystem.
+ *
+ * The horizontal CRS comes from `epsgCode`, LandXML 1.2's attribute for it and
+ * what real producers write (Civil 3D, 3D-Win), or from an `EPSG:<n>` id in
+ * `horizontalDatum`. When both name a code and they disagree, neither is taken:
+ * picking one would place the model on a guess (#5942 follow-up).
+ */
 export function spatialMetadataFromLandXml(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): SourceSpatialMetadata {
   const declared = (value: string | undefined) => /^EPSG\s*:\s*(\d+)$/i.exec(value?.trim() ?? '')?.[1];
-  const horizontal = declared(document.coordinateSystem?.horizontalDatum);
+  const epsgCode = /^\s*(?:EPSG\s*:\s*)?(\d+)\s*$/i.exec(document.coordinateSystem?.epsgCode ?? '')?.[1];
+  const datumCode = declared(document.coordinateSystem?.horizontalDatum);
+  const horizontal = epsgCode && datumCode && epsgCode !== datumCode ? undefined : epsgCode ?? datumCode;
   const vertical = declared(document.coordinateSystem?.verticalDatum);
   return {
     format: 'landxml',

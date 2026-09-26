@@ -26,6 +26,7 @@ import {
 } from '@ifc-lite/create';
 import type { FederatedModel } from '@/store';
 import { isLandXmlSchema, type LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
+import { spatialMetadataFromLandXml } from '@/hooks/ingest/sourceSpatialReference.js';
 import { coveredFraction, type TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
 /**
@@ -38,6 +39,18 @@ import { coveredFraction, type TerrainImageryDrape } from '@/lib/terrain-imagery
  */
 export function landXmlIfcSource(document: LandXmlTinDocument): LandXmlIfcSource {
   return document;
+}
+
+/**
+ * The name written as `IfcProjectedCRS.Name` (§4.2). A declared `epsgCode`,
+ * which is how producers state the CRS, is written as the same `EPSG:<n>` id
+ * the viewer places and drapes the terrain by; without one, `horizontalDatum`
+ * passes through verbatim as before. #5942 follow-up: a 3D-Win terrain with
+ * `epsgCode="3875"` exported with no CRS at all.
+ */
+export function landXmlCrsName(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): string | undefined {
+  if (document.coordinateSystem?.epsgCode !== undefined) return spatialMetadataFromLandXml(document).horizontalId;
+  return document.coordinateSystem?.horizontalDatum;
 }
 
 export interface LandXmlExportPlan {
@@ -158,7 +171,7 @@ export function landXmlExportPlan(
       alignments += alignmentMapping.mapped.length;
       if (document.units.assumed) assumedUnit ??= document.units.linearUnit;
     }
-    const datum = document.coordinateSystem?.horizontalDatum;
+    const datum = landXmlCrsName(document);
     if (datum) crsName ??= datum;
     else missingCrs = true;
     refusals.push(collectRefusals(source, alignmentMapping));

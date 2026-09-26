@@ -314,6 +314,12 @@ pub struct LandXmlUnits {
 pub struct LandXmlCoordinateSystem {
     pub horizontal_datum: Option<String>,
     pub vertical_datum: Option<String>,
+    /// LandXML 1.2's own attribute for the CRS's EPSG code (`epsgCode`). It is
+    /// how real producers declare the CRS: Civil 3D 2021/2022 and 3D-Win 6.6.4
+    /// all write it, and none of them writes an EPSG id into `horizontalDatum`
+    /// (#5942 follow-up). Raw, like the other two: never resolved here.
+    #[serde(default)]
+    pub epsg_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

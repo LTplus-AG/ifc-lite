@@ -163,9 +163,15 @@ IfcMapConversion: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
                   XAxisAbscissa?, XAxisOrdinate?, Scale?
 ```
 
-`LandXmlCoordinateSystem` currently keeps `horizontal_datum` / `vertical_datum` as raw
+`LandXmlCoordinateSystem` keeps `horizontal_datum`, `vertical_datum` and `epsg_code` as raw
 strings, and the crate deliberately does not resolve EPSG codes — only the viewer
-adapter accepts explicit EPSG ids. The exporter must not start resolving EPSG codes in
+adapter accepts explicit EPSG ids. `epsgCode` is LandXML 1.2's attribute for the CRS's
+code and is how producers declare it (Civil 3D 2021/2022 and 3D-Win 6.6.4 all write it;
+Civil 3D puts a datum *name* such as `NAD83` in `horizontalDatum`). The adapter takes the
+horizontal CRS from `epsgCode`, or from an `EPSG:<n>` id in `horizontalDatum`; when both
+name a code and disagree it takes neither. `IfcProjectedCRS.Name` is that `EPSG:<n>` id
+when `epsgCode` is declared, else `horizontalDatum` verbatim: the declared code is named,
+not resolved. The exporter must not start resolving EPSG codes in
 the crate. Where the source declares no CRS, emit **no** `IfcProjectedCRS`/
 `IfcMapConversion` at all rather than a placeholder, and say so in the report. Two of
 the seven reviewed producer fixtures declare `crs: "not-declared"`, so this is the
@@ -850,8 +856,9 @@ model, so it creates none: it is draped onto the LandXML terrain models already 
 Stated up front, in the style of §5. Each is a refusal of the drape, named to the operator; none
 is a partial or a guess.
 
-1. **The terrain declares no CRS.** `LandXML/CoordinateSystem` must name an explicit EPSG code
-   (the same adapter the federation path uses, `spatialMetadataFromLandXml`). A raster is never
+1. **The terrain declares no CRS.** `LandXML/CoordinateSystem` must name an explicit EPSG code,
+   in `epsgCode` or as `horizontalDatum="EPSG:<n>"` (§4.2; the same adapter the federation
+   path uses, `spatialMetadataFromLandXml`). A raster is never
    placed by pixel bounds or by the terrain's extent.
 2. **The image has no placement or no CRS.** A PNG/JPEG without a world file, a GeoTIFF without
    a geotransform, and an image whose CRS is absent, user-defined or not an EPSG code are all

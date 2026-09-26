@@ -28,7 +28,7 @@ use super::guid::extract_global_id_fast;
 use super::line_edit::{arg_refs, classify_refs, RefSlot};
 use super::plan::{next_offset, resolve_included, unify_spatial, ModelIndex};
 use super::spatial::{nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy};
-use super::units::{resolve_length_scale, ModelUnitMode};
+use super::units::ModelUnitMode;
 use crate::schema_detect::detect_schema;
 use super::{MergedModel, MergedOptions};
 
@@ -120,8 +120,8 @@ pub(super) fn plan_drops(
         return None;
     }
     // The same primary unit and output schema `export_merged_models` resolves.
-    let primary_scale = models.first().map_or(1.0, |m| resolve_length_scale(m.content));
-    let schema = opts.schema.clone().or_else(|| models.first().map(|m| detect_schema(m.content))).unwrap_or_else(|| "IFC4".to_string());
+    let primary_scale = super::units::primary_scale(models);
+    let schema = super::header::output_schema(models, opts);
     Some(plan_container_drops(models, &DropCtx {
         spatial_lookup,
         merge_sites: opts.merge_sites,
@@ -142,7 +142,7 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
     // soon as each model's contribution to the graph is recorded.
     let mut per_model_containers: Vec<Vec<(u32, Node)>> = Vec::with_capacity(models.len());
     let mut offset: u32 = 0;
-    let mut claims = StructureClaims::default();
+    let mut claims = StructureClaims::for_schema(ctx.schema);
     let mut guids = PlannerGuids::new(ctx.primary_scale);
 
     for (i, model) in models.iter().enumerate() {

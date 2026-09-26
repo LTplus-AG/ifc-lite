@@ -331,7 +331,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'compare/CompareResultsList CountBadge hint',
       file: COMPARE_RESULTS_LIST,
-      anchor: '<span className="text-[10px] text-muted-foreground">{label}</span>\n      {hint && <span ',
+      anchor: '{label}</span>\n      {hint && <span ',
       surface: 'bg-background',
     },
     {

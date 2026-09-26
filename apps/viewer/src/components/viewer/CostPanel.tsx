@@ -41,6 +41,7 @@ import { useViewerStore } from '@/store';
 import { buildCostCsvReport } from '@/lib/analysis/export-csv';
 import type { EntityRefLike } from '@/lib/cost/cost-tree';
 import { downloadFile } from '@/lib/export/download';
+import { trackExportCompleted } from '@/lib/analytics';
 import { CostDetail } from './cost/CostDetail';
 import { CostTreeView } from './cost/CostTreeView';
 import { useCostBackend } from './cost/useCostBackend';
@@ -70,6 +71,7 @@ export function CostPanel({ onClose }: CostPanelProps) {
       const report = buildCostCsvReport(entries, backend.evaluateItem);
       if (!report) return;
       downloadFile(report.content, report.filename, 'text/csv;charset=utf-8');
+      trackExportCompleted({ format: 'csv', surface: 'cost_panel', row_count: report.rows });
       setExportError(null);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : String(error));

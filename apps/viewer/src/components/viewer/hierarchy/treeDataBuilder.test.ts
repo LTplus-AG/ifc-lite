@@ -29,6 +29,7 @@ import {
   compareStoreyEntries,
   buildGroupTree,
   buildMaterialTree,
+  filterNodes,
   resolveMemberGeometry,
   groupMatchesSubFilter,
   GROUP_ENTITY_TYPES,
@@ -90,6 +91,36 @@ function createDataStore(): IfcDataStore {
         if (id === 5) return 'IfcSpace';
         return 'Unknown';
       },
+    },
+  } as unknown as IfcDataStore;
+}
+
+function createSearchDataStore(): IfcDataStore {
+  const firstStorey = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'Storey 1');
+  firstStorey.elements = [6];
+  const secondStorey = createSpatialNode(5, IfcTypeEnum.IfcBuildingStorey, 'Storey 2');
+  secondStorey.elements = [7];
+  const building = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'Building', [firstStorey, secondStorey]);
+  const site = createSpatialNode(2, IfcTypeEnum.IfcSite, 'Site', [building]);
+  const project = createSpatialNode(1, IfcTypeEnum.IfcProject, 'Project', [site]);
+  return {
+    spatialHierarchy: {
+      project,
+      byStorey: new Map([[4, [6]], [5, [7]]]),
+      byBuilding: new Map(),
+      bySite: new Map(),
+      bySpace: new Map(),
+      storeyElevations: new Map(),
+      storeyHeights: new Map(),
+      elementToStorey: new Map([[6, 4], [7, 5]]),
+      getStoreyElements: () => [],
+      getStoreyByElevation: () => null,
+      getContainingSpace: () => null,
+      getPath: () => [],
+    },
+    entities: {
+      getName: (id: number) => id === 7 ? 'Target Wall' : 'Other Wall',
+      getTypeName: () => 'IfcWall',
     },
   } as unknown as IfcDataStore;
 }
@@ -328,6 +359,51 @@ describe('buildTreeData', () => {
     assert.strictEqual(railing.ifcType, 'IfcRailing');
     assert.strictEqual(flight.depth, stair.depth + 1, 'parts nest one level under the assembly');
     assert.strictEqual(flight.hasChildren, false, 'leaf parts are not expandable');
+  });
+});
+
+describe('hierarchy search through collapsed branches (#5880)', () => {
+  const expandAll = { has: () => true };
+
+  it('finds only the target wall on storey 2 with its ancestor chain and restores collapse', () => {
+    const dataStore = createSearchDataStore();
+    const collapsed = new Set<string>();
+    assert.deepStrictEqual(buildTreeData(new Map(), dataStore, collapsed, false, []).map(node => node.name), ['Project']);
+
+    const matches = filterNodes(buildTreeData(new Map(), dataStore, expandAll, false, []), 'Target Wall');
+    assert.deepStrictEqual(matches.map(node => node.name), ['Project', 'Site', 'Building', 'Storey 2', 'Target Wall']);
+    assert.ok(matches.slice(0, -1).every(node => node.isExpanded));
+    assert.deepStrictEqual(buildTreeData(new Map(), dataStore, collapsed, false, []).map(node => node.name), ['Project']);
+    assert.deepStrictEqual(filterNodes(buildTreeData(new Map(), dataStore, expandAll, false, []), 'element'), []);
+  });
+
+  it('keeps a federated hit under its own model contribution only', () => {
+    useViewerStore.setState({ models: new Map() });
+    const offsetA = useViewerStore.getState().registerModelOffset('search-A', 8);
+    const offsetB = useViewerStore.getState().registerModelOffset('search-B', 8);
+    const modelA: FederatedModel = {
+      ...createModel(offsetA),
+      id: 'search-A',
+      name: 'Model A',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Wall A' }),
+      maxExpressId: 7,
+    };
+    const modelB: FederatedModel = {
+      ...createModel(offsetB),
+      id: 'search-B',
+      name: 'Model B',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Target Wall B' }),
+      maxExpressId: 7,
+    };
+    const models = new Map<string, FederatedModel>([['search-A', modelA], ['search-B', modelB]]);
+    useViewerStore.setState({ models });
+    const unified = buildUnifiedStoreys(models, 'name-asc');
+    const matches = filterNodes(buildTreeData(models, null, expandAll, true, unified), 'Target Wall B');
+    assert.deepStrictEqual(matches.map(node => node.id), [
+      `unified-${unified[0].key}`,
+      'contrib-search-B-4',
+      'element-search-B-7',
+    ]);
   });
 });
 

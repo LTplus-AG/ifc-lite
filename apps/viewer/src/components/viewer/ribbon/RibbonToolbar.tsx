@@ -179,7 +179,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible
             regardless of the active tab or collapse state. */}
-        <ExportChangesButton />
+        <ExportChangesButton surface="ribbon" />
 
         <div className="ml-1 flex items-center gap-1 border-l border-zinc-200 pl-2 dark:border-zinc-700/60">
           <Button

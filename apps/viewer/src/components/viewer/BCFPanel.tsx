@@ -28,7 +28,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
@@ -201,7 +201,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // Export BCF file
   const handleExport = useCallback(async () => {
     if (!bcfProject) return;
-
     try {
       setBcfLoading(true);
       setBcfError(null);
@@ -209,6 +208,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       // Use project name, or generate from model name, or date-based fallback
       const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
       downloadBlob(blob, `${fileName}.bcfzip`);
+      trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);

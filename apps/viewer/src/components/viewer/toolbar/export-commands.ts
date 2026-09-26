@@ -30,6 +30,7 @@
 
 import type React from 'react';
 import type { TranslationKey } from '@/i18n';
+import type { UiSurface } from '@/lib/analytics-ui-events';
 import { ExportDialog } from '../ExportDialog';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
@@ -43,7 +44,7 @@ import { PdfViewExportDialog } from '../PdfViewExportDialog';
 export type CsvExportType = 'entities' | 'properties' | 'quantities' | 'spatial';
 
 /** Every export dialog takes the calling toolbar's own element as its trigger. */
-export type ExportDialogComponent = React.ComponentType<{ trigger?: React.ReactNode }>;
+export type ExportDialogComponent = React.ComponentType<{ trigger?: React.ReactNode; surface: UiSurface }>;
 
 interface ExportCommandBase {
   /** Stable id — also the `data-export-command` attribute both styles render. */

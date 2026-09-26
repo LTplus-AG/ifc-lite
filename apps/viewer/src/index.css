@@ -94,6 +94,9 @@
 
 /* Custom theme configuration */
 @theme {
+  /* Smallest viewer text step; replace sub-11px arbitrary utilities (#5821). */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.875rem;
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(240 10% 3.9%);
   --color-card: hsl(0 0% 100%);

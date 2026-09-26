@@ -20,6 +20,7 @@
  *    never as a fabricated entity row.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import type { GeometryDiagnostics, TessellationQuality } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../store/types';
 import { buildExportFilename, downloadFile } from './export/download';
@@ -235,4 +236,5 @@ export function downloadLoadReportJSON(reports: readonly LoadReportSummary[]): v
   const data = buildLoadReportJSON(reports);
   const filename = buildExportFilename('model-load-report', 'json');
   downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'load_report' });
 }

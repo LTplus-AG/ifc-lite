@@ -12,6 +12,7 @@
  * which were minted in a different parse.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -102,6 +103,7 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
       new Blob([state.raw], { type: 'application/json' }),
       `${digest.replace(/^blake3:/, '').slice(0, 12)}-report.json`,
     );
+    trackExportCompleted({ format: 'json', surface: 'layer_evidence' });
   }, [state, digest]);
 
   if (state.kind === 'loading') {

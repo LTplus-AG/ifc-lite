@@ -13,6 +13,7 @@
  * "Download" button. The actual `Blob` → `<a download>` click only
  * happens when the user presses that button.
  */
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useState } from 'react';
 import { downloadBlob } from '../../lib/export/download';
 
@@ -104,6 +105,7 @@ class FileStore {
     if (!file) return;
     // file.filename is already coerced (extension-forced, OS-safe) at creation.
     downloadBlob(file.blob, file.filename);
+    trackExportCompleted({ format: 'other', surface: 'mcp_playground' });
   }
 
   subscribe(listener: () => void): () => void {

@@ -11,6 +11,7 @@
  * viewer, calling back into the package for the actual parse/serialize.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import type { RuleSetFile, RuleSetParseResult } from '@ifc-lite/rules';
 import { parseRuleSetFile, serializeRuleSet } from '@ifc-lite/rules';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
@@ -20,6 +21,7 @@ import { downloadFile, sanitizeFilename } from '../export/download.js';
 export function exportRuleSet(file: RuleSetFile): void {
   const name = sanitizeFilename(file.name, { fallback: 'ruleset' });
   downloadFile(serializeRuleSet(file), `${name}.rules.json`, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'ids_panel' });
 }
 
 /** Read + parse a `.rules.json` `File` (the browser file-picker result).

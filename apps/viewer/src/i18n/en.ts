@@ -65,6 +65,7 @@ import { section2dEn } from './catalogues/section-2d.en';
 import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
 import { searchFiltersEn } from './catalogues/search-filters.en';
+import { visibilityReasonsEn } from './catalogues/visibility-reasons.en';
 import { sharedCommandsEn } from './catalogues/shared-commands.en';
 import { shellChromeEn } from './catalogues/shell-chrome.en';
 import { sourcesEn } from './catalogues/sources.en';
@@ -144,6 +145,7 @@ export const en = {
   ...lensPanelEn,
   ...searchModalEn,
   ...searchFiltersEn,
+  ...visibilityReasonsEn,
   ...repositionPanelEn,
   ...placementPanelEn,
   ...webgpuTroubleshootingEn,

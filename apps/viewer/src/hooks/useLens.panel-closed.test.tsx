@@ -167,6 +167,32 @@ for (const modelCount of [1, 3]) {
         'deactivating the lens must leave the manual wall hidden');
     });
 
+    for (const reset of ['showAll', 'showAllInAllModels'] as const) {
+      it(`${reset} keeps lens ownership separate from a manual overlap (#5869)`, async () => {
+        await mountHost();
+        const walls: number[] = [];
+        for (let i = 0; i < modelCount; i++) walls.push(await loadModel(`m${i}`));
+        const manualWall = walls[0];
+        const slab = useViewerStore.getState().toGlobalId('m0', 2);
+        // Start with the wall hidden by the user, then activate the lens so
+        // it claims only walls that were not already hidden.
+        await act(async () => { useViewerStore.setState({ activeLensId: null }); });
+        await act(async () => { useViewerStore.getState().hideEntities([manualWall]); });
+        await activateLens();
+        await act(async () => { useViewerStore.getState().hideEntities([slab]); });
+
+        await act(async () => { useViewerStore.getState()[reset](); });
+        const afterReset = useViewerStore.getState();
+        assert.deepEqual(sorted(afterReset.hiddenEntities), sorted(walls),
+          `${reset} clears the manual slab hide but retains all lens matches`);
+        assert.deepEqual(sorted(afterReset.lensAppliedHiddenIds), sorted(walls.slice(1)),
+          `${reset} must not claim the manually hidden wall`);
+
+        await act(async () => { useViewerStore.setState({ activeLensId: null }); });
+        assert.deepEqual(sorted(useViewerStore.getState().hiddenEntities), [manualWall]);
+      });
+    }
+
     it('deactivating the lens releases the rule isolation it still owns', async () => {
       await mountHost();
       const walls: number[] = [];

@@ -20,13 +20,13 @@
 //!
 //! - `IfcLine` → constant grade
 //! - `IfcCircle` → circular arc tangent to both grades (exact)
-//! - anything else (`IfcPolynomialCurve` for parabolic vertical curves,
-//!   transition curves) → parabola tangent to both grades, which is the
-//!   exact parabolic case and a sub-millimetre approximation otherwise on
-//!   road/rail grades
+//! - `IfcPolynomialCurve` → a parabola tangent to both authored grades;
+//!   unsupported parent types leave the profile unparsed rather than
+//!   fabricating a curve
 //!
 //! Before a first segment the profile is flat-extrapolated from its start;
-//! past the last segment it continues on its start grade.
+//! past the last segment it continues on its end grade. A final circular
+//! segment is evaluated through its authored radius and arc length.
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -43,6 +43,8 @@ struct Segment {
     height: f64,
     grade: f64,
     shape: Shape,
+    length: f64,
+    radius: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,14 +62,15 @@ impl GradientProfile {
         let mut segments = Vec::new();
         for seg_id in curve.get_refs(0)? {
             let Ok(seg) = decoder.decode_by_id(seg_id) else { continue };
-            if let Some(s) = parse_segment(&seg, decoder) {
-                segments.push(s);
-            }
+            segments.push(parse_segment(&seg, decoder)?);
         }
         if segments.is_empty() {
             return None;
         }
         segments.sort_by(|a, b| a.start.total_cmp(&b.start));
+        if segments.last().is_some_and(|s| s.shape == Shape::Parabolic && s.length.abs() > 1e-9) {
+            return None; // No end grade from which to determine its curvature.
+        }
         Some(Self { segments })
     }
 
@@ -85,7 +88,25 @@ impl GradientProfile {
         let seg = self.segments[i];
         let u = station - seg.start;
         let Some(next) = self.segments.get(i + 1) else {
-            return (seg.height + seg.grade * u, seg.grade);
+            return match (seg.shape, seg.radius) {
+                (Shape::Circular, Some(radius)) if seg.length.abs() > 1e-9 => {
+                    let signed_radius = radius.copysign(seg.length);
+                    let start_angle = seg.grade.atan();
+                    let end_angle = start_angle + seg.length.abs() / signed_radius;
+                    let end_station = signed_radius * (end_angle.sin() - start_angle.sin());
+                    let (height, grade) = circular_from_radius(
+                        seg.height, seg.grade, signed_radius, u.min(end_station),
+                    );
+                    if u > end_station {
+                        (height + grade * (u - end_station), grade)
+                    } else {
+                        (height, grade)
+                    }
+                }
+                // A final parabola has no end grade here. We cannot infer its
+                // curvature from the placement alone, so parsing rejects it.
+                _ => (seg.height + seg.grade * u, seg.grade),
+            };
         };
         let length = next.start - seg.start;
         if length <= 1e-9 {
@@ -96,6 +117,10 @@ impl GradientProfile {
             Shape::Parabolic => parabolic(seg.height, seg.grade, next.grade, length, u),
             Shape::Circular => circular(seg.height, seg.grade, next.grade, length, u),
         }
+    }
+
+    pub(crate) fn station_breaks(&self) -> impl Iterator<Item = f64> + '_ {
+        self.segments.iter().map(|s| s.start)
     }
 }
 
@@ -125,12 +150,33 @@ fn parse_segment(seg: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Seg
         None => 0.0,
     };
 
-    let shape = match seg.get_ref(4).and_then(|id| decoder.decode_by_id(id).ok()) {
-        Some(p) if p.ifc_type == IfcType::IfcLine => Shape::Line,
-        Some(p) if p.ifc_type == IfcType::IfcCircle => Shape::Circular,
-        _ => Shape::Parabolic,
+    let parent = decoder.decode_by_id(seg.get_ref(4)?).ok()?;
+    let (shape, radius) = match parent.ifc_type {
+        IfcType::IfcLine => (Shape::Line, None),
+        IfcType::IfcCircle => (Shape::Circular, Some(parent.get_float(1)?)),
+        IfcType::IfcPolynomialCurve if is_vertical_parabola(&parent) => (Shape::Parabolic, None),
+        _ => return None,
     };
-    Some(Segment { start, height, grade, shape })
+    let length = seg.get_float(3)?;
+    Some(Segment { start, height, grade, shape, length, radius })
+}
+
+/// The grade-interpolation formula is exact only when X is affine in the
+/// curve parameter and Y is at most quadratic. Higher-order polynomial
+/// parents need their own evaluator.
+fn is_vertical_parabola(parent: &DecodedEntity) -> bool {
+    let Some(x) = parent.get_list(1) else { return false };
+    let Some(y) = parent.get_list(2) else { return false };
+    x.len() == 2 && x.iter().all(|v| v.as_float().is_some())
+        && x[1].as_float().is_some_and(|v| v.abs() > 1e-12)
+        && (2..=3).contains(&y.len()) && y.iter().all(|v| v.as_float().is_some())
+}
+
+fn circular_from_radius(h0: f64, g0: f64, signed_radius: f64, u: f64) -> (f64, f64) {
+    let angle0 = g0.atan();
+    let sine = (angle0.sin() + u / signed_radius).clamp(-1.0, 1.0);
+    let cosine = (1.0 - sine * sine).sqrt();
+    (h0 + signed_radius * (angle0.cos() - cosine), sine / cosine)
 }
 
 fn parabolic(h0: f64, g0: f64, g1: f64, length: f64, u: f64) -> (f64, f64) {
@@ -236,5 +282,29 @@ ENDSEC;
         let mut decoder = EntityDecoder::with_index(ifc, index);
         let e = decoder.decode_by_id(2).unwrap();
         assert!(GradientProfile::parse(&e, &mut decoder).is_none());
+    }
+
+    #[test]
+    fn final_circle_keeps_curving_without_closing_marker() {
+        // #5327: IfcGradientCurve need not have a trailing zero-length
+        // segment. The final circle's own radius and length still define
+        // its elevation and tangent.
+        let ifc = "DATA;\n#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCAXIS2PLACEMENT2D(#1,$);\n#3=IFCCIRCLE(#2,100.);\n#4=IFCCURVESEGMENT(.CONTINUOUS.,#2,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(20.),#3);\n#5=IFCGRADIENTCURVE((#4),.F.,$,$);\nENDSEC;";
+        let p = profile(ifc, 5);
+        let (h, grade) = p.evaluate(10.0);
+        assert!((h - (100.0 - (10000.0_f64 - 100.0).sqrt())).abs() < 1e-8);
+        assert!((grade - 10.0 / (10000.0_f64 - 100.0).sqrt()).abs() < 1e-8);
+    }
+
+    #[test]
+    fn unknown_parent_does_not_silently_become_parabola() {
+        // #5327: shape inference from adjacent grades only applies to
+        // known profile parents. An arbitrary parent must not fabricate
+        // an elevation profile.
+        let ifc = "DATA;\n#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCAXIS2PLACEMENT2D(#1,$);\n#3=IFCCLOTHOID(#2,100.);\n#4=IFCCURVESEGMENT(.CONTINUOUS.,#2,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(20.),#3);\n#5=IFCGRADIENTCURVE((#4),.F.,$,$);\nENDSEC;";
+        let index = ifc_lite_core::build_entity_index(ifc);
+        let mut decoder = EntityDecoder::with_index(ifc, index);
+        let curve = decoder.decode_by_id(5).unwrap();
+        assert!(GradientProfile::parse(&curve, &mut decoder).is_none());
     }
 }

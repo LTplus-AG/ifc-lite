@@ -57,7 +57,7 @@ use nalgebra::{Point2, Point3, Vector3};
 
 #[path = "sectioned_positions.rs"]
 mod sectioned_positions;
-use sectioned_positions::PositionAlongDirectrix;
+use sectioned_positions::{ArcLengthMap, PositionAlongDirectrix};
 
 use crate::{
     alignment::{AlignmentCurve, AlignmentFrame},
@@ -170,7 +170,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
             })?;
             let pos_entity = decoder.decode_by_id(pos_id)?;
             let position =
-                PositionAlongDirectrix::parse(&pos_entity, decoder, &directrix_entity.ifc_type)?;
+                PositionAlongDirectrix::parse(&pos_entity, decoder, &directrix_entity)?;
             authored.push((profile, position));
         }
 
@@ -181,6 +181,11 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                     .to_string(),
             ));
         }
+        let arc_map = if authored.iter().any(|(_, pos)| !pos.along_horizontal) {
+            alignment.as_ref().map(ArcLengthMap::new)
+        } else {
+            None
+        };
         authored.sort_by(|a, b| {
             a.1.distance_along
                 .partial_cmp(&b.1.distance_along)
@@ -194,7 +199,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         for i in 1..authored.len() {
             let (prev_prof, prev_pos) = (&authored[i - 1].0, authored[i - 1].1);
             let (this_prof, this_pos) = (&authored[i].0, authored[i].1);
-            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), quality);
+            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), arc_map.as_ref(), quality);
             for k in 1..n {
                 let t = k as f64 / n as f64;
                 let interp_profile = interpolate_profile(prev_prof, this_prof, t);
@@ -209,7 +214,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(samples.len());
         let mut frames: Vec<AlignmentFrame> = Vec::with_capacity(samples.len());
         for (profile, pos) in &samples {
-            let frame = compute_frame(alignment.as_ref(), pos, fixed_axis_vertical);
+            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical);
             rings_3d.push(transform_outer(&profile.outer, &frame));
             frames.push(frame);
         }
@@ -302,10 +307,11 @@ fn evaluate_alignment(alignment: Option<&AlignmentCurve>, station: f64) -> Align
 /// `FixedAxisVertical`, and cant (roll about the tangent).
 fn compute_frame(
     alignment: Option<&AlignmentCurve>,
+    arc_map: Option<&ArcLengthMap>,
     pos: &PositionAlongDirectrix,
     fixed_axis_vertical: bool,
 ) -> AlignmentFrame {
-    let station = pos.horizontal_station(alignment);
+    let station = pos.horizontal_station(arc_map);
     let base = evaluate_alignment(alignment, station);
 
     // Pick the axis pair used to embed the cross-section in 3D.
@@ -344,19 +350,37 @@ fn compute_frame(
         }
     }
 
-    // Apply the IfcDistanceExpression offsets. Right/up are the
-    // unit-length cross-section axes after cant; longitudinal is along
-    // the 3D tangent.
+    // PointByDistanceExpression offsets use the basis curve's tangent
+    // frame, independent of the cross-section orientation and cant.
+    let vertical_normal = base.tangent.cross(&(-base.right)).normalize();
+    let point_up = if pos.linear { vertical_normal } else { up };
+    let point_right = if pos.linear { base.right } else { right };
     let origin = base.origin
         + base.tangent * pos.offset_longitudinal
-        + right * pos.offset_lateral
-        + up * pos.offset_vertical;
+        + point_right * pos.offset_lateral
+        + point_up * pos.offset_vertical;
+
+    if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
+        // IFC4x3 placement directions are given in the curve frame:
+        // X along tangent, Y left of travel, Z vertical normal.
+        let to_world = |v: Vector3<f64>| {
+            base.tangent * v.x - base.right * v.y + vertical_normal * v.z
+        };
+        let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
+        let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
+        let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
+        let local_right = -axis.cross(&x);
+        right = local_right.normalize();
+        up = axis;
+    }
 
     AlignmentFrame {
         origin,
         right,
         up,
-        tangent: base.tangent,
+        tangent: if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
+            up.cross(&right).normalize()
+        } else { base.tangent },
     }
 }
 
@@ -378,6 +402,7 @@ fn subdivisions(
     a: &PositionAlongDirectrix,
     b: &PositionAlongDirectrix,
     alignment: Option<&AlignmentCurve>,
+    arc_map: Option<&ArcLengthMap>,
     quality: TessellationQuality,
 ) -> usize {
     let span = (b.distance_along - a.distance_along).abs();
@@ -387,8 +412,8 @@ fn subdivisions(
     let Some(curve) = alignment else {
         return 1; // Straight directrix: nothing to subdivide.
     };
-    let s_a = a.horizontal_station(Some(curve));
-    let s_b = b.horizontal_station(Some(curve));
+    let s_a = a.horizontal_station(arc_map);
+    let s_b = b.horizontal_station(arc_map);
     const PROBES: usize = 16;
     let mut total_angle = 0.0;
     let mut prev_tan: Option<Vector3<f64>> = None;
@@ -463,6 +488,18 @@ fn lerp_position(
         // we keep `a`'s convention. The IFC schema doesn't permit
         // mixing the two conventions within a single sweep.
         along_horizontal: a.along_horizontal,
+        axis: lerp_direction(a.axis, b.axis, t),
+        ref_direction: lerp_direction(a.ref_direction, b.ref_direction, t),
+        linear: a.linear,
+    }
+}
+
+fn lerp_direction(a: Option<Vector3<f64>>, b: Option<Vector3<f64>>, t: f64) -> Option<Vector3<f64>> {
+    match (a, b) {
+        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(1e-12).or(Some(a)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
     }
 }
 

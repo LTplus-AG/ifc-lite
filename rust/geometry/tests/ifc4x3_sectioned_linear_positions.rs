@@ -73,6 +73,31 @@ DATA;
 #65=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(20.),$,$,$,#62);
 #66=IFCAXIS2PLACEMENTLINEAR(#65,$,$);
 #67=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#64,#66));
+#70=IFCCARTESIANPOINT((0.,0.,0.));
+#71=IFCCARTESIANPOINT((0.,100.,0.));
+#72=IFCCARTESIANPOINT((0.,200.,50.));
+#73=IFCPOLYLINE((#70,#71,#72));
+#74=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(0.),$,$,$,#73);
+#75=IFCAXIS2PLACEMENTLINEAR(#74,$,$);
+#76=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(155.9016994375),$,$,$,#73);
+#77=IFCAXIS2PLACEMENTLINEAR(#76,$,$);
+#78=IFCSECTIONEDSOLIDHORIZONTAL(#73,(#4,#4),(#75,#77));
+#80=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(0.),$,2.,$,#3);
+#81=IFCAXIS2PLACEMENTLINEAR(#80,$,$);
+#82=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(20.0249843945),$,2.,$,#3);
+#83=IFCAXIS2PLACEMENTLINEAR(#82,$,$);
+#84=IFCSECTIONEDSOLIDHORIZONTAL(#3,(#4,#4),(#81,#83));
+#85=IFCDIRECTION((0.,0.70710678118,0.70710678118));
+#86=IFCAXIS2PLACEMENTLINEAR(#63,#85,$);
+#87=IFCAXIS2PLACEMENTLINEAR(#65,#85,$);
+#88=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#86,#87));
+#89=IFCPOINTBYDISTANCEEXPRESSION(IFCPARAMETERVALUE(20.),$,$,$,#62);
+#90=IFCAXIS2PLACEMENTLINEAR(#89,$,$);
+#91=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#64,#90));
+#92=IFCDIRECTION((1.,0.2,0.));
+#93=IFCAXIS2PLACEMENTLINEAR(#63,$,#92);
+#94=IFCAXIS2PLACEMENTLINEAR(#65,$,#92);
+#95=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#93,#94));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -161,4 +186,49 @@ fn flat_polyline_arc_length_equals_horizontal_station() {
     close(b.max[1], 20.0, "end y");
     close(b.min[2], -0.25, "z min (profile centred on z = 0)");
     close(b.max[2], 0.25, "z max");
+}
+
+#[test]
+fn changing_grade_uses_cumulative_3d_length() {
+    // #5327: 100 m level, then 50 m into a 50% grade. The section's
+    // 3D distance is 100 + hypot(50, 25), hence horizontal station 150.
+    let b = bbox(78);
+    close(b.max[1], 150.0, "end y after grade transition");
+    close(b.max[2], 25.25, "end elevation");
+}
+
+#[test]
+fn vertical_offset_is_normal_to_graded_curve() {
+    // #5327: grade -1/20. A +2 m normal offset moves slightly forward
+    // horizontally as well as upward.
+    let b = bbox(84);
+    close(b.min[1], 0.0999, "normal offset y");
+    close(b.max[2], 57.2475, "normal offset z");
+}
+
+#[test]
+fn authored_axis_tilts_section_frame() {
+    // #5327: Axis is local (0, sin45, cos45) relative to the basis curve.
+    let b = bbox(88);
+    close(b.max[2], 0.8839, "tilted top");
+    close(b.min[2], -0.8839, "tilted bottom");
+}
+
+#[test]
+fn authored_ref_direction_rotates_section_frame() {
+    let b = bbox(95);
+    close(b.min[1], -0.1961, "yawed start");
+    close(b.max[1], 20.1961, "yawed end");
+}
+
+#[test]
+fn unsupported_parameter_basis_reports_error() {
+    // IFC4x3 DistanceAlong is IfcCurveMeasureSelect. A polyline has no
+    // continuous parameter-to-length conversion, so treating 20 as 20 m
+    // would silently misplace the section.
+    let index = ifc_lite_core::build_entity_index(IFC);
+    let mut decoder = EntityDecoder::with_index(IFC, index);
+    let entity = decoder.decode_by_id(91).unwrap();
+    let err = GeometryRouter::new().process_representation_item(&entity, &mut decoder).unwrap_err();
+    assert!(err.to_string().contains("IfcParameterValue station"), "{err}");
 }

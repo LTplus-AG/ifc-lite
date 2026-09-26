@@ -9,7 +9,8 @@
 //! `curve_walk.rs`), split out so the processor stays within its
 //! module-size budget.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use nalgebra::Vector3;
 
 use crate::{alignment::AlignmentCurve, Error, Result};
 
@@ -36,6 +37,9 @@ pub(super) struct PositionAlongDirectrix {
     /// horizontal projection of the directrix. When `false` it's
     /// measured along the 3D curve including slope.
     pub(super) along_horizontal: bool,
+    pub(super) axis: Option<Vector3<f64>>,
+    pub(super) ref_direction: Option<Vector3<f64>>,
+    pub(super) linear: bool,
 }
 
 impl PositionAlongDirectrix {
@@ -45,19 +49,15 @@ impl PositionAlongDirectrix {
     /// - IFC4x3 `IfcAxis2PlacementLinear` whose `Location` is an
     ///   `IfcPointByDistanceExpression(DistanceAlong, OffsetLateral,
     ///   OffsetVertical, OffsetLongitudinal, BasisCurve)`. Its
-    ///   `Axis`/`RefDirection` are not applied (the frame comes from the
-    ///   directrix, as for IFC4x1). Two convention differences are mapped
-    ///   onto the IFC4x1 shape this processor works in: `OffsetLateral` is
-    ///   positive to the LEFT in IFC4x3 (local +Y, the same convention
-    ///   `linear.rs` resolves `IfcLinearPlacement` with), so it is negated;
-    ///   and `DistanceAlong` is measured along the basis curve itself, so on
-    ///   a 3D `IfcPolyline` directrix it is 3D arc length
-    ///   (`along_horizontal = false`), while on an alignment curve it is the
-    ///   horizontal station.
+    ///   `Axis` and `RefDirection` are retained for the section frame.
+    ///   IFC4x3 `OffsetLateral` is positive to the left, so it is negated
+    ///   for this processor's right-positive convention. `DistanceAlong`
+    ///   measures cumulative 3D length along its `BasisCurve` and is
+    ///   converted to horizontal station through one shared arc-length map.
     pub(super) fn parse(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        directrix_type: &IfcType,
+        directrix: &DecodedEntity,
     ) -> Result<Self> {
         if entity.ifc_type != IfcType::IfcAxis2PlacementLinear {
             return Self::parse_distance_expression(entity);
@@ -75,12 +75,43 @@ impl PositionAlongDirectrix {
         let distance_along = location.get_float(0).ok_or_else(|| {
             Error::geometry("IfcPointByDistanceExpression.DistanceAlong is required".to_string())
         })?;
+        let basis = decoder.decode_by_id(location.get_ref(4).ok_or_else(|| {
+            Error::geometry("IfcPointByDistanceExpression.BasisCurve is required".to_string())
+        })?)?;
+        if basis.id != directrix.id {
+            return Err(Error::geometry("CrossSectionPosition BasisCurve differs from Directrix".to_string()));
+        }
+        let is_parameter = matches!(location.get(0), Some(AttributeValue::List(items))
+            if matches!(items.first(), Some(AttributeValue::String(name)) if name.eq_ignore_ascii_case("IFCPARAMETERVALUE")));
+        let distance_along = if is_parameter {
+            match basis.ifc_type {
+                IfcType::IfcCircle => distance_along * basis.get_float(1).ok_or_else(|| {
+                    Error::geometry("IfcCircle missing Radius".to_string())
+                })?,
+                IfcType::IfcLine => {
+                    let vector = decoder.decode_by_id(basis.get_ref(1).ok_or_else(|| {
+                        Error::geometry("IfcLine missing Dir".to_string())
+                    })?)?;
+                    distance_along * vector.get_float(1).ok_or_else(|| {
+                        Error::geometry("IfcVector missing Magnitude".to_string())
+                    })?
+                }
+                _ => return Err(Error::geometry(format!(
+                    "IfcParameterValue station on {:?} is unsupported", basis.ifc_type
+                ))),
+            }
+        } else { distance_along };
+        let axis = read_direction(entity, 1, decoder)?;
+        let ref_direction = read_direction(entity, 2, decoder)?;
         Ok(Self {
             distance_along,
             offset_lateral: -location.get_float(1).unwrap_or(0.0),
             offset_vertical: location.get_float(2).unwrap_or(0.0),
             offset_longitudinal: location.get_float(3).unwrap_or(0.0),
-            along_horizontal: *directrix_type != IfcType::IfcPolyline,
+            along_horizontal: false,
+            axis,
+            ref_direction,
+            linear: true,
         })
     }
 
@@ -103,38 +134,93 @@ impl PositionAlongDirectrix {
             offset_vertical,
             offset_longitudinal,
             along_horizontal,
+            axis: None,
+            ref_direction: None,
+            linear: false,
         })
     }
 
     /// Convert `distance_along` to a horizontal-projection station so
     /// `AlignmentCurve::evaluate` (which is parameterised on horizontal
     /// station) sees a consistent input. When the IFC author specified
-    /// the distance as 3D arc length we divide out the average slope —
-    /// equivalent to first-order accurate for typical bridge / road
-    /// grades (< 5%), which is the regime where `AlongHorizontal=false`
-    /// is ever authored.
-    pub(super) fn horizontal_station(&self, alignment: Option<&AlignmentCurve>) -> f64 {
+    /// the distance as 3D arc length, invert its cumulative mapping.
+    pub(super) fn horizontal_station(&self, map: Option<&ArcLengthMap>) -> f64 {
         if self.along_horizontal {
             return self.distance_along;
         }
-        let Some(a) = alignment else {
+        let Some(map) = map else {
             return self.distance_along;
         };
-        // First-order: divide by sqrt(1 + slope²) at the candidate
-        // station. One Newton-style refinement gives sub-mm accuracy on
-        // realistic grades — see test below.
-        let mut station = self.distance_along;
-        for _ in 0..4 {
-            let frame = a.evaluate(station);
-            // tangent.z = sin(atan(slope)); sec(atan(slope)) = 1/cos =
-            // 1/√(1−tangent.z²)
-            let proj = (1.0 - frame.tangent.z * frame.tangent.z).sqrt().max(1e-9);
-            let next = self.distance_along * proj;
-            if (next - station).abs() < 1e-6 {
-                return next;
+        map.horizontal_station(self.distance_along)
+    }
+}
+
+fn read_direction(entity: &DecodedEntity, index: usize, decoder: &mut EntityDecoder) -> Result<Option<Vector3<f64>>> {
+    let Some(id) = entity.get_ref(index) else { return Ok(None) };
+    let direction = decoder.decode_by_id(id)?;
+    let ratios = direction.get_list(0).ok_or_else(|| Error::geometry("IfcDirection missing DirectionRatios".to_string()))?;
+    let v = Vector3::new(
+        ratios.first().and_then(AttributeValue::as_float).unwrap_or(0.0),
+        ratios.get(1).and_then(AttributeValue::as_float).unwrap_or(0.0),
+        ratios.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
+    );
+    v.try_normalize(1e-12).map(Some).ok_or_else(|| {
+        Error::geometry("IfcAxis2PlacementLinear direction has zero length".to_string())
+    })
+}
+
+/// Cumulative 3D distance sampled at profile boundaries and at most 1 m
+/// apart. Each section uses the same monotone inverse.
+pub(super) struct ArcLengthMap {
+    stations: Vec<f64>,
+    lengths: Vec<f64>,
+}
+
+impl ArcLengthMap {
+    pub(super) fn new(alignment: &AlignmentCurve) -> Self {
+        let breaks = alignment.station_breaks();
+        let mut stations = vec![0.0];
+        let mut lengths = vec![0.0];
+        let step = (alignment.horizontal_length() / 100_000.0).max(1.0);
+        for pair in breaks.windows(2) {
+            let span = pair[1] - pair[0];
+            let count = ((span / step).ceil() as usize).max(1);
+            for i in 1..=count {
+                let a = *stations.last().unwrap_or(&pair[0]);
+                let b = pair[0] + span * (i as f64 / count as f64);
+                let middle = (a + b) * 0.5;
+                let speed = |s: f64| {
+                    let z = alignment.evaluate(s).tangent.z;
+                    1.0 / (1.0 - z * z).sqrt().max(1e-12)
+                };
+                let epsilon = (b - a) * 1e-6;
+                let delta = (b - a) * (speed(a + epsilon) + 4.0 * speed(middle) + speed(b - epsilon)) / 6.0;
+                stations.push(b);
+                lengths.push(lengths.last().copied().unwrap_or(0.0) + delta);
             }
-            station = next;
         }
-        station
+        Self { stations, lengths }
+    }
+
+    fn horizontal_station(&self, distance: f64) -> f64 {
+        if distance <= 0.0 {
+            let speed = if self.lengths.len() > 1 {
+                (self.lengths[1] - self.lengths[0]) /
+                    (self.stations[1] - self.stations[0])
+            } else { 1.0 };
+            return distance / speed;
+        }
+        let i = self.lengths.partition_point(|v| *v < distance);
+        if i == 0 { return 0.0 }
+        if i == self.lengths.len() {
+            let last = i - 1;
+            let slope = if last > 0 {
+                (self.lengths[last] - self.lengths[last - 1]) /
+                    (self.stations[last] - self.stations[last - 1])
+            } else { 1.0 };
+            return self.stations[last] + (distance - self.lengths[last]) / slope;
+        }
+        let t = (distance - self.lengths[i - 1]) / (self.lengths[i] - self.lengths[i - 1]);
+        self.stations[i - 1] + t * (self.stations[i] - self.stations[i - 1])
     }
 }

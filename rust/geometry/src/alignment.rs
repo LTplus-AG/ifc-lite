@@ -281,6 +281,27 @@ impl AlignmentCurve {
             .unwrap_or(0.0)
     }
 
+    /// Stations where the elevation derivative may change abruptly. Arc
+    /// length integration must split here, including polyline corners.
+    pub(crate) fn station_breaks(&self) -> Vec<f64> {
+        let mut breaks = vec![0.0, self.horizontal_length()];
+        for seg in &self.horizontal {
+            breaks.push(h_cum_start(seg));
+            breaks.push(h_cum_start(seg) + h_length(seg));
+        }
+        for seg in &self.vertical {
+            breaks.push(v_start(seg));
+            breaks.push(v_start(seg) + v_length(seg));
+        }
+        if let Some(profile) = &self.gradient {
+            breaks.extend(profile.station_breaks());
+        }
+        breaks.retain(|s| s.is_finite() && *s >= 0.0 && *s <= self.horizontal_length());
+        breaks.sort_by(f64::total_cmp);
+        breaks.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        breaks
+    }
+
     /// Build an alignment from an `IfcPolyline` directrix. Each
     /// polyline edge becomes one horizontal Line segment plus one
     /// vertical Line segment so the unified `evaluate(station)` path

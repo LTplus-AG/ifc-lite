@@ -22,7 +22,7 @@ export function SplitBar() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   return (
     <HudToolbar>
-      <span className="px-1.5 text-[11px] font-medium uppercase tracking-wide text-overlay-ink-muted">
+      <span className="px-1.5 text-2xs font-medium uppercase tracking-wide text-overlay-ink-muted">
         {t('splitTool.barLabel')}
       </span>
       <button

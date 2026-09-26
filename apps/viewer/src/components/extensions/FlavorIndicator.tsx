@@ -88,7 +88,7 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
       )}
     >
       <Palette className="h-3.5 w-3.5" />
-      <span className="max-w-[140px] truncate text-[11px] font-medium">{label}</span>
+      <span className="max-w-[140px] truncate text-2xs font-medium">{label}</span>
     </button>
   );
 }

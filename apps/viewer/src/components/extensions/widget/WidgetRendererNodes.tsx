@@ -107,7 +107,7 @@ export function RenderChart({ node, ctx }: { node: ChartNode; ctx: WidgetRendere
   }, [rows, yField]);
   return (
     <div className="rounded-md border p-3 space-y-1.5">
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-2xs text-muted-foreground">
         {t('extensionsPanels.widgetRenderer.chartLabel', {
           variant: localizedChartVariant(node.variant, t),
         })}

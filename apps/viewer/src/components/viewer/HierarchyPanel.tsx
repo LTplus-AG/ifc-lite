@@ -22,6 +22,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import { isSpatialContainer, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { effectiveGroupAssignments, effectiveGroupMembers } from './hierarchy/effectiveGroupEntities';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
@@ -31,10 +32,11 @@ import type { NodeActivationModifiers, UseTreeKeyboardResult } from './hierarchy
 import { useHierarchyTreeKeyboard } from './hierarchy/useHierarchyTreeKeyboard';
 import { HierarchyFooterStatus } from './hierarchy/HierarchyFooterStatus';
 import { HierarchySearchEmptyState } from './hierarchy/HierarchySearchEmptyState';
+import { useStrippedHierarchyNodes } from './hierarchy/useStrippedHierarchyNodes';
 import { useConfirmRemoveModel } from './hierarchy/useConfirmRemoveModel';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { useModelRowSize } from './hierarchy/ModelRowTags';
-import { ModelsSectionHeader, useModelTagView } from './hierarchy/ModelsSectionHeader';
+import { ModelsSectionHeader } from './hierarchy/ModelsSectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -133,27 +135,10 @@ export function HierarchyPanel() {
     modelsNodes: rawModelsNodes,
     toggleExpand,
     getNodeElements,
+    revealGlobalId,
   } = useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult });
 
-  // #540: merged parts have no meshes; hide their dead rows here.
-  // Keep the spatial hierarchy itself intact for other consumers.
-  const mergeLayersHidesParts = useViewerStore((s) => s.mergeLayers);
-  const PART_TYPE_KEY = 'ifcbuildingelementpart';
-  const stripPartNodes = useCallback(
-    (nodes: TreeNode[]): TreeNode[] => {
-      if (!mergeLayersHidesParts) return nodes;
-      return nodes.filter((node) => {
-        // Class and IFC-type groups also expose ifcType; hide empty groups.
-        const t = node.ifcType?.toLowerCase();
-        if (!t) return true;
-        return t !== PART_TYPE_KEY;
-      });
-    },
-    [mergeLayersHidesParts],
-  );
-  const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
-  const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
-  const modelsNodes = useModelTagView(useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes])); // #4215 tag filter / By tag: rows only
+  const { filteredNodes, storeysNodes, modelsNodes } = useStrippedHierarchyNodes(rawFilteredNodes, rawStoreysNodes, rawModelsNodes);
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const searchEmptyState = normalizedSearch && !filteredNodes.some((node) =>
     node.name.toLowerCase().includes(normalizedSearch) || node.secondaryName?.toLowerCase().includes(normalizedSearch))
@@ -197,7 +182,6 @@ export function HierarchyPanel() {
   const modelsRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null); // Legacy single-model mode
 
-
   // Virtualizers for both sections
   const storeysVirtualizer = useVirtualizer({
     count: storeysNodes.length,
@@ -219,6 +203,12 @@ export function HierarchyPanel() {
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 10,
+  });
+
+  // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
+  const { markFromTreeClick } = useRevealSelection({
+    selectedEntityId, groupingMode, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
+    isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer,
   });
 
   // Toggle visibility for a node
@@ -319,6 +309,7 @@ export function HierarchyPanel() {
   // Handle node click - for selection/isolation or expand/collapse. Typed on the narrow modifier
   // shape so the keyboard path (Enter/Space, #5883) can drive it too — `React.MouseEvent` satisfies it.
   const handleNodeClick = useCallback((node: TreeNode, e: NodeActivationModifiers) => {
+    try {
     if (node.type === 'model-header' && node.id !== 'models-header') {
       // Model header click handled by its own onClick (expand/collapse)
       return;
@@ -682,7 +673,10 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility]);
+    } finally {
+      markFromTreeClick();
+    }
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility, markFromTreeClick]);
 
   // ARIA tree semantics + roving-tabIndex keyboard nav (#5883), see `useHierarchyTreeKeyboard.ts`.
   const {

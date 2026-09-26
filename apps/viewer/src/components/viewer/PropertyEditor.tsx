@@ -77,6 +77,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { hasActiveTranslation } from '@/i18n/registry';
 import { INLINE_VALUE_TYPES, MATERIAL_CATEGORIES } from './property-editor-options';
 import { addToPropertySet, isInheritedOnly, type InheritedSets } from '@/lib/properties/add-to-property-set';
+import { addClassificationAssociation, addMaterialAssociation } from '@/lib/authoring/associations';
 
 // ── Edit-deck button styling ────────────────────────────────────────────────
 // Data-enrichment actions (Property / Quantity / Classification / Material)
@@ -691,11 +692,9 @@ interface AddClassificationDialogProps {
 }
 
 /** Dialog for adding a classification reference (Uniclass, OmniClass,
- *  MasterFormat, etc.), stored as a special property set for mutation tracking. */
+ *  MasterFormat, etc.) as a real IfcClassificationReference (#5876). */
 export function AddClassificationDialog({ modelId, entityId, entityType }: AddClassificationDialogProps) {
   const { t, locale } = useTranslation();
-  const createPropertySet = useViewerStore((s) => s.createPropertySet);
-  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [open, setOpen] = useState(false);
   const [system, setSystem] = useState('');
@@ -707,21 +706,8 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
 
   const handleSubmit = useCallback(() => {
     if (!effectiveSystem || !identification) return;
-
-    let normalizedModelId = modelId;
-    if (modelId === 'legacy') {
-      normalizedModelId = '__legacy__';
-    }
-
-    // Store classification as a property set named "Classification [SystemName]"
-    const psetName = `Classification [${effectiveSystem}]`;
-    createPropertySet(normalizedModelId, entityId, psetName, [
-      { name: 'System', value: effectiveSystem, type: PropertyValueType.Label },
-      { name: 'Identification', value: identification, type: PropertyValueType.Identifier },
-      { name: 'Name', value: name || identification, type: PropertyValueType.Label },
-    ]);
-
-    bumpMutationVersion();
+    const result = addClassificationAssociation(modelId, entityId, { system: effectiveSystem, identification, name });
+    if (!result.ok) return toast.error(t(result.reasonKey));
 
     // Reset form
     setSystem('');
@@ -729,7 +715,7 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
     setIdentification('');
     setName('');
     setOpen(false);
-  }, [modelId, entityId, effectiveSystem, identification, name, createPropertySet, bumpMutationVersion]);
+  }, [modelId, entityId, effectiveSystem, identification, name, t]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => {
@@ -828,11 +814,9 @@ interface AddMaterialDialogProps {
   entityType: string;
 }
 
-/** Dialog for assigning a material, stored as a special property set for mutation tracking. */
+/** Dialog for assigning a material as a real IfcMaterial association (#5876). */
 export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterialDialogProps) {
   const { t } = useTranslation();
-  const createPropertySet = useViewerStore((s) => s.createPropertySet);
-  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [open, setOpen] = useState(false);
   const [materialName, setMaterialName] = useState('');
@@ -841,34 +825,15 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
 
   const handleSubmit = useCallback(() => {
     if (!materialName) return;
-
-    let normalizedModelId = modelId;
-    if (modelId === 'legacy') {
-      normalizedModelId = '__legacy__';
-    }
-
-    // Store material as a property set named "Material"
-    const psetName = `Material [${materialName}]`;
-    const properties: Array<{ name: string; value: string; type: PropertyValueType }> = [
-      { name: 'Name', value: materialName, type: PropertyValueType.Label },
-    ];
-
-    if (category) {
-      properties.push({ name: 'Category', value: category, type: PropertyValueType.Label });
-    }
-    if (description) {
-      properties.push({ name: 'Description', value: description, type: PropertyValueType.Label });
-    }
-
-    createPropertySet(normalizedModelId, entityId, psetName, properties);
-    bumpMutationVersion();
+    const result = addMaterialAssociation(modelId, entityId, { name: materialName, category, description });
+    if (!result.ok) return toast.error(t(result.reasonKey));
 
     // Reset form
     setMaterialName('');
     setCategory('');
     setDescription('');
     setOpen(false);
-  }, [modelId, entityId, materialName, category, description, createPropertySet, bumpMutationVersion]);
+  }, [modelId, entityId, materialName, category, description, t]);
 
   // Common material categories (module-level constant used below)
   const materialCategories = MATERIAL_CATEGORIES;

@@ -11,16 +11,12 @@ import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
   buildUnifiedStoreys,
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
-  buildTreeData,
-  buildTypeTree,
-  buildIfcTypeTree,
-  buildMaterialTree,
-  buildGroupTree,
   filterNodes,
   splitNodes,
   type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
+import { buildTreeForGrouping, useExpandedTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
 import {
   buildGeometricIdSet,
   collectAnnotationEntityIds,
@@ -246,44 +242,24 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationViews, models, geometricIds, mutationVersion]);
   const searchExpansion = searchQuery.trim() ? EXPAND_ALL : expandedNodes;
+
   // hiddenEntities intentionally NOT in deps - visibility computed lazily
   const treeData = useMemo(
-    (): TreeNode[] => {
-      const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
-      if (groupingMode === 'type') {
-        return buildTypeTree(
-          models,
-          ifcDataStore,
-          searchExpansion,
-          isMultiModel,
-          classTreeIds,
-          authoredProducts,
-          geometryReadyModelIds,
-          treeOverlay,
-        );
-      }
-      if (groupingMode === 'ifc-type') {
-        return buildIfcTypeTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
-      }
-      if (groupingMode === 'material') {
-        return buildMaterialTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, geometryReadyModelIds);
-      }
-      if (groupingMode === 'groups') {
-        return buildGroupTree(models, ifcDataStore, searchExpansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
-      }
-      return buildTreeData(
-        models,
-        ifcDataStore,
-        searchExpansion,
-        isMultiModel,
-        unifiedStoreys,
-        sortMode,
-        geometricIds,
-        geometryReadyModelIds, georefMutations,
-      );
-    },
-    [models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
+    (): TreeNode[] => buildTreeForGrouping(
+      groupingMode, models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode,
+      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
+    ),
+    [groupingMode, models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
+
+  // Build the fully expanded tree only when a reveal needs it. Streamed
+  // geometry updates can change these inputs many times without a pick.
+  const getExpandedTreeForReveal = useExpandedTreeForGrouping({
+    groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
+    classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
+    mutationViews, mutationVersion,
+  });
+  const revealGlobalId = useRevealGlobalId(getExpandedTreeForReveal, expandedNodes, setExpandedNodes);
 
   // Filter nodes based on search
   const filteredNodes = useMemo(
@@ -402,5 +378,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     toggleExpand,
     getNodeElements,
     getUnifiedStoreyElements,
+    revealGlobalId,
   };
 }

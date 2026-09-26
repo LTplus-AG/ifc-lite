@@ -23,7 +23,7 @@ export function FlowPalette({ registry, onAdd }: { registry: NodeRegistry<unknow
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         {groups.map(({ category, defs }) => (
           <div key={category} className="mb-1.5">
-            <div className="px-1 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{category}</div>
+            <div className="px-1 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">{category}</div>
             {defs.map((def) => (
               <button
                 key={def.type}

@@ -47,15 +47,6 @@ export const listsEn = {
   'lists.modelTagScope.selectAriaLabel': 'Model tag scope',
   'lists.modelTagScope.allModels': 'all models',
   'lists.modelTagScope.pickAtLeastOneTag': 'Pick at least one tag, or the list runs over no model.',
-  // Same four operator words as the advanced filter's OP_LABEL (kept as a
-  // local copy rather than importing that shared map — #4918 review, PR
-  // #5004: OP_LABEL is a plain untranslated Record consumed by unrelated
-  // search-modal editors too, and localizing it here is scoped to what
-  // this editor renders, not a cross-cutting rename of a shared module).
-  'lists.modelTagScope.opHasAny': 'has any of',
-  'lists.modelTagScope.opHasAll': 'has all of',
-  'lists.modelTagScope.opHasNone': 'has none of',
-  'lists.modelTagScope.opUntagged': 'is untagged',
   'lists.modelTagScope.unknownTagName': 'unknown tag',
   // One complete message per operator (not "Runs over {description}." with
   // a preformatted English description substituted in) so a locale
@@ -197,8 +188,6 @@ export const listsEn = {
   'lists.builder.source.spatial': 'Spatial',
   'lists.builder.source.model': 'Model',
   'lists.builder.source.zone': 'Zone',
-  'lists.builder.operator.contains': 'contains',
-  'lists.builder.operator.isSet': 'is set',
   'lists.builder.spatial.container': 'Container',
   'lists.builder.spatial.storey': 'Storey',
   'lists.builder.spatial.building': 'Building',

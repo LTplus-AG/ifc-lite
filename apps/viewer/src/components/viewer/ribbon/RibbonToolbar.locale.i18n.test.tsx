@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, mouseDown, render } from '@/test/render.js';
+import { cleanup, mouseDown, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { useViewerStore, type RibbonTabId } from '@/store';

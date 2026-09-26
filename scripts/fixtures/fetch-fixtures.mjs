@@ -27,7 +27,7 @@ import { dirname, relative, resolve } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fixtureDownloadUrl, pinnedBlobRawUrl } from './download-url.mjs';
+import { fixtureDownloadUrl } from './download-url.mjs';
 import { validateManifest } from './manifest-validation.mjs';
 import { extractZipMember } from './zip-member.mjs';
 
@@ -195,7 +195,7 @@ async function fetchOne(entry) {
       // AbortError/TimeoutError isn't a 4xx, so it flows through the normal
       // (retryable) path below.
       const archive = entry.upstream_archive;
-      const res = await fetch(archive ? pinnedBlobRawUrl(archive.blob_url) : fixtureDownloadUrl(baseUrl, entry), {
+      const res = await fetch(fixtureDownloadUrl(baseUrl, entry), {
         redirect: 'follow',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

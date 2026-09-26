@@ -16,7 +16,7 @@ import {
   type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
-import { buildTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
+import { buildTreeForGrouping, useExpandedTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
 import {
   buildGeometricIdSet,
   collectAnnotationEntityIds,
@@ -252,11 +252,17 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     [groupingMode, models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
 
-  const revealGlobalId = useRevealGlobalId({
+  // Memoised separately from `treeData` (which expands only per
+  // `searchExpansion`): reveal needs the FULLY expanded active-grouping tree,
+  // and rebuilding that from scratch per pick cost ~13.5 ms on a 50k-element
+  // tree (#5881 perf review) — this memo pays it once per model/grouping
+  // change, not once per pick.
+  const expandedTreeForReveal = useExpandedTreeForGrouping({
     groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
     classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion, expandedNodes, setExpandedNodes,
+    mutationViews, mutationVersion,
   });
+  const revealGlobalId = useRevealGlobalId(expandedTreeForReveal, expandedNodes, setExpandedNodes);
 
   // Filter nodes based on search
   const filteredNodes = useMemo(

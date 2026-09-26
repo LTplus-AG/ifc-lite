@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -27,10 +27,19 @@ import { findNodePath } from './findNodePath';
 
 const EXPAND_ALL: ExpansionLookup = { has: () => true };
 
+/** A node this reveal feature can land a selection on — the same three leaf
+ *  types both `useRevealGlobalId` below and `useRevealSelection`'s cheap
+ *  already-visible check (#5881 perf review) match against, so the two
+ *  never drift out of sync. */
+export function matchesRevealTarget(node: TreeNode, globalId: number): boolean {
+  return (node.type === 'element' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone')
+    && node.globalIds.includes(globalId);
+}
+
 /** The same grouping-mode switch `useHierarchyTree.ts`'s `treeData` memo
- *  drives, extracted so `useRevealGlobalId` below can build the ACTIVE
- *  grouping's tree at a different expansion (fully expanded) without a
- *  second copy of the switch (#5881). */
+ *  drives, extracted so `useExpandedTreeForGrouping` below can build the
+ *  ACTIVE grouping's tree at a different expansion (fully expanded) without
+ *  a second copy of the switch (#5881). */
 export function buildTreeForGrouping(
   groupingMode: HierarchyMode,
   models: Map<string, FederatedModel>,
@@ -63,7 +72,7 @@ export function buildTreeForGrouping(
   return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations);
 }
 
-interface UseRevealGlobalIdParams {
+interface TreeBuildParams {
   groupingMode: HierarchyMode;
   models: Map<string, FederatedModel>;
   ifcDataStore: IfcDataStore | null | undefined;
@@ -78,32 +87,47 @@ interface UseRevealGlobalIdParams {
   georefMutations: GeorefMutationsByModel;
   mutationViews: Map<string, MutablePropertyView>;
   mutationVersion: number;
-  expandedNodes: Set<string>;
-  setExpandedNodes: Dispatch<SetStateAction<Set<string>>>;
 }
 
-/** Reveal a selection made outside the tree (viewport click, search, BCF,
- *  context menu): find the node under the ACTIVE grouping's fully expanded
- *  projection via `findNodePath` (reusing `filterNodes`'s ancestor walk, not
- *  a second one), and expand only the ancestors that are missing so an
- *  already-visible target doesn't trigger a needless render (#5881). */
-export function useRevealGlobalId(params: UseRevealGlobalIdParams): (globalId: number) => string | null {
+/** Memoise the ACTIVE grouping's fully expanded tree on exactly the inputs
+ *  `useHierarchyTree.ts`'s `treeData` memo uses (plus `groupingMode`, which
+ *  is already one of them) — a perf-review finding (#5881): building this
+ *  from scratch on every reveal cost ~13.5 ms/call on a 500 storeys x 100
+ *  elements tree, paid even when the target row was already on screen. With
+ *  this memo, repeated picks against an unchanged model pay only the O(n)
+ *  `findNodePath` walk (~1.4 ms on that fixture), and a target already in
+ *  the CURRENTLY RENDERED (collapsed-aware) list — checked by the caller via
+ *  `matchesRevealTarget` before ever reaching this tree — pays neither. */
+export function useExpandedTreeForGrouping(params: TreeBuildParams): TreeNode[] {
   const {
     groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
     classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion, expandedNodes, setExpandedNodes,
+    mutationViews, mutationVersion,
   } = params;
-  return useCallback((globalId: number): string | null => {
-    const expandedTree = buildTreeForGrouping(
+  return useMemo(
+    () => buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
-    );
-    const found = findNodePath(
-      expandedTree,
-      (node) =>
-        (node.type === 'element' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone')
-        && node.globalIds.includes(globalId),
-    );
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutationVersion tracks mutationViews' content
+    [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
+  );
+}
+
+/** Reveal a selection made outside the tree (viewport click, search, BCF,
+ *  context menu): find the node under `expandedTree` (the ACTIVE grouping's
+ *  fully expanded projection, memoised by `useExpandedTreeForGrouping` — this
+ *  hook no longer builds it) via `findNodePath` (reusing `filterNodes`'s
+ *  ancestor walk, not a second one), and expand only the ancestors that are
+ *  missing so an already-visible target doesn't trigger a needless render
+ *  (#5881). */
+export function useRevealGlobalId(
+  expandedTree: TreeNode[],
+  expandedNodes: Set<string>,
+  setExpandedNodes: Dispatch<SetStateAction<Set<string>>>,
+): (globalId: number) => string | null {
+  return useCallback((globalId: number): string | null => {
+    const found = findNodePath(expandedTree, (node) => matchesRevealTarget(node, globalId));
     if (!found) return null;
     if (found.ancestorIds.some((id) => !expandedNodes.has(id))) {
       setExpandedNodes((prev) => {
@@ -113,10 +137,5 @@ export function useRevealGlobalId(params: UseRevealGlobalIdParams): (globalId: n
       });
     }
     return found.targetId;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutationVersion tracks mutationViews' content
-  }, [
-    groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
-    classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion, expandedNodes,
-  ]);
+  }, [expandedTree, expandedNodes, setExpandedNodes]);
 }

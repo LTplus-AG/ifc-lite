@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type HierarchyMode } from '@/store';
 import type { TreeNode } from './types';
+import { matchesRevealTarget } from './revealGlobalId';
 
 /** The subset of a `useVirtualizer` instance this hook needs — narrow enough
  *  to accept `storeysVirtualizer` / `modelsVirtualizer` / `virtualizer` in
@@ -15,6 +16,7 @@ interface ScrollableVirtualizer {
 
 interface UseRevealSelectionParams {
   selectedEntityId: number | null;
+  groupingMode: HierarchyMode;
   revealGlobalId: (globalId: number) => string | null;
   storeysNodes: TreeNode[];
   modelsNodes: TreeNode[];
@@ -23,6 +25,28 @@ interface UseRevealSelectionParams {
   storeysVirtualizer: ScrollableVirtualizer;
   modelsVirtualizer: ScrollableVirtualizer;
   virtualizer: ScrollableVirtualizer;
+}
+
+/** First node across `storeysNodes`+`modelsNodes` (multi-model) or
+ *  `filteredNodes` (single-model) — i.e. the CURRENTLY RENDERED, collapsed-
+ *  aware flat list — matching `globalId`, or `null`. A perf-review finding
+ *  (#5881): checking this small, already-materialised list is orders of
+ *  magnitude cheaper than `revealGlobalId`'s full-tree walk, and covers the
+ *  common case where the target is already on screen. */
+function findAlreadyVisibleTargetId(
+  isMultiModel: boolean,
+  storeysNodes: TreeNode[],
+  modelsNodes: TreeNode[],
+  filteredNodes: TreeNode[],
+  globalId: number,
+): string | null {
+  if (isMultiModel) {
+    for (const node of storeysNodes) if (matchesRevealTarget(node, globalId)) return node.id;
+    for (const node of modelsNodes) if (matchesRevealTarget(node, globalId)) return node.id;
+    return null;
+  }
+  for (const node of filteredNodes) if (matchesRevealTarget(node, globalId)) return node.id;
+  return null;
 }
 
 /** Expand ancestors and scroll to a selection made outside the tree (3D
@@ -36,14 +60,21 @@ interface UseRevealSelectionParams {
  *  the tree's own click handler, once the click has settled on its final
  *  selection: a selection that originated from a tree row click must not
  *  re-scroll the row that produced it (#5881) — it is already on screen.
- *  Stores the resulting id (not a boolean) and matches it against
- *  `selectedEntityId` in Effect A below, rather than a plain flag, so a
- *  repeat click on an already-selected row — which never changes
- *  `selectedEntityId`, so Effect A never runs to clear a boolean flag —
- *  cannot leave a stale flag that masks the NEXT, genuinely outside,
- *  selection. */
+ *
+ *  The click guard keys on `{ id, revision }`, not `id` alone (adversarial
+ *  review, #5881): `selectionRevision` is the store's own monotonic counter,
+ *  bumped by `setSelectedEntityId` on EVERY call — including a repeat click
+ *  on an already-selected row, where `id` never changes. Effect A's
+ *  dependency is `[selectionRevision, groupingMode]`, so it fires on every
+ *  dispatch (not only on an id CHANGE) and clears the ref UNCONDITIONALLY at
+ *  its top, before any early return — a deselect (`setSelectedEntityId(null)`)
+ *  still consumes a pending mark, so a stale mark can never survive to
+ *  falsely match a LATER, genuinely outside, re-selection of the same id.
+ *  Depending on `groupingMode` too means a selection held across a grouping
+ *  tab switch is re-revealed in the new grouping. */
 export function useRevealSelection({
   selectedEntityId,
+  groupingMode,
   revealGlobalId,
   storeysNodes,
   modelsNodes,
@@ -54,24 +85,29 @@ export function useRevealSelection({
   virtualizer,
 }: UseRevealSelectionParams): { markFromTreeClick: () => void } {
   const pendingTargetRef = useRef<string | null>(null);
-  const fromTreeClickRef = useRef<number | null | undefined>(undefined);
+  const fromTreeClickRef = useRef<{ id: number | null; revision: number } | undefined>(undefined);
   const markFromTreeClick = useCallback(() => {
-    fromTreeClickRef.current = useViewerStore.getState().selectedEntityId;
+    const state = useViewerStore.getState();
+    fromTreeClickRef.current = { id: state.selectedEntityId, revision: state.selectionRevision };
   }, []);
 
-  // Effect A: a new selection arrives. Resolve which node it maps to (and
-  // expand its ancestors) unless this selection came from the tree's own
-  // click, which already put itself on screen.
+  const selectionRevision = useViewerStore((s) => s.selectionRevision);
+
+  // Effect A: a selection was DISPATCHED (every dispatch bumps
+  // `selectionRevision`, whether or not `selectedEntityId`'s value actually
+  // changed). Resolve which node it maps to (and expand its ancestors, or
+  // just note it's already visible) unless this dispatch came from the
+  // tree's own click, which already put itself on screen.
   useEffect(() => {
+    const marked = fromTreeClickRef.current;
+    fromTreeClickRef.current = undefined; // unconditional: even the null/deselect run consumes it
     if (selectedEntityId == null) return;
-    if (fromTreeClickRef.current === selectedEntityId) {
-      fromTreeClickRef.current = undefined;
-      return;
-    }
-    fromTreeClickRef.current = undefined;
-    pendingTargetRef.current = revealGlobalId(selectedEntityId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId's own deps cover the tree/expansion state it reads
-  }, [selectedEntityId]);
+    if (marked && marked.id === selectedEntityId && marked.revision === selectionRevision) return;
+
+    const visibleId = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, selectedEntityId);
+    pendingTargetRef.current = visibleId ?? revealGlobalId(selectedEntityId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId/node lists read fresh via closure; selectionRevision is the dispatch signal
+  }, [selectionRevision, groupingMode]);
 
   // Effect B: the rendered lists catch up (e.g. after Effect A expanded a
   // collapsed ancestor) — find the pending target's row and scroll to it.

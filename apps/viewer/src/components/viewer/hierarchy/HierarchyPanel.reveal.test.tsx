@@ -208,4 +208,73 @@ describe('HierarchyPanel reveal selection (#5881)', () => {
       Element.prototype.scrollTo = originalScrollTo;
     }
   });
+
+  it('reveals an outside re-selection after a same-id repeat click and a deselect (adversarial review, #6133)', () => {
+    // Reproduces the reviewer's failing sequence: click row 7, click row 7
+    // again (selectedEntityId never changes, so the OLD id-keyed guard never
+    // got a chance to clear itself), collapse its storey, deselect, then
+    // re-select 7 from "the viewport". A stale click-guard mark must not
+    // survive the deselect and falsely mask this outside re-selection.
+    const model = fixtureModel('reveal-repeat', { entities: [
+      { expressId: 7, type: 'IfcWall', name: 'Repeat Wall' },
+    ] });
+    Object.assign(model.ifcDataStore!, { spatialHierarchy: buildTwoStoreySpatialHierarchy(7) });
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial', selectedEntityId: null, selectedEntityIds: new Set() });
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+
+    const expandStorey2 = chevron(container, 'Expand Storey 2');
+    assert.ok(expandStorey2);
+    click(expandStorey2!);
+    const row = findRowByText(container, 'Repeat Wall');
+    assert.ok(row);
+
+    click(row!); // tree click #1: selects 7
+    assert.equal(useViewerStore.getState().selectedEntityId, 7);
+    click(row!); // tree click #2: repeat click, selectedEntityId stays 7
+    assert.equal(useViewerStore.getState().selectedEntityId, 7);
+
+    const collapseStorey2 = chevron(container, 'Collapse Storey 2');
+    assert.ok(collapseStorey2, 'storey 2 is expanded after the clicks above');
+    click(collapseStorey2!);
+    assert.doesNotMatch(container.textContent ?? '', /Repeat Wall/, 'storey collapsed manually, row off screen');
+
+    const scrollToCalls: unknown[][] = [];
+    const originalScrollTo = Element.prototype.scrollTo;
+    Element.prototype.scrollTo = function scrollToSpy(this: Element, ...args: unknown[]) {
+      scrollToCalls.push(args);
+      return undefined;
+    } as typeof Element.prototype.scrollTo;
+
+    try {
+      act(() => { useViewerStore.getState().setSelectedEntityId(null); }); // outside deselect
+      act(() => { useViewerStore.getState().setSelectedEntityId(7); }); // outside re-select, same id the tree last clicked
+
+      assert.match(container.textContent ?? '', /Repeat Wall/, 'the outside re-selection re-expands the collapsed storey');
+      const revealedRow = findRowByText(container, 'Repeat Wall');
+      assert.ok(revealedRow, 'the wall row renders again');
+      assert.ok(revealedRow!.classList.contains('selected'), 'the row is marked selected');
+      assert.ok(scrollToCalls.length > 0, 'the outside re-selection scrolls the row into view');
+    } finally {
+      Element.prototype.scrollTo = originalScrollTo;
+    }
+  });
+
+  it('re-reveals a held selection when the grouping tab switches (#5881 should-fix)', () => {
+    const model = fixtureModel('reveal-grouping-switch', { entities: [
+      { expressId: 7, type: 'IfcWall', name: 'Switch Wall' },
+    ] });
+    Object.assign(model.ifcDataStore!, { spatialHierarchy: buildTwoStoreySpatialHierarchy(7) });
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, hierarchyMode: 'spatial', selectedEntityId: null, selectedEntityIds: new Set() });
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+
+    act(() => { useViewerStore.getState().setSelectedEntityId(7); });
+    assert.match(container.textContent ?? '', /Switch Wall/, 'revealed under the spatial grouping');
+
+    act(() => { useViewerStore.getState().setHierarchyMode('type'); }); // switch to the "By Class" tab
+
+    assert.match(container.textContent ?? '', /Switch Wall/, 'the held selection is re-revealed under the By Class grouping');
+    const row = findRowByText(container, 'Switch Wall');
+    assert.ok(row, 'the wall row renders in the new grouping');
+    assert.ok(row!.classList.contains('selected'), 'the row is still marked selected');
+  });
 });

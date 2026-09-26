@@ -30,12 +30,12 @@ import {
   buildGroupTree,
   buildMaterialTree,
   filterNodes,
-  findNodePath,
   resolveMemberGeometry,
   groupMatchesSubFilter,
   GROUP_ENTITY_TYPES,
   type AuthoredProduct,
 } from './treeDataBuilder';
+import { findNodePath } from './findNodePath';
 import type { HierarchySortMode } from './types';
 
 function createSpatialNode(

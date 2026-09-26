@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { TreeNode } from './types';
 
 /** The subset of a `useVirtualizer` instance this hook needs — narrow enough
@@ -22,10 +22,6 @@ interface UseRevealSelectionParams {
   storeysVirtualizer: ScrollableVirtualizer;
   modelsVirtualizer: ScrollableVirtualizer;
   virtualizer: ScrollableVirtualizer;
-  /** Set to `true` at the top of the tree's own click handler. A selection
-   *  that originated from a tree row click must not re-scroll the row that
-   *  produced it (#5881) — it is already on screen. */
-  fromTreeClickRef: { current: boolean };
 }
 
 /** Expand ancestors and scroll to a selection made outside the tree (3D
@@ -33,7 +29,11 @@ interface UseRevealSelectionParams {
  *  target's ROW INDEX is only known once the (possibly newly expanded) node
  *  lists have re-rendered — `revealGlobalId` returns a node id, not an index
  *  into `storeysNodes`/`modelsNodes`/`filteredNodes`, and expanding ancestors
- *  is itself an async state update relative to this effect. */
+ *  is itself an async state update relative to this effect.
+ *
+ *  Returns `markFromTreeClick`, to be called at the top of the tree's own
+ *  click handler: a selection that originated from a tree row click must not
+ *  re-scroll the row that produced it (#5881) — it is already on screen. */
 export function useRevealSelection({
   selectedEntityId,
   revealGlobalId,
@@ -44,9 +44,12 @@ export function useRevealSelection({
   storeysVirtualizer,
   modelsVirtualizer,
   virtualizer,
-  fromTreeClickRef,
-}: UseRevealSelectionParams): void {
+}: UseRevealSelectionParams): { markFromTreeClick: () => void } {
   const pendingTargetRef = useRef<string | null>(null);
+  const fromTreeClickRef = useRef(false);
+  const markFromTreeClick = useCallback(() => {
+    fromTreeClickRef.current = true;
+  }, []);
 
   // Effect A: a new selection arrives. Resolve which node it maps to (and
   // expand its ancestors) unless this selection came from the tree's own
@@ -88,4 +91,6 @@ export function useRevealSelection({
       pendingTargetRef.current = null;
     }
   }, [storeysNodes, modelsNodes, filteredNodes, isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer]);
+
+  return { markFromTreeClick };
 }

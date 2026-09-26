@@ -4,11 +4,12 @@
 
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog.js';
@@ -151,9 +152,18 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     const button = sourceButton();
     assert.ok(button, 'the refusal offers the source-format route it points users at');
 
-    const { filename, bytes } = captureDownload(() => click(button));
-    assert.equal(filename, 'Example_Terrain.xml', 'the producer filename and extension survive');
-    assert.equal(bytes, terrain.sourceFile, 'the original bytes are served, not a re-synthesis');
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      const { filename, bytes } = captureDownload(() => click(button));
+      assert.equal(filename, 'Example_Terrain.xml', 'the producer filename and extension survive');
+      assert.equal(bytes, terrain.sourceFile, 'the original bytes are served, not a re-synthesis');
+      assert.deepEqual(completions, [{ format: 'xml', surface: 'landxml_refusal' }]);
+    } finally {
+      analytics.mock.restore();
+    }
   });
 
   it('states plainly when the original bytes are no longer held', () => {
@@ -221,6 +231,25 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     } as never;
     return model;
   }
+
+  it('records one completed IFC download with the initiating surface (#5844)', () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+    });
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      render(<ExportDialog surface="palette" />);
+      openDialog();
+      const { filename } = captureDownload(() => click(exportButton()));
+      assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
+      assert.deepEqual(completions, [{ format: 'ifc', surface: 'palette' }]);
+    } finally {
+      analytics.mock.restore();
+    }
+  });
 
   it('offers the conversion, by record count, for a covered source', () => {
     useViewerStore.setState({

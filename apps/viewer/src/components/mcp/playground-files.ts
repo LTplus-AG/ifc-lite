@@ -105,7 +105,7 @@ class FileStore {
     if (!file) return;
     // file.filename is already coerced (extension-forced, OS-safe) at creation.
     downloadBlob(file.blob, file.filename);
-    trackExportCompleted({ format: 'extension', surface: 'mcp_playground' });
+    trackExportCompleted({ format: 'other', surface: 'mcp_playground' });
   }
 
   subscribe(listener: () => void): () => void {

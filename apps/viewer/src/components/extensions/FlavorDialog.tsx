@@ -83,7 +83,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     }
     if (mergeTarget) setMergeTarget(null);
   }, [open, preview, mergeTarget]);
-
   const handleExport = async (id: string) => {
     setBusy(true);
     try {
@@ -99,7 +98,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       setBusy(false);
     }
   };
-
   const handleActivate = async (id: string) => {
     setBusy(true);
     try {

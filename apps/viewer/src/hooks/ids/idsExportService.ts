@@ -44,7 +44,6 @@ export function downloadReportJSON(report: ValidationReport): void {
 // ============================================================================
 // HTML Export
 // ============================================================================
-
 /** HTML escape helper to prevent XSS */
 function escapeHtml(str: string | undefined | null): string {
   if (str == null) return '';
@@ -831,7 +830,6 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
         });
       }
     });
-
     filterAll();
   </script>
 </body>

@@ -607,9 +607,7 @@ export function LocationMap({
       toast.error(t('properties.locationMap.kmzExportFailedUnknown', { message: err instanceof Error ? err.message : t('properties.locationMap.unknownError') }));
     }
   }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange, modelName, t]);
-
   const isDarkRef = useRef(false);
-
   const handleStyleToggle = useCallback(() => {
     if (!mapRef.current) return;
     isDarkRef.current = !isDarkRef.current;

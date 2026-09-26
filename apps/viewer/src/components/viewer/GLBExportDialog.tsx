@@ -279,7 +279,6 @@ export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialo
         // when isolation matched nothing (#4328 follow-up). `!= null` catches both
         // `null` (no filter) and `undefined` (`!visibleOnly`).
         const hasIsolation = globalIsolated != null;
-
         const meshes = (exportGeometry.meshes as MeshData[])
           .filter((m) => {
             // Instanced type-library duplicates repeat occurrence geometry at the
@@ -296,13 +295,11 @@ export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialo
               ? ({ ...m, color: m.shadingColor } as MeshData)
               : m,
           );
-
         glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
       }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       downloadBlob(blob, modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : ''));
-
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
@@ -365,7 +362,6 @@ export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialo
     getGlobalIsolatedIds,
     surface,
   ]);
-
   const handleOpenChange = useExportDialogOpenGuard({
     busy: isExporting,
     setOpen,

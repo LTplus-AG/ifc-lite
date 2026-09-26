@@ -18,13 +18,14 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, StrictMode } from 'react';
+import { act, StrictMode, type ComponentProps } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { cleanup, render } from '@/test/render.js';
 import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 // Bare specifier, matching what the code under test imports, so the spy
 // watches the same module instance (see export-ui-parity.test.tsx).
 import { toast } from '@/components/ui/toast';
@@ -32,6 +33,7 @@ import { posthog } from '@/lib/analytics';
 import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.js';
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
+import { usePaletteExportRunner } from './usePaletteExportRunner.js';
 
 const PARAMS: CommandPaletteBuildParams = {
   execute: () => {},
@@ -70,6 +72,12 @@ function renderPalette(): void {
   );
 }
 
+let paletteRunner: ReturnType<typeof usePaletteExportRunner> | null = null;
+function PaletteRunnerHarness() {
+  paletteRunner = usePaletteExportRunner();
+  return paletteRunner.dialog;
+}
+
 /** Click the palette row whose label starts with `prefix`, then let its deferred action run. */
 async function runRow(prefix: RegExp): Promise<void> {
   const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
@@ -82,15 +90,43 @@ async function runRow(prefix: RegExp): Promise<void> {
 }
 
 beforeEach(() => {
-  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map() });
+  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), scheduleIsEdited: false });
 });
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map() });
+  useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), scheduleIsEdited: false });
+  paletteRunner = null;
 });
 
 describe('command palette exports (#5601)', () => {
+  it('forwards palette surface to every registered export dialog (#5844)', async () => {
+    const model = fixtureModel('m');
+    useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: model.ifcDataStore, scheduleIsEdited: true });
+    const dialogs = EXPORT_COMMANDS.filter((command) => command.kind === 'dialog');
+    const originals = dialogs.map((command) => ({ command, Dialog: command.Dialog }));
+    const seen: string[] = [];
+    try {
+      for (const { command, Dialog } of originals) {
+        Reflect.set(command, 'Dialog', (props: ComponentProps<typeof Dialog>) => {
+          assert.equal(props.surface, 'palette');
+          seen.push(command.id);
+          return null;
+        });
+      }
+      render(<BimReactContext.Provider value={{} as BimContext}><PaletteRunnerHarness /></BimReactContext.Provider>);
+      for (const command of dialogs) {
+        await act(async () => {
+          assert.ok(paletteRunner);
+          paletteRunner.runExport({ id: command.id });
+        });
+      }
+      assert.deepEqual(seen, dialogs.map((command) => command.id));
+    } finally {
+      for (const { command, Dialog } of originals) Reflect.set(command, 'Dialog', Dialog);
+    }
+  });
+
   it('offers exactly the registry formats, in registry order', () => {
     const ids = buildCommandPaletteCommands(PARAMS)
       .filter((cmd) => cmd.category === 'Export')

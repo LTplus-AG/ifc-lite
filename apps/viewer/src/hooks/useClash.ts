@@ -1256,7 +1256,6 @@ export function useClash() {
     },
     [],
   );
-
   const clearAll = useCallback((): void => {
     // Bump the run epoch FIRST: a `run()` / `runDuplicates()` still in flight
     // when the user clears must not be able to resurrect what they just

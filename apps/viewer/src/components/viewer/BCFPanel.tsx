@@ -201,7 +201,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // Export BCF file
   const handleExport = useCallback(async () => {
     if (!bcfProject) return;
-
     try {
       setBcfLoading(true);
       setBcfError(null);

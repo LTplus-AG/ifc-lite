@@ -210,11 +210,9 @@ export function PdfViewExportDialog({ surface = 'classic', trigger, exportViewPd
       return null;
     }
   }, [camera, drawnMeshes, scaleFactor, showScaleStamp]);
-
   const oversize = preview?.oversize ?? false;
   const canExport =
     !isExporting && camera !== null && drawnMeshes.length > 0 && scaleFactor !== null && !oversize;
-
   const handleExport = useCallback(async () => {
     if (!source || !camera || scaleFactor === null) return;
     setIsExporting(true);

@@ -584,5 +584,5 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
   downloadFile(content, filename, mimeType);
-  trackExportCompleted({ format: 'extension', surface: 'script' });
+  trackExportCompleted({ format: 'other', surface: 'script' });
 }

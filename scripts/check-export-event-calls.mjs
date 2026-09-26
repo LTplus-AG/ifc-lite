@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const files = execFileSync('git', ['ls-files', 'apps/viewer/src/*.ts', 'apps/viewer/src/*.tsx'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-const raw = new RegExp(String.raw`\.\s*capture\s*\(\s*['"]export_completed['"]`);
+const raw = /\.\s*capture\s*\(\s*(['"`])export_completed\1/;
 const offenders = files.filter((file) => file !== 'apps/viewer/src/lib/analytics.ts' && raw.test(readFileSync(join(root, file), 'utf8')));
 if (offenders.length > 0) {
   console.error(`Use trackExportCompleted({ format, surface, … }) instead of raw capture:\n${offenders.join('\n')}`);

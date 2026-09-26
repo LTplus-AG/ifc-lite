@@ -69,6 +69,7 @@ import { useViewerStore } from '@/store/index.js';
 // watch an object nothing calls.
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
+import type { UiSurface } from '@/lib/analytics-ui-events';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
@@ -347,6 +348,33 @@ describe('export UI parity (ifc-lite#2511)', () => {
   it('the ribbon renders every registered export format', () => {
     renderRibbonExports();
     assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS]);
+  });
+
+  it('forwards the initiating surface to every registered dialog (#5844)', () => {
+    const seen = new Map<string, Set<UiSurface>>();
+    const dialogs = EXPORT_COMMANDS.filter((command) => command.kind === 'dialog');
+    const originals = dialogs.map((command) => ({ command, Dialog: command.Dialog }));
+    try {
+      for (const { command, Dialog } of originals) {
+        Reflect.set(command, 'Dialog', (props: React.ComponentProps<typeof Dialog>) => {
+          const surfaces = seen.get(command.id) ?? new Set<UiSurface>();
+          surfaces.add(props.surface);
+          seen.set(command.id, surfaces);
+          return <Dialog {...props} />;
+        });
+      }
+      renderClassicExports();
+      assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
+        dialogs.map((command) => [command.id, ['classic']]));
+      unmountAll();
+      seen.clear();
+      renderRibbonExports();
+      assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
+        dialogs.map((command) => [command.id, ['ribbon']]));
+    } finally {
+      unmountAll();
+      for (const { command, Dialog } of originals) Reflect.set(command, 'Dialog', Dialog);
+    }
   });
 
   it('both toolbar styles expose the same formats in the same order (#2511: two hand-written lists)', () => {

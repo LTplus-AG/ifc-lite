@@ -1476,7 +1476,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
     downloadFile(JSON.stringify(data, null, 2), 'lenses.json', 'application/json');
     trackExportCompleted({ format: 'json', surface: 'lens_panel' });
   }, [exportLenses]);
-
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

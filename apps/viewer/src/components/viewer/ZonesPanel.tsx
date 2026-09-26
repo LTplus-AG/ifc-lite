@@ -281,7 +281,6 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
     createZoneSet(name);
     setNewSetName('');
   }, [newSetName, createZoneSet]);
-
   const handleGenerateFromStoreys = useCallback(() => {
     const result = generateZonesFromStoreys();
     if (!result.ok) {
@@ -292,13 +291,11 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
     replaceZonesInSet(id, result.zones);
     toast.success(t('zonesPanel.generateFromStoreysSuccess', { count: result.zones.length }));
   }, [createZoneSet, replaceZonesInSet, t]);
-
   const handleExport = useCallback(() => {
     const json = exportZoneSetsJSON();
     downloadFile(json, `${sanitizeFilename('zone-sets')}.json`, 'application/json');
     trackExportCompleted({ format: 'json', surface: 'zones_panel' });
   }, [exportZoneSetsJSON]);
-
   const handleImportFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
     try {

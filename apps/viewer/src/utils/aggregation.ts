@@ -126,13 +126,12 @@ export interface AggregationModelAccess {
  *
  *    This buys HIDE and ISOLATE, and only those two. Both are whitelists the
  *    renderer re-matches mesh ids against, so a mesh-less id in the persisted
- *    set starts matching the moment its mesh lands. COLOUR does not get the
- *    same benefit from a bigger set: both colour sinks in
- *    `useGeometryStreaming.ts` drain their pending map and clear it, and
- *    `scene.setColorOverrides` builds overlay batches once from `meshDataMap`,
- *    so a part whose mesh arrives after the flush is never painted. Making
- *    colour repaint late meshes needs a re-application on the geometry tick,
- *    which is #3890, not this expansion.
+ *    set starts matching the moment its mesh lands. COLOUR was different
+ *    while `scene.setColorOverrides` built overlay batches once from
+ *    `meshDataMap`: a part whose mesh arrived after the flush was never
+ *    painted, which the #3890 catch-up fixed by re-applying on the geometry
+ *    tick. Since #6076 the renderer paints by id from a per-entity colour
+ *    table, so an installed colour reaches a late mesh without re-application.
  *
  * Ids that already have geometry pass through untouched and in order. An id
  * with neither geometry nor ANY aggregated descendant at all is dropped — that

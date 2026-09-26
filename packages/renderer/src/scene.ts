@@ -36,7 +36,8 @@ import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { inheritedQuantization, groupOverridePieces, cloneOverrides, overlaysInvalidatedBy, type BatchQuantization } from './scene-derived-batches.js';
+import { inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
+import { EntityColorTable } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
@@ -397,11 +398,9 @@ export class Scene {
     versions: this.partialBatchCacheVersions,
   };
 
-  // Color overlay system for lens coloring — NEVER modifies original batches.
-  // Overlay batches render on top using depthCompare 'equal', so they only
-  // paint where original geometry already wrote depth. Clearing is instant.
-  private overrideBatches: BatchedMesh[] = [];
-  private overlaySources = new Map<MeshData, string>(); // overridden piece -> bucket key its overlay inherited from (#4832)
+  // Colour overrides shade in the base pass from this per-entity table (#6076,
+  // entity-color-table.ts): no geometry copies, nothing to rebuild on stream.
+  private readonly entityColorTable = new EntityColorTable();
   // Defensively-typed: the renderer is the sole writer (via setColorOverrides),
   // external readers go through getColorOverrides() and get a ReadonlyMap.
   private colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
@@ -489,7 +488,7 @@ export class Scene {
 
   // ─── GPU residency (issue #1682 phase 3a) ──────────────────────────────
   // The budget applies to bucket-owned colour/chunk batches (the evictable
-  // set). Streaming fragments, partial sub-batches, overlay batches,
+  // set). Streaming fragments, partial sub-batches,
   // textured meshes and instanced templates are never evicted: fragments are
   // transient, the rest are small or lack a rebuild source. Enforcement
   // no-ops while geometry is released or in ephemeral streaming mode (no CPU
@@ -1291,16 +1290,13 @@ export class Scene {
   /** Rebuild pending buckets after streaming or a geometry mutation. */
   rebuildPendingBatches(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.pendingBatchKeys.size === 0) return;
-    const rebuilt = rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
+    rebuildSceneBatches({ pendingKeys: this.pendingBatchKeys, buckets: this.buckets,
       create: (meshes, color, target, renderPipeline, key) => this.createBatchedMesh(meshes, color, target, renderPipeline, key),
       dropPartial: batch => this.dropPartialCacheForBatch(batch),
     }, device, pipeline);
 
     this.batchedMeshes = [...this.buckets.values()].flatMap(bucket => bucket.batchedMesh ? [bucket.batchedMesh] : []);
     this.pendingBatchKeys.clear();
-    // Overlays follow their depth writers only when one actually changed under
-    // them (flip / bucket move, #4832); finalize re-applies once itself.
-    if (!this.finalizeInProgress && overlaysInvalidatedBy(rebuilt, this.overlaySources)) this.reapplyColorOverrides(device, pipeline);
   }
 
   /**
@@ -1705,7 +1701,7 @@ export class Scene {
     const batches = this.finalizeInProgress ? [...new Set([...this.batchedMeshes,
       ...[...this.buckets.values()].flatMap((bucket) => bucket.batchedMesh ? [bucket.batchedMesh] : [])])] : this.batchedMeshes;
     return { translations: this.modelTranslations, pieces: this.meshDataMap,
-      bounds: this.boundingBoxes, batches, meshes: this.meshes, overrides: this.overrideBatches, textured: this.texturedMeshes,
+      bounds: this.boundingBoxes, batches, meshes: this.meshes, textured: this.texturedMeshes,
       templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
       device: this.instancedDevice, evictHighlight: (id: number) => this.evictHighlightMeshes(id, true),
       clearPartial: () => this.dropAllPartialCaches(),
@@ -2095,7 +2091,6 @@ export class Scene {
     // already retired by rebuildPendingBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
-    this.reapplyColorOverrides(device, pipeline);
   }
 
   /**
@@ -2220,7 +2215,6 @@ export class Scene {
           ];
           scene.retireFinalizedBatches(retired);
           scene.finalizeInProgress = false;
-          scene.reapplyColorOverrides(device, pipeline); // never throws: the swap above is committed
           resolve();
         } catch (err) {
           rollback();
@@ -2699,81 +2693,54 @@ export class Scene {
     return partialBatch;
   }
 
-  // ─── Color overlay system ────────────────────────────────────────────
-  // Builds overlay batches for lens coloring without modifying original batches.
-  // Overlay batches reuse the same geometry (re-merged from MeshData) but with
-  // override colors.  They are rendered on top of existing depth via the overlay
-  // pipeline (depthCompare 'equal'), so hidden entities never leak through.
+  // ─── Colour overrides (#6076) ────────────────────────────────────────
+  // Overrides live in a per-entity colour table the base pass reads
+  // (entity-color-table.ts). Batches are never modified or copied, and a mesh
+  // streamed in later is painted by the ids it already carries.
 
   /**
-   * Set color overrides for lens / chart / IDS / compare / 4D coloring. Overlay
-   * batches are grouped by SOURCE bucket + override color and inherit the
-   * source batch's quantization (#4832, `scene-derived-batches.ts`). Original
-   * batches are NEVER modified — clearing is instant.
+   * Set colour overrides for lens / chart / IDS / compare / 4D colouring:
+   * rewrites the entity colour table (one `writeBuffer`) and the instanced
+   * occurrence records. No batch is built, rebuilt or destroyed. `pipeline`
+   * stays in the signature because `SceneContents` publishes it.
    */
   setColorOverrides(
     overrides: Map<number, [number, number, number, number]>,
     device: GPUDevice,
-    pipeline: RenderPipeline
+    _pipeline: RenderPipeline
   ): void {
-    // Destroy previous overlay batches
-    this.destroyOverrideBatches();
     // The override set is changing — invalidate the partial-batch cache epoch so
     // the render loop rebuilds any promotion-split sub-batches (see render loop).
     this.colorOverrideGeneration++;
 
     if (this.geometryReleased) {
       console.warn('[Scene] setColorOverrides called after geometry data was released — skipping.');
-      this.colorOverrides = null;
-      this.setInstancedColorOverrides(null);
+      this.clearColorOverrideState();
       return;
     }
 
     if (overrides.size === 0) {
-      this.colorOverrides = null;
-      this.setInstancedColorOverrides(null);
+      this.clearColorOverrideState();
       return;
     }
 
     // Defensive copy: callers may mutate/reuse `overrides`; the tuples are treated as immutable by every consumer.
     this.colorOverrides = new Map(overrides);
+    this.entityColorTable.write(device, this.colorOverrides);
 
-    // Instanced occurrences carry the override colour in their records (no overlay pass); no-op without instanced data.
+    // Instanced occurrences carry the override colour in their records; no-op without instanced data.
     this.setInstancedColorOverrides(overrides);
-
-    // Bucket keys carry cell + colour + model: an overlay batch is a subset of ONE base batch, in one model.
-    const colorGroups = groupOverridePieces(
-      overrides,
-      (id) => this.meshDataMap.get(id),
-      (piece) => this.meshDataBucket.get(piece),
-      (piece) => this.bucketBaseKey(piece),
-      (c) => this.colorKey(c),
-    );
-
-    const maxBufferSize = this.getMaxBufferSize(device);
-    for (const { color, meshData, sourceBatch, sourceKey } of colorGroups.values()) {
-      if (sourceKey !== null) for (const piece of meshData) this.overlaySources.set(piece, sourceKey);
-      const quantization = inheritedQuantization(this.quantizedBatchesEnabled, sourceBatch);
-      for (const chunk of this.splitMeshDataForBufferLimit(meshData, maxBufferSize)) {
-        this.overrideBatches.push(this.createBatchedMesh(chunk, color, device, pipeline, undefined, quantization, sourceBatch?.origin));
-      }
-    }
-  }
-
-  /** Rebuild the installed overlays against the batches that write depth NOW
-   *  (#4832). Best-effort — a committed finalize/rebuild must not be undone by
-   *  an overlay allocation failure, so that is reported, not thrown. */
-  private reapplyColorOverrides(device: GPUDevice, pipeline: RenderPipeline): void {
-    if (!this.colorOverrides) return;
-    try { this.setColorOverrides(cloneOverrides(this.colorOverrides), device, pipeline); }
-    catch (err) { console.warn('[Scene] overlay rebuild after finalize failed — colours may be missing until the next repaint', err); }
   }
 
   /** Clear all color overrides — instant, no batch rebuild needed. */
   clearColorOverrides(): void {
-    this.destroyOverrideBatches();
     this.colorOverrideGeneration++;
+    this.clearColorOverrideState();
+  }
+
+  private clearColorOverrideState(): void {
     this.colorOverrides = null;
+    this.entityColorTable.clear();
     this.setInstancedColorOverrides(null);
   }
 
@@ -2784,39 +2751,30 @@ export class Scene {
     return this.colorOverrideGeneration;
   }
 
-  /** Get overlay batches for rendering */
-  getOverrideBatches(): BatchedMesh[] {
-    return this.overrideBatches;
-  }
-
-  /** Check if color overrides are active */
-  hasColorOverrides(): boolean {
-    return this.overrideBatches.length > 0;
+  /** The per-entity colour table the renderer binds at group(1) (#6076). */
+  getEntityColorTable(): EntityColorTable {
+    return this.entityColorTable;
   }
 
   /**
    * Get the active expressId → RGBA override map, or null if none.
    *
    * Used by the renderer to promote overridden meshes/batches to the opaque
-   * pipeline so the overlay paint pass (depthCompare 'equal') finds matching
-   * depth. Without this, an override on an entity that defaults to the
-   * transparent pipeline (IfcSpace, IfcOpeningElement, glass, …) silently
-   * fails to paint — the transparent pipeline doesn't write depth, so the
-   * equality test rejects every fragment.
+   * pipeline (overlay-routing.ts): the table paints only depth-writing opaque
+   * draws, so an override on an entity that defaults to the transparent
+   * pipeline (IfcSpace, IfcOpeningElement, glass, …) is promoted to be seen.
    *
    * Returns a `ReadonlyMap` view: the renderer holds the only writeable
    * reference (via `setColorOverrides`) so routing decisions stay in sync
-   * with the overlay batches we built from the same data.
+   * with the colour table written from the same data.
    */
   getColorOverrides(): ReadonlyMap<number, readonly [number, number, number, number]> | null {
     return this.colorOverrides;
   }
 
-  /** Destroy GPU resources for overlay batches */
-  private destroyOverrideBatches(): void {
-    for (const batch of this.overrideBatches) destroyGpuResources(batch);
-    this.overrideBatches = [];
-    this.overlaySources.clear();
+  /** Drop the colour table's GPU buffer (device-loss recovery host); `setColorOverrides` re-uploads it. */
+  releaseColorOverrideGpu(): void {
+    this.entityColorTable.releaseGpu();
   }
 
   /**
@@ -3732,8 +3690,9 @@ export class Scene {
     this.colorOverrideGeneration++;
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
     this.streamingFragments = [];
-    this.destroyOverrideBatches();
     this.colorOverrides = null;
+    this.entityColorTable.clear();
+    this.entityColorTable.releaseGpu();
     // Reset the shared frame origin so the next model picks its own. Retained
     // instanced templates are unaffected — their per-occurrence transforms are
     // already baked to absolute world coordinates at upload time, not relative

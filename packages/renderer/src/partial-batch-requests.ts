@@ -11,8 +11,8 @@
  * Two such properties exist, and they compose:
  *
  * - **Colour-override promotion** (#677): an entity carrying a deliberate lens/
- *   Pset override must draw through the OPAQUE pipeline so the overlay paint
- *   pass (`depthCompare: 'equal'`) finds depth to match. Promoting the whole
+ *   Pset override must draw through the OPAQUE pipeline, the only draws the
+ *   entity colour table paints (#6076). Promoting the whole
  *   batch would drag non-overridden batchmates opaque, so a mixed batch splits
  *   into `:promoted` and `:remaining`.
  * - **X-Ray alpha** (#4129): `transparencyOverrides` / `ghostExceptIds` name

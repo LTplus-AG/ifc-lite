@@ -193,6 +193,7 @@ import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
@@ -511,6 +512,8 @@ export class Renderer {
     // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
     private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
+    // overrideParams lanes (#6076): zero except inside a painting renderBatch call.
+    private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
     // section/crop-clipped geometry stays unpickable, not just invisible. Updated
@@ -1844,12 +1847,11 @@ export class Renderer {
         const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 
         // Lens / Pset color overrides: when an entity has an override, force
-        // its base draw through the opaque pipeline so it writes depth. The
-        // overlay paint pass uses depthCompare 'equal' and otherwise silently
-        // drops fragments belonging to entities whose default pipeline is
-        // transparent (IfcSpace, IfcOpeningElement, glass, …). See issue #677.
-        // Pure routing decision lives in overlay-routing.ts and is unit-tested
-        // there.
+        // its base draw through the opaque pipeline — the only draws the
+        // entity colour table paints (#6076) — or an entity whose default
+        // pipeline is transparent (IfcSpace, IfcOpeningElement, glass, …)
+        // would never show it. See issue #677. Pure routing decision lives in
+        // overlay-routing.ts and is unit-tested there.
         const colorOverrides = this.scene.getColorOverrides();
 
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
@@ -2305,6 +2307,7 @@ export class Renderer {
             // only presets that enable the sky — blanked the model on those
             // drivers. Binding while the main pipeline is current keeps it
             // valid for every main-family draw that follows.
+            this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Check if we have batched meshes (preferred for performance)
@@ -2554,8 +2557,10 @@ export class Renderer {
                 // world plane loses centimetre cuts before the comparison.
                 packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
 
-                // Helper function to render a batch — patches color into the shared template
-                const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
+                // Helper function to render a batch — patches color into the shared template.
+                // `paint` = a depth-writing opaque draw: colour overrides shade it from the
+                // entity colour table (#6076); transparent draws keep their own colour.
+                const renderBatch = (batch: typeof allBatchedMeshes[0], paint = false) => {
                     if (!batch.bindGroup || !batch.uniformBuffer) return;
 
                     // Patch the per-batch colour, and the material its AUTHORED
@@ -2590,7 +2595,10 @@ export class Renderer {
                     tpl[58] = qz ? qz.min[2] : 0;
                     tpl[59] = qz ? qz.step : 0;
 
+                    const painted = paint && batchHasColorOverride(batch, colorOverrides, colorOverrideGen);
+                    packOverrideParams(this.uniformOverrideU32, painted ? batchEntityIdAnchor(batch) : null, painted, options.emphasizeOverrides === true);
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
+                    this.uniformOverrideU32.fill(0);
 
                     // Single draw call for entire batch! LOD1-selected batches
                     // bind their simplified index range over the same vertices.
@@ -2615,13 +2623,9 @@ export class Renderer {
                 // base fallback here is type-safety, never taken.
                 const pipeFor = (
                     batch: typeof allBatchedMeshes[0],
-                    kind: 'opaque' | 'transparent' | 'overlay',
+                    kind: 'opaque' | 'transparent',
                 ): GPURenderPipeline => {
-                    const base = kind === 'opaque'
-                        ? this.pipeline!.getPipeline()
-                        : kind === 'transparent'
-                            ? this.pipeline!.getTransparentPipeline()
-                            : this.pipeline!.getOverlayPipeline();
+                    const base = kind === 'opaque' ? this.pipeline!.getPipeline() : this.pipeline!.getTransparentPipeline();
                     if (!batch.quantized) return base;
                     return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
                 };
@@ -2638,7 +2642,7 @@ export class Renderer {
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
                     pass.setPipeline(pipeFor(batch, 'opaque'));
-                    renderBatch(batch);
+                    renderBatch(batch, true);
                 }
                 pass.setPipeline(this.pipeline.getPipeline());
 
@@ -2739,7 +2743,7 @@ export class Renderer {
                         );
                         if (txAlpha <= 0.01) continue;
                         // Lens / Pset colour override tints the sampled texel — the
-                        // batch overlay paint pass doesn't iterate textured meshes,
+                        // entity colour table is off for textured draws (#6076),
                         // so applying the override here is what recolours them.
                         const txOverride = colorOverrides?.get(tm.expressId);
                         // `world = origin + position`: the vertex buffer stores
@@ -2807,7 +2811,7 @@ export class Renderer {
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
-                            // lens/Pset colour override, so the overlay paint pass finds depth.
+                            // lens/Pset colour override, so the colour table paints it (#6076).
                             const isTransparent = shouldRouteBatchTransparent(
                                 alphaForBatch(subBatch, color[3]),
                                 subBatch.expressIds,
@@ -2825,7 +2829,7 @@ export class Renderer {
                             pass.setPipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
                             // Render the sub-batch as a single draw call
-                            renderBatch(subBatch);
+                            renderBatch(subBatch, true);
                         }
                     }
                     for (const subBatch of transparentSubBatches) {
@@ -2833,29 +2837,6 @@ export class Renderer {
                         renderBatch(subBatch);
                     }
                     // Reset to opaque pipeline for subsequent rendering
-                    pass.setPipeline(this.pipeline.getPipeline());
-                }
-
-                // Render color overlay batches (lens coloring) on top of ALL opaque geometry.
-                // Placed AFTER partial batches so depth buffer is complete for both full
-                // and partial batches. Uses 'equal' depth compare — only paints where
-                // original geometry wrote depth, so hidden entities never leak through.
-                //
-                // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
-                // (the overlay pipeline now has src-alpha blending so low-alpha ghost
-                // tints composite correctly against the opaque pass) AND skip the
-                // specular term (glass reflections are meant for real glass and
-                // would whiten low-alpha colour overrides at grazing angles).
-                const overrideBatches = this.scene.getOverrideBatches();
-                if (overrideBatches.length > 0) {
-                    pass.setPipeline(this.pipeline.getOverlayPipeline());
-                    // bit 1 = overlay; bit 5 (32) = emphasize (pop) — see shader.
-                    tplFlags[0] = options.emphasizeOverrides ? (2 | 32) : 2;
-                    for (const batch of overrideBatches) {
-                        pass.setPipeline(pipeFor(batch, 'overlay'));
-                        renderBatch(batch);
-                    }
-                    tplFlags[0] = 0;  // restore for any downstream use of the template
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 

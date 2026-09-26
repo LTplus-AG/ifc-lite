@@ -70,7 +70,7 @@ export interface SceneRecoveryHost {
   appearanceAccessState?: unknown;
   modelTranslations: { registerDrawable<T>(drawable: T, modelIndex: number): T };
   dropAllPartialCaches(): void;
-  destroyOverrideBatches(): void;
+  releaseColorOverrideGpu(): void;
   releaseTexturedMeshTexture(mesh: Pick<TexturedMesh, 'texture' | 'sharedTextureKey'>): void;
   bindAppearanceAccess(device: GPUDevice, pipeline: RenderPipeline): unknown;
   createBatchedMesh(
@@ -138,7 +138,7 @@ export function discardSceneGpuResourcesForRecovery(
     if (!bucket.batchedMesh || !evicted.has(bucket.batchedMesh)) bucket.batchedMesh = null;
   }
   host.dropAllPartialCaches();
-  host.destroyOverrideBatches();
+  host.releaseColorOverrideGpu();
   for (const mesh of host.texturedMeshes) {
     mesh.vertexBuffer.destroy(); mesh.indexBuffer.destroy(); mesh.uniformBuffer.destroy();
     host.releaseTexturedMeshTexture(mesh);

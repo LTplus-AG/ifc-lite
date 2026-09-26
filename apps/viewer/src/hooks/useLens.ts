@@ -27,9 +27,9 @@
  *   resets the federation registry's offset counter — that a NEW model now
  *   occupies at the same global id).
  * - Uses color overlay system: pendingColorUpdates triggers
- *   scene.setColorOverrides() which builds overlay batches rendered on top
- *   of original geometry. Original batches are NEVER modified — clearing
- *   lens is instant (no batch rebuild).
+ *   scene.setColorOverrides(), which writes the renderer's per-entity colour
+ *   table (#6076). Batches are NEVER modified or copied — clearing lens is
+ *   instant (no batch rebuild).
  */
 
 import { useEffect, useRef, useMemo } from 'react';

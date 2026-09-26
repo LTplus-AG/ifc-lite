@@ -28,6 +28,19 @@
  * `IDSExportDialog` uses for its externally-driven progress. A future dialog
  * that needs externally-driven progress (multi-step, cancellable) is a
  * reason to add a second, controlled variant, not to bend this one.
+ *
+ * Two narrow, optional escape hatches for dialogs whose own logic needs to
+ * observe or steer the shell's internal state, without turning it into a
+ * second controlled variant:
+ *  - `onOpenStateChange` fires whenever the shell's open state actually
+ *    changes (open, or an unguarded close), for a dialog that gates its own
+ *    expensive `useMemo`s on "is this dialog open" the way the pre-#5848
+ *    per-dialog `open` state did (`PdfViewExportDialog`'s view/camera read).
+ *  - `closeOnSuccess` closes the dialog on a successful export instead of
+ *    showing the result Alert (`PdfViewExportDialog` closes on success and
+ *    only toasts; failure still renders the Alert, which it did not do
+ *    before #5848 — a strict improvement, not a behaviour change any test
+ *    depended on).
  */
 
 import type { ReactNode } from 'react';
@@ -92,6 +105,10 @@ export interface ExportDialogShellProps {
    */
   onExport: () => Promise<ExportDialogShellResult>;
   children: ReactNode | ((state: ExportDialogShellRenderState) => ReactNode);
+  /** Notified whenever the shell's open state actually changes (see file header). */
+  onOpenStateChange?: (open: boolean) => void;
+  /** Close on a successful export instead of showing the result Alert (see file header). */
+  closeOnSuccess?: boolean;
 }
 
 export function ExportDialogShell({
@@ -110,11 +127,21 @@ export function ExportDialogShell({
   exportDisabled = false,
   onExport,
   children,
+  onOpenStateChange,
+  closeOnSuccess = false,
 }: ExportDialogShellProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [result, setResult] = useState<ExportDialogShellResult | null>(null);
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setOpenState(next);
+      onOpenStateChange?.(next);
+    },
+    [onOpenStateChange],
+  );
 
   const handleOpenChange = useExportDialogOpenGuard({
     busy: isExporting,
@@ -127,11 +154,17 @@ export function ExportDialogShell({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
-      setResult(await onExport());
+      const outcome = await onExport();
+      if (closeOnSuccess && outcome.success) {
+        setResult(null);
+        setOpen(false);
+      } else {
+        setResult(outcome);
+      }
     } finally {
       setIsExporting(false);
     }
-  }, [onExport]);
+  }, [onExport, closeOnSuccess, setOpen]);
 
   const content = typeof children === 'function' ? children({ isOpen: open, isExporting }) : children;
 

@@ -125,6 +125,11 @@ export const sheetsPdfEn = {
   'sheetsPdf.pdfView.exportSuccessToast': 'Exported 1:{scale} PDF, page {width} x {height} mm',
   'sheetsPdf.pdfView.exportFailedWithMessage': 'PDF export failed: {message}',
   'sheetsPdf.pdfView.exportFailedGeneric': 'PDF export failed.',
+  // Dialog closes on success (`ExportDialogShell`'s `closeOnSuccess`, #5848),
+  // so `successTitle` is passed for prop-completeness but never actually
+  // renders; `errorTitle` does, alongside the existing toast.
+  'sheetsPdf.pdfView.successTitle': 'Success',
+  'sheetsPdf.pdfView.errorTitle': 'Error',
 
   // PdfViewPageNotices
   'sheetsPdf.pdfView.pageReadoutFits': 'Estimated page: {width} x {height} mm (fits {paperName}). The exported page is sized to the drawing itself and will never be larger.',

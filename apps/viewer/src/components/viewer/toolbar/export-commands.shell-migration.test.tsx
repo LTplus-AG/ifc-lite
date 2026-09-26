@@ -13,8 +13,7 @@
  * `kind: 'dialog'` entry": adding an unmigrated id here would fail (the
  * marker is only ever rendered by `ExportDialogShell`), which is the point —
  * this test is the checklist for the rest of #5848. The remaining dialogs
- * (`ifc` / `ExportDialog`, `anonymized` / `AnonymizedExportDialog`, `energy` /
- * `EnergyModelExportDialog`, `pdf` / `PdfViewExportDialog`,
+ * (`ifc` / `ExportDialog`, `anonymized` / `AnonymizedExportDialog`,
  * `modified-ifc` / `ExportChangesButton`) are follow-up work; the follow-up
  * PR extends this list as each one migrates.
  */
@@ -31,7 +30,7 @@ afterEach(() => {
   useViewerStore.getState().resetViewerState();
 });
 
-const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd'] as const;
+const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd', 'energy', 'pdf'] as const;
 
 function dialogCommand(id: string): ExportDialogCommand {
   const command = EXPORT_COMMANDS.find((c) => c.id === id);

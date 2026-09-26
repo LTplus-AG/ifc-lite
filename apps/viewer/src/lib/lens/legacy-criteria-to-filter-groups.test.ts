@@ -8,7 +8,12 @@ import { IfcParser } from '@ifc-lite/parser';
 import { BUILTIN_LENSES, matchesCriteria, type LensCriteria } from '@ifc-lite/lens';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
 import { createLensDataProvider } from './adapter.js';
-import { legacyCriteriaToFilterGroups } from './legacy-criteria-to-filter-groups.js';
+
+async function loadConverter() {
+  const module = await import('./legacy-criteria-to-filter-groups.js').catch(() => null);
+  assert.ok(module?.legacyCriteriaToFilterGroups, 'the legacy Lens migration must be available');
+  return module.legacyCriteriaToFilterGroups;
+}
 
 // A real parsed IFC store, rather than a mock evaluator, catches differences
 // in class names, property extraction, and group candidate enumeration.
@@ -28,6 +33,7 @@ END-ISO-10303-21;`;
 const IDS = [10, 20, 30, 40];
 
 async function fixture() {
+  const legacyCriteriaToFilterGroups = await loadConverter();
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
   const provider = createLensDataProvider(new Map(), store);
   const before = (criteria: LensCriteria) => IDS.filter((id) => matchesCriteria(criteria, id, provider));
@@ -81,7 +87,8 @@ describe('#5896 legacy lens criteria migration', () => {
     assert.deepEqual(after(byName), before(byName));
   });
 
-  it('warns for unrepresentable semantics and explosive DNF instead of changing matches', () => {
+  it('warns for unrepresentable semantics and explosive DNF instead of changing matches', async () => {
+    const legacyCriteriaToFilterGroups = await loadConverter();
     for (const criteria of [
       { type: 'material', materialName: 'Concrete' },
       { type: 'classification', classificationSystem: 'Uni' },

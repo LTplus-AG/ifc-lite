@@ -25,6 +25,8 @@ export const bulkPropertyEditorEn = {
   'bulkPropertyEditor.psetOptional': 'Pset (optional)',
   'bulkPropertyEditor.propertyName': 'Property name',
   'bulkPropertyEditor.value': 'Value',
+  /** Accessible name for a filter row's operator `<select>` (#5812). */
+  'bulkPropertyEditor.filterOperator': 'Filter operator',
   'bulkPropertyEditor.removeFilter': 'Remove property filter',
   'bulkPropertyEditor.action': 'Action',
   'bulkPropertyEditor.actionType': 'Action Type',

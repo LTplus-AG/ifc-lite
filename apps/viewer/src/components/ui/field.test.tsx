@@ -118,4 +118,17 @@ describe('Field', () => {
     const control = getByLabelText(host, 'Named');
     assert.equal(control.getAttribute('id'), 'explicit-id');
   });
+
+  it('renders labelAction beside the label without adding it to the label text', () => {
+    const host = render(
+      <Field label="Property Set" labelAction={<button type="button">Use custom name</button>}>
+        <Input />
+      </Field>,
+    );
+    const label = [...host.querySelectorAll('label')].find((el) => el.textContent === 'Property Set');
+    assert.ok(label, 'the label text stays exactly "Property Set"');
+    const action = host.querySelector('button');
+    assert.ok(action, 'labelAction renders');
+    assert.equal(label!.contains(action), false, 'labelAction is a sibling of the label, not inside it');
+  });
 });

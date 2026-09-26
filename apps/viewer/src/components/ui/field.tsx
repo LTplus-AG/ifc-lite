@@ -29,6 +29,8 @@ import { cn } from '@/lib/utils';
 export interface FieldProps {
   /** The visible field label, associated with the control via `htmlFor`. */
   label: React.ReactNode;
+  /** An action rendered beside the label (e.g. a "use custom name" toggle) — not part of the label text itself. */
+  labelAction?: React.ReactNode;
   /** Supplementary guidance shown below the control at all times. */
   hint?: React.ReactNode;
   /** Validation message; also flips `aria-invalid` on the control. */
@@ -43,7 +45,7 @@ export interface FieldProps {
   }>;
 }
 
-export function Field({ label, hint, error, className, labelClassName, children }: FieldProps) {
+export function Field({ label, labelAction, hint, error, className, labelClassName, children }: FieldProps) {
   const generatedId = React.useId();
   const controlId = children.props.id ?? generatedId;
   const hintId = `${controlId}-hint`;
@@ -61,11 +63,20 @@ export function Field({ label, hint, error, className, labelClassName, children 
     'aria-invalid': error ? true : children.props['aria-invalid'],
   });
 
+  const labelEl = (
+    <label htmlFor={controlId} className={cn('text-sm font-medium leading-none', labelClassName)}>
+      {label}
+    </label>
+  );
+
   return (
     <div className={cn('flex flex-col gap-1', className)}>
-      <label htmlFor={controlId} className={cn('text-sm font-medium leading-none', labelClassName)}>
-        {label}
-      </label>
+      {labelAction ? (
+        <div className="flex items-center justify-between gap-2">
+          {labelEl}
+          {labelAction}
+        </div>
+      ) : labelEl}
       {control}
       {hint && (
         <p id={hintId} className="text-xs text-muted-foreground">

@@ -28,6 +28,10 @@ export interface ComboInputProps {
   /** Cap rendered suggestions (filtering still scans all options). */
   maxRendered?: number;
   'aria-label'?: string;
+  /** Forwarded to the underlying `<input>` — lets `<Field>` label it via `htmlFor`/`id` (#5812). */
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean | 'true' | 'false';
 }
 
 interface Anchor { left: number; top: number; width: number }
@@ -40,6 +44,9 @@ export function ComboInput({
   className,
   maxRendered = 50,
   'aria-label': ariaLabel,
+  id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: ComboInputProps) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -94,6 +101,9 @@ export function ComboInput({
     <>
       <Input
         ref={inputRef}
+        id={id}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid}
         value={value}
         placeholder={placeholder}
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}

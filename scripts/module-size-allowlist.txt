@@ -64,7 +64,7 @@
    750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    534 apps/viewer/src/components/viewer/BCFPanel.tsx
-  1028 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   880 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
   1301 apps/viewer/src/components/viewer/ClashPanel.tsx
@@ -89,12 +89,12 @@
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
-   985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
+   652 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
   2164 apps/viewer/src/components/viewer/PropertiesPanel.tsx
-  1694 apps/viewer/src/components/viewer/PropertyEditor.tsx
+   582 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
    427 apps/viewer/src/components/viewer/schedule/import/csv.ts

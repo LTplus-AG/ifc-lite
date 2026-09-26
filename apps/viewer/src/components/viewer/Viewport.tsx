@@ -859,7 +859,7 @@ export function Viewport({
       }
       // Read-only debug/e2e hooks (same convention as __ifc_lite_viewer_store__),
       // cleared on viewport teardown below.
-      installViewportDebugHooks(renderer);
+      installViewportDebugHooks(renderer, () => ({ hiddenIds: hiddenEntitiesRef.current, isolatedIds: isolatedEntitiesRef.current }));
       setIsInitialized(true);
 
       const camera = renderer.getCamera();

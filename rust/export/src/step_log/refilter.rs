@@ -241,6 +241,16 @@ fn record_type(text: &str) -> String {
     after[..end].to_uppercase()
 }
 
+/// `detachRelatedObjects`' narrowing: `filterHiddenRefsFromRelationshipLine`
+/// with `detached` as the exclusion set. `None` when nothing would remain.
+pub(crate) fn detach_related_objects(text: &str, detached: &std::collections::HashSet<u32>) -> Option<String> {
+    match relationship(text, &|r| detached.contains(&r), None)? {
+        Filtered::Keep => Some(text.to_string()),
+        Filtered::Rewrite(t) => Some(t),
+        Filtered::Withhold(_) => None,
+    }
+}
+
 /// The source pass's filter for one line of effective type `upper`.
 pub(crate) fn filter_source_line(
     text: &str,

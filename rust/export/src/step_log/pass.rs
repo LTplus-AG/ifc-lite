@@ -26,6 +26,9 @@ pub(crate) struct Pass<'s, 'a> {
     pub(crate) modified_attributes: Vec<(u32, Vec<(String, String)>)>,
     attribute_slot: HashMap<u32, usize>,
     pub(crate) skip: HashSet<u32>,
+    /// Shared relation -> elements copied on write off its `RelatedObjects`
+    /// (`pass.detachedRelatedObjects`, #5794).
+    pub(crate) detached: HashMap<u32, HashSet<u32>>,
     /// Type objects whose line is written after the generated sets.
     pub(crate) rewritten: HashSet<u32>,
     pub(crate) rewritten_lines: Vec<(u32, String)>,
@@ -60,6 +63,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             modified_attributes: Vec::new(),
             attribute_slot: HashMap::new(),
             skip: HashSet::new(),
+            detached: HashMap::new(),
             rewritten: HashSet::new(),
             rewritten_lines: Vec::new(),
             type_owned_names: Vec::new(),

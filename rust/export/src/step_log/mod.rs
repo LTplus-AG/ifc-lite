@@ -30,6 +30,7 @@
 mod attrs;
 mod base;
 mod collect;
+mod cow;
 mod created;
 mod effective;
 mod entities;

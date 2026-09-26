@@ -98,7 +98,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
         if pass.attribute_edits(id).is_some_and(|e| !e.is_empty()) || !positionals.is_empty() {
             args_text = overrides(pass, id, &args_text, &upper, &positionals)?;
         }
-        let line = format!("#{id}={upper}({args_text});");
+        let Some(line) = super::cow::detach(pass, id, format!("#{id}={upper}({args_text});")) else { continue };
         let filtered = {
             let excluded = |r: u32| pass.is_omitted(r);
             filter_created_line(&line, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())

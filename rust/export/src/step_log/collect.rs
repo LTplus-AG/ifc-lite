@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 use crate::generated::step_log_tables::TYPE_OBJECT_CLASSES;
 
 use super::base::{BaseSets, PSet, QSet};
+use super::cow::{retain_reused_source_members, ReuseByName, SharedSetDetachments, SourceMembers};
 use super::effective::{psets_for, qsets_for};
 use super::jsval::JsVal;
 use super::ledger::Kind;
@@ -21,7 +22,8 @@ use super::refs::{authored_refs, record_refs, Slot};
 /// What the generation phase consumes.
 #[derive(Default)]
 pub(crate) struct Collected {
-    pub(crate) new_psets: Vec<(u32, Vec<PSet>)>,
+    /// Each host's regenerated sets, and the source atoms they may reuse.
+    pub(crate) new_psets: Vec<(u32, Vec<PSet>, SourceMembers)>,
     pub(crate) new_qsets: Vec<(u32, Vec<QSet>)>,
 }
 
@@ -78,18 +80,6 @@ fn rel_index(pass: &Pass<'_, '_>) -> (RelsByEntity, Vec<(u32, Vec<u32>)>) {
     (by_entity, related_by_rel)
 }
 
-/// Withhold a source set and its members; `retain_shared_atoms` gives back
-/// any member another kept set still names.
-fn skip_set(pass: &mut Pass<'_, '_>, rel: u32, set: u32) {
-    pass.skip.insert(rel);
-    pass.skip.insert(set);
-    if let Some(line) = pass.src.line(set) {
-        for member in readers::property_ids_in_set(&line) {
-            pass.skip.insert(member);
-        }
-    }
-}
-
 pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> Collected {
     let mut out = Collected::default();
     let attributes: Vec<(u32, Vec<(String, String)>)> =
@@ -101,11 +91,15 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
     let prop_groups = groups(pass, false);
     let quant_groups = groups(pass, true);
     let (rels, related_by_rel) = rel_index(pass);
-    for (rel, related) in related_by_rel {
+    for (rel, related) in &related_by_rel {
         if !related.is_empty() && related.iter().all(|&id| pass.is_deleted(id)) {
-            pass.skip.insert(rel);
+            pass.skip.insert(*rel);
         }
     }
+    let related_by_rel: HashMap<u32, Vec<u32>> = related_by_rel.into_iter().collect();
+    // A shared set reached by an edit is only withheld once nothing else is
+    // left on it (#5794).
+    let mut detachments = SharedSetDetachments::default();
 
     for (entity, names) in prop_groups {
         if pass.is_deleted(entity) {
@@ -116,16 +110,16 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
         }
         let relevant: Vec<PSet> =
             psets_for(&pass.overlay, base, entity).into_iter().filter(|s| names.contains(&s.name)).collect();
-        if !relevant.is_empty() {
-            out.new_psets.push((entity, relevant));
-        }
+        let regenerated: HashSet<String> = relevant.iter().map(|s| s.name.clone()).collect();
+        let mut reuse = ReuseByName::default();
         let mut rel_defined: HashSet<String> = HashSet::new();
         for &(rel, set) in rels.get(&entity).map(Vec::as_slice).unwrap_or(&[]) {
             let name = pass.src.line(set).and_then(|l| readers::property_set_name(&l));
             let Some(name) = name.filter(|n| !n.is_empty()) else { continue };
             rel_defined.insert(name.clone());
             if names.contains(&name) {
-                skip_set(pass, rel, set);
+                detachments.detach(rel, set, entity);
+                reuse.offer(pass, &regenerated, entity, &name, set);
                 pass.ledger.record_withheld(entity, Kind::PropertySet);
             }
         }
@@ -138,13 +132,11 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
                 if !names.contains(&name) {
                     continue;
                 }
+                reuse.offer(pass, &regenerated, entity, &name, set);
                 if !affected.contains(&name) {
                     affected.push(name);
                 }
-                pass.skip.insert(set);
-                if let Some(line) = pass.src.line(set) {
-                    pass.skip.extend(readers::property_ids_in_set(&line));
-                }
+                detachments.withhold_type_owned(set, entity);
             }
             for name in &names {
                 if !rel_defined.contains(name) && !affected.contains(name) {
@@ -156,6 +148,9 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
                 pass.type_owned_ids.insert(entity, owned);
                 pass.rewritten.insert(entity);
             }
+        }
+        if !relevant.is_empty() {
+            out.new_psets.push((entity, relevant, reuse.members));
         }
     }
 
@@ -176,11 +171,14 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
             let Some(name) = pass.src.line(set).and_then(|l| readers::element_quantity_name(&l)) else { continue };
             let deleted = pass.overlay.deleted_qsets.contains(&(entity, name.clone()));
             if !name.is_empty() && (regenerated.contains(&name) || deleted) {
-                skip_set(pass, rel, set);
+                detachments.detach(rel, set, entity);
                 pass.ledger.record_withheld(entity, Kind::QuantitySet);
             }
         }
     }
+
+    detachments.settle(pass, &related_by_rel, &rels);
+    retain_reused_source_members(pass, out.new_psets.iter().map(|(_, _, m)| m));
 
     for (entity, _) in &attributes {
         if pass.is_overlay_created(*entity) || !pass.has_emittable_host_bytes(*entity) {
@@ -193,7 +191,7 @@ pub(crate) fn collect(pass: &mut Pass<'_, '_>, base: &mut BaseSets<'_, '_>) -> C
 
 /// `getTypeOwnedHasPropertySetIds`: the numeric members of slot 5, or a
 /// created type object's authored (and positionally overridden) slot 5.
-fn type_owned_ids(pass: &Pass<'_, '_>, entity: u32) -> Vec<u32> {
+pub(crate) fn type_owned_ids(pass: &Pass<'_, '_>, entity: u32) -> Vec<u32> {
     if let Some(created) = pass.overlay.created(entity) {
         let authored = created.attributes.get(5).cloned().unwrap_or(serde_json::Value::Null);
         return authored_refs(&pass.overlay_slot(entity, 5, authored));

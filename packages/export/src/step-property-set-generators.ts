@@ -80,8 +80,15 @@ export function generatePropertySetEntities(
       const unitId = prop.unit ? findUnitId(ctx, prop.unit, effective) : null;
       const unitStr = unitId !== null ? ref(unitId) : null;
 
+      // A list value is an `IfcPropertyListValue`: `NominalValue` is a single
+      // `IfcValue`, and a `(…)` aggregate there is not valid IFC (#5794).
+      // Same four slots (Name, Specification, ListValues, Unit); an empty
+      // list is `$`, as `ListValues` is OPTIONAL and `LIST [1:?]`.
+      const isList = valueStr.startsWith('(');
+      const entity = isList ? 'IFCPROPERTYLISTVALUE' : 'IFCPROPERTYSINGLEVALUE';
+      const value = isList && valueStr === '()' ? '$' : valueStr;
       // #ID=IFCPROPERTYSINGLEVALUE('Name',$,Value,Unit);
-      const line = `#${propId}=IFCPROPERTYSINGLEVALUE('${escapeStepString(prop.name)}',$,${valueStr},${unitStr ? serializeValue(unitStr) : '$'});`;
+      const line = `#${propId}=${entity}('${escapeStepString(prop.name)}',$,${value},${unitStr ? serializeValue(unitStr) : '$'});`;
       lines.push(line);
       propertyIds.push(propId);
     }

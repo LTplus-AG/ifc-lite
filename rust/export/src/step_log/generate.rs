@@ -16,6 +16,7 @@ use crate::step_text::escape;
 
 use super::base::{qty, PSet, QSet};
 use super::collect::Collected;
+use super::cow::SourceMembers;
 use super::jsval::{to_step_real, JsVal};
 use super::ledger::Kind;
 use super::nominal::serialize_nominal_value;
@@ -59,7 +60,13 @@ fn unit_token(pass: &Pass<'_, '_>, unit: Option<&str>) -> String {
 
 /// `generatePropertySetEntities`: the lines, and the ids of the sets written
 /// for a type object's own (`HasPropertySets`) names.
-fn pset_lines(pass: &mut Pass<'_, '_>, host: u32, psets: &[PSet], type_owned: &[String]) -> (Vec<String>, Vec<(String, u32)>) {
+fn pset_lines(
+    pass: &mut Pass<'_, '_>,
+    host: u32,
+    psets: &[PSet],
+    type_owned: &[String],
+    source_members: &SourceMembers,
+) -> (Vec<String>, Vec<(String, u32)>) {
     let mut lines = Vec::new();
     let mut owned_ids: Vec<(String, u32)> = Vec::new();
     let owner = pass.owner_history_token(host);
@@ -68,11 +75,25 @@ fn pset_lines(pass: &mut Pass<'_, '_>, host: u32, psets: &[PSet], type_owned: &[
             continue;
         }
         let mut refs = Vec::new();
+        let members = source_members.get(&pset.name);
         for prop in &pset.properties {
+            // An unedited property keeps its source atom, and with it its IFC
+            // class, when that atom is written (#5794).
+            let reused = members.and_then(|m| m.get(&prop.name)).copied();
+            if let Some(atom) = reused.filter(|&a| pass.will_be_emitted(a) && !pass.skip.contains(&a)) {
+                refs.push(format!("#{atom}"));
+                continue;
+            }
             let id = pass.allocate();
             let value = serialize_nominal_value(&prop.value, prop.ty, prop.data_type.as_deref());
             let unit = unit_token(pass, prop.unit.as_deref());
-            lines.push(format!("#{id}=IFCPROPERTYSINGLEVALUE('{}',$,{value},{unit});", escape(&prop.name)));
+            // A list value is an `IfcPropertyListValue`; `()` is `$` (#5794).
+            let (entity, value) = match value.as_str() {
+                "()" => ("IFCPROPERTYLISTVALUE", "$".to_string()),
+                v if v.starts_with('(') => ("IFCPROPERTYLISTVALUE", value),
+                _ => ("IFCPROPERTYSINGLEVALUE", value),
+            };
+            lines.push(format!("#{id}={entity}('{}',$,{value},{unit});", escape(&prop.name)));
             refs.push(format!("#{id}"));
         }
         let set_id = pass.allocate();
@@ -154,13 +175,13 @@ fn resolve_owned(pass: &Pass<'_, '_>, original: &[u32], affected: &[String], rep
 
 pub(crate) fn generate(pass: &mut Pass<'_, '_>, collected: Collected) -> Result<(), Unwritable> {
     let mut owned_by_host: Vec<(u32, Vec<(String, u32)>)> = Vec::new();
-    for (host, psets) in &collected.new_psets {
+    for (host, psets, source_members) in &collected.new_psets {
         if !pass.will_be_emitted(*host) {
             continue;
         }
         let owned_names =
             pass.type_owned_names.iter().find(|(e, _)| e == host).map(|(_, n)| n.clone()).unwrap_or_default();
-        let (lines, owned) = pset_lines(pass, *host, psets, &owned_names);
+        let (lines, owned) = pset_lines(pass, *host, psets, &owned_names, source_members);
         if !lines.is_empty() {
             pass.ledger.record_emitted(*host, Kind::PropertySet);
         }

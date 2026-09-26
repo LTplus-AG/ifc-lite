@@ -187,6 +187,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         }
         let Some(line) = src.line(id).map(|l| l.into_owned()) else { continue };
         let (text, delivery) = pass.mutate_line(id, &line).map_err(unwritable)?;
+        // Copy-on-write narrowing before the omitted-reference filter, as the
+        // source pass orders them (#5794). A narrowed-to-nobody line is
+        // withheld silently; `settle` rules that out for the effective record.
+        let Some(text) = super::cow::detach(&pass, id, text) else {
+            pass.skip.insert(id);
+            continue;
+        };
         let upper = pass.type_of(id).unwrap_or_default();
         let filtered = {
             let excluded = |r: u32| pass.is_omitted(r);
@@ -237,13 +244,17 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             }
             None => {
                 let Some(raw) = src.line(id) else { continue };
+                let raw = match super::cow::detach(&pass, id, raw.into_owned()) {
+                    Some(line) => line,
+                    None => continue,
+                };
                 let upper = pass.type_of(id).unwrap_or_default();
                 let filtered = {
                     let excluded = |r: u32| pass.is_omitted(r);
                     filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
                 };
                 owned = match filtered {
-                    Filtered::Keep => raw.into_owned(),
+                    Filtered::Keep => raw,
                     Filtered::Rewrite(t) => t,
                     Filtered::Withhold(w) => {
                         pass.warnings.push(w);

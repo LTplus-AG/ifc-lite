@@ -351,6 +351,46 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     expect(copy.kinds).toEqual(SOURCE_KINDS);
   });
 
+  it('an unshared set whose relation names an OwnerHistory is withheld, not orphaned', async () => {
+    // The relation reader once read a set OwnerHistory (`#5`) as a related
+    // object, so the relation looked shared, the set was kept, and narrowing
+    // then dropped the relation: an IfcPropertySet nothing related (#5794).
+    const withOwner = SHARED_PSET_IFC
+      .replace('#9=IFCUNITASSIGNMENT', [
+        "#2=IFCPERSON($,'Doe','Jane',$,$,$,$,$);",
+        "#3=IFCORGANIZATION($,'Org',$,$,$);",
+        '#4=IFCPERSONANDORGANIZATION(#2,#3,$);',
+        "#6=IFCAPPLICATION(#3,'1','App','App');",
+        '#5=IFCOWNERHISTORY(#4,#6,$,.ADDED.,$,$,$,0);',
+        '#9=IFCUNITASSIGNMENT',
+      ].join('\n'))
+      .replace("#41=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M1',$,$,$,(#20,#21,#22),#40);",
+        "#41=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M1',#5,$,$,(#20),#40);");
+    const { text } = await exportEdited((view) => {
+      view.setProperty(WALL_A, 'Custom_B', 'B1', 'edited', PropertyValueType.Label);
+    }, withOwner);
+    const recs = records(text);
+    expect(recs.has(40)).toBe(false);
+    expect(recs.has(41)).toBe(false);
+    const [copy, ...extra] = customBSets(text, WALL_A);
+    expect(extra).toEqual([]);
+    expect(copy.kinds).toEqual(SOURCE_KINDS);
+  });
+
+  it('an authored list value is written as IfcPropertyListValue, not a single value', async () => {
+    // `NominalValue` holds ONE IfcValue; a `(…)` aggregate there is invalid
+    // IFC, which IfcOpenShell rejects (#5794, found by the parity fixture).
+    const { text, store } = await exportEdited((view) => {
+      view.setProperty(WALL_A, 'Custom_B', 'Picked', ['x', 'y'], PropertyValueType.List);
+    });
+    expect(customBSets(text, WALL_A)[0].kinds).toMatchObject({ Picked: 'IFCPROPERTYLISTVALUE' });
+    const picked = extractPropertiesOnDemand(store, WALL_A)
+      .find((p) => p.name === 'Custom_B')!
+      .properties.find((p) => p.name === 'Picked');
+    expect(picked?.structure).toBe('list');
+    expect(picked?.values).toEqual(['x', 'y']);
+  });
+
   it('a deleted member is dropped from the copy and kept in the shared original', async () => {
     const { text } = await exportEdited((view) => {
       view.deleteProperty(WALL_A, 'Custom_B', 'Layers');

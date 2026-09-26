@@ -45,6 +45,17 @@ import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewe
 
 const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
 
+function clearLensOutput(): void {
+  const state = useViewerStore.getState();
+  state.setLensColorMap(new Map());
+  state.setLensHiddenIds(new Set());
+  state.setLensRuleCounts(new Map());
+  state.setLensRuleEntityIds(new Map());
+  state.setLensAutoColorLegend([]);
+  state.setLensAppliedColors(null);
+  state.setPendingColorUpdates(new Map());
+}
+
 export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
   const savedLenses = useViewerStore((s) => s.savedLenses);
@@ -92,28 +103,12 @@ export function useLens(): void {
 
     // A removed model can release its global-ID range for immediate reuse.
     // Clear its old overlay before the chunked group evaluator yields.
-    if (modelSetChanged) {
-      const state = useViewerStore.getState();
-      state.setLensColorMap(new Map());
-      state.setLensHiddenIds(new Set());
-      state.setLensRuleCounts(new Map());
-      state.setLensRuleEntityIds(new Map());
-      state.setLensAppliedColors(null);
-      state.setPendingColorUpdates(new Map());
-    }
+    if (modelSetChanged) clearLensOutput();
 
     // Lens deactivated — clear overlay (instant, no batch rebuild)
     if (!activeLens && prevLensIdRef.current !== null) {
       prevLensIdRef.current = null;
-      useViewerStore.getState().setLensColorMap(new Map());
-      useViewerStore.getState().setLensHiddenIds(new Set());
-      useViewerStore.getState().setLensRuleCounts(new Map());
-      useViewerStore.getState().setLensRuleEntityIds(new Map());
-      useViewerStore.getState().setLensAutoColorLegend([]);
-      useViewerStore.getState().setLensAppliedColors(null);
-
-      // Send empty map to signal "clear overlays" to useGeometryStreaming
-      useViewerStore.getState().setPendingColorUpdates(new Map());
+      clearLensOutput();
       return;
     }
 
@@ -133,13 +128,7 @@ export function useLens(): void {
       // Clear the same way lens deactivation does.
       if (prevLensIdRef.current !== null) {
         prevLensIdRef.current = null;
-        useViewerStore.getState().setLensColorMap(new Map());
-        useViewerStore.getState().setLensHiddenIds(new Set());
-        useViewerStore.getState().setLensRuleCounts(new Map());
-        useViewerStore.getState().setLensRuleEntityIds(new Map());
-        useViewerStore.getState().setLensAutoColorLegend([]);
-        useViewerStore.getState().setLensAppliedColors(null);
-        useViewerStore.getState().setPendingColorUpdates(new Map());
+        clearLensOutput();
       }
       return;
     }
@@ -191,6 +180,9 @@ export function useLens(): void {
       return;
     }
 
+    // Group evaluation yields between rules. Never show a previous Lens while
+    // the replacement is pending or after a recoverable rule error.
+    if (!modelSetChanged) clearLensOutput();
     const controller = new AbortController();
     const evaluatorModels = models.size > 0
       ? evaluatorModelsFromState(state)

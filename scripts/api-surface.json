@@ -8205,7 +8205,10 @@
     "UnsafeRegexPatternError: class",
     "assertGuardedRegexPattern: function",
     "compileGuardedRegex: function",
-    "hasCatastrophicBacktrackingShape: function"
+    "compileNameMatcher: function",
+    "hasCatastrophicBacktrackingShape: function",
+    "isNamePattern: function",
+    "unsafeNamePatternReason: function"
   ],
   "@ifc-lite/renderer": [
     "AdapterInfoSnapshot: interface",

@@ -1670,15 +1670,15 @@ importers:
       '@ifc-lite/ids':
         specifier: workspace:*
         version: link:../ids
-      '@ifc-lite/lists':
-        specifier: workspace:*
-        version: link:../lists
       '@ifc-lite/mutations':
         specifier: workspace:*
         version: link:../mutations
       '@ifc-lite/parser':
         specifier: workspace:*
         version: link:../parser
+      '@ifc-lite/regex-guard':
+        specifier: workspace:*
+        version: link:../regex-guard
     devDependencies:
       '@types/node':
         specifier: ^26.6.1

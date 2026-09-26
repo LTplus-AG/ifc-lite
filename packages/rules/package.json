@@ -22,9 +22,9 @@
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/encoding": "workspace:*",
     "@ifc-lite/ids": "workspace:*",
-    "@ifc-lite/lists": "workspace:*",
     "@ifc-lite/mutations": "workspace:*",
-    "@ifc-lite/parser": "workspace:*"
+    "@ifc-lite/parser": "workspace:*",
+    "@ifc-lite/regex-guard": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",

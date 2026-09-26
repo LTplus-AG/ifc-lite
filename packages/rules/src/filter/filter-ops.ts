@@ -13,7 +13,7 @@
  * is what makes them testable without a model.
  */
 
-import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/regex-guard';
 import type { NumericOp, SetOp, StringOp, TextKind, ValueComparison, ValueOp } from './filter-rules.js';
 
 /**

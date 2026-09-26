@@ -6,7 +6,6 @@
  * Callers supply the target field as a rule template; the adapter changes only
  * the comparison, so a missing field or unknown saved operator is never lost
  * through an unrelated source conversion. */
-import type { ConditionOperator } from '@ifc-lite/lists';
 import type { FilterOperator, PropertyValue } from '@ifc-lite/mutations';
 import type { AttributeRule, PropertyRule, ValueComparison, ValueOp } from './filter-rules.js';
 
@@ -28,7 +27,10 @@ type PersistedLensOperator = keyof typeof LENS_OPS;
 const LIST_OPS = {
   equals: 'eq', notEquals: 'ne', contains: 'contains', exists: 'isNonEmpty',
   gt: 'gt', gte: 'gte', lt: 'lt', lte: 'lte',
-} as const satisfies Record<ConditionOperator, ValueOp>;
+} as const satisfies Record<string, ValueOp>;
+
+/** Operators stored in v1 List JSON. Kept private so Lists can depend on Rules. */
+type PersistedListOperator = keyof typeof LIST_OPS;
 
 const BULK_OPS = {
   '=': 'eq', '!=': 'ne', '>': 'gt', '<': 'lt', '>=': 'gte', '<=': 'lte',
@@ -134,12 +136,12 @@ export function filterRuleToLegacyLensOperator(rule: ValueRule): LegacyOperatorR
   return inverse('lens', rule.op, Object.entries(LENS_OPS) as [PersistedLensOperator, ValueOp][]);
 }
 
-export function filterRuleToLegacyListOperator(rule: ValueRule): LegacyOperatorResult<ConditionOperator> {
+export function filterRuleToLegacyListOperator(rule: ValueRule): LegacyOperatorResult<PersistedListOperator> {
   const caseMode = rule.op === 'eq' || rule.op === 'ne' ? 'ifcBoolean' : 'fold';
   if (!legacyComparison(rule.comparison, caseMode, 'strict')) {
     return { status: 'unreadable', vocabulary: 'lists', operator: rule.op };
   }
-  return inverse('lists', rule.op, Object.entries(LIST_OPS) as [ConditionOperator, ValueOp][]);
+  return inverse('lists', rule.op, Object.entries(LIST_OPS) as [PersistedListOperator, ValueOp][]);
 }
 
 export function filterRuleToLegacyBulkOperator(rule: PropertyRule): LegacyOperatorResult<FilterOperator> {

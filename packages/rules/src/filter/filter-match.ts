@@ -34,7 +34,7 @@ import {
 import { valueOpMatches, numericOpMatches, matchStringAnyNone } from './filter-ops.js';
 import { lensMaterialNames } from './lens-material-names.js';
 import { parsePropertyValue } from '@ifc-lite/encoding';
-import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/regex-guard';
 
 /**
  * Compare a rule's property-set / property name against a row's.

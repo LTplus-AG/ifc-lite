@@ -14,31 +14,44 @@
  */
 
 import { X } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { FilterRule } from '@ifc-lite/rules';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from '@/i18n';
 
-export function GroupTabs({
-  groups,
-  activeIndex,
-  onSelect,
-  onRemove,
-}: {
+export function GroupTabsPanel({ groups, activeIndex, onSelect, onRemove, children }: {
   groups: { rules: FilterRule[] }[];
   activeIndex: number;
   onSelect: (index: number) => void;
   onRemove: (index: number) => void;
+  children: ReactNode;
+}) {
+  if (groups.length <= 1) return <div className="flex flex-col gap-3">{children}</div>;
+  return (
+    <Tabs value={String(activeIndex)} onValueChange={(value) => onSelect(Number(value))} className="flex flex-col gap-3">
+      <GroupTabs groups={groups} activeIndex={activeIndex} onRemove={onRemove} />
+      <TabsContent value={String(activeIndex)} className="mt-0 flex flex-col gap-3">{children}</TabsContent>
+    </Tabs>
+  );
+}
+
+function GroupTabs({
+  groups,
+  activeIndex,
+  onRemove,
+}: {
+  groups: { rules: FilterRule[] }[];
+  activeIndex: number;
+  onRemove: (index: number) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-1 text-[11px]" role="tablist" aria-label={t('filterGroups.tabsAriaLabel')}>
+    <TabsList className="flex h-auto flex-wrap items-center justify-start gap-1 bg-transparent p-0 text-[11px]" aria-label={t('filterGroups.tabsAriaLabel')}>
       {groups.map((g, i) => (
         <div key={i} className="flex items-center gap-1">
           {i > 0 && <span aria-hidden className="px-0.5 text-muted-foreground">+</span>}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={i === activeIndex}
-            onClick={() => onSelect(i)}
+          <TabsTrigger
+            value={String(i)}
             className={`flex items-center gap-1 rounded border px-2 py-1 ${
               i === activeIndex
                 ? 'border-primary bg-primary/10 font-medium text-foreground'
@@ -47,7 +60,7 @@ export function GroupTabs({
           >
             {t('filterGroups.groupLabel', { index: i + 1 })}
             <span className="text-[10px] text-muted-foreground">({g.rules.length})</span>
-          </button>
+          </TabsTrigger>
           {groups.length > 1 && (
             <button
               type="button"
@@ -60,6 +73,6 @@ export function GroupTabs({
           )}
         </div>
       ))}
-    </div>
+    </TabsList>
   );
 }

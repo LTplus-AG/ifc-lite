@@ -37,7 +37,7 @@ import type {
 } from '@ifc-lite/extensions';
 import type { ExtensionInstallSummary as HostInstallSummary } from '@/services/extensions/host';
 import { createBimContext } from '@ifc-lite/sdk';
-import { cleanup, render, type as typeInput } from '@/test/render.js';
+import { advance, cleanup, press, render, type as typeInput } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { extensionsPanelsEn } from '@/i18n/catalogues/extensions-panels.en';
 import { ExtensionHostService } from '@/services/extensions/host.js';
@@ -356,6 +356,20 @@ afterEach(() => {
 });
 
 describe('Extensions dock panel chrome localization (#4918)', () => {
+  it('#5815 ArrowRight opens the Source tab with a labelled panel', async () => {
+    render(<CapabilityReview open summary={capabilitySummary()} onApprove={() => {}} onCancel={() => {}} />);
+    const tabs = [...document.body.querySelectorAll<HTMLElement>('[role="tab"]')];
+    assert.equal(tabs.length, 2);
+    tabs[0].focus();
+    press(tabs[0], 'ArrowRight');
+    await advance(5);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, tabs[1]);
+    const panel = document.body.querySelector('[role="tabpanel"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[1].id);
+  });
+
   it('translates every static key rendered across the covered panels', async () => {
     const { container } = await mountFixture();
     const english = readableStrings(container);

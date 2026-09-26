@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { DEFAULT_FLAVOR_ID, type Bundle, type BundleFile, type Flavor } from '@ifc-lite/extensions';
-import { cleanup, render, click } from '@/test/render.js';
+import { advance, cleanup, render, click, press } from '@/test/render.js';
 import { loadDialogs } from '@/test/dialog-host.js';
 import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
@@ -182,6 +182,26 @@ async function flush(times = 50): Promise<void> {
 }
 
 describe('ExtensionsPanel localization (#4918)', () => {
+  it('#5815 ArrowRight selects Ideas and labels its panel', async () => {
+    const host = new StubHost();
+    const ui = render(
+      <ExtensionHostContext.Provider value={host}>
+        <ExtensionsPanel />
+      </ExtensionHostContext.Provider>,
+    );
+    await flush(5);
+    const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
+    assert.equal(tabs.length, 5);
+    tabs[0].focus();
+    press(tabs[0], 'ArrowRight');
+    await advance(5);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, tabs[1]);
+    const panel = ui.querySelector('[role="tabpanel"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[1].id);
+  });
+
   it('translates the header, help popover, tab strip, and empty state', async () => {
     const host = new StubHost();
     render(
@@ -825,6 +845,31 @@ describe('BundlePreview localization (#4918)', () => {
 });
 
 describe('ExtensionDockHost localization (#4918)', () => {
+  it('#5815 ArrowRight selects the second dock widget and labels its panel', async () => {
+    const host = new StubHost();
+    host.slotRegistry.register('ext.a', [
+      { extensionId: 'ext.a', slot: 'dock.left', payload: { id: 'd1', slot: 'dock.left', title: 'First Widget', widget: 'first.json' } },
+    ]);
+    host.slotRegistry.register('ext.b', [
+      { extensionId: 'ext.b', slot: 'dock.left', payload: { id: 'd1', slot: 'dock.left', title: 'Second Widget', widget: 'second.json' } },
+    ]);
+    const ui = render(
+      <ExtensionHostContext.Provider value={host}>
+        <ExtensionDockHost slot="dock.left" />
+      </ExtensionHostContext.Provider>,
+    );
+    const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
+    assert.equal(tabs.length, 2);
+    tabs[0].focus();
+    press(tabs[0], 'ArrowRight');
+    await advance(5);
+    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, tabs[1]);
+    const panel = ui.querySelector('[role="tabpanel"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[1].id);
+  });
+
   it('translates the dock region aria-label', () => {
     const host = new StubHost();
     host.slotRegistry.register('ext.a', [

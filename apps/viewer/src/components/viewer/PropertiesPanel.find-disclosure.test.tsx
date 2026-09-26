@@ -211,6 +211,15 @@ describe('Properties find and section disclosure (#5899)', () => {
     assert.equal(document.getAttribute('aria-expanded'), 'false');
     assert.equal(namedButton(panel, 'Revision B').getAttribute('aria-expanded'), 'true');
 
+    const preferenceKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) ?? '')
+      .filter((key) => key.startsWith('ifc-lite:properties:section:'));
+    assert.ok(preferenceKeys.some((key) => key.includes('material:')));
+    assert.ok(preferenceKeys.some((key) => key.includes('document:')));
+    for (const key of preferenceKeys) {
+      assert.ok(key.length < 100, 'disclosure keys stay bounded even for rich IFC metadata');
+      assert.doesNotMatch(key, /Concrete|Fire spec|Revision B|Safety notes/, 'IFC metadata stays out of persistent keys');
+    }
+
     cleanup();
     panel = render(<PropertiesPanel />);
     const reloadedMaterials = [...panel.querySelectorAll('button')].filter((button) => button.textContent?.trim().startsWith('Concrete'));

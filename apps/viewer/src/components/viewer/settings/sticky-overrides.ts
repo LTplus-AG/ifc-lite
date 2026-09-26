@@ -4,8 +4,7 @@
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
 import type { TranslationKey } from '@/i18n';
-import { GEOM_TIER_STORAGE_KEY } from '@/store/geometryFidelity';
-import { clearGeomWorkerOverride, GEOM_WORKERS_STORAGE_KEY, getGeomWorkerOverride } from '@/store/geomWorkerOverride';
+import { clearGeomWorkerOverride, peekGeomWorkerOverride } from '@/store/geomWorkerOverride';
 import { useViewerStore } from '@/store';
 
 type OverrideValue = string | number | undefined;
@@ -14,7 +13,6 @@ interface StickyOverride {
   id: string;
   labelKey: TranslationKey;
   queryParam: string;
-  storageKey: string;
   read: (tier: TessellationQuality | undefined) => OverrideValue;
   matchesUrl: (raw: string, value: string) => boolean;
   reset: () => void;
@@ -26,7 +24,6 @@ export const STICKY_OVERRIDES: readonly StickyOverride[] = [
     id: 'geomTier',
     labelKey: 'settings.performance.geometryTier',
     queryParam: 'geomTier',
-    storageKey: GEOM_TIER_STORAGE_KEY,
     read: (tier) => tier,
     matchesUrl: (raw, value) => raw === value,
     reset: () => useViewerStore.getState().clearGeomTierOverride(),
@@ -35,8 +32,7 @@ export const STICKY_OVERRIDES: readonly StickyOverride[] = [
     id: 'geomWorkers',
     labelKey: 'settings.performance.geometryWorkers',
     queryParam: 'geomWorkers',
-    storageKey: GEOM_WORKERS_STORAGE_KEY,
-    read: () => getGeomWorkerOverride(),
+    read: () => peekGeomWorkerOverride(),
     matchesUrl: (raw, value) => String(Number.parseInt(raw, 10)) === value,
     reset: clearGeomWorkerOverride,
   },

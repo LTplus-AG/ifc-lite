@@ -11,11 +11,24 @@ import type { PropertyCondition, UnreadableListCondition } from './types.js';
 
 type MigrationResult = { groups: FilterGroup[]; unreadableConditions: UnreadableListCondition[] };
 
-export function migrateLegacyListConditions(conditions: readonly PropertyCondition[]): MigrationResult {
+function isStoredCondition(value: unknown): value is PropertyCondition {
+  if (typeof value !== 'object' || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.source === 'string' && typeof row.propertyName === 'string'
+    && typeof row.operator === 'string'
+    && (row.psetName === undefined || typeof row.psetName === 'string')
+    && (row.inherit === undefined || row.inherit === 'type' || row.inherit === 'aggregation');
+}
+
+export function migrateLegacyListConditions(conditions: readonly unknown[]): MigrationResult {
   const rules: FilterRule[] = [];
   const unreadableConditions: UnreadableListCondition[] = [];
 
   for (const condition of conditions) {
+    if (!isStoredCondition(condition)) {
+      unreadableConditions.push({ condition, reason: 'invalid-condition' });
+      continue;
+    }
     if (typeof condition.value !== 'string' && typeof condition.value !== 'number' && typeof condition.value !== 'boolean') {
       unreadableConditions.push({ condition, reason: 'invalid-value' });
       continue;

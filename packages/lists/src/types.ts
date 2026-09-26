@@ -293,10 +293,9 @@ export type ConditionOperator =
   | 'lte'
   | 'exists';
 
-export interface UnreadableListCondition {
-  condition: PropertyCondition;
-  reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value';
-}
+export type UnreadableListCondition =
+  | { condition: PropertyCondition; reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value' }
+  | { condition: unknown; reason: 'invalid-condition' };
 
 // ============================================================================
 // Column Definitions

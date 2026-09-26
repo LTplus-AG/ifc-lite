@@ -166,13 +166,17 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
 
   it('uses the first of two same-named parsed IFC property sets for saved v1 Lists (#5894)', async () => {
     const { store, lists } = await fixture();
-    const matching = lists.getPropertySets(10).filter((set) => set.name === 'Pset_Test')
-      .flatMap((set) => set.properties.filter((property) => property.name === 'FireRating'));
+    const ownSets = lists.getPropertySets(10).filter((set) => set.name === 'Pset_Test');
+    assert.equal(ownSets[0]?.properties.some((property) => property.name === 'FireRating'), false,
+      'the first own set lacks FireRating, so a type merge must not put TYPE before a later own value');
+    const matching = ownSets.flatMap((set) => set.properties.filter((property) => property.name === 'FireRating'));
     assert.deepEqual(matching.map((property) => property.value), ['1HR', '2HR']);
 
     assert.equal(lists.getTypePropertySets?.(10)?.[0]?.properties[0]?.value, 'TYPE');
     for (const [operator, value] of [
-      ['equals', '2HR'], ['notEquals', '2HR'], ['equals', 'TYPE'], ['notEquals', 'TYPE'],
+      ['equals', '1HR'], ['notEquals', '1HR'],
+      ['equals', '2HR'], ['notEquals', '2HR'],
+      ['equals', 'TYPE'], ['notEquals', 'TYPE'],
     ] as const) {
       const definition: ListDefinition = {
         id: 'first-pset', name: 'First pset', createdAt: 0, updatedAt: 0,

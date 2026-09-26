@@ -13,6 +13,16 @@ const property = (operator: ConditionOperator): PropertyCondition => ({
 });
 
 describe('v1 List condition migration (#5894)', () => {
+  it('preserves malformed JSON members as explicit unreadable rows without throwing', () => {
+    const result = migrateLegacyListConditions([null, 42, { source: 'property' }, property('equals')]);
+    expect(result.groups[0].rules).toHaveLength(1);
+    expect(result.unreadableConditions).toEqual([
+      { condition: null, reason: 'invalid-condition' },
+      { condition: 42, reason: 'invalid-condition' },
+      { condition: { source: 'property' }, reason: 'invalid-condition' },
+    ]);
+  });
+
   it('preserves every persisted operator in one AND group for the new Rules evaluator', () => {
     const conditions: PropertyCondition[] = [
       'equals', 'notEquals', 'contains', 'exists', 'gt', 'gte', 'lt', 'lte',

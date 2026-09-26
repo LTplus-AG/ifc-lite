@@ -220,11 +220,28 @@ export async function measureTextContrastOnSurface(
   textClassName: string,
   backdropClassName?: string,
 ): Promise<number> {
+  return measureRenderedTextContrastOnSurface(
+    theme,
+    surfaceClassName,
+    `<span id="txt" class="${textClassName}">Sample text</span>`,
+    '#txt',
+    backdropClassName,
+  );
+}
+
+/** Measure a selector in rendered component markup against its panel surface. */
+export async function measureRenderedTextContrastOnSurface(
+  theme: Theme,
+  surfaceClassName: string,
+  markup: string,
+  textSelector: string,
+  backdropClassName?: string,
+): Promise<number> {
   const css = await compileAppCss();
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    const surfaceMarkup = `<div id="surface" class="${surfaceClassName}"><span id="txt" class="${textClassName}">Sample text</span></div>`;
+    const surfaceMarkup = `<div id="surface" class="${surfaceClassName}">${markup}</div>`;
     const body =
       backdropClassName === undefined
         ? surfaceMarkup
@@ -238,7 +255,7 @@ export async function measureTextContrastOnSurface(
 </html>`;
     await page.setContent(html, { waitUntil: 'load' });
     const surfaceColorRaw = await page.$eval('#surface', (el) => getComputedStyle(el).backgroundColor);
-    const textColorRaw = await page.$eval('#txt', (el) => getComputedStyle(el).color);
+    const textColorRaw = await page.$eval(textSelector, (el) => getComputedStyle(el).color);
     let surface: Rgba;
     if (backdropClassName === undefined) {
       surface = await resolveOverBackdrop(page, surfaceColorRaw, surfaceColorRaw);

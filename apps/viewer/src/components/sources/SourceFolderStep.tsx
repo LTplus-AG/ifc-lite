@@ -274,7 +274,7 @@ export function SourceFolderStep({
           )}
           {!searchActive && childFolders.length > 0 && (
             <div className="border-b px-3 py-2">
-              <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
                 {t('sources.sourceFolderStep.subfoldersHeading')}
               </div>
               <div className="flex flex-wrap gap-1">

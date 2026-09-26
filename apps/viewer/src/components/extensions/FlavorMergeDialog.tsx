@@ -185,13 +185,13 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                 return (
                   <li key={key} className="px-3 py-2 space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
-                      <code className="font-mono uppercase text-[10px] bg-muted rounded px-1.5 py-0.5">
+                      <code className="font-mono uppercase text-xs bg-muted rounded px-1.5 py-0.5">
                         {conflictKind}
                       </code>
-                      <span className="font-mono text-[11px] break-all">{conflict.key}</span>
+                      <span className="font-mono text-xs break-all">{conflict.key}</span>
                     </div>
                     <div
-                      className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
+                      className={`grid gap-2 text-xs ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
                       role="radiogroup"
                       aria-label={t('extensionsFlavors.flavorMergeDialog.resolveAriaLabel', {
                         kind: conflictKind,
@@ -278,10 +278,10 @@ function ResolutionChip({
 }) {
   const { t } = useTranslation();
   return (
-    <button
-      type="button"
+    // The styled rich-content choice participates in the dialog's radio group.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <button type="button" role="radio"
       onClick={onClick}
-      role="radio"
       aria-checked={active}
       aria-label={t('extensionsFlavors.flavorMergeDialog.pickAriaLabel', { label })}
       className={`text-left rounded border px-2 py-1.5 transition-colors ${
@@ -290,10 +290,10 @@ function ResolutionChip({
           : 'border-muted bg-muted/30 hover:bg-muted/50'
       }`}
     >
-      <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">
+      <div className="text-xs uppercase tracking-wide font-semibold text-muted-foreground">
         {label}
       </div>
-      <div className="font-mono text-[10px] mt-0.5 break-all line-clamp-3">
+      <div className="font-mono text-xs mt-0.5 break-all line-clamp-3">
         {formatValue(value)}
       </div>
     </button>

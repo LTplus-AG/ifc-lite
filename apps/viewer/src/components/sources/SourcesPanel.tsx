@@ -357,7 +357,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
 
         {registrationFailures.length > 0 && (
           <div className="border-t px-3 py-2">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
               {t('sources.sourcesPanel.unavailableProviders')}
             </div>
             <ul className="flex flex-col gap-1.5">

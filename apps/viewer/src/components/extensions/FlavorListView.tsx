@@ -161,8 +161,9 @@ export function FlavorListView({
               : t('extensionsFlavors.flavorListView.nameEmptyLabel')}
           </label>
           <div className="flex items-center gap-2">
-            <Input
-              autoFocus
+            {/* The inline editor opens by explicit user action; focus starts in its text field. */}
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <Input autoFocus
               value={creating.name}
               onChange={(e) => setCreating({ ...creating, name: e.target.value })}
               onKeyDown={(e) => {
@@ -232,8 +233,9 @@ export function FlavorListView({
                   <div className="flex items-center gap-2">
                     {isRenaming ? (
                       <>
-                        <Input
-                          autoFocus
+                        {/* Rename opens by explicit user action; focus starts in its text field. */}
+                        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                        <Input autoFocus
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -267,13 +269,13 @@ export function FlavorListView({
                           {displayName}
                         </button>
                         {isActive && (
-                          <span className="text-[10px] uppercase tracking-wide bg-primary/20 text-primary rounded px-1.5 py-0.5 font-semibold">
+                          <span className="text-xs uppercase tracking-wide bg-primary/20 text-primary rounded px-1.5 py-0.5 font-semibold">
                             {t('extensionsFlavors.flavorListView.activeBadge')}
                           </span>
                         )}
                         {hasUncaptured && (
                           <span
-                            className="text-[10px] uppercase tracking-wide bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 font-semibold"
+                            className="text-xs uppercase tracking-wide bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded px-1.5 py-0.5 font-semibold"
                             title={t('extensionsFlavors.flavorListView.uncapturedTitle', {
                               count: uncapturedCount,
                               countDisplay: formatLocaleNumber(locale, uncapturedCount),
@@ -287,15 +289,15 @@ export function FlavorListView({
                       </>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground font-mono break-all">
+                  <div className="text-xs text-muted-foreground font-mono break-all">
                     {flavor.id}
                   </div>
                   {displayDescription && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                    <div className="text-xs text-muted-foreground mt-0.5">
                       {displayDescription}
                     </div>
                   )}
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     {t('extensionsFlavors.flavorListView.statsLine', {
                       ext: formatLocaleNumber(locale, flavor.extensions.length),
                       lens: formatLocaleNumber(locale, flavor.lenses.length),

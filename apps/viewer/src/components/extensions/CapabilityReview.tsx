@@ -161,7 +161,7 @@ export function CapabilityReview({
               <div className="text-muted-foreground mt-0.5">
                 {styleInterpolatedValues(t, 'extensionsPanels.capabilityReview.signedByLabel', [[
                   'fingerprint',
-                  <code key="fingerprint" className="font-mono text-[10px]" title={summary.signature.fingerprint}>
+                  <code key="fingerprint" className="font-mono text-xs" title={summary.signature.fingerprint}>
                     {summary.signature.fingerprint.slice(0, 23)}…
                   </code>,
                 ]], { date: formatExtensionDate(summary.signature.signedAt, locale) })}
@@ -191,11 +191,11 @@ export function CapabilityReview({
             </div>
             {newSinceUpgrade.size > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                   {t('extensionsPanels.capabilityReview.newLabel')}
                 </span>{' '}
                 {[...newSinceUpgrade].map((c) => (
-                  <code key={c} className="font-mono text-[10px] mr-1 bg-amber-500/20 rounded px-1 py-0.5">
+                  <code key={c} className="font-mono text-xs mr-1 bg-amber-500/20 rounded px-1 py-0.5">
                     {c}
                   </code>
                 ))}
@@ -203,11 +203,11 @@ export function CapabilityReview({
             )}
             {droppedSinceUpgrade.length > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                   {t('extensionsPanels.capabilityReview.droppedLabel')}
                 </span>{' '}
                 {droppedSinceUpgrade.map((c) => (
-                  <code key={c} className="font-mono text-[10px] mr-1 line-through opacity-70">
+                  <code key={c} className="font-mono text-xs mr-1 line-through opacity-70">
                     {c}
                   </code>
                 ))}
@@ -294,13 +294,14 @@ export function CapabilityReview({
             <p className="mt-1 text-xs text-muted-foreground">
               {t('extensionsPanels.capabilityReview.confirmInstruction', { phrase: APPROVE_PHRASE })}
             </p>
-            <Input
+            {/* Confirmation appears after an explicit action and requires a typed phrase. */}
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <Input autoFocus
               className="mt-2"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder={APPROVE_PHRASE}
               aria-label={t('extensionsPanels.capabilityReview.confirmAriaLabel', { phrase: APPROVE_PHRASE })}
-              autoFocus
             />
           </div>
         )}
@@ -334,7 +335,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide',
         tier === 'red' && 'bg-destructive/20 text-destructive',
         tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
         tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',

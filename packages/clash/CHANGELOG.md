@@ -1,5 +1,18 @@
 # @ifc-lite/clash
 
+## 2.4.3
+
+### Patch Changes
+
+- [#6022](https://github.com/LTplus-AG/ifc-lite/pull/6022) [`46efab7`](https://github.com/LTplus-AG/ifc-lite/commit/46efab72317a6f9603f236f6f4784e1c7bdb6be4) Thanks [@louistrue](https://github.com/louistrue)! - A through-penetration between two boxes no longer reports a depth larger than the distance that actually separates them.
+  
+  When one box pierces clean through another (a duct through a wall, two crossing walls), the engine reports the bounding-box estimate instead of the exact box depth, because the exact depth is inflated by the piercing member's own length. For rotated boxes that estimate is inflated too, and when a member pokes out of the far face by only microns, float32 rounding decides per placement whether the pair counts as a through-penetration. A 26 mm overlap was reported as 0.026 m at one position and 0.786 m at another, depending only on where the model sat.
+  
+  The reported depth of a through-penetration between two boxes is now capped by the exact box depth. That distance is proven to separate the pair, so a larger number over-reports it. In the case above, both sides of the tie now report the same 26 mm, and the result is still labelled an estimate. A thin member through a thick element, where the estimate is smaller than the exact depth, is unchanged. On 11 sample models (about 370 clash records), no reported depth or label changes.
+- Updated dependencies [[`46efab7`](https://github.com/LTplus-AG/ifc-lite/commit/46efab72317a6f9603f236f6f4784e1c7bdb6be4), [`443e013`](https://github.com/LTplus-AG/ifc-lite/commit/443e013ac6c1b5664a43c9b5df2e5600219c706b), [`d3d2d6f`](https://github.com/LTplus-AG/ifc-lite/commit/d3d2d6fd64ef66ffb6dc4f117c188661ecfa05a5), [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b), [`88b454a`](https://github.com/LTplus-AG/ifc-lite/commit/88b454a10da0f27b90799cbc1469fccf9d70a2c7), [`0476281`](https://github.com/LTplus-AG/ifc-lite/commit/0476281b0476ec65564e65b6fc7cfe729a3982bb), [`773a54f`](https://github.com/LTplus-AG/ifc-lite/commit/773a54ff450d872bc6cd49ec7e0a1108b965cf96), [`da22190`](https://github.com/LTplus-AG/ifc-lite/commit/da22190245789a7e3240b8dbb6de5717415ac448)]:
+  - @ifc-lite/wasm@10.2.0
+  - @ifc-lite/parser@9.0.1
+
 ## 2.4.2
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @ifc-lite/server-client
 
+## 4.0.0
+
+### Major Changes
+
+- [#5791](https://github.com/LTplus-AG/ifc-lite/pull/5791) [`013b43c`](https://github.com/LTplus-AG/ifc-lite/commit/013b43cea4d7bff58c803b7774666d8b0d122026) Thanks [@louistrue](https://github.com/louistrue)! - **Migration: `getCached(key)` now throws for a key that is not a request `cache_key`. Callers who followed the old docs and passed the bare SHA-256 file hash used to get `null`; against a server that includes [#5750](https://github.com/LTplus-AG/ifc-lite/issues/5750) they now get an `IfcServerError` with `status` 400 and `code` `BAD_REQUEST`. Pass `result.cache_key` (the `cache_key` a parse returned) instead. `null` still means "well-formed key, nothing cached".**
+  
+  Errors from the server are now thrown as `IfcServerError`, which carries the HTTP `status` and the server's error `code` (`NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `OVERLOADED`, ...). It extends `Error` and keeps the same `message`, so existing `catch` blocks are unaffected. A JSON body that is not the server's error envelope no longer produces the message `Server error (undefined): undefined`; it falls back to the HTTP status, with `code` set to `HTTP_<status>`. The `getCached` docs now say what `key` is: the `cache_key` a parse returned, not the bare file hash.
+
+### Patch Changes
+
+- [#6069](https://github.com/LTplus-AG/ifc-lite/pull/6069) [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b) Thanks [@louistrue](https://github.com/louistrue)! - Preserve server forwarded IFC material associations and their names, categories, and definition identities so server parsed models can evaluate material values without mistaking partial legacy payloads for verified mismatches.
+
 ## 3.2.0
 
 ### Minor Changes

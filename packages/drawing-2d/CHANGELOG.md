@@ -1,5 +1,11 @@
 # @ifc-lite/drawing-2d
 
+## 4.0.4
+
+### Patch Changes
+
+- [#6062](https://github.com/LTplus-AG/ifc-lite/pull/6062) [`9dec151`](https://github.com/LTplus-AG/ifc-lite/commit/9dec1513c91a5db36f35fcbc77b2932103e1574e) Thanks [@louistrue](https://github.com/louistrue)! - Preserve distinct submillimetre cut faces when merging drawing lines.
+
 ## 4.0.3
 
 ### Patch Changes

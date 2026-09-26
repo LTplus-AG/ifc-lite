@@ -35,6 +35,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { localizedFlavorName } from './localized-flavor-metadata';
@@ -94,8 +95,8 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
     toast.success(t('extensionsPanels.privacyPanel.exportLogToast'));
   };
 
-  const handleClearLog = () => {
-    if (!confirm(t('extensionsPanels.privacyPanel.clearLogConfirm'))) return;
+  const handleClearLog = async () => {
+    if (!await confirmDialog({ description: t('extensionsPanels.privacyPanel.clearLogConfirm'), destructive: true })) return;
     host.actionLog.clear();
     // Wipe the IDB mirror too — otherwise reload would resurrect the
     // events the user just asked to forget.

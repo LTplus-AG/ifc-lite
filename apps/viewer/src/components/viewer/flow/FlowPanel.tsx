@@ -14,6 +14,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
 import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
+import { confirmDialog, promptDialog } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { addNode } from '@/lib/flow/editor-ops';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -109,8 +110,8 @@ export function FlowPanel() {
     setFlowDoc(doc);
   }, [setFlowDoc, isContributedOpen]);
 
-  const onNew = () => {
-    const name = window.prompt(t('flowPanel.newPrompt'), t('flowPanel.newDefaultName'));
+  const onNew = async () => {
+    const name = await promptDialog({ description: t('flowPanel.newPrompt'), defaultValue: t('flowPanel.newDefaultName') });
     if (name === null) return;
     if (createFlow(name) === null) setNotice(t('flowPanel.limitReached'));
   };
@@ -136,9 +137,9 @@ export function FlowPanel() {
     else setNotice(null);
   };
 
-  const onDelete = () => {
+  const onDelete = async () => {
     if (!flowDoc || isContributedOpen) return;
-    if (!window.confirm(t('flowPanel.deleteConfirm', { name: flowDoc.name }))) return;
+    if (!await confirmDialog({ description: t('flowPanel.deleteConfirm', { name: flowDoc.name }), destructive: true })) return;
     deleteFlow(flowDoc.id);
   };
 

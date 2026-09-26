@@ -14,6 +14,7 @@
 
 import { ChevronDown, Pencil, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { promptDialog } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,13 +42,13 @@ export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) 
   const cuts = useSavedSectionCuts((s) => s.cuts);
   const activeCutId = useSavedSectionCuts((s) => s.activeCutId);
 
-  const handleSaveCurrent = () => {
-    const name = window.prompt(t('section2d.savedCuts.savePrompt'), '')?.trim();
+  const handleSaveCurrent = async () => {
+    const name = (await promptDialog({ description: t('section2d.savedCuts.savePrompt'), defaultValue: '' }))?.trim();
     if (name) saveCurrentSectionCut(name);
   };
 
-  const handleRename = (id: string, currentName: string) => {
-    const name = window.prompt(t('section2d.savedCuts.renamePrompt'), currentName)?.trim();
+  const handleRename = async (id: string, currentName: string) => {
+    const name = (await promptDialog({ description: t('section2d.savedCuts.renamePrompt'), defaultValue: currentName }))?.trim();
     if (name) renameSavedSectionCut(id, name);
   };
 

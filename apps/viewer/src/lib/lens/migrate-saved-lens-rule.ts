@@ -26,25 +26,22 @@ export function migrateSavedLensRule(input: unknown): LensRule | null {
     action: input.action as LensRule['action'], color: input.color,
   };
   if (Array.isArray(input.groups)) {
-    // The v1 field is retired in the last stack step. Until then, use an inert
-    // placeholder so old consumers cannot accidentally reinterpret a v2 rule.
-    const v2Core = { ...core, criteria: { type: 'and' as const, conditions: [] } };
     const groups: FilterGroup[] = input.groups.every(isFilterGroup) ? input.groups : [];
     if (groups.length === 0 && input.groups.length > 0) {
-      return { ...v2Core, groups, unreadableLegacy: {
+      return { ...core, groups, unreadableLegacy: {
         criteria: input.groups, reason: 'Saved filter groups are unreadable',
       } };
     }
     const prior = input.unreadableLegacy;
     return record(prior) && typeof prior.reason === 'string' && 'criteria' in prior
-      ? { ...v2Core, groups, unreadableLegacy: { criteria: prior.criteria, reason: prior.reason } }
-      : { ...v2Core, groups };
+      ? { ...core, groups, unreadableLegacy: { criteria: prior.criteria, reason: prior.reason } }
+      : { ...core, groups };
   }
 
   if (!record(input.criteria) || typeof input.criteria.type !== 'string') return null;
   const criteria = input.criteria as unknown as LensCriteria;
   const converted = legacyCriteriaToFilterGroups(criteria);
   return converted.status === 'readable'
-    ? { ...core, criteria, groups: converted.groups }
-    : { ...core, criteria, groups: [], unreadableLegacy: { criteria, reason: converted.reason } };
+    ? { ...core, groups: converted.groups }
+    : { ...core, groups: [], unreadableLegacy: { criteria, reason: converted.reason } };
 }

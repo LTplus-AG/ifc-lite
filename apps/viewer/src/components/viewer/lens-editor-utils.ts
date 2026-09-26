@@ -87,7 +87,7 @@ export function cloneCriteria(criteria: LensCriteria, depth = 0): LensCriteria {
 export function cloneLensRules(rules: readonly LensRule[]): LensRule[] {
   return rules.map((r) => ({
     ...r,
-    criteria: cloneCriteria(r.criteria),
+    ...(r.criteria ? { criteria: cloneCriteria(r.criteria) } : {}),
     ...(r.groups ? { groups: structuredClone(r.groups) } : {}),
     ...(r.unreadableLegacy ? { unreadableLegacy: structuredClone(r.unreadableLegacy) } : {}),
   }));
@@ -115,58 +115,9 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
   return copy;
 }
 
-/**
- * Check if a rule has sufficient criteria to be valid / saveable.
- *
- * A compound (`and` / `or`) with at least one member is valid even though
- * the panel cannot author its members - the prior `default: return false`
- * branch silently dropped every compound rule from `rules` on Save (the
- * `LensEditor`'s `handleSave` filters through this predicate), destroying an
- * imported compound rule the moment its lens was opened and re-saved. An
- * empty/missing `conditions` array is treated as invalid, matching the
- * engine's own fail-closed semantics for an empty group.
- *
- * A compound's members are validated recursively rather than just checked
- * for a non-empty array: an `and` wrapping an incomplete leaf (e.g.
- * `{ type: 'ifcType' }`, missing `ifcType`) can never match - `and` requires
- * EVERY member to match - so it must be dropped exactly like the bare
- * incomplete leaf would be, or Save silently persists a permanently-inert
- * rule. An `or` only needs ONE valid member, mirroring the engine's own
- * `matchesCompound`, where the other members of an `or` can still match even
- * if one is absent/malformed. A non-object member (see {@link cloneCriteria}
- * for why this is reachable via hand-edited import JSON) is invalid.
- */
+/** Save rules that have shared filters or preserved unreadable source data. */
 export function isRuleValid(rule: LensRule): boolean {
-  if (rule.unreadableLegacy) return true;
-  if (rule.groups) return rule.groups.some((group) => group.rules.length > 0);
-  return isCriteriaValid(rule.criteria, 0);
-}
-
-function isCriteriaValid(c: LensCriteria, depth: number): boolean {
-  switch (c.type) {
-    case 'ifcType': return !!c.ifcType;
-    case 'attribute': return !!c.attributeName;
-    case 'property': return !!c.propertySet && !!c.propertyName;
-    case 'quantity': return !!c.quantitySet && !!c.quantityName;
-    case 'classification': return !!c.classificationSystem || !!c.classificationCode;
-    case 'material': return !!c.materialName;
-    case 'model': return !!c.modelId;
-    // A blank group name is valid - it matches any entity assigned to a zone.
-    case 'group': return true;
-    case 'and': {
-      if (depth >= MAX_COMPOUND_DEPTH) return false;
-      const conditions = c.conditions;
-      if (!Array.isArray(conditions) || conditions.length === 0) return false;
-      return conditions.every((m) => isCriteriaLike(m) && isCriteriaValid(m, depth + 1));
-    }
-    case 'or': {
-      if (depth >= MAX_COMPOUND_DEPTH) return false;
-      const conditions = c.conditions;
-      if (!Array.isArray(conditions) || conditions.length === 0) return false;
-      return conditions.some((m) => isCriteriaLike(m) && isCriteriaValid(m, depth + 1));
-    }
-    default: return false;
-  }
+  return !!rule.unreadableLegacy || !!rule.groups?.some((group) => group.rules.length > 0);
 }
 
 /**

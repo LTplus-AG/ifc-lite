@@ -12,7 +12,6 @@ import type {
   AutoColorLegendEntry,
   ClassificationInfo,
 } from './types.js';
-import { matchesCriteria } from './matching.js';
 import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
 
 /**
@@ -24,12 +23,14 @@ import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
  *
  * @param lens - Lens configuration to evaluate
  * @param provider - Data provider for entity access
+ * @param matchedByRule - Global IDs selected by the shared FilterGroup
+ *   evaluator for each rule. Missing entries fail closed.
  * @returns Color map, hidden IDs, per-rule counts, and execution time
  */
 export function evaluateLens(
   lens: Lens,
   provider: LensDataProvider,
-  matchedByRule?: ReadonlyMap<string, ReadonlySet<number>>,
+  matchedByRule: ReadonlyMap<string, ReadonlySet<number>>,
 ): LensEvaluationResult {
   const startTime = performance.now();
 
@@ -60,8 +61,7 @@ export function evaluateLens(
 
     // First matching rule wins
     for (const rule of enabledRules) {
-      const selected = matchedByRule?.get(rule.id);
-      if (selected ? selected.has(globalId) : !!rule.criteria && !rule.unreadableLegacy && matchesCriteria(rule.criteria, globalId, provider)) {
+      if (!rule.unreadableLegacy && matchedByRule.get(rule.id)?.has(globalId)) {
         matched = true;
         ruleCounts.set(rule.id, (ruleCounts.get(rule.id) ?? 0) + 1);
         ruleEntityIds.get(rule.id)!.push(globalId);

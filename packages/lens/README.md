@@ -1,6 +1,6 @@
 # @ifc-lite/lens
 
-Rule-based 3D filtering and colorization for IFC models. A pure, framework-agnostic evaluation engine: you define lenses whose rules match entities by IFC class, property value, material, or classification, and apply visual actions (colorize, hide, make transparent). The engine has zero dependencies and reads model data through a small `LensDataProvider` interface, so it works with any data store.
+Rule-based 3D filtering and colorization for IFC models. A framework-agnostic action engine: evaluate each rule's shared `FilterGroup[]` against your model, then apply visual actions (colorize, hide, make transparent) to the selected global IDs. `LensDataProvider` supplies entity iteration and auto-color data from any data store.
 
 ## Install
 
@@ -17,8 +17,9 @@ import type { LensDataProvider } from '@ifc-lite/lens';
 // Bridge your data source (IfcDataStore, a server API, IndexedDB, ...)
 // to the engine by implementing LensDataProvider.
 declare const provider: LensDataProvider;
+declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
 
-const result = evaluateLens(BUILTIN_LENSES[0], provider);
+const result = evaluateLens(BUILTIN_LENSES[0], provider, selectedByRule);
 // result.colorMap   - Map<globalId, RGBAColor>
 // result.hiddenIds  - Set<globalId>
 // result.ruleCounts - Map<ruleId, count>
@@ -26,10 +27,11 @@ const result = evaluateLens(BUILTIN_LENSES[0], provider);
 
 ## Features
 
-The viewer stores manual rules as shared `FilterGroup[]` chips. Programmatic
-callers can pass the selected global IDs for each rule as the optional third
-argument to `evaluateLens`; existing `criteria` callers remain supported
-during the migration.
+The viewer stores manual rules as shared `FilterGroup[]` chips. Evaluate each
+rule with `@ifc-lite/rules`, convert model-local IDs to global IDs, and pass
+those ID sets by rule ID as the required third argument to `evaluateLens`.
+Missing selections match nothing. The legacy `matchesCriteria` helper remains
+exported only during the stacked migration; `evaluateLens` no longer uses it.
 
 - `evaluateLens` / `evaluateAutoColorLens`: turn a `Lens` definition into color and visibility maps
 - Auto-color mode: assign distinct colors per IFC class, property value, or material automatically, with a generated legend

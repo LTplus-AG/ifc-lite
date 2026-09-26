@@ -44,8 +44,9 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
-import { landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
+import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
+import { landXmlExportExtension } from '@/lib/export/landXmlIfcImagery.js';
 import { roomExportPathPrefix } from '@/lib/collab/room-export-paths';
 import { preferredExportModelId } from './export-model-default';
 import { canExportRoomAsStep, roomStepExportSource } from '@/lib/collab/room-step-export';
@@ -281,10 +282,10 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
     if (!isIfc5 || !selectedModel?.ifcDataStore) return false;
     return hasFilterableIfc5Properties(selectedModel.ifcDataStore, getMutationView(selectedModelId));
   }, [isIfc5, selectedModel, selectedModelId, getMutationView, mutationVersion]);
-
-  const packagesImages = exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId);
-  const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, packagesImages),
-    [isIfc5, changesOnly, packagesImages]);
+  const landXmlSource = useMemo(() => landXmlDownloadInput(landXmlPlan, schema, selectedModel), [landXmlPlan, schema, selectedModel]);
+  const stepContainer = landXmlSource ? landXmlExportExtension(landXmlSource.document, landXmlSource.imagery)
+    : exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId) ? '.ifczip' : '.ifc';
+  const outputInfo = useMemo(() => exportOutputInfo(isIfc5, changesOnly, stepContainer), [isIfc5, changesOnly, stepContainer]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
     if (!schema || (exportScope === 'single' && !selectedModel)) {
@@ -304,9 +305,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
 
     // LandXML has no IfcDataStore to re-serialise: it is DERIVED into IFC4X3
     // through the mapping, never converted to the selector's schema.
-    if (landXmlPlan?.covered && !changesOnly && schema === 'IFC4X3' && selectedModel?.landXmlDocument) {
-      const outcome = await landXmlIfcExportOutcome({ document: selectedModel.landXmlDocument, name: selectedModel.name,
-        imagery: 'terrainImagery' in selectedModel ? selectedModel.terrainImagery : undefined }, t); // #5942 §15.5
+    if (landXmlSource && !changesOnly) {
+      const outcome = await landXmlIfcExportOutcome(landXmlSource, t);
       if (outcome.success) {
         trackExportCompleted({ format: 'ifc', surface });
       }
@@ -552,7 +552,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, t, surface]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo, exportAllowed, landXmlSource, t, surface]);
 
   return (
     <ExportDialogShell

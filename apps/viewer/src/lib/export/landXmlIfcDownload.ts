@@ -15,7 +15,7 @@
 
 import type { LandXmlIfcOptions } from '@ifc-lite/create';
 import { buildExportFilename, downloadBlob, stripExtension } from './download.js';
-import { landXmlIfcSource } from './landXmlIfcPlan.js';
+import { landXmlIfcSource, type LandXmlExportPlan } from './landXmlIfcPlan.js';
 import { landXmlToIfcArchive, type AppearancePlanRunner } from './landXmlIfcImagery.js';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
@@ -38,6 +38,20 @@ export type LandXmlIfcDownloadResult =
     imagery: { status: 'exported'; entryName: string } | { status: 'none' } | { status: 'refused'; reason: string };
   }
   | { status: 'refused'; reason: string };
+
+/**
+ * The conversion an export of `model` runs, or null when it is not a LandXML
+ * conversion. The dialog's Output row and its export handler both read this,
+ * so the container the row names is the one the handler writes (#5942).
+ */
+export function landXmlDownloadInput(
+  plan: LandXmlExportPlan | null,
+  schema: string | null | undefined,
+  model: { name: string; landXmlDocument?: LandXmlTinDocument; terrainImagery?: TerrainImageryDrape } | undefined,
+): LandXmlIfcDownloadInput | null {
+  if (!plan?.covered || schema !== 'IFC4X3' || !model?.landXmlDocument) return null;
+  return { document: model.landXmlDocument, name: model.name, imagery: model.terrainImagery };
+}
 
 /** The browser's planner: the appearance worker, one job, then released. */
 const workerPlanner: AppearancePlanRunner = async (source, request) => {

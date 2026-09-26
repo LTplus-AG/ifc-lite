@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { strFromU8, unzipSync } from 'fflate';
 import { writeArrayBuffer } from 'geotiff';
 import type { AppearancePlanRunner } from './landXmlIfcImagery.js';
-import { landXmlToIfcArchive, plannerMapping, writtenCoveredFraction } from './landXmlIfcImagery.js';
+import { landXmlExportExtension, landXmlToIfcArchive, plannerMapping, writtenCoveredFraction } from './landXmlIfcImagery.js';
 import { landXmlIfcSource } from './landXmlIfcPlan.js';
 import { drapeProjection } from '@/lib/terrain-imagery/drape-projection.js';
 import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
@@ -72,13 +72,16 @@ before(async () => {
 
 async function exportOrtho(image: NonNullable<TerrainImageryDrape['image']>, overrides: Partial<TerrainImageryDrape> = {}) {
   const document = orthoTerrainDocument();
+  const draped = drape(image, overrides);
   const result = await landXmlToIfcArchive(
     document, landXmlIfcSource(document),
     { sourceFileName: 'terrain.xml', timestampMs: 0, crs: { Name: ORTHO.crs } },
-    'terrain.ifc', drape(image, overrides), plan!,
+    'terrain.ifc', draped, plan!,
   );
   assert.equal(result.status, 'exported');
   assert.ok(result.status === 'exported' && result.content instanceof Uint8Array, 'imagery makes an .ifcZIP');
+  // The export dialog's Output row reads this function (#5942 follow-up).
+  assert.equal(result.extension, landXmlExportExtension(document, draped));
   return result;
 }
 

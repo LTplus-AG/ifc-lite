@@ -12,16 +12,18 @@ export interface ExportOutputInfo {
  * The file the current options actually produce.
  *
  * Kept out of `ExportDialog.tsx` because it is the one thing in that component
- * a reader checks against what landed on disk, and it is pure: four inputs,
- * no state. A LandXML→IFC4X3 conversion lands on the `.ifc` branch, which is
- * correct — it is a STEP file like any other (#4937).
+ * a reader checks against what landed on disk, and it is pure. A STEP export's
+ * container is passed in by the code that writes it, and the label follows
+ * it, so the row cannot name `.ifc` while an `.ifczip` is written (#5942): a
+ * LandXML→IFC4X3 conversion reads `landXmlExportExtension`, which chooses the
+ * filename's extension too.
  */
 export function exportOutputInfo(
-  isIfc5: boolean, changesOnly: boolean, packagesImages: boolean,
+  isIfc5: boolean, changesOnly: boolean, stepContainer: '.ifc' | '.ifczip',
 ): ExportOutputInfo {
   if (changesOnly) {
     return isIfc5 ? { ext: '.ifcx', label: 'IFCX (JSON)' } : { ext: '.json', label: 'JSON' };
   }
   if (isIfc5) return { ext: '.ifcx', label: 'IFCX (JSON + USD geometry)' };
-  return packagesImages ? { ext: '.ifczip', label: 'IFC + images' } : { ext: '.ifc', label: 'IFC (STEP)' };
+  return stepContainer === '.ifczip' ? { ext: '.ifczip', label: 'IFC + images' } : { ext: '.ifc', label: 'IFC (STEP)' };
 }

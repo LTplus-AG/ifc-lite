@@ -13,6 +13,7 @@ import { posthog } from '@/lib/analytics';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog.js';
+import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
 const initialState = useViewerStore.getState();
 
@@ -431,6 +432,65 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     assert.match(text, /SWEREF99 TM/);
     assert.match(text, /coordinate-order check cannot run/);
     assert.doesNotMatch(text, /No coordinate reference system is declared/);
+  });
+
+  it('names the declared CRS a coordinate reference system, not a datum (#5942 follow-up)', () => {
+    // A real 3D-Win terrain declares `epsgCode="3875"`: an EPSG CRS, which
+    // the dialog called a "declared datum".
+    const georeferenced = terrainWithDocument('survey.xml', { coordinateSystem: { horizontalDatum: 'EPSG:3875' } });
+    useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /declared coordinate reference system \(EPSG:3875\)/);
+    assert.doesNotMatch(text, /datum/);
+  });
+
+  /** The Output row: the badge (format label) and the extension beside it. */
+  function outputRow(): string {
+    const label = [...document.querySelectorAll('label')].find((candidate) => candidate.textContent?.trim() === 'Output');
+    assert.ok(label?.parentElement, 'the dialog shows its Output row');
+    return label.parentElement.textContent ?? '';
+  }
+
+  function draped(source: TerrainImageryDrape['source']): TerrainImageryDrape {
+    return {
+      sourceName: source === 'file' ? 'ortho.png' : 'OpenStreetMap', source, placement: 'world file',
+      imageCrs: 'EPSG:3067', imageCrsSource: 'ortho.prj',
+      projection: {
+        crs: 'EPSG:3875', origin: [157880, 6406970], axisU: [1, 0], axisV: [0, 1],
+        extent: [40, 40], imageSize: [80, 80], deviationPx: 0,
+      },
+      reprojected: true, totalVertices: 3, coveredVertices: 3, displayedGsd: 0.5,
+      flatColour: [0.42, 0.62, 0.32], textureId: -1,
+      ...(source === 'file' ? { image: { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), mime: 'image/png' as const, sha256: 'a'.repeat(64) } } : {}),
+    };
+  }
+
+  it('says .ifczip in the Output row when file imagery ships beside the IFC (#5942 follow-up)', () => {
+    // The real-data run wrote an .ifcZIP while this row said "IFC (STEP) .ifc".
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('file');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const row = outputRow();
+    assert.match(row, /IFC \+ images/);
+    assert.match(row, /\.ifczip$/);
+  });
+
+  it('keeps .ifc in the Output row, and writes .ifc, when the drape is viewer-only tiles', async () => {
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('tiles');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    assert.match(outputRow(), /IFC \(STEP\)\.ifc$/);
+    const { filename } = await captureAsyncDownload(() => click(exportButton()));
+    assert.match(filename, /\.ifc$/, 'the row names the file that is written');
   });
 
   it('refuses a merged scope that contains a covered LandXML model, naming the scope as the fix', () => {

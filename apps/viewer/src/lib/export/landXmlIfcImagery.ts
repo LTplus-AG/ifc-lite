@@ -37,12 +37,14 @@ import { computeFullSourceHash } from '@/utils/sourceContentHash.js';
 /** The planner, as the browser (a worker) or a test (the wasm directly) runs it. */
 export type AppearancePlanRunner = (source: Uint8Array, request: AppearanceRequest) => Promise<AppearancePlan>;
 
+export type LandXmlIfcExtension = '.ifczip' | '.ifc';
+
 export type LandXmlIfcArchiveResult =
   | {
     status: 'exported';
     /** A `.ifcZIP` when the imagery was written, plain STEP text otherwise. */
     content: Uint8Array | string;
-    extension: '.ifczip' | '.ifc';
+    extension: LandXmlIfcExtension;
     surfaces: number;
     surveyPoints: number;
     alignments: number;
@@ -50,6 +52,36 @@ export type LandXmlIfcArchiveResult =
     imagery: { status: 'exported'; entryName: string } | { status: 'none' } | { status: 'refused'; reason: string };
   }
   | { status: 'refused'; reason: string };
+
+type DrapeImage = NonNullable<TerrainImageryDrape['image']>;
+type DrapeShipment =
+  | { status: 'ship'; image: DrapeImage; linearScaleToMeters: number }
+  | { status: 'refused'; reason: string };
+
+/**
+ * Whether a drape can be packaged with the terrain, decided before anything
+ * is written (§15.2 item 7: tiles never are).
+ */
+function drapeShipment(document: LandXmlTinDocument, drape: TerrainImageryDrape): DrapeShipment {
+  if (drape.source === 'tiles' || !drape.image) {
+    return { status: 'refused', reason: 'Map-tile imagery is draped in the viewer only and is never exported.' };
+  }
+  if (!document.units) return { status: 'refused', reason: 'The terrain has no resolved units to scale the texture mapping by.' };
+  return { status: 'ship', image: drape.image, linearScaleToMeters: document.units.linearScaleToMeters };
+}
+
+/**
+ * The container a LandXML export is written in: `.ifczip` when its draped
+ * imagery ships beside the IFC, `.ifc` otherwise. `landXmlToIfcArchive`
+ * chooses its extension by this, and the export dialog's Output row reads it,
+ * so the two cannot disagree (#5942). Only the appearance planner can still
+ * refuse at export time, and that refusal is reported by name.
+ */
+export function landXmlExportExtension(
+  document: LandXmlTinDocument, drape: TerrainImageryDrape | undefined,
+): LandXmlIfcExtension {
+  return drape && drapeShipment(document, drape).status === 'ship' ? '.ifczip' : '.ifc';
+}
 
 /**
  * The covered fraction over the WRITTEN TIN's vertices (§15.3): points of a
@@ -96,7 +128,7 @@ export function imageEntryName(sourceName: string, extension: string, modelEntry
 }
 
 /** The image to ship: PNG/JPEG as supplied, a GeoTIFF as a lossless PNG (§15.5). */
-async function shippedImage(image: NonNullable<TerrainImageryDrape['image']>): Promise<{ bytes: Uint8Array; extension: string; transcoded: boolean }> {
+async function shippedImage(image: DrapeImage): Promise<{ bytes: Uint8Array; extension: string; transcoded: boolean }> {
   if (image.mime === 'image/png') return { bytes: image.bytes, extension: '.png', transcoded: false };
   if (image.mime === 'image/jpeg') return { bytes: image.bytes, extension: '.jpg', transcoded: false };
   const { fromArrayBuffer } = await import('geotiff');
@@ -152,16 +184,14 @@ export async function landXmlToIfcArchive(
     };
   };
   if (!drape) return plain({ status: 'none' });
-  if (drape.source === 'tiles' || !drape.image) {
-    return plain({ status: 'refused', reason: 'Map-tile imagery is draped in the viewer only and is never exported.' });
-  }
-  if (!document.units) return plain({ status: 'refused', reason: 'The terrain has no resolved units to scale the texture mapping by.' });
-  const shipped = await shippedImage(drape.image);
+  const shipment = drapeShipment(document, drape);
+  if (shipment.status === 'refused') return plain(shipment);
+  const shipped = await shippedImage(shipment.image);
   const entryName = imageEntryName(drape.sourceName, shipped.extension, modelEntry);
   const shippedHash = shipped.transcoded ? await computeFullSourceHash(shipped.bytes) : null;
   const imagery: LandXmlIfcImagery = {
     sourceFileName: drape.sourceName,
-    sourceHash: drape.image.sha256,
+    sourceHash: shipment.image.sha256,
     placement: drape.placement === 'GeoTIFF' ? 'GeoTIFF' : 'world file',
     crs: drape.imageCrs,
     projection: {
@@ -180,7 +210,7 @@ export async function landXmlToIfcArchive(
     planned = await plan(new TextEncoder().encode(result.content), {
       schema: 'IFC4X3', sourceRevision: 'landxml-imagery-export', nextExpressId: maxExpressId(result.content) + 1,
       productIds, imageUri: entryName, repeatS: false, repeatT: false,
-      mapping: plannerMapping(drape.projection, document.units.linearScaleToMeters),
+      mapping: plannerMapping(drape.projection, shipment.linearScaleToMeters),
     });
   } catch (error) {
     return plain({ status: 'refused', reason: error instanceof Error ? error.message : String(error) });
@@ -196,7 +226,7 @@ export async function landXmlToIfcArchive(
     [entryName]: [shipped.bytes, { level: 0 }],
   });
   return {
-    status: 'exported', content: archive, extension: '.ifczip', imagery: { status: 'exported', entryName },
+    status: 'exported', content: archive, extension: landXmlExportExtension(document, drape), imagery: { status: 'exported', entryName },
     surfaces: result.coverage.surfaces, surveyPoints: result.coverage.surveyPoints, alignments: result.coverage.alignments ?? 0,
   };
 }

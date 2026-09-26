@@ -16,7 +16,7 @@ import { EXPRESS_CATEGORY_ATTRIBUTE, EXPRESS_IS_VENTILATED_ATTRIBUTE, EXPRESS_NA
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PersistentCollapsible } from './PersistentCollapsible';
 
-const TYPE_LABEL_KEYS: Record<string, TranslationKey> = {
+export const TYPE_LABEL_KEYS: Record<MaterialInfo['type'], TranslationKey> = {
   Material: 'properties.material.typeLabel.material',
   MaterialLayerSet: 'properties.material.typeLabel.layerSet',
   MaterialProfileSet: 'properties.material.typeLabel.profileSet',
@@ -197,7 +197,7 @@ function MaterialRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatThickness(thickness: number, locale: string): string {
+export function formatThickness(thickness: number, locale: string): string {
   if (thickness <= 0) return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;
   if (thickness >= 1) {
     return `${formatLocaleNumber(locale, thickness, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`;

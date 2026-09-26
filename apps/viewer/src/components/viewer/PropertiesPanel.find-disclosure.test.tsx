@@ -39,10 +39,15 @@ DATA;
 #181= IFCQUANTITYLENGTH('Width',$,$,200.);
 #180= IFCELEMENTQUANTITY('${guid('QTO')}',$,'Qto_WallBaseQuantities',$,$,(#181));
 #182= IFCRELDEFINESBYPROPERTIES('${guid('RDQ')}',$,$,$,(#72,#73),#180);
-#200= IFCMATERIAL('Concrete',$,$);
+#200= IFCMATERIAL('Concrete','Load-bearing concrete',$);
 #201= IFCPROPERTYSINGLEVALUE('ThermalConductivity',$,IFCREAL(1.4),$);
 #202= IFCMATERIALPROPERTIES('Pset_MaterialConcrete',$,(#201),#200);
 #203= IFCRELASSOCIATESMATERIAL('${guid('MAT')}',$,$,$,(#72,#73),#200);
+#210= IFCCLASSIFICATIONREFERENCE('https://class.example','EF_25','External walls',#211,'Wall class',$);
+#211= IFCCLASSIFICATION('CSI','2015',$,'Uniclass 2015',$,$,$);
+#212= IFCRELASSOCIATESCLASSIFICATION('${guid('CLS')}',$,$,$,(#72,#73),#210);
+#220= IFCDOCUMENTREFERENCE('https://docs.example/spec.pdf','DOC-1','Fire spec','Safety notes',$);
+#221= IFCRELASSOCIATESDOCUMENT('${guid('DOC')}',$,$,$,(#72,#73),#220);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -137,6 +142,36 @@ describe('Properties find and section disclosure (#5899)', () => {
     assert.equal(material.getAttribute('aria-expanded'), 'false');
     act(() => useViewerStore.setState({ selectedEntity: { modelId: 'm', expressId: 73 }, selectedEntityId: 1_000_073 }));
     assert.equal(namedButton(panel, 'Concrete').getAttribute('aria-expanded'), 'false');
+  });
+
+  it('finds related IFC classification, material and document attribute rows and opens their cards', async () => {
+    await seed();
+    const panel = render(<PropertiesPanel />);
+    const find = panel.querySelector<HTMLInputElement>('input[aria-label="Find properties"]');
+    assert.ok(find);
+
+    type(find, 'EF_25');
+    assert.equal(namedButton(panel, 'Uniclass 2015').getAttribute('aria-expanded'), 'true');
+    assert.equal(panel.querySelector('mark')?.textContent, 'EF_25');
+    assert.match(panel.textContent ?? '', /Identification/);
+    assert.doesNotMatch(panel.textContent ?? '', /FireRating|Safety notes|Load-bearing concrete/);
+
+    type(find, 'Wall class');
+    assert.equal(namedButton(panel, 'Uniclass 2015').getAttribute('aria-expanded'), 'true');
+    assert.equal(panel.querySelector('mark')?.textContent, 'Wall class');
+    assert.doesNotMatch(panel.textContent ?? '', /EF_25|External walls|Safety notes/);
+
+    type(find, 'Load-bearing concrete');
+    assert.equal(namedButton(panel, 'Concrete').getAttribute('aria-expanded'), 'true');
+    assert.match(panel.textContent ?? '', /Description/);
+    assert.equal(panel.querySelector('mark')?.textContent, 'Load-bearing concrete');
+    assert.doesNotMatch(panel.textContent ?? '', /FireRating|Safety notes|EF_25|Name/);
+
+    type(find, 'Safety notes');
+    assert.equal(namedButton(panel, 'Fire spec').getAttribute('aria-expanded'), 'true');
+    assert.equal(panel.querySelector('mark')?.textContent, 'Safety notes');
+    assert.doesNotMatch(panel.textContent ?? '', /FireRating|EF_25|Load-bearing concrete|DOC-1/);
+    assert.equal(panel.querySelector('output'), null, 'a match in an associated entity must not show no-results');
   });
 
   it('uses Properties as the panel name in the viewer and registry', () => {

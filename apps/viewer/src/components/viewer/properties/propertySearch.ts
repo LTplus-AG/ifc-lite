@@ -45,3 +45,11 @@ export function filterMaterialPropertyGroups(groups: readonly MaterialPsetGroup[
     return psets.length > 0 ? [{ ...group, psets }] : [];
   });
 }
+
+/** Keep a search hit visible when it lives on the other Properties tab. */
+export function searchTabForHits(tab: string, hasQuantities: boolean, hasProperties: boolean): 'properties' | 'quantities' | null {
+  if (tab === 'quantities' && !hasQuantities && hasProperties) return 'properties';
+  if (tab !== 'quantities' && hasQuantities && !hasProperties) return 'quantities';
+  if (tab !== 'properties' && tab !== 'quantities' && hasProperties) return 'properties';
+  return null;
+}

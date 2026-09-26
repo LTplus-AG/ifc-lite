@@ -56,7 +56,6 @@
   "apps/viewer/src/components/viewer/hierarchy/ModelHeaderRow.tsx": 2,
   "apps/viewer/src/components/viewer/hierarchy/ModelRowTags.tsx": 2,
   "apps/viewer/src/components/viewer/hierarchy/ModelTagEditor.tsx": 4,
-  "apps/viewer/src/components/viewer/HierarchyPanel.tsx": 1,
   "apps/viewer/src/components/viewer/IDSAuditSummary.tsx": 1,
   "apps/viewer/src/components/viewer/IDSPanelStatus.tsx": 1,
   "apps/viewer/src/components/viewer/LensPanel.tsx": 7,

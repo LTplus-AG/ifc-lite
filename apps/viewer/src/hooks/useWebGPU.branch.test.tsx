@@ -115,6 +115,83 @@ describe('useWebGPU category detection', () => {
     }
   });
 
+  it('coalesces repeated Retry clicks while the adapter probe is pending (#5851)', async () => {
+    setSecureContext(true);
+    let calls = 0;
+    let resolveRetry: ((adapter: object) => void) | undefined;
+    setNavigatorGpu({ requestAdapter: () => ++calls === 1 ? Promise.resolve(null)
+      : new Promise<object>((resolve) => { resolveRetry = resolve; }) });
+    useViewerStore.getState().resetViewerState();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    let guard!: WebGpuOpenGuard['guard'];
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    try {
+      await act(async () => {
+        root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      act(attempt);
+      const retry = useViewerStore.getState().lastLoadRetry;
+      assert.ok(retry);
+      act(() => { retry(); retry(); });
+      assert.equal(calls, 2, 'both clicks share one retry probe');
+      const completeRetry = resolveRetry;
+      assert.ok(completeRetry);
+      await act(async () => { completeRetry({}); await new Promise((resolve) => setTimeout(resolve, 0)); });
+      assert.equal(opened, 1, 'the original source opens exactly once');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      useViewerStore.setState({ error: null, lastLoadRetry: null });
+    }
+  });
+
+  it('does not resume a stale Retry after Dismiss or a newer load error (#5851)', async () => {
+    for (const replaceError of [false, true]) {
+      setSecureContext(true);
+      let calls = 0;
+      let resolveRetry: ((adapter: object) => void) | undefined;
+      setNavigatorGpu({ requestAdapter: () => ++calls === 1 ? Promise.resolve(null)
+        : new Promise<object>((resolve) => { resolveRetry = resolve; }) });
+      useViewerStore.getState().resetViewerState();
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      let guard!: WebGpuOpenGuard['guard'];
+      let opened = 0;
+      const attempt = () => { if (guard(attempt)) opened += 1; };
+      try {
+        await act(async () => {
+          root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        act(attempt);
+        const retry = useViewerStore.getState().lastLoadRetry;
+        assert.ok(retry);
+        act(retry);
+        const completeRetry = resolveRetry;
+        assert.ok(completeRetry);
+        if (replaceError) {
+          useViewerStore.setState({ error: 'newer load failed', lastLoadRetry: () => {} });
+        } else {
+          useViewerStore.getState().setError(null);
+        }
+        await act(async () => { completeRetry({}); await new Promise((resolve) => setTimeout(resolve, 0)); });
+        assert.equal(opened, 0, 'a stale Retry must not open its source');
+        assert.equal(useViewerStore.getState().error, replaceError ? 'newer load failed' : null);
+      } finally {
+        act(() => root.unmount());
+        container.remove();
+        useViewerStore.setState({ error: null, lastLoadRetry: null });
+      }
+    }
+  });
+
   it('shares one adapter probe across viewport, URL and status consumers (#5851)', async () => {
     setSecureContext(true);
     let calls = 0;

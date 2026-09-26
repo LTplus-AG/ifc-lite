@@ -435,60 +435,66 @@ export function ViewportContainer() {
   // it. While WebGPU is unsupported the drop is refused with the shared
   // load-error card (#5851), not a silent no-op.
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
-    if (!guardWebGpu()) return;
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
+    const droppedFiles = Array.from(dataTransfer.files);
 
-    // DXF reference underlays split off before model routing (issue #1782):
-    // a dropped site plan must never replace or federate with the model.
-    const allDropped0 = Array.from(dataTransfer.files);
-    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-    if (allDropped.length === 0) return;
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
 
-    // Keep glTF sidecars beside the document until they are packed into GLB.
-    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
+      // DXF reference underlays split off before model routing (issue #1782):
+      // a dropped site plan must never replace or federate with the model.
+      const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+      if (allDropped.length === 0) return;
 
-    if (supportedFiles.length === 0) {
-      reportFileOpenRejected(allDropped);
-      return;
-    }
+      // Keep glTF sidecars beside the document until they are packed into GLB.
+      const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
 
-    void handlesPromise.then((opened) => {
-      // Prefer the handle-paired files (Chromium): each file + handle comes from
-      // the same dropped item, so no filename matching is needed. Fall back to
-      // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-      const useHandles = supportedOpened.length > 0;
-      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
-      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
+      if (supportedFiles.length === 0) {
+        reportFileOpenRejected(allDropped);
+        return;
+      }
 
-      void prepareAndRoute(files, handles);
-    });
+      void handlesPromise.then((opened) => {
+        // Prefer the handle-paired files (Chromium): each file + handle comes from
+        // the same dropped item, so no filename matching is needed. Fall back to
+        // the plain dropped files when no handles were captured (Firefox/Safari).
+        const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
+        const useHandles = supportedOpened.length > 0;
+        const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+        const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
+
+        void prepareAndRoute(files, handles);
+      });
+    };
+    attempt();
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
   // `accept` only steers the drop cursor/overlay; handleDrop's own guard (not
   // this flag) is what shows the load-error card when unsupported (#5851).
   const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!guardWebGpu()) return;
-
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // DXF reference underlays split off before model routing (issue #1782).
-    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-
-    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
-    // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
-
-    if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
-    else reportFileOpenRejected(modelFiles);
-    // Reset input so same file can be selected again
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
+
+      // DXF reference underlays split off before model routing (issue #1782).
+      const { dxfFiles, modelFiles } = splitDxfFiles(files);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+
+      // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+      // live handle, so these models are not refreshable.
+      const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
+
+      if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+      else reportFileOpenRejected(modelFiles);
+    };
+    attempt();
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a

@@ -48,17 +48,23 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     // Explains a drop/open even while the adapter check is still pending,
     // instead of a silent no-op — the caller has no separate "wait" path.
     const { setError, setLastLoadRetry } = useViewerStore.getState();
+    let retryPending = false;
     const retryAfterProbe: (() => void) | null = retry ? () => {
+      const current = useViewerStore.getState();
+      if (retryPending || current.lastLoadRetry !== retryAfterProbe) return;
+      retryPending = true;
       if (getWebGPUStatus().supported) {
         retry();
         return;
       }
       void retryWebGPU().then((fresh) => {
+        const state = useViewerStore.getState();
+        if (state.lastLoadRetry !== retryAfterProbe) return;
         if (fresh.supported) {
           retry();
           return;
         }
-        const state = useViewerStore.getState();
+        retryPending = false;
         showLoadError(
           state.setError, state.setLastLoadRetry,
           t('viewportLighting.container.loadErrorCard.webgpuUnsupported'),

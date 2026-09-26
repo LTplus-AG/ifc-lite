@@ -30,6 +30,15 @@ export function useModelUrlAutoload(): void {
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   const { t } = useTranslation();
   const autoloadDoneRef = useRef(false);
+  // Navigation may change the query and relative URL base while the adapter
+  // probe is pending. Preserve the source requested on this mount.
+  const sourceRef = useRef<{ modelUrl: string | null; baseUrl: string } | null>(null);
+  if (sourceRef.current === null) {
+    sourceRef.current = {
+      modelUrl: new URLSearchParams(window.location.search).get('model'),
+      baseUrl: window.location.href,
+    };
+  }
 
   useEffect(() => {
     // `useWebGPU`'s adapter probe is async; wait for it to settle so the
@@ -37,11 +46,11 @@ export function useModelUrlAutoload(): void {
     // re-runs once `webgpu.checking` flips).
     if (webgpu.checking) return;
     if (autoloadDoneRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const modelUrl = params.get('model');
+    const source = sourceRef.current;
+    if (!source) return;
+    const { modelUrl, baseUrl: sourceBaseUrl } = source;
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
-    const sourceBaseUrl = window.location.href;
 
     // `retry` is required at every call (#5851 review): a malformed or
     // cross-origin URL is the SAME url string on every attempt, so retrying

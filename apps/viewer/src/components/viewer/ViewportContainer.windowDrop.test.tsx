@@ -211,6 +211,13 @@ describe('window-level file drop (#5845)', () => {
     assert.equal(drop.defaultPrevented, true, 'the browser does not open the file');
     assert.equal(latestToast(), before, 'nothing is loaded');
     assert.match(document.body.textContent ?? '', /WebGPU/, 'the rejected drop explains why it was not loaded');
+    assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function', 'Retry retains the dropped File');
+    stubWebGpu();
+    await act(async () => {
+      useViewerStore.getState().lastLoadRetry?.();
+      await advance(0);
+    });
+    assert.match(latestToast(), /nogpu\.blend/, 'Retry routes the same dropped File after WebGPU recovers');
   });
 
   it('explains a file drop while the WebGPU adapter check is still pending', async () => {

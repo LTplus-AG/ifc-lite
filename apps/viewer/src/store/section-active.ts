@@ -3,70 +3,63 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * One source of truth for "the section cut is on screen" (#4806, #4910).
+ * One source of truth for "the section cut is on screen" (#4806, #4910,
+ * #5893).
  *
- * The renderer only applies the cut while the Section tool is active
- * (`useAnimationLoop` / `buildRenderOptions` gate on `activeTool === 'section'`).
- * `sectionPlane.enabled` used to outlive the tool, so every consumer that read
- * it (SDK `getSection()`, view/PDF export, BCF capture, grid clipping, the scan
- * workbench guard) saw a cut the user could not see.
+ * Until #5893, the renderer only applied the cut while the Section tool was
+ * active (`useAnimationLoop` gated on `activeTool === 'section'`) and this
+ * module enforced that as a store invariant: `sectionPlane.enabled` was true
+ * ONLY while the tool was open, forced off ("parked") the moment it closed.
+ * That made the cut and the tool the same lifetime, so you could not measure
+ * inside a section — opening Measure parked the cut — and a resumed cut
+ * disappeared again the instant you left the tool for anything else.
  *
- * The invariant is now held by the store itself: `sectionPlane.enabled` is
- * true ONLY while the Section tool is active. `registerSectionVisibility` below
- * is the single enforcer — a store subscription, so it covers every writer
- * (tool switches, the SDK, BCF apply, basket views, tours, direct `setState`):
+ * The cut is now lasting scene state: `sectionPlane.enabled` means "the user
+ * has a cut turned on", independent of which tool is active, and
+ * `sceneState.section.visible` (`store/slices/sceneStateSlice.ts`) is the
+ * one further toggle that hides it without discarding it — the HUD chip
+ * (`SectionParkedChip`) and the visibility-reason registry (#5869) drive
+ * that toggle, not `activeTool`. `activeSectionPlane()` is the accessor every
+ * consumer (SDK `getSection()`, view/PDF export, BCF capture, grid clipping,
+ * the renderer gate) reads for "the visible cut": both `enabled` and
+ * `sceneState.section.visible` must hold.
  *
- *   - outside the tool, an enabled cut is PARKED (`enabled: false`,
- *     `parked: true`) — the geometry (axis/position/flipped/custom) stays;
- *   - inside the tool, a parked cut is resumed (`enabled: true`), so reopening
- *     the Section tool restores the last cut, face-picked planes included.
- *
- * `activeSectionPlane()` is kept as the named accessor for "the visible cut".
+ * `sectionPlane.parked` is kept for the readers that predate this slice
+ * (`DrawingPanel`, tours, `basketViewActivator`) and now means "hidden — off
+ * screen, but remembered rather than forgotten": either the cut is on
+ * (`enabled: true`) and hidden by the visibility toggle (set by
+ * `setSectionVisible` / `toggleSectionVisible`), or it was turned fully off
+ * while a reader wanted to remember there was one (the historical
+ * `enabled: false, parked: true` shape — no longer produced by a tool
+ * switch, since #5893 removed the automatic forcing; a caller that wants
+ * that shape sets it explicitly). There is deliberately no longer a store
+ * subscription enforcing either combination: unlike pre-#5893, nothing
+ * about the active tool should ever rewrite `sectionPlane` or `sceneState`
+ * out from under an explicit `setState`.
  */
 
 import type { SectionPlane, SectionPlaneAxis } from './types.js';
+import type { SceneVisibilityState } from './slices/sceneStateSlice.js';
 import { clearLastSectionMode } from './slices/sectionSlice.js';
 import { cardinalSectionFlipped } from './slices/sectionFacePick.js';
 export { cardinalSectionFlipped };
 
 interface SectionVisibilityState {
-  activeTool: string;
   sectionPlane: SectionPlane;
+  sceneState: SceneVisibilityState;
 }
 
 export function activeSectionPlane(state: SectionVisibilityState): SectionPlane | null {
-  return state.activeTool === 'section' && state.sectionPlane.enabled ? state.sectionPlane : null;
-}
-
-/** The patch that restores the invariant for `state`, or `null` when it already holds. */
-export function sectionVisibilityPatch(state: SectionVisibilityState): { sectionPlane: SectionPlane } | null {
-  const plane = state.sectionPlane;
-  if (state.activeTool !== 'section') {
-    return plane.enabled ? { sectionPlane: { ...plane, enabled: false, parked: true } } : null;
-  }
-  return plane.parked ? { sectionPlane: { ...plane, enabled: true, parked: false } } : null;
-}
-
-interface SectionVisibilityStore {
-  getState: () => SectionVisibilityState;
-  setState: (partial: { sectionPlane: SectionPlane }) => void;
-  subscribe: (listener: (state: SectionVisibilityState) => void) => () => void;
-}
-
-export function registerSectionVisibility(store: SectionVisibilityStore): void {
-  const reconcile = (state: SectionVisibilityState) => {
-    const patch = sectionVisibilityPatch(state);
-    if (patch) store.setState(patch);
-  };
-  store.subscribe(reconcile);
-  reconcile(store.getState());
+  return state.sectionPlane.enabled && state.sceneState.section.visible ? state.sectionPlane : null;
 }
 
 interface SectionWriterState extends SectionVisibilityState {
   setSectionPlaneAxis: (axis: SectionPlaneAxis) => void;
   setSectionPlanePosition: (position: number) => void;
   setSectionPlaneEnabled: (enabled: boolean) => void;
+  setSectionVisible: (visible: boolean) => void;
   flipSectionPlane: () => void;
+  activeTool: string;
   setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void;
 }
 
@@ -87,10 +80,12 @@ export function showSectionCut(
   revealSectionCut(getState);
 }
 
-/** Put the current cut ON SCREEN: clipping on, and the Section tool (which draws it) open. */
+/** Put the current cut ON SCREEN: clipping on, the hide toggle cleared, and
+ *  the Section tool (which lets the user edit it) open. */
 export function revealSectionCut(getState: () => SectionWriterState): void {
   const state = getState();
-  if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // parked until the tool opens
+  if (!state.sectionPlane.enabled) state.setSectionPlaneEnabled(true); // hidden until now
+  if (!getState().sceneState.section.visible) getState().setSectionVisible(true);
   if (getState().activeTool !== 'section') {
     state.setActiveTool('section', 'programmatic');
   }
@@ -98,7 +93,7 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
 
 /**
  * No cut on screen, and none waiting for the next time the Section tool opens:
- * neither the parked cut nor the persisted last cardinal mode, which
+ * neither the hidden cut nor the persisted last cardinal mode, which
  * SectionPanel re-applies (and re-enables) on mount.
  */
 export function clearSectionCut(getState: () => SectionWriterState): void {

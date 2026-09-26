@@ -24,6 +24,7 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
 import { BasepointOverlay } from './BasepointOverlay';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
@@ -1061,6 +1062,7 @@ export function ViewportContainer() {
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
         <ZoneOverlay />
+        <MeasurementSceneLayer />
         <ToolOverlays />
       </SceneOverlayRoot>
       <ViewportOverlays />

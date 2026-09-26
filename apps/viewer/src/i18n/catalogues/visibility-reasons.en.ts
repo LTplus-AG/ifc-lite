@@ -17,4 +17,6 @@ export const visibilityReasonsEn = {
   'visibilityReasons.typeVisibility': 'Hidden IFC classes',
   'visibilityReasons.typeViewMode': 'Types view',
   'visibilityReasons.hostTypes': 'Classes hidden by host',
+  'visibilityReasons.section': 'Section cut',
+  'visibilityReasons.measurements': 'Measurements',
 } satisfies Record<string, TranslationValue>;

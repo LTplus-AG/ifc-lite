@@ -29,6 +29,7 @@ import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { EditModeHudChip } from './EditModeHudChip';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
+import { MeasurementsVisibilityChip } from './tools/MeasurementsVisibilityChip';
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -175,6 +176,7 @@ export function ViewportOverlays({
       <EditModeHudChip />
       <ViewportLoadingCard />
       <SectionParkedChip />
+      <MeasurementsVisibilityChip />
       <FlySpeedIndicator />
       <OrbitPivotMarker />
       {/* Touch navigation stays available on mobile. On desktop BOTH toolbar

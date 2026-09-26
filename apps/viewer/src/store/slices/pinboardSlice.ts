@@ -22,6 +22,7 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { CameraCallbacks, CameraViewpoint, EntityRef, SectionPlane } from '../types.js';
 import { entityRefToString } from '../types.js';
 import { activeSectionPlane } from '../section-active.js';
+import type { SceneVisibilityState } from './sceneStateSlice.js';
 import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 import {
   basketAddIsolation,
@@ -83,6 +84,7 @@ interface PinboardCrossSliceState {
   models: Map<string, { idOffset: number }>;
   cameraCallbacks: CameraCallbacks;
   sectionPlane: SectionPlane;
+  sceneState: SceneVisibilityState;
   drawing2D: Drawing2D | null;
   drawing2DDisplayOptions: { show3DOverlay: boolean; showHiddenLines: boolean };
   setDrawing2D: (drawing: Drawing2D | null) => void;

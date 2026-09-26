@@ -99,7 +99,7 @@ function ItemRow({
         )}
         <span className="truncate">{node.item.Name || t('costPanel.itemFallbackName', { id: node.ref.expressId })}</span>
         {node.item.Identification && (
-          <span className="shrink-0 text-[10px] text-muted-foreground">{node.item.Identification}</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">{node.item.Identification}</span>
         )}
       </div>
       {hasChildren && expanded && node.children.map((child) => (
@@ -131,17 +131,17 @@ function ModelSection({
   return (
     <div className="border-b p-2">
       {federated && (
-        <div className="mb-1 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="mb-1 truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
           {entry.modelName}
         </div>
       )}
       {entry.graph === null ? (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-2xs text-muted-foreground">
           <RefreshCw className="h-3 w-3 shrink-0" />
           <span>{entry.error ? t('costPanel.dataUnavailableWithError', { message: entry.error }) : t('costPanel.dataUnavailable')}</span>
         </div>
       ) : !entry.graph.HasCostData ? (
-        <div className="text-[11px] text-muted-foreground">{t('costPanel.empty')}</div>
+        <div className="text-2xs text-muted-foreground">{t('costPanel.empty')}</div>
       ) : (
         <CostGraphTree graph={entry.graph} modelId={entry.modelId} selectedRef={selectedRef} onSelectItem={onSelectItem} />
       )}
@@ -180,12 +180,12 @@ function CostGraphTree({
       {(state.cyclic || state.mixedCurrency) && (
         <div className="mb-1 flex flex-wrap gap-1">
           {state.cyclic && (
-            <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-medium text-amber-700 dark:text-amber-400">
               <AlertTriangle className="h-2.5 w-2.5" /> {t('costPanel.cyclicBadge')}
             </span>
           )}
           {state.mixedCurrency && (
-            <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+            <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-medium text-amber-700 dark:text-amber-400">
               <Coins className="h-2.5 w-2.5" /> {t('costPanel.mixedCurrencyBadge')}
             </span>
           )}
@@ -193,9 +193,9 @@ function CostGraphTree({
       )}
       {tree.schedules.map((schedule) => (
         <div key={`${modelId}:${schedule.ref.expressId}`} className="mb-1">
-          <div className="truncate text-[11px] font-semibold">{schedule.schedule.Name || t('costPanel.scheduleFallbackName', { id: schedule.ref.expressId })}</div>
+          <div className="truncate text-2xs font-semibold">{schedule.schedule.Name || t('costPanel.scheduleFallbackName', { id: schedule.ref.expressId })}</div>
           {schedule.items.length === 0 ? (
-            <div className="pl-4 text-[10px] text-muted-foreground">{t('costPanel.noItemsInSchedule')}</div>
+            <div className="pl-4 text-2xs text-muted-foreground">{t('costPanel.noItemsInSchedule')}</div>
           ) : (
             schedule.items.map((node) => (
               <ItemRow
@@ -212,7 +212,7 @@ function CostGraphTree({
       ))}
       {tree.unassignedItems.length > 0 && (
         <div>
-          <div className="truncate text-[11px] font-semibold text-muted-foreground">{t('costPanel.unassignedItems')}</div>
+          <div className="truncate text-2xs font-semibold text-muted-foreground">{t('costPanel.unassignedItems')}</div>
           {tree.unassignedItems.map((node) => (
             <ItemRow
               key={`${node.ref.modelId}:${node.ref.expressId}`}
@@ -226,7 +226,7 @@ function CostGraphTree({
         </div>
       )}
       {tree.schedules.length === 0 && tree.unassignedItems.length === 0 && (
-        <div className="text-[11px] text-muted-foreground">{t('costPanel.noItemsInModel')}</div>
+        <div className="text-2xs text-muted-foreground">{t('costPanel.noItemsInModel')}</div>
       )}
     </div>
   );

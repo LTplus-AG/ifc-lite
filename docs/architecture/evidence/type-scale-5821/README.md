@@ -34,3 +34,13 @@ and viewport. The source hint grows from 10px to the 11px floor; its wording
 is shortened to keep the PDF limit on one line (measured height: 17.875 CSS
 pixels after). The document width remains 1440 CSS pixels with no horizontal
 overflow.
+
+## Extensions, compare, and cost batch
+
+This batch replaces 83 numeric font utilities in the Extensions, Compare, and
+Cost panels. The [before](extensions-before-ideas.png) and
+[after](extensions-after-ideas.png) screenshots show the built-in IFC demo with
+the Extensions Ideas tab open in headful Chrome production builds at the same
+1440 × 900 viewport. The getting-started heading grows from 10px to the 11px
+`text-2xs` floor. Both builds keep the document width at 1440 CSS pixels, with
+no horizontal overflow; the heading remains within its 317 CSS-pixel container.

@@ -83,7 +83,9 @@ async function openRepositionPanelForModel(
   page: Page, moving: ModelSnapshot, models: readonly ModelSnapshot[],
 ): Promise<Locator> {
   await page.getByRole('button', { name: 'Reposition models and pointclouds', exact: true }).click();
-  const panel = page.locator('section[aria-label="Reposition models"]');
+  // The Local tab of the docked Placement panel (#5505) is the workflow's
+  // region; it replaced the floating `section` card.
+  const panel = page.getByRole('region', { name: 'Reposition models', exact: true });
   await expect(panel, 'the visible Reposition workflow opens').toBeVisible();
   const movingCheckbox = panel.getByLabel(moving.name, { exact: true });
   // Select the desired mover before unchecking the default active model: the
@@ -101,6 +103,14 @@ async function openRepositionPanelForModel(
     }
   }
   return panel;
+}
+
+/** The reference picker is a listbox-style Select since #5505, not a native
+ * `<select>`: open it, then choose the option by the model's visible name. */
+async function chooseReferenceModel(page: Page, panel: Locator, reference: ModelSnapshot): Promise<void> {
+  await panel.getByLabel('Reference model', { exact: true }).click();
+  await page.getByRole('option', { name: reference.name, exact: true }).click();
+  await expect(panel.getByLabel('Reference model', { exact: true }), 'the reference model is chosen').toHaveText(reference.name);
 }
 
 interface ManualPlacement {

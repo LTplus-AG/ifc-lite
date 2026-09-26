@@ -31,7 +31,7 @@ import {
   partsOrOwnIds,
   resolveTreeGlobalId,
 } from './productTree';
-import type { TreeNode, NodeType, StoreyData, UnifiedStorey, HierarchySortMode } from './types';
+import type { TreeNode, NodeType, StoreyData, UnifiedStorey, HierarchySortMode, ExpansionLookup } from './types';
 import { DEFAULT_HIERARCHY_SORT } from './types';
 import { getSpatialNodeElements, indexSpatialNodes } from './spatialElements';
 import {
@@ -288,7 +288,7 @@ function buildSpatialNodes(
   parentNodeId: string,
   stopAtBuilding: boolean,
   idOffset: number,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   nodes: TreeNode[],
   descendantSpaceCache: Map<number, Set<number>>,
   sortMode: HierarchySortMode,
@@ -420,7 +420,7 @@ function buildSpatialNodes(
 export function buildTreeData(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   isMultiModel: boolean,
   unifiedStoreys: UnifiedStorey[],
   sortMode: HierarchySortMode = DEFAULT_HIERARCHY_SORT,
@@ -653,7 +653,7 @@ export interface AuthoredProduct {
 export function buildTypeTree(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   authoredProducts?: AuthoredProduct[],
@@ -804,7 +804,7 @@ export function buildTypeTree(
 export function buildIfcTypeTree(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
@@ -1003,7 +1003,7 @@ export function buildIfcTypeTree(
 export function buildMaterialTree(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
-  _expandedNodes: Set<string>,
+  _expandedNodes: ExpansionLookup,
   _isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
@@ -1149,7 +1149,7 @@ export function resolveMemberGeometry(
 export function buildGroupTree(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
-  expandedNodes: Set<string>,
+  expandedNodes: ExpansionLookup,
   isMultiModel: boolean,
   geometricIds?: Set<number>,
   subFilter: GroupSubFilter = 'all',
@@ -1318,15 +1318,29 @@ export function buildGroupTree(
   return nodes;
 }
 
-/** Filter nodes based on search query */
+/** Keep matches and their ancestors from the fully expanded search projection. */
 export function filterNodes(nodes: TreeNode[], searchQuery: string): TreeNode[] {
-  if (!searchQuery.trim()) return nodes;
-  const query = searchQuery.toLowerCase();
-  return nodes.filter(node =>
-    node.name.toLowerCase().includes(query) ||
-    (node.secondaryName?.toLowerCase().includes(query) ?? false) ||
-    node.type.toLowerCase().includes(query)
-  );
+  const query = searchQuery.trim().toLowerCase();
+  if (!query) return nodes;
+  const ancestors: number[] = [];
+  const included = new Set<number>();
+  let modelsHeader = -1;
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    if (node.id === 'models-header') {
+      modelsHeader = index;
+      ancestors.length = 0;
+      continue;
+    }
+    ancestors.length = Math.min(ancestors.length, node.depth);
+    if (node.name.toLowerCase().includes(query) || node.secondaryName?.toLowerCase().includes(query)) {
+      included.add(index);
+      for (const ancestor of ancestors) included.add(ancestor);
+      if (modelsHeader >= 0) included.add(modelsHeader);
+    }
+    ancestors[node.depth] = index;
+  }
+  return nodes.filter((_, index) => included.has(index));
 }
 
 /** Split filtered nodes into storeys and models sections (for multi-model mode) */

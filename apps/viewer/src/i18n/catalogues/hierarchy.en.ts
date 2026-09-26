@@ -143,6 +143,8 @@ export const hierarchyEn = {
   'hierarchy.panel.noModelTitle': 'No Model',
   'hierarchy.panel.noModelHint': 'Structure will appear here when loaded',
   'hierarchy.panel.searchPlaceholder': 'Search...',
+  'hierarchy.panel.noMatches': 'No matches for “{query}”',
+  'hierarchy.panel.clearSearch': 'Clear search',
 
   // HierarchyPanel: grouping-mode tab strip
   'hierarchy.panel.grouping.spatial': 'Spatial',

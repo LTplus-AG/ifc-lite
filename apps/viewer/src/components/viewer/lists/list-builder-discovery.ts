@@ -5,18 +5,11 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types';
-import { discoverFilterValues } from '@/lib/search/filter-schema';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 export interface StoreWithView {
   store: IfcDataStore;
   view: MutablePropertyView | undefined;
-}
-
-export interface ListConditionValues {
-  materials: string[];
-  classifications: string[];
-  propertyValues: Map<string, string[]>;
 }
 
 /** Pair each list source with its own live overlay, including legacy mode. */
@@ -36,27 +29,4 @@ export function storesWithMutationViews(
       : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
     return { store, view };
   });
-}
-
-/** Merge sampled condition suggestions from every live model. */
-export function discoverConditionValues(stores: readonly StoreWithView[]): ListConditionValues {
-  const materials = new Set<string>();
-  const classifications = new Set<string>();
-  const propertyValues = new Map<string, Set<string>>();
-  for (const { store, view } of stores) {
-    const values = discoverFilterValues(store, view);
-    values.materials.forEach((name) => materials.add(name));
-    values.classifications.forEach((name) => classifications.add(name));
-    for (const [key, entries] of values.propertyValues) {
-      let bucket = propertyValues.get(key);
-      if (!bucket) { bucket = new Set(); propertyValues.set(key, bucket); }
-      for (const value of entries) bucket.add(value);
-    }
-  }
-  const sort = (values: Set<string>) => Array.from(values).sort();
-  return {
-    materials: sort(materials),
-    classifications: sort(classifications),
-    propertyValues: new Map(Array.from(propertyValues, ([key, values]) => [key, sort(values)])),
-  };
 }

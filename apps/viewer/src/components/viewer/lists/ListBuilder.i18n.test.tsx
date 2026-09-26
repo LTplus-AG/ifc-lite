@@ -16,8 +16,7 @@
  *
  * `ListBuilder` has more mutually-exclusive UI states than one render can
  * surface at once (a filter-snapshot list vs. a type-scoped one; an empty
- * grouping level 0 vs. a second "then by" level; a zone/spatial filter
- * dimension vs. the default attribute one), so this file drives several
+ * grouping level 0 vs. a second "then by" level), so this file drives several
  * small renders and a few real clicks/typed values — the same oracle shape
  * as `MainToolbar.i18n.test.tsx`: mark every key, render in English,
  * capture the visible/focusable strings, switch locale live, and assert
@@ -70,11 +69,7 @@ const englishOf = (key: ListsKey): string => {
   return typeof v === 'string' ? v : v.other;
 };
 const mark = (key: ListsKey) => `⟦${key}|${englishOf(key)}⟧`;
-const PSEUDO: Catalogue = {
-  ...Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])),
-  'filterOperators.contains': '⟦filterOperators.contains|contains⟧',
-  'filterOperators.isSet': '⟦filterOperators.isSet|is set⟧',
-} as Catalogue;
+const PSEUDO: Catalogue = Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])) as Catalogue;
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -148,12 +143,7 @@ function buildStore(): IfcDataStore {
     entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
     strings,
     entities: builder.build(),
-    // A stub, not `undefined`: a `property`/`quantity`/`material`/
-    // `classification` filter condition triggers `ListBuilder`'s expensive
-    // `discoverConditionValues` sampling pass (issue #4215's suggestion
-    // effect), which falls back to `store.properties.getForEntity` when
-    // `source` is empty — `undefined` throws there instead of yielding "no
-    // properties found", which is what this fixture actually means.
+    // Empty base tables let the shared filter editor discover an empty model.
     properties: { getForEntity: () => [] },
     quantities: { getForEntity: () => [] },
     relationships: { count: 0, getRelated: () => [] },
@@ -204,12 +194,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     act(() => setLocale('list-builder-default-pseudo'));
     const after = readableStrings(container);
 
-    const conditionOnlyPrefixes = [
-      'lists.builder.source.', 'lists.builder.operator.', 'lists.builder.spatial.',
-      'lists.builder.zoneVolumeOption', 'lists.builder.zoneBreakdownOption',
-    ];
-    const covered = assertCoverage(english, after,
-      STATIC_KEYS.filter((key) => !conditionOnlyPrefixes.some((prefix) => key.startsWith(prefix))));
+    const covered = assertCoverage(english, after, STATIC_KEYS);
 
     for (const key of [
       'lists.builder.namePlaceholder',
@@ -219,7 +204,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.sectionFilters',
       'lists.builder.sectionColumns',
       'lists.builder.noTypeSelected',
-      'lists.builder.addFilter',
       'lists.builder.customColumn',
       'lists.builder.customColumnHint',
       'lists.builder.run',
@@ -264,66 +248,56 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.ok(after.has(expectedHint), 'filterSnapshotHint must be translated with its interpolated count');
   });
 
-  it('translates a filter row (dimension / attribute / operator / remove) and the zone dimension\'s own controls', () => {
+  it('shows and retains an unreadable saved condition until the user removes it (#5894)', () => {
     const store = buildStore();
     const provider = buildProvider(store);
+    const initial: ListDefinition = {
+      id: 'legacy-filter', name: 'Legacy filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      conditions: [{ source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' }],
+    };
+    let saved: ListDefinition | undefined;
     const container = render(
-      <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
+      <ListBuilder providers={[provider]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
     );
-
-    const addFilterButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Add filter'));
-    assert.ok(addFilterButton, 'expected the "Add filter" button');
-    click(addFilterButton as Element);
+    const warning = container.querySelector('[role="alert"]');
+    assert.ok(warning?.textContent?.includes('could not be converted'));
+    assert.ok(warning?.textContent?.includes('attribute: Name contains Wall'));
 
     const english = readableStrings(container);
-    registerLocale('list-builder-filter-row-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-filter-row-pseudo'));
+    registerLocale('list-builder-legacy-pseudo', PSEUDO);
+    act(() => setLocale('list-builder-legacy-pseudo'));
     const after = readableStrings(container);
-
-    assertCoverage(english, after, [
-      'lists.builder.filterDimensionAriaLabel',
-      'lists.builder.attributeAriaLabel',
-      'lists.builder.operatorAriaLabel',
-      'lists.builder.removeFilterAriaLabel',
-      'lists.builder.source.attribute',
-      'lists.builder.source.property',
-      'lists.builder.source.quantity',
-      'lists.builder.source.material',
-      'lists.builder.source.classification',
-      'lists.builder.source.spatial',
-      'lists.builder.source.model',
-      'lists.builder.source.zone',
-    ]);
-    assert.ok(after.has('⟦filterOperators.contains|contains⟧'));
-    assert.ok(after.has('⟦filterOperators.isSet|is set⟧'));
+    assertCoverage(english, after, ['lists.builder.unreadableWarning', 'lists.builder.removeUnreadable']);
     act(() => setLocale('en'));
 
-    // Switch the row's dimension to "Zone": reveals the zone-set / display
-    // mode selects, the "(no zone sets)" option (no zone sets defined in
-    // this render's store), and the Zone/Straddles option labels.
-    const dimensionSelect = container.querySelector('select[aria-label="Filter dimension"]') as HTMLSelectElement;
-    assert.ok(dimensionSelect, 'expected the filter-dimension select');
-    selectValue(dimensionSelect, 'zone');
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.equal(saved?.unreadableConditions?.length, 1);
+    assert.equal(saved?.groups?.length, 1);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Remove saved filter') as Element);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, []);
+    assert.deepEqual(saved?.conditions, []);
+  });
 
-    const modeSelect = container.querySelector('select[aria-label="Zone display mode"]') as HTMLSelectElement;
-    const modeLabels = [...modeSelect.options].map((option) => option.textContent);
-    assert.ok(modeLabels.includes('Volume (mesh)'), 'the localized label must preserve the mesh basis');
-    assert.ok(modeLabels.includes('Volume breakdown (mesh)'), 'the localized label must preserve volume and mesh semantics');
-
-    const zoneEnglish = readableStrings(container);
-    registerLocale('list-builder-zone-row-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-zone-row-pseudo'));
-    const zoneAfter = readableStrings(container);
-
-    assertCoverage(zoneEnglish, zoneAfter, [
-      'lists.builder.zoneSetAriaLabel',
-      'lists.builder.noZoneSets',
-      'lists.builder.zoneDisplayModeAriaLabel',
-      'lists.builder.zoneOption',
-      'lists.builder.straddlesOption',
-      'lists.builder.zoneVolumeOption',
-      'lists.builder.zoneBreakdownOption',
-    ]);
+  it('saves group edits from the shared FilterGroupEditor (#5894)', () => {
+    const store = buildStore();
+    let saved: ListDefinition | undefined;
+    const initial: ListDefinition = {
+      id: 'group-edits', name: 'Group edits', createdAt: 1, updatedAt: 1,
+      entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    const addGroup = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Add group'));
+    assert.ok(addGroup);
+    click(addGroup);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.equal(saved?.groups?.length, 2);
+    assert.deepEqual(saved?.groups?.map(({ combinator }) => combinator), ['AND', 'AND']);
+    assert.deepEqual(saved?.conditions, []);
   });
 
   it('translates the custom-column editor: Property/Quantity chips, placeholders, pattern hint, and add/close actions', () => {
@@ -552,51 +526,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     act(() => setLocale('list-builder-invalid-pattern-pseudo'));
     const after = readableStrings(container);
     assert.ok(after.has(mark('lists.builder.invalidPatternHint')), 'invalidPatternHint must be translated');
-  });
-
-  it('translates the filter row\'s spatial-level select and the property/quantity pset+name placeholders', () => {
-    const store = buildStore();
-    const provider = buildProvider(store);
-    const container = render(
-      <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
-    );
-    click([...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Add filter')) as Element);
-    const dimensionSelect = container.querySelector('select[aria-label="Filter dimension"]') as HTMLSelectElement;
-
-    selectValue(dimensionSelect, 'spatial');
-    const spatialEnglish = readableStrings(container);
-    assert.ok(spatialEnglish.has('Container'), 'expected the localized spatial-level options to render');
-    registerLocale('list-builder-spatial-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-spatial-pseudo'));
-    const spatialAfter = readableStrings(container);
-    assertCoverage(spatialEnglish, spatialAfter, [
-      'lists.builder.spatialLevelAriaLabel',
-      'lists.builder.spatial.container',
-      'lists.builder.spatial.storey',
-      'lists.builder.spatial.building',
-      'lists.builder.spatial.site',
-      'lists.builder.spatial.project',
-    ]);
-    assert.ok(spatialAfter.has(mark('lists.builder.valuePlaceholder.spatial').replace('{level}', mark('lists.builder.spatial.storey'))));
-    act(() => setLocale('en'));
-
-    selectValue(dimensionSelect, 'property');
-    const propEnglish = readableStrings(container);
-    assert.ok(propEnglish.has('Pset_…'), 'expected the filter row\'s own (shorter) pset placeholder');
-    assert.ok(propEnglish.has('name'), 'expected the filter row\'s property-name placeholder');
-    registerLocale('list-builder-property-filter-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-property-filter-pseudo'));
-    const propAfter = readableStrings(container);
-    assertCoverage(propEnglish, propAfter, ['lists.builder.psetPlaceholder', 'lists.builder.namePropertyPlaceholder']);
-    act(() => setLocale('en'));
-
-    selectValue(dimensionSelect, 'quantity');
-    const qtyEnglish = readableStrings(container);
-    assert.ok(qtyEnglish.has('Qto_…'), 'expected the filter row\'s own (shorter) qto placeholder');
-    registerLocale('list-builder-quantity-filter-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-quantity-filter-pseudo'));
-    const qtyAfter = readableStrings(container);
-    assertCoverage(qtyEnglish, qtyAfter, ['lists.builder.qtoPlaceholder']);
   });
 
   // `lists.builder.added` (PickerItem's "already added" marker, shown for a

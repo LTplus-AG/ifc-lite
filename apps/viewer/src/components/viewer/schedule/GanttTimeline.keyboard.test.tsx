@@ -58,6 +58,11 @@ it('#5823 seeks in calendar units across month ends and daylight saving time', (
       advanceCalendarTime(new Date(2025, 2, 29, 12).getTime(), 'day', 1),
       new Date(2025, 2, 30, 12).getTime(),
     );
+    const firstZurich0230 = new Date('2025-10-26T00:30:00Z').getTime();
+    const secondZurich0230 = new Date('2025-10-26T01:30:00Z').getTime();
+    assert.equal(new Date(firstZurich0230).getHours(), 2);
+    assert.equal(new Date(secondZurich0230).getHours(), 2);
+    assert.equal(advanceCalendarTime(firstZurich0230, 'hour', 1), secondZurich0230);
   } finally {
     if (previousTimezone === undefined) delete process.env.TZ;
     else process.env.TZ = previousTimezone;

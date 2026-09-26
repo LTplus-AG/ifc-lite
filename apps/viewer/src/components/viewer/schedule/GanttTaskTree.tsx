@@ -275,7 +275,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({
       {onBackgroundClick && (
         <button
           type="button"
-          className="min-h-0 w-full flex-1 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          className="min-h-6 w-full flex-1 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           aria-label={t('schedule.taskTree.clearSelectionAriaLabel')}
           onClick={onBackgroundClick}
         />

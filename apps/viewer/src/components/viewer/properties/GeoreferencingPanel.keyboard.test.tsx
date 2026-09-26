@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, click, press, render } from '@/test/render.js';
+import { activate, cleanup, click, press, render } from '@/test/render.js';
 import type { GeoreferenceInfo } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { GeoreferencingPanel } from './GeoreferencingPanel.js';
@@ -41,6 +41,7 @@ it('#5823 opens georeference field editors with Enter and Space', () => {
   press(nameRow, 'Enter');
   assert.ok(nameRow.querySelector('input'), 'Enter opens the same editor as a click');
   press(nameRow.querySelector('input')!, 'Escape');
+  assert.equal(document.activeElement, nameRow, 'closing the field restores the initiating row focus');
 
   const operationHeading = [...ui.querySelectorAll('button')]
     .find((button) => button.textContent?.includes('Coordinate Operation'));
@@ -52,6 +53,8 @@ it('#5823 opens georeference field editors with Enter and Space', () => {
   angleRow.focus();
   press(angleRow, ' ');
   assert.ok(angleRow.querySelector('input'), 'Space opens the angle editor');
+  press(angleRow.querySelector('input')!, 'Escape');
+  assert.equal(document.activeElement, angleRow, 'closing the angle editor restores its row focus');
 });
 
 it('#5823 leaves the height row closed when the terrain button receives Enter', () => {
@@ -64,16 +67,23 @@ it('#5823 leaves the height row closed when the terrain button receives Enter', 
     .find((button) => button.textContent?.includes('Coordinate Operation'));
   assert.ok(operationHeading);
   click(operationHeading);
-  const heightValue = ui.querySelector<HTMLElement>('[role="button"][aria-label="OrthogonalHeight"]');
+  const heightValue = ui.querySelector<HTMLButtonElement>('button[aria-label^="OrthogonalHeight:"]');
   assert.ok(heightValue);
   const heightRow = heightValue.parentElement?.parentElement?.parentElement;
   assert.ok(heightRow);
   assert.equal(heightRow.getAttribute('role'), null, 'the terrain button is not nested inside another button role');
-  const terrainButton = heightRow.querySelector<HTMLButtonElement>('button');
+  const terrainButton = [...heightRow.querySelectorAll<HTMLButtonElement>('button')].find((button) => button !== heightValue);
   assert.ok(terrainButton);
-  press(terrainButton, 'Enter');
+  activate(terrainButton, 'Enter');
   assert.equal(heightRow.querySelector('input'), null, 'terrain activation must not open the inline editor');
-  heightValue.focus();
-  press(heightValue, 'Enter');
+  click(heightRow);
+  assert.equal(heightRow.querySelector('input'), null, 'a row with an inline action has no mouse-only edit area');
+  activate(heightValue, 'Enter');
   assert.ok(heightRow.querySelector('input'), 'the separate value target still opens the editor');
+  press(heightRow.querySelector('input')!, 'Escape');
+  const restoredValue = ui.querySelector<HTMLButtonElement>('button[aria-label^="OrthogonalHeight:"]');
+  assert.ok(restoredValue);
+  assert.equal(document.activeElement, restoredValue, 'the separate value target regains focus');
+  activate(restoredValue, ' ');
+  assert.ok(heightRow.querySelector('input'), 'Space also opens the native value button');
 });

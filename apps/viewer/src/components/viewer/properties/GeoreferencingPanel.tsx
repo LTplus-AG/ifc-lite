@@ -37,7 +37,8 @@ import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 import { parseLocalizedRotationDegrees } from './georeference-angle';
 import { getFieldHint } from './georeference-field-hints';
-import { activateEditorFromKeyboard } from './georeference-row-keyboard';
+import { GeoreferenceValueDisplay } from './georeference-value-display';
+import { activateEditorFromKeyboard, useReturnFocusAfterEdit } from './georeference-row-keyboard';
 
 // ── GeorefRow: a single editable field ─────────────────────────────────
 
@@ -58,6 +59,7 @@ interface GeorefRowProps {
 function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMutated, fieldEntity, fieldName, onSave, children }: GeorefRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false), [editValue, setEditValue] = useState('');
+  const returnFocusRef = useReturnFocusAfterEdit(editing);
   const seededValue = useRef(''); // a commit still equal to the seed is a no-op, never a re-parse of a rounded display string
 
   const hint = useMemo(() => getFieldHint(fieldEntity ?? '', fieldName ?? ''), [fieldEntity, fieldName]);
@@ -106,18 +108,18 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
   const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
   const canStartEdit = editable && !isComputed && !editing;
   const rowIsKeyboardTarget = canStartEdit && !children;
-  const valueIsKeyboardTarget = canStartEdit && !!children;
 
   return (
-    /* The row is a button only while its inline editor is closed; a native button cannot contain the editor inputs. */
+    /* Rows with an inline action use a separate value button, so controls remain siblings. */
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
+      ref={children ? undefined : returnFocusRef}
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${
         isMutated ? 'bg-overlay-accent-soft' : ''
       } ${editable && !isComputed ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
       role={rowIsKeyboardTarget ? 'button' : undefined}
       tabIndex={rowIsKeyboardTarget ? 0 : undefined}
-      onClick={canStartEdit ? startEdit : undefined}
+      onClick={rowIsKeyboardTarget ? startEdit : undefined}
       onKeyDown={rowIsKeyboardTarget ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
     >
       <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
@@ -189,21 +191,18 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
             </div>
           ) : (
             <>
-              <span
+              <GeoreferenceValueDisplay
                 className={`text-[11px] font-mono tabular-nums break-all text-right ${
                   isMutated
                     ? 'text-foreground font-semibold'
                     : 'text-teal-700 dark:text-teal-400'
                 }`}
-                title={displayValue}
-                role={valueIsKeyboardTarget ? 'button' : undefined}
-                tabIndex={valueIsKeyboardTarget ? 0 : undefined}
-                aria-label={valueIsKeyboardTarget ? label : undefined}
-                onKeyDown={valueIsKeyboardTarget ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
-              >
-                {displayValue}
-                {suffix && <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{suffix}</span>}
-              </span>
+                label={label}
+                value={displayValue}
+                suffix={suffix}
+                onEdit={canStartEdit && children ? startEdit : undefined}
+                focusRef={returnFocusRef}
+              />
               {editable && !isComputed && (
                 <PenLine className="h-3 w-3 opacity-0 group-hover/row:opacity-100 transition-opacity text-zinc-400 shrink-0 mt-0.5" />
               )}
@@ -228,6 +227,7 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const { t, locale } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const returnFocusRef = useReturnFocusAfterEdit(editing);
   const startEdit = useCallback(() => {
     if (!editable) return;
     setEditValue(angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6, useGrouping: false }) : ''); // locale-formatted seed (#4918), see GeorefRow.startEdit
@@ -257,6 +257,7 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
     /* The row becomes a button only when editable; its expanded editor contains input and action buttons. */
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
+      ref={returnFocusRef}
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${editable ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
       role={canStartEdit ? 'button' : undefined}
       tabIndex={canStartEdit ? 0 : undefined}

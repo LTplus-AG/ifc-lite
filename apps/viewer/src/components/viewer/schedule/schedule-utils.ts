@@ -212,11 +212,11 @@ export function formatTickLabel(t: number, scale: GanttTimeScale): string {
   }
 }
 
-/** Move a keyboard seek by a local calendar unit, preserving the time of day. */
+/** Move a keyboard seek by elapsed hours or a local calendar day/month/year. */
 export function advanceCalendarTime(time: number, scale: GanttTimeScale, step: number): number {
   const date = new Date(time);
   switch (scale) {
-    case 'hour': date.setHours(date.getHours() + step); break;
+    case 'hour': return time + step * 3_600_000;
     case 'day': date.setDate(date.getDate() + step); break;
     case 'week': date.setDate(date.getDate() + step * 7); break;
     case 'month':

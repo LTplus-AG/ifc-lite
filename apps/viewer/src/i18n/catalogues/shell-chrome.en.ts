@@ -89,7 +89,7 @@ export const shellChromeEn = {
 
   // ViewerLayout.tsx
   'shellChrome.layout.safeModeNotice':
-    'Safe mode: extensions and the active flavor are not loaded for this session. Append {flag} or reload without the flag to resume.',
+    'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
   'shellChrome.layout.propertiesLabel': 'Properties',

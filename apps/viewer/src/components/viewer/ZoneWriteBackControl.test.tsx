@@ -174,7 +174,7 @@ describe('ZonesPanel: emitting the zones themselves', () => {
     const container = render(<ZonesPanel />);
     assert.deepEqual(emittedZones(), [], 'the panel emitted on mount');
 
-    click(button(container, 'Emit zones as IfcSpatialZone'));
+    click(button(container, 'Write zones to IFC'));
 
     assert.deepEqual(emittedZones(), ['Takt A']);
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
@@ -216,7 +216,7 @@ describe('ZonesPanel: emitting the zones themselves (removal)', () => {
 
   it('takes them out again from the same panel', () => {
     const container = render(<ZonesPanel />);
-    click(button(container, 'Emit zones as IfcSpatialZone'));
+    click(button(container, 'Write zones to IFC'));
     click(button(container, 'Remove emitted spatial zones'));
     assert.deepEqual(emittedZones(), []);
   });

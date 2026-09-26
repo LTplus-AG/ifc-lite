@@ -28,7 +28,8 @@ import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { handleMeasureDown, handleMeasureDrag, handleMeasureHover, handleMeasureUp, updateMeasureScreenCoords } from './measureHandlers.js';
-import { resolvePointerGesture, type PointerGesture } from './pointerGesture.js';
+import type { PointerGesture } from './pointerGesture.js';
+import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
@@ -464,7 +465,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.isPanning = false;
 
       const tool = activeToolRef.current;
-      const gesture = resolvePointerGesture({
+      const gesture = resolveNavigationPointerGesture(useViewerStore.getState().navigationPreset, {
         tool, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey,
         metaKey: e.metaKey, altKey: e.altKey,
         measureMode: useViewerStore.getState().measureMode,
@@ -772,22 +773,27 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const handleWheel = (e: WheelEvent) => {
       if (fly.isActive()) return fly.wheel(e); // while flying the wheel sets fly speed, not zoom
+      const wheel = resolveWheelNavigation(useViewerStore.getState().navigationPreset, e);
       // Cancels the browser's own Ctrl+wheel page zoom as well as scrolling;
       // works only because the listener below is registered `passive: false`.
-      applyWheelZoom(e, {
-        camera,
-        canvas,
-        fastZoom: e.shiftKey || params.fastZoomRef.current,
-        fineModifierHeld: fineZoomModifier.isHeld(),
-        pickSurface: createZoomSurfacePicker(renderer, camera, getPickOptions), // #5393
-      });
+      e.preventDefault();
+      if (wheel.panX || wheel.panY) camera.pan(wheel.panX, wheel.panY, false);
+      if (wheel.zoom) {
+        applyWheelZoom(e, {
+          camera, canvas,
+          fastZoom: e.shiftKey || params.fastZoomRef.current,
+          fineModifierHeld: fineZoomModifier.isHeld(),
+          pickSurface: createZoomSurfacePicker(renderer, camera, getPickOptions), // #5393
+        });
+      }
+      if (!wheel.panX && !wheel.panY && !wheel.zoom) return;
 
       if (wheelIdleTimer) clearTimeout(wheelIdleTimer);
       wheelIdleTimer = setTimeout(() => {
         isInteractingRef.current = false;
         renderer.requestRender();
-        // One signal per zoom gesture, on the trailing edge of the debounce.
-        emitCameraInteracted('zoom');
+        // One camera-interaction signal per wheel gesture, on the trailing edge.
+        emitCameraInteracted(wheel.zoom ? 'zoom' : 'pan');
       }, 150);
 
       isInteractingRef.current = true;

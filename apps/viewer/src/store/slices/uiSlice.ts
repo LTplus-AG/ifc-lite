@@ -8,7 +8,6 @@
 
 import type { StateCreator } from 'zustand';
 import {
-  HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
@@ -27,24 +26,13 @@ import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
+import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
 
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
-
-function getInitialHierarchyMode(): HierarchyMode {
-  if (typeof window === 'undefined') return 'spatial';
-  try {
-    const stored = localStorage.getItem(HIERARCHY_MODE_STORAGE_KEY);
-    if (stored === 'spatial' || stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
-      return stored;
-    }
-  } catch (err) {
-    console.warn('[hierarchy-mode] storage unavailable; using spatial', err);
-  }
-  return 'spatial';
-}
 
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).
@@ -124,6 +112,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
+  navigationPreset: NavigationPreset;
   visualEnhancementsEnabled: boolean;
   edgeContrastEnabled: boolean;
   edgeContrastIntensity: number;
@@ -174,6 +163,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setIsMobile: (isMobile: boolean) => void;
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
+  setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setEdgeContrastEnabled: (enabled: boolean) => void;
   setEdgeContrastIntensity: (intensity: number) => void;
@@ -220,6 +210,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
+  navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
   edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
@@ -316,11 +307,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setHierarchyMode: (mode) => {
     set({ hierarchyMode: mode });
-    try {
-      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, mode);
-    } catch (err) {
-      console.warn('[hierarchy-mode] persist failed; in-memory only', err);
-    }
+    persistHierarchyMode(mode);
   },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
@@ -355,6 +342,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setShowPerformanceStats: (showPerformanceStats) => {
     persistShowPerformanceStats(showPerformanceStats);
     set({ showPerformanceStats });
+  },
+  setNavigationPreset: (navigationPreset) => {
+    persistNavigationPreset(navigationPreset);
+    set({ navigationPreset });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setEdgeContrastEnabled: (edgeContrastEnabled) => set({ edgeContrastEnabled }),

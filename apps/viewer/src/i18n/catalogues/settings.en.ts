@@ -31,6 +31,13 @@ export const settingsEn = {
   'settings.general.hoverTooltipsHint': 'Show an element’s name and class under the pointer.',
 
   'settings.display.navigationTitle': 'Navigation',
+  'settings.display.navigationPreset': 'Pointer and wheel controls',
+  'settings.display.preset.default': 'Default',
+  'settings.display.preset.navisworks': 'Navisworks-like',
+  'settings.display.preset.trackpad': 'Trackpad',
+  'settings.display.presetHint.default': 'Wheel zooms; horizontal wheel movement pans.',
+  'settings.display.presetHint.navisworks': 'Shift + middle drag orbits; wheel zooms.',
+  'settings.display.presetHint.trackpad': 'Two-finger scroll pans; pinch or Ctrl + wheel zooms.',
   'settings.display.spaceMouseTitle': 'SpaceMouse',
   'settings.display.performanceTitle': 'Performance',
   'settings.display.performanceStats': 'Show performance stats',

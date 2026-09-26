@@ -121,8 +121,16 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(0);
   await clickEntityAction(page, 'Add to Collection', true);
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pinboardEntities.size)).toBe(1);
+  // This test covers menu dispatch, not GPU thumbnail capture. In software-GPU
+  // CI the device may have been lost by an earlier smoke case, leaving the
+  // thumbnail's queue.onSubmittedWorkDone() pending indefinitely. With no
+  // viewport canvas, the real save command still creates the collection view.
+  const viewportCanvas = await page.locator('canvas[data-viewport="main"]').elementHandle();
+  if (!viewportCanvas) throw new Error('authored viewer has no viewport canvas');
+  await viewportCanvas.evaluate((canvas) => canvas.removeAttribute('data-viewport'));
   await clickEntityAction(page, 'Save Collection View', true);
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().basketViews.length)).toBeGreaterThan(0);
+  await viewportCanvas.evaluate((canvas) => canvas.setAttribute('data-viewport', 'main'));
 
   await clickEntityAction(page, 'Select all IfcWall');
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityIds.size)).toBeGreaterThan(0);
@@ -138,7 +146,11 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   await clickEntityAction(page, 'Copy GlobalId');
   expect(await page.evaluate(() => globalThis.__ifc_lite_copied_global_id__?.length ?? 0)).toBeGreaterThan(0);
 
-  const sourceId = await clickEntityAction(page, 'Duplicate');
+  const sourceId = await openWallMenu(page);
+  // The direct action and the directional submenu both have the accessible
+  // name “Duplicate”; pick the button that executes the default action.
+  await menu.locator('button[role="menuitem"][aria-label="Duplicate"]').click();
+  await expect(menu).toBeHidden();
   const duplicatedId = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId);
   expect(duplicatedId).not.toBeNull();
   expect(duplicatedId).not.toBe(sourceId);

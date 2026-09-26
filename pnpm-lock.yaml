@@ -1389,6 +1389,9 @@ importers:
       '@ifc-lite/regex-guard':
         specifier: workspace:*
         version: link:../regex-guard
+      '@ifc-lite/rules':
+        specifier: workspace:*
+        version: link:../rules
     devDependencies:
       csv-parse:
         specifier: 7.0.2

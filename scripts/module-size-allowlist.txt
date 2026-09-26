@@ -250,7 +250,6 @@
    426 packages/lens/src/matching.ts
    416 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
-   412 packages/lists/src/types.ts
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts

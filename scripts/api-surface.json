@@ -6418,6 +6418,7 @@
     "ListScheduleRow: interface",
     "ListSummary: interface",
     "PropertyCondition: interface",
+    "UnreadableListCondition: interface",
     "ZONE_MODE_BREAKDOWN: const",
     "ZONE_MODE_VOLUME: const",
     "compileNameMatcher: function",
@@ -6428,6 +6429,7 @@
     "isNamePattern: function",
     "isZoneVolumeMode: function",
     "listResultToCSV: function",
+    "migrateLegacyListConditions: function",
     "summariseListRows: function",
     "toScheduleRows: function"
   ],

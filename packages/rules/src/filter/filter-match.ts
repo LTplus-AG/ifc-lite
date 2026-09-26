@@ -56,9 +56,10 @@ import { compileNameMatcher, isNamePattern } from '@ifc-lite/regex-guard';
  * docstring for the full contract. This function does not catch that; it
  * propagates to `filter-evaluate.ts`'s caller, which must.
  */
-export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind): boolean {
+export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind, caseMode?: 'exact'): boolean {
   if (kind === 'regex') return compileNameMatcher(`/${rulePattern}/`)(rowName);
   if (kind === undefined && isNamePattern(rulePattern)) return compileNameMatcher(rulePattern)(rowName);
+  if (caseMode === 'exact') return rowName === rulePattern;
   return rowName.toLowerCase() === rulePattern.toLowerCase();
 }
 
@@ -146,8 +147,8 @@ export function stringifyValue(value: unknown): string {
 export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   const matching = rows.filter(
     (r) =>
-      nameMatches(rule.setName, r.setName, rule.setNameKind) &&
-      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
+      nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind, rule.nameCaseMode),
   );
   // Presence, non-null and non-empty are distinct in imported filters.
   if (rule.op === 'isSet') return matching.length > 0;

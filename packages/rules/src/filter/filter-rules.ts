@@ -123,6 +123,8 @@ export interface AttributeRule {
 export interface PropertyRule extends SubjectReadOptions {
   kind: 'property';
   setName: string;
+  /** Preserve exact IFC name matching when decoding older saved List conditions. */
+  nameCaseMode?: 'exact';
   /** How `setName` reads — a regex set name is what lets one rule reach both
    *  `Pset_WallCommon` and `Pset_SlabCommon`. */
   setNameKind?: TextKind;

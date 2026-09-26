@@ -7,10 +7,11 @@ import { describe, it } from 'node:test';
 import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcTypeEnum, type PropertySet } from '@ifc-lite/data';
 import { matchesCriteria, LENS_OPERATORS, type LensDataProvider } from '@ifc-lite/lens';
-import { executeList, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
+import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
 import { BulkQueryEngine, MutablePropertyView, type FilterOperator, type PropertyValue } from '@ifc-lite/mutations';
 import {
   evaluateFilterRules,
+  evaluateFilterGroups,
   type PropertyRule,
   legacyLensOperatorToFilterRule,
   legacyListOperatorToFilterRule,
@@ -129,17 +130,21 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
   it('every ConditionOperator selects the same elements as the Lists engine', async () => {
     const { store, lists } = await fixture();
     for (const [operator, [field, value]] of Object.entries(listCases) as [ConditionOperator, [string, string]][]) {
-      const converted = legacyListOperatorToFilterRule(operator, template(field, value));
-      assert.equal(converted.status, 'readable', operator);
-      if (converted.status !== 'readable') continue;
       const definition: ListDefinition = {
         id: 'parity', name: 'Parity', createdAt: 0, updatedAt: 0,
         entityTypes: [], expressIdsByModel: { m: IDS }, columns: [],
         conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: field, operator, value }],
       };
       const old = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
-      assert.deepEqual(canonicalIds(store, converted.value), old, `Lists ${operator}`);
-      assert.deepEqual(filterRuleToLegacyListOperator(converted.value), { status: 'readable', value: operator });
+      const migrated = migrateLegacyListConditions(definition.conditions);
+      assert.deepEqual(migrated.unreadableConditions, [], `Lists ${operator} migrates losslessly`);
+      const rule = migrated.groups[0]?.rules[0];
+      assert.equal(rule?.kind, 'property', operator);
+      if (!rule || rule.kind !== 'property') continue;
+      const actual = evaluateFilterGroups('m', store, migrated.groups, { candidateExpressIds: IDS, limit: IDS.length })
+        .map((row) => row.expressId);
+      assert.deepEqual(actual, old, `Lists ${operator} after v1 migration`);
+      assert.deepEqual(filterRuleToLegacyListOperator(rule), { status: 'readable', value: operator });
     }
   });
 

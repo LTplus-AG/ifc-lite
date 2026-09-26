@@ -224,6 +224,15 @@ Conditions and lookups that match by name accept either an exact string or a reg
 
 `isNamePattern(pattern)` tells you whether a string will be treated as a regex.
 
+## Migrating saved v1 conditions
+
+`migrateLegacyListConditions(conditions)` decodes a saved flat AND list into one
+Rules `FilterGroup`. It returns `unreadableConditions` for sources and name
+patterns that cannot yet be represented without changing their results. Keep
+those original conditions when saving the definition, and show the unreadable
+rows to the user; the Lists engine still applies the v1 conditions during the
+staged migration.
+
 ## Key Exports
 
 | Export | Description |
@@ -235,6 +244,7 @@ Conditions and lookups that match by name accept either an exact string or a reg
 | `toScheduleRows(groups, levelCount)` | Project grouped `ListGroup[]` to a schedule/pivot `ListScheduleRow[]` — one row per group-value tuple |
 | `discoverColumns(providers, entityTypes)` | Sample available attributes/properties/quantities |
 | `compileNameMatcher(pattern)` / `isNamePattern(pattern)` | Exact-or-regex name matching |
+| `migrateLegacyListConditions(conditions)` | Decode saved v1 conditions into one AND `FilterGroup` and explicit unreadable rows |
 | `LIST_PRESETS` | Built-in schedule definitions |
 | `ENTITY_ATTRIBUTES` | The attribute names available to `attribute` columns |
 

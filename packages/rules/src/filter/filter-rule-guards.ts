@@ -60,6 +60,10 @@ export function isFilterRule(value: unknown): value is FilterRule {
     );
   }
   if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
+  if (kind === 'property') {
+    const r = value as { nameCaseMode?: unknown };
+    if (r.nameCaseMode !== undefined && r.nameCaseMode !== 'exact') return false;
+  }
   if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
   if (kind === 'modelFact') {
     const r = value as { fact?: unknown; op?: unknown; value?: unknown };

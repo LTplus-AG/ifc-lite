@@ -85,7 +85,6 @@ export const scheduleEn = {
 
   // ── Task tree (GanttTaskTree.tsx) ───────────────────────────────────
   'schedule.taskTree.columnTask': 'Task',
-  'schedule.taskTree.clearSelectionAriaLabel': 'Clear task selection',
   'schedule.taskTree.columnDuration': 'Duration',
   'schedule.taskTree.collapseAriaLabel': 'Collapse {label}',
   'schedule.taskTree.expandAriaLabel': 'Expand {label}',

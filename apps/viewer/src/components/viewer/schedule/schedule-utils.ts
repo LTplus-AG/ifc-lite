@@ -212,26 +212,6 @@ export function formatTickLabel(t: number, scale: GanttTimeScale): string {
   }
 }
 
-/** Move a keyboard seek by a local calendar unit, preserving the time of day. */
-export function advanceCalendarTime(time: number, scale: GanttTimeScale, step: number): number {
-  const date = new Date(time);
-  switch (scale) {
-    case 'hour': date.setHours(date.getHours() + step); break;
-    case 'day': date.setDate(date.getDate() + step); break;
-    case 'week': date.setDate(date.getDate() + step * 7); break;
-    case 'month':
-    case 'year': {
-      const day = date.getDate();
-      date.setDate(1);
-      if (scale === 'month') date.setMonth(date.getMonth() + step);
-      else date.setFullYear(date.getFullYear() + step);
-      date.setDate(Math.min(day, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
-      break;
-    }
-  }
-  return date.getTime();
-}
-
 export function formatDateTime(t: number | undefined): string {
   if (t === undefined) return '—';
   const d = new Date(t);

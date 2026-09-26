@@ -18,3 +18,17 @@ place points. Shift + left drag always pans, even when a measurement is active.
 An embed with camera controls disabled does not fly or navigate. Right-button
 fly is the viewer's established behavior (#4868); it takes priority over the
 ordinary right-button pan mapping used when fly is unavailable.
+
+## Navigation presets
+
+Choose a preset in **Settings → Display → Navigation**. The choice is saved in
+this browser and applies to every loaded model.
+
+| Preset | Pointer difference | Wheel or trackpad |
+| --- | --- | --- |
+| Default | The mapping above | Vertical wheel movement zooms; horizontal movement pans |
+| Navisworks-like | Shift + middle drag orbits; middle drag pans | Wheel zooms |
+| Trackpad | The default pointer mapping | Two-finger scroll pans in both directions; pinch or Ctrl + wheel zooms |
+
+Right-button fly remains available in every preset when camera controls are
+enabled. Shift + left drag pans in every preset and tool.

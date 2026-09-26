@@ -32,6 +32,8 @@ try {
 afterEach(() => {
   cleanup();
   act(() => useViewerStore.getState().setTheme('light'));
+  useViewerStore.setState({ navigationPreset: 'default' });
+  localStorage.removeItem('ifc-lite-navigation-preset');
 });
 
 function mountAndOpen(section?: 'general' | 'display') {
@@ -79,5 +81,16 @@ describe('Settings dialog (#5857)', () => {
     assert.equal(useViewerStore.getState().showPerformanceStats, true);
     assert.equal(localStorage.getItem('ifc-lite:show-performance-stats'), 'true');
     act(() => useViewerStore.getState().setShowPerformanceStats(false));
+  });
+
+  it('Display → Trackpad saves the navigation choice used by the canvas (#5889)', () => {
+    const dialog = mountAndOpen('display');
+    const trackpad = [...dialog.querySelectorAll('label')]
+      .find((label) => label.textContent === settingsEn['settings.display.preset.trackpad'])
+      ?.querySelector('input[type="radio"]');
+    assert.ok(trackpad, 'the Trackpad preset is selectable');
+    click(trackpad);
+    assert.equal(useViewerStore.getState().navigationPreset, 'trackpad');
+    assert.equal(localStorage.getItem('ifc-lite-navigation-preset'), 'trackpad');
   });
 });

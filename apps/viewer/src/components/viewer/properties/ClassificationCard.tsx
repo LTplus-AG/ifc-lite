@@ -17,8 +17,9 @@ import {
   EXPRESS_NAME_ATTRIBUTE,
 } from './express-labels';
 import { PersistentCollapsible } from './PersistentCollapsible';
+import { associationDisclosureId } from './associationDisclosureId';
 
-export function ClassificationCard({ classification }: { classification: ClassificationInfo }) {
+export function ClassificationCard({ classification, sectionId }: { classification: ClassificationInfo; sectionId?: string }) {
   const { t } = useTranslation();
   // Matches the "unavailable on this data source" treatment in
   // ModelMetadataPanel: a server-parsed store (#3948) can prove the entity
@@ -41,7 +42,7 @@ export function ClassificationCard({ classification }: { classification: Classif
   const systemName = classification.system;
 
   return (
-    <PersistentCollapsible id={`classification:${systemName}:${displayName}`} className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/20 w-full max-w-full overflow-hidden">
+    <PersistentCollapsible id={sectionId ?? associationDisclosureId('classification', classification, [classification], 0)} className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-left transition-colors overflow-hidden">
         <Tag className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
         <span className="font-bold text-xs text-emerald-700 dark:text-emerald-400 truncate flex-1 min-w-0">

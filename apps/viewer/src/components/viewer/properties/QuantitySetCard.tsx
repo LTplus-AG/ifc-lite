@@ -11,12 +11,12 @@ import { ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { QuantitySet } from './encodingUtils';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { resolveQuantityDisplay } from '@/lib/units/display';
 import { setDisplayName } from './setDisplayName';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
+import { quantityDisplayValue } from './propertyDisplayValue';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
@@ -40,15 +40,6 @@ export interface QuantitySetCardProps {
 export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, searchQuery }: QuantitySetCardProps) {
   const { t, locale } = useTranslation();
   const [open, setOpen] = usePersistentDisclosure(`qset:${qset.name}`);
-  const formatValue = (value: number, type: number): string => {
-    if (isNaN(value)) return '\u2014'; // em-dash for empty values
-    const disp = resolveQuantityDisplay(value, type, projectUnits, unitDisplayOverrides ?? {});
-    const formatted = formatLocaleNumber(locale, disp.converted ?? value, {
-      maximumFractionDigits: disp.converted !== null ? 4 : 3,
-    });
-    return disp.unit ? `${formatted} ${disp.unit}` : formatted;
-  };
-
   return (
     <Collapsible open={open || !!searchQuery} onOpenChange={searchQuery ? undefined : setOpen} className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/20 dark:bg-blue-950/20 w-full max-w-full overflow-hidden">
       <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-left transition-colors overflow-hidden">
@@ -87,7 +78,7 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, sear
                 )}
                 {/* Quantity value */}
                 <span className="font-mono text-blue-700 dark:text-blue-400 select-all break-words">
-                  <PropertySearchHighlight text={formatValue(q.value, q.type)} query={searchQuery} />
+                  <PropertySearchHighlight text={quantityDisplayValue(q, projectUnits, unitDisplayOverrides ?? {}, locale)} query={searchQuery} />
                 </span>
               </div>
             );

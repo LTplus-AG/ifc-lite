@@ -166,7 +166,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {/* Element type chips */}
         <section className="space-y-1.5">
-          <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             {t('addElement.type')}
           </Label>
           <div className="grid grid-cols-3 gap-1">
@@ -179,7 +179,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
                   onClick={() => setAddElementType(type)}
                   aria-pressed={selected}
                   className={[
-                    'flex items-center justify-center gap-1 h-8 px-1.5 rounded-sm text-[10px] font-mono uppercase tracking-wide',
+                    'flex items-center justify-center gap-1 h-8 px-1.5 rounded-sm text-2xs font-mono uppercase tracking-wide',
                     'border transition-colors',
                     'outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
                     selected
@@ -193,7 +193,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
               );
             })}
           </div>
-          <p className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 leading-snug pt-1">
+          <p className="text-2xs font-mono text-zinc-500 dark:text-zinc-400 leading-snug pt-1">
             {t(activeOption.hintKey)}
           </p>
         </section>
@@ -201,7 +201,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
         {/* Model + storey context */}
         {modelOptions.length > 1 && (
           <section className="space-y-1.5">
-            <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {t('addElement.model')}
             </Label>
             <Select
@@ -223,7 +223,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
         )}
 
         <section className="space-y-1.5">
-          <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             {t('addElement.storey')}
           </Label>
           {storeyOptions.length > 0 ? (
@@ -243,7 +243,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
               </SelectContent>
             </Select>
           ) : (
-            <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
+            <p className="text-2xs font-mono text-amber-600 dark:text-amber-400">
               {hasModel
                 ? t('addElement.noStorey')
                 : t('addElement.noModel')}
@@ -255,7 +255,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
         {/* Profile mode toggle — applies to slab, roof, plate, space (anything that supports both rect + polygon) */}
         {(addElementType === 'slab' || addElementType === 'roof' || addElementType === 'plate' || addElementType === 'space') && (
           <section className="space-y-1.5">
-            <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {t(`addElement.profile.${addElementType}` as TranslationKey)}
             </Label>
             <div className="grid grid-cols-2 gap-1">
@@ -271,7 +271,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
         {/* Type-specific dimensions */}
         <section className="space-y-2 pt-1">
-          <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             {t(`addElement.dimensions.${addElementType}`)}
           </Label>
 
@@ -358,7 +358,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           onClearPending={clearPending}
         />
 
-        <p className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600 leading-snug">
+        <p className="text-2xs font-mono text-zinc-400 dark:text-zinc-600 leading-snug">
           {t('addElement.snapHint')}
         </p>
       </div>
@@ -383,7 +383,7 @@ function ModeChip({ selected, onClick, children }: ModeChipProps) {
       onClick={onClick}
       aria-pressed={selected}
       className={[
-        'h-7 px-2 rounded-sm text-[11px] font-mono uppercase tracking-wide',
+        'h-7 px-2 rounded-sm text-2xs font-mono uppercase tracking-wide',
         'border transition-colors',
         'outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
         selected
@@ -410,7 +410,7 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
   const { t, locale } = useTranslation();
   if (!ready) {
     return (
-      <section className="mt-2 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-3 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
+      <section className="mt-2 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-3 text-2xs font-mono text-zinc-500 dark:text-zinc-400">
         {t('addElement.guidance.disabled')}
       </section>
     );
@@ -459,19 +459,19 @@ function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onCl
 
   return (
     <section
-      className="mt-2 rounded-sm border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-[11px] font-mono leading-relaxed text-emerald-800 dark:text-emerald-300"
+      className="mt-2 rounded-sm border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-2xs font-mono leading-relaxed text-emerald-800 dark:text-emerald-300"
       aria-live="polite"
     >
       <div className="flex items-start gap-2 justify-between">
         <div className="min-w-0">
           <span className="block font-semibold">{primary}</span>
-          <span className="block text-[10px] opacity-80 mt-0.5">{secondary}</span>
+          <span className="block text-2xs opacity-80 mt-0.5">{secondary}</span>
         </div>
         {pendingCount > 0 && (
           <button
             type="button"
             onClick={onClearPending}
-            className="shrink-0 text-[10px] underline-offset-2 hover:underline opacity-80 hover:opacity-100"
+            className="shrink-0 text-2xs underline-offset-2 hover:underline opacity-80 hover:opacity-100"
             aria-label={t('addElement.guidance.discardAria')}
           >
             {t('addElement.guidance.reset')}
@@ -590,7 +590,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
     <section className="space-y-2 pt-1">
       <div className="flex items-center gap-1.5">
         <Wand2 className="h-3 w-3 text-emerald-600" />
-        <Label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        <Label className="text-2xs font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
           {t('addElement.auto.heading')}
         </Label>
       </div>
@@ -612,7 +612,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           onChange={(v) => setParams({ Height: v })}
         />
         <div className="space-y-1">
-          <Label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400" htmlFor="auto-space-type">
+          <Label className="text-2xs font-mono text-zinc-500 dark:text-zinc-400" htmlFor="auto-space-type">
             {t('addElement.auto.type')}
           </Label>
           <Select
@@ -634,7 +634,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="auto-space-name" className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+        <Label htmlFor="auto-space-name" className="text-2xs font-mono text-zinc-500 dark:text-zinc-400">
           {t('addElement.auto.namePatternLabel', { indexToken: '{n}' })}
         </Label>
         <Input
@@ -652,7 +652,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           size="sm"
           onClick={runPreview}
           disabled={!ready || busy}
-          className="h-8 text-[11px] font-mono"
+          className="h-8 text-2xs font-mono"
         >
           {t('addElement.auto.preview')}
         </Button>
@@ -661,13 +661,13 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           size="sm"
           onClick={runCommit}
           disabled={!ready || busy}
-          className="h-8 text-[11px] font-mono bg-emerald-600 hover:bg-emerald-700"
+          className="h-8 text-2xs font-mono bg-emerald-600 hover:bg-emerald-700"
         >
           {t('addElement.auto.generate')}
         </Button>
       </div>
 
-      <label className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-500 dark:text-zinc-400 select-none cursor-pointer">
+      <label className="flex items-center gap-1.5 text-2xs font-mono text-zinc-500 dark:text-zinc-400 select-none cursor-pointer">
         <input
           type="checkbox"
           checked={debugLogging}
@@ -678,7 +678,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
       </label>
 
       {preview && (
-        <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-[10px] font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
+        <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-2xs font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
           <div>
             {t('addElement.auto.previewSummary', {
               count: preview.regions.length,
@@ -730,7 +730,7 @@ function NumberField({ label, value, min, onChange }: NumberFieldProps) {
   const id = `add-elem-${label.toLowerCase()}`;
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400">
+      <Label htmlFor={id} className="text-2xs font-mono text-zinc-500 dark:text-zinc-400">
         {label}
       </Label>
       <Input

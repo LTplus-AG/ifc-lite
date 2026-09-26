@@ -3,14 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * User cancel for a primary model load (#5849).
+ * User cancel for a model load (#5849).
  *
- * A load is cancelled the way a newer load already supersedes it: the
- * loader's session counter moves on, so every step still in flight (parser,
- * geometry stream, finalize) sees a stale session at its next await and
- * stops without writing to the store. On top of that, cancel returns the
- * viewer to its empty, idle state: no half-loaded model, no spinner and no
- * error, because the user chose this.
+ * The loader marks the in-flight work stale and aborts its geometry stream.
+ * A primary load returns to an empty viewer; a federated add leaves the
+ * already-loaded models in place. Neither path reports a user cancel as an
+ * error.
  *
  * The canceller is published through the store's `activeLoadCanceller`,
  * which the status-bar Cancel and the in-viewport loading card both read
@@ -28,7 +26,11 @@ import { getViewerStoreApi } from '@/store';
  * release to call when that load ends by any path; it clears the slot only
  * while the slot still holds this load's canceller.
  */
-export function installPrimaryLoadCanceller(supersede: () => void): () => void {
+export function installModelLoadCanceller(
+  kind: 'primary' | 'federated',
+  supersede: () => void,
+  ownedStream: () => (() => void) | null = () => null,
+): () => void {
   const store = getViewerStoreApi();
   const release = () => {
     if (store.getState().activeLoadCanceller === cancel) store.getState().setActiveLoadCanceller(null);
@@ -40,19 +42,29 @@ export function installPrimaryLoadCanceller(supersede: () => void): () => void {
     supersede();
     release();
     const state = store.getState();
-    // A primary point-cloud load also streams: stop the stream itself, not
-    // just the session, so it cannot keep ingesting or report progress. Clear
-    // the slot now rather than when the loader's async cleanup catches up, so
-    // no Cancel stays bound to a stream that is already cancelled.
-    const cancelStream = state.activeStreamCanceller;
-    if (cancelStream) {
+    // Stop this load's point-cloud stream too. A federated add may overlap
+    // another load, so only cancel its own stream handle in that case.
+    const cancelStream = kind === 'primary' ? state.activeStreamCanceller : ownedStream();
+    if (cancelStream && state.activeStreamCanceller === cancelStream) {
       cancelStream();
       state.setActiveStreamCanceller(null);
     }
-    // The same reset a primary load starts with (useIfcLoader.loadFile).
-    state.resetViewerState();
-    state.clearAllModels();
-    state.clearLayerStack();
+    if (kind === 'primary') {
+      // The same reset a primary load starts with (useIfcLoader.loadFile).
+      state.resetViewerState();
+      state.clearAllModels();
+      state.clearLayerStack();
+    } else {
+      // A federated add has not registered its model yet. Clear only load UI;
+      // the prior scene, selection and model map belong to the user.
+      state.setLoading(false);
+      state.setGeometryStreamingActive(false);
+      state.setProgress(null);
+      state.setGeometryProgress(null);
+      state.setMetadataProgress(null);
+      state.setLoadingFileName(null);
+      state.setError(null);
+    }
   };
   store.getState().setActiveLoadCanceller(cancel);
   return release;

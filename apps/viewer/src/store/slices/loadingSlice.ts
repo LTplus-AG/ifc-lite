@@ -27,8 +27,8 @@ export interface LoadingSlice {
    */
   activeStreamCanceller: (() => void) | null;
   /**
-   * Cancel for the primary model load in flight (#5849), published by
-   * `hooks/primaryLoadCanceller.ts`. A slot of its own, NOT
+   * Cancel for the active primary or federated model load (#5849), published by
+   * `hooks/modelLoadCanceller.ts`. A slot of its own, NOT
    * `activeStreamCanceller`: GPU device-loss recovery cancels whatever is in
    * that slot (a scan must not publish a handle into a torn-down renderer),
    * and a model load must survive a device loss. UI reads either slot through

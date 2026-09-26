@@ -14,11 +14,11 @@ import { getViewerStoreApi } from '@/store';
 
 // Dynamic: the revert oracle deletes this module, and a static import would
 // fail the whole file instead of letting the assertions go red.
-let installPrimaryLoadCanceller: ((supersede: () => void) => () => void) | undefined;
+let installModelLoadCanceller: ((kind: 'primary' | 'federated', supersede: () => void) => () => void) | undefined;
 try {
-  ({ installPrimaryLoadCanceller } = await import('./primaryLoadCanceller.js'));
+  ({ installModelLoadCanceller } = await import('./modelLoadCanceller.js'));
 } catch (error) {
-  console.error('[primaryLoadCanceller.test] module unavailable; assertions will fail', error instanceof Error ? error.message : error);
+  console.error('[modelLoadCanceller.test] module unavailable; assertions will fail', error instanceof Error ? error.message : error);
 }
 
 const store = getViewerStoreApi();
@@ -55,10 +55,10 @@ afterEach(() => {
 
 describe('primary load cancel (#5849)', () => {
   it('publishes a canceller that supersedes the load and leaves the viewer empty and idle', () => {
-    assert.ok(installPrimaryLoadCanceller, 'hooks/primaryLoadCanceller must export installPrimaryLoadCanceller');
+    assert.ok(installModelLoadCanceller, 'hooks/modelLoadCanceller must export installModelLoadCanceller');
     startLoading();
     let superseded = 0;
-    installPrimaryLoadCanceller(() => { superseded += 1; });
+    installModelLoadCanceller('primary', () => { superseded += 1; });
 
     const cancel = store.getState().activeLoadCanceller;
     assert.ok(cancel, 'a primary load publishes a canceller');
@@ -77,9 +77,9 @@ describe('primary load cancel (#5849)', () => {
   });
 
   it('release clears only its own canceller, never a newer load\'s', () => {
-    assert.ok(installPrimaryLoadCanceller);
-    const releaseFirst = installPrimaryLoadCanceller(() => {});
-    const releaseSecond = installPrimaryLoadCanceller(() => {});
+    assert.ok(installModelLoadCanceller);
+    const releaseFirst = installModelLoadCanceller('primary', () => {});
+    const releaseSecond = installModelLoadCanceller('primary', () => {});
     const second = store.getState().activeLoadCanceller;
     releaseFirst();
     assert.equal(store.getState().activeLoadCanceller, second, 'the newer load keeps its Cancel');
@@ -88,13 +88,13 @@ describe('primary load cancel (#5849)', () => {
   });
 
   it('a retained cancel from a replaced load does nothing to the load that replaced it', () => {
-    assert.ok(installPrimaryLoadCanceller);
+    assert.ok(installModelLoadCanceller);
     let firstSuperseded = 0;
-    installPrimaryLoadCanceller(() => { firstSuperseded += 1; });
+    installModelLoadCanceller('primary', () => { firstSuperseded += 1; });
     const staleCancel = store.getState().activeLoadCanceller;
     assert.ok(staleCancel);
     startLoading();
-    installPrimaryLoadCanceller(() => {});
+    installModelLoadCanceller('primary', () => {});
     const current = store.getState().activeLoadCanceller;
 
     staleCancel();
@@ -107,12 +107,33 @@ describe('primary load cancel (#5849)', () => {
   });
 
   it('also stops a point-cloud stream the primary load is running', () => {
-    assert.ok(installPrimaryLoadCanceller);
+    assert.ok(installModelLoadCanceller);
     let streamCancelled = 0;
     store.getState().setActiveStreamCanceller(() => { streamCancelled += 1; });
-    installPrimaryLoadCanceller(() => {});
+    installModelLoadCanceller('primary', () => {});
     store.getState().activeLoadCanceller?.();
     assert.equal(streamCancelled, 1, 'the stream is stopped, not just orphaned by the session bump');
     assert.equal(store.getState().activeStreamCanceller, null, 'no Cancel stays bound to the stopped stream');
+  });
+
+  it('a federated Cancel clears only load UI and preserves the existing model (#5849)', () => {
+    assert.ok(installModelLoadCanceller);
+    startLoading();
+    store.getState().setLoadingFileName('added.ifc');
+    const before = store.getState().models;
+    let superseded = 0;
+    installModelLoadCanceller('federated', () => { superseded += 1; });
+
+    store.getState().activeLoadCanceller?.();
+
+    const after = store.getState();
+    assert.equal(superseded, 1);
+    assert.equal(after.models, before, 'the previous model map is not reset');
+    assert.equal(after.models.size, 1);
+    assert.equal(after.loading, false);
+    assert.equal(after.loadingFileName, null);
+    assert.equal(after.progress, null);
+    assert.equal(after.error, null);
+    assert.equal(after.activeLoadCanceller, null);
   });
 });

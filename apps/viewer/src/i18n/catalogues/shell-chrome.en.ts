@@ -123,6 +123,7 @@ export const shellChromeEn = {
   'shellChrome.mobileToolbar.openFileAriaLabel': 'Open file',
   'shellChrome.mobileToolbar.addModelAriaLabel': 'Add model',
   'shellChrome.mobileToolbar.moreActionsAriaLabel': 'More actions',
+  'shellChrome.mobileToolbar.commands': 'Commands…',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
   'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',

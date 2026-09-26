@@ -22,10 +22,11 @@ import {
   Palette, Puzzle, Sun, Info, Settings,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
-  Ruler,
+  Ruler, Coins,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { openSettings } from '@/lib/settings/open-settings';
+import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
 import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
@@ -58,6 +59,13 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('clash'); } },
     { id: 'panel:compare', label: 'Compare Models', ...withKey('commandPalette.panel.compare.label'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
       action: () => { p.activateRightPanel('compare'); } },
+    { id: 'panel:cost', label: 'Cost', ...withKey('commandPalette.panel.cost.label'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
+      action: () => { p.activateRightPanel('cost'); } },
+    { id: 'panel:chat', label: 'AI Chat', ...withKey('commandPalette.panel.chat.label'), keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
+      action: () => {
+        if (!isBottomPanelDocked(useViewerStore.getState(), 'script')) p.activateBottomPanel('script');
+        useViewerStore.getState().setChatPanelVisible(true);
+      } },
     { id: 'panel:lens', label: 'Lens Rules', ...withKey('commandPalette.panel.lens.label'), keywords: 'color filter highlight', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('lens'); } },
     { id: 'panel:layers', label: 'Layer Stack', ...withKey('commandPalette.panel.layers.label'), keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,

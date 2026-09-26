@@ -18,7 +18,7 @@ import type { PaletteExportRequest } from './usePaletteExportRunner';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 export type RightPanel =
-  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
+  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'cost' | 'extensions' | 'layers'
   | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements';
 
 export interface CommandPaletteBuildParams {

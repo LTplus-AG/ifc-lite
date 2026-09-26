@@ -22,6 +22,8 @@ export const ribbonToolbarEn = {
   'ribbon.bandAriaLabel': '{tab} commands',
   'ribbon.themeTooltip': 'Toggle theme (Shift+click for secret mode)',
   'ribbon.infoAriaLabel': 'Info and keyboard shortcuts',
+  'ribbon.commands': 'Commands…',
+  'ribbon.commandsShortcut': 'Ctrl+K',
   'ribbon.infoTooltip': 'Info (?)',
   'ribbon.expand': 'Expand the ribbon',
   'ribbon.collapse': 'Collapse the ribbon',

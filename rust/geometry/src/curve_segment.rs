@@ -62,14 +62,20 @@ impl Parent {
 /// ∫₀ˢ (cos kt², sin kt²) dt by composite Simpson — smooth integrand, so a
 /// fixed fine subdivision is accurate to far below a millimetre.
 fn clothoid_point(s: f64, k: f64) -> Vector2<f64> {
-    let mut n = ((s.abs() / 0.25).ceil() as usize).clamp(2, 20_000);
+    clothoid_interval(0.0, s, k)
+}
+
+/// Integrate only the interval between adjacent samples. Reintegrating from
+/// zero for every point makes a long segment quadratic in its sample count.
+fn clothoid_interval(from: f64, to: f64, k: f64) -> Vector2<f64> {
+    let mut n = (((to - from).abs() / 0.25).ceil() as usize).clamp(2, 20_000);
     n += n % 2; // Simpson needs an even count
-    let h = s / n as f64;
+    let h = (to - from) / n as f64;
     let f = |t: f64| Vector2::new((k * t * t).cos(), (k * t * t).sin());
-    let mut acc = f(0.0) + f(s);
+    let mut acc = f(from) + f(to);
     for i in 1..n {
         let w = if i % 2 == 1 { 4.0 } else { 2.0 };
-        acc += f(i as f64 * h) * w;
+        acc += f(from + i as f64 * h) * w;
     }
     acc * (h / 3.0)
 }
@@ -148,9 +154,20 @@ pub(crate) fn sample_curve_segment(
         1
     };
     let mut out = Vec::with_capacity(n + 1);
+    let mut previous_s = start;
+    let mut clothoid_position = p0;
     for i in 0..=n {
         let s = start + length * (i as f64 / n as f64);
-        let d = parent.eval(s).0 - p0;
+        let position = match &parent {
+            Parent::Clothoid { a } => {
+                let k = 1.0 / (2.0 * a * a.abs());
+                clothoid_position += clothoid_interval(previous_s, s, k);
+                clothoid_position
+            }
+            _ => parent.eval(s).0,
+        };
+        previous_s = s;
+        let d = position - p0;
         out.push(Point3::new(
             origin.x + cos_r * d.x - sin_r * d.y,
             origin.y + sin_r * d.x + cos_r * d.y,
@@ -224,5 +241,20 @@ mod tests {
         let x = l - l.powi(5) / (40.0 * a.powi(4));
         let y = l.powi(3) / (6.0 * a * a) - l.powi(7) / (336.0 * a.powi(6));
         assert!((end.x - x).abs() < 1e-4 && (end.y - y).abs() < 1e-4, "{end:?} vs ({x}, {y})");
+    }
+
+    #[test]
+    fn clothoid_incremental_integration_preserves_nonzero_and_reverse_stations() {
+        let k = 1.0 / (2.0 * 100.0_f64.powi(2));
+        for (from, to) in [(25.0, 75.0), (75.0, 25.0), (-25.0, 25.0)] {
+            let mut sum = Vector2::zeros();
+            for i in 0..100 {
+                let a = from + (to - from) * i as f64 / 100.0;
+                let b = from + (to - from) * (i + 1) as f64 / 100.0;
+                sum += clothoid_interval(a, b, k);
+            }
+            let expected = clothoid_point(to, k) - clothoid_point(from, k);
+            assert!((sum - expected).norm() < 1e-6, "{from} → {to}: {sum:?} vs {expected:?}");
+        }
     }
 }

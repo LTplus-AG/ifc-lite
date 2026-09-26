@@ -27,7 +27,8 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
-import { handleMeasureDown, handleMeasureDrag, handleMeasureHover, handleMeasureUp, updateMeasureScreenCoords, shouldStartDragMeasurement } from './measureHandlers.js';
+import { handleMeasureDown, handleMeasureDrag, handleMeasureHover, handleMeasureUp, updateMeasureScreenCoords } from './measureHandlers.js';
+import { resolvePointerGesture, type PointerGesture } from './pointerGesture.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
@@ -274,6 +275,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
     const camera = renderer.getCamera();
     const mouseState = mouseStateRef.current;
+    let pointerGesture: PointerGesture = 'orbit';
 
     // Build shared context for extracted handler functions
     const ctx: MouseHandlerContext = {
@@ -459,16 +461,24 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       mouseState.startY = e.clientY;
       mouseState.didDrag = false;
       mouseState.isRectSelecting = false;
-      // Right button held = fly (look + WASD/QE + wheel speed) in every tool; the middle button still pans. A frozen view refuses and falls through.
-      if (e.button === 2 && fly.begin(canvas)) { clearHover(); canvas.style.cursor = 'crosshair'; return; }
+      mouseState.isPanning = false;
 
-      // Determine action based on active tool and mouse button
       const tool = activeToolRef.current;
+      const gesture = resolvePointerGesture({
+        tool, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey, altKey: e.altKey,
+        measureMode: useViewerStore.getState().measureMode,
+        flyEnabled: useViewerStore.getState().interactionMode === 'all',
+      });
+      pointerGesture = gesture;
+      // Right-button fly (#4868) takes priority over ordinary pan. A frozen
+      // view refuses fly and falls back to the right-button pan path below.
+      if (gesture === 'fly' && fly.begin(canvas)) { clearHover(); canvas.style.cursor = 'crosshair'; return; }
 
       // Rectangle-select gesture: Ctrl/⌘ + LMB drag while in the
       // select tool. Suppresses orbit/pan; the rect is finalised
       // and pick happens on mouseup.
-      if (tool === 'select' && e.button === 0 && (e.ctrlKey || e.metaKey)) {
+      if (tool === 'select' && gesture === 'tool' && e.button === 0) {
         mouseState.isRectSelecting = true;
         const rect = canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
@@ -477,14 +487,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      // Will this mousedown lead to an orbit drag?
-      const isPanGesture = tool === 'pan' || e.button === 1 || e.button === 2 ||
-        (tool === 'select' && e.shiftKey);
-      const willOrbit = !isPanGesture && (
-        tool === 'select' ||
-        (tool === 'measure' && e.shiftKey) ||
-        !e.shiftKey // default tools: no shift = orbit
-      );
+      const willOrbit = gesture === 'orbit';
 
       // Set orbit pivot to the 3D point under the cursor so rotation feels anchored
       // to what the user is looking at. On miss, place pivot at current distance along
@@ -537,35 +540,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         }
       }
 
-      if (tool === 'pan' || e.button === 1 || e.button === 2) {
+      if (gesture === 'pan' || gesture === 'fly') {
         mouseState.isPanning = true;
         canvas.style.cursor = 'move';
-      } else if (tool === 'select') {
-        // Select tool: shift+drag = pan, normal drag = orbit
-        mouseState.isPanning = e.shiftKey;
-        canvas.style.cursor = e.shiftKey ? 'move' : 'grabbing';
-      } else if (tool === 'measure') {
-        // Measure tool - shift+drag = orbit, normal drag = measure (drag
-        // mode) or nothing (polyline mode — see shouldStartDragMeasurement).
-        if (shouldStartDragMeasurement(useViewerStore.getState().measureMode, e.shiftKey)) {
-          // Normal drag: delegate to measurement handler
-          if (handleMeasureDown(ctx, e)) return;
-        } else {
-          // Shift held, OR polyline mode (#2199): never start a drag
-          // measurement. Polyline mode places points on 'click' only (see
-          // handlePolylineClick in selectionHandlers.ts) — falling through
-          // to plain orbit/pan here means a click that doesn't move the
-          // mouse is a no-op for the camera and `activeMeasurement` is
-          // never touched, so the two modes can't corrupt each other.
-          mouseState.isDragging = true;
-          mouseState.isPanning = false;
-          canvas.style.cursor = 'grabbing';
-          // Fall through to allow orbit handling in mousemove
-        }
+      } else if (tool === 'measure' && gesture === 'tool') {
+        if (handleMeasureDown(ctx, e)) return;
       } else {
-        // Default behavior
-        mouseState.isPanning = e.shiftKey;
-        canvas.style.cursor = e.shiftKey ? 'move' : 'grabbing';
+        canvas.style.cursor = 'grabbing';
       }
     };
 
@@ -589,7 +570,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
 
       // Handle measure tool live preview while dragging
       // IMPORTANT: Check tool first, not activeMeasurement, to prevent orbit conflict
-      if (tool === 'measure' && mouseState.isDragging && activeMeasurementRef.current && !fly.isActive()) {
+      if (tool === 'measure' && pointerGesture === 'tool' && mouseState.isDragging && activeMeasurementRef.current && !fly.isActive()) {
         if (handleMeasureDrag(ctx, e, x, y)) return;
       }
 
@@ -624,8 +605,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      // Handle fly, then orbit/pan for other tools (or measure tool with shift+drag or no active measurement)
-      if (mouseState.isDragging && (fly.isActive() || tool !== 'measure' || !activeMeasurementRef.current)) {
+      // A measure tool drag navigates only when the resolver assigned navigation.
+      if (mouseState.isDragging && (fly.isActive() || pointerGesture !== 'tool')) {
         const dx = e.clientX - mouseState.lastX;
         const dy = e.clientY - mouseState.lastY;
 
@@ -639,7 +620,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         // Always update camera state immediately (feels responsive)
         if (fly.isActive()) {
           fly.look(dx, dy, e.movementX, e.movementY); // pointer-locked: the cursor is pinned, so movement deltas lead
-        } else if (mouseState.isPanning || tool === 'pan') {
+        } else if (mouseState.isPanning) {
           camera.pan(dx, dy, false);
         } else {
           camera.orbit(dx, dy, false); // walk mode too: drag looks around (full orbit)
@@ -726,7 +707,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // Handle measure tool completion
-      if (tool === 'measure' && activeMeasurementRef.current && e.button !== 2) {
+      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2) {
         if (handleMeasureUp(ctx, e)) return;
       }
 

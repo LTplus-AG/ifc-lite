@@ -9,7 +9,7 @@
 
 import type { SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3, MeasureMode } from '@/store/types.js';
+import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
@@ -82,30 +82,6 @@ export function getApproximateWorldPosition(
   _canvasHeight: number,
 ): { x: number; y: number; z: number } {
   return getEntityCenter(geom, entityId) || { x: 0, y: 0, z: 0 };
-}
-
-/**
- * Whether a mousedown on the Measure tool should start the drag-to-measure
- * gesture (`handleMeasureDown`/`activeMeasurement`). `false` in two cases:
- * shift is held (the existing orbit-while-measuring escape hatch), or the
- * tool is in any CLICK-driven mode (polyline #2199, angle #2735), where a
- * click rather than a drag is the only gesture that places a point (see
- * `handlePolylineClick` / `handleAngleClick` in selectionHandlers.ts).
- *
- * This is the single gate that keeps the modes' state machines from ever
- * running at the same time: as long as `useMouseControls.ts`'s mousedown
- * handler consults this before calling `handleMeasureDown`,
- * `activeMeasurement` can never become non-null outside drag mode.
- *
- * Tested as `mode === 'drag'` rather than `mode !== 'polyline'` deliberately.
- * The exclusion form is a DENY-LIST: every new click-driven mode has to
- * remember to add itself, and forgetting means the drag gesture silently runs
- * underneath it - two state machines live at once, which is the exact failure
- * this gate exists to prevent. The allow-list form makes a new mode
- * click-driven by default, which is the safe direction to be wrong in.
- */
-export function shouldStartDragMeasurement(mode: MeasureMode, shiftKey: boolean): boolean {
-  return mode === 'drag' && !shiftKey;
 }
 
 /**

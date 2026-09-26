@@ -562,12 +562,12 @@ function parseRequirements(parent: Element): IDSRequirement[] {
  * Parse a constraint element (can be simpleValue, restriction with pattern/enumeration/bounds)
  */
 function parseConstraintElement(el: Element): IDSConstraint {
-  // Check for simpleValue child
+  // `<simpleValue>` is `xs:string`: keep verbatim, don't trim (#6117).
   const simpleValueEl = getChildElement(el, 'simpleValue');
   if (simpleValueEl) {
     return {
       type: 'simpleValue',
-      value: simpleValueEl.textContent?.trim() || '',
+      value: simpleValueEl.textContent ?? '',
     } satisfies IDSSimpleValue;
   }
 
@@ -579,8 +579,8 @@ function parseConstraintElement(el: Element): IDSConstraint {
     return parseRestriction(restrictionEl);
   }
 
-  // Check direct text content (simple case)
-  const textContent = el.textContent?.trim();
+  // Direct text content (simple case) — same verbatim rule.
+  const textContent = el.textContent ?? '';
   if (textContent) {
     return {
       type: 'simpleValue',

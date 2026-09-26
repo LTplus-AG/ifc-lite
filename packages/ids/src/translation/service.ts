@@ -444,7 +444,7 @@ class IDSTranslationServiceImpl implements TranslationService {
           pset: context?.propertySet || '?',
         });
 
-      case 'PROPERTY_VALUE_MISMATCH':
+      case 'PROPERTY_VALUE_MISMATCH': case 'PROPERTY_EMPTY':
         return this.interpolate(t.propertyValueMismatch, {
           pset: this.extractPsetFromField(field),
           property: this.extractPropertyFromField(field),

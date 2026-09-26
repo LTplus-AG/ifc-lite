@@ -9,6 +9,13 @@
  * Split out of `constraints/index.ts` so that module is the matching
  * entry point and this one holds the primitives, letting the reporting
  * module (`describe.ts`) reach them without an import cycle.
+ *
+ * `matchSimpleValue`/`matchEnumeration` try string equality first, then
+ * fall back to numeric (1e-6 tolerance) / boolean coercion. `stringOnly`
+ * (set by the property facet from the value's declared IFC type) skips
+ * that fallback: a string-flavoured value (`IfcLabel`, …) must compare
+ * as an exact string even when it looks numeric — `IFCLABEL('1.0000001')`
+ * must NOT match a requirement of `1` (#6117).
  */
 
 import type {
@@ -49,15 +56,16 @@ export function conjunctiveFacetsOf(
 export function matchOneFamily(
   constraint: IDSConstraint,
   actualValue: string | number | boolean,
-  ci: boolean
+  ci: boolean,
+  stringOnly = false
 ): boolean {
   switch (constraint.type) {
     case 'simpleValue':
-      return matchSimpleValue(constraint, actualValue, ci);
+      return matchSimpleValue(constraint, actualValue, ci, stringOnly);
     case 'pattern':
       return matchPattern(constraint, actualValue, ci);
     case 'enumeration':
-      return matchEnumeration(constraint, actualValue, ci);
+      return matchEnumeration(constraint, actualValue, ci, stringOnly);
     case 'bounds':
       return matchBounds(constraint, actualValue);
     default:
@@ -94,11 +102,14 @@ function isCoercibleSimpleValue(constraint: IDSSimpleValue): boolean {
 function matchSimpleValue(
   constraint: IDSSimpleValue,
   actualValue: string | number | boolean,
-  caseInsensitive: boolean
+  caseInsensitive: boolean,
+  stringOnly = false
 ): boolean {
   const expected = constraint.value;
   const stringResult = compareString(expected, actualValue, caseInsensitive);
   if (stringResult !== undefined) return stringResult;
+  // A string-typed IFC value only matches through string equality (#6117).
+  if (stringOnly) return false;
   // A non-numeric, non-boolean literal can only match through string
   // equality — skip the comparators that would return undefined anyway.
   if (!isCoercibleSimpleValue(constraint)) return false;
@@ -264,7 +275,8 @@ function getEnumValueSets(constraint: IDSEnumerationConstraint): {
 function matchEnumeration(
   constraint: IDSEnumerationConstraint,
   actualValue: string | number | boolean,
-  caseInsensitive: boolean
+  caseInsensitive: boolean,
+  stringOnly = false
 ): boolean {
   // O(1) fast path: a set hit is exactly the condition under which
   // `compareString` would have returned true for some value, so this
@@ -274,6 +286,8 @@ function matchEnumeration(
   const actualStr = String(actualValue);
   if (sets.exact.has(actualStr)) return true;
   if (caseInsensitive && sets.upper.has(actualStr.toUpperCase())) return true;
+  // Same string-only rule as `matchSimpleValue` (#6117).
+  if (stringOnly) return false;
   // Pure-string enumerations are fully decided by the set lookups —
   // only numeric/boolean literals can still match in the slow walk.
   if (!sets.anyCoercible) return false;

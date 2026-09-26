@@ -727,7 +727,10 @@ describe('checkPropertyFacet', () => {
     };
     const result = checkPropertyFacet(facet, 10, accessorWithNull);
     expect(result.passed).toBe(false);
-    expect(result.failure?.type).toBe('PROPERTY_VALUE_MISMATCH');
+    // Absent (null) is "no value", distinct from a wrong value —
+    // `PROPERTY_EMPTY` lets `optional`/`prohibited` cardinality read it
+    // as "not present", matching upstream ifctester (#6117).
+    expect(result.failure?.type).toBe('PROPERTY_EMPTY');
   });
 });
 

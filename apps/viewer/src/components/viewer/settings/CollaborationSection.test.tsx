@@ -7,12 +7,12 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { click, cleanup, render, type as enterText } from '@/test/render.js';
-import { MAX_COLLAB_DISPLAY_NAME_LENGTH } from '@/lib/collab/identity.js';
 import { openSettings } from '@/lib/settings/open-settings.js';
 import { useViewerStore } from '@/store';
 import { SettingsDialogHost } from './SettingsDialog.js';
 
 afterEach(cleanup);
+const EXPECTED_MAX_DISPLAY_NAME_LENGTH = 64;
 
 it('Settings → Collaboration saves a trimmed, bounded display name and rejects blank input (#5863)', () => {
   act(() => useViewerStore.getState().setCollabIdentity({ name: 'Before' }));
@@ -35,7 +35,7 @@ it('Settings → Collaboration saves a trimmed, bounded display name and rejects
   assert.equal(save.disabled, true);
   assert.equal(useViewerStore.getState().collabIdentity.name, 'Ada Lovelace');
 
-  assert.equal(input.maxLength, MAX_COLLAB_DISPLAY_NAME_LENGTH);
-  act(() => useViewerStore.getState().setCollabIdentity({ name: 'x'.repeat(MAX_COLLAB_DISPLAY_NAME_LENGTH + 12) }));
-  assert.equal(useViewerStore.getState().collabIdentity.name, 'x'.repeat(MAX_COLLAB_DISPLAY_NAME_LENGTH));
+  assert.equal(input.maxLength, EXPECTED_MAX_DISPLAY_NAME_LENGTH);
+  act(() => useViewerStore.getState().setCollabIdentity({ name: 'x'.repeat(EXPECTED_MAX_DISPLAY_NAME_LENGTH + 12) }));
+  assert.equal(useViewerStore.getState().collabIdentity.name, 'x'.repeat(EXPECTED_MAX_DISPLAY_NAME_LENGTH));
 });

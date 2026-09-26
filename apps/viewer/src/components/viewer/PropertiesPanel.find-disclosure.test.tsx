@@ -166,6 +166,23 @@ describe('Properties find and section disclosure (#5899)', () => {
     assert.equal(panel.querySelector('mark')?.textContent, '375 mm');
   });
 
+  it('shows and highlights the converted value while finding in edit mode (#5899)', async () => {
+    await seed();
+    act(() => useViewerStore.setState({
+      editEnabled: true,
+      unitDisplayOverrides: { LENGTHUNIT: 'mm' },
+    }));
+    const panel = render(<PropertiesPanel />);
+    const find = panel.querySelector<HTMLInputElement>('input[aria-label="Find properties"]');
+    assert.ok(find);
+    type(find, '125 mm');
+    const matched = panel.querySelector('[data-prop-key="72:Custom_A:RawLength"]');
+    assert.ok(matched, 'the editable property remains a visible search result');
+    assert.equal(matched.querySelector('mark')?.textContent, '125 mm', 'the matching converted value is visible and highlighted');
+    type(find, 'tagA');
+    assert.equal(panel.querySelector('mark')?.textContent, 'tagA', 'an editable IFC attribute value is also highlighted');
+  });
+
   it('remembers a material section across element selections', async () => {
     await seed();
     const panel = render(<PropertiesPanel />);

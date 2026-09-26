@@ -1438,7 +1438,7 @@ export function PropertiesPanel() {
               {foundAttributes.map((attr) => (
                 <div key={attr.name} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
                   <span className="text-muted-foreground truncate" title={attr.name}><PropertySearchHighlight text={attr.name} query={findQuery} /></span>
-                  {editMode && selectedEntity ? (
+                  {editMode && selectedEntity && !findQuery ? (
                     <AttributeEditorField
                       modelId={selectedEntity.modelId}
                       entityId={selectedEntity.expressId}

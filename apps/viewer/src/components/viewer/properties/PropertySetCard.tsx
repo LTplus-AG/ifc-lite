@@ -167,7 +167,8 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     )}
                   </div>
                   {/* Property value - use PropertyEditor if editing enabled */}
-                  {enableEditing && modelId && entityId ? (
+                  {/* Search shows the converted display text so a value hit can be highlighted. */}
+                  {enableEditing && modelId && entityId && !searchQuery ? (
                     <PropertyEditor
                       modelId={modelId}
                       entityId={entityId}

@@ -17,13 +17,12 @@
 //! authored `DistanceAlong`, and builds a curve-aligned frame with the
 //! authored lateral/vertical/longitudinal offsets.
 //!
-//! Sampling currently uses each `IfcCurveSegment.Placement.Location` as a
-//! sparse polyline sample (one point per segment) and linearly interpolates.
-//! For the railway fixture's ~390 m line segments that's perfect at segment
-//! starts and accurate enough between them that signals land within a few
-//! metres of their authored station. A full per-segment parent-curve
-//! evaluator is follow-up scope; the key invariant — *signals land on the
-//! alignment instead of at world origin* — is what this regression locks.
+//! Sampling walks each `IfcCurveSegment`'s parent curve (line / circle /
+//! clothoid densely, other parents one point per segment) and, on an
+//! `IfcGradientCurve`, lifts the sample onto the vertical profile (#5327).
+//! The assertions stay invariant-shaped — *signals land on the alignment
+//! instead of at world origin*, distinct stations stay distinct — so they
+//! hold for any sampler at least as dense as the original one.
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::GeometryRouter;
@@ -78,8 +77,8 @@ fn signals_land_on_alignment_not_at_world_origin() {
     //   #3031 Route Indicator_02 — distance 853.1 m, lateral −3 m, vertical +2.5 m
     // Authored 500 m apart along the alignment. In MGA projected coords
     // (~452270, 4539403, …) the world-space separation of their bounding-
-    // box centroids should match — within a few metres for the sparse
-    // segment-start sampler.
+    // box centroids should match within a few metres (tolerance set for the
+    // original one-point-per-segment sampler; denser sampling only tightens it).
     let s1 = decoder.decode_by_id(3020).expect("decode #3020 Route Indicator_01");
     let s2 = decoder.decode_by_id(3031).expect("decode #3031 Route Indicator_02");
 
@@ -110,8 +109,8 @@ fn signals_land_on_alignment_not_at_world_origin() {
     );
 
     // Separation along the alignment was authored as 500 m (853.1 − 353.1).
-    // Linear interpolation between sparse segment-start samples for the two
-    // stations both lying inside the same long line segment is exact, so
+    // Both stations lie inside the same long straight segment, where
+    // interpolating between samples is exact for any sampler density, so
     // the measured separation should land very close to 500 m.
     let dx = c1x - c2x;
     let dy = c1y - c2y;

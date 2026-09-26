@@ -22,7 +22,6 @@ export const idsPanelEn = {
   'idsPanel.noFailedEntities': 'No failed entities',
   'idsPanel.noPassedEntities': 'No passed entities',
   'idsPanel.noEntities': 'No entities',
-  'idsPanel.showingEntities': 'Showing {shown} of {total} entities',
   'idsPanel.entityAriaLabelPassed': '{name} - {type} - Passed',
   'idsPanel.entityAriaLabelFailed': '{name} - {type} - Failed',
   'idsPanel.hideDetails': 'Hide details',

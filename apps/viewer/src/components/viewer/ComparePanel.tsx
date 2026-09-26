@@ -73,7 +73,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // in-flight `runComparison()` only learns "the user cleared" by watching
   // THIS wrapper get called, so every clear in this panel must go through it
   // or a stale result can resurrect itself once the run resolves.
-  const { running, result, error, runComparison, clearCompare } = useCompare();
+  const { running, result, error, runComparison, cancelComparison, clearCompare } = useCompare();
   // Row names and change details read the stores the diff was computed from (#5312).
   const models = useMemo(() => modelsAsCompared(liveModels, result?.comparedStores), [liveModels, result]);
 
@@ -260,6 +260,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 canRun={canRun}
                 running={running}
                 onRun={() => void runComparison()}
+                onCancel={cancelComparison}
                 error={error}
                 geometryUnavailable={!!result?.geometryUnavailable}
                 placementOnlyGeometry={!!result?.placementOnlyGeometry}

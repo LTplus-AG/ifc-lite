@@ -62,6 +62,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     loadIDSFile,
     clearIDS,
     runValidation,
+    cancelValidation,
     clearValidation,
     focusEntity,
   } = ids;
@@ -196,7 +197,9 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
                 <IDSPanelHeaderActions
                   reportModelId={report?.modelInfo[0]?.modelId ?? null}
                   loading={loading}
+                  validating={loading && progress !== null}
                   onRerun={(modelId) => { void runValidation(modelId); }}
+                  onCancel={cancelValidation}
                   onLoadNew={() => { void handleLoadIdsClick(); }}
                   onClearResults={clearValidation}
                   onUnload={() => {

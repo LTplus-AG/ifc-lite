@@ -9,9 +9,9 @@
  *
  * The renderer treats a colour override as a ROUTING decision, not just a
  * tint: an entity carrying a deliberate override (alpha >= 0.2) is promoted
- * from the transparent pipeline to the opaque, depth-writing one, so the
- * overlay paint pass (which uses `depthCompare: 'equal'`) has depth to match
- * (`packages/renderer/src/overlay-routing.ts`). `ghostExceptIds` fades an
+ * from the transparent pipeline to the opaque, depth-writing one, the only
+ * draws the renderer's colour table paints (#6076,
+ * `packages/renderer/src/overlay-routing.ts`). `ghostExceptIds` fades an
  * entity through the transparent-pipeline alpha path
  * (`packages/renderer/src/index.ts`'s `alphaForMesh`/`alphaForBatch`) and
  * does not survive that promotion — a ghosted entity that ALSO carries a

@@ -744,8 +744,8 @@ export function ViewportContainer() {
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
       // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
       // Defaults still come from styling.rs / default-materials.ts; the
-      // renderer promotes overridden entities to the opaque pipeline so the
-      // overlay paint pass finds matching depth. See issue #677.
+      // renderer promotes overridden entities to the opaque pipeline, the
+      // only draws its colour table paints (#6076). See issue #677.
       cache.push(mesh);
     }
 

@@ -9,9 +9,16 @@ import { Picker } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderOptions, BatchedMesh, Mesh } from './types.js';
 import type { Scene } from './scene.js';
+import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+
+async function requireColorTable() {
+    const module = await import('./entity-color-table.js').catch(() => null);
+    assert.ok(module, 'the renderer provides the entity colour table');
+    return module;
+}
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -72,7 +79,7 @@ interface Harness {
          * the render pass, so a test can assert command ORDER (e.g. that the
          * lighting environment is rebound at group(1) after the sky pass).
          */
-        commands: { op: string; index?: number }[];
+        commands: { op: string; index?: number; pipeline?: unknown }[];
         /** label of every `beginRenderPass` in call order (so a test can assert
          *  the sun shadow depth pass IS or is NOT encoded). */
         passes: string[];
@@ -83,6 +90,8 @@ interface Harness {
         /** label of every texture whose `destroy()` fired (shadow depth-texture
          *  release on toggle-off). */
         destroyedTextures: string[];
+        /** every buffer handed to `RenderPipeline.setEntityColorTableBuffer` (#6076) */
+        boundColorTables: unknown[];
     };
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
@@ -116,8 +125,11 @@ interface Harness {
     settlePendingMaps(reason?: unknown): void;
 }
 
+const OPAQUE_PIPELINE = { label: 'opaque' };
+const TRANSPARENT_PIPELINE = { label: 'transparent' };
+
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -156,7 +168,7 @@ function makeHarness(): Harness {
                 return (slot: number, buf: unknown) => { if (slot === 0) boundVertexBuffer = buf; };
             }
             if (prop === 'setPipeline') {
-                return () => { stats.commands.push({ op: 'setPipeline' }); };
+                return (pipeline: unknown) => { stats.commands.push({ op: 'setPipeline', pipeline }); };
             }
             if (prop === 'setBindGroup') {
                 return (index: number) => { stats.commands.push({ op: 'setBindGroup', index }); };
@@ -284,6 +296,10 @@ function makeHarness(): Harness {
                     case 'getMultisampleTextureView': return () => null;
                     case 'getUniformBufferSize': return () => 336;
                     case 'getQuantizedPipelineVariant': return () => null;
+                    // Stable identities so a test can tell which pipeline drew what.
+                    case 'getPipeline': return () => OPAQUE_PIPELINE;
+                    case 'getTransparentPipeline': return () => TRANSPARENT_PIPELINE;
+                    case 'setEntityColorTableBuffer': return (buffer: unknown) => { stats.boundColorTables.push(buffer); };
                     default: return () => ({});
                 }
             },
@@ -1772,5 +1788,194 @@ describe('the textured draw path passes authored alpha and material to packMeshM
         assert.ok(row, 'expected the textured draw to write the material row');
         assert.equal(row![0], Math.fround(0.8), 'metallic override reaches the uniform');
         assert.equal(row![1], Math.fround(0.2), 'roughness override reaches the uniform');
+    });
+});
+
+describe('colour overrides shade from the entity colour table, not overlay copies (#6076)', () => {
+    const BLUE: [number, number, number, number] = [0.125, 0.25, 0.875, 1]; // f32-exact: the table stores f32
+    const GREEN: [number, number, number, number] = [0.125, 0.875, 0.25, 1];
+
+    /** overrideParams (x = anchor, y = mode bits) of the LAST uniform write into `buffer`. */
+    function overrideLanes(h: Harness, buffer: GPUBuffer | undefined): number[] | null {
+        const write = h.stats.writes.filter((w) => w.buffer === buffer).at(-1);
+        if (!write) return null;
+        return [...new Uint32Array(write.floats.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4)];
+    }
+
+    /** The pipeline bound when the draw that used `vertexBuffer` fired. */
+    function pipelineOfDraw(h: Harness, vertexBuffer: GPUBuffer): unknown {
+        let pipeline: unknown = null;
+        let draw = 0;
+        for (const c of h.stats.commands) {
+            if (c.op === 'setPipeline') pipeline = c.pipeline;
+            if (c.op === 'drawIndexed' && h.stats.draws[draw++] === vertexBuffer) return pipeline;
+        }
+        return undefined;
+    }
+
+    function setOverrides(h: Harness, overrides: Map<number, [number, number, number, number]>): void {
+        sceneOf(h).setColorOverrides(overrides, h.renderer['device'].getDevice(), h.renderer['pipeline']!);
+    }
+
+    it('allocates and uploads nothing but the table, and adds no draw calls', async () => {
+        const { OVERRIDE_PARAM_PAINT, OVERRIDE_PARAM_EMPHASIZE } = await requireColorTable();
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        h.render();
+        const baseline = h.renderer.getFrameStats()?.drawCalls;
+        assert.ok(baseline !== undefined && baseline > 0, 'sanity: the batches drew');
+
+        const createdBefore = h.stats.createdBuffers.length;
+        h.stats.writes.length = 0;
+        setOverrides(h, new Map([[1, BLUE], [3, BLUE]]));
+        const created = h.stats.createdBuffers.slice(createdBefore);
+        assert.equal(created.length, 1, 'no overlay vertex/index/uniform buffers');
+        assert.equal(h.stats.writes.length, 1, 'one upload');
+
+        h.stats.writes.length = 0;
+        h.stats.commands.length = 0;
+        h.stats.draws.length = 0;
+        h.render();
+        assert.equal(h.renderer.getFrameStats()?.drawCalls, baseline, 'the same draw calls as without overrides');
+        const table = sceneOf(h).getEntityColorTable().getBuffer();
+        assert.equal(created[0], table, 'the one allocation is the colour table');
+        assert.equal(h.stats.boundColorTables.at(-1), table, 'the frame binds the scene table at group(1)');
+        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT, 0, 0], 'red batch paints from its anchor');
+        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0], 'grey batch paints from its anchor');
+
+        h.render({ emphasizeOverrides: true });
+        assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
+    });
+
+    it('holds the colour at the entity slot, and clearing empties the table without touching a batch', async () => {
+        const { lookupEntityColor } = await requireColorTable();
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        setOverrides(h, new Map([[2, GREEN]]));
+        const image = sceneOf(h).getEntityColorTable().getImage();
+        assert.deepEqual(lookupEntityColor(image, 2), GREEN);
+        assert.equal(lookupEntityColor(image, 1), null);
+        assert.equal(lookupEntityColor(image, 3), null);
+
+        const createdBefore = h.stats.createdBuffers.length;
+        h.stats.writes.length = 0;
+        sceneOf(h).clearColorOverrides();
+        assert.equal(h.stats.createdBuffers.length, createdBefore, 'clearing allocates nothing');
+        const table = sceneOf(h).getEntityColorTable().getBuffer();
+        assert.deepEqual(h.stats.writes.map((w) => w.buffer), [table], 'clearing rewrites only the table');
+        assert.deepEqual([...new Uint32Array(h.stats.writes[0].floats.buffer)], [0, 0, 0, 0], 'header reset: count 0');
+        assert.equal(lookupEntityColor(sceneOf(h).getEntityColorTable().getImage(), 2), null);
+
+        h.stats.writes.length = 0;
+        h.render();
+        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [0, 0, 0, 0], 'nothing to paint after clearing');
+    });
+
+    it('keeps colour overrides available after CPU geometry is released (#6148 review)', async () => {
+        const { lookupEntityColor, OVERRIDE_PARAM_PAINT } = await requireColorTable();
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+        scene.releaseGeometryData();
+        assert.equal(scene.isGeometryDataReleased(), true);
+
+        setOverrides(h, new Map([[2, GREEN]]));
+        assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 2), GREEN);
+        h.render();
+        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
+    });
+
+    it('paints a mesh that streams in AFTER the override without another setColorOverrides call', async () => {
+        const { lookupEntityColor, OVERRIDE_PARAM_PAINT } = await requireColorTable();
+        const h = makeHarness();
+        seedBatches(h);
+        setOverrides(h, new Map([[9, GREEN]]));
+        const createdAfterOverride = h.stats.createdBuffers.length;
+        const scene = sceneOf(h);
+        scene.appendToBatches([triangle(9, [0.3, 0.3, 0.3, 1])], h.renderer['device'].getDevice(), h.renderer['pipeline']!, false);
+        const late = scene.getBatchedMeshes().find((b) => b.expressIds.includes(9));
+        assert.ok(late, 'sanity: the late mesh is batched');
+        late.bounds = undefined;
+        const table: unknown = scene.getEntityColorTable().getBuffer();
+        assert.ok(
+            h.stats.createdBuffers.slice(createdAfterOverride).every((b) => b !== table),
+            'the table is not rebuilt for the late mesh',
+        );
+
+        h.stats.writes.length = 0;
+        h.render();
+        assert.deepEqual(overrideLanes(h, late.uniformBuffer), [9, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 9), GREEN);
+    });
+
+    it('paints entities of one bucket whose ids span 2^24, and still promotes them (#6076 review)', async () => {
+        const { ENTITY_LANE_ID_SPAN, OVERRIDE_PARAM_PAINT, lookupEntityColor, resolveLaneEntityId } = await requireColorTable();
+        // Same model, colour and cell: before page-keyed buckets these two
+        // shared one batch whose ids span more than 2^24, the anchor was
+        // refused, and both drew unpainted — while routing still promoted them.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const low = 10;
+        const high = 10 + ENTITY_LANE_ID_SPAN + 100;
+        const glass: [number, number, number, number] = [0.6, 0.8, 0.9, 0.4];
+        scene.appendToBatches([triangle(low, glass), triangle(high, glass)], h.renderer['device'].getDevice(), h.renderer['pipeline']!, false);
+        const batches = scene.getBatchedMeshes();
+        for (const b of batches) b.bounds = undefined;
+        setOverrides(h, new Map([[low, [1, 0, 0, 1]], [high, [1, 0, 0, 1]]]));
+        h.render();
+        for (const id of [low, high]) {
+            const batch = batches.find((b) => b.expressIds.includes(id));
+            assert.ok(batch, `batch for ${id}`);
+            assert.deepEqual(overrideLanes(h, batch.uniformBuffer), [Math.min(...batch.expressIds), OVERRIDE_PARAM_PAINT, 0, 0], `${id} paints`);
+            assert.equal(resolveLaneEntityId(Math.min(...batch.expressIds), id & 0xFFFFFF), id, `${id} resolves to itself`);
+            assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), id), [1, 0, 0, 1]);
+            assert.equal(pipelineOfDraw(h, batch.vertexBuffer), OPAQUE_PIPELINE, `${id} is promoted to opaque`);
+        }
+    });
+
+    for (const [label, finalize] of [
+        ['finalizeStreaming', (s: Scene, d: GPUDevice, p: RenderPipeline) => { s.finalizeStreaming(d, p); }],
+        ['finalizeStreamingAsync', (s: Scene, d: GPUDevice, p: RenderPipeline) => s.finalizeStreamingAsync(d, p)],
+    ] as const) {
+        it(`paints the batch ${label} installs after a mid-stream override, with no re-apply`, async () => {
+            const { OVERRIDE_PARAM_PAINT } = await requireColorTable();
+            const h = makeHarness();
+            const scene = sceneOf(h);
+            const device = h.renderer['device'].getDevice();
+            const pipeline = h.renderer['pipeline']!;
+            scene.appendToBatches([triangle(11, GREY), triangle(12, GREY)], device, pipeline, true);
+            setOverrides(h, new Map([[12, GREEN]]));
+            const table = scene.getEntityColorTable().getBuffer();
+            await finalize(scene, device, pipeline);
+            const finalBatch = scene.getBatchedMeshes().find((b) => b.expressIds.includes(12));
+            assert.ok(finalBatch, 'finalized batch holds entity 12');
+            finalBatch.bounds = undefined;
+            assert.equal(scene.getEntityColorTable().getBuffer(), table, 'finalize does not touch the table');
+            h.stats.writes.length = 0;
+            h.render();
+            assert.deepEqual(overrideLanes(h, finalBatch.uniformBuffer), [11, OVERRIDE_PARAM_PAINT, 0, 0]);
+        });
+    }
+
+    it('keeps the opaque promotion of a transparent entity with an override at alpha >= 0.2, and paints only there', async () => {
+        const { OVERRIDE_PARAM_PAINT } = await requireColorTable();
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const glass: [number, number, number, number] = [0.6, 0.8, 0.9, 0.4];
+        scene.appendToBatches([triangle(4, glass), triangle(5, [0.2, 0.7, 0.3, 0.4])], h.renderer['device'].getDevice(), h.renderer['pipeline']!, false);
+        const batches = scene.getBatchedMeshes();
+        for (const b of batches) b.bounds = undefined;
+        const promoted = batches.find((b) => b.expressIds.includes(4));
+        const ghost = batches.find((b) => b.expressIds.includes(5));
+        assert.ok(promoted && ghost && promoted !== ghost, 'sanity: two colour batches');
+
+        // 0.5 is a deliberate colour: promoted to the opaque pipeline and painted.
+        // 0.15 is ghost-tier: stays transparent, and a transparent draw never paints.
+        setOverrides(h, new Map([[4, [1, 0, 0, 0.5]], [5, [1, 0, 0, 0.15]]]));
+        h.render();
+        assert.equal(pipelineOfDraw(h, promoted.vertexBuffer), OPAQUE_PIPELINE, 'alpha >= 0.2 override promotes to opaque');
+        assert.deepEqual(overrideLanes(h, promoted.uniformBuffer), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
+        assert.equal(pipelineOfDraw(h, ghost.vertexBuffer), TRANSPARENT_PIPELINE, 'ghost-tier override stays transparent');
+        assert.deepEqual(overrideLanes(h, ghost.uniformBuffer), [0, 0, 0, 0], 'a transparent draw is not painted');
     });
 });

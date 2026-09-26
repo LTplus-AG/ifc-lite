@@ -1,0 +1,9 @@
+---
+"@ifc-lite/renderer": minor
+---
+
+Colour overrides (`Scene.setColorOverrides`: lens, charts, IDS, compare, 4D) are now shaded in the base pass from a per-entity colour table instead of from overlay batches (#6076). Before, every call copied the overridden geometry into new batches, grouped by source bucket and colour, and drew them in a second pass with `depthCompare: 'equal'`, so colouring a whole scene roughly doubled its draw calls and its vertex/index memory, and every call destroyed and rebuilt all of those copies. Now a call builds one storage buffer on the CPU and uploads it with a single `writeBuffer`: an open-addressing hash table keyed by the scene id, 20 bytes per slot at a load factor of at most one half (under 80 bytes per overridden entity past the 16-slot minimum). Opaque batch draws that hold an overridden entity read it in the fragment shader. No batch is built, copied or rebuilt, the draw-call count does not change, and a mesh streamed in after the call is painted by the id it already carries.
+
+The composite is the same as the old overlay's: the override albedo lit by the same irradiance, without the specular term, mixed over the fragment's own colour by the override alpha, with `emphasizeOverrides` unchanged. The opaque promotion of an entity overridden at alpha 0.2 or more (`overlay-routing.ts`) is unchanged. A draw through the transparent pipeline is not painted; the equal-depth overlay could not paint one either, since such a draw writes no depth.
+
+`RenderPipeline` gains `setEntityColorTableBuffer(buffer)`, which the renderer calls once per frame to bind the scene's table at group(1) binding 5. The mesh uniform grows from 92 to 96 floats (`overrideParams`). `RenderPipeline.getOverlayPipeline()` is deprecated: nothing draws with it any more, and it is now built only when called. The `'overlay'` quantized variant is no longer precompiled, so `getQuantizedPipelineVariant('overlay')` returns null.

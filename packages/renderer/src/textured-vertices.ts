@@ -27,9 +27,8 @@ export function interleaveTexturedVertices(
   const f = new Float32Array(interleaved);
   const u = new Uint32Array(interleaved);
   const entityIds = meshData.entityIds;
-  // Match mergeGeometry's entityId-lane packing so an overlay (lens/IDS/...)
-  // drawn over a textured mesh computes the same z-nudge → depthCompare:'equal'
-  // matches. High 8 bits = colour salt, low 24 = picking id.
+  // Match mergeGeometry's entityId-lane packing so every draw of this surface
+  // computes the same z-nudge. High 8 bits = colour salt, low 24 = picking id.
   const saltByte = colorSaltByte(meshData.color);
   for (let i = 0; i < vertexCount; i++) {
     const o = i * 9;

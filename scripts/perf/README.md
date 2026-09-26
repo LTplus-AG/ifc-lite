@@ -27,6 +27,19 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Renderer colour override table (#6076, PR #6148)
+
+A base-versus-branch browser run on a real Archicad architectural IFC, followed
+by a 55-file federation of distinct real IFCs from the same test-model folder,
+showed that the colour table removes the overlay draw and allocation cost in
+both cases. The coloured images stayed visually consistent with the base.
+This is a positive end-to-end verdict for those models; the original larger
+55-model federation, alpha/emphasis/X-Ray states, and coloured streaming
+still need their own acceptance run. The lesson is to measure both draw calls
+and GPU-process private memory after applying a lens: the renderer's resident
+geometry counter alone omits the allocation that dominated the old path.
+See the [browser evidence](evidence/color-overrides-6148/README.md).
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

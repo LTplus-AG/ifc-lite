@@ -3,33 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Derived batches (issue #4832): the colour-overlay batches built by
- * `Scene.setColorOverrides` and the partial (visibility) sub-batches built by
- * `Scene.getOrCreatePartialBatch` are re-merges of geometry that a BASE bucket
- * batch already draws. The overlay pass tests depth with `depthCompare:
- * 'equal'`, so a derived batch only paints where its depth is BIT-IDENTICAL
- * to the base batch's. Two things decide that depth: the shared local origin
- * (`mergeGeometry`) and whether the vertices went through the 2^-10 lattice
- * (`quantizeInterleaved`) or stayed f32.
+ * Derived batches (issue #4832): the partial (visibility / X-Ray / promotion)
+ * sub-batches built by `Scene.getOrCreatePartialBatch` are re-merges of
+ * geometry that a BASE bucket batch draws, drawn INSTEAD of it. Their depth
+ * must match the base batch's so a sub-batch and the rest of the scene
+ * resolve coplanar faces the same way whichever of the two is on screen. Two
+ * things decide that depth: the shared local origin (`mergeGeometry`) and
+ * whether the vertices went through the 2^-10 lattice (`quantizeInterleaved`)
+ * or stayed f32. (The colour-overlay batches this rule was first written for
+ * are gone: overrides shade from the entity colour table, #6076.)
  *
- * Quantization is decided per batch from its own extent (u16 range, ~64 m).
- * Base buckets are `cell~colour` (32 m cells) and essentially always
- * quantize; an overlay group keyed by override colour alone spans wherever
- * that colour lands, crosses the limit on any large model, and silently fell
- * back to f32 — lattice-snapped base against raw-f32 overlay, off by up to one
- * step, every overlay fragment rejected. The reverse also happens: a base
- * bucket holding one >64 m element is f32, while a small subset of it
- * quantizes.
+ * Quantization is decided per batch from its own extent (u16 range, ~64 m),
+ * so a small subset of a base bucket holding one >64 m element (an f32
+ * batch) would quantize on its own.
  *
  * The rule here: a derived batch never decides quantization for itself. It
- * (a) is grouped by its SOURCE bucket, so it is a subset of exactly one base
- * batch and cannot exceed that batch's extent, and (b) inherits the source
- * batch's f32/quantized decision. A subset of a batch that quantized always
- * quantizes (min/max only tighten, `floor` is monotonic), so `'required'` is
- * an invariant, not a hope — `createSceneBatch` reports when it is broken.
+ * (a) is a subset of exactly one base batch and cannot exceed that batch's
+ * extent, and (b) inherits the source batch's f32/quantized decision. A
+ * subset of a batch that quantized always quantizes (min/max only tighten,
+ * `floor` is monotonic), so `'required'` is an invariant, not a hope —
+ * `createSceneBatch` reports when it is broken.
  */
 
-import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
 
 /**
@@ -49,8 +44,7 @@ export function inheritedQuantization(
 ): BatchQuantization {
   if (!quantizedBatchesEnabled) return 'off';
   // Source not built yet (mid-stream): nothing to inherit from, so decide like
-  // a base batch would. `Scene.finalizeStreaming*` re-applies the installed
-  // overrides once the buckets are built, so this choice never outlives them.
+  // a base batch would.
   if (!sourceBatch) return 'auto';
   return sourceBatch.quantized ? 'required' : 'off';
 }
@@ -64,14 +58,7 @@ export function cloneOverrides(
   return copy;
 }
 
-/**
- * `overrides` with every colour equal to a pair's `from` replaced by its `to`,
- * or `null` when none matches (nothing to repaint). The renderer uses it to
- * carry the clash pair tints across a theme switch (#5490): the override
- * batches bake their colour in, so a theme change has to rebuild them.
- * Exact channel equality is the contract, not a tolerance: the painted colour
- * and the theme field are the same token parsed the same way.
- */
+/** Repaint installed clash tints when the overlay theme changes (#5490). */
 export function remapOverrideColors(
   overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
   pairs: ReadonlyArray<readonly [from: readonly number[], to: readonly number[]]>,
@@ -88,80 +75,4 @@ export function remapOverrideColors(
     next.set(id, [out[0], out[1], out[2], out[3]]);
   }
   return changed ? next : null;
-}
-
-/** One overlay group: pieces of a single source bucket sharing an override colour. */
-export interface OverrideGroup {
-  color: [number, number, number, number];
-  meshData: MeshData[];
-  /** The bucket batch whose depth this group must match (null when unbuilt / unbucketed). */
-  sourceBatch: BatchedMesh | null;
-  /** Key of that bucket (null when unbucketed) — recorded so a later rebuild can tell whether the overlay went stale. */
-  sourceKey: string | null;
-}
-
-/** A bucket `rebuildPendingBatches` just rebuilt, with the decision its previous batch had. */
-export interface RebuiltBucket {
-  bucket: { key: string; meshData: readonly MeshData[]; batchedMesh: BatchedMesh | null };
-  previousQuantized: boolean;
-}
-
-/**
- * Whether a non-streaming rebuild invalidated the installed overlays: a
- * rebuilt bucket holding an overridden piece flipped f32↔quantized, or an
- * overridden piece now lives in a different bucket than the one its overlay
- * inherited from (`overlaySources`: piece → source bucket key at build time).
- * Anything else — e.g. N meshes appended one by one into a bucket whose
- * decision holds — leaves the overlays bit-coincident, so rebuilding them
- * would only be quadratic churn.
- */
-export function overlaysInvalidatedBy(
-  rebuilt: readonly RebuiltBucket[],
-  overlaySources: ReadonlyMap<MeshData, string>,
-): boolean {
-  if (overlaySources.size === 0) return false;
-  for (const { bucket, previousQuantized } of rebuilt) {
-    const flipped = (bucket.batchedMesh?.quantized !== undefined) !== previousQuantized;
-    for (const piece of bucket.meshData) {
-      const source = overlaySources.get(piece);
-      if (source !== undefined && (flipped || source !== bucket.key)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Group override pieces by `(source bucket, override colour)`.
- *
- * `sourceOf` resolves a piece to its owning bucket (key + built batch) or
- * undefined when it is not bucketed (textured meshes, mid-stream pieces);
- * `fallbackKey` then supplies a spatial key with the same cell/model shape
- * so unbucketed pieces still group compactly. Fallback keys live in their
- * own namespace: a bucket's key IS a base key, so an unbucketed piece must
- * never share a group (and thus a `sourceBatch`) with a bucketed one.
- */
-export function groupOverridePieces(
-  overrides: ReadonlyMap<number, readonly [number, number, number, number]>,
-  piecesOf: (expressId: number) => readonly MeshData[] | undefined,
-  sourceOf: (piece: MeshData) => { key: string; batchedMesh: BatchedMesh | null } | undefined,
-  fallbackKey: (piece: MeshData) => string,
-  colorKey: (color: readonly [number, number, number, number]) => string,
-): Map<string, OverrideGroup> {
-  const groups = new Map<string, OverrideGroup>();
-  for (const [expressId, color] of overrides) {
-    for (const piece of piecesOf(expressId) ?? []) {
-      const source = sourceOf(piece);
-      const key = `${source ? source.key : `unbucketed:${fallbackKey(piece)}`}:${colorKey(color)}`;
-      let group = groups.get(key);
-      if (!group) {
-        group = {
-          color: [color[0], color[1], color[2], color[3]], meshData: [],
-          sourceBatch: source?.batchedMesh ?? null, sourceKey: source?.key ?? null,
-        };
-        groups.set(key, group);
-      }
-      group.meshData.push(piece);
-    }
-  }
-  return groups;
 }

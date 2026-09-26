@@ -8,8 +8,8 @@
  * set that suppresses the duplicated base-model geometry.
  *
  * Colours go through the same single overlay channel `useLens` uses
- * (`setPendingColorUpdates` → `scene.setColorOverrides` — overlay batches drawn
- * over the original geometry, instant to clear). The hidden set is reconciled
+ * (`setPendingColorUpdates` → `scene.setColorOverrides` — painted from the
+ * renderer's per-entity colour table, instant to clear). The hidden set is reconciled
  * with ownership tracking lifted from `useOverlayCompositor`: we remember which
  * ids we hid and whether the user had already hidden them, so teardown only
  * un-hides what we actually contributed.

@@ -5,14 +5,14 @@
 /**
  * A focused clash pair follows the theme in 3D (#5490).
  *
- * The pair is painted through `Scene.setColorOverrides`, whose overlay
- * batches bake the colour in. A theme switch only updated the app's copy of
- * the two tints, so the panel's side dots changed and the 3D pair kept the old
- * theme's colours. `setOverlayTheme` now repaints every installed override
+ * The pair is painted through `Scene.setColorOverrides`, whose colour table
+ * retains the colour until it is rewritten. A theme switch only updated the
+ * app's copy of the two tints, so the panel's side dots changed and the 3D
+ * pair kept the old theme's colours. `setOverlayTheme` repaints every installed override
  * equal to the previous theme's `clashA` / `clashB` in the new ones.
  *
- * A real `Renderer` and `Scene`; only the GPU objects are stand-ins (a scene
- * with no meshes builds no batches, so `setColorOverrides` never touches them).
+ * A real `Renderer` and `Scene`; only the GPU objects are stand-ins. The
+ * scene has no meshes, but the entity colour table is still uploaded.
  * Each rebuild is recorded as a SNAPSHOT of the colours it was handed, because
  * that is what the batches are built from: a shared tuple mutated later would
  * make the retained map look right while the GPU showed the old colour.
@@ -23,6 +23,8 @@ import assert from 'node:assert/strict';
 import { Renderer } from './index.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 import { remapOverrideColors } from './scene-derived-batches.js';
+
+(globalThis as Record<string, unknown>).GPUBufferUsage = { STORAGE: 128, COPY_DST: 8 };
 
 type Rgba = [number, number, number, number];
 
@@ -40,7 +42,12 @@ function harness() {
     getBoundingClientRect: () => ({ width: 256, height: 256 }),
   } as unknown as HTMLCanvasElement);
   const fields = renderer as unknown as Record<string, unknown>;
-  fields['device'] = { isInitialized: () => true, getDevice: () => ({ limits: {} }) };
+  const gpu = {
+    limits: { maxStorageBufferBindingSize: 256 * 1024 * 1024 },
+    createBuffer: ({ size }: { size: number }) => ({ size, destroy() {} }),
+    queue: { writeBuffer() {} },
+  };
+  fields['device'] = { isInitialized: () => true, getDevice: () => gpu };
   fields['pipeline'] = { selectionColorUniform: { update() { /* not asserted */ } } };
   const scene = renderer.getScene() as unknown as {
     setColorOverrides(o: Map<number, Rgba>, d: unknown, p: unknown): void;
@@ -52,7 +59,7 @@ function harness() {
     builds.push(new Map([...o].map(([id, c]) => [id, [...c]])));
     real(o, d, p);
   };
-  const paint = (o: Map<number, Rgba>) => scene.setColorOverrides(o, fields['device'], fields['pipeline']);
+  const paint = (o: Map<number, Rgba>) => scene.setColorOverrides(o, gpu, fields['pipeline']);
   return { renderer, scene, builds, paint };
 }
 

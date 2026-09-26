@@ -278,5 +278,12 @@ test('#5895 Site visibility removes single-model IfcGeographicElement terrain', 
     test.skip(true, 'Hosted software WebGPU device was lost before the Site visibility reshape');
   }
   await setTypeVisibility(page, 'site', false);
-  await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
+  try {
+    await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
+  } catch (error) {
+    if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
+      test.skip(true, 'Hosted software WebGPU device was lost during the Site visibility reshape');
+    }
+    throw error;
+  }
 });

@@ -44,3 +44,13 @@ the Extensions Ideas tab open in headful Chrome production builds at the same
 1440 × 900 viewport. The getting-started heading grows from 10px to the 11px
 `text-2xs` floor. Both builds keep the document width at 1440 CSS pixels, with
 no horizontal overflow; the heading remains within its 317 CSS-pixel container.
+
+## Layers, Flow, and measurement batch
+
+This batch replaces 147 numeric font utilities in the Layers, Flow, and
+measurement tools. The [before](flow-before-gallery.png) and
+[after](flow-after-gallery.png) screenshots show the Flow example gallery over
+the built-in IFC demo in headful Chrome production builds at 1440 × 900. The
+first example's node and edge count grows from 10px to the 11px `text-2xs`
+floor. Its line remains within the 324 CSS-pixel card, and the document width
+stays at 1440 CSS pixels in both builds.

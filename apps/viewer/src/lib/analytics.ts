@@ -197,6 +197,43 @@ export function trackUiEvent<E extends UiEventName>(event: E, properties: UiEven
   posthog.capture(event, properties);
 }
 
+/**
+ * The one path for surfacing a load failure to the user (#5618, #5851).
+ * `message` goes on the store, where the in-viewport load-error card reads
+ * it; `code` is a fixed id (never the message itself), so `error_shown`
+ * stays a closed, scrubber-safe vocabulary. Every load path — `useIfcLoader`,
+ * every federated IFCX path in `useIfcFederation`, and the `?model=`
+ * autoload — calls this one function, so there is never a second error path.
+ *
+ * `setError`/`setLastLoadRetry` are passed in rather than read from
+ * `@/store` here: every store slice this module could reach transitively
+ * (e.g. `uiSlice` → `store/uiTelemetry.ts` → this file's own `trackUiEvent`)
+ * would make `@/store` importing back into this file a real circular
+ * import, not just a theoretical one — it broke store initialization
+ * (`Cannot access 'createChartSlice' before initialization`) the one time
+ * it was tried. Every caller already has both setters from its own
+ * `useViewerStore` binding.
+ *
+ * `retry` is REQUIRED, not optional, on purpose (#5851 review): the card's
+ * Retry button is exactly `store.lastLoadRetry`, and a call site that could
+ * set an error without saying what Retry does would leave a STALE retry
+ * from whatever the previous error was — this is the bug the required
+ * parameter exists to make impossible. Pass a thunk that re-runs the same
+ * attempt (same File, URL, or buffers), or `null` when nothing can usefully
+ * be retried (the card then renders without a Retry button).
+ */
+export function showLoadError(
+  setError: (message: string) => void,
+  setLastLoadRetry: (retry: (() => void) | null) => void,
+  message: string,
+  code: string,
+  retry: (() => void) | null,
+): void {
+  setError(message);
+  setLastLoadRetry(retry);
+  trackUiEvent('error_shown', { code, surface: 'load_error' });
+}
+
 /** The sole capture path for completed exports (#5844). */
 export function trackExportCompleted(properties: ExportCompletedProperties): void {
   posthog.capture('export_completed', properties);

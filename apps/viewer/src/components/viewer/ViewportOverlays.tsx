@@ -28,6 +28,7 @@ import { useTranslation } from '@/i18n';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { EditModeHudChip } from './EditModeHudChip';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
 import { MeasurementsVisibilityChip } from './tools/MeasurementsVisibilityChip';
 
@@ -52,6 +53,11 @@ export function ViewportOverlays({
   hideAxis = false,
   hideScale = false,
 }: { hideViewCube?: boolean; hideAxis?: boolean; hideScale?: boolean } = {}) {
+  // Exactly one of the loading/error cards ever renders (#5851 nit): a
+  // failure can land while `loading` has not yet flipped false for an
+  // unrelated concurrent load, and the two must never occupy the same
+  // centered viewport slot at once. Error wins.
+  const hasLoadError = useViewerStore((s) => s.error !== null);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
@@ -174,7 +180,7 @@ export function ViewportOverlays({
           anything below portals in. */}
       <ViewportHud />
       <EditModeHudChip />
-      <ViewportLoadingCard />
+      {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
       <FlySpeedIndicator />

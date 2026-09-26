@@ -133,14 +133,14 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
       {...tourAnchor(TOUR_ANCHORS.layersDiff)}
     >
       <div className="flex items-center justify-between gap-2 pb-1.5">
-        <span className="truncate text-[11px] font-medium" title={entry.name}>
+        <span className="truncate text-2xs font-medium" title={entry.name}>
           {t('layersPanel.diffView.title', { name: entry.name })}
         </span>
         <button
           type="button"
           onClick={toggleGhost}
           aria-pressed={ghosting}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[10px] font-medium leading-none transition-colors ${
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-2xs font-medium leading-none transition-colors ${
             ghosting
               ? 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300'
               : 'border-border text-muted-foreground hover:bg-muted/60'
@@ -160,7 +160,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
               type="button"
               disabled={count === 0}
               onClick={() => setKindFilter(active ? null : kind)}
-              className={`rounded-full border px-1.5 py-px text-[10px] font-medium leading-none transition-colors disabled:opacity-40 ${
+              className={`rounded-full border px-1.5 py-px text-2xs font-medium leading-none transition-colors disabled:opacity-40 ${
                 active ? m.chip : 'border-border text-muted-foreground hover:bg-muted/60'
               }`}
             >
@@ -170,7 +170,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
         })}
       </div>
       {visible.length === 0 ? (
-        <p className="py-2 text-center text-[11px] text-muted-foreground">
+        <p className="py-2 text-center text-2xs text-muted-foreground">
           {t('layersPanel.diffView.emptyState')}
         </p>
       ) : (
@@ -187,9 +187,9 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
               >
                 <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${m.dot}`} aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px]">{pathTail(row.path)}</span>
+                  <span className="block truncate text-2xs">{pathTail(row.path)}</span>
                   {row.components.length > 0 && (
-                    <span className="block truncate text-[10px] text-muted-foreground">
+                    <span className="block truncate text-2xs text-muted-foreground">
                       {row.components.map(componentLabel).join(', ')}
                     </span>
                   )}
@@ -198,7 +198,7 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
             );
           })}
           {visible.length > ROW_LIMIT && (
-            <p className="px-1 py-1 text-[10px] text-muted-foreground">
+            <p className="px-1 py-1 text-2xs text-muted-foreground">
               {t('layersPanel.diffView.showingCount', { shown: ROW_LIMIT, total: visible.length })}
             </p>
           )}

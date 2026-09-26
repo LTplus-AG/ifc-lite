@@ -17,15 +17,6 @@ use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point3, Vector3};
-use std::sync::OnceLock;
-
-fn t_alignment_curve() -> IfcType {
-    // IfcAlignmentCurve is IFC4X1-only. The supported-schema enum retains its
-    // exact variant; keep this cached name lookup aligned with sibling helpers.
-    static T: OnceLock<IfcType> = OnceLock::new();
-    T.get_or_init(|| IfcType::from_str("IFCALIGNMENTCURVE"))
-        .clone()
-}
 
 /// IfcAlignment processor — emits a ribbon polyline mesh.
 pub struct IfcAlignmentProcessor;
@@ -78,7 +69,12 @@ impl GeometryProcessor for IfcAlignmentProcessor {
         // the IFC4X1 layout (attribute 7) first, then a small fallback
         // window — any IfcRef that resolves to a curve we can parse via
         // AlignmentCurve::parse wins.
-        let curve = locate_axis_curve(entity, decoder)?;
+        let curve = crate::alignment_axis::locate_axis_curve(entity, decoder).ok_or_else(|| {
+            crate::Error::geometry(
+                "IfcAlignment missing recognisable Axis curve (expected IfcAlignmentCurve or IfcPolyline)"
+                    .to_string(),
+            )
+        })?;
 
         let alignment = match AlignmentCurve::parse(&curve, decoder)? {
             Some(a) => a,
@@ -138,31 +134,4 @@ impl GeometryProcessor for IfcAlignmentProcessor {
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcAlignment]
     }
-}
-
-/// Resolve the alignment's directrix curve. Tries each plausible attribute
-/// index in turn — IFC4X1 puts Axis at 7, some IFC4X3 publishers reuse
-/// Representation (6), and a few experimental variants hang it at 8.
-fn locate_axis_curve(
-    entity: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<DecodedEntity> {
-    for idx in [7usize, 8, 6] {
-        let Some(attr) = entity.get(idx) else { continue };
-        if attr.is_null() {
-            continue;
-        }
-        let Some(resolved) = decoder.resolve_ref(attr)? else {
-            continue;
-        };
-        if resolved.ifc_type == t_alignment_curve()
-            || resolved.ifc_type == IfcType::IfcPolyline
-        {
-            return Ok(resolved);
-        }
-    }
-    Err(crate::Error::geometry(
-        "IfcAlignment missing recognisable Axis curve (expected IfcAlignmentCurve or IfcPolyline)"
-            .to_string(),
-    ))
 }

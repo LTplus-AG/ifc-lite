@@ -6,6 +6,9 @@ import type { TranslationValue } from '../types';
 
 /** Labels for the canonical visibility-reason rows (#5869). */
 export const visibilityReasonsEn = {
+  'visibilityEmpty.title': 'Nothing is visible: the active filters exclude every element.',
+  'visibilityEmpty.reasons': 'Active reasons: {reasons}',
+  'visibilityEmpty.reset': 'Reset everything',
   'visibilityReasons.hidden': 'Hidden elements',
   'visibilityReasons.isolation': 'Isolated elements',
   'visibilityReasons.ghost': 'X-ray context',

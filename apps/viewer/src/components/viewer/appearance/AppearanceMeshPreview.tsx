@@ -122,7 +122,7 @@ export function AppearanceMeshPreview({ mesh, assetId, additionalMeshes = NO_PAR
       <PreviewMarkers projected={preview.projected} />
       {box && <div className="pointer-events-none absolute border border-primary bg-primary/15" style={{ left: box.x, top: box.y, width: box.width, height: box.height }} />}
     </div>
-    <p className="text-[11px] text-muted-foreground">{instruction ?? (faceSelection
+    <p className="text-2xs text-muted-foreground">{instruction ?? (faceSelection
       ? (selecting ? t('appearance.meshPreview.instructionFaceSelecting') : t('appearance.meshPreview.instructionFaceIdle'))
       : (selecting ? t('appearance.meshPreview.instructionRegionSelecting') : t('appearance.meshPreview.instructionRegionIdle')))}</p>
   </div>;

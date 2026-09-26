@@ -12,7 +12,7 @@ test('#5860 saved worker override is visible and resettable in Settings', async 
   });
   await page.goto('/');
   await page.getByRole('tab', { name: 'View', exact: true }).click({ force: true });
-  await page.getByRole('tabpanel', { name: 'View commands' })
+  await page.getByRole('tabpanel', { name: 'View' })
     .getByRole('button', { name: /Theme, toolbar, tooltips/ }).click({ force: true });
   const dialog = page.locator('[data-settings-dialog]');
   await dialog.getByRole('tab', { name: 'Performance' }).click({ force: true });

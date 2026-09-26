@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, click, waitFor } from '@/test/render.js';
+import { render, cleanup, click, waitFor, mouseDown, press, advance } from '@/test/render.js';
 import { loadDialogs } from '@/test/dialog-host.js';
 import { useViewerStore } from '@/store/index.js';
 import type { MeasurePoint } from '@/store/types.js';
@@ -78,12 +78,28 @@ describe('Measurements panel (#5502)', () => {
   it('Point tab reads the last endpoint in IFC axes; Qty tab answers for an empty selection', () => {
     useViewerStore.setState({ measurements: [M1] });
     const container = render(<MeasurementsPanel />);
-    click(tab(container, 'Point'));
+    mouseDown(tab(container, 'Point'));
     assert.match(container.textContent ?? '', /X 3\.000\s+Y 4\.000\s+Z 3\.000/, container.textContent ?? '');
     assert.equal(tab(container, 'Point').getAttribute('aria-selected'), 'true');
-    click(tab(container, 'Qty'));
+    mouseDown(tab(container, 'Qty'));
     assert.match(container.textContent ?? '', /Select elements to read their quantities/);
     assert.doesNotMatch(container.textContent ?? '', /X 3\.000/);
+  });
+
+  it('#5815 ArrowRight selects Point and ties its readout to the tab', async () => {
+    useViewerStore.setState({ measurements: [M1] });
+    const container = render(<MeasurementsPanel />);
+    const list = tab(container, 'List') as HTMLElement;
+    list.focus();
+    press(list, 'ArrowRight');
+    await advance(5);
+    const point = tab(container, 'Point') as HTMLElement;
+    assert.equal(document.activeElement, point);
+    assert.equal(point.getAttribute('aria-selected'), 'true');
+    const panel = container.querySelector('[role="tabpanel"][data-state="active"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), point.id);
+    assert.match(panel.textContent ?? '', /X 3\.000/);
   });
 
   it('offers to start measuring from an empty list only while the tool is closed', () => {

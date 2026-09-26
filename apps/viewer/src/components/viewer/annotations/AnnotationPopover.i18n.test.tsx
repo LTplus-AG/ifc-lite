@@ -102,8 +102,7 @@ describe('AnnotationPopover localization (#4918)', () => {
         annotation={annotation}
         anchorX={100}
         anchorY={100}
-        canvasWidth={800}
-        canvasHeight={600}
+        boundaryEl={null}
         entityType={null}
         onSave={() => {}}
         onDelete={() => {}}
@@ -134,8 +133,7 @@ describe('AnnotationPopover localization (#4918)', () => {
         annotation={annotation}
         anchorX={100}
         anchorY={100}
-        canvasWidth={800}
-        canvasHeight={600}
+        boundaryEl={null}
         entityType="IfcWall"
         onSave={() => {}}
         onDelete={() => {}}

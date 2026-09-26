@@ -155,16 +155,17 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   if (rule.op === 'isNull') return matching.length === 0 || matching.some((r) => r.valueType === 'null');
   if (rule.op === 'isNotNull') return matching.some((r) => r.valueType !== 'null');
   if (rule.op === 'isNonEmpty') return matching.some((r) => r.valueType !== 'null' && r.value.length > 0);
+  const comparable = rule.comparison ? matching.filter((r) => r.valueType !== 'null') : matching;
 
   // A negated op holds when NO candidate has the value (a list [A, B] is
   // not "!= A"), the ANY/NONE convention `material` and `parent` use and
   // validation's `checkValueOp` applies (#5475). With a single candidate
   // this is the same answer as before.
   const positive = NEGATED_VALUE_OP[rule.op];
-  if (positive) return matching.length > 0 && !matching.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, {
+  if (positive) return comparable.length > 0 && !comparable.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, {
     ...rule.comparison, candidateType: r.valueType,
   }));
-  return matching.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, {
+  return comparable.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, {
     ...rule.comparison, candidateType: r.valueType,
   }));
 }

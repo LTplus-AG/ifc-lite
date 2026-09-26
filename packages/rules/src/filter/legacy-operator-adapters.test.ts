@@ -188,6 +188,36 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
     }
   });
 
+  it('keeps null distinct from an empty string in converted numeric comparisons', async () => {
+    const { store, lens, lists, bulk } = await fixture();
+    const lensRule = legacyLensOperatorToFilterRule('gte', template('Nullable', '0'));
+    const listRule = legacyListOperatorToFilterRule('gte', template('Nullable', '0'));
+    const bulkRule = legacyBulkOperatorToFilterRule('>=', template('Nullable', ''), 0);
+    assert.equal(lensRule.status, 'readable');
+    assert.equal(listRule.status, 'readable');
+    assert.equal(bulkRule.status, 'readable');
+    if (lensRule.status !== 'readable' || listRule.status !== 'readable' || bulkRule.status !== 'readable') return;
+    const lensIds = IDS.filter((id) => matchesCriteria({
+      type: 'property', propertySet: 'Pset_Test', propertyName: 'Nullable',
+      operator: 'gte', propertyValue: '0',
+    }, id, lens));
+    const definition: ListDefinition = {
+      id: 'null-parity', name: 'Null parity', createdAt: 0, updatedAt: 0,
+      entityTypes: [], expressIdsByModel: { m: IDS }, columns: [],
+      conditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'Nullable', operator: 'gte', value: '0' }],
+    };
+    const bulkIds = bulk.select({ expressIds: IDS, propertyFilters: [{
+      psetName: 'Pset_Test', propName: 'Nullable', operator: '>=', value: 0,
+    }] });
+    const listIds = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
+    assert.deepEqual(canonicalIds(store, lensRule.value), lensIds);
+    assert.deepEqual(canonicalIds(store, listRule.value), listIds);
+    assert.deepEqual(canonicalIds(store, bulkRule.value), bulkIds);
+    assert.deepEqual(lensIds, []);
+    assert.deepEqual(listIds, [20]);
+    assert.deepEqual(bulkIds, []);
+  });
+
   it('reports unknown saved operators rather than dropping the filter', () => {
     const seed = template('Text', 'red');
     for (const result of [

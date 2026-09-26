@@ -8886,6 +8886,7 @@
     "Georeferencing: interface",
     "HealthResponse: interface",
     "IfcServerClient: class",
+    "IfcServerError: class",
     "MESH_COORDINATE_SPACES: const",
     "MaterialAssociation: interface",
     "MeshCoordinateSpace: type",

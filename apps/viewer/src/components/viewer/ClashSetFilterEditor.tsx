@@ -57,7 +57,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
         {rules.length > 1 && (
@@ -69,7 +69,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 text-[11px] text-muted-foreground"
+            className="h-7 gap-1 text-2xs text-muted-foreground"
             onClick={() => commit([])}
             title={t('clashTools.setFilter.clearTooltip')}
           >
@@ -79,7 +79,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
       </div>
 
       {unreadable > 0 && (
-        <p role="alert" data-clash-filter-unreadable className="text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+        <p role="alert" data-clash-filter-unreadable className="text-2xs leading-snug text-amber-700 dark:text-amber-400">
           {t('clashTools.setFilter.unreadableWarning', { count: unreadable })}
         </p>
       )}
@@ -95,7 +95,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
       ))}
 
       {rules.length > 0 && (
-        <p className="text-[10px] text-muted-foreground leading-snug">
+        <p className="text-2xs text-muted-foreground leading-snug">
           {t('clashTools.setFilter.definedByFilter', { label: label.toLowerCase() })}
         </p>
       )}

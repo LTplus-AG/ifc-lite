@@ -88,6 +88,8 @@ export const sheetsPdfEn = {
   'sheetsPdf.sheetSetup.savedTemplatesHeading': 'Saved Templates',
   'sheetsPdf.sheetSetup.templateNamePlaceholder': 'Template name...',
   'sheetsPdf.sheetSetup.noSavedTemplates': 'No saved templates',
+  'sheetsPdf.sheetSetup.loadTemplate': 'Load template {name}',
+  'sheetsPdf.sheetSetup.deleteTemplate': 'Delete template {name}',
   'sheetsPdf.sheetSetup.drawingAreaLabel': 'Drawing Area:',
   'sheetsPdf.sheetSetup.drawingAreaValue': '{width} × {height} mm',
   'sheetsPdf.sheetSetup.scaleLabel': 'Scale:',

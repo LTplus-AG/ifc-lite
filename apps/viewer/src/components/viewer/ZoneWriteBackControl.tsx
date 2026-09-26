@@ -104,19 +104,19 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
     <div className="space-y-1 rounded border-t pt-1.5">
       <div className="flex items-center gap-1">
         <Select value={basis} onValueChange={(v) => setBasis(v as VolumeBasis)}>
-          <SelectTrigger className="h-6 w-[104px] text-[11px]" aria-label={t('zonesPanel.writeBack.volumeBasisAriaLabel')}>
+          <SelectTrigger className="h-6 w-[104px] text-2xs" aria-label={t('zonesPanel.writeBack.volumeBasisAriaLabel')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {BASES.map((b) => (
-              <SelectItem key={b} value={b} className="text-[11px]">{volumeBasisLabel(b)}</SelectItem>
+              <SelectItem key={b} value={b} className="text-2xs">{volumeBasisLabel(b)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Button
           variant="outline"
           size="sm"
-          className="h-6 flex-1 text-[11px]"
+          className="h-6 flex-1 text-2xs"
           title={t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
@@ -176,7 +176,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
       </div>
       {/* Named here because the next place these are looked for is another
           tool's property browser, not this panel. */}
-      <p className="text-[10px] text-muted-foreground leading-snug break-words">
+      <p className="text-2xs text-muted-foreground leading-snug break-words">
         {zonePropertySetName(zoneSet.name)} · {zoneQuantitySetName(zoneSet.name, basis)}
       </p>
       {/* The direct answer to #1763's "manual work in Excel": one row per
@@ -187,7 +187,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             key={format}
             variant="outline"
             size="sm"
-            className="h-6 flex-1 text-[11px]"
+            className="h-6 flex-1 text-2xs"
             disabled={exportingTable !== null}
             title={t('zonesPanel.writeBack.downloadTableTitle', { format: format.toUpperCase() })}
             onClick={() => { void runTableExport(format); }}
@@ -201,7 +201,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
         <Button
           variant="outline"
           size="sm"
-          className="h-6 flex-1 text-[11px]"
+          className="h-6 flex-1 text-2xs"
           title={t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);

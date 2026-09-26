@@ -130,8 +130,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    VIEWPORT OVERLAY TOKENS (#5483, charter #5478)
    The colours live in ONE place, `lib/viewport-ui/overlay-theme.ts`, and
-   `useOverlayThemeSync` writes them onto <html> as `--overlay-*` on every
-   theme change. These entries only lend them Tailwind names, so overlay code
+   `registerOverlayThemeSync` (a store subscription) writes them onto <html>
+   as `--overlay-*` on every theme change. These entries only lend them Tailwind names, so overlay code
    writes `stroke-overlay-accent` / `bg-overlay-accent-soft` / `text-axis-x`
    and follows the theme for free. `static` so the properties and the z scale
    exist at runtime even before any utility consumes them: scripts read them

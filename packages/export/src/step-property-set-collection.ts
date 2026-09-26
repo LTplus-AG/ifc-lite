@@ -19,10 +19,14 @@ import { isTypeClass } from './type-owned-psets.js';
 import {
   type PropertySetContext,
   getPropertySetName,
-  getPropertyIdsInSet,
   getTypeOwnedHasPropertySetIds,
   getElementQuantityName,
 } from './step-property-set-readers.js';
+import {
+  SharedSetDetachments,
+  retainReusedSourceMembers,
+  unmodifiedSourceMembers,
+} from './step-pset-copy-on-write.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
 
 /** The mutation groupings `export()` builds before the collection phase runs. */
@@ -30,6 +34,8 @@ export interface PropertyMutationGroups {
   readonly entityPropMutations: Map<number, Set<string>>;
   readonly entityQuantMutations: Map<number, Set<string>>;
   readonly relDefinesByEntity: Map<number, Array<{ relId: number; psetId: number }>>;
+  /** Every effective IfcRelDefinesByProperties → its RelatedObjects. */
+  readonly relatedByRel: ReadonlyMap<number, readonly number[]>;
 }
 
 /**
@@ -65,11 +71,14 @@ export function collectPropertyAndQuantitySetMutations(
   groups: PropertyMutationGroups,
   ctx: PropertySetContext,
 ): void {
-  const { entityPropMutations, entityQuantMutations, relDefinesByEntity } = groups;
+  const { entityPropMutations, entityQuantMutations, relDefinesByEntity, relatedByRel } = groups;
   // `export()` narrowed this through the enclosing `if`, and the caller still
   // owns that gate: reaching here means the view exists and mutations are
   // enabled. Named once here rather than asserted at each of the six reads.
   const mutationView = ctx.mutationView as MutablePropertyView;
+  // A shared set reached by an edit is only withheld once nothing else is
+  // left on it; see `step-pset-copy-on-write.ts` (#5794).
+  const detachments = new SharedSetDetachments();
   // Collect modified property sets and find original psets to skip
   for (const [entityId, psetNames] of entityPropMutations) {
     // A deleted entity must not cause the exporter to REMOVE anything.
@@ -113,9 +122,28 @@ export function collectPropertyAndQuantitySetMutations(
     const allPsets = mutationView.getForEntity(entityId);
     const relevantPsets = allPsets.filter((pset: PropertySet) => psetNames.has(pset.name));
     const relDefinedPsetNames = new Set<string>();
+    // The regenerated copy references the source member of every property
+    // the session left alone, so it keeps its IFC class (#5794).
+    const regeneratedPsetNames = new Set(relevantPsets.map((pset: PropertySet) => pset.name));
+    // Keyed by set NAME, which is what the regenerated sets carry; a name two
+    // distinct source sets share on this element cannot say whose member a
+    // property is, so it reuses nothing and is regenerated as before.
+    const sourceMembers = new Map<string, Map<string, number>>();
+    const sourceSetByName = new Map<string, number>();
+    const reuseSourceMembers = (psetName: string, psetId: number): void => {
+      if (!regeneratedPsetNames.has(psetName)) return;
+      const seen = sourceSetByName.get(psetName);
+      if (seen === psetId) return;
+      if (seen !== undefined) {
+        sourceMembers.set(psetName, new Map());
+        return;
+      }
+      sourceSetByName.set(psetName, psetId);
+      sourceMembers.set(psetName, unmodifiedSourceMembers(ctx, mutationView, entityId, psetName, psetId));
+    };
 
     if (relevantPsets.length > 0) {
-      pass.newPropertySets.push({ entityId, psets: relevantPsets });
+      pass.newPropertySets.push({ entityId, psets: relevantPsets, sourceMembers });
     }
 
     // Find original property set IDs and relationship IDs to skip — look
@@ -129,13 +157,10 @@ export function collectPropertyAndQuantitySetMutations(
           relDefinedPsetNames.add(psetName);
         }
         if (psetName && psetNames.has(psetName)) {
-          pass.skipRelationshipIds.add(relId);
-          pass.skipPropertySetIds.add(relatedPsetId);
-          // Also skip the individual properties in this pset
-          const propIds = getPropertyIdsInSet(ctx, relatedPsetId);
-          for (const propId of propIds) {
-            pass.skipPropertySetIds.add(propId);
-          }
+          // Copy on write: this element leaves the relation, which with its
+          // set is withheld only if nobody else is left on it (#5794).
+          detachments.detach(relId, relatedPsetId, entityId);
+          reuseSourceMembers(psetName, relatedPsetId);
           // The other half of "did this edit change the file": a full export
           // applies a set DELETION by leaving these lines out, and produces
           // no replacement content to record an emission for. Without this
@@ -154,11 +179,10 @@ export function collectPropertyAndQuantitySetMutations(
         const psetName = getPropertySetName(ctx, psetId);
         if (!psetName || !psetNames.has(psetName)) continue;
         typeOwnedAffected.add(psetName);
-        pass.skipPropertySetIds.add(psetId);
-        const propIds = getPropertyIdsInSet(ctx, psetId);
-        for (const propId of propIds) {
-          pass.skipPropertySetIds.add(propId);
-        }
+        reuseSourceMembers(psetName, psetId);
+        // Withheld only if no other type object or relation still names it:
+        // another type sharing the set keeps it (#5794).
+        detachments.withholdTypeOwned(psetId, entityId);
         // No `recordWithheld` twin of the rel-defined branch above, and
         // deliberately: a name that matches an OWNED pset is either dropped
         // from the resolved list or swapped for the replacement this export
@@ -284,12 +308,8 @@ export function collectPropertyAndQuantitySetMutations(
         const deleted = qsetName !== null
           && mutationView.isQuantitySetDeleted?.(entityId, qsetName) === true;
         if (qsetName && (regeneratedQsetNames.has(qsetName) || deleted)) {
-          pass.skipRelationshipIds.add(relId);
-          pass.skipPropertySetIds.add(relatedPsetId);
-          const quantIds = getPropertyIdsInSet(ctx, relatedPsetId);
-          for (const quantId of quantIds) {
-            pass.skipPropertySetIds.add(quantId);
-          }
+          // Same copy on write as the property branch above (#5794).
+          detachments.detach(relId, relatedPsetId, entityId);
           // The withheld half, exactly as the rel-defined property branch
           // above. This loop has just decided that #`relatedPsetId`, its
           // quantity atoms and the relationship that attached them do NOT
@@ -325,4 +345,9 @@ export function collectPropertyAndQuantitySetMutations(
       }
     }
   }
+
+  // Both loops have named every shared relation they reached; only now is it
+  // known which of them still relate somebody else.
+  detachments.settle(pass, ctx, { relatedByRel, relDefinesByEntity });
+  retainReusedSourceMembers(pass);
 }

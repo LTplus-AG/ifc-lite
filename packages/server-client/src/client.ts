@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { withNarrowedCoordinateSpace,
-  type ErrorResponse,
   type HealthResponse,
   type MetadataResponse,
   type OptimizedParquetMetadataHeader,
@@ -19,6 +18,7 @@ import { withNarrowedCoordinateSpace,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 import { parquetStreamQuery, parseQuery } from './parse-query.js';
+import { serverErrorFromResponse, type IfcServerError } from './server-error.js';
 import {
   consumeParquetStream,
   STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
@@ -964,8 +964,11 @@ export class IfcServerClient {
   /**
    * Retrieve a cached parse result by key.
    *
-   * @param key - Cache key (SHA256 hash of file content)
-   * @returns Cached parse result, or null if not found
+   * @param key - The request `cache_key` a parse returned (`result.cache_key`):
+   *   the file's SHA-256 plus its opening-filter suffix, and a `-q{level}`
+   *   suffix for a non-default tessellation quality. Not the bare hash.
+   * @returns Cached parse result, or null if the server has not cached one
+   * @throws {IfcServerError} `BAD_REQUEST` when `key` is not a request cache key
    *
    * @example
    * ```typescript
@@ -997,15 +1000,8 @@ export class IfcServerClient {
     return withNarrowedCoordinateSpace<ParseResponse>(await response.json());
   }
 
-  /**
-   * Handle error responses from the server.
-   */
-  private async handleError(response: Response): Promise<Error> {
-    try {
-      const error: ErrorResponse = await response.json();
-      return new Error(`Server error (${error.code}): ${error.error}`);
-    } catch {
-      return new Error(`Server error: ${response.status} ${response.statusText}`);
-    }
+  /** Decode an error response from the server (the `{ error, code }` envelope). */
+  private handleError(response: Response): Promise<IfcServerError> {
+    return serverErrorFromResponse(response);
   }
 }

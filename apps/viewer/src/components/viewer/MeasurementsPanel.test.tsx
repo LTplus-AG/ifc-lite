@@ -121,7 +121,7 @@ describe('Measurements panel (#5502)', () => {
     const { ConfirmDialogHost } = await loadDialogs();
     useViewerStore.setState({ measurements: [M1] });
     const container = render(<><MeasurementsPanel /><ConfirmDialogHost /></>);
-    const clear = container.querySelector('button[title="Clear all"]');
+    const clear = container.querySelector('button[aria-label="Clear all"]');
     assert.ok(clear);
     click(clear);
     let dialog = document.querySelector('[role="alertdialog"]');
@@ -136,13 +136,33 @@ describe('Measurements panel (#5502)', () => {
     await waitFor(() => useViewerStore.getState().measurements.length === 0, 'accepted clear removes measurements');
     assert.equal(useViewerStore.getState().measurements.length, 0);
     assert.equal(useViewerStore.getState().polylineMeasurements.length, 0);
-    assert.equal(container.querySelector('button[title="Clear all"]'), null, 'nothing left to clear');
+    assert.equal(container.querySelector('button[aria-label="Clear all"]'), null, 'nothing left to clear');
   });
 
   it('close goes through the host callback', () => {
     let closed = 0;
     const container = render(<MeasurementsPanel onClose={() => { closed += 1; }} />);
-    click(container.querySelector('button[title="Close panel"]')!);
+    click(container.querySelector('button[aria-label="Close panel"]')!);
     assert.equal(closed, 1);
+  });
+
+  it('#5811 names each icon-only measurement action and keeps its row action', () => {
+    useViewerStore.setState({
+      measurements: [M1, M2],
+      angleMeasurements: [{ id: 'a1', kind: 'points', picks: [
+        { kind: 'points', point: START }, { kind: 'points', point: END }, { kind: 'points', point: mp(0, 1, 0) },
+      ] }],
+      radiusMeasurements: [{ id: 'r1', points: [START, END, mp(0, 1, 0)] }],
+    });
+    const container = render(<MeasurementsPanel />);
+    for (const label of [
+      'Delete distance measurement 1', 'Delete distance measurement 2',
+      'Delete polyline measurement 1', 'Delete angle measurement 1',
+      'Delete radius measurement 1', 'Clear all',
+    ]) {
+      assert.ok(container.querySelector(`button[aria-label="${label}"]`), `missing accessible action: ${label}`);
+    }
+    click(container.querySelector('button[aria-label="Delete distance measurement 2"]')!);
+    assert.deepEqual(useViewerStore.getState().measurements.map((m) => m.id), ['m1']);
   });
 });

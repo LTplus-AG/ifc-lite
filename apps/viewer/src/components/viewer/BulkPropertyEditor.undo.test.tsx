@@ -31,11 +31,12 @@ const walls = (count: number): FixtureEntity[] =>
 /** Two loaded models; `model-a` is active. Both overlays exist already. */
 function seed(wallCount = 3): Map<string, MutablePropertyView> {
   const views = new Map(['model-a', 'model-b'].map((id) => [id, new MutablePropertyView(null, id)] as const));
+  const aModel = fixtureModel('model-a', { entities: walls(wallCount) });
+  const bModel = fixtureModel('model-b', { entities: walls(wallCount), idOffset: 100_000 });
+  aModel.maxExpressId = wallCount;
+  bModel.maxExpressId = wallCount;
   useViewerStore.setState({
-    ...fixtureModels(
-      fixtureModel('model-a', { entities: walls(wallCount) }),
-      fixtureModel('model-b', { entities: walls(wallCount), idOffset: 100_000 }),
-    ),
+    ...fixtureModels(aModel, bModel),
     mutationViews: views,
     undoStacks: new Map(),
     redoStacks: new Map(),
@@ -43,6 +44,9 @@ function seed(wallCount = 3): Map<string, MutablePropertyView> {
     dirtyModels: new Set(),
     mutationVersion: 0,
     collabRole: null,
+    selectedEntityId: null,
+    selectedEntityIds: new Set<number>(),
+    searchFilterResult: null,
   });
   return views;
 }
@@ -108,6 +112,75 @@ describe('BulkPropertyEditor — the run is one undo step Ctrl+Z can reach (#595
     for (const id of [1, 2, 3]) assert.equal(b.getPropertyValue(id, PSET, PROP), null, `wall #${id} reverted by one Ctrl+Z`);
     redo();
     for (const id of [1, 2, 3]) assert.equal(b.getPropertyValue(id, PSET, PROP), 'X', `wall #${id} re-applied by one Ctrl+Y`);
+  });
+
+  it('#5890: Selection writes only three picked walls across two models, and one undo restores both', async () => {
+    const views = seed();
+    useViewerStore.setState({ selectedEntityIds: new Set([1, 100_001, 100_002]), selectedEntityId: 1 });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    const source = [...document.body.querySelectorAll('button[role="combobox"]')]
+      .find((button) => button.getAttribute('aria-label') === 'Target source');
+    assert.equal(source?.textContent, 'Selection');
+    await execute('PICKED');
+    const a = views.get('model-a')!;
+    const b = views.get('model-b')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
+    assert.equal(b.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(2, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(3, PSET, PROP), null);
+    undo();
+    for (const view of [a, b]) for (const id of [1, 2, 3])
+      assert.equal(view.getPropertyValue(id, PSET, PROP), null);
+    redo();
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(2, PSET, PROP), 'PICKED');
+  });
+
+  it('#5890: Search result targets only the displayed one-model filter rows', async () => {
+    const views = seed();
+    useViewerStore.setState({
+      ...fixtureModels(fixtureModel('model-a', { entities: walls(3) })),
+      mutationViews: new Map([['model-a', views.get('model-a')!]]),
+      searchModalTab: 'filter',
+      searchFilterResult: { columns: ['express_id'], rows: [[1], [3]], runMs: 0 },
+    });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Query', 'Search result');
+    await execute('FOUND');
+    const a = views.get('model-a')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'FOUND');
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(3, PSET, PROP), 'FOUND');
+    undo();
+    assert.equal(a.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(3, PSET, PROP), null);
+  });
+
+  it('#5890: Search result uses the current text search and ignores other walls', async () => {
+    const views = seed();
+    useViewerStore.setState({
+      ...fixtureModels(fixtureModel('model-a', { entities: walls(3) })),
+      mutationViews: new Map([['model-a', views.get('model-a')!]]),
+      searchModalTab: 'search',
+      searchQuery: 'Wall 2',
+      searchIndexes: new Map(),
+      searchFieldFilter: 'all',
+      searchModelFilter: null,
+    });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Query', 'Search result');
+    await execute('TEXT');
+    const a = views.get('model-a')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(2, PSET, PROP), 'TEXT');
+    assert.equal(a.getPropertyValue(3, PSET, PROP), null);
+    undo();
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
   });
 
   it('the model picker defaults to the active model', async () => {

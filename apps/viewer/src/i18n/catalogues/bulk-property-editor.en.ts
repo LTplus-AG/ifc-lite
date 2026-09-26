@@ -6,7 +6,12 @@
 export const bulkPropertyEditorEn = {
   'bulkPropertyEditor.trigger': 'Bulk Edit',
   'bulkPropertyEditor.title': 'Bulk Property Editor',
-  'bulkPropertyEditor.description': 'Select entities by type, storey, or property values, then apply changes to all matching elements',
+  'bulkPropertyEditor.description': 'Choose a target source, then apply changes to its matching elements',
+  'bulkPropertyEditor.targetSource': 'Target source',
+  'bulkPropertyEditor.sourceSelection': 'Selection',
+  'bulkPropertyEditor.sourceSearch': 'Search result',
+  'bulkPropertyEditor.sourceQuery': 'Query',
+  'bulkPropertyEditor.modelUnavailable': 'Model {modelId} is no longer available',
   'bulkPropertyEditor.loading': 'Loading model data...',
   'bulkPropertyEditor.model': 'Model',
   'bulkPropertyEditor.selectModel': 'Select a model',

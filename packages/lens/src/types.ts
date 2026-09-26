@@ -242,7 +242,7 @@ export interface LensRule {
   id: string;
   name: string;
   enabled: boolean;
-  criteria: LensCriteria;
+  criteria?: LensCriteria; // Persisted v1 only; evaluateLens uses shared selections.
   groups?: import('@ifc-lite/rules').FilterGroup[];
   unreadableLegacy?: { criteria: unknown; reason: string };
   action: 'colorize' | 'hide' | 'transparent';

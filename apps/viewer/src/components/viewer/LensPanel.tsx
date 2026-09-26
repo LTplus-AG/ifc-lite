@@ -87,7 +87,6 @@ function LensEditor({
       id: newRuleId(),
       name: 'New Rule',
       enabled: true,
-      criteria: { type: 'and', conditions: [] },
       groups: [emptyFilterGroup()],
       action: 'colorize',
       color: LENS_PALETTE[colorIndex],

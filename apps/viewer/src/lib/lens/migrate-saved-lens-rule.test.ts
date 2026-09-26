@@ -23,6 +23,7 @@ describe('#5896 saved Lens rule migration', () => {
     const result = migrateSavedLensRule(saved);
     assert.equal(result?.id, core.id);
     assert.equal(result?.groups?.length, 1);
+    assert.equal(Object.hasOwn(result ?? {}, 'criteria'), false, 'readable v1 data normalizes to groups only');
     const rule = result?.groups?.[0].rules[0];
     assert.equal(rule?.kind, 'ifcType');
     if (rule?.kind === 'ifcType') {
@@ -40,6 +41,7 @@ describe('#5896 saved Lens rule migration', () => {
     assert.deepEqual(result.groups, []);
     assert.deepEqual(result.unreadableLegacy.criteria, criteria);
     assert.ok(result.unreadableLegacy.reason.length > 0);
+    assert.equal(Object.hasOwn(result, 'criteria'), false, 'raw unreadable data lives only in the warning');
   });
 
   it('round-trips valid v2 groups and an unreadable warning', async () => {
@@ -47,7 +49,9 @@ describe('#5896 saved Lens rule migration', () => {
     const groups = [{ combinator: 'AND', rules: [
       { kind: 'ifcType', op: 'in', values: ['IfcDoor'] },
     ] }];
-    assert.deepEqual(migrateSavedLensRule({ ...core, groups })?.groups, groups);
+    const normalized = migrateSavedLensRule({ ...core, groups });
+    assert.deepEqual(normalized?.groups, groups);
+    assert.equal(Object.hasOwn(normalized ?? {}, 'criteria'), false, 'v2 rules need no inert v1 placeholder');
     const raw = { type: 'futureCondition', version: 3 };
     const result = migrateSavedLensRule({ ...core, groups: [],
       unreadableLegacy: { criteria: raw, reason: 'Unknown condition' },

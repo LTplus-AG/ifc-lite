@@ -88,8 +88,10 @@ describe('duplicateLensConfig (#1403)', () => {
     const copy = duplicateLensConfig(ruleLens, () => 'lens-NEW');
     assert.deepEqual(copy.rules.map((r) => r.id), ['lens-NEW-rule-0', 'lens-NEW-rule-1']);
     // Mutating the copy's first criteria must not affect the source.
-    copy.rules[0].criteria.ifcType = 'IfcSlab';
-    assert.equal(ruleLens.rules[0].criteria.ifcType, 'IfcWall');
+    const copiedCriteria = copy.rules[0].criteria;
+    assert.ok(copiedCriteria);
+    copiedCriteria.ifcType = 'IfcSlab';
+    assert.equal(ruleLens.rules[0].criteria?.ifcType, 'IfcWall');
   });
 
   it('carries the autoColor spec for auto-color lenses', () => {
@@ -101,7 +103,7 @@ describe('duplicateLensConfig (#1403)', () => {
 
   it('deep-clones a compound criteria: mutating the copy\'s conditions array must not affect the source', () => {
     const copy = duplicateLensConfig(compoundLens, () => 'lens-NEW');
-    const copyConditions = copy.rules[0].criteria.conditions;
+    const copyConditions = copy.rules[0].criteria?.conditions;
     assert.ok(copyConditions, 'copy must carry the compound conditions array');
     assert.equal(copyConditions!.length, 2, 'copy starts with the same two conditions as the source');
 
@@ -111,11 +113,11 @@ describe('duplicateLensConfig (#1403)', () => {
     copyConditions!.push({ type: 'ifcType', ifcType: 'IfcSlab' });
 
     assert.equal(
-      compoundLens.rules[0].criteria.conditions!.length, 2,
+      compoundLens.rules[0].criteria?.conditions?.length, 2,
       'mutating the copy\'s compound conditions array must not grow the source\'s array',
     );
     assert.notEqual(
-      copyConditions, compoundLens.rules[0].criteria.conditions,
+      copyConditions, compoundLens.rules[0].criteria?.conditions,
       'copy and source must hold genuinely distinct conditions array references',
     );
   });
@@ -140,9 +142,9 @@ describe('duplicateLensConfig (#1403)', () => {
       }],
     };
     const copy = duplicateLensConfig(nested, () => 'lens-NEW');
-    const copyInner = copy.rules[0].criteria.conditions![1].conditions;
+    const copyInner = copy.rules[0].criteria?.conditions?.[1].conditions;
     copyInner!.push({ type: 'ifcType', ifcType: 'IfcBeam' });
-    const sourceInner = nested.rules[0].criteria.conditions![1].conditions;
+    const sourceInner = nested.rules[0].criteria?.conditions?.[1].conditions;
     assert.equal(sourceInner!.length, 1, 'a push into a nested inner conditions array must not reach the source');
   });
 });
@@ -209,64 +211,22 @@ describe('cloneCriteria', () => {
   });
 });
 
-describe('isRuleValid — compound rules must survive Save (#lens-compound-conditions)', () => {
-  it('treats a non-empty compound rule as valid', () => {
-    const rule: LensRule = { id: 'r', name: 'AND', enabled: true, criteria: compoundCriteria, action: 'colorize', color: '#000' };
-    assert.ok(isRuleValid(rule), 'a non-empty imported compound rule must not be dropped by the LensEditor Save filter');
+describe('isRuleValid — shared Lens groups (#5896)', () => {
+  const rule: LensRule = { id: 'r', name: 'Walls', enabled: true,
+    groups: [{ rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }], combinator: 'AND' }],
+    action: 'colorize', color: '#000' };
+
+  it('saves a group-only rule and keeps unreadable legacy data', () => {
+    assert.ok(isRuleValid(rule));
+    assert.ok(isRuleValid({ ...rule, groups: [], unreadableLegacy: {
+      criteria: { type: 'material', materialName: 'Concrete' }, reason: 'Unrepresentable',
+    } }));
   });
 
-  it('treats an empty compound (no conditions) as invalid, like an incomplete leaf', () => {
-    const rule: LensRule = { id: 'r', name: 'AND', enabled: true, criteria: { type: 'and', conditions: [] }, action: 'colorize', color: '#000' };
-    assert.equal(isRuleValid(rule), false);
-  });
-
-  it('still validates leaf rules exactly as before (bounding)', () => {
-    assert.ok(isRuleValid({ id: 'r1', name: 'x', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#000' }));
-    assert.equal(isRuleValid({ id: 'r2', name: 'x', enabled: true, criteria: { type: 'ifcType' }, action: 'colorize', color: '#000' }), false);
-    assert.ok(isRuleValid({ id: 'r3', name: 'x', enabled: true, criteria: { type: 'group' }, action: 'colorize', color: '#000' }));
-  });
-
-  it('rejects an AND wrapping only incomplete leaves - it can never match, same as the bare leaf', () => {
-    const rule: LensRule = {
-      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
-      criteria: { type: 'and', conditions: [{ type: 'ifcType' }] },
-    };
-    assert.equal(isRuleValid(rule), false, 'a compound wrapping only an incomplete leaf must be dropped, like the leaf itself would be');
-  });
-
-  it('rejects an AND with one incomplete member even if another member is complete', () => {
-    const rule: LensRule = {
-      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
-      criteria: { type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
-    };
-    assert.equal(isRuleValid(rule), false, 'AND requires every member to match, so one incomplete member invalidates the whole compound');
-  });
-
-  it('accepts an OR as long as at least one member is complete, unlike AND', () => {
-    const rule: LensRule = {
-      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
-      criteria: { type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
-    };
-    assert.ok(isRuleValid(rule), 'OR only needs one member able to match, mirroring the engine\'s matchesCompound semantics');
-  });
-
-  it('rejects a compound whose only member is null/primitive, and does not throw', () => {
-    const rule: LensRule = {
-      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
-      criteria: { type: 'and', conditions: [null as unknown as LensCriteria] },
-    };
-    assert.doesNotThrow(() => isRuleValid(rule));
-    assert.equal(isRuleValid(rule), false);
-  });
-
-  it('does not stack-overflow on a pathologically deep compound - the depth cap fails it closed', () => {
-    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
-    for (let i = 0; i < 3000; i++) {
-      deep = { type: 'and', conditions: [deep] };
-    }
-    const rule: LensRule = { id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000', criteria: deep };
-    assert.doesNotThrow(() => isRuleValid(rule));
-    assert.equal(isRuleValid(rule), false, 'nesting past MAX_COMPOUND_DEPTH fails closed, consistent with the engine');
+  it('rejects empty groups even when a stale v1 criterion looks valid', () => {
+    assert.equal(isRuleValid({ ...rule, groups: [] }), false);
+    assert.equal(isRuleValid({ ...rule, groups: [{ rules: [], combinator: 'AND' }] }), false);
+    assert.equal(isRuleValid({ ...rule, groups: [], criteria: { type: 'ifcType', ifcType: 'IfcWall' } }), false);
   });
 });
 

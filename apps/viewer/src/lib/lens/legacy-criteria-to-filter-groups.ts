@@ -54,10 +54,19 @@ function convertLeaf(criteria: LensCriteria): LegacyCriteriaConversion {
       if (criteria.operator && criteria.operator !== 'exists' && criteria.attributeValue === undefined) {
         return unreadable('Attribute comparison is missing its saved value');
       }
-      // The shared generic-attribute reader deliberately omits Name and
-      // GlobalId; mapping either to an attribute chip would lose matches.
-      if (criteria.attributeName === 'Name' || criteria.attributeName === 'GlobalId') {
-        return unreadable(`${criteria.attributeName} needs a dedicated field migration`);
+      // GlobalId equality is case-sensitive in both engines. Other GlobalId
+      // comparisons and Name cannot use the generic attribute reader; its
+      // dedicated Name rule folds case, unlike saved Lens equality.
+      if (criteria.attributeName === 'GlobalId') {
+        return (criteria.operator === undefined || criteria.operator === 'equals') && criteria.attributeValue
+          ? leaf({ kind: 'globalId', op: 'in', values: [criteria.attributeValue] })
+          : unreadable('GlobalId comparison has no equivalent filter chip');
+      }
+      if (criteria.attributeName === 'Name') {
+        if (criteria.operator === 'contains' && criteria.attributeValue) {
+          return leaf({ kind: 'name', op: 'contains', value: criteria.attributeValue });
+        }
+        return unreadable('Name comparison has no exact equivalent filter chip');
       }
       const result = legacyLensOperatorToFilterRule(valueOperator(criteria, criteria.attributeValue), {
         kind: 'attribute', name: criteria.attributeName, op: 'eq', value: criteria.attributeValue ?? '',

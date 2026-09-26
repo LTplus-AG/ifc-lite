@@ -66,6 +66,21 @@ describe('#5896 legacy lens criteria migration', () => {
     assert.deepEqual(after(saved), before(saved));
   });
 
+  it('preserves GlobalId equality and Name substring matching', async () => {
+    const { before, after } = await fixture();
+    const saved: LensCriteria = {
+      type: 'attribute', attributeName: 'GlobalId', operator: 'equals',
+      attributeValue: '0Wall000000000000000010',
+    };
+    assert.deepEqual(before(saved), [10]);
+    assert.deepEqual(after(saved), before(saved));
+    const byName: LensCriteria = {
+      type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: 'FIRE',
+    };
+    assert.deepEqual(before(byName), [10]);
+    assert.deepEqual(after(byName), before(byName));
+  });
+
   it('warns for unrepresentable semantics and explosive DNF instead of changing matches', () => {
     for (const criteria of [
       { type: 'material', materialName: 'Concrete' },

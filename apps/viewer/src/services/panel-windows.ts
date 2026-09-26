@@ -204,7 +204,7 @@ export function closeAllPanelWindows(): void {
 }
 
 /**
- * Copy the overlay tokens onto a child root. `useOverlayThemeSync` writes them
+ * Copy the overlay tokens onto a child root. `registerOverlayThemeSync` writes them
  * inline on `<html>` as `--overlay-*` (#5483), which the stylesheet clone above
  * does not carry, so without this a popped-out panel's token utilities
  * (`bg-clash-a`, `text-clash-overlap`, #5490) would resolve to nothing.

@@ -28,15 +28,14 @@ async function pointerDownOutside(): Promise<void> {
   });
 }
 
-function mount() {
+function mount(boundaryEl: HTMLElement | null = null) {
   let saved: string | null = null;
   let cancelled = false;
   const host = render(
     <AnnotationDropInput
       anchorX={100}
       anchorY={100}
-      canvasWidth={800}
-      canvasHeight={600}
+      boundaryEl={boundaryEl}
       entityType={null}
       onSave={(note) => { saved = note; }}
       onCancel={() => { cancelled = true; }}
@@ -70,5 +69,31 @@ describe('AnnotationDropInput dismissal (#5817)', () => {
 
     await waitFor(() => isCancelled(), 'outside click cancels an empty draft');
     assert.equal(savedNote(), null);
+  });
+
+  it('passes boundaryEl to Radix as collisionBoundary (#5817 review)', async () => {
+    // Same proof as `AnnotationPopover.popover.test.tsx`: floating-ui's
+    // collision detection calls `getBoundingClientRect()` on every element
+    // in `collisionBoundary` — if it were left at Radix's default (the
+    // viewport, not the canvas layer), this mock would never be called.
+    let calls = 0;
+    const boundary = document.createElement('div');
+    Object.defineProperty(boundary, 'getBoundingClientRect', {
+      value: () => {
+        calls += 1;
+        return { left: 0, top: 0, right: 120, bottom: 90, width: 120, height: 90, x: 0, y: 0, toJSON: () => ({}) };
+      },
+      configurable: true,
+    });
+    document.body.appendChild(boundary);
+    try {
+      mount(boundary);
+      await advance(0);
+
+      assert.ok(document.querySelector('[data-radix-popper-content-wrapper]'), 'popover content renders');
+      assert.ok(calls > 0, 'boundaryEl.getBoundingClientRect() must be called — collisionBoundary is wired to it');
+    } finally {
+      boundary.remove();
+    }
   });
 });

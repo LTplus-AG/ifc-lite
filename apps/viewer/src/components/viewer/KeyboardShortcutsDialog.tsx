@@ -46,7 +46,13 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           both dark and colorful themes (`index.css`), and the contrast suite
           (`panel-secondary-text.test.ts`'s `KEYBOARD_SHORTCUTS_DIALOG_SURFACE`)
           is pinned to it. */}
-      <DialogContent hideCloseButton className="max-w-md w-full gap-0 p-0 bg-card">
+      {/* No `DialogDescription`: the tabbed content itself is the body, not
+          a single describable summary, and this dialog isn't a confirm/alert
+          prompt that needs one. `aria-describedby={undefined}` opts out
+          explicitly (CodeRabbit, #5817 review) rather than leaving it
+          unset, which some Radix versions read as "forgot to wire one up"
+          and warn about in dev. */}
+      <DialogContent hideCloseButton aria-describedby={undefined} className="max-w-md w-full gap-0 p-0 bg-card">
         {/* Header — the MCP CTA lives here, in line with the title, so
             it's a discoverable "what else can this do?" affordance
             without crowding the modeling toolbar. */}

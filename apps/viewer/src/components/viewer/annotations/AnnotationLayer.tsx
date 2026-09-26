@@ -196,8 +196,7 @@ export function AnnotationLayer() {
           annotation={selectedAnnotation}
           anchorX={selectedAnchor.screen.x}
           anchorY={selectedAnchor.screen.y}
-          canvasWidth={bounds.width}
-          canvasHeight={bounds.height}
+          boundaryEl={containerRef.current}
           entityType={resolveEntityType(selectedAnnotation.modelId, selectedAnnotation.entityExpressId)}
           onSave={(note) => updateAnnotation(selectedAnnotation.id, note)}
           onDelete={() => removeAnnotation(selectedAnnotation.id)}
@@ -217,8 +216,7 @@ export function AnnotationLayer() {
         <AnnotationDropInput
           anchorX={draftAnchor.screen.x}
           anchorY={draftAnchor.screen.y}
-          canvasWidth={bounds.width}
-          canvasHeight={bounds.height}
+          boundaryEl={containerRef.current}
           entityType={resolveEntityType(draft.modelId, draft.entityExpressId)}
           entityExpressId={draft.entityExpressId}
           onSave={(note) => commitDraft(note)}

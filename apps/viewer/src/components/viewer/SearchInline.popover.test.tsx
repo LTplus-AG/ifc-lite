@@ -102,4 +102,42 @@ describe('SearchInline popover dismissal (#5817)', () => {
     assert.equal(document.getElementById('search-inline-popover'), null, 'outside click closes the popover');
     assert.equal(document.activeElement, input, 'focus stays on the input');
   });
+
+  it('a pointerdown on the input itself (e.g. moving the caret) does not close the popover (review)', async () => {
+    const container = seedOpenWithResults();
+    const input = container.querySelector('input')!;
+    act(() => input.focus());
+    assert.ok(document.getElementById('search-inline-popover'), 'popover open');
+
+    // `PopoverAnchor` (the input's container) is a SIBLING of Content, not
+    // a descendant — without the `onPointerDownOutside` exemption, Radix's
+    // `DismissableLayer` reads this the same way it would a genuine
+    // outside click.
+    await advance(0);
+    act(() => {
+      input.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+      input.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    assert.equal(useViewerStore.getState().searchOpen, true, 'a pointerdown inside the anchor must not close the popover');
+    assert.ok(document.getElementById('search-inline-popover'), 'popover stays open');
+  });
+
+  it('a pointerdown on the clear-filters button does not close the popover (review)', async () => {
+    useViewerStore.setState({ searchFilter: { groups: [{ id: 'g1', rules: [{ id: 'r1' } as never] }] } as never });
+    const container = seedOpenWithResults();
+    act(() => container.querySelector('input')!.focus());
+    const clearButton = container.querySelector('button[aria-label="Clear filters"]')
+      ?? Array.from(container.querySelectorAll('button')).find((b) => b.getAttribute('title')?.toLowerCase().includes('clear'));
+    assert.ok(clearButton, 'expected the clear-filters button to render with an active filter');
+    assert.ok(document.getElementById('search-inline-popover'), 'popover open');
+
+    await advance(0);
+    act(() => {
+      clearButton!.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+      clearButton!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    assert.ok(document.getElementById('search-inline-popover'), 'popover stays open after clicking the clear-filters button');
+  });
 });

@@ -22,7 +22,11 @@
  * Radix's own flip/shift collision avoidance (`side="right"`,
  * `collisionPadding`) replaces the old manual `wantsLeft`/clamp math —
  * equivalent in effect (flips toward the side with room, stays on-screen),
- * not pixel-identical to the old formula.
+ * not pixel-identical to the old formula. `collisionBoundary` is set to
+ * `boundaryEl` (`AnnotationLayer`'s own canvas-sized layer element, #5817
+ * review) rather than left at Radix's default (the viewport): without it,
+ * a pin near the canvas edge with a side panel docked gets positioned past
+ * the layer and clipped, since the layer is smaller than the window.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -44,9 +48,11 @@ export interface AnnotationPopoverProps {
   /** Anchor in canvas-relative pixel coordinates. */
   anchorX: number;
   anchorY: number;
-  /** Canvas dimensions for edge clamping (so the popover never falls off-screen). */
-  canvasWidth: number;
-  canvasHeight: number;
+  /** `AnnotationLayer`'s own canvas-sized layer element, passed as Radix's
+   *  `collisionBoundary` so the popover clamps to the canvas rather than
+   *  the whole window (edge clamping — the popover never falls off the
+   *  canvas even with a side panel docked). */
+  boundaryEl: HTMLElement | null;
   /** Resolved entity type, when the pin is anchored to a known IfcRoot. */
   entityType?: string | null;
   onSave: (note: string) => void;
@@ -74,6 +80,7 @@ export function AnnotationPopover({
   annotation,
   anchorX,
   anchorY,
+  boundaryEl,
   entityType,
   onSave,
   onDelete,
@@ -171,6 +178,7 @@ export function AnnotationPopover({
         align="start"
         sideOffset={POPOVER_OFFSET_X}
         collisionPadding={8}
+        collisionBoundary={boundaryEl}
         avoidCollisions
         // Editing keeps the textarea's own Escape (cancel-the-edit, not
         // close) in charge; read mode defers to Radix's default (closes via

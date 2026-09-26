@@ -519,8 +519,15 @@ export function SearchInline() {
           on the input as focus moving OUTSIDE the popover and closes it
           on the very next render; a combobox needs focus to stay on its
           input while the list is open, so that "outside" reading is wrong
-          here specifically (real outside clicks are still `onOpenChange`,
-          above, via `onPointerDownOutside` — unaffected by this). */}
+          here specifically. `onPointerDownOutside` needs the SAME
+          exemption for the same reason: a `mousedown` in the input (moving
+          the caret) or on the clear-filters/advanced-filter buttons (both
+          siblings of Content inside the Anchor) is, by the same
+          sibling-not-descendant logic, read as "outside" and would close
+          the popover — clicking to place the caret, or clicking the X on
+          the active-filters chip, shouldn't dismiss the results list.
+          Real outside clicks (anywhere but the anchor container) still
+          close it via `onOpenChange`, above. */}
       <PopoverContent
         id="search-inline-popover"
         role="listbox"
@@ -529,6 +536,10 @@ export function SearchInline() {
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onFocusOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => {
+          const target = e.detail.originalEvent.target as Node | null;
+          if (target && containerRef.current?.contains(target)) e.preventDefault();
+        }}
         style={{ width: 'var(--radix-popper-anchor-width)' }}
         className="w-72 rounded-md border border-zinc-200 bg-white p-0 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
       >

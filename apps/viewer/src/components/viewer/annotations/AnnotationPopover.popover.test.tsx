@@ -52,15 +52,14 @@ async function pointerDownOutside(): Promise<void> {
  * called); `AnnotationLayer.test.tsx` covers the pin-click open/close wiring
  * end to end.
  */
-function mount(overrides: Partial<Annotation> = {}) {
+function mount(overrides: Partial<Annotation> = {}, boundaryEl: HTMLElement | null = null) {
   let closed = false;
   const host = render(
     <AnnotationPopover
       annotation={makeAnnotation(overrides)}
       anchorX={100}
       anchorY={100}
-      canvasWidth={800}
-      canvasHeight={600}
+      boundaryEl={boundaryEl}
       entityType={null}
       onSave={() => {}}
       onDelete={() => {}}
@@ -104,5 +103,36 @@ describe('AnnotationPopover dismissal (#5817)', () => {
     });
 
     assert.equal(isClosed(), false, 'the pin\'s own click handler owns this toggle, not Radix\'s outside-click');
+  });
+
+  it('passes boundaryEl to Radix as collisionBoundary (#5817 review)', async () => {
+    // Direct proof that the prop is actually wired through to floating-ui's
+    // collision detection, not just accepted and dropped: floating-ui's
+    // `getClippingRect`/`detectOverflow` calls `getBoundingClientRect()` on
+    // every element in `collisionBoundary` while computing available space.
+    // If `collisionBoundary` were left at Radix's default (the viewport,
+    // which is the #5817 review report — a pin near the canvas edge with a
+    // side panel docked gets clipped since the canvas layer is smaller than
+    // the window), this element's `getBoundingClientRect` would never be
+    // called at all.
+    let calls = 0;
+    const boundary = document.createElement('div');
+    Object.defineProperty(boundary, 'getBoundingClientRect', {
+      value: () => {
+        calls += 1;
+        return { left: 0, top: 0, right: 120, bottom: 90, width: 120, height: 90, x: 0, y: 0, toJSON: () => ({}) };
+      },
+      configurable: true,
+    });
+    document.body.appendChild(boundary);
+    try {
+      mount({}, boundary);
+      await advance(0);
+
+      assert.ok(document.querySelector('[data-radix-popper-content-wrapper]'), 'popover content renders');
+      assert.ok(calls > 0, 'boundaryEl.getBoundingClientRect() must be called — collisionBoundary is wired to it');
+    } finally {
+      boundary.remove();
+    }
   });
 });

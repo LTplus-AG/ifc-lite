@@ -12,8 +12,11 @@
  * The shell moved onto Radix (`ui/popover.tsx`, #5817) — see
  * `AnnotationPopover.tsx`'s header comment for the virtual-anchor
  * mechanics (there's no real DOM trigger to anchor to here either, just
- * the drop-site's canvas-relative point) and the Radix-collision-avoidance
- * vs. old manual-clamp trade-off, both identical here.
+ * the drop-site's canvas-relative point), the Radix-collision-avoidance
+ * vs. old manual-clamp trade-off, and `collisionBoundary={boundaryEl}`
+ * (`AnnotationLayer`'s own canvas-sized layer element, #5817 review — a
+ * pin near the canvas edge with a side panel docked must clamp to the
+ * canvas, not the whole window), all identical here.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,8 +35,10 @@ const INPUT_OFFSET_X = 16;
 export interface AnnotationDropInputProps {
   anchorX: number;
   anchorY: number;
-  canvasWidth: number;
-  canvasHeight: number;
+  /** `AnnotationLayer`'s own canvas-sized layer element, passed as Radix's
+   *  `collisionBoundary` so the input clamps to the canvas rather than
+   *  the whole window. */
+  boundaryEl: HTMLElement | null;
   /** Resolved entity type when the drop landed on a known mesh. */
   entityType?: string | null;
   entityExpressId?: number | null;
@@ -44,6 +49,7 @@ export interface AnnotationDropInputProps {
 export function AnnotationDropInput({
   anchorX,
   anchorY,
+  boundaryEl,
   entityType,
   entityExpressId,
   onSave,
@@ -122,6 +128,7 @@ export function AnnotationDropInput({
         align="start"
         sideOffset={INPUT_OFFSET_X}
         collisionPadding={8}
+        collisionBoundary={boundaryEl}
         avoidCollisions
         onOpenAutoFocus={(e) => e.preventDefault()}
         asChild

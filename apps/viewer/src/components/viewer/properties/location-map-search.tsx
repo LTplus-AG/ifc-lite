@@ -12,10 +12,18 @@
  * pushes the map down, it doesn't float over it — so only the results
  * LIST is a genuine floating overlay, and only that part is the
  * `ui/popover.tsx` Radix Popover.
+ *
+ * The dropdown is portalled (`PopoverPortal container={usePortalContainer()}`,
+ * #1208's mechanism, #5817 review): `LocationMap` mounts inside
+ * `PropertiesPanel`'s `overflow-hidden` tab body, so a non-portalled
+ * `PopoverContent` renders as a DOM descendant of that clipping ancestor
+ * and gets clipped — the exact #1958 bug already fixed once for
+ * `SearchableSelect`.
  */
 
 import { Loader2, MapPin, X } from 'lucide-react';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverPortal } from '@/components/ui/popover';
+import { usePortalContainer } from '@/components/ui/portal-container';
 import type { GeocodeResult } from './location-map-geocode';
 
 interface LocationMapSearchBarProps {
@@ -39,6 +47,7 @@ export function LocationMapSearchBar({
   onSelect,
   onClose,
 }: LocationMapSearchBarProps) {
+  const portalContainer = usePortalContainer();
   return (
     <div className="px-3 pb-1.5 relative">
       <div className="flex items-center gap-1">
@@ -69,28 +78,30 @@ export function LocationMapSearchBar({
               SearchInline's `PopoverContent` for the same note) are all
               suppressed. Real dismissal (Esc, outside click) still runs
               through `onOpenChange` above. */}
-          <PopoverContent
-            align="start"
-            sideOffset={2}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            onCloseAutoFocus={(e) => e.preventDefault()}
-            onFocusOutside={(e) => e.preventDefault()}
-            style={{ width: 'var(--radix-popper-anchor-width)' }}
-            className="max-h-[160px] overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0 shadow-lg"
-          >
-            {results.map((r, i) => (
-              <button
-                key={i}
-                onClick={() => onSelect(r)}
-                className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-700 dark:text-zinc-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-zinc-100 dark:border-zinc-800 last:border-0 transition-colors"
-              >
-                <div className="flex items-start gap-1.5">
-                  <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
-                  <span className="line-clamp-2">{r.display_name}</span>
-                </div>
-              </button>
-            ))}
-          </PopoverContent>
+          <PopoverPortal container={portalContainer}>
+            <PopoverContent
+              align="start"
+              sideOffset={2}
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onCloseAutoFocus={(e) => e.preventDefault()}
+              onFocusOutside={(e) => e.preventDefault()}
+              style={{ width: 'var(--radix-popper-anchor-width)' }}
+              className="max-h-[160px] overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-0 shadow-lg"
+            >
+              {results.map((r, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSelect(r)}
+                  className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-700 dark:text-zinc-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-zinc-100 dark:border-zinc-800 last:border-0 transition-colors"
+                >
+                  <div className="flex items-start gap-1.5">
+                    <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
+                    <span className="line-clamp-2">{r.display_name}</span>
+                  </div>
+                </button>
+              ))}
+            </PopoverContent>
+          </PopoverPortal>
         </Popover>
         <button
           onClick={onClose}

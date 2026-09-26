@@ -45,7 +45,7 @@ export function ViewportLoadErrorCard() {
             <button
               type="button"
               onClick={retry}
-              className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+              className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {t('viewportLighting.container.loadErrorCard.retry')}
             </button>
@@ -53,7 +53,7 @@ export function ViewportLoadErrorCard() {
           <button
             type="button"
             onClick={dismiss}
-            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             {t('viewportLighting.container.loadErrorCard.dismiss')}

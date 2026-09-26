@@ -20,9 +20,8 @@ import { useWebGPU, type WebGPUStatus } from './useWebGPU';
 export interface WebGpuOpenGuard {
   webgpu: WebGPUStatus;
   /**
-   * True and does nothing while WebGPU is supported (or still checking, so
-   * a click just before the check resolves is a silent no-op, matching the
-   * disabled welcome-card buttons). False and shows the card otherwise.
+   * True when WebGPU is supported. Otherwise false and shows a reason in the
+   * load-error card, including while the adapter check is still pending.
    */
   guard: (retry?: () => void) => boolean;
 }
@@ -33,8 +32,15 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
 
   const guard = useCallback((retry?: () => void): boolean => {
     if (webgpu.supported) return true;
-    if (webgpu.checking) return false; // not resolved yet — a caller on a timer should wait for it, not fail
-    showLoadError(t('viewportLighting.container.loadErrorCard.webgpuUnsupported'), 'webgpu_unsupported', retry ?? null);
+    // Explains a drop/open even while the adapter check is still pending,
+    // instead of a silent no-op — the caller has no separate "wait" path.
+    showLoadError(
+      t(webgpu.checking
+        ? 'viewportLighting.container.loadErrorCard.webgpuChecking'
+        : 'viewportLighting.container.loadErrorCard.webgpuUnsupported'),
+      webgpu.checking ? 'webgpu_checking' : 'webgpu_unsupported',
+      retry ?? null,
+    );
     return false;
   }, [webgpu, t]);
 

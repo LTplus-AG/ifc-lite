@@ -27,7 +27,8 @@ import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
@@ -270,7 +271,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
   // Export honours the on-screen view: configured columns, the active
   // grouping (sections + per-group count/sums), and the grand totals.
-  const handleExport = useCallback((format: ExportFormat) => {
+  const handleExport = useCallback(async (format: ExportFormat) => {
     const model = buildExportModel({
       title: listName?.trim() || t('lists.resultsTable.defaultTitle'),
       columns,
@@ -283,9 +284,15 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       modelUnits,
       unitDisplayOverrides,
     });
-    void exportList(format, model);
+    try {
+      await exportList(format, model);
+    } catch (error) {
+      console.error('[Lists] export failed:', error);
+      toast.error(t('lists.resultsTable.exportFailed', { message: error instanceof Error ? error.message : 'Unknown error' }));
+      return;
+    }
     // Counts only — never the list title or column/property names (confidential).
-    posthog.capture('export_completed', {
+    trackExportCompleted({
       format,
       surface: 'list_results',
       row_count: sortedRows.length,
@@ -351,13 +358,13 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
             </IconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('csv')}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => void handleExport('csv')}>
               <FileText className="h-3.5 w-3.5" /> {EXPORT_LABELS.csv}
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('xlsx')}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => void handleExport('xlsx')}>
               <FileSpreadsheet className="h-3.5 w-3.5" /> {EXPORT_LABELS.xlsx}
             </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('pdf')}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => void handleExport('pdf')}>
               <FileType className="h-3.5 w-3.5" /> {EXPORT_LABELS.pdf}
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -12,6 +12,7 @@
  * mutations) are intentionally absent here and tracked separately.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Download, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -43,7 +44,7 @@ import {
 import { useViewerStore } from '@/store';
 import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
 import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
@@ -58,10 +59,11 @@ import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 type ColorSource = 'rendering' | 'shading';
 
 interface GLBExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
+export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -304,7 +306,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
       setExportResult({ success: true, message: msg });
       toast.success(msg);
-      posthog.capture('export_completed', {
+      trackExportCompleted({
+        surface,
         format: 'glb',
         visible_only: visibleOnly,
         include_metadata: includeMetadata,
@@ -360,6 +363,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     typeVisibility,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
+    surface,
   ]);
 
   const handleOpenChange = useExportDialogOpenGuard({

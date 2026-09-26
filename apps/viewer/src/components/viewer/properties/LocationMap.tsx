@@ -14,6 +14,7 @@
  *   - Links to Google Maps, OpenStreetMap, and Google Earth (KMZ export)
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Map as MapIcon, ExternalLink, MapPinOff, Globe2, Search, Mountain, MapPin, X, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -601,6 +602,7 @@ export function LocationMap({
         return;
       }
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), modelExportFilename(modelName, 'kmz'));
+      trackExportCompleted({ format: 'kmz', surface: 'location_map' });
     } catch (err) {
       toast.error(t('properties.locationMap.kmzExportFailedUnknown', { message: err instanceof Error ? err.message : t('properties.locationMap.unknownError') }));
     }

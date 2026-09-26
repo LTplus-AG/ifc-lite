@@ -16,6 +16,7 @@
  * Spec: docs/architecture/ai-customization/05-flavors-and-sharing.md §6.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
@@ -90,6 +91,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // downloadFile copies the (possibly ArrayBufferLike / Shared) bytes into a
       // fresh ArrayBuffer-backed view, so DOM Blob typings accept them.
       downloadFile(bytes, `${id || 'flavor'}.iflv`, 'application/octet-stream');
+      trackExportCompleted({ format: 'iflv', surface: 'extension_panel' });
       toast.success(t('extensionsFlavors.flavorDialog.toast.exported', { filename: `${id}.iflv` }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.export'), err));

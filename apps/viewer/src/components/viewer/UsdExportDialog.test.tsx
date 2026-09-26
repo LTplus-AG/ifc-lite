@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { posthog } from '@/lib/analytics';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { UsdExportDialog } from './UsdExportDialog.js';
@@ -31,12 +32,12 @@ function makeModel(): FederatedModel {
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderDialog(): HTMLElement {
+function renderDialog(surface: 'classic' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<UsdExportDialog />);
+    root.render(<UsdExportDialog surface={surface} />);
   });
   mounted.push({ root, container });
   return container;
@@ -77,15 +78,23 @@ describe('UsdExportDialog', () => {
       new TextEncoder().encode('#usda 1.0\n'),
     );
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
     try {
-      const container = renderDialog();
+      const container = renderDialog('palette');
       await clickExport(container);
       assert.equal(exportMock.mock.callCount(), 1, 'exportUsd is called exactly once');
       assert.equal(disposeMock.mock.callCount(), 1, 'dispose runs exactly once on success');
+      assert.equal(completions.length, 1, '#5844: one completion for a successful USDA download');
+      assert.equal(completions[0].surface, 'palette');
+      assert.equal(completions[0].format, 'usda');
     } finally {
       initMock.mock.restore();
       exportMock.mock.restore();
       disposeMock.mock.restore();
+      analytics.mock.restore();
     }
   });
 

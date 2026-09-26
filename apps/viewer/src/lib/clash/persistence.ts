@@ -16,6 +16,7 @@
  *   on load.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import {
   CLASH_RULE_PRESETS,
   CLASH_REVIEW_STATUSES,
@@ -608,6 +609,7 @@ export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
   const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
   downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'clash_results' });
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */

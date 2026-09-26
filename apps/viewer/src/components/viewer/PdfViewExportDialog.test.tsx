@@ -31,12 +31,13 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store/index.js';
+import { posthog } from '@/lib/analytics';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF.js';
 import { render, click, cleanup } from '@/test/render.js';
@@ -129,9 +130,9 @@ function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
 
-function openDialog(exportViewPdf?: ViewPdfExporter): void {
+function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' = 'classic'): void {
   const container = render(
-    <PdfViewExportDialog trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
+    <PdfViewExportDialog surface={surface} trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
   );
   const trigger = container.querySelector('button');
   assert.ok(trigger, 'the dialog trigger must render');
@@ -401,15 +402,26 @@ describe('PdfViewExportDialog export input (#2042)', () => {
 
   it('exports shaded surfaces unless the user asks otherwise', async () => {
     const { calls, exporter } = recordingExporter();
-    openDialog(exporter);
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    openDialog(exporter, 'ribbon');
     chooseScale('1:100');
-    await runExport();
+    try {
+      await runExport();
+    } finally {
+      analytics.mock.restore();
+    }
 
     assert.equal(calls.length, 1, 'Export must reach the exporter exactly once');
     // The whole point of the feature: the sheet looks like the viewport, which
     // is solid and coloured, unless the user opts out.
     assert.equal(calls[0].renderMode, 'shaded');
     assert.equal(calls[0].scaleFactor, 100);
+    assert.equal(completions.length, 1, '#5844: one PDF completion per successful export');
+    assert.equal(completions[0].surface, 'ribbon');
+    assert.equal(completions[0].format, 'pdf-3d-view');
   });
 
   it('sends the appearance the user picked, not the one the dialog mounted with', async () => {

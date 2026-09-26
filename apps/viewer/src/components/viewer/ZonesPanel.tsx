@@ -14,6 +14,7 @@
  * `zonesSlice` already does).
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
@@ -295,6 +296,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   const handleExport = useCallback(() => {
     const json = exportZoneSetsJSON();
     downloadFile(json, `${sanitizeFilename('zone-sets')}.json`, 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'zones_panel' });
   }, [exportZoneSetsJSON]);
 
   const handleImportFile = useCallback(async (file: File | null | undefined) => {
@@ -466,6 +468,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                           : t('zonesPanel.exportNothingToExport'));
                       return;
                     }
+                    trackExportCompleted({ format: 'glb', surface: 'zones_panel' });
                     const { whole, cut, refused, noGeometry, elapsedMs } = result.summary;
                     const elapsed = (elapsedMs / 1000).toFixed(1);
                     const successKey: TranslationKey = refused > 0 && noGeometry > 0

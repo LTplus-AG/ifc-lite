@@ -12,7 +12,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
+import { posthog } from '@/lib/analytics';
 import { AnonymizedExportDialog } from './AnonymizedExportDialog.js';
 import { parseFixtureModel, FIXTURE_WALL_A, guid } from './anonymized-export-fixture.test-support.js';
 
@@ -137,19 +138,26 @@ beforeEach(async () => {
 
 describe('AnonymizedExportDialog — export', () => {
   it('exports an anonymized .ifc: real download, structural types kept, original identifiers scrubbed', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     const exportButton = [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Export .ifc'));
     assert.ok(exportButton, 'no Export .ifc button');
 
+    const completed: Record<string, unknown>[] = [];
+    const spy = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completed.push(properties);
+    });
     const { downloads, eventCount } = await captureDownloads(async () => {
       await act(async () => {
         exportButton.click();
         await Promise.resolve();
       });
     });
+    spy.mock.restore();
     assert.equal(eventCount, 1, 'the export must go through the shared download choke point exactly once');
+    assert.equal(completed.length, 1, '#5844: exactly one completion per successful anonymized export');
+    assert.equal(completed[0].surface, 'context_menu');
 
     const ifcDownload = downloads.find((d) => d.filename.endsWith('.ifc'));
     assert.ok(ifcDownload, `expected an .ifc download; saw ${downloads.map((d) => d.filename).join(', ')}`);

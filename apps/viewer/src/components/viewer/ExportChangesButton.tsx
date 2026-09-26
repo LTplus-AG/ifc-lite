@@ -11,6 +11,8 @@
  * export).
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useLayoutEffect, cloneElement, isValidElement, type MouseEvent, type ReactNode } from 'react';
 import { Download, Check, AlertCircle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -38,6 +40,7 @@ import {
 } from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
+  surface?: ExportSurface;
   /** Optional custom class name */
   className?: string;
   /**
@@ -183,7 +186,7 @@ export function useReviewGroups(
   return [groups, setGroups];
 }
 
-export function ExportChangesButton({ className, trigger }: ExportChangesButtonProps) {
+export function ExportChangesButton({ surface = 'classic', className, trigger }: ExportChangesButtonProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -263,6 +266,12 @@ export function ExportChangesButton({ className, trigger }: ExportChangesButtonP
       setTimeout(() => setExportStatus('idle'), 2000);
 
       const exportedChanges = files.reduce((n, f) => n + f.changeCount, 0);
+      trackExportCompleted({
+        format: files.length === 1 ? files[0].ext : 'zip',
+        surface,
+        model_count: files.length,
+        change_count: exportedChanges,
+      });
       const unrepresented = files.reduce((n, f) => n + f.skippedCount, 0);
       if (skipped.length > 0) {
         // The empty-pset note rides along: a skipped model must not hide it (#5201).
@@ -285,7 +294,7 @@ export function ExportChangesButton({ className, trigger }: ExportChangesButtonP
     } finally {
       setIsExporting(false);
     }
-  }, []);
+  }, [surface]);
 
   const handleConfirm = useCallback(() => {
     // Re-derive fresh, synchronously, at click time — comparing against

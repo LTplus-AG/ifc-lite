@@ -17,6 +17,8 @@
  *     mostly-vertical-wall models (recommended by Ladybug for that case).
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Download, AlertCircle, Check } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -77,10 +79,11 @@ const FORMATS: Record<EnergyFormat, {
 };
 
 interface EnergyModelExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProps) {
+export function EnergyModelExportDialog({ surface = 'classic', trigger }: EnergyModelExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
@@ -238,6 +241,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
 
       const blob = new Blob([out as BlobPart], { type: 'application/json' });
       downloadBlob(blob, modelExportFilename(selectedModel.name, spec.ext));
+      trackExportCompleted({ format, surface, size_kb: Math.round(blob.size / 1024) });
 
       const msg = t('geometryExport.energy.exportedMessage', {
         formatLabel: spec.label,
@@ -257,7 +261,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, format, getMutationView, t]);
+  }, [selectedModel, format, getMutationView, t, surface]);
 
   const handleOpenChange = useExportDialogOpenGuard({
     busy: isExporting,

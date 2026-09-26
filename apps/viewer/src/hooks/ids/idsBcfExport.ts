@@ -11,6 +11,7 @@
  * coherent module on its own rather than 230 lines inline in the hook.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import type { ValidationReport } from '@ifc-lite/ids';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
@@ -263,6 +264,7 @@ export async function runIdsBcfExport({
 
   const blob = await writeBCF(bcfProject);
   downloadBlob(blob, `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`);
+  trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
 
   // Phase 5: Load into BCF panel if requested
   if (loadIntoBcfPanel) {

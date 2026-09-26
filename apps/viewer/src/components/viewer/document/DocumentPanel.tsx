@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
-import { posthog } from '@/lib/analytics';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
@@ -119,7 +119,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       }, seams);
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
-      posthog.capture('export_completed', { format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length, table_block_count: document.blocks.filter((b) => b.kind === 'table').length });
+      trackExportCompleted({ format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length, table_block_count: document.blocks.filter((b) => b.kind === 'table').length });
       const problems = [
         result.unresolved.length > 0 ? t('document.panel.problemUnresolved', localeCount(locale, result.unresolved.length)) : '',
         result.missingTopics.length > 0 ? t('document.panel.problemMissingTopics', localeCount(locale, result.missingTopics.length)) : '',

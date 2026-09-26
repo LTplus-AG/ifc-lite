@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import type React from 'react';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
@@ -980,6 +980,7 @@ function useDrawingExport({
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
       : `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
+    trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
 
@@ -1028,6 +1029,7 @@ function useDrawingExport({
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadDxf(dxf, `${stem}.dxf`);
+    trackExportCompleted({ format: 'dxf', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', {
       format: 'dxf',
       axis: sectionPlane.axis,
@@ -1145,6 +1147,7 @@ function useDrawingExport({
 
           const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
           downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
           posthog.capture('drawing_exported', {
             format: 'pdf',
             axis: sectionPlane.axis,
@@ -1254,6 +1257,7 @@ function useDrawingExport({
         // re-deriving it.
         const stem = `section-${sectionPlane.axis}-${sectionPlane.position}-1-${formatScaleFactorLabel(effectiveScale)}`;
         downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          trackExportCompleted({ format: 'pdf', surface: 'drawing_panel' });
         posthog.capture('drawing_exported', {
           format: 'pdf',
           axis: sectionPlane.axis,

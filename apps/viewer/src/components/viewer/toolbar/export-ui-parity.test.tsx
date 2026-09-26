@@ -68,6 +68,7 @@ import { useViewerStore } from '@/store/index.js';
 // copy could resolve to a second module instance, and the toast spy would then
 // watch an object nothing calls.
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
@@ -472,7 +473,12 @@ describe('export UI parity (ifc-lite#2511)', () => {
 
   it('the JSON export actually downloads a file from both toolbar styles', async () => {
     loadFakeModel();
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
 
+    try {
     renderClassicExports();
     const fromClassic = await captureDownloads(async () => {
       await act(async () => {
@@ -490,6 +496,13 @@ describe('export UI parity (ifc-lite#2511)', () => {
       });
     });
     assert.deepEqual(fromRibbon, ['json'], 'the ribbon JSON button must produce a download');
+    assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+      { event: 'export_completed', properties: { format: 'json', surface: 'classic', row_count: 1 } },
+      { event: 'export_completed', properties: { format: 'json', surface: 'ribbon', row_count: 1 } },
+    ], '#5844: one completion per successful download with its initiating surface');
+    } finally {
+      capture.mock.restore();
+    }
   });
 
   it('the screenshot export saves a PNG from both toolbar styles (#2511: a cross-wired action dispatch would still download something)', async () => {
@@ -502,6 +515,10 @@ describe('export UI parity (ifc-lite#2511)', () => {
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,iVBORw0KGgo=';
     document.body.appendChild(canvas);
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
 
     try {
       renderClassicExports();
@@ -521,7 +538,12 @@ describe('export UI parity (ifc-lite#2511)', () => {
         });
       });
       assert.deepEqual(fromRibbon, ['png'], 'the ribbon Screenshot button must save a PNG');
+      assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+        { event: 'export_completed', properties: { format: 'png', surface: 'classic' } },
+        { event: 'export_completed', properties: { format: 'png', surface: 'ribbon' } },
+      ], '#5844: screenshot completions retain the initiating surface');
     } finally {
+      capture.mock.restore();
       canvas.remove();
     }
   });

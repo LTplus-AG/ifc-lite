@@ -28,6 +28,7 @@ import { useViewerStore } from '@/store';
 // Bare specifier, matching what the code under test imports, so the spy
 // watches the same module instance (see export-ui-parity.test.tsx).
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
 import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.js';
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
@@ -111,17 +112,45 @@ describe('command palette exports (#5601)', () => {
   it('a failing export from the palette surfaces an error toast', async () => {
     useViewerStore.setState({ ifcDataStore: brokenDataStore() });
     const errors: string[] = [];
+    const completions: unknown[] = [];
     const spy = mock.method(toast, 'error', (message: string) => { errors.push(message); });
+    const analytics = mock.method(posthog, 'capture', (event: string) => {
+      if (event === 'export_completed') completions.push(event);
+    });
     const quiet = mock.method(console, 'error', () => {});
     try {
       renderPalette();
       await runRow(/^Export JSON/);
     } finally {
       spy.mock.restore();
+      analytics.mock.restore();
       quiet.mock.restore();
     }
     assert.equal(errors.length, 1, `expected one error toast, saw ${errors.length}`);
     assert.match(errors[0], /JSON export failed/);
+    assert.deepEqual(completions, [], '#5844: a failed export must not emit a completion');
+  });
+
+  it('a successful palette JSON download emits one completion with palette surface (#5844)', async () => {
+    useViewerStore.setState({
+      ifcDataStore: {
+        source: { byteLength: 4, materialize: () => new Uint8Array(4) },
+        entities: { count: 0 },
+      } as unknown as IfcDataStore,
+    });
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const spy = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    try {
+      renderPalette();
+      await runRow(/^Export JSON/);
+    } finally {
+      spy.mock.restore();
+    }
+    assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+      { event: 'export_completed', properties: { format: 'json', surface: 'palette', row_count: 0 } },
+    ]);
   });
 
   it('GLB opens the same export dialog the toolbars use', async () => {

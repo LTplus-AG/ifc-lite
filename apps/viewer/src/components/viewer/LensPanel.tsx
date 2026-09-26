@@ -17,6 +17,7 @@
  * classification systems, materials). No hardcoded IFC class lists.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, ArrowUpDown, GripVertical } from 'lucide-react';
 import { discoverDataSources, LENS_OPERATORS } from '@ifc-lite/lens';
@@ -1473,6 +1474,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const handleExport = useCallback(() => {
     const data = exportLenses();
     downloadFile(JSON.stringify(data, null, 2), 'lenses.json', 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'lens_panel' });
   }, [exportLenses]);
 
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

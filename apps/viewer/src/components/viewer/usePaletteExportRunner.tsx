@@ -68,7 +68,7 @@ export function usePaletteExportRunner() {
   const { t } = useTranslation();
   const {
     ifcDataStore, commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
-  } = useExportCommands();
+  } = useExportCommands('palette');
   // `nonce` remounts the dialog so a repeat request opens it again.
   const [requested, setRequested] = useState<{ Dialog: ExportDialogComponent; nonce: number } | null>(null);
 
@@ -99,7 +99,7 @@ export function usePaletteExportRunner() {
   }, [ifcDataStore, commands, handleExportCSV, runExportAction, extensionExportRunning, runExtensionExporter, t]);
 
   const dialog = requested
-    ? <requested.Dialog key={requested.nonce} trigger={<AutoOpenTrigger />} />
+    ? <requested.Dialog key={requested.nonce} surface="palette" trigger={<AutoOpenTrigger />} />
     : null;
 
   return { runExport, dialog, extensionExporters };

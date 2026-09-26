@@ -162,7 +162,7 @@ export function CompareRunControls({
         />
         <span>
           {t('comparePanel.runControls.matchByContentLabel')}
-          <span className="block text-[10px] opacity-70">
+          <span className="block text-2xs opacity-70">
             {t('comparePanel.runControls.matchByContentHint')}
           </span>
         </span>

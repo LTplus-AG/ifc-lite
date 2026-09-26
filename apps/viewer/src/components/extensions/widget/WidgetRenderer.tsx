@@ -165,7 +165,7 @@ function RenderField({ node, ctx }: { node: FieldNode; ctx: WidgetRendererContex
     default:
       return (
         <div className="flex flex-col gap-1">
-          <Label className="text-[11px]">{node.label}</Label>
+          <Label className="text-2xs">{node.label}</Label>
           <Input
             value={value === undefined || value === null ? '' : String(value)}
             readOnly

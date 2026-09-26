@@ -58,8 +58,8 @@ export function CountBadge({
       <span className="text-sm font-semibold tabular-nums" style={{ color: rgbaCss([color[0], color[1], color[2], 1]) }}>
         {value.toLocaleString()}
       </span>
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      {hint && <span className="text-[9px] text-muted-foreground">{hint}</span>}
+      <span className="text-2xs text-muted-foreground">{label}</span>
+      {hint && <span className="text-2xs text-muted-foreground">{hint}</span>}
     </div>
   );
 }
@@ -151,7 +151,7 @@ export function CompareResultsList({
                     >
                       <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: rgbaCss(color) }} />
                       <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-2xs text-muted-foreground">
                         {state === 'modified' && row.changeKinds.length > 0
                           ? row.changeKinds.join(' · ')
                           : row.ifcType.replace(/^Ifc/, '')}
@@ -159,7 +159,7 @@ export function CompareResultsList({
                     </button>
                   ))}
                   {bucket.truncated > 0 && (
-                    <p className="px-2 py-1 text-[10px] text-muted-foreground">
+                    <p className="px-2 py-1 text-2xs text-muted-foreground">
                       {t('comparePanel.moreNotShown', { count: bucket.truncated })}
                     </p>
                   )}

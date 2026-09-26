@@ -92,7 +92,7 @@ export function RepairQueuePanel({ sdkVersion, onClose }: RepairQueuePanelProps)
           <Wrench className="h-4 w-4" />
           <h2 className="text-sm font-semibold">{t('extensionsPanels.repairQueuePanel.title')}</h2>
           {summary && (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t('extensionsPanels.repairQueuePanel.summaryLine', {
                 sdk: summary.sdk,
                 count: summary.needsRepair.length,
@@ -187,18 +187,18 @@ function RepairRow({
               <ShieldAlert className={`h-3.5 w-3.5 ${tone}`} />
             )}
             <code className="text-xs font-mono break-all">{item.extensionId}</code>
-            <span className={`text-[10px] uppercase tracking-wide font-semibold ${tone}`}>
+            <span className={`text-2xs uppercase tracking-wide font-semibold ${tone}`}>
               {localizeRevalidationOutcome(item.outcome, t)}
             </span>
           </div>
-          <div className="mt-1 text-[11px] text-muted-foreground">
+          <div className="mt-1 text-2xs text-muted-foreground">
             {t('extensionsPanels.repairQueuePanel.rangeLabel', {
               range: item.compatibility.declared,
               reason: localizeCompatibilityReason(item.compatibility, t),
             })}
           </div>
           {item.tests && item.tests.failed > 0 && (
-            <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+            <div className="mt-1 text-2xs text-rose-600 dark:text-rose-400">
               {t('extensionsPanels.repairQueuePanel.testsFailed', {
                 count: item.tests.failed,
                 countDisplay: formatLocaleNumber(locale, item.tests.failed),

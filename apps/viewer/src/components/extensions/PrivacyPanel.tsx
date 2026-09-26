@@ -185,7 +185,7 @@ export function PrivacyPanel() {
 
       <div className="px-4 py-3 space-y-4 text-xs">
           <section className="space-y-1.5">
-            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+            <h3 className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground">
               {t('extensionsPanels.privacyPanel.storeHeading')}
             </h3>
             <p className="text-muted-foreground leading-relaxed">
@@ -197,7 +197,7 @@ export function PrivacyPanel() {
           </section>
 
           <section className="space-y-1.5">
-            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+            <h3 className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground">
               {t('extensionsPanels.privacyPanel.actionLogHeading')}
             </h3>
             <div className="rounded border bg-muted/30 px-3 py-2">
@@ -224,7 +224,7 @@ export function PrivacyPanel() {
           </section>
 
           <section className="space-y-1.5">
-            <h3 className="text-[11px] uppercase tracking-wide font-semibold text-muted-foreground">
+            <h3 className="text-2xs uppercase tracking-wide font-semibold text-muted-foreground">
               {t('extensionsPanels.privacyPanel.overlayHeading')}
             </h3>
             <p className="text-muted-foreground">
@@ -236,7 +236,7 @@ export function PrivacyPanel() {
               </div>
             ) : (
               <>
-                <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <div className="text-2xs text-muted-foreground flex items-center gap-1">
                   <ScrollText className="h-3 w-3" />
                   {styleInterpolatedValues(t, 'extensionsPanels.privacyPanel.editingOverlayFor', [
                     ['name', (
@@ -247,7 +247,7 @@ export function PrivacyPanel() {
                   ])}
                 </div>
                 <textarea
-                  className="w-full min-h-[160px] rounded border bg-background p-2 font-mono text-[11px] leading-relaxed"
+                  className="w-full min-h-[160px] rounded border bg-background p-2 font-mono text-2xs leading-relaxed"
                   value={overlayDraft}
                   onChange={(e) => {
                     setOverlayDraft(e.target.value);
@@ -256,7 +256,7 @@ export function PrivacyPanel() {
                   placeholder={t('extensionsPanels.privacyPanel.overlayPlaceholder')}
                 />
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {t('extensionsPanels.privacyPanel.approxTokens', {
                       tokens: formatLocaleNumber(locale, Math.ceil(overlayDraft.length / 4)),
                     })}
@@ -275,21 +275,21 @@ export function PrivacyPanel() {
 
                 {proposals.length > 0 && (
                   <div className="rounded border bg-muted/30 px-3 py-2 space-y-2">
-                    <div className="text-[11px] font-medium">
+                    <div className="text-2xs font-medium">
                       {t('extensionsPanels.privacyPanel.candidatePreferenceCount', {
                         count: proposals.length,
                         countDisplay: formatLocaleNumber(locale, proposals.length),
                       })}
                     </div>
-                    <div className="text-[10px] text-amber-700 dark:text-amber-400 italic">
+                    <div className="text-2xs text-amber-700 dark:text-amber-400 italic">
                       {t('extensionsPanels.privacyPanel.ruleBasedWarning')}
                     </div>
-                    <ul className="space-y-1 text-[11px]">
+                    <ul className="space-y-1 text-2xs">
                       {proposals.map((p, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <span className="text-muted-foreground">·</span>
                           <span className="flex-1">{p.phrasing}</span>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {Math.round(p.confidence * 100)}%
                           </span>
                         </li>

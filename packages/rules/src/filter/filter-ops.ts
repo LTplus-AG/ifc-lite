@@ -46,46 +46,6 @@ function valueEquals(left: string, right: string, opts?: OpMatchOptions & ValueC
   return fold(left, opts?.caseSensitive) === fold(right, opts?.caseSensitive);
 }
 
-type TypedValueOptions = OpMatchOptions & ValueComparison & {
-  candidateType?: 'string' | 'number' | 'boolean' | 'null' | 'undefined';
-};
-
-/** The saved Bulk filter's typed comparison, expressed with common ValueOps. */
-function bulkValueMatches(op: ValueOp, candidate: string, operand: string, opts: TypedValueOptions): boolean {
-  if (opts.candidateType === 'boolean') {
-    if (op !== 'eq' && op !== 'ne') return false;
-    const expected = (opts.operandType === 'boolean' || opts.operandType === 'string') && operand === 'true';
-    const equal = candidate.toLowerCase() === String(expected);
-    return op === 'eq' ? equal : !equal;
-  }
-  if (opts.candidateType === 'string' && opts.operandType === 'string') {
-    const a = candidate.toLowerCase();
-    const b = operand.toLowerCase();
-    switch (op) {
-      case 'eq': return candidate === operand;
-      case 'ne': return candidate !== operand;
-      case 'contains': return a.includes(b);
-      case 'startsWith': return a.startsWith(b);
-      case 'endsWith': return a.endsWith(b);
-      default: return false;
-    }
-  }
-  if (opts.candidateType === 'number' && opts.operandType === 'number') {
-    const a = Number(candidate);
-    const b = Number(operand);
-    switch (op) {
-      case 'eq': return a === b;
-      case 'ne': return a !== b;
-      case 'gt': return a > b;
-      case 'gte': return a >= b;
-      case 'lt': return a < b;
-      case 'lte': return a <= b;
-      default: return false;
-    }
-  }
-  return false;
-}
-
 /**
  * Fold a candidate that may be undefined at runtime — crash-safety only
  * (#1195) — to lower-case UNLESS `caseSensitive` is `true`. Does NOT decide
@@ -278,11 +238,8 @@ export function valueOpMatches(
   psetVal: string,
   ruleVal: string,
   valueKind?: TextKind,
-  opts?: TypedValueOptions,
+  opts?: OpMatchOptions & ValueComparison,
 ): boolean {
-  if (opts?.typeMode === 'bulk' && op !== 'isNull' && op !== 'isNotNull') {
-    return bulkValueMatches(op, psetVal, ruleVal, opts);
-  }
   switch (op) {
     case 'isSet':       return (psetVal ?? '').length > 0;
     case 'isNotSet':    return (psetVal ?? '').length === 0;

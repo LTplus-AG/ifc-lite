@@ -46,17 +46,3 @@ export const LIST_OPERATOR_LABEL_KEYS = {
   lt: FILTER_OPERATOR_LABEL_KEYS.lt,
   lte: FILTER_OPERATOR_LABEL_KEYS.lte,
 } as const satisfies Record<ConditionOperator, TranslationKey>;
-
-export const BULK_OPERATOR_LABEL_KEYS = {
-  '=': FILTER_OPERATOR_LABEL_KEYS.eq,
-  '!=': FILTER_OPERATOR_LABEL_KEYS.ne,
-  '>': FILTER_OPERATOR_LABEL_KEYS.gt,
-  '>=': FILTER_OPERATOR_LABEL_KEYS.gte,
-  '<': FILTER_OPERATOR_LABEL_KEYS.lt,
-  '<=': FILTER_OPERATOR_LABEL_KEYS.lte,
-  CONTAINS: FILTER_OPERATOR_LABEL_KEYS.contains,
-  STARTS_WITH: FILTER_OPERATOR_LABEL_KEYS.startsWith,
-  ENDS_WITH: 'filterOperators.endsWith',
-  IS_NULL: 'filterOperators.isNull',
-  IS_NOT_NULL: 'filterOperators.isNotNull',
-} as const satisfies Record<FilterOperator, TranslationKey>;

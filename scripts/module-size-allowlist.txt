@@ -64,7 +64,7 @@
    750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    534 apps/viewer/src/components/viewer/BCFPanel.tsx
-   863 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   665 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
   1301 apps/viewer/src/components/viewer/ClashPanel.tsx
@@ -256,7 +256,6 @@
    413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
-   493 packages/mutations/src/bulk-query-engine.ts
    558 packages/mutations/src/csv-connector.ts
   1879 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts

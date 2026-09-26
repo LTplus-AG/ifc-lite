@@ -193,12 +193,8 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   // validation's `checkValueOp` applies (#5475). With a single candidate
   // this is the same answer as before.
   const positive = NEGATED_VALUE_OP[rule.op];
-  if (positive) return comparable.length > 0 && !comparable.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, {
-    ...rule.comparison, candidateType: r.valueType,
-  }));
-  return comparable.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, {
-    ...rule.comparison, candidateType: r.valueType,
-  }));
+  if (positive) return comparable.length > 0 && !comparable.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, rule.comparison));
+  return comparable.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, rule.comparison));
 }
 
 /** A negated value op's positive form: the negation holds when NO candidate satisfies it (#5475). */
@@ -229,12 +225,7 @@ export function matchAttributeRule(rule: AttributeRule, attrs: AttrRows): boolea
   if (rule.op === 'isNotNull') return found !== undefined;
   if (rule.op === 'isNonEmpty') return (stringified ?? '').length > 0;
   if (stringified === undefined) return false;
-  const candidateType = typeof found?.value;
-  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind, {
-    ...rule.comparison,
-    candidateType: candidateType === 'string' || candidateType === 'number' || candidateType === 'boolean'
-      ? candidateType : undefined,
-  });
+  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind, rule.comparison);
 }
 
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {

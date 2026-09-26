@@ -44,18 +44,16 @@ import { PropertyValueType } from '@ifc-lite/data';
 import {
   BulkQueryEngine,
   MutablePropertyView,
-  type SelectionCriteria,
   type BulkAction,
-  type FilterOperator,
-  type PropertyFilter as BulkPropertyFilter,
   type BulkQueryPreview,
   type BulkQueryResult,
 } from '@ifc-lite/mutations';
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
-import { BulkQueryCriteria, type PropertyFilterUI } from './BulkQueryCriteria';
+import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
+import { emptyFilterGroup } from '@ifc-lite/rules';
+import { resolveBulkQueryIds, useBulkQueryTargets } from './useBulkQueryTargets';
 
 import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
@@ -102,11 +100,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
   const targetGroups = useBulkTargets(open, targetSource, models);
 
-  // Selection criteria
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [selectedStoreys, setSelectedStoreys] = useState<number[]>([]);
-  const [namePattern, setNamePattern] = useState<string>('');
-  const [filters, setFilters] = useState<PropertyFilterUI[]>([]);
+  const [queryFilterState, setQueryFilterState] = useState<FilterGroupEditorState>({
+    groups: [emptyFilterGroup()], activeGroup: 0,
+  });
+  const queryGroups = queryFilterState.groups;
 
   // Action configuration
   const [actionType, setActionType] = useState<ActionType>('SET_PROPERTY');
@@ -136,6 +133,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     const list = Array.from(models.values()).map((m) => ({
       id: m.id,
       name: m.name,
+      sourceFingerprint: m.sourceFingerprint,
     }));
 
     // If no models in Map but legacy data exists, add a synthetic entry
@@ -143,6 +141,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       list.push({
         id: '__legacy__',
         name: t('bulkPropertyEditor.currentModel'),
+        sourceFingerprint: undefined,
       });
     }
 
@@ -173,78 +172,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     return models.get(selectedModelId);
   }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale, revision]);
 
-  // Loading state for initial dialog open computation
-  const [isInitializing, setIsInitializing] = useState(false);
-
-  // Storeys/types/typeEnum mapping — computed once on open, deferred so the dialog renders instantly.
-  const [availableStoreys, setAvailableStoreys] = useState<{ id: number; name: string; elevation?: number }[]>([]);
-  const [availableTypes, setAvailableTypes] = useState<{ ifcType: string; label: string }[]>([]);
-  const typeNameToEnumsRef = useRef<Map<string, number[]>>(new Map());
-  const [typeNameToEnums, setTypeNameToEnums] = useState<Map<string, number[]>>(new Map());
-  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (initTimerRef.current) clearTimeout(initTimerRef.current);
-
-    if (!open || !selectedModel?.ifcDataStore) {
-      setAvailableStoreys([]);
-      setAvailableTypes([]);
-      typeNameToEnumsRef.current = new Map();
-      setTypeNameToEnums(new Map());
-      return;
-    }
-
-    setIsInitializing(true);
-
-    // Yield to browser so dialog shell + spinner paint first
-    initTimerRef.current = setTimeout(() => {
-      const dataStore = selectedModel.ifcDataStore;
-      // The early return above already gates on `selectedModel?.ifcDataStore`,
-      // but the closure-captured `selectedModel` reference is union-typed,
-      // so re-narrow here for the timeout callback.
-      if (!dataStore) {
-        setIsInitializing(false);
-        return;
-      }
-      const entities = dataStore.entities;
-
-      // Storeys
-      const storeys: { id: number; name: string; elevation?: number }[] = [];
-      if (dataStore.spatialHierarchy) {
-        const hierarchy = dataStore.spatialHierarchy;
-        for (const [storeyId] of hierarchy.byStorey) {
-          const name = entities.getName(storeyId) || t('bulkPropertyEditor.storeyFallback', { id: storeyId });
-          const elevation = hierarchy.storeyElevations.get(storeyId);
-          storeys.push({ id: storeyId, name, elevation });
-        }
-        storeys.sort((a, b) => (b.elevation ?? 0) - (a.elevation ?? 0));
-      }
-
-      // The classes present in the model as edited (#5249).
-      const enumToTypeName = presentTypeEnums(entities, getMutationView(selectedModelId));
-
-      const nameToEnums = new Map<string, number[]>();
-      const presentTypes: { ifcType: string; label: string }[] = [];
-      for (const [ifcType, { labelKey }] of Object.entries(IFC_TYPE_MAP)) {
-        const enums = classTargetEnums(ifcType, enumToTypeName);
-        if (enums.length > 0) {
-          nameToEnums.set(ifcType, enums);
-          presentTypes.push({ ifcType, label: t(labelKey) });
-        }
-      }
-
-      setAvailableStoreys(storeys);
-      setAvailableTypes(presentTypes);
-      typeNameToEnumsRef.current = nameToEnums;
-      setTypeNameToEnums(nameToEnums);
-      setIsInitializing(false);
-    }, 0);
-
-    return () => {
-      if (initTimerRef.current) clearTimeout(initTimerRef.current);
-    };
-  }, [open, selectedModel, selectedModelId, getMutationView, mutationViews, t, locale, revision]);
-
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {
     if (!open || !selectedModel?.ifcDataStore || !selectedModelId) return;
@@ -274,7 +201,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       dataStore.entities,
       mutationView,
       dataStore.spatialHierarchy || null,
-      dataStore.properties || null,
       dataStore.strings || null,
       canCollabEdit,
       dataStore.schemaVersion,
@@ -301,156 +227,55 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const view = mutationViews.get(modelId);
       if (!dataStore || !view) continue;
       engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
-        dataStore.spatialHierarchy || null, dataStore.properties || null,
+        dataStore.spatialHierarchy || null,
         dataStore.strings || null, canCollabEdit, dataStore.schemaVersion));
     }
     return engines;
   }, [open, targetSource, targetGroups, models, mutationViews, canCollabEdit]);
 
-  // Build selection criteria using pre-computed typeEnum mapping (no entity scan needed)
-  const currentCriteria = useMemo((): SelectionCriteria => {
-    const criteria: SelectionCriteria = {};
+  const { ids: queryIds, computing: isComputing, error: queryError } = useBulkQueryTargets(
+    open && targetSource === 'query', selectedModelId, queryGroups,
+  );
+  const [discoveredProperties, setDiscoveredProperties] = useState<{
+    psets: Map<string, Set<string>>; allProps: Set<string>;
+  }>({ psets: new Map(), allProps: new Set() });
 
-    // Use pre-computed typeNameToEnums map instead of scanning all entities
-    if (selectedTypes.length > 0) {
-      const typeEnums: number[] = [];
-      for (const selectedType of selectedTypes) {
-        const enums = typeNameToEnums.get(selectedType);
-        if (enums) {
-          typeEnums.push(...enums);
-        }
-      }
-      if (typeEnums.length > 0) {
-        criteria.entityTypes = typeEnums;
-      }
-    }
-
-    // Filter by storeys
-    if (selectedStoreys.length > 0) {
-      criteria.storeys = selectedStoreys;
-    }
-
-    // Filter by name pattern
-    if (namePattern.trim()) {
-      criteria.namePattern = namePattern;
-    }
-
-    // Add property filters
-    const validFilters = filters.filter(f => f.propName);
-    if (validFilters.length > 0) {
-      criteria.propertyFilters = validFilters.map(f => {
-        const filter: BulkPropertyFilter = {
-          propName: f.propName,
-          operator: f.operator,
-        };
-        if (f.psetName) {
-          filter.psetName = f.psetName;
-        }
-        if (f.operator !== 'IS_NULL' && f.operator !== 'IS_NOT_NULL') {
-          // Try to parse as number if it looks like one
-          const numVal = parseFloat(f.value);
-          filter.value = !isNaN(numVal) ? numVal : f.value;
-        }
-        return filter;
-      });
-    }
-
-    return criteria;
-  }, [selectedTypes, selectedStoreys, namePattern, filters, typeNameToEnums]);
-
-  // Deferred: select + property discovery yield to the browser first so pill toggles paint instantly.
-  const [isComputing, setIsComputing] = useState(false);
-  const [matchResult, setMatchResult] = useState<{
-    count: number;
-    psets: Map<string, Set<string>>;
-    allProps: Set<string>;
-  }>({ count: 0, psets: new Map(), allProps: new Set() });
-
-  // Timers for deferred work
-  const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const discoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  // Property suggestions are display-only; evaluate the query once via Rules,
+  // then sample its matches without re-running the old property predicate.
   useEffect(() => {
-    // Cancel any in-flight work
-    if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
-    if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
-
-    if (!queryEngine || targetSource !== 'query') {
-      setIsComputing(false);
-      setMatchResult({ count: 0, psets: new Map(), allProps: new Set() });
-      return;
-    }
-
-    // Show spinner immediately — before any expensive work
-    setIsComputing(true);
-
-    // Yield to browser so the pill toggle paints, then run select()
-    selectTimerRef.current = setTimeout(() => {
-      let count = 0;
-      let matchedIds: number[] = [];
-      try {
-        matchedIds = queryEngine.select(currentCriteria);
-        count = matchedIds.length;
-      } catch (err) {
-        // A count of 0 must not be silently indistinguishable from a query
-        // that FAILED — log it. Debounced per edit, not a hot path.
-        console.warn('[bulk-edit] criteria query failed; showing 0 matches', err);
-      }
-
-      // Update count right away, keep old psets until discovery finishes
-      setMatchResult(prev => ({ ...prev, count }));
-
-      // Debounce property discovery (most expensive) by another 200ms
-      const capturedIds = matchedIds;
-      discoveryTimerRef.current = setTimeout(() => {
-        const psets = new Map<string, Set<string>>();
-        const allProps = new Set<string>();
-
-        if (selectedModel?.ifcDataStore && capturedIds.length > 0) {
-          const dataStore = selectedModel.ifcDataStore;
-          const sampleIds = capturedIds.length > 100 ? capturedIds.slice(0, 100) : capturedIds;
-
-          try {
-            for (const entityId of sampleIds) {
-              let properties: Array<{ name: string; properties: Array<{ name: string }> }> = [];
-
-              if (dataStore.onDemandPropertyMap && dataStore.source?.length > 0) {
-                properties = extractPropertiesOnDemand(dataStore as IfcDataStore, entityId);
-              } else if (dataStore.properties) {
-                properties = dataStore.properties.getForEntity(entityId);
-              }
-
-              for (const pset of properties) {
-                if (!psets.has(pset.name)) {
-                  psets.set(pset.name, new Set());
-                }
-                const propSet = psets.get(pset.name)!;
-                for (const prop of pset.properties) {
-                  propSet.add(prop.name);
-                  allProps.add(prop.name);
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Error discovering properties:', e);
-          }
+    const psets = new Map<string, Set<string>>();
+    const allProps = new Set<string>();
+    const dataStore = selectedModel?.ifcDataStore;
+    if (targetSource === 'query' && dataStore && queryIds.length > 0) {
+      // Re-parsing the source is costly; use one sample for lazy stores and
+      // the cached columnar table for the rest of the suggestions.
+      let firstProperties: Array<{ name: string; properties: Array<{ name: string }> }> =
+        dataStore.properties?.getForEntity(queryIds[0]) ?? [];
+      if (dataStore.onDemandPropertyMap && dataStore.source?.length > 0) {
+        try {
+          firstProperties = extractPropertiesOnDemand(dataStore as IfcDataStore, queryIds[0]);
+        } catch (error) {
+          console.warn('[bulk-edit] property suggestions unavailable', error);
         }
+      }
+      for (const [index, entityId] of queryIds.slice(0, 100).entries()) {
+        const properties = index === 0 ? firstProperties : dataStore.properties?.getForEntity(entityId) ?? [];
+        for (const pset of properties) {
+          const propSet = psets.get(pset.name) ?? new Set<string>();
+          for (const prop of pset.properties) {
+            propSet.add(prop.name);
+            allProps.add(prop.name);
+          }
+          psets.set(pset.name, propSet);
+        }
+      }
+    }
+    setDiscoveredProperties({ psets, allProps });
+  }, [targetSource, selectedModel, queryIds]);
 
-        setMatchResult({ count, psets, allProps });
-        setIsComputing(false);
-      }, 200);
-    }, 0);
-
-    return () => {
-      if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
-      if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
-    };
-  }, [queryEngine, currentCriteria, selectedModel, targetSource]);
-
-  const liveMatchCount = targetSource === 'query' ? matchResult.count
+  const liveMatchCount = targetSource === 'query' ? queryIds.length
     : [...targetGroups.values()].reduce((count, ids) => count + ids.length, 0);
-  const targetsReady = targetSource === 'query' ? !!queryEngine : targetEngines.size === targetGroups.size;
-  const discoveredProperties = { psets: matchResult.psets, allProps: matchResult.allProps };
+  const targetsReady = targetSource === 'query' ? !!queryEngine && !isComputing && !queryError : targetEngines.size === targetGroups.size;
 
   // Flatten discovered properties for selectors
   const psetOptions = useMemo(() => {
@@ -465,29 +290,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     // Otherwise show all properties
     return Array.from(discoveredProperties.allProps).sort();
   }, [discoveredProperties, targetPset]);
-
-  // Add a new filter
-  const addFilter = useCallback(() => {
-    setFilters(prev => [...prev, {
-      id: `filter_${Date.now()}`,
-      psetName: '',
-      propName: '',
-      operator: '=' as FilterOperator,
-      value: '',
-    }]);
-  }, []);
-
-  // Remove a filter
-  const removeFilter = useCallback((id: string) => {
-    setFilters(prev => prev.filter(f => f.id !== id));
-  }, []);
-
-  // Update a filter
-  const updateFilter = useCallback((id: string, field: keyof PropertyFilterUI, value: string) => {
-    setFilters(prev => prev.map(f =>
-      f.id === id ? { ...f, [field]: value } : f
-    ));
-  }, []);
 
   // Build action for the query engine; returns a failure (parseBulkSetPropertyValue)
   // instead of a fabricated-value action — callers must refuse the whole operation.
@@ -523,15 +325,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
 
     try {
-      const result = targetSource === 'query' && queryEngine
-        ? queryEngine.preview({ select: currentCriteria, action: built.action })
-        : { matchedEntityIds: [], matchedCount: liveMatchCount, estimatedMutations: liveMatchCount };
+      const result = { matchedEntityIds: targetSource === 'query' ? queryIds : [], matchedCount: liveMatchCount, estimatedMutations: liveMatchCount };
       setPreviewResult(result);
     } catch (error) {
       console.error('Preview failed:', error);
       setPreviewResult({ matchedEntityIds: [], matchedCount: 0, estimatedMutations: 0 });
     }
-  }, [queryEngine, targetsReady, targetSource, liveMatchCount, currentCriteria, buildAction]);
+  }, [targetsReady, targetSource, liveMatchCount, queryIds, buildAction]);
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
@@ -558,9 +358,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
     try {
       // Step 1: select matching IDs
-      const targets = targetSource === 'query' && queryEngine
-        ? queryEngine.select(currentCriteria).map((id) => ({ modelId: selectedModelId, id }))
-        : [...targetGroups].flatMap(([modelId, ids]) => ids.map((id) => ({ modelId, id })));
+      const ids = targetSource === 'query'
+        ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups)
+        : null;
+      const targets = ids
+        ? ids.map((id) => ({ modelId: selectedModelId, id }))
+        : [...targetGroups].flatMap(([modelId, group]) => group.map((id) => ({ modelId, id })));
       const total = targets.length;
       setExecuteProgress({ done: 0, total });
 
@@ -648,14 +451,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setExecuteProgress(null);
     }
   }, [queryEngine, targetEngines, targetGroups, targetSource, targetsReady,
-    liveMatchCount, canEditInSession, currentCriteria, buildAction, selectedModelId, t]);
+    liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t]);
 
   // Reset form
   const handleReset = useCallback(() => {
-    setSelectedTypes([]);
-    setSelectedStoreys([]);
-    setNamePattern('');
-    setFilters([]);
+    setQueryFilterState({ groups: [emptyFilterGroup()], activeGroup: 0 });
     setTargetPset('');
     setTargetProp('');
     setTargetValue('');
@@ -693,8 +493,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   useEffect(() => {
     if (executeResult) { setExecuteDirty(true); setExecuteResult(null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
-  }, [targetSource, targetGroups, selectedModelId, selectedTypes, selectedStoreys, namePattern,
-    filters, actionType, targetPset, targetProp, targetValue, valueType]);
+  }, [targetSource, targetGroups, selectedModelId, queryGroups, actionType, targetPset, targetProp, targetValue, valueType]);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => {
@@ -725,12 +524,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         </DialogHeader>
 
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
-        {isInitializing && targetSource === 'query' ? (
-          <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-            <Spinner size="lg" />
-            <span className="text-sm">{t('bulkPropertyEditor.loading')}</span>
-          </div>
-        ) : (
         <div className="space-y-6">
           <div className="space-y-2">
             <Label className="text-sm font-medium">{t('bulkPropertyEditor.targetSource')}</Label>
@@ -761,13 +554,23 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
           <Separator />
 
-          {targetSource === 'query' && <BulkQueryCriteria
-            liveMatchCount={liveMatchCount} isComputing={isComputing}
-            availableTypes={availableTypes} selectedTypes={selectedTypes} setSelectedTypes={setSelectedTypes}
-            availableStoreys={availableStoreys} selectedStoreys={selectedStoreys} setSelectedStoreys={setSelectedStoreys}
-            namePattern={namePattern} setNamePattern={setNamePattern}
-            filters={filters} addFilter={addFilter} removeFilter={removeFilter} updateFilter={updateFilter}
-          />}
+          {targetSource === 'query' && <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge variant={liveMatchCount ? 'default' : 'secondary'}>
+                {isComputing && <Spinner size="xs" className="mr-1" />}
+                {t('bulkPropertyEditor.matched', { count: liveMatchCount, countDisplay: formatLocaleNumber(locale, liveMatchCount) })}
+              </Badge>
+              {queryError && <span role="alert" className="text-sm text-destructive">{queryError}</span>}
+            </div>
+            <FilterGroupEditor
+              groups={queryGroups}
+              activeGroup={queryFilterState.activeGroup}
+              onChange={setQueryFilterState}
+              models={modelList}
+              optionModelId={selectedModelId === '__legacy__' ? undefined : selectedModelId}
+              schemaVersion={selectedModel?.ifcDataStore?.schemaVersion}
+            />
+          </div>}
 
           {targetSource !== 'query' && <Badge variant={liveMatchCount ? 'default' : 'secondary'}>
             {t('bulkPropertyEditor.matched', { count: liveMatchCount, countDisplay: formatLocaleNumber(locale, liveMatchCount) })}
@@ -826,7 +629,6 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             runtimeFailures={runtimeFailures}
           />}
         </div>
-        )}
         </div>
 
         <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2">

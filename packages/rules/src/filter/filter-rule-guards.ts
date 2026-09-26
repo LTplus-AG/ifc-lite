@@ -102,10 +102,7 @@ function validComparison(value: object): boolean {
   return (o.caseMode === undefined || o.caseMode === 'fold' || o.caseMode === 'exact'
       || o.caseMode === 'lensBoolean' || o.caseMode === 'ifcBoolean')
     && (o.numericMode === undefined || o.numericMode === 'prefix' || o.numericMode === 'strict')
-    && (o.typeMode === undefined || o.typeMode === 'bulk')
-    && (o.operandType === undefined || o.operandType === 'string' || o.operandType === 'number'
-      || o.operandType === 'boolean' || o.operandType === 'null' || o.operandType === 'undefined'
-      || o.operandType === 'array');
+    && o.typeMode === undefined && o.operandType === undefined;
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

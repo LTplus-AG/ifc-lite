@@ -8,17 +8,14 @@ import { IfcParser, extractPropertiesOnDemand, extractTypePropertiesOnDemand, ty
 import { IfcTypeEnum, type PropertySet } from '@ifc-lite/data';
 import type { PersistedV1LensOperator } from './persisted-v1-criteria.js';
 import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
-import { BulkQueryEngine, MutablePropertyView, type FilterOperator, type PropertyValue } from '@ifc-lite/mutations';
 import {
   evaluateFilterRules,
   evaluateFilterGroups,
   type PropertyRule,
   legacyLensOperatorToFilterRule,
   legacyListOperatorToFilterRule,
-  legacyBulkOperatorToFilterRule,
   filterRuleToLegacyLensOperator,
   filterRuleToLegacyListOperator,
-  filterRuleToLegacyBulkOperator,
 } from '@ifc-lite/rules';
 
 import { IFC, IDS, listCases } from './__fixtures__/legacy-operator.js';
@@ -44,12 +41,7 @@ async function fixture() {
     getTypePropertySets: typeSets,
     getQuantitySets: () => [],
   };
-  const view = new MutablePropertyView(null, 'm');
-  for (const id of IDS) for (const set of psets.get(id) ?? []) for (const prop of set.properties) {
-    view.setProperty(id, set.name, prop.name, prop.value as PropertyValue);
-  }
-  const bulk = new BulkQueryEngine(store.entities, view, null, null, store.strings);
-  return { store, lists, bulk };
+  return { store, lists };
 }
 
 // Captured from the v1 Lens matcher on the parsed IFC above before #5896
@@ -66,13 +58,6 @@ const template = (propertyName: string, value: string): PropertyRule => ({
 function canonicalIds(store: IfcDataStore, rule: PropertyRule): number[] {
   return evaluateFilterRules('m', store, [rule], 'AND', { candidateExpressIds: IDS }).map((row) => row.expressId);
 }
-
-const bulkCases = {
-  '=': ['Text', 'red'], '!=': ['Text', 'red'], CONTAINS: ['Text', 'red'],
-  STARTS_WITH: ['Text', 're'], ENDS_WITH: ['Text', 'ed'],
-  '>': ['Number', 10], '>=': ['Number', 10], '<': ['Number', 10], '<=': ['Number', 10],
-  IS_NULL: ['Nullable', undefined], IS_NOT_NULL: ['Nullable', undefined],
-} satisfies Record<FilterOperator, [string, PropertyValue | undefined]>;
 
 describe('#5892 legacy operator adapters over one parsed IFC store', () => {
   it('every LensOperator preserves the recorded v1 Lens selection', async () => {
@@ -162,20 +147,8 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
     }
   });
 
-  it('every FilterOperator selects the same elements as BulkQueryEngine', async () => {
-    const { store, bulk } = await fixture();
-    for (const [operator, [field, value]] of Object.entries(bulkCases) as [FilterOperator, [string, PropertyValue | undefined]][]) {
-      const converted = legacyBulkOperatorToFilterRule(operator, template(field, ''), value);
-      assert.equal(converted.status, 'readable', operator);
-      if (converted.status !== 'readable') continue;
-      const old = bulk.select({ expressIds: IDS, propertyFilters: [{ psetName: 'Pset_Test', propName: field, operator, value }] });
-      assert.deepEqual(canonicalIds(store, converted.value), old, `Bulk ${operator}`);
-      assert.deepEqual(filterRuleToLegacyBulkOperator(converted.value), { status: 'readable', value: operator });
-    }
-  });
-
-  it('preserves boolean case and Bulk typed operands from the parsed store', async () => {
-    const { store, lists, bulk } = await fixture();
+  it('preserves boolean case from the parsed store', async () => {
+    const { store, lists } = await fixture();
     for (const expected of ['TRUE', 'false']) {
       const lensRule = legacyLensOperatorToFilterRule('equals', template('Flag', expected));
       const listRule = legacyListOperatorToFilterRule('equals', template('Flag', expected));
@@ -193,42 +166,26 @@ describe('#5892 legacy operator adapters over one parsed IFC store', () => {
       assert.deepEqual(canonicalIds(store, listRule.value), executeList(definition, lists, 'm').rows.map((row) => row.entityId),
         `Lists boolean ${expected}`);
     }
-    for (const operand of [true, 'true', false] as const) {
-      const converted = legacyBulkOperatorToFilterRule('=', template('Flag', ''), operand);
-      assert.equal(converted.status, 'readable');
-      if (converted.status !== 'readable') continue;
-      const selected = bulk.select({ expressIds: IDS, propertyFilters: [{
-        psetName: 'Pset_Test', propName: 'Flag', operator: '=', value: operand,
-      }] });
-      assert.deepEqual(canonicalIds(store, converted.value), selected, `Bulk boolean ${String(operand)}`);
-    }
   });
 
   it('keeps null distinct from an empty string in converted numeric comparisons', async () => {
-    const { store, lists, bulk } = await fixture();
+    const { store, lists } = await fixture();
     const lensRule = legacyLensOperatorToFilterRule('gte', template('Nullable', '0'));
     const listRule = legacyListOperatorToFilterRule('gte', template('Nullable', '0'));
-    const bulkRule = legacyBulkOperatorToFilterRule('>=', template('Nullable', ''), 0);
     assert.equal(lensRule.status, 'readable');
     assert.equal(listRule.status, 'readable');
-    assert.equal(bulkRule.status, 'readable');
-    if (lensRule.status !== 'readable' || listRule.status !== 'readable' || bulkRule.status !== 'readable') return;
+    if (lensRule.status !== 'readable' || listRule.status !== 'readable') return;
     const lensIds: number[] = []; // v1 treated null, empty string and text as non-numeric.
     const definition: ListDefinition = {
       id: 'null-parity', name: 'Null parity', createdAt: 0, updatedAt: 0,
       entityTypes: [], expressIdsByModel: { m: IDS }, columns: [],
       groups: [], legacyConditions: [{ source: 'property', psetName: 'Pset_Test', propertyName: 'Nullable', operator: 'gte', value: '0' }],
     };
-    const bulkIds = bulk.select({ expressIds: IDS, propertyFilters: [{
-      psetName: 'Pset_Test', propName: 'Nullable', operator: '>=', value: 0,
-    }] });
     const listIds = executeList(definition, lists, 'm').rows.map((row) => row.entityId);
     assert.deepEqual(canonicalIds(store, lensRule.value), lensIds);
     assert.deepEqual(canonicalIds(store, listRule.value), listIds);
-    assert.deepEqual(canonicalIds(store, bulkRule.value), bulkIds);
     assert.deepEqual(lensIds, []);
     assert.deepEqual(listIds, [20]);
-    assert.deepEqual(bulkIds, []);
   });
 
 });

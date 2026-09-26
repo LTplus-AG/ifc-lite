@@ -39,42 +39,19 @@ function getByLabelText(container: ParentNode, text: string): HTMLElement {
 }
 
 describe('BulkPropertyEditor accessibility (#5812)', () => {
-  it('the Model selector and Name Pattern fields are reachable by getByLabelText', () => {
+  it('the Model selector and target source are reachable while Query is active', () => {
     const dialog = openDialog();
     const modelSelect = getByLabelText(dialog, 'Model');
     assert.equal(modelSelect.getAttribute('role'), 'combobox');
-    const namePattern = getByLabelText(dialog, 'Name Pattern (Regex)');
-    assert.equal(namePattern.tagName, 'INPUT');
+    const targetSource = dialog.querySelector('[role="combobox"][aria-label="Target source"]');
+    assert.ok(targetSource, 'the Bulk target source has an accessible name');
   });
 
-  it('a property-filter row: every field is reachable by getByLabelText', () => {
+  it('exposes the shared group and rule controls in the Query source', () => {
     const dialog = openDialog();
-    const addFilter = [...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Filter'));
-    assert.ok(addFilter);
-    click(addFilter);
-
-    const psetInput = getByLabelText(dialog, 'Pset (optional)');
-    assert.equal(psetInput.tagName, 'INPUT');
-    const propInput = getByLabelText(dialog, 'Property name');
-    assert.equal(propInput.tagName, 'INPUT');
-    const operatorSelect = getByLabelText(dialog, 'Filter operator');
-    assert.equal(operatorSelect.getAttribute('role'), 'combobox');
-    const valueInput = getByLabelText(dialog, 'Value');
-    assert.equal(valueInput.tagName, 'INPUT');
-    const removeButton = [...dialog.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Remove property filter');
-    assert.ok(removeButton);
-  });
-
-  it('the "IS_NULL" operator hides the now-meaningless value field', () => {
-    const dialog = openDialog();
-    click([...dialog.querySelectorAll('button')].find((b) => b.textContent?.includes('Add Filter'))!);
-    const operatorSelect = getByLabelText(dialog, 'Filter operator');
-    click(operatorSelect);
-    const isNullOption = [...document.body.querySelectorAll('[role="option"]')].find((o) => o.textContent === 'is null');
-    assert.ok(isNullOption);
-    click(isNullOption);
-    const valueLabel = [...dialog.querySelectorAll('label')].find((el) => el.textContent === 'Value');
-    assert.equal(valueLabel, undefined, 'the value field is gone, not just unlabelled');
+    const buttons = [...dialog.querySelectorAll('button')];
+    assert.ok(buttons.some((button) => button.textContent?.includes('Add group')));
+    assert.ok(buttons.some((button) => button.textContent?.includes('Add rule')));
   });
 
   it('the Action Configuration fields are reachable for the default SET_PROPERTY action', () => {

@@ -31,7 +31,13 @@ export function StatusBarPresentationButton() {
       onClick={() => toggleBottomPanel('presentation')}
       aria-pressed={basketPresentationVisible}
       title={t('shellChrome.statusBar.presentationTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
-      className={cn('flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground', basketPresentationVisible && 'text-foreground')}
+      className={cn(
+        // `relative` + `after:-inset-1.5`: the status bar's compact text
+        // height is well under the 24px WCAG 2.2 2.5.8 minimum (#5826); the
+        // hit-slop restores it without growing the status bar's row height.
+        'relative flex items-center gap-1.5 rounded px-1 -mx-1 transition-colors hover:text-foreground after:absolute after:-inset-1.5 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        basketPresentationVisible && 'text-foreground',
+      )}
     >
       <Presentation className="h-3.5 w-3.5" />
       <span>{t('shellChrome.statusBar.presentationLabel')}</span>

@@ -489,7 +489,11 @@ export function SearchInline() {
             openAdvancedFilter();
           }}
           className={cn(
-            'flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors',
+            // `relative` + `after:-inset-1`: this button's own box (padding
+            // included) is ~26x22 CSS px, under the 24x24 WCAG 2.2 2.5.8
+            // minimum (#5826). The invisible `::after` hit-slop restores the
+            // full target size without growing the visible pill.
+            'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:-inset-1 after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             hasFilters
               ? 'bg-primary/10 text-primary hover:bg-primary/15'
               : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',

@@ -23,9 +23,20 @@ const buttonVariants = cva(
         default: 'h-9 px-4 py-2',
         sm: 'h-8 rounded-md px-3 text-xs',
         lg: 'h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
-        'icon-sm': 'h-8 w-8',
-        'icon-xs': 'h-7 w-7',
+        // The icon sizes below all keep a >=24x24 CSS px HIT AREA (WCAG 2.2
+        // 2.5.8) via the `after:` hit-slop pseudo-element, independent of
+        // their visual box. `relative` gives the pseudo-element something to
+        // position against; `after:-inset-2` (8px a side) pulls its invisible
+        // box outward from the actual rendered button, so a caller that
+        // shrinks the visual size with a `className` override (a real,
+        // shipped pattern: `size="icon-sm" className="h-5 w-5"`, see #5826)
+        // still gets >=24px of clickable area — the pseudo has no border or
+        // background, so the VISUAL footprint in a dense toolbar is
+        // untouched. -8px covers every icon-only override down to ~8px
+        // visually (8 + 2*8 = 24); nothing in this codebase goes smaller.
+        icon: 'relative h-9 w-9 after:absolute after:-inset-2 after:content-[""]',
+        'icon-sm': 'relative h-8 w-8 after:absolute after:-inset-2 after:content-[""]',
+        'icon-xs': 'relative h-7 w-7 after:absolute after:-inset-2 after:content-[""]',
       },
     },
     defaultVariants: {

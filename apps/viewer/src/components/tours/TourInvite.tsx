@@ -33,7 +33,10 @@ export function TourInvite() {
     <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
       <span>{t('tours.tourInvite.prompt')}</span>
       <button
-        className="font-medium text-primary underline-offset-2 hover:underline"
+        // `relative` + `after:-inset-1.5`: text-line height alone is ~16px
+        // tall, under the 24px WCAG 2.2 2.5.8 target-size minimum (#5826);
+        // the hit-slop restores it without padding out the inline text row.
+        className="relative font-medium text-primary underline-offset-2 hover:underline after:absolute after:-inset-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => {
           trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'start_tour' });
           startTour('welcome', 'invite');
@@ -43,7 +46,7 @@ export function TourInvite() {
       </button>
       <button
         aria-label={t('tours.tourInvite.dismissAriaLabel')}
-        className="ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+        className="relative ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground after:absolute after:-inset-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => {
           trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'dismiss' });
           dismissInvite();

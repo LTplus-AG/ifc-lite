@@ -35,4 +35,28 @@ The clear and coloured pictures show the same building surfaces and colour place
 
 ## Remaining acceptance
 
-This is **one real model**, not the original 55-model federation (82,478 elements, 147.8 M triangles). It does not exercise federation IDs past 2²⁴, transparent/glass or `IfcSpace` promotion, a fractional-alpha override, focused-clash emphasis, X-Ray/ghost, or a model streamed in after colours are applied. It also does not measure `render()` CPU time or per-model load time with the lens already active. Those claims need the 55-model run or separate targeted real-model evidence before they are treated as verified at federation scale.
+The one-model run does not exercise federation IDs past 2²⁴, transparent/glass or `IfcSpace` promotion, a fractional-alpha override, focused-clash emphasis, X-Ray/ghost, or a model streamed in after colours are applied. It also does not measure `render()` CPU time or per-model load time with the lens already active.
+
+## Supplementary 55-model federation
+
+On the same Windows machine, a second browser run loaded **55 distinct real IFC files** from the top level of the mounted Dropbox `09_Testmodelle/IFC` folder. These were the 55 smallest files between 300 kB and 4.1 MB, ordered by file size; their combined source size was 68,219,793 bytes. They include authored building, structure, MEP, terrain, and infrastructure models. The viewer's normal multi-file Open/Add controls loaded each file through `useIfcLoader.loadFile` and registered 55 separate models. Both builds had 8,848 mesh-bearing global IDs after loading. The test palette and `setColorOverrides` probe were identical to the one-model run above.
+
+This was an interleaved base → branch → base run in fresh Windows Chrome processes with the same 55 files and a fresh page each time. The table uses the second base pass. `Win32_Process.PrivatePageCount` was read from that dedicated Chrome process's GPU child immediately before and about three seconds after colouring; a negative delta means the measurement is within browser allocation/reclamation noise. The orbit trace sampled 80 distinct rendered frames over 80 pointer moves on the coloured scene.
+
+| Metric | Base, second pass | PR #6148 |
+|---|---:|---:|
+| Draw calls, no overrides → all 8,848 IDs coloured | 891 → 10,372 | 891 → 891 |
+| GPU-process private memory, before → after | 576,196,608 → 2,572,419,072 B | 579,407,872 → 563,023,872 B |
+| GPU-process private memory added | +1,904 MiB | −15.6 MiB (flat within noise) |
+| One `setColorOverrides` call | 449.1 ms | 4.77 ms |
+| Coloured orbit, 80 pointer moves | 15.4 observed fps | 19.0 observed fps |
+| Renderer-reported resident geometry | 46,354,844 B before and after | 46,370,084 B before and after |
+
+The four 512 × 512 renderer readbacks show the same terrain/building placement and colour assignment. The coloured base and branch frames differ by a mean absolute RGB value of 0.072/255 per channel; 848 of 262,144 pixels differ by more than five levels in at least one channel. The camera fit is dominated by a large terrain model, so small building details are easier to inspect in the one-model images above.
+
+| | No override, after orbit | Deterministic opaque colours, before orbit |
+|---|---|---|
+| Base | ![55-model base clear frame](federation-base-clear.png) | ![55-model base coloured frame](federation-base-color.png) |
+| PR #6148 | ![55-model branch clear frame](federation-branch-clear.png) | ![55-model branch coloured frame](federation-branch-color.png) |
+
+This is **a substitute 55-model federation**, not the original 82,478-element, 147.8 M-triangle federation cited in the PR. It exercises 55 model registrations and their global IDs, but does not establish the original federation's exact allocation or orbit result. The appearance-state and late-streaming cases listed above also remain outside this browser run; focused renderer tests cover those paths separately.

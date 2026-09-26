@@ -12,7 +12,6 @@ import type { Mesh } from './types.js';
 import { modelPlacementBounds } from './model-placement-bounds.js';
 import type { RenderPipeline } from './pipeline.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
-import { lookupEntityColor } from './entity-color-table.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128,
@@ -156,7 +155,10 @@ describe('whole-model renderer placement (#4226)', () => {
     assert.equal(scene.getEntityBoundingBox(2)?.min.x, 13);
   });
 
-  it('keeps same-colour overrides attached to their own federated model', () => {
+  it('keeps same-colour overrides attached to their own federated model', async () => {
+    const colorTable = await import('./entity-color-table.js').catch(() => null);
+    assert.ok(colorTable, 'the renderer provides the entity colour table');
+    const { lookupEntityColor } = colorTable;
     const scene = new Scene(), { device, pipeline, buffers } = recordingGpu();
     scene.appendToBatches([triangle(1, 0), triangle(2, 1, 3)], device, pipeline);
     const allocated = buffers.length;

@@ -29,10 +29,11 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
 ## Renderer colour override table (#6076, PR #6148)
 
-A base-versus-branch browser run on a real Archicad architectural IFC showed
-that the colour table removes the overlay draw and allocation cost for a
-large single model. The coloured image stayed visually consistent with the
-base. This is a positive end-to-end verdict for that model; the original
+A base-versus-branch browser run on a real Archicad architectural IFC, followed
+by a 55-file federation of distinct real IFCs from the same test-model folder,
+showed that the colour table removes the overlay draw and allocation cost in
+both cases. The coloured images stayed visually consistent with the base.
+This is a positive end-to-end verdict for those models; the original larger
 55-model federation, alpha/emphasis/X-Ray states, and coloured streaming
 still need their own acceptance run. The lesson is to measure both draw calls
 and GPU-process private memory after applying a lens: the renderer's resident

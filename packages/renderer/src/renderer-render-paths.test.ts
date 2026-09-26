@@ -13,7 +13,12 @@ import type { RenderPipeline } from './pipeline.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { rteRelativePositionF32 } from './relative-to-eye.js';
 import { MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
-import { ENTITY_LANE_ID_SPAN, OVERRIDE_PARAM_EMPHASIZE, OVERRIDE_PARAM_PAINT, lookupEntityColor, resolveLaneEntityId } from './entity-color-table.js';
+
+async function requireColorTable() {
+    const module = await import('./entity-color-table.js').catch(() => null);
+    assert.ok(module, 'the renderer provides the entity colour table');
+    return module;
+}
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle
@@ -1812,7 +1817,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         sceneOf(h).setColorOverrides(overrides, h.renderer['device'].getDevice(), h.renderer['pipeline']!);
     }
 
-    it('allocates and uploads nothing but the table, and adds no draw calls', () => {
+    it('allocates and uploads nothing but the table, and adds no draw calls', async () => {
+        const { OVERRIDE_PARAM_PAINT, OVERRIDE_PARAM_EMPHASIZE } = await requireColorTable();
         const h = makeHarness();
         const { grey, red } = seedBatches(h);
         h.render();
@@ -1841,7 +1847,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(overrideLanes(h, red.uniformBuffer), [3, OVERRIDE_PARAM_PAINT | OVERRIDE_PARAM_EMPHASIZE, 0, 0], 'emphasizeOverrides reaches the draw');
     });
 
-    it('holds the colour at the entity slot, and clearing empties the table without touching a batch', () => {
+    it('holds the colour at the entity slot, and clearing empties the table without touching a batch', async () => {
+        const { lookupEntityColor } = await requireColorTable();
         const h = makeHarness();
         const { grey } = seedBatches(h);
         setOverrides(h, new Map([[2, GREEN]]));
@@ -1864,7 +1871,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [0, 0, 0, 0], 'nothing to paint after clearing');
     });
 
-    it('keeps colour overrides available after CPU geometry is released (#6148 review)', () => {
+    it('keeps colour overrides available after CPU geometry is released (#6148 review)', async () => {
+        const { lookupEntityColor, OVERRIDE_PARAM_PAINT } = await requireColorTable();
         const h = makeHarness();
         const { grey } = seedBatches(h);
         const scene = sceneOf(h);
@@ -1877,7 +1885,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, OVERRIDE_PARAM_PAINT, 0, 0]);
     });
 
-    it('paints a mesh that streams in AFTER the override without another setColorOverrides call', () => {
+    it('paints a mesh that streams in AFTER the override without another setColorOverrides call', async () => {
+        const { lookupEntityColor, OVERRIDE_PARAM_PAINT } = await requireColorTable();
         const h = makeHarness();
         seedBatches(h);
         setOverrides(h, new Map([[9, GREEN]]));
@@ -1899,7 +1908,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), 9), GREEN);
     });
 
-    it('paints entities of one bucket whose ids span 2^24, and still promotes them (#6076 review)', () => {
+    it('paints entities of one bucket whose ids span 2^24, and still promotes them (#6076 review)', async () => {
+        const { ENTITY_LANE_ID_SPAN, OVERRIDE_PARAM_PAINT, lookupEntityColor, resolveLaneEntityId } = await requireColorTable();
         // Same model, colour and cell: before page-keyed buckets these two
         // shared one batch whose ids span more than 2^24, the anchor was
         // refused, and both drew unpainted — while routing still promoted them.
@@ -1928,6 +1938,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         ['finalizeStreamingAsync', (s: Scene, d: GPUDevice, p: RenderPipeline) => s.finalizeStreamingAsync(d, p)],
     ] as const) {
         it(`paints the batch ${label} installs after a mid-stream override, with no re-apply`, async () => {
+            const { OVERRIDE_PARAM_PAINT } = await requireColorTable();
             const h = makeHarness();
             const scene = sceneOf(h);
             const device = h.renderer['device'].getDevice();
@@ -1946,7 +1957,8 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         });
     }
 
-    it('keeps the opaque promotion of a transparent entity with an override at alpha >= 0.2, and paints only there', () => {
+    it('keeps the opaque promotion of a transparent entity with an override at alpha >= 0.2, and paints only there', async () => {
+        const { OVERRIDE_PARAM_PAINT } = await requireColorTable();
         const h = makeHarness();
         const scene = sceneOf(h);
         const glass: [number, number, number, number] = [0.6, 0.8, 0.9, 0.4];

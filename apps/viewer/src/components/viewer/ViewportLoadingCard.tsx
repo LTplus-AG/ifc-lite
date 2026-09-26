@@ -8,14 +8,15 @@
  * IFC load could not be cancelled at all. While `loading` is true this card
  * sits in the middle of the viewport with the file name, the phase and a
  * percentage (indeterminate when unknown) and a Cancel button when the load
- * has published a canceller (see `hooks/primaryLoadCanceller.ts`).
+ * has published a canceller (see `hooks/modelLoadCanceller.ts`).
  */
 
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { Progress } from '@/components/ui/progress';
+import { Spinner } from '@/components/ui/spinner';
 
 export function ViewportLoadingCard() {
   const { t } = useTranslation();
@@ -34,7 +35,7 @@ export function ViewportLoadingCard() {
     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-4">
       <div data-viewport-loading-card className="pointer-events-auto w-full max-w-sm rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+          <Spinner size="md" className="shrink-0 text-primary" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium" title={fileName ?? undefined} aria-hidden="true">
             {title}
           </p>

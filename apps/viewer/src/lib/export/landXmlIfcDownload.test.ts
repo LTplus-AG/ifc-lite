@@ -19,7 +19,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadLandXmlAsIfc, finishLandXmlIfcExport } from './landXmlIfcDownload.js';
+import { downloadLandXmlAsIfc, landXmlIfcExportOutcome } from './landXmlIfcDownload.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 
 const SURFACE = {
@@ -127,62 +127,46 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
   });
 });
 
-describe('finishLandXmlIfcExport (#4937)', () => {
-  /** The dialog's two state setters, recorded rather than stubbed behind a mock. */
-  function ui() {
-    const results: Array<{ success: boolean; message: string }> = [];
-    const exporting: boolean[] = [];
-    return {
-      results,
-      exporting,
-      // The real catalogue is not needed to prove the wiring; echoing the key
-      // keeps the assertion about WHICH message was chosen.
-      t: ((key: string) => key) as never,
-      setExportResult: (result: { success: boolean; message: string }) => { results.push(result); },
-      setIsExporting: (value: boolean) => { exporting.push(value); },
-    };
-  }
+describe('landXmlIfcExportOutcome (#4937, #5848)', () => {
+  // The real catalogue is not needed to prove the wiring; echoing the key
+  // keeps the assertion about WHICH message was chosen.
+  const t = ((key: string) => key) as never;
 
-  it('reports success and clears the exporting flag', async () => {
-    const recorder = ui();
+  it('reports success', async () => {
+    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
     await captureDownload(() => {
-      finishLandXmlIfcExport({ document: document(), name: 'terrain.xml' }, recorder);
+      outcome = landXmlIfcExportOutcome({ document: document(), name: 'terrain.xml' }, t);
     });
 
-    assert.equal(recorder.results[0]?.success, true);
-    assert.equal(recorder.results[0]?.message, 'exportDialog.landXml.exported');
-    // Without this the dialog stays stuck on "Exporting...": this branch
-    // returns early from the caller's `finally`.
-    assert.deepEqual(recorder.exporting, [false]);
+    assert.equal(outcome?.success, true);
+    assert.equal(outcome?.message, 'exportDialog.landXml.exported');
   });
 
-  it('reports a refusal as a failure, still clearing the exporting flag', async () => {
-    const recorder = ui();
+  it('reports a refusal as a failure', async () => {
+    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
     await captureDownload(() => {
-      finishLandXmlIfcExport(
+      outcome = landXmlIfcExportOutcome(
         { document: document({ surfaces: [], alignments: [{}] as never }), name: 'alignment.xml' },
-        recorder,
+        t,
       );
     });
 
-    assert.equal(recorder.results[0]?.success, false);
-    assert.match(recorder.results[0]?.message ?? '', /1 alignments/);
-    assert.deepEqual(recorder.exporting, [false]);
+    assert.equal(outcome?.success, false);
+    assert.match(outcome?.message ?? '', /1 alignments/);
   });
 
   it('reports a thrown conversion as a failure rather than leaving the dialog hung', async () => {
-    const recorder = ui();
     // A face naming a point the surface does not define makes the converter
     // throw. The dialog must show that, not spin forever.
     const broken = document({
       surfaces: [{ ...SURFACE, faces: [['1', '2', '99']] as Array<readonly [string, string, string]> }],
     });
+    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
     await captureDownload(() => {
-      finishLandXmlIfcExport({ document: broken, name: 'broken.xml' }, recorder);
+      outcome = landXmlIfcExportOutcome({ document: broken, name: 'broken.xml' }, t);
     });
 
-    assert.equal(recorder.results[0]?.success, false);
-    assert.match(recorder.results[0]?.message ?? '', /99/);
-    assert.deepEqual(recorder.exporting, [false]);
+    assert.equal(outcome?.success, false);
+    assert.match(outcome?.message ?? '', /99/);
   });
 });

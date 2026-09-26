@@ -46,7 +46,7 @@ export function ByokStreamingPill({ modelId, className }: ByokStreamingPillProps
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-mono text-emerald-700 dark:text-emerald-400',
+            'inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-2xs font-mono text-emerald-700 dark:text-emerald-400',
             className,
           )}
         >

@@ -64,7 +64,7 @@ export function PresentationViewCard({
         )}
 
         {isActive && (
-          <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+          <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-foreground">
             {t('presentationPanel.activeBadge')}
           </div>
         )}
@@ -94,7 +94,7 @@ export function PresentationViewCard({
         ) : (
           <>
             <div className="text-[12px] font-medium truncate">{view.name}</div>
-            <div className="text-[10px] opacity-80">
+            <div className="text-2xs opacity-80">
               {t('presentationPanel.objectsCount', { count: view.entityRefs.length })}
               {view.transitionMs ? t('presentationPanel.transitionSuffix', { duration: (view.transitionMs / 1000).toFixed(1) }) : ''}
             </div>

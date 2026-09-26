@@ -155,13 +155,13 @@ export function ByokCredentialForm({
           </button>
         </div>
         {keyValid && trimmedKey.length > 0 && trimmedKey !== savedKey && (
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+          <p className="text-2xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
             <Check className="h-3 w-3" />
             {t('chatByok.credentialForm.looksLikeKey', { label: meta.label, masked: maskKey(trimmedKey) })}
           </p>
         )}
         {!keyValid && (
-          <p className="text-[11px] text-destructive">
+          <p className="text-2xs text-destructive">
             {t('chatByok.credentialForm.doesntLookLikeKey', { label: meta.label, prefix: meta.keyPrefix })}
           </p>
         )}
@@ -189,11 +189,11 @@ export function ByokCredentialForm({
             className={INPUT_CLASS}
           />
           {workspaceClean ? (
-            <p id="byok-anthropic-workspace-hint" className="text-[11px] text-muted-foreground">
+            <p id="byok-anthropic-workspace-hint" className="text-2xs text-muted-foreground">
               {t('chatByok.credentialForm.workspaceHelp')}
             </p>
           ) : (
-            <p id="byok-anthropic-workspace-hint" className="text-[11px] text-destructive">
+            <p id="byok-anthropic-workspace-hint" className="text-2xs text-destructive">
               {t('chatByok.credentialForm.workspaceInvalidHelp')}
             </p>
           )}

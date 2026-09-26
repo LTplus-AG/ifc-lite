@@ -78,7 +78,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
           </tbody>
         </table>
       )}
-      {block.caption && <div className={`mt-1 text-[10px] ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{block.caption}</div>}
+      {block.caption && <div className={`mt-1 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{block.caption}</div>}
     </div>
   );
 }

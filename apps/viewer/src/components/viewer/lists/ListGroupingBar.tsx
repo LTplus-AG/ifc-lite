@@ -36,7 +36,7 @@ interface ListGroupingBarProps {
 function Chip({ icon, children, onRemove, removeLabel }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
   const { t } = useTranslation();
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-foreground">
+    <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2 pr-1 text-2xs font-medium text-foreground">
       {icon}
       <span className="max-w-[12rem] truncate">{children}</span>
       <button
@@ -68,7 +68,7 @@ export function ListGroupingBar({
               aria-pressed={scheduleMode}
               aria-label={scheduleMode ? t('lists.groupingBar.switchToNestedAriaLabel') : t('lists.groupingBar.switchToScheduleAriaLabel')}
               className={cn(
-                'mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] hover:bg-muted hover:text-foreground',
+                'mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs hover:bg-muted hover:text-foreground',
                 scheduleMode ? 'text-primary' : 'text-muted-foreground',
               )}
             >
@@ -81,7 +81,7 @@ export function ListGroupingBar({
       {grouped && !scheduleMode && (
         <button
           onClick={onToggleExpandAll}
-          className="mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
           title={allExpanded ? t('lists.groupingBar.collapseAllGroups') : t('lists.groupingBar.expandAllGroups')}
         >
           {allExpanded ? <ChevronsDownUp className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}

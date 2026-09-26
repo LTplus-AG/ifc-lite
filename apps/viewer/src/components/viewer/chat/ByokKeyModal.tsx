@@ -185,7 +185,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-muted-foreground">{t('chatByok.keyModal.unlocksLabel')}</span>
         {unlockedModels.map((m) => (
-          <Badge key={m.id} variant="outline" className="text-[10px] font-mono">
+          <Badge key={m.id} variant="outline" className="text-2xs font-mono">
             {m.name}
           </Badge>
         ))}
@@ -264,7 +264,7 @@ function ProviderTab({ provider, savedKey, savedWorkspaceId = '', requestSource 
                 {t('chatByok.keyModal.walkthroughStep4')} <code className="bg-muted px-1 rounded">⌘V</code>).
               </li>
             </ol>
-            <p className="text-[11px] text-muted-foreground">{meta.pricingHint}</p>
+            <p className="text-2xs text-muted-foreground">{meta.pricingHint}</p>
             <Button size="sm" variant="outline" className="text-xs" onClick={handleOpenConsole}>
               <ExternalLink className="mr-1.5 h-3 w-3" />
               {t('chatByok.keyModal.openConsoleButton', { consoleLabel: meta.consoleLabel })}

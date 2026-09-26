@@ -319,9 +319,9 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium">
                         {p.name}
-                        {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('clashTools.settings.customBadge')}</span>}
+                        {!p.builtin && <span className="ml-1.5 text-2xs text-muted-foreground">{t('clashTools.settings.customBadge')}</span>}
                       </div>
-                      <div className="truncate text-[10px] text-muted-foreground">
+                      <div className="truncate text-2xs text-muted-foreground">
                         <SetSummary selector={p.selectorA} filter={p.filterA} />
                         <span className="opacity-60"> × </span>
                         <SetSummary selector={p.selectorB} filter={p.filterB} />

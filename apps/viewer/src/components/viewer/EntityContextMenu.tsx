@@ -516,7 +516,7 @@ function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) 
         title={t('entityContextMenu.duplicateDefaultTitle')}
       >
         <CopyPlus className="h-4 w-4 text-muted-foreground" /><span>{t('entityContextMenu.duplicateLabel')}</span>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground">⌘D</span>
+        <span className="ml-auto text-2xs font-mono text-muted-foreground">⌘D</span>
       </button>
       <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
         <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />
@@ -547,7 +547,7 @@ function DirectionChip({
       onClick={onClick}
       title={tooltip}
       aria-label={tooltip}
-      className="h-5 w-5 flex items-center justify-center rounded text-[11px] font-mono leading-none text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
+      className="h-5 w-5 flex items-center justify-center rounded text-2xs font-mono leading-none text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
       data-direction={dir}
     >
       {label}
@@ -573,7 +573,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'defa
       <Icon className={iconClass} />
       <span className="flex-1 min-w-0">{label}</span>
       {shortcut && (
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0">
+        <span className="text-2xs font-mono text-muted-foreground shrink-0">
           {shortcut}
         </span>
       )}

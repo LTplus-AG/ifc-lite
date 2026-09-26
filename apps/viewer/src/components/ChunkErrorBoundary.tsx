@@ -147,7 +147,7 @@ function ChunkErrorFallback({
         {chunk ? t('viewerShell.chunkError.loadFailed', { label: translatedLabel }) : t('viewerShell.chunkError.crashed', { label: translatedLabel })}
       </span>
       <span
-        className={night ? 'max-w-[280px] text-[11px]' : 'max-w-[280px] text-[11px] text-muted-foreground'}
+        className={night ? 'max-w-[280px] text-2xs' : 'max-w-[280px] text-2xs text-muted-foreground'}
         style={night ? { color: NIGHT_TONE.dim } : undefined}
       >
         {chunk
@@ -159,8 +159,8 @@ function ChunkErrorFallback({
         onClick={() => window.location.reload()}
         className={
           night
-            ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-opacity hover:opacity-80'
-            : 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent'
+            ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-2xs transition-opacity hover:opacity-80'
+            : 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-2xs transition-colors hover:bg-accent'
         }
         style={night ? { borderColor: NIGHT_TONE.dim, color: NIGHT_TONE.fg } : undefined}
       >

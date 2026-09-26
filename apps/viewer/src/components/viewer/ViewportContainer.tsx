@@ -33,10 +33,10 @@ import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { hasInstancedShards } from '@/store/instancedShardModels';
+import { computeVisibilityIsolation, isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
+import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import type { RecentFileEntry } from '@/lib/recent-files';
@@ -82,6 +82,8 @@ export function ViewportContainer() {
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const resolveGlobalIdFromModels = useViewerStore((s) => s.resolveGlobalIdFromModels);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -776,76 +778,24 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Compute combined isolation set (storeys + manual isolation)
-  // This is passed to the renderer for batch-level visibility filtering
-  // Now supports multi-model: aggregates elements from all models for selected storeys
-  // IMPORTANT: Returns globalIds (meshes use globalIds after federation registry transformation)
+  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useMemo(() => {
-    // Compute storey isolation if storeys are selected
-    let storeyIsolation: Set<number> | null = null;
-    if (selectedStoreys.size > 0) {
-      const combinedGlobalIds = new Set<number>();
+    return computeVisibilityIsolation({
+      models: storeModels, ifcDataStore, selectedStoreys, isolatedEntities,
+      classFilter, resolveGlobalIdFromModels,
+    });
+  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter, resolveGlobalIdFromModels]);
 
-      // Check each federated model's storeys
-      for (const [, model] of storeModels) {
-        const hierarchy = model.ifcDataStore?.spatialHierarchy;
-        if (!hierarchy) continue;
-        // Pass the relationship graph so storey isolation pulls in the parts of
-        // any decomposing assembly (stair flights, railings, …) — they live off
-        // the spatial tree via IfcRelAggregates and would otherwise vanish (#1133).
-        const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
-
-        for (const storeyId of selectedStoreys) {
-          const localStoreyId = hierarchy.byStorey.has(storeyId)
-            ? storeyId
-            : storeyId - (model.idOffset ?? 0);
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
-          if (storeyElementIds) {
-            for (const originalExpressId of storeyElementIds) {
-              combinedGlobalIds.add(toGlobalIdFromModels(storeModels, model.id, originalExpressId));
-            }
-          }
-        }
-      }
-
-      // Legacy single-model mode (offset = 0)
-      if (ifcDataStore?.spatialHierarchy && storeModels.size === 0) {
-        const hierarchy = ifcDataStore.spatialHierarchy;
-        const relationships = ifcDataStore.relationships as AggregationRelationships | undefined;
-        for (const storeyId of selectedStoreys) {
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
-          if (storeyElementIds) {
-            for (const id of storeyElementIds) {
-              combinedGlobalIds.add(id);
-            }
-          }
-        }
-      }
-
-      if (combinedGlobalIds.size > 0) {
-        storeyIsolation = combinedGlobalIds;
-      }
-    }
-
-    // Collect all active filters and intersect them
-    const filters: Set<number>[] = [];
-    if (storeyIsolation !== null) filters.push(storeyIsolation);
-    if (classFilter !== null) filters.push(classFilter.ids);
-    if (isolatedEntities !== null) filters.push(isolatedEntities);
-
-    if (filters.length === 0) return null;
-    if (filters.length === 1) return filters[0];
-
-    // Intersect all active filters — start from smallest for efficiency
-    const sorted = filters.sort((a, b) => a.size - b.size);
-    const intersection = new Set<number>();
-    for (const id of sorted[0]) {
-      if (sorted.every(s => s.has(id))) {
-        intersection.add(id);
-      }
-    }
-    return intersection;
-  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter]);
+  const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
+    models: storeModels, geometryResult, hiddenEntities,
+  }, {
+    meshes: filteredGeometry,
+    pointClouds: mergedPointClouds,
+    isolatedIds: computedIsolatedIds,
+    hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
+      && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
+  }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
+    computedIsolatedIds, hiddenEntities]);
 
   // Grid Pattern
   const GridPattern = () => (
@@ -1074,6 +1024,7 @@ export function ViewportContainer() {
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
       <VisibilityChips />
+      <EmptyVisibilityNotice visible={visibleResultEmpty} />
       <ZoneAssignmentSyncMount />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />

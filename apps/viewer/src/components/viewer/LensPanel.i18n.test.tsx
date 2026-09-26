@@ -210,7 +210,6 @@ function ifcRule(overrides: Partial<LensRule> = {}): LensRule {
     id: 'rule-ifc',
     name: 'Walls',
     enabled: true,
-    criteria: { type: 'and', conditions: [] },
     groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }],
     action: 'colorize',
     color: '#e53935',
@@ -337,7 +336,7 @@ describe('Lens panel localization (#4918)', () => {
   it('rule-based lens card: active with two rules (one empty), isolate tooltip, isolated badge, rule count', () => {
     const rules = [
       ifcRule({ id: 'r1', name: 'Walls', color: '#e53935' }),
-      ifcRule({ id: 'r2', name: 'Doors', color: '#1e88e5', criteria: { type: 'and', conditions: [] }, groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcDoor'] }] }] }),
+      ifcRule({ id: 'r2', name: 'Doors', color: '#1e88e5', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcDoor'] }] }] }),
     ];
     useViewerStore.setState({
       savedLenses: [ruleLens(rules)],

@@ -6,8 +6,9 @@
  * `FilterGroup[]` is disjunctive normal form: groups are OR'd, rules in each
  * group are AND'd. A conversion refusal retains the source JSON for the UI to
  * explain; it must never become an empty match set without a warning. */
-import { IFC_SUBTYPE_TO_BASE, MAX_COMPOUND_DEPTH, type LensCriteria } from '@ifc-lite/lens';
+import { IFC_SUBTYPE_TO_BASE } from '@ifc-lite/lens';
 import { legacyLensOperatorToFilterRule, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
+import { MAX_PERSISTED_V1_COMPOUND_DEPTH, type PersistedV1LensCriteria } from './persisted-v1-criteria.js';
 
 export type LegacyCriteriaConversion =
   | { status: 'readable'; groups: FilterGroup[] }
@@ -24,11 +25,11 @@ function leaf(rule: FilterRule): LegacyCriteriaConversion {
   return { status: 'readable', groups: [{ rules: [rule], combinator: 'AND' }] };
 }
 
-function valueOperator(criteria: LensCriteria, value: string | undefined): string {
+function valueOperator(criteria: PersistedV1LensCriteria, value: string | undefined): string {
   return criteria.operator ?? (value === undefined ? 'exists' : 'equals');
 }
 
-function convertLeaf(criteria: LensCriteria): LegacyCriteriaConversion {
+function convertLeaf(criteria: PersistedV1LensCriteria): LegacyCriteriaConversion {
   switch (criteria.type) {
     case 'ifcType': {
       if (!criteria.ifcType) return { status: 'readable', groups: [] };
@@ -121,10 +122,10 @@ function convertLeaf(criteria: LensCriteria): LegacyCriteriaConversion {
   }
 }
 
-function convert(criteria: LensCriteria, depth: number): LegacyCriteriaConversion {
+function convert(criteria: PersistedV1LensCriteria, depth: number): LegacyCriteriaConversion {
   if (!criteria || typeof criteria !== 'object') return unreadable('Malformed lens criterion');
   if (criteria.type !== 'and' && criteria.type !== 'or') return convertLeaf(criteria);
-  if (depth >= MAX_COMPOUND_DEPTH) return unreadable('Lens criteria exceed the supported nesting depth');
+  if (depth >= MAX_PERSISTED_V1_COMPOUND_DEPTH) return unreadable('Lens criteria exceed the supported nesting depth');
   if (!Array.isArray(criteria.conditions) || criteria.conditions.length === 0) {
     return { status: 'readable', groups: [] };
   }
@@ -150,6 +151,6 @@ function convert(criteria: LensCriteria, depth: number): LegacyCriteriaConversio
   return { status: 'readable', groups: dnf };
 }
 
-export function legacyCriteriaToFilterGroups(criteria: LensCriteria): LegacyCriteriaConversion {
+export function legacyCriteriaToFilterGroups(criteria: PersistedV1LensCriteria): LegacyCriteriaConversion {
   return convert(criteria, 0);
 }

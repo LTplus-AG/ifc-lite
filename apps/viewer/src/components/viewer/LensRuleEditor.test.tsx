@@ -35,7 +35,6 @@ afterEach(() => {
 
 const baseRule: GroupRule = {
   id: 'r1', name: 'Rated walls', enabled: true,
-  criteria: { type: 'and', conditions: [] },
   groups: [{ combinator: 'AND', rules: [
     { kind: 'ifcType', op: 'in', values: ['IfcWall'] },
     { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'gte', value: '60' },

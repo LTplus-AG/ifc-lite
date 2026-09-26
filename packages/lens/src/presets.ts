@@ -5,12 +5,11 @@
 import type { FilterGroup } from '@ifc-lite/rules';
 import { IFC_SUBTYPE_TO_BASE, type Lens } from './types.js';
 
-function typeCondition(ifcType: string): { criteria: { type: 'ifcType'; ifcType: string }; groups: FilterGroup[] } {
+function typeGroups(ifcType: string): { groups: FilterGroup[] } {
   const subtypes = Object.entries(IFC_SUBTYPE_TO_BASE)
     .filter(([, base]) => base === ifcType)
     .map(([subtype]) => subtype);
   return {
-    criteria: { type: 'ifcType', ifcType },
     groups: [{ rules: [{ kind: 'ifcType', op: 'in', values: [ifcType, ...subtypes] }], combinator: 'AND' }],
   };
 }
@@ -35,10 +34,10 @@ export const BUILTIN_LENSES: readonly Lens[] = [
     name: 'Structural',
     builtin: true,
     rules: [
-      { id: 'col', name: 'Columns', enabled: true, ...typeCondition('IfcColumn'), action: 'colorize', color: '#E53935' },
-      { id: 'beam', name: 'Beams', enabled: true, ...typeCondition('IfcBeam'), action: 'colorize', color: '#1E88E5' },
-      { id: 'slab', name: 'Slabs', enabled: true, ...typeCondition('IfcSlab'), action: 'colorize', color: '#FDD835' },
-      { id: 'footing', name: 'Footings', enabled: true, ...typeCondition('IfcFooting'), action: 'colorize', color: '#43A047' },
+      { id: 'col', name: 'Columns', enabled: true, ...typeGroups('IfcColumn'), action: 'colorize', color: '#E53935' },
+      { id: 'beam', name: 'Beams', enabled: true, ...typeGroups('IfcBeam'), action: 'colorize', color: '#1E88E5' },
+      { id: 'slab', name: 'Slabs', enabled: true, ...typeGroups('IfcSlab'), action: 'colorize', color: '#FDD835' },
+      { id: 'footing', name: 'Footings', enabled: true, ...typeGroups('IfcFooting'), action: 'colorize', color: '#43A047' },
     ],
   },
   {
@@ -46,11 +45,11 @@ export const BUILTIN_LENSES: readonly Lens[] = [
     name: 'Building Envelope',
     builtin: true,
     rules: [
-      { id: 'roof', name: 'Roofs', enabled: true, ...typeCondition('IfcRoof'), action: 'colorize', color: '#C62828' },
-      { id: 'curtwall', name: 'Curtain Walls', enabled: true, ...typeCondition('IfcCurtainWall'), action: 'colorize', color: '#0277BD' },
-      { id: 'window', name: 'Windows', enabled: true, ...typeCondition('IfcWindow'), action: 'colorize', color: '#4FC3F7' },
-      { id: 'door', name: 'Doors', enabled: true, ...typeCondition('IfcDoor'), action: 'colorize', color: '#00695C' },
-      { id: 'wall', name: 'Walls', enabled: true, ...typeCondition('IfcWall'), action: 'colorize', color: '#8D6E63' },
+      { id: 'roof', name: 'Roofs', enabled: true, ...typeGroups('IfcRoof'), action: 'colorize', color: '#C62828' },
+      { id: 'curtwall', name: 'Curtain Walls', enabled: true, ...typeGroups('IfcCurtainWall'), action: 'colorize', color: '#0277BD' },
+      { id: 'window', name: 'Windows', enabled: true, ...typeGroups('IfcWindow'), action: 'colorize', color: '#4FC3F7' },
+      { id: 'door', name: 'Doors', enabled: true, ...typeGroups('IfcDoor'), action: 'colorize', color: '#00695C' },
+      { id: 'wall', name: 'Walls', enabled: true, ...typeGroups('IfcWall'), action: 'colorize', color: '#8D6E63' },
     ],
   },
   {
@@ -58,11 +57,11 @@ export const BUILTIN_LENSES: readonly Lens[] = [
     name: 'Openings & Circulation',
     builtin: true,
     rules: [
-      { id: 'door', name: 'Doors', enabled: true, ...typeCondition('IfcDoor'), action: 'colorize', color: '#00897B' },
-      { id: 'window', name: 'Windows', enabled: true, ...typeCondition('IfcWindow'), action: 'colorize', color: '#42A5F5' },
-      { id: 'stair', name: 'Stairs', enabled: true, ...typeCondition('IfcStairFlight'), action: 'colorize', color: '#FF8F00' },
-      { id: 'ramp', name: 'Ramps', enabled: true, ...typeCondition('IfcRamp'), action: 'colorize', color: '#7CB342' },
-      { id: 'railing', name: 'Railings', enabled: true, ...typeCondition('IfcRailing'), action: 'colorize', color: '#78909C' },
+      { id: 'door', name: 'Doors', enabled: true, ...typeGroups('IfcDoor'), action: 'colorize', color: '#00897B' },
+      { id: 'window', name: 'Windows', enabled: true, ...typeGroups('IfcWindow'), action: 'colorize', color: '#42A5F5' },
+      { id: 'stair', name: 'Stairs', enabled: true, ...typeGroups('IfcStairFlight'), action: 'colorize', color: '#FF8F00' },
+      { id: 'ramp', name: 'Ramps', enabled: true, ...typeGroups('IfcRamp'), action: 'colorize', color: '#7CB342' },
+      { id: 'railing', name: 'Railings', enabled: true, ...typeGroups('IfcRailing'), action: 'colorize', color: '#78909C' },
     ],
   },
   // Auto-color by material

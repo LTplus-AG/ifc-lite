@@ -5,9 +5,10 @@
 /** Read one persisted v1 or v2 lens rule without silently losing a condition
  * this build cannot express (#5896). Used by localStorage, JSON import and
  * flavor snapshots so the three entry paths cannot drift. */
-import type { LensCriteria, LensRule } from '@ifc-lite/lens';
+import type { LensRule } from '@ifc-lite/lens';
 import { isFilterGroup, type FilterGroup } from '@ifc-lite/rules';
 import { legacyCriteriaToFilterGroups } from './legacy-criteria-to-filter-groups.js';
+import type { PersistedV1LensCriteria } from './persisted-v1-criteria.js';
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -39,7 +40,7 @@ export function migrateSavedLensRule(input: unknown): LensRule | null {
   }
 
   if (!record(input.criteria) || typeof input.criteria.type !== 'string') return null;
-  const criteria = input.criteria as unknown as LensCriteria;
+  const criteria = input.criteria as unknown as PersistedV1LensCriteria;
   const converted = legacyCriteriaToFilterGroups(criteria);
   return converted.status === 'readable'
     ? { ...core, groups: converted.groups }

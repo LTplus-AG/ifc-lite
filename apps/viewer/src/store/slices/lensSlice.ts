@@ -11,13 +11,13 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
+import type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 import { mergeImportedGroupLenses, migrateSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { saveJson, type SaveResult } from '@/lib/storage/save-result';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
-export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
+export type { Lens, LensRule, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
 export type { SaveResult };
 export {
   COMMON_IFC_CLASSES, COMMON_IFC_TYPES, LENS_PALETTE,

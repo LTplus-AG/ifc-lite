@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateLens, evaluateAutoColorLens } from './engine.js';
 import { GHOST_COLOR, hexToRgba } from './colors.js';
-import type { Lens, LensDataProvider, AutoColorSpec } from './types.js';
+import type { Lens, LensRule, LensDataProvider, AutoColorSpec } from './types.js';
 
 /** Simple mock provider from entity list */
 function createMockProvider(entities: Array<{
@@ -25,13 +25,17 @@ function createMockProvider(entities: Array<{
   };
 }
 
+function typeGroups(ifcType: string): NonNullable<LensRule['groups']> {
+  return [{ rules: [{ kind: 'ifcType', op: 'in', values: [ifcType] }], combinator: 'AND' }];
+}
+
 describe('evaluateLens', () => {
   it('should return empty results for lens with no enabled rules', () => {
     const lens: Lens = {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Disabled', enabled: false, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
+        { id: 'r1', name: 'Disabled', enabled: false, groups: typeGroups('IfcWall'), action: 'colorize', color: '#FF0000' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
@@ -48,7 +52,7 @@ describe('evaluateLens', () => {
       name: 'Test',
       rules: [
         { id: 'r1', name: 'Walls', enabled: true,
-          groups: [{ rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }], combinator: 'AND' }],
+          groups: typeGroups('IfcWall'),
           action: 'colorize', color: '#FF0000' },
       ],
     };
@@ -68,7 +72,7 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Hide Slabs', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcSlab' }, action: 'hide', color: '#000000' },
+        { id: 'r1', name: 'Hide Slabs', enabled: true, groups: typeGroups('IfcSlab'), action: 'hide', color: '#000000' },
       ],
     };
     const provider = createMockProvider([
@@ -88,7 +92,7 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Transparent Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'transparent', color: '#00FF00' },
+        { id: 'r1', name: 'Transparent Walls', enabled: true, groups: typeGroups('IfcWall'), action: 'transparent', color: '#00FF00' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
@@ -104,8 +108,8 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Walls Red', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
-        { id: 'r2', name: 'Walls Blue', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#0000FF' },
+        { id: 'r1', name: 'Walls Red', enabled: true, groups: typeGroups('IfcWall'), action: 'colorize', color: '#FF0000' },
+        { id: 'r2', name: 'Walls Blue', enabled: true, groups: typeGroups('IfcWall'), action: 'colorize', color: '#0000FF' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
@@ -124,8 +128,8 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r-wall', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
-        { id: 'r-slab', name: 'Slabs', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcSlab' }, action: 'colorize', color: '#0000FF' },
+        { id: 'r-wall', name: 'Walls', enabled: true, groups: typeGroups('IfcWall'), action: 'colorize', color: '#FF0000' },
+        { id: 'r-slab', name: 'Slabs', enabled: true, groups: typeGroups('IfcSlab'), action: 'colorize', color: '#0000FF' },
       ],
     };
     const provider = createMockProvider([
@@ -149,7 +153,7 @@ describe('evaluateLens', () => {
       id: 'test',
       name: 'Test',
       rules: [
-        { id: 'r1', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#FF0000' },
+        { id: 'r1', name: 'Walls', enabled: true, groups: typeGroups('IfcWall'), action: 'colorize', color: '#FF0000' },
       ],
     };
     const provider = createMockProvider([{ id: 1, type: 'IfcWall' }]);
@@ -822,7 +826,7 @@ describe('evaluateLens - shared selections', () => {
     { id: 3, type: 'IfcSlab' },
   ]);
 
-  it('uses shared selected IDs even when an old criterion would select other entities (#5896)', () => {
+  it('uses shared selected IDs even when the group would select other entities (#5896)', () => {
     const lens: Lens = {
       id: 'l1',
       name: 'Slabs',
@@ -830,8 +834,7 @@ describe('evaluateLens - shared selections', () => {
         id: 'r1',
         name: 'Selected slabs',
         enabled: true,
-        criteria: { type: 'ifcType', ifcType: 'IfcWall' },
-        groups: [{ rules: [{ kind: 'ifcType', op: 'in', values: ['IfcSlab'] }], combinator: 'AND' }],
+        groups: typeGroups('IfcWall'),
         action: 'colorize',
         color: '#E53935',
       }],

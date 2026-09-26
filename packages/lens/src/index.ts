@@ -30,8 +30,6 @@ export type {
   LensDataProvider,
   PropertySetInfo,
   ClassificationInfo,
-  LensCriteria,
-  LensOperator,
   LensRule,
   Lens,
   AutoColorSpec,
@@ -46,10 +44,6 @@ export {
   COMMON_IFC_CLASSES as COMMON_IFC_TYPES,
   LENS_PALETTE,
   IFC_SUBTYPE_TO_BASE,
-  LENS_CRITERIA_TYPES,
-  LENS_COMPOUND_TYPES,
-  MAX_COMPOUND_DEPTH,
-  LENS_OPERATORS,
   AUTO_COLOR_SOURCES,
   ENTITY_ATTRIBUTE_NAMES,
 } from './types.js';
@@ -60,10 +54,6 @@ export {
 
 export { evaluateLens, evaluateAutoColorLens } from './engine.js';
 export type { AutoColorEvaluationResult } from './engine.js';
-
-// ============================================================================
-// Matching
-// ============================================================================
 
 // ============================================================================
 // Colors

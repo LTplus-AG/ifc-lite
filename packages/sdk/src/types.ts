@@ -288,8 +288,8 @@ export interface SpatialFrustum {
 // Lens Types (re-export core types for SDK consumers)
 // ============================================================================
 
-import type { Lens, LensRule, LensCriteria, RGBAColor } from '@ifc-lite/lens';
-export type { Lens, LensRule, LensCriteria, RGBAColor };
+import type { Lens, LensRule, RGBAColor } from '@ifc-lite/lens';
+export type { Lens, LensRule, RGBAColor };
 
 // ============================================================================
 // Mutation Types

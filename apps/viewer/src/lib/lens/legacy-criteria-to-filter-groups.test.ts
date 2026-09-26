@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
-import { BUILTIN_LENSES, type LensCriteria } from '@ifc-lite/lens';
+import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { evaluateFilterGroups } from '@ifc-lite/rules';
+import type { PersistedV1LensCriteria as LensCriteria } from './persisted-v1-criteria.js';
 
 async function loadConverter() {
   const module = await import('./legacy-criteria-to-filter-groups.js').catch(() => null);
@@ -74,6 +75,7 @@ describe('#5896 legacy lens criteria migration', () => {
       const key = `${lens.id}:${rule.id}`;
       assert.ok(Object.hasOwn(expected, key), `new built-in rule ${key} needs a v1 oracle`);
       assert.ok(rule.groups, `built-in rule ${key} must use shared groups`);
+      assert.equal('criteria' in rule, false, `built-in rule ${key} must not ship retired v1 criteria`);
       const selected = evaluateFilterGroups('legacy', store, rule.groups, {
         candidateExpressIds: IDS, limit: Number.POSITIVE_INFINITY,
       }).map((row) => row.expressId).sort((a, b) => a - b);

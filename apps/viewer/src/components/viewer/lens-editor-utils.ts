@@ -2,16 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { Lens, LensRule, LensCriteria, AutoColorSpec } from '@/store/slices/lensSlice';
+import type { Lens, LensRule, AutoColorSpec } from '@/store/slices/lensSlice';
 import { isFilterRule, type FilterRule } from '@ifc-lite/rules';
-// Import the value directly from the source package (not via the slice) to avoid
-// a circular value import: lensSlice imports the helpers from this module.
-import { MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
-
-function isCriteriaLike(value: unknown): value is LensCriteria {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Build the {@link Lens} to persist from an auto-color editor session.
  *
@@ -34,61 +26,10 @@ export function buildAutoColorLensToSave(
   };
 }
 
-/**
- * Deep-clone a lens rule's criteria, recursively.
- *
- * A compound criteria (`type: 'and' | 'or'`) nests further criteria in its
- * `conditions` array - which may itself contain further compounds. A
- * shallow `{ ...criteria }` copy still aliases that array (and any nested
- * compound's own array) with the source object. Any later mutation reached
- * through the copy - e.g. editing a duplicated lens, or a future
- * compound-authoring UI - would then silently corrupt the original through
- * the shared reference. Leaf criteria have no nested structure, so a
- * shallow copy is sufficient for them.
- *
- * `depth` caps the recursion at {@link MAX_COMPOUND_DEPTH}, matching the
- * engine's own compound-depth cap: a pathological hand-edited lens file
- * (thousands of nested `and`/`or` levels) parses and imports fine, and the
- * engine correctly treats it as inert past the cap - but without this guard,
- * clicking Edit or Duplicate on that lens would recurse unboundedly and throw
- * `RangeError: Maximum call stack size exceeded` inside a React event
- * handler. Beyond the cap the conditions array is copied one level shallow
- * (not recursed into) rather than cloned further - acceptable because the
- * engine already treats everything past the cap as unreachable/inert. A
- * non-object member (`null`, a string, a number - possible via hand-edited
- * JSON, since the import validator does not recurse into `conditions`) is
- * left as-is rather than recursed into, matching the engine's own
- * malformed-member guard (`isCriteriaRecord` in matching.ts) instead of
- * throwing `TypeError: Cannot read properties of null`.
- */
-export function cloneCriteria(criteria: LensCriteria, depth = 0): LensCriteria {
-  if (
-    (criteria.type === 'and' || criteria.type === 'or')
-    && Array.isArray(criteria.conditions)
-    && depth < MAX_COMPOUND_DEPTH
-  ) {
-    return {
-      ...criteria,
-      conditions: criteria.conditions.map((c) => (isCriteriaLike(c) ? cloneCriteria(c, depth + 1) : c)),
-    };
-  }
-  return { ...criteria };
-}
-
-/**
- * Deep-clone every rule's criteria in a rule list via {@link cloneCriteria},
- * preserving every other rule field. This is the one place that pattern is
- * written - `rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) }))`
- * was duplicated at four call sites (the `LensEditor` state initializer,
- * `handleEditLens`, `handleDuplicateLens`, and here in
- * {@link duplicateLensConfig}) before being lifted out; a future fifth call
- * site that hand-rolls the same shallow spread instead of calling this would
- * silently reopen the aliasing bug this whole file exists to close.
- */
+/** Copy shared groups and unreadable saved data without aliasing the source. */
 export function cloneLensRules(rules: readonly LensRule[]): LensRule[] {
   return rules.map((r) => ({
     ...r,
-    ...(r.criteria ? { criteria: cloneCriteria(r.criteria) } : {}),
     ...(r.groups ? { groups: structuredClone(r.groups) } : {}),
     ...(r.unreadableLegacy ? { unreadableLegacy: structuredClone(r.unreadableLegacy) } : {}),
   }));
@@ -97,13 +38,8 @@ export function cloneLensRules(rules: readonly LensRule[]): LensRule[] {
 /**
  * Build an editable copy of a lens.
  *
- * The copy gets a fresh id, a "(copy)" suffix, and (crucially) drops the
- * `builtin` flag so it can be edited and deleted - duplicating a built-in
- * preset is how the user gets an editable starting point (e.g. add CLADDING
- * to a copy of "Building Envelope"). Rule ids are regenerated and the
- * criteria object is deep-cloned (see {@link cloneCriteria}) so editing the
- * copy - including a compound criteria's nested conditions - never mutates
- * the source. (#1403)
+ * The copy gets a fresh id and a "(copy)" suffix, drops the builtin flag,
+ * and deep-clones group filters so edits cannot mutate the source (#1403).
  */
 export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens {
   const newId = generateId();

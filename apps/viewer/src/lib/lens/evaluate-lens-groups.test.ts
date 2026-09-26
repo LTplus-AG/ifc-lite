@@ -24,10 +24,8 @@ async function parsedStore(): Promise<IfcDataStore> {
 const lens: Lens = {
   id: 'group-lens', name: 'Shared groups', rules: [
     { id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#ff0000',
-      criteria: { type: 'and', conditions: [] },
       groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] },
     { id: 'columns', name: 'Columns', enabled: true, action: 'hide', color: '#000000',
-      criteria: { type: 'and', conditions: [] },
       groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcColumn'] }] }] },
   ],
 };
@@ -75,7 +73,7 @@ describe('#5896 shared Lens groups over parsed IFC', () => {
       assert.deepEqual([...matched.get('columns') ?? []], [...stores.values()].map(({ offset }) => offset + 20));
 
       // The action engine consumes the real evaluator's global-ID sets. Its
-      // staged v1 type still requires criteria; the final stack removes them.
+      // A stale in-memory v1 criterion cannot override the shared selections.
       const staged = { ...lens, rules: lens.rules.map((rule) => ({
         ...rule, criteria: { type: 'ifcType' as const, ifcType: 'IfcColumn' },
       })) };

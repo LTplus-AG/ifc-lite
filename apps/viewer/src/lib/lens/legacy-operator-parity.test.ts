@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { IfcTypeEnum, type PropertySet } from '@ifc-lite/data';
-import { LENS_OPERATORS } from '@ifc-lite/lens';
+import type { PersistedV1LensOperator } from './persisted-v1-criteria.js';
 import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition } from '@ifc-lite/lists';
 import { BulkQueryEngine, MutablePropertyView, type FilterOperator, type PropertyValue } from '@ifc-lite/mutations';
 import {
@@ -54,7 +54,7 @@ async function fixture() {
 
 // Captured from the v1 Lens matcher on the parsed IFC above before #5896
 // removed that implementation. Keep these independent of the new evaluator.
-const legacyLensIds: Record<(typeof LENS_OPERATORS)[number], number[]> = {
+const legacyLensIds: Record<PersistedV1LensOperator, number[]> = {
   equals: [30], contains: [10, 30], exists: [20, 30], ne: [20],
   gt: [20], gte: [10, 20], lt: [30], lte: [10, 30],
 };
@@ -77,7 +77,7 @@ const bulkCases = {
 describe('#5892 legacy operator adapters over one parsed IFC store', () => {
   it('every LensOperator preserves the recorded v1 Lens selection', async () => {
     const { store } = await fixture();
-    for (const operator of LENS_OPERATORS) {
+    for (const operator of Object.keys(legacyLensIds) as PersistedV1LensOperator[]) {
       const numeric = operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte';
       const field = operator === 'exists' ? 'Nullable' : numeric ? 'Number' : 'Text';
       const value = numeric ? '10' : 'red';

@@ -145,83 +145,11 @@ export interface ClassificationInfo {
 // Lens Configuration Types
 // ============================================================================
 
-/**
- * Operators found in persisted v1 {@link LensCriteria} data.
- *
- * The viewer's saved-rule migrator translates representable operators into
- * shared filter rules and warns when a v1 comparison has no exact equivalent.
- */
-export type LensOperator =
-  | 'equals'
-  | 'contains'
-  | 'exists'
-  | 'ne'
-  | 'gt'
-  | 'gte'
-  | 'lt'
-  | 'lte';
-
-/** Persisted v1 operator vocabulary used by the migration parity tests. */
-export const LENS_OPERATORS = [
-  'equals', 'contains', 'exists', 'ne', 'gt', 'gte', 'lt', 'lte',
-] as const satisfies readonly LensOperator[];
-
-/**
- * Persisted v1 criteria shape retained for saved-rule migration.
- *
- * A criterion is either a *leaf* (one of the eight data-backed types) or a
- * *compound* (`and` / `or`) whose `conditions` array holds further criteria -
- * leaves or nested compounds - enabling Smart-Views-style rules like
- * "IfcWall AND (FireRating >= 60 OR LoadBearing = true)".
- *
- * The viewer converts representable conditions to shared FilterGroups. It
- * preserves unsupported source data for an explicit warning rather than
- * silently changing the saved rule's selection.
- */
-export interface LensCriteria {
-  type: 'ifcType' | 'property' | 'material' | 'attribute' | 'quantity' | 'classification' | 'model' | 'group' | 'and' | 'or';
-  /** Member criteria - used when type === "and" | "or". Each member may be a
-   *  leaf or another compound (nesting capped at {@link MAX_COMPOUND_DEPTH}). */
-  conditions?: LensCriteria[];
-  /** IFC class name (e.g. "IfcWall") - used when type === "ifcType" */
-  ifcType?: string;
-  /** Property set name (e.g. "Pset_WallCommon") - used when type === "property" */
-  propertySet?: string;
-  /** Property name (e.g. "IsExternal") - used when type === "property" */
-  propertyName?: string;
-  /** Comparison operator for the criterion's value. See {@link LensOperator}. */
-  operator?: LensOperator;
-  /** Property value to compare against */
-  propertyValue?: string;
-  /** Material name pattern - used when type === "material" */
-  materialName?: string;
-  /** Attribute name (e.g. "Name", "Description") - used when type === "attribute" */
-  attributeName?: string;
-  /** Attribute value to compare against */
-  attributeValue?: string;
-  /** Quantity set name (e.g. "Qto_WallBaseQuantities") - used when type === "quantity" */
-  quantitySet?: string;
-  /** Quantity name (e.g. "Length") - used when type === "quantity" */
-  quantityName?: string;
-  /** Quantity value to compare against (stringified) */
-  quantityValue?: string;
-  /** Classification system (e.g. "Uniclass") - used when type === "classification" */
-  classificationSystem?: string;
-  /** Classification code (e.g. "Pr_60_10_32") - used when type === "classification" */
-  classificationCode?: string;
-  /** Federated model identifier - used when type === "model" */
-  modelId?: string;
-  /** Group/zone name to match (case-insensitive substring) - used when
-   *  type === "group". Matches if the entity is assigned to an IfcZone /
-   *  IfcGroup whose name contains this value (#1075). */
-  groupName?: string;
-}
 /** A single rule within a Lens */
 export interface LensRule {
   id: string;
   name: string;
   enabled: boolean;
-  criteria?: LensCriteria; // Persisted v1 only; evaluateLens uses shared selections.
   groups?: import('@ifc-lite/rules').FilterGroup[];
   unreadableLegacy?: { criteria: unknown; reason: string };
   action: 'colorize' | 'hide' | 'transparent';
@@ -334,20 +262,6 @@ export interface AutoColorLegendEntry {
 export const AUTO_COLOR_SOURCES = [
   'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
 ] as const;
-
-/** All supported LEAF criteria types for lens rules. Deliberately excludes the
- *  compound types (`and` / `or`) - rule editors use this list for the
- *  "what data does this condition read" dropdown, where a compound is a
- *  grouping construct, not a data source. See {@link LENS_COMPOUND_TYPES}. */
-export const LENS_CRITERIA_TYPES = [
-  'ifcType', 'attribute', 'property', 'quantity', 'classification', 'material', 'model', 'group',
-] as const;
-
-/** The compound (grouping) criteria types, for rule-editor group controls. */
-export const LENS_COMPOUND_TYPES = ['and', 'or'] as const;
-
-/** Maximum persisted v1 compound depth accepted by the viewer migrator. */
-export const MAX_COMPOUND_DEPTH = 16;
 
 /** Common entity attribute names for the lens rule editor */
 export const ENTITY_ATTRIBUTE_NAMES = [

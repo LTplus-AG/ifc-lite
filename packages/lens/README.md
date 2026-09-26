@@ -37,7 +37,7 @@ Missing selections match nothing. The standalone v1 matcher has been removed.
 - `BUILTIN_LENSES` presets (for example "By IFC Class")
 - `discoverClasses` / `discoverDataSources` to populate lens editors from model data
 - Color helpers: `hexToRgba`, `rgbaToHex`, `uniqueColor`, `GHOST_COLOR`, `LENS_PALETTE`
-- Fully typed: `Lens`, `LensRule`, `LensCriteria`, `LensEvaluationResult`, `RGBAColor`
+- Fully typed: `Lens`, `LensRule`, `LensEvaluationResult`, `RGBAColor`
 
 ## Links
 

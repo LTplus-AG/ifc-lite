@@ -55,9 +55,9 @@ as Search and Lists. Saved v1 `criteria` are converted when their meaning is
 exactly representable; other saved conditions remain visible with a warning
 until the user explicitly replaces them. For programmatic evaluation, pass a
 map of rule IDs to selected global IDs as the required third argument to
-`evaluateLens`. Missing rule IDs match nothing. The saved v1 `LensCriteria`
-shape remains available for migration; the standalone v1 matcher has been
-removed from the public package.
+`evaluateLens`. Missing rule IDs match nothing. The viewer keeps the saved v1
+criteria shape private to its JSON migration path; the published Lens package
+exposes only shared group based manual rules.
 
 ## Worked Example: Color by Fire Rating
 
@@ -158,8 +158,5 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
 | `BUILTIN_LENSES` | The seven built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
-| `LENS_OPERATORS` | The eight persisted v1 comparison operators used in migration |
-| `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two persisted v1 compound criteria types |
-| `MAX_COMPOUND_DEPTH` | V1 migration nesting cap (16); deeper source data remains unreadable |
 
-Key types: `Lens`, `LensRule`, `LensCriteria`, `LensOperator`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.
+Key types: `Lens`, `LensRule`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.

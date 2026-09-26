@@ -72,7 +72,7 @@ function ruleOn(rule: FilterRule): Lens {
     id: 'lens',
     name: 'Lens',
     rules: [
-      { id: 'r', name: 'r', enabled: true, criteria: { type: 'and', conditions: [] }, groups: [{ combinator: 'AND', rules: [rule] }], action: 'colorize', color: '#ff0000' },
+      { id: 'r', name: 'r', enabled: true, groups: [{ combinator: 'AND', rules: [rule] }], action: 'colorize', color: '#ff0000' },
     ],
   };
 }

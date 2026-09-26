@@ -89,7 +89,7 @@
    404 apps/viewer/src/components/viewer/PdfViewExportDialog.tsx
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
-   985 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
+   968 apps/viewer/src/components/viewer/properties/GeoreferencingPanel.tsx
    886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx

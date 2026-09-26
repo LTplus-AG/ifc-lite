@@ -32,46 +32,17 @@ import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
-import { parseLocaleNumber, useTranslation, type TranslationKey } from '@/i18n';
+import { parseLocaleNumber, useTranslation } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n';
 import { parseLocalizedRotationDegrees } from './georeference-angle';
+import { getFieldHint } from './georeference-field-hints';
 
-// ── Field-specific assistance data ─────────────────────────────────────
-
-const COMMON_DATUMS = ['WGS84', 'ETRS89', 'NAD83', 'NAD27', 'GRS80', 'Bessel 1841', 'Clarke 1866'];
-const COMMON_PROJECTIONS = ['Transverse Mercator', 'UTM', 'Lambert Conformal Conic', 'Mercator', 'Stereographic', 'Oblique Mercator'];
-const MAP_UNITS = ['METRE', 'FOOT', 'US SURVEY FOOT'];
-const COMMON_VERTICAL_DATUMS = ['MSL', 'NAVD88', 'EVRF2007', 'EVRF2019', 'AHD', 'ODN', 'LN02'];
-
-type FieldHint = {
-  placeholderKey?: TranslationKey; suggestions?: string[]; isSelect?: boolean; helpTextKey?: TranslationKey;
-};
-function getFieldHint(entity: string, field: string): FieldHint {
-  if (entity === 'projectedCRS') {
-    switch (field) {
-      case 'name': return { placeholderKey: 'properties.georef.hint.crsName', helpTextKey: 'properties.georef.hint.epsgLookup' };
-      case 'description': return { placeholderKey: 'properties.georef.hint.crsDescription' };
-      case 'geodeticDatum': return { placeholderKey: 'properties.georef.hint.geodeticDatum', suggestions: COMMON_DATUMS };
-      case 'verticalDatum': return { placeholderKey: 'properties.georef.hint.verticalDatum', suggestions: COMMON_VERTICAL_DATUMS };
-      case 'mapProjection': return { placeholderKey: 'properties.georef.hint.mapProjection', suggestions: COMMON_PROJECTIONS };
-      case 'mapZone': return { placeholderKey: 'properties.georef.hint.mapZone' };
-      case 'mapUnit': return { isSelect: true, suggestions: MAP_UNITS };
-      default: return {};
-    }
+function activateEditorFromKeyboard(event: React.KeyboardEvent, startEdit: () => void): void {
+  if (event.target !== event.currentTarget) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault(); startEdit();
   }
-  if (entity === 'mapConversion') {
-    switch (field) {
-      case 'eastings': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.eastings' };
-      case 'northings': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.northings' };
-      case 'orthogonalHeight': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.height' };
-      case 'xAxisAbscissa': return { placeholderKey: 'properties.georef.hint.one', helpTextKey: 'properties.georef.hint.abscissa' };
-      case 'xAxisOrdinate': return { placeholderKey: 'properties.georef.hint.zero', helpTextKey: 'properties.georef.hint.ordinate' };
-      case 'scale': return { placeholderKey: 'properties.georef.hint.one', helpTextKey: 'properties.georef.hint.scale' };
-      default: return {};
-    }
-  }
-  return {};
 }
 
 // ── GeorefRow: a single editable field ─────────────────────────────────
@@ -139,13 +110,19 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
   }, [onSave, isNumber]);
 
   const displayValue = typeof value === 'number' ? formatLocaleNumber(locale, value, { maximumFractionDigits: 12 }) : value ?? '-';
+  const canStartEdit = editable && !isComputed && !editing;
 
   return (
+    /* The row is a button only while its inline editor is closed; a native button cannot contain the editor inputs. */
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${
         isMutated ? 'bg-overlay-accent-soft' : ''
       } ${editable && !isComputed ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
-      onClick={!editing ? startEdit : undefined}
+      role={canStartEdit ? 'button' : undefined}
+      tabIndex={canStartEdit ? 0 : undefined}
+      onClick={canStartEdit ? startEdit : undefined}
+      onKeyDown={canStartEdit ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
     >
       <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         {isComputed && (
@@ -166,7 +143,7 @@ function GeorefRow({ label, value, suffix, isComputed, isNumber, editable, isMut
             </Badge>
           )}
           {editing ? (
-            <div className="flex flex-col gap-1 w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex flex-col gap-1 w-full">
               <div className="flex items-center gap-1">
                 {hint.isSelect ? (
                   <select
@@ -274,11 +251,17 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
     if (e.key === 'Enter') commitEdit();
     if (e.key === 'Escape') cancelEdit();
   }, [commitEdit, cancelEdit]);
+  const canStartEdit = editable && !editing;
 
   return (
+    /* The row becomes a button only when editable; its expanded editor contains input and action buttons. */
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       className={`flex items-start gap-2 px-3 py-1.5 min-w-0 ${editable ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/row' : ''}`}
-      onClick={!editing ? startEdit : undefined}
+      role={canStartEdit ? 'button' : undefined}
+      tabIndex={canStartEdit ? 0 : undefined}
+      onClick={canStartEdit ? startEdit : undefined}
+      onKeyDown={canStartEdit ? (event) => activateEditorFromKeyboard(event, startEdit) : undefined}
     >
       <span className="text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         <Tooltip>
@@ -291,7 +274,7 @@ function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
       </span>
       <div className="flex-1 flex items-start gap-1 min-w-0 justify-end">
         {editing ? (
-          <div className="flex flex-col gap-1" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1">
               <input
                 value={editValue}

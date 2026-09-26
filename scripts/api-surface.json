@@ -6418,7 +6418,7 @@
     "ListScheduleRow: interface",
     "ListSummary: interface",
     "PropertyCondition: interface",
-    "UnreadableListCondition: interface",
+    "UnreadableListCondition: type",
     "ZONE_MODE_BREAKDOWN: const",
     "ZONE_MODE_VOLUME: const",
     "compileNameMatcher: function",

@@ -17,6 +17,9 @@ import assert from 'node:assert/strict';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import type { VisibilitySlice } from '@/store/slices/visibilitySlice';
+import type { LensSlice } from '@/store/slices/lensSlice';
+import type { LevelDisplaySlice } from '@/store/slices/levelDisplaySlice';
 import { planLensHiddenSync } from '@/components/viewer/lens-visibility-ownership';
 import {
   VISIBILITY_REASONS,
@@ -25,6 +28,56 @@ import {
 } from './visibility-reasons';
 
 const OFFSET = 1000;
+
+/** Adding state to a visibility-bearing slice requires classifying it here. */
+type StateKeys<T> = {
+  [K in keyof T]: T[K] extends (...args: never[]) => unknown ? never : K;
+}[keyof T];
+
+const VISIBILITY_FIELDS = {
+  hiddenEntities: ['hidden'],
+  isolatedEntities: ['isolation'],
+  ghostExceptEntities: ['ghost'],
+  visibilityRevision: [], // Invalidation counter, not a hiding mechanism.
+  classFilter: ['classFilter'],
+  typeVisibility: ['typeVisibility'],
+  hostHiddenIfcTypes: ['hostTypes'],
+  typeViewMode: ['typeViewMode'],
+  hasTypeGeometry: [], // Capability flag for the type view mode.
+} satisfies Record<StateKeys<VisibilitySlice>, readonly VisibilityReasonId[]>;
+
+const LENS_FIELDS = {
+  savedLenses: [],
+  activeLensId: ['lens'],
+  lensPanelVisible: [],
+  lensColorMap: [],
+  lensAppliedColors: [],
+  lensHiddenIds: ['lens'],
+  lensAppliedHiddenIds: ['lens'],
+  lensRuleIsolation: ['isolation'],
+  lensRuleCounts: [],
+  lensRuleEntityIds: [],
+  lensAutoColorLegend: [],
+  discoveredLensData: [],
+} satisfies Record<StateKeys<LensSlice>, readonly VisibilityReasonId[]>;
+
+const LEVEL_DISPLAY_FIELDS = {
+  levelDisplayMode: ['storey', 'exploded'],
+  explodedGap: [], // Only changes spacing while Exploded is already active.
+  appliedStoreyOffsets: [], // Renderer bookkeeping, not a separate hide.
+} satisfies Record<StateKeys<LevelDisplaySlice>, readonly VisibilityReasonId[]>;
+
+it('enumerates the visibility-bearing store fields and gives each mechanism a row (#5869)', () => {
+  const reasons = new Set([
+    ...Object.values(VISIBILITY_FIELDS).flat(),
+    ...Object.values(LENS_FIELDS).flat(),
+    ...Object.values(LEVEL_DISPLAY_FIELDS).flat(),
+    'storey', // selectionSlice.selectedStoreys
+    'modelHidden', // modelSlice.models[].visible
+    'isolation', // pinboardSlice.activeBasketViewId and ownership records
+  ]);
+  assert.deepEqual(reasons, new Set(VISIBILITY_REASONS.map((reason) => reason.id)));
+});
 
 /** One way to switch each mechanism on, in global ids of the LAST model. */
 const ACTIVATE: Record<VisibilityReasonId, (lastModelOffset: number) => Partial<ViewerState>> = {

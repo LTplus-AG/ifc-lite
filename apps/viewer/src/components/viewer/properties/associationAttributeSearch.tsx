@@ -25,8 +25,8 @@ function row(label: string, value: string | number | boolean | undefined, href?:
   return value === undefined || value === '' ? [] : [{ label, value: String(value), href }];
 }
 
-function matchedCard(id: string, title: string, rows: SearchRow[], query: string, aliases: string[] = []): AssociationSearchCard | null {
-  const headingMatches = [title, ...aliases].some((text) => matchesPropertySearch(text, query));
+function matchedCard(id: string, title: string, rows: SearchRow[], query: string): AssociationSearchCard | null {
+  const headingMatches = matchesPropertySearch(title, query);
   const matches = headingMatches ? rows : rows.filter(({ label, value }) => matchesPropertySearch(label, query) || matchesPropertySearch(value, query));
   return headingMatches || matches.length > 0 ? { id, title, rows: matches } : null;
 }
@@ -43,7 +43,7 @@ function classificationCard(info: ClassificationInfo, query: string, t: Translat
     ...row(t('properties.field.path'), info.path?.join(' > ')),
     ...row(EXPRESS_DESCRIPTION_ATTRIBUTE, info.description),
   ];
-  return matchedCard(`classification:${info.system}:${displayName}`, systemName, rows, query, [displayName]);
+  return matchedCard(`classification:${info.system}:${displayName}`, `${systemName} · ${displayName}`, rows, query);
 }
 
 function documentCard(info: DocumentInfo, query: string, t: Translate): AssociationSearchCard | null {
@@ -58,7 +58,7 @@ function documentCard(info: DocumentInfo, query: string, t: Translate): Associat
     ...row(EXPRESS_INTENDED_USE_ATTRIBUTE, info.intendedUse),
     ...row(EXPRESS_REVISION_ATTRIBUTE, info.revision),
   ];
-  return matchedCard(`document:${info.identification ?? title}`, title, rows, query, [info.revision ?? '']);
+  return matchedCard(`document:${info.identification ?? title}`, info.revision ? `${title} · ${info.revision}` : title, rows, query);
 }
 
 function materialCard(info: MaterialInfo, query: string, t: Translate, locale: string): AssociationSearchCard | null {
@@ -86,7 +86,7 @@ function materialCard(info: MaterialInfo, query: string, t: Translate, locale: s
     rows.push(...row(EXPRESS_CATEGORY_ATTRIBUTE, constituent.category));
   });
   info.materials?.forEach((material, i) => rows.push(...row(t('properties.material.materialN', { n: i + 1 }), material.name)));
-  return matchedCard(`material:${info.type}:${info.name ?? ''}`, title, rows, query, [typeLabel]);
+  return matchedCard(`material:${info.type}:${info.name ?? ''}`, info.name ? `${title} · ${typeLabel}` : title, rows, query);
 }
 
 /** Search the visible IFC attributes of associated classification, material and document entities (#5899). */

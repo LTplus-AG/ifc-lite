@@ -7,7 +7,7 @@ const MAPPED: &str = include_str!("../../geometry/tests/fixtures/swept_disk_trim
 fn issue_5759_keeps_authored_and_derived_lengths_separate() {
     let authored = REBAR.replace(
         "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.NOTDEFINED.,$);",
-        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,'T1','B500B',29.,0.,900.,.MAIN.,$);",
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,'T1','B500B',29.,0.00066,900.,.MAIN.,$);",
     );
     let schedule =
         build_rebar_schedule(authored.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
@@ -24,6 +24,16 @@ fn issue_5759_keeps_authored_and_derived_lengths_separate() {
             si_unit: "m",
         }
     );
+    // This IFC declares millimetres for LENGTHUNIT but square metres for
+    // AREAUNIT. The latter must not be multiplied by the length scale twice.
+    assert_eq!(
+        row.authored["CrossSectionArea"].value,
+        AuthoredRebarValue::Measure {
+            value_file_units: 0.00066,
+            value_si: 0.00066,
+            si_unit: "m2",
+        }
+    );
     assert!((row.sweeps[0].radius_m - 0.0145).abs() < 1e-12);
     assert!(
         (row.sweeps[0]
@@ -36,6 +46,25 @@ fn issue_5759_keeps_authored_and_derived_lengths_separate() {
             > 1e-3
     );
     assert!(row.sweeps[0].checks.findings.is_empty());
+}
+
+#[test]
+fn issue_5759_unresolved_declared_area_unit_does_not_invent_si_area() {
+    let source = REBAR
+        .replace(
+            "#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);",
+            "#7=IFCCONVERSIONBASEDUNIT($,.AREAUNIT.,'UNKNOWN_AREA',$);",
+        )
+        .replace("29.,0.,$,.NOTDEFINED.", "29.,0.00066,$,.NOTDEFINED.");
+    let schedule =
+        build_rebar_schedule(source.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    let row = &schedule.rows[&125];
+    assert!(!row.authored.contains_key("CrossSectionArea"));
+    assert!(row
+        .diagnostics
+        .iter()
+        .any(|message| message == "CrossSectionArea on occurrence: unresolved project area unit"));
+    assert_eq!(row.sweeps.len(), 1);
 }
 
 #[test]

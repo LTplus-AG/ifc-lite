@@ -2,13 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   X,
   Play,
-  Square,
-  Trash2,
   Crosshair,
   Copy,
   Info,
@@ -28,7 +25,6 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
-import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
@@ -64,7 +60,11 @@ import {
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
 import { ClashHelp } from './ClashHelp';
-import { StaleResultBanner } from './analysis/StaleResultBanner';
+import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
+import { AnalysisRunButton } from './analysis/AnalysisRunActions';
+import { AnalysisEmptyState } from './analysis/AnalysisEmptyState';
+import { AnalysisResultList } from './analysis/AnalysisResultList';
+import { loadDemoClashModel } from '@/lib/tours/demo-kit';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {
@@ -304,7 +304,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     invalidateSolidCompute,
   } = useClash();
   const rawResult = useViewerStore((s) => s.clashRawResult);
-  const stale = useAnalysisStaleness(analysisStampOf(rawResult));
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
@@ -569,22 +568,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     [activeSections, collapsed, expanded],
   );
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const rowVirtualizer = useVirtualizer({
-    count: displayRows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => {
-      const r = displayRows[i];
-      // Detail rows carry the two element rows plus the review controls (#1468).
-      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 214 : 52;
-    },
-    overscan: 16,
-    getItemKey: (i) => {
-      const r = displayRows[i];
-      return r.kind === 'group' ? `g:${r.key}` : r.kind === 'detail' ? `d:${r.clash.id}` : `c:${r.clash.id}`;
-    },
-  });
-
   /**
    * Create a BCF topic from the selected clash (or the whole result) directly in
    * the in-app issue tracker — no download/re-import round-trip (#1279). The
@@ -699,13 +682,33 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     </button>
   );
 
+  const lastRun = runRequestOf(result);
+  const rerunLast = (): void => { void rerunClashRequest(lastRun, { runAll, runMatrix, runPreset, runDuplicates }); };
+  const progressState = running && progress
+    ? progress.total > 0
+      ? {
+          label: t('clashPanel.progress.checking', { done: progress.done.toLocaleString(), total: progress.total.toLocaleString() }),
+          percent: Math.min(100, Math.round((progress.done / progress.total) * 100)),
+        }
+      : { label: t('clashPanel.progress.preparing'), percent: null }
+    : null;
+
   return (
-    <div className="h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0">
-      {/* Header */}
-      <div className="flex items-center gap-2 p-3 border-b border-border">
-        <Crosshair className="h-4 w-4 text-clash-overlap shrink-0" />
-        <span className="text-sm font-semibold tracking-tight min-w-0">{t('clashPanel.title')}</span>
-        <div className="ml-auto flex items-center gap-1 shrink-0">
+    <AnalysisPanel
+      icon={<Crosshair className="text-clash-overlap" />}
+      title={t('clashPanel.title')}
+      onClose={onClose}
+      run={{
+        hasResult: result != null,
+        running,
+        onRerun: rerunLast,
+        onCancel: cancelRun,
+        rerunLabel: rerunTooltip(t, lastRun),
+        cancelLabel: t('clashPanel.cancel'),
+      }}
+      onClearResults={clearAll}
+      actions={(
+        <>
           <IconButton
             label={t('clashPanel.helpTooltip')}
             className={cn('h-7 w-7', showHelp && 'text-primary')}
@@ -715,19 +718,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </IconButton>
           <ClashSettingsDialog />
           <ClashRevisionCompareDialog />
-          {result && (
-            <IconButton label={t('clashPanel.clearResultsTooltip')} className="h-7 w-7" onClick={clearAll}>
-              <Trash2 className="h-4 w-4" />
-            </IconButton>
-          )}
-          {onClose && (
-            <IconButton label={t('clashPanel.closeTooltip')} className="h-7 w-7" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </IconButton>
-          )}
-        </div>
-      </div>
-
+        </>
+      )}
+      error={error}
+      progress={progressState}
+      staleFor={rawResult}
+    >
       {showHelp && <ClashHelp />}
 
       {/* Run controls — collapse to a slim bar once a result exists so the list
@@ -751,18 +747,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <span>{t('clashPanel.detectionSectionLabel')}</span>
               <span className="normal-case tracking-normal text-muted-foreground">{mode}</span>
             </button>
-            {!controlsOpen && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={running ? cancelRun : () => void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates })}
-                title={running ? t('clashPanel.cancel') : rerunTooltip(t, runRequestOf(result))}
-              >
-                {running ? <Square className="h-3.5 w-3.5 mr-1" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
-                {t(running ? 'clashPanel.cancel' : 'clashPanel.rerun')}
-              </Button>
-            )}
           </div>
         )}
 
@@ -809,10 +793,16 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               )}
             </div>
 
-            <Button className="w-full h-8" onClick={running ? cancelRun : () => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
-              {running ? <Square className="h-4 w-4 mr-1.5" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
-              {t(running ? 'clashPanel.cancel' : 'clashPanel.detectAll')}
-            </Button>
+            <AnalysisRunButton
+              className="h-8"
+              running={running}
+              onRun={() => { void runAll(); }}
+              onCancel={cancelRun}
+              runLabel={t('clashPanel.detectAll')}
+              cancelLabel={t('clashPanel.cancel')}
+              icon={<Crosshair className="h-4 w-4" aria-hidden="true" />}
+              {...tourAnchor(TOUR_ANCHORS.clashRun)}
+            />
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -858,51 +848,15 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </>
         )}
 
-        {/* Live progress — the engine yields between chunks so this paints even
-            on large models that take a while (#1281). */}
-        {running && progress && (() => {
-          const determinate = progress.total > 0;
-          const pct = determinate ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
-          const label = determinate
-            ? t('clashPanel.progress.checking', { done: progress.done.toLocaleString(), total: progress.total.toLocaleString() })
-            : t('clashPanel.progress.preparing');
-          return (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-2xs text-muted-foreground">
-                <span className="truncate">{label}</span>
-                {determinate && <span className="tabular-nums">{pct}%</span>}
-              </div>
-              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn('h-full bg-[#f7768e]', determinate ? 'transition-[width] duration-150' : 'w-2/5 animate-pulse')}
-                  style={determinate ? { width: `${pct}%` } : undefined}
-                />
-              </div>
-            </div>
-          );
-        })()}
       </div>
         );
       })()}
 
-      {error && (
-        <div className="flex items-start gap-2 m-3 p-2 rounded-md bg-[#f7768e]/10 text-[#f7768e] text-xs">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
       <ClashModelTagNotice />
-
-      {result && stale && (
-        <StaleResultBanner
-          disabled={running}
-          onRerun={() => { void rerunClashRequest(runRequestOf(result), { runAll, runMatrix, runPreset, runDuplicates }); }}
-        />
-      )}
 
       {/* Summary */}
       {result && (
-        <div className={cn('px-3 py-2.5 border-b border-border', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
+        <AnalysisStaleRegion className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
           <ClashResultSummary
             total={total}
             shown={shown}
@@ -916,7 +870,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             duplicateSetView={isDuplicateSetView}
             bySeverity={bySeverity}
           />
-        </div>
+        </AnalysisStaleRegion>
       )}
 
       {/* Toolbar: group-by + sort + actions */}
@@ -1108,180 +1062,174 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
 
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
-      <div ref={scrollRef} className={cn('flex-1 overflow-auto min-h-0', stale && 'opacity-60')} {...tourAnchor(TOUR_ANCHORS.clashResults)}>
-        {!result && !running && (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
-            <Crosshair className="h-8 w-8 mb-3 opacity-40" />
-            <p className="text-sm">
-              {modelCount <= 1
-                ? t('clashPanel.empty.singleModelHint')
-                : t('clashPanel.empty.multiModelHint')}
-            </p>
-            <p className="mt-2 text-2xs">{t('clashPanel.empty.hint')}</p>
-          </div>
-        )}
-
-        {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
-            <p className="text-sm font-medium">{t('clashPanel.matrixNoMatch.title')}</p>
-            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.description', { count: result.rulesRun.length })}</p>
-            <p className="mt-1.5 text-2xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.emptyRules', { names: emptyRuleNames.join(', ') })}</p>
-          </div>
-        )}
-
-        {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
-            <p className="text-sm font-medium">{t('clashPanel.selectorNoMatch.title')}</p>
-            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
-              {t('clashPanel.selectorNoMatch.description', { reasons: emptySelectorDescriptions.join(', ') })}
-            </p>
-          </div>
-        )}
-
-        {result && total === 0 && coverageOutcome !== 'no-match' && (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <p className="text-sm">{t('clashPanel.noClashes.title')}</p>
-            {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
-              <p className="mt-1.5 text-2xs max-w-xs">
-                {t('clashPanel.noClashes.partialRules', { count: emptyRuleNames.length, names: emptyRuleNames.join(', ') })}
-              </p>
-            )}
-          </div>
-        )}
-
-        {result && total > 0 && shown === 0 && (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <p className="text-sm">{t('clashPanel.noMatches.title')}</p>
-            <p className="mt-1 text-2xs">
-              {hideTouching && touchingCount > 0 ? t('clashPanel.noMatches.hintWithUntick') : t('clashPanel.noMatches.hintPlain')}
-            </p>
-          </div>
-        )}
-
-        {displayRows.length > 0 && (
-          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-            {rowVirtualizer.getVirtualItems().map((v) => {
-              const row = displayRows[v.index];
-              return (
-                <div
-                  key={v.key}
-                  data-index={v.index}
-                  ref={rowVirtualizer.measureElement}
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
-                >
-                  {row.kind === 'group' ? (
-                    <ClashGroupHeaderWithActions
-                      section={row}
-                      collapsed={collapsed.has(row.key)}
-                      creatingTopic={creatingTopic}
-                      focusMode={focusMode} membersById={manualMembersById}
-                      onToggle={toggleSection}
-                      onFocus={focusClashes}
-                      onAddToGroup={openAddToGroup}
-                      onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
-                      onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
-                      onRemove={removeManualGroup}
-                      showGroups={showManualGroups}
-                    />
-                  ) : row.kind === 'detail' ? (
-                    <div className="border-t border-border/40 pb-1.5">
-                      <div className="px-7 py-1 text-2xs text-muted-foreground">{describeClash(row.clash)}</div>
-                      <ElementRow el={row.clash.a} side={0} />
-                      <ElementRow el={row.clash.b} side={1} />
-                      <ClashExclusionActions
-                        clash={row.clash}
-                        typeAnyCountOf={(tag) => typeAnyCounts.get(tag) ?? 0}
-                        typePairCount={typePairCount(row.clash)}
-                        onExcludeTypeAny={(tag) => applyExclusion(() => excludeTypeAny(tag))}
-                        onExcludeTypePair={() => applyExclusion(() => excludeTypePair(row.clash))}
-                        onExcludeElementPair={() => applyExclusion(() => excludeElementPair(row.clash))}
-                      />
-                      <ClashReviewControls
-                        status={reviewOf(row.clash)}
-                        comment={reviewCommentOf(row.clash)}
-                        onStatus={(s) => applyReview(row.clash, { status: s })}
-                        onComment={(text) => applyReview(row.clash, { comment: text })}
-                      />
-                    </div>
-                  ) : (
-                    <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
-                      <ClashGroupingCheckbox
-                        clash={row.clash}
-                        checked={checkedClashIds.has(row.clash.id)}
-                        onChange={(checked) => setCheckedClashIds((previous) => {
-                            const next = new Set(previous);
-                            if (checked) next.add(row.clash.id);
-                            else next.delete(row.clash.id);
-                            return next;
-                        })}
-                      />
-                      <button
-                        onClick={() => toggleExpand(row.clash.id)}
-                        aria-expanded={expanded.has(row.clash.id)}
-                        title={expanded.has(row.clash.id) ? t('clashPanel.rowCollapseTooltip') : t('clashPanel.rowShowBothTooltip')}
-                        className="flex items-center pl-2 pr-1 text-muted-foreground hover:text-foreground"
-                      >
-                        {expanded.has(row.clash.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                      </button>
-                      <button
-                        onClick={() => focusClash(row.clash, focusMode)}
-                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left hover:bg-muted/50"
-                      >
-                        <span className="self-stretch w-0.5 rounded-full shrink-0" style={{ background: SEVERITY[row.clash.severity].color }} />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate">
-                            <span className="text-foreground">{row.clash.a.tag}</span>
-                            <span className="text-muted-foreground"> × </span>
-                            <span className="text-foreground">{row.clash.b.tag}</span>
-                            {isTouching(row.clash) && (
-                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashPanel.touchBadge')}</span>
-                            )}
-                          </div>
-                          <div className="truncate text-2xs text-muted-foreground">
-                            {row.clash.a.name ?? shortName(row.clash.a.key)} ↔ {row.clash.b.name ?? shortName(row.clash.b.key)}
-                          </div>
-                        </div>
-                        {(() => {
-                          const rs = reviewOf(row.clash);
-                          const hasComment = reviewCommentOf(row.clash).length > 0;
-                          return (
-                            <>
-                              {rs !== 'open' && (
-                                <span
-                                  className="shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-medium"
-                                  style={{ background: `${REVIEW_STATUS[rs].color}1f`, color: REVIEW_STATUS[rs].color }}
-                                >
-                                  {t(REVIEW_STATUS[rs].labelKey)}
-                                </span>
-                              )}
-                              {hasComment && (
-                                <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={t('clashPanel.hasCommentAriaLabel')} />
-                              )}
-                            </>
-                          );
-                        })()}
-                        <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(row.clash.distance)}</span>
-                      </button>
-                      <button
-                        onClick={() => focusClash(row.clash, focusMode === 'highlight' ? 'isolate' : focusMode)}
-                        title={focusMode === 'ghost' ? t('clashPanel.focusToggleGhostTooltip') : t('clashPanel.focusToggleIsolateTooltip')}
-                        className="flex items-center px-2 text-muted-foreground hover:text-foreground"
-                      >
-                        <Focus className="h-3.5 w-3.5" />
-                      </button>
-                      {row.manualGroupId && (
-                        <RemoveFromClashGroupButton onClick={() => removeManualGroupMember(row.manualGroupId!, row.clash)} />
-                      )}
-                    </div>
-                  )}
+      <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
+        <AnalysisResultList
+          className="flex-1 min-h-0"
+          {...tourAnchor(TOUR_ANCHORS.clashResults)}
+          items={displayRows}
+          getKey={(r) => (r.kind === 'group' ? `g:${r.key}` : r.kind === 'detail' ? `d:${r.clash.id}` : `c:${r.clash.id}`)}
+          // Detail rows carry the two element rows plus the review controls (#1468).
+          estimateSize={(r) => (r.kind === 'group' ? 32 : r.kind === 'detail' ? 214 : 52)}
+          overscan={16}
+          renderRow={(row) => (
+            row.kind === 'group' ? (
+            <ClashGroupHeaderWithActions
+              section={row}
+              collapsed={collapsed.has(row.key)}
+              creatingTopic={creatingTopic}
+              focusMode={focusMode} membersById={manualMembersById}
+              onToggle={toggleSection}
+              onFocus={focusClashes}
+              onAddToGroup={openAddToGroup}
+              onCreateBcf={(groupId) => { void createBcfTopicForGroup(groupId); }}
+              onRename={(groupId, label) => setGroupDialog({ mode: 'rename', groupId, initialName: label })}
+              onRemove={removeManualGroup}
+              showGroups={showManualGroups}
+            />
+          ) : row.kind === 'detail' ? (
+            <div className="border-t border-border/40 pb-1.5">
+              <div className="px-7 py-1 text-2xs text-muted-foreground">{describeClash(row.clash)}</div>
+              <ElementRow el={row.clash.a} side={0} />
+              <ElementRow el={row.clash.b} side={1} />
+              <ClashExclusionActions
+                clash={row.clash}
+                typeAnyCountOf={(tag) => typeAnyCounts.get(tag) ?? 0}
+                typePairCount={typePairCount(row.clash)}
+                onExcludeTypeAny={(tag) => applyExclusion(() => excludeTypeAny(tag))}
+                onExcludeTypePair={() => applyExclusion(() => excludeTypePair(row.clash))}
+                onExcludeElementPair={() => applyExclusion(() => excludeElementPair(row.clash))}
+              />
+              <ClashReviewControls
+                status={reviewOf(row.clash)}
+                comment={reviewCommentOf(row.clash)}
+                onStatus={(s) => applyReview(row.clash, { status: s })}
+                onComment={(text) => applyReview(row.clash, { comment: text })}
+              />
+            </div>
+          ) : (
+            <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
+              <ClashGroupingCheckbox
+                clash={row.clash}
+                checked={checkedClashIds.has(row.clash.id)}
+                onChange={(checked) => setCheckedClashIds((previous) => {
+                    const next = new Set(previous);
+                    if (checked) next.add(row.clash.id);
+                    else next.delete(row.clash.id);
+                    return next;
+                })}
+              />
+              <button
+                onClick={() => toggleExpand(row.clash.id)}
+                aria-expanded={expanded.has(row.clash.id)}
+                title={expanded.has(row.clash.id) ? t('clashPanel.rowCollapseTooltip') : t('clashPanel.rowShowBothTooltip')}
+                className="flex items-center pl-2 pr-1 text-muted-foreground hover:text-foreground"
+              >
+                {expanded.has(row.clash.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                onClick={() => focusClash(row.clash, focusMode)}
+                className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left hover:bg-muted/50"
+              >
+                <span className="self-stretch w-0.5 rounded-full shrink-0" style={{ background: SEVERITY[row.clash.severity].color }} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate">
+                    <span className="text-foreground">{row.clash.a.tag}</span>
+                    <span className="text-muted-foreground"> × </span>
+                    <span className="text-foreground">{row.clash.b.tag}</span>
+                    {isTouching(row.clash) && (
+                      <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashPanel.touchBadge')}</span>
+                    )}
+                  </div>
+                  <div className="truncate text-2xs text-muted-foreground">
+                    {row.clash.a.name ?? shortName(row.clash.a.key)} ↔ {row.clash.b.name ?? shortName(row.clash.b.key)}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                {(() => {
+                  const rs = reviewOf(row.clash);
+                  const hasComment = reviewCommentOf(row.clash).length > 0;
+                  return (
+                    <>
+                      {rs !== 'open' && (
+                        <span
+                          className="shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-medium"
+                          style={{ background: `${REVIEW_STATUS[rs].color}1f`, color: REVIEW_STATUS[rs].color }}
+                        >
+                          {t(REVIEW_STATUS[rs].labelKey)}
+                        </span>
+                      )}
+                      {hasComment && (
+                        <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={t('clashPanel.hasCommentAriaLabel')} />
+                      )}
+                    </>
+                  );
+                })()}
+                <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(row.clash.distance)}</span>
+              </button>
+              <button
+                onClick={() => focusClash(row.clash, focusMode === 'highlight' ? 'isolate' : focusMode)}
+                title={focusMode === 'ghost' ? t('clashPanel.focusToggleGhostTooltip') : t('clashPanel.focusToggleIsolateTooltip')}
+                className="flex items-center px-2 text-muted-foreground hover:text-foreground"
+              >
+                <Focus className="h-3.5 w-3.5" />
+              </button>
+              {row.manualGroupId && (
+                <RemoveFromClashGroupButton onClick={() => removeManualGroupMember(row.manualGroupId!, row.clash)} />
+              )}
+            </div>
+          )
+          )}
+        >
+          {!result && !running && (
+            <AnalysisEmptyState
+              className="h-full"
+              icon={<Crosshair className="size-8" />}
+              title={t('clashPanel.empty.title')}
+              description={modelCount <= 1 ? t('clashPanel.empty.singleModelHint') : t('clashPanel.empty.multiModelHint')}
+              hint={t('clashPanel.empty.hint')}
+              loadDemo={loadDemoClashModel}
+            />
+          )}
+
+          {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
+            <div className="flex flex-col items-center justify-center p-8 text-center">
+              <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+              <p className="text-sm font-medium">{t('clashPanel.matrixNoMatch.title')}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.description', { count: result.rulesRun.length })}</p>
+              <p className="mt-1.5 text-2xs text-muted-foreground max-w-xs">{t('clashPanel.matrixNoMatch.emptyRules', { names: emptyRuleNames.join(', ') })}</p>
+            </div>
+          )}
+
+          {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
+            <div className="flex flex-col items-center justify-center p-8 text-center">
+              <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+              <p className="text-sm font-medium">{t('clashPanel.selectorNoMatch.title')}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
+                {t('clashPanel.selectorNoMatch.description', { reasons: emptySelectorDescriptions.join(', ') })}
+              </p>
+            </div>
+          )}
+
+          {result && total === 0 && coverageOutcome !== 'no-match' && (
+            <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+              <p className="text-sm">{t('clashPanel.noClashes.title')}</p>
+              {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
+                <p className="mt-1.5 text-2xs max-w-xs">
+                  {t('clashPanel.noClashes.partialRules', { count: emptyRuleNames.length, names: emptyRuleNames.join(', ') })}
+                </p>
+              )}
+            </div>
+          )}
+
+          {result && total > 0 && shown === 0 && (
+            <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+              <p className="text-sm">{t('clashPanel.noMatches.title')}</p>
+              <p className="mt-1 text-2xs">
+                {hideTouching && touchingCount > 0 ? t('clashPanel.noMatches.hintWithUntick') : t('clashPanel.noMatches.hintPlain')}
+              </p>
+            </div>
+          )}
+        </AnalysisResultList>
+      </AnalysisStaleRegion>
       <ClashManualGroupDialog
         open={groupDialog !== null}
         initialName={dialogProps.initialName}
@@ -1290,6 +1238,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         onOpenChange={(open) => { if (!open) setGroupDialog(null); }}
         onSubmit={submitGroupDialog}
       />
-    </div>
+    </AnalysisPanel>
   );
 }

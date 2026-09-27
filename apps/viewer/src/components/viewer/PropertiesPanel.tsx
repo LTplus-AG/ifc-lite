@@ -1260,7 +1260,7 @@ export function PropertiesPanel() {
                   <TooltipTrigger asChild>
                     <Badge
                       variant="secondary"
-                      className="shrink-0 rounded-sm px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
+                      className="shrink-0 rounded-sm px-1.5 py-0 text-2xs font-semibold uppercase tracking-wider gap-1 leading-none h-[18px] mt-0.5"
                     >
                       <Layers2 className="h-2.5 w-2.5" />
                       {t('properties.panel.layersMergedBadge')}
@@ -1275,7 +1275,7 @@ export function PropertiesPanel() {
             <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{entityType}</p>
             {/* Show associated type entity for occurrences */}
             {!renderedIsTypeEntity && renderedTypeProperties && (
-              <p className="text-[11px] font-mono text-indigo-500 dark:text-indigo-400 truncate" title={`${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: ${renderedTypeProperties.typeName}`}>
+              <p className="text-2xs font-mono text-indigo-500 dark:text-indigo-400 truncate" title={`${activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: ${renderedTypeProperties.typeName}`}>
                 <Building2 className="inline h-3 w-3 mr-1 -mt-0.5" />
                 {activeDataStore?.entities.getTypeName(renderedTypeProperties.typeId) || t('properties.panel.associatedTypeFallback')}: {renderedTypeProperties.typeName}
               </p>
@@ -1297,7 +1297,7 @@ export function PropertiesPanel() {
               ? 'border-emerald-400 dark:border-emerald-600'
               : 'border-zinc-200 dark:border-zinc-800'
           }`}>
-            <code className="flex-1 text-[10px] bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
+            <code className="flex-1 text-2xs bg-white dark:bg-zinc-950 px-2 py-1 truncate font-mono select-all text-zinc-900 dark:text-zinc-100">
               {entityGlobalId}
             </code>
             <IconButton
@@ -1334,16 +1334,16 @@ export function PropertiesPanel() {
               {!coordOpen && (
                 <>
                   {entityCoordinates && (
-                    <span className="font-mono text-[10px] text-teal-600/70 dark:text-teal-500/70 truncate min-w-0 flex-1 tabular-nums">
+                    <span className="font-mono text-2xs text-teal-600/70 dark:text-teal-500/70 truncate min-w-0 flex-1 tabular-nums">
                       <CoordVal axis="E" value={entityCoordinates.worldZup.center.x} />{' '}
                       <CoordVal axis="N" value={entityCoordinates.worldZup.center.y} />{' '}
                       <CoordVal axis="Z" value={entityCoordinates.worldZup.center.z} />
                     </span>
                   )}
                   {renderedGeoref?.projectedCRS?.name && (
-                    <span className="font-mono text-[9px] text-teal-500/60 shrink-0">{renderedGeoref.projectedCRS.name}</span>
+                    <span className="font-mono text-2xs text-teal-500/60 shrink-0">{renderedGeoref.projectedCRS.name}</span>
                   )}
-                  <span className="text-[9px] text-teal-500/0 group-hover/coord:text-teal-500/40 transition-colors shrink-0">{t('properties.panel.worldCoordinatesDetails')}</span>
+                  <span className="text-2xs text-teal-500/0 group-hover/coord:text-teal-500/40 transition-colors shrink-0">{t('properties.panel.worldCoordinatesDetails')}</span>
                 </>
               )}
             </CollapsibleTrigger>
@@ -1369,8 +1369,8 @@ export function PropertiesPanel() {
                     ]}
                   />
                   <div className="flex items-start gap-1.5">
-                    <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                    <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
+                    <span className="font-mono text-2xs text-muted-foreground tabular-nums">
                       {t('properties.panel.sizeDisplay', { x: (entityCoordinates.local.max.x - entityCoordinates.local.min.x).toFixed(2), y: (entityCoordinates.local.max.y - entityCoordinates.local.min.y).toFixed(2), z: (entityCoordinates.local.max.z - entityCoordinates.local.min.z).toFixed(2) })}
                     </span>
                   </div>
@@ -1393,7 +1393,7 @@ export function PropertiesPanel() {
         {/* Model Source (when multiple models loaded) - below storey, less prominent */}
         {models.size > 1 && model && (
           <div className="px-2 py-1">
-            <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
+            <ModelBadge modelId={model.id} className="gap-2 text-2xs max-w-full" />
           </div>
         )}
       </div>
@@ -1514,7 +1514,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="properties"
             title={t('properties.panel.tab.properties')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
           >
             <FileText className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.properties')}</span>
@@ -1522,7 +1522,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="quantities"
             title={t('properties.panel.tab.quantities')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
           >
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
@@ -1530,7 +1530,7 @@ export function PropertiesPanel() {
           <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+            className="properties-tab-trigger flex-1 min-w-0 uppercase text-2xs tracking-wide"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
@@ -1544,7 +1544,7 @@ export function PropertiesPanel() {
                 stay readable at 9px, and free up width for the three
                 primary tabs to keep their text visible at the default
                 panel size. */}
-            <span aria-hidden className="text-[10px] leading-none tracking-tight">&lt;/&gt;</span>
+            <span aria-hidden className="text-2xs leading-none tracking-tight">&lt;/&gt;</span>
             <span className="sr-only">{t('properties.panel.tab.rawStepLabel')}</span>
           </TabsTrigger>
         </TabsList>
@@ -1591,7 +1591,7 @@ export function PropertiesPanel() {
                 {foundOccurrence.length > 0 && (
                   <>
                     {(renderedIsTypeEntity || (renderedTypeProperties && renderedTypeProperties.psets.length > 0)) && (
-                      <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold">
+                      <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-semibold">
                         {renderedIsTypeEntity ? (
                           <>
                             <Building2 className="h-3 w-3 shrink-0 text-indigo-500" />
@@ -1624,7 +1624,7 @@ export function PropertiesPanel() {
                     {foundOccurrence.length > 0 && (
                       <div className="border-t border-indigo-200 dark:border-indigo-800/50 pt-2 mt-2" />
                     )}
-                    <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider font-semibold">
+                    <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider font-semibold">
                       <Building2 className="h-3 w-3 shrink-0" />
                       <span className="truncate">{t('properties.panel.typePropertiesGroupHeading', { typeName: renderedTypeProperties.typeName })}</span>
                     </div>
@@ -1678,7 +1678,7 @@ export function PropertiesPanel() {
                     )}
                     {foundMaterialProperties.map((group) => (
                       <div key={`matpset-${group.materialId}`} className="space-y-3">
-                        <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
+                        <div className="flex items-center gap-2 px-1 pb-0.5 text-2xs text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
                           <Layers className="h-3 w-3 shrink-0" />
                           <span className="truncate">{t('properties.panel.materialPropertiesGroupHeading', { materialName: group.materialName })}</span>
                         </div>
@@ -1821,7 +1821,7 @@ function MultiEntityPanel({
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">
             {t('properties.panel.multiEntity.heading')}
           </h2>
-          <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+          <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
             {t('properties.panel.multiEntity.modelCount', { count: entities.length })}
           </span>
           {/* Display-unit converter (issue #1573 proposal 2) — one control
@@ -1960,7 +1960,7 @@ function EntityDataSection({
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
-          <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
+          <ModelBadge modelId={model.id} className="gap-2 text-2xs max-w-full" />
         )}
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-600" />
@@ -1971,7 +1971,7 @@ function EntityDataSection({
             <p className="text-xs font-mono text-zinc-500">{displayType}</p>
           </div>
           {elevationInfo !== null && (
-            <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
+            <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
               {t('properties.panel.multiEntity.elevationMeters', { sign: elevationInfo >= 0 ? '+' : '', value: elevationInfo.toFixed(2) })}
             </span>
           )}
@@ -1984,7 +1984,7 @@ function EntityDataSection({
           <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Tag className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.attributesHeading')}</span>
-            <span className="text-[10px] text-zinc-400 ml-auto">{attributes.length}</span>
+            <span className="text-2xs text-zinc-400 ml-auto">{attributes.length}</span>
             <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -2011,7 +2011,7 @@ function EntityDataSection({
           <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <FileText className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.propertiesHeading')}</span>
-            <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
+            <span className="text-2xs text-zinc-400 ml-auto">{t('properties.panel.multiEntity.propertySetsCount', { count: properties.length })}</span>
             <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -2030,7 +2030,7 @@ function EntityDataSection({
           <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left text-xs">
             <Calculator className="h-3 w-3 text-zinc-400" />
             <span className="font-medium">{t('properties.panel.multiEntity.quantitiesHeading')}</span>
-            <span className="text-[10px] text-zinc-400 ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
+            <span className="text-2xs text-zinc-400 ml-auto">{t('properties.panel.multiEntity.quantitySetsCount', { count: quantities.length })}</span>
             <ChevronDown className="size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent>

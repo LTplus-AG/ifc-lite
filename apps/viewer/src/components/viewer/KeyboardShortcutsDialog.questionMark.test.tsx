@@ -20,7 +20,9 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, press, render, waitFor } from '@/test/render.js';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { useViewerStore } from '@/store';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog.js';
 
 function Harness() {
@@ -59,5 +61,26 @@ describe('`?` opens the Info dialog on Shortcuts (#5606)', () => {
     pressQuestionMark();
     pressQuestionMark();
     assert.equal(activeTab(), undefined);
+  });
+
+  it('Escape closes the modal without clearing the selected entity (#5847)', async () => {
+    const priorSelection = useViewerStore.getState().selectedEntityId;
+    const priorSelections = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
+    let globalEscapes = 0;
+    const removeGlobal = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
+    try {
+      render(<Harness />);
+      pressQuestionMark();
+      assert.equal(activeTab(), 'Shortcuts');
+      press(document.activeElement ?? document.body, 'Escape');
+      await waitFor(() => activeTab() === undefined, 'Escape closes the shortcuts modal');
+      assert.equal(globalEscapes, 0);
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
+    } finally {
+      removeGlobal();
+      useViewerStore.setState({ selectedEntityId: priorSelection, selectedEntityIds: priorSelections });
+    }
   });
 });

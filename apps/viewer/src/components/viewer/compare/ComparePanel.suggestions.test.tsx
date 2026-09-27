@@ -334,8 +334,8 @@ describe('ComparePanel Suggestions (#4955)', () => {
       entries: [{ base: 'W1', here: 'W1b', reason: 'successor:footprint' }],
     });
     importFile(container, new File([serializeIdentityMapSidecar(foreign)], 'foreign.identity-map.json'));
-    await waitUntil(() => container.querySelector('[role="status"]') !== null, 'a status message appears');
-    const status = container.querySelector('[role="status"]');
+    await waitUntil(() => container.querySelector('output') !== null, 'a status message appears');
+    const status = container.querySelector('output');
     assert.ok(status, 'a refusal message is shown');
     assert.match(status.textContent ?? '', /base model does not match/);
     assert.deepEqual(useViewerStore.getState().compareAcceptedIdentity, [], 'nothing was imported');
@@ -353,7 +353,7 @@ describe('ComparePanel Suggestions (#4955)', () => {
     assert.deepEqual(useViewerStore.getState().compareAcceptedIdentity, [
       { ...AB, base: 'W1', here: 'W1b', reason: 'successor:footprint' },
     ]);
-    assert.match(container.querySelector('[role="status"]')?.textContent ?? '', /Imported 1 identity entr/);
+    assert.match(container.querySelector('output')?.textContent ?? '', /Imported 1 identity entr/);
     assert.ok(!(container.textContent ?? '').includes('Replaced ·'));
   });
 });

@@ -25,7 +25,7 @@ export function ModelBadge({ modelId, className }: { modelId: string; className?
     <span
       role="note"
       aria-label={name}
-      className={cn('inline-flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground', className)}
+      className={cn('inline-flex min-w-0 items-center gap-1 text-2xs text-muted-foreground', className)}
       title={name}
     >
       <FileBox className="h-3 w-3 shrink-0 text-primary" />

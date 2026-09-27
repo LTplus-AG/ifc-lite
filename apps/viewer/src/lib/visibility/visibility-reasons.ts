@@ -205,7 +205,7 @@ export function activeVisibilityReasons(state: ViewerState): VisibilityReason[] 
   return VISIBILITY_REASONS.filter((reason) => reason.isActive(state));
 }
 
-/** Show all / Home: clear active resettable mechanisms; reconcile hides even when only the lens is active. */
+/** Show all: clear active resettable mechanisms; reconcile hides even when only the lens is active. */
 export function resetVisibilityReasons(store: VisibilityStore): void {
   for (const reason of VISIBILITY_REASONS) {
     // The lens may have new matches before its sync effect hides them. Home

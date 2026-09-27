@@ -817,6 +817,11 @@ function getOrCreateStoreEditor(
  * needs, created lazily so handles surface on first selection. Null while
  * the model has no editable view.
  */
+/** `start + axis · t`. */
+function alongAxis(start: readonly number[], axis: readonly number[], t: number): [number, number, number] {
+  return [start[0] + axis[0] * t, start[1] + axis[1] * t, start[2] + axis[2] * t];
+}
+
 function resolveEditReadContext(
   get: () => ViewerState,
   set: (partial: Partial<ViewerState>) => void,
@@ -1887,16 +1892,10 @@ export const createMutationSlice: StateCreator<
     const chain = ctx && resolveWallEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!chain) return null;
     const distance = projectOntoWallAxis(chain, cursorStoreyLocal);
-    const [sx, sy, sz] = chain.startCoordinates;
+    // Walls lie on a storey plane (refDirection.z === 0 by the builder's
+    // contract), but whatever the IFC says is surfaced as-is.
     const [dx, dy, dz] = chain.refDirection;
-    const cutPoint: [number, number, number] = [
-      sx + dx * distance,
-      sy + dy * distance,
-      sz + dz * distance,
-    ];
-    // Walls always lie on a storey plane (refDirection.z === 0 by
-    // the builder's contract) but the type lets us carry whatever
-    // the IFC actually says, so we surface it as-is.
+    const cutPoint = alongAxis(chain.startCoordinates, chain.refDirection, distance);
     return { distance, length: chain.wallLength, cutPoint, axis: [dx, dy, dz] };
   },
 
@@ -2020,20 +2019,8 @@ export const createMutationSlice: StateCreator<
     const chain = ctx && resolveLinearElementChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!chain) return null;
     const distance = projectOntoLinearAxis(chain, cursorStoreyLocal);
-    const [sx, sy, sz] = chain.startCoordinates;
-    const [dx, dy, dz] = chain.axisDirection;
-    const cutPoint: [number, number, number] = [
-      sx + dx * distance,
-      sy + dy * distance,
-      sz + dz * distance,
-    ];
-    return {
-      distance,
-      length: chain.depth,
-      cutPoint,
-      axis: chain.axisDirection,
-      elementType: chain.elementType,
-    };
+    const cutPoint = alongAxis(chain.startCoordinates, chain.axisDirection, distance);
+    return { distance, length: chain.depth, cutPoint, axis: chain.axisDirection, elementType: chain.elementType };
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
@@ -2125,17 +2112,10 @@ export const createMutationSlice: StateCreator<
     const chain = ctx && resolveSlabEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!ctx || !chain) return null;
     const { dataStore } = ctx;
+    // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement), as the split commit's own storey gate reads it
     const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-    const storeyElevation =
-      (storeyId !== undefined
-        ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId)
-        : undefined) ?? 0;
-    return {
-      footprint: chain.footprint,
-      elementType: chain.elementType,
-      storeyElevation,
-      thickness: chain.thickness,
-    };
+    const storeyElevation = (storeyId !== undefined ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
+    return { footprint: chain.footprint, elementType: chain.elementType, storeyElevation, thickness: chain.thickness };
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) => {

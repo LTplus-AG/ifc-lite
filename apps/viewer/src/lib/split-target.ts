@@ -94,6 +94,7 @@ export function resolveSplitTarget(
   if (!target) {
     return { ok: false, code: diagnoseBody(dataStore, view, editor, expressId, SLAB_TYPES.has(stepType)) };
   }
+  // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement), as the split commit's own storey gate reads it
   if (dataStore.spatialHierarchy?.elementToStorey.get(expressId) === undefined) {
     return { ok: false, code: 'storey' };
   }

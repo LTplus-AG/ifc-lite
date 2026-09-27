@@ -42,6 +42,7 @@ import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { LegacyListFilters } from './ListBuilder.legacyFilters';
+import { isEditableCondition } from './list-compatibility-condition';
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {
@@ -305,7 +306,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
       modelTagScope,
-      conditions: unreadableConditions.flatMap((row) => row.reason === 'invalid-condition' ? [] : [row.condition]),
+      conditions: unreadableConditions.flatMap((row) => isEditableCondition(row) ? [row.condition] : []),
       groups: filterState.groups,
       unreadableConditions,
       columns,

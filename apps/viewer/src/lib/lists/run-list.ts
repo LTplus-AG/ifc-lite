@@ -63,7 +63,9 @@ export async function runListFederated(
     // every rule. `conditions` retains readable v1 rows only during migration.
     const unreadable: ListDefinition['conditions'] = [];
     for (const row of definition.unreadableConditions ?? []) {
-      if (row.reason === 'invalid-condition') {
+      if (!row || typeof row !== 'object' || Array.isArray(row)
+        || row.reason === 'invalid-condition' || row.reason === 'invalid-value'
+        || !row.condition || typeof row.condition !== 'object' || Array.isArray(row.condition)) {
         throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');
       }
       unreadable.push(row.condition);

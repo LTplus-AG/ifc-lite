@@ -396,6 +396,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'invalid-value' },
       { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'futureOp', value: 'A' }, reason: 'operator' },
       { condition: null, reason: 'unsupported-source' },
+      null,
     ];
     const initial = {
       id: 'future-filter', name: 'Future filter', createdAt: 1, updatedAt: 1,

@@ -8,6 +8,7 @@ export type ConditionSource = PropertyCondition['source'];
 const EDITABLE_SOURCES: readonly ConditionSource[] = [
   'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
 ];
+const EDITABLE_REASONS = ['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator'] as const;
 
 export function operatorsFor(source: ConditionSource): ConditionOperator[] {
   switch (source) {
@@ -19,10 +20,12 @@ export function operatorsFor(source: ConditionSource): ConditionOperator[] {
 }
 
 /** Malformed persisted rows must never enter a native select with no option. */
-export function isEditableCondition(row: UnreadableListCondition): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {
-  if (row.reason === 'invalid-condition' || row.reason === 'invalid-value') return false;
-  if (typeof row.condition !== 'object' || row.condition === null || Array.isArray(row.condition)) return false;
-  const condition = row.condition as unknown as Record<string, unknown>;
+export function isEditableCondition(row: unknown): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return false;
+  const saved = row as Record<string, unknown>;
+  if (!EDITABLE_REASONS.some((reason) => reason === saved.reason)) return false;
+  if (typeof saved.condition !== 'object' || saved.condition === null || Array.isArray(saved.condition)) return false;
+  const condition = saved.condition as Record<string, unknown>;
   if (typeof condition.source !== 'string' || typeof condition.propertyName !== 'string'
     || typeof condition.operator !== 'string' || !['string', 'number', 'boolean'].includes(typeof condition.value)
     || (condition.psetName !== undefined && typeof condition.psetName !== 'string')
@@ -31,8 +34,10 @@ export function isEditableCondition(row: UnreadableListCondition): row is Exclud
   return EDITABLE_SOURCES.includes(source) && operatorsFor(source).includes(condition.operator as ConditionOperator);
 }
 
-export function describeUneditable(row: UnreadableListCondition, malformedLabel: string): string {
-  if (row.reason === 'invalid-condition' || typeof row.condition !== 'object' || row.condition === null) return malformedLabel;
-  const fields = row.condition as unknown as Record<string, unknown>;
-  return `${String(fields.source ?? '?')}: ${String(fields.propertyName ?? '?')} ${String(fields.operator ?? '?')} (${row.reason})`;
+export function describeUneditable(row: unknown, malformedLabel: string): string {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return malformedLabel;
+  const saved = row as Record<string, unknown>;
+  if (saved.reason === 'invalid-condition' || typeof saved.condition !== 'object' || saved.condition === null) return malformedLabel;
+  const fields = saved.condition as Record<string, unknown>;
+  return `${String(fields.source ?? '?')}: ${String(fields.propertyName ?? '?')} ${String(fields.operator ?? '?')} (${String(saved.reason)})`;
 }

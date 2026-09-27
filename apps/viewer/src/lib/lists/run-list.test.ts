@@ -206,6 +206,19 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
 const noTags = { modelTags: new Map<string, ModelTag>(), modelTagAssignments: new Map<string, ReadonlySet<string>>() };
 
 describe('runListFederated (#5142)', () => {
+  it('rejects null and invalid-value saved List rows with a removable-filter message (#5894)', async () => {
+    const state = { models: new Map([['a', {}]]), ...noTags };
+    const malformed = [
+      null,
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'invalid-value' },
+    ];
+    for (const row of malformed) {
+      const def = definition({ groups: [{ rules: [], combinator: 'AND' }],
+        unreadableConditions: [row] as ListDefinition['unreadableConditions'] });
+      await assert.rejects(() => runListFederated(def, [pair('a')], state), /malformed condition.*Remove it in the list editor/);
+    }
+  });
+
   it('merges the rows of every model in scope and sums execution time', async () => {
     const pairs = [pair('a'), pair('b')];
     const result = await runListFederated(definition(), pairs, { models: new Map([['a', {}], ['b', {}]]), ...noTags });

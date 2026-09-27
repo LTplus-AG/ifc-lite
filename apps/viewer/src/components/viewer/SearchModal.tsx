@@ -21,7 +21,7 @@
  *   • ⌘⇧F / Ctrl+⇧F — toggle modal closed (symmetric with open)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -80,7 +80,7 @@ export function SearchModal() {
   /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open.
    *  This is a text-search entry point, so opening always lands on the Search
    *  tab (the controlled tab otherwise remembers the last-used Filter tab). */
-  useEffect(() => {
+  useLayoutEffect(() => {
     const toggle = () => {
       if (searchModalOpen) setSearchModalOpen(false);
       else { setSearchModalTab('search'); setSearchModalOpen(true); }

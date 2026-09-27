@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -140,7 +140,7 @@ export function useKeyboardShortcutsDialog() {
     setOpen(true);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const toggleFromKey = () => {
       setTab('shortcuts');
       setOpen((value) => !value);

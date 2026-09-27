@@ -665,7 +665,7 @@ export function buildTypeTree(
       geometricIds,
       geometryReadyModelIds?.has(modelId),
     );
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     // @raw-entity-enumeration-ok parsed rows, each passed through effectiveTreeType (deleted skipped, retype applied); created products arrive as authoredProducts
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
@@ -827,7 +827,7 @@ export function buildIfcTypeTree(
       geometryReadyModelIds?.has(modelId),
     );
 
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     const assignments = effectiveTypeAssignments(dataStore, view);
     for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 
@@ -1167,7 +1167,7 @@ export function buildGroupTree(
     const entities = dataStore.entities;
     if (!entities) return;
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     const groups = effectiveGroupIds(dataStore, view);
     const assignments = effectiveGroupAssignments(dataStore, view);
 

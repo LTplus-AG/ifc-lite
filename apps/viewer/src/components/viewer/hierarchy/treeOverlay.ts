@@ -38,9 +38,11 @@ export function effectiveTreeType(
 }
 
 /** `modelId`'s view as a tree or chip reads it. Legacy single-store mode
- *  keys its edits under `__legacy__`, as the Inspector does. */
+ *  keys its edits under `__legacy__` (with a `legacy` fallback), as the
+ *  status bar and list providers do. */
 export function overlayViewFor(overlay: TreeOverlay | undefined, modelId: string): MutablePropertyView | null | undefined {
-  return overlay?.(modelId === 'legacy' ? '__legacy__' : modelId);
+  if (modelId !== 'legacy') return overlay?.(modelId);
+  return overlay?.('__legacy__') ?? overlay?.('legacy');
 }
 
 /**

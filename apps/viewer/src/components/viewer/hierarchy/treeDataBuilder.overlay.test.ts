@@ -86,6 +86,19 @@ describe('model tree over the edited model (#5249)', () => {
     assert.equal(idsByName(nodes).has('Wall A'), false, 'the parsed Name is gone');
   });
 
+  it('legacy single-store mode reads the edits keyed under __legacy__, as the store registers them (#6233)', async () => {
+    const { ds, view, geometric } = await edited();
+    const legacyOnly = (modelId: string) => (modelId === '__legacy__' ? view : undefined);
+    const every = new Set(buildTypeTree(new Map(), ds, ALL, false, geometric, [], undefined, legacyOnly)
+      .flatMap((n) => n.expressIds ?? []));
+    assert.equal(every.has(11), false, 'By Class drops the wall deleted in the legacy view');
+    assert.ok(every.has(10));
+    const typeIds = new Set(buildIfcTypeTree(new Map(), ds, new Set(nodes0(ds)), false, geometric, undefined, legacyOnly)
+      .flatMap((n) => n.expressIds ?? []));
+    assert.equal(typeIds.has(11), false, 'By Type drops it too');
+    assert.ok(typeIds.has(10));
+  });
+
   it('By Type: the deleted occurrence is dropped from its type', async () => {
     const { ds, view, geometric } = await edited();
     const nodes = buildIfcTypeTree(new Map(), ds, new Set(nodes0(ds)), false, geometric, undefined, () => view);

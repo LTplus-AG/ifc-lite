@@ -130,7 +130,7 @@ export function MobileToolbar() {
   // rows and through the same handlers and dialogs (#5842). The dialog is
   // hosted outside the menu so it outlives the menu closing.
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner('mobile');
-  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters), [runExport, extensionExporters]);
+  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters, 'mobile'), [runExport, extensionExporters]);
 
   const toolButtons: { tool: Tool; icon: React.ElementType; label: string }[] = [
     { tool: 'select', icon: MousePointer2, label: t('shellChrome.mobileToolbar.selectTool') },

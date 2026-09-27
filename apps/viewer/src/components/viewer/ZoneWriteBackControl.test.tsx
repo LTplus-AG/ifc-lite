@@ -107,6 +107,11 @@ describe('ZonesPanel: writing zone data into the model', () => {
     const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
     assert.equal(writeButton(ui).disabled, true);
     assert.match(writeButton(ui).title, /no editable IFC data/);
+    const denial = ui.querySelector('output');
+    assert.ok(denial, 'model-unavailable denial is visible beside the disabled writer');
+    assert.match(denial.textContent ?? '', /no editable IFC data/);
+    assert.equal(writeButton(ui).getAttribute('aria-describedby'), denial.id);
+    assert.equal(button(ui, 'Remove zone properties').getAttribute('aria-describedby'), denial.id);
     assert.equal(button(ui, 'CSV').disabled, false);
 
     const writable: FederatedModel = { ...fixtureModel('m2', { idOffset: 1_000_000 }), maxExpressId: WALL_ID, ifcDataStore: data };
@@ -119,6 +124,7 @@ describe('ZonesPanel: writing zone data into the model', () => {
       }]]) as never,
     }));
     assert.equal(writeButton(ui).disabled, false);
+    assert.equal(ui.querySelector('output'), null, 'the denial clears once a writable target appears');
     click(writeButton(ui));
     assert.ok(useViewerStore.getState().dirtyModels.has('m2'));
     assert.equal(useViewerStore.getState().dirtyModels.has('m1'), false);

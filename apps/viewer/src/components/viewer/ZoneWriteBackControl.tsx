@@ -18,7 +18,7 @@
  * quantity set's name.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -77,7 +77,8 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const emitDenial = reasonFor(targets.emit);
   const removeZonesDenial = reasonFor(targets.removeZones);
   const messageFor = (reason: MutationDenialReason | null) => reason ? t(mutationDenialKey(reason)) : undefined;
-  const denialMessage = messageFor(globalDenial);
+  const denialMessage = messageFor(globalDenial ?? writeDenial ?? removePropertiesDenial ?? emitDenial ?? removeZonesDenial);
+  const denialId = useId();
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
@@ -148,6 +149,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           size="sm"
           className="h-6 flex-1 text-2xs"
           disabled={!!writeDenial}
+          aria-describedby={writeDenial ? denialId : undefined}
           title={messageFor(writeDenial) ?? t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
@@ -189,6 +191,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           label={t('zonesPanel.writeBack.removePropsAriaLabel')}
           tooltip={messageFor(removePropertiesDenial) ?? t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           disabled={!!removePropertiesDenial}
+          {...(removePropertiesDenial ? { 'aria-describedby': denialId } : {})}
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
@@ -237,6 +240,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           size="sm"
           className="h-6 flex-1 text-2xs"
           disabled={!!emitDenial}
+          aria-describedby={emitDenial ? denialId : undefined}
           title={messageFor(emitDenial) ?? t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
@@ -301,6 +305,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
           tooltip={messageFor(removeZonesDenial) ?? t('zonesPanel.writeBack.removeEmittedTitle')}
           disabled={!!removeZonesDenial}
+          {...(removeZonesDenial ? { 'aria-describedby': denialId } : {})}
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
@@ -320,7 +325,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <Undo2 className="h-3 w-3" />
         </IconButton>
       </div>
-      {denialMessage && <output className="block text-2xs text-muted-foreground">{denialMessage}</output>}
+      {denialMessage && <output id={denialId} className="block text-2xs text-muted-foreground">{denialMessage}</output>}
     </div>
   );
 }

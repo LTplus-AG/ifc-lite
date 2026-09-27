@@ -18,7 +18,7 @@
  */
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ListDataProvider, ListDefinition, ListResult } from '@ifc-lite/lists';
-import { executeList, summariseListRows } from '@ifc-lite/lists';
+import { executeList, listConditionMatcher, summariseListRows } from '@ifc-lite/lists';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { evaluateFilterGroupsFederated, type EvaluatorModel } from '@ifc-lite/rules';
 import { mergeResultColumns } from './merge-result-columns.js';
@@ -73,10 +73,12 @@ export async function runListFederated(
     const matchedByModel = new Map<string, Set<number>>();
     if (hasRules) {
       const canonical = new Map(options.evaluatorModels?.map((model) => [model.id, model] as const));
-      const models: EvaluatorModel[] = scoped.map(({ modelId, store, mutationView }) => ({
+      const models: EvaluatorModel[] = scoped.map(({ modelId, provider, store, mutationView }) => ({
         ...canonical.get(modelId), id: modelId, store,
         tagIds: state.modelTagAssignments.get(modelId),
         mutationView: canonical.get(modelId)?.mutationView ?? mutationView,
+        // `listCondition` rules read through this model's own Lists provider (#6190).
+        listConditions: listConditionMatcher(provider),
       }));
       const matched = await evaluateFilterGroupsFederated(models, definition.groups, {
         candidateExpressIdsByModel: candidates,

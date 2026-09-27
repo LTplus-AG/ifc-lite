@@ -240,6 +240,34 @@ evaluate any Rules groups, then pass an execution copy such as
 Passing the original definition with nonempty groups throws, even when it has
 an `expressIdsByModel` snapshot, to avoid silently returning extra rows.
 
+## Lists predicates inside Rules groups
+
+A Lists value predicate with no canonical Rules equivalent (zone assignment and
+zone volume modes, exact Container/Storey/Building/Site/Project levels,
+quantity and material presence, the model file name, the Lists attributes such
+as `Class`, `Type` and `GlobalId`, and properties inherited through
+aggregation) can sit in a `FilterGroup` as a `listCondition` rule. Its fields
+are the saved condition, verbatim, and the Lists engine answers it, so it keeps
+the same rows it keeps as a list scope while composing with other rules under
+AND or OR. Give each evaluated model the provider's matcher:
+
+```ts
+import { listConditionMatcher, type ListDataProvider } from '@ifc-lite/lists';
+import { Rule, evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import type { IfcDataStore } from '@ifc-lite/parser';
+
+declare const store: IfcDataStore;
+declare const provider: ListDataProvider;
+
+const straddlers = await evaluateFilterGroupsFederated(
+  [{ id: 'm1', store, listConditions: listConditionMatcher(provider) }],
+  [{ combinator: 'OR', rules: [
+    Rule.listCondition({ source: 'zone', psetName: 'zone-set-id', propertyName: 'Straddles', operator: 'equals', value: 'true' }),
+    Rule.name('eq', 'Core wall'),
+  ] }],
+);
+```
+
 ## Key Exports
 
 | Export | Description |
@@ -253,6 +281,7 @@ an `expressIdsByModel` snapshot, to avoid silently returning extra rows.
 | `compileNameMatcher(pattern)` / `isNamePattern(pattern)` | Exact-or-regex name matching |
 | `migrateLegacyListConditions(conditions)` | Decode saved v1 conditions into one AND `FilterGroup` and explicit unreadable rows |
 | `migrateLegacyListDefinition(definition)` | Normalize a saved v1 definition to the public `groups` shape |
+| `listConditionMatcher(provider)` | The reader Rules' `listCondition` rules need on each evaluated model |
 | `LIST_PRESETS` | Built-in schedule definitions |
 | `ENTITY_ATTRIBUTES` | The attribute names available to `attribute` columns |
 

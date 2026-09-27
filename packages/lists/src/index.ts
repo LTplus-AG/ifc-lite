@@ -32,6 +32,7 @@ export {
 // Name pattern matching (Bonsai-style `/regex/` set/property names)
 export { compileNameMatcher, isNamePattern } from './name-pattern.js';
 export { isSavedListShape, migrateLegacyListConditions, migrateLegacyListDefinition } from './legacy-condition-migration.js';
+export { listConditionMatcher } from './list-condition-matcher.js';
 
 // Column discovery
 export { discoverColumns } from './discovery.js';

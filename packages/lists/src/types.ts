@@ -6,7 +6,7 @@
 import type { ListModelTagScope } from './model-tag-scope.js';
 import type { DiscoveredColumns } from './result-types.js';
 import type { IfcTypeEnum, PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { FilterGroup } from '@ifc-lite/rules';
+import type { FilterGroup, ListConditionOperator, ListConditionSource } from '@ifc-lite/rules';
 
 // ============================================================================
 // Data Provider Interface
@@ -267,7 +267,7 @@ export interface PropertyCondition {
    *   or the straddled zones joined when the element crosses a boundary) or
    *   `Straddles` (boolean); `geometry` is the World Coordinate (#3671) — `propertyName` selects axis `X` (default) | `Y` | `Z`
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone' | 'geometry';
+  source: ListConditionSource;
   /** Property set name (for property/quantity sources); the zone-SET id for `zone`. */
   psetName?: string;
   /** Attribute / property / quantity name, the spatial level for `spatial`
@@ -281,15 +281,8 @@ export interface PropertyCondition {
   inherit?: 'type' | 'aggregation';
 }
 
-export type ConditionOperator =
-  | 'equals'
-  | 'notEquals'
-  | 'contains'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'exists';
+/** One vocabulary with the Rules `listCondition` adapter (#6190), which carries these predicates in groups. */
+export type ConditionOperator = ListConditionOperator;
 
 export type UnreadableListCondition =
   | { condition: PropertyCondition; reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value' | 'mixed-groups' }

@@ -94,6 +94,7 @@ import { defaultStoreyName, storeyMatchesRefs } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
 import { matchModelFactRule } from './filter-model-fact.js';
+import { matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
 import { readsThroughSubject } from './subject-read-options.js';
 import { matchRuleThroughSubject } from './subject-match.js';
 
@@ -127,6 +128,8 @@ export interface EvaluateOptions {
    *  UNRESOLVED and matches nothing — absent means "no tags exist", so every
    *  rule naming a tag is unresolved, never silently broad. */
   definedModelTagIds?: ReadonlySet<string>;
+  /** Answers `listCondition` rules for this model (#6190); see `EvaluatorModel.listConditions`. */
+  listConditions?: ListConditionMatcher;
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -155,23 +158,11 @@ export function evaluateFilterRules(
     selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId),
   );
   const out: FilteredElement[] = [];
-  const ctx: EvalContext = {
-    store,
-    modelId,
-    scope: {
-      filterIdentity: options.modelFilterIdentity ?? modelId,
-      tagIds: options.modelTagIds,
-      definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
-    },
-    table: store.entities,
-    options,
-    hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
-    hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
-    hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
-    hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
-    hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
-    typePsetCache: new Map(),
-  };
+  const ctx = evalContext(store, modelId, {
+    filterIdentity: options.modelFilterIdentity ?? modelId,
+    tagIds: options.modelTagIds,
+    definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
+  }, options, orderedRules, undefined, options.listConditions);
 
   for (const expressId of iterIds) {
     if (out.length >= limit) break;
@@ -219,6 +210,8 @@ export interface EvaluatorModel {
   filterIdentity?: string;
   tagIds?: ReadonlySet<string>;
   store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
+  /** Host reader for `listCondition` rules (#6190): `@ifc-lite/lists`' `listConditionMatcher(provider)`. */
+  listConditions?: ListConditionMatcher;
 }
 
 export async function evaluateFilterRulesFederated(
@@ -242,6 +235,7 @@ export async function evaluateFilterRulesFederated(
     modelId: string;
     scope: ModelScope;
     store: IfcDataStore; mutationView: MutablePropertyView | undefined; // #4946
+    listConditions: ListConditionMatcher | undefined;
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -265,7 +259,7 @@ export async function evaluateFilterRulesFederated(
     plans.push({
       modelId: m.id,
       scope,
-      store: m.store, mutationView: m.mutationView,
+      store: m.store, mutationView: m.mutationView, listConditions: m.listConditions,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -278,19 +272,7 @@ export async function evaluateFilterRulesFederated(
     if (out.length >= limit) break;
     if (signal?.aborted) throwAbort(signal);
 
-    const ctx: EvalContext = {
-      store: plan.store,
-      modelId: plan.modelId,
-      scope: plan.scope, mutationView: plan.mutationView,
-      table: plan.store.entities,
-      options,
-      hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
-      hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
-      hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
-      hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
-      hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
-      typePsetCache: new Map(),
-    };
+    const ctx = evalContext(plan.store, plan.modelId, plan.scope, options, orderedRules, plan.mutationView, plan.listConditions);
 
     // Walk the per-model iter in chunkSize-sized strides, yielding the
     // event loop between chunks. ArrayLike fast-path uses index access;
@@ -365,6 +347,20 @@ interface EvalContext {
    *  one parse per distinct type — see the AGENTS.md §2 large-loop
    *  warning this module already guards against for instance psets. */
   typePsetCache: Map<number, TypePsetList>;
+  listConditions?: ListConditionMatcher;
+}
+
+function evalContext(
+  store: IfcDataStore, modelId: string, scope: ModelScope, options: EvaluateOptions,
+  rules: readonly FilterRule[], mutationView?: MutablePropertyView, listConditions?: ListConditionMatcher,
+): EvalContext {
+  const has = (kind: FilterRule['kind']) => rules.some((r) => r.kind === kind);
+  return {
+    store, modelId, scope, mutationView, table: store.entities, options,
+    hasPropertyRule: has('property'), hasQuantityRule: has('quantity'), hasMaterialRule: has('material'),
+    hasClassificationRule: has('classification'), hasAttributeRule: has('attribute'),
+    typePsetCache: new Map(), listConditions,
+  };
 }
 
 function evaluateOneEntity(
@@ -550,6 +546,7 @@ function evaluateRule(
     case 'parent': return matchParentRule(rule, ctx.store, expressId);
     case 'group': return matchGroupRule(rule, ctx.store, expressId);
     case 'modelFact': return matchModelFactRule(rule, ctx.store);
+    case 'listCondition': return matchListConditionRule(rule, expressId, ctx.listConditions);
   }
 }
 

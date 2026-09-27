@@ -75,11 +75,17 @@ export interface CommandField<G> {
 }
 
 export interface CommitResult {
+  /**
+   * The model the ids below name, when the command wrote to another model
+   * than the session's (a split of an element selected in another federated
+   * model). Default: `tx.modelId`.
+   */
+  modelId?: string;
   created: number[];
   deleted: number[];
   /** Express ids whose mesh must be rebuilt (WP1 `requestRemesh`). */
   remesh: number[];
-  /** Express ids (in `tx.modelId`) to select after the commit. */
+  /** Express ids to select after the commit. */
   select?: number[];
 }
 

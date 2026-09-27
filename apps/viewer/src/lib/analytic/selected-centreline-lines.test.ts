@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store/index.js';
 import type { SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks.js';
@@ -140,8 +141,8 @@ describe('selected centreline overlay (#5778)', () => {
   });
 
   it('feeds exact source snapping from the same federated RTC records (#5780)', async () => {
-    const first = fixtureModel('first', { idOffset: 1_000_000 });
-    const second = fixtureModel('second', { idOffset: 2_000_000 });
+    const first = fixtureModel('first');
+    const second = fixtureModel('second');
     const zero = { x: 0, y: 0, z: 0 };
     const box = { min: zero, max: zero };
     first.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0,
@@ -152,6 +153,9 @@ describe('selected centreline overlay (#5778)', () => {
         hasLargeCoordinates: true, originalBounds: box, shiftedBounds: box } };
     const prior = useViewerStore.getState();
     try {
+      federationRegistry.clear();
+      first.idOffset = federationRegistry.registerModel('first', 42);
+      second.idOffset = federationRegistry.registerModel('second', 42);
       useViewerStore.setState(fixtureModels(first, second));
       const curves = await selectedCentrelineSnapCurves([
         selected('first', 5_000_000.001), selected('second', 101), selected('second', 101, true),
@@ -160,7 +164,7 @@ describe('selected centreline overlay (#5778)', () => {
         selected('first', 5_000_000.001), selected('second', 101),
       ], useViewerStore.getState());
       assert.equal(curves.length, 2);
-      assert.deepEqual(curves.map((curve) => curve.globalId), [1_000_042, 2_000_042]);
+      assert.deepEqual(curves.map((curve) => curve.globalId), [first.idOffset + 42, second.idOffset + 42]);
       assert.deepEqual(curves.map((curve) => curve.identity.modelId), ['first', 'second']);
       assert.ok(Math.abs(curves[0].pointAt(0.5)!.x - 0.002) < 1e-9);
       assert.ok(Math.abs(curves[1].pointAt(0.5)!.x - 1.001) < 1e-9);
@@ -169,6 +173,7 @@ describe('selected centreline overlay (#5778)', () => {
       assert.equal((await selectedCentrelineSnapCurves([selected('first', 5_000_000.001)],
         useViewerStore.getState(), { modelId: 'second', expressId: 42, occurrenceIndex: 0, segmentIndex: 0 })).length, 0);
     } finally {
+      federationRegistry.clear();
       useViewerStore.setState(prior);
     }
   });

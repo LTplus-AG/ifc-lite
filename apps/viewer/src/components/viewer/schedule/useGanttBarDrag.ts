@@ -293,7 +293,7 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe
     removeCancelRef.current = registerKeyboardCommand('schedule.cancelDrag', () => {
       detach();
       endDrag(false);
-    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeGesture });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.pointerDrag });
 
     setLive({
       taskGlobalId, mode,

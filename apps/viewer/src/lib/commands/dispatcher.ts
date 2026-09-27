@@ -10,8 +10,8 @@ import { KEY_COMMANDS, type KeyCommandId, type KeyContext } from './keyboard-com
 export type KeyboardLayer = 'global' | 'tool' | 'popover' | 'modal';
 export type CommandRun = (event: KeyboardEvent) => boolean | void;
 
-/** An active gesture must precede a persistent drawing selection in the same layer. */
-export const KEYBOARD_PRIORITY = { drawingMeasure: 1, activeGesture: 2 } as const;
+/** More immediate work precedes an older, still-mounted owner in the same layer. */
+export const KEYBOARD_PRIORITY = { drawingMeasure: 1, activeOverlay: 2, pointerDrag: 3 } as const;
 
 export interface RunnableKeyBinding {
   readonly id: string;

@@ -10,6 +10,7 @@ import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import { cleanup, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { useSpaceSketchKeys } from '@/components/viewer/tools/space-sketch/useSpaceSketchKeys.js';
 import { useGanttBarDrag } from './useGanttBarDrag.js';
 
 const DAY = 86_400_000;
@@ -35,15 +36,25 @@ function Harness() {
     <text data-testid="live-task">{drag.live.taskGlobalId ?? 'none'}</text></svg>;
 }
 
+function SketchProbe({ onAbort }: { onAbort: () => void }) {
+  useSpaceSketchKeys({
+    undo: () => {}, redo: () => {}, closePopovers: () => false,
+    abortCurrentOp: () => { onAbort(); return true; }, closeNow: () => {},
+    needsConfirm: false, setStatus: () => {}, commitDraw: null, onModifiers: () => {},
+  });
+  return null;
+}
+
 it('#5841 Gantt Escape aborts the active drag transaction before global Escape', () => {
   useViewerStore.setState({ scheduleData: data, scheduleUndoStack: [], scheduleRedoStack: [],
-    scheduleTransaction: { active: false, label: '', pushedAt: -1 } });
+    scheduleTransaction: { active: false, label: '', pushedAt: -1 }, activeTool: 'spaceSketch' });
   let globalEscapes = 0;
   let drawingEscapes = 0;
+  let sketchAborts = 0;
   const unregisterDrawing = registerKeyboardCommand('drawing2d.cancel', () => { drawingEscapes++; });
   const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
   try {
-    const ui = render(<Harness />);
+    const ui = render(<><SketchProbe onAbort={() => { sketchAborts++; }} /><Harness /></>);
     const bar = ui.querySelector('[data-testid="task-bar"]');
     assert.ok(bar);
     act(() => { bar.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100 })); });
@@ -55,6 +66,7 @@ it('#5841 Gantt Escape aborts the active drag transaction before global Escape',
     press(window, 'Escape');
     assert.equal(globalEscapes, 0);
     assert.equal(drawingEscapes, 0, 'a persisted drawing selection cannot intercept active Gantt drag');
+    assert.equal(sketchAborts, 0, 'the active pointer transaction cancels before the mounted viewport overlay');
     assert.equal(useViewerStore.getState().scheduleTransaction.active, false);
     assert.equal(useViewerStore.getState().scheduleData?.tasks[0]?.taskTime?.scheduleStart, task.taskTime?.scheduleStart);
     assert.equal(useViewerStore.getState().scheduleUndoStack.length, 0);

@@ -71,7 +71,7 @@ export function useSpaceSketchKeys({
           ? 'Esc again to close without creating (use Confirm to create).'
           : 'Press Esc again to close.');
       }
-    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeGesture });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay });
     const removeCommit = registerKeyboardCommand('spaceSketch.commit', () => {
       if (!commitDraw) return false;
       commitDraw();

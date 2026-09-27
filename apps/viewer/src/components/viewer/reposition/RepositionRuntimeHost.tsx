@@ -75,7 +75,7 @@ export function RepositionRuntimeHost() {
   useEffect(() => {
     const removeCancel = registerKeyboardCommand('reposition.cancel', () => {
       useViewerStore.getState().closeReposition();
-    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeGesture });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay });
     const eligibleTarget = (event: KeyboardEvent) => {
       const target = event.target;
       return !isTextEntryTarget(event) && !(target instanceof HTMLElement && target.closest('button, summary, a[href], [role=button]'));

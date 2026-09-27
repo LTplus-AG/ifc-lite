@@ -15,7 +15,7 @@ import type { FilterRule } from '@ifc-lite/rules';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ZoneSet } from '@/lib/zones';
 import type { ListConditionValues, StoreWithView } from './list-builder-discovery';
-import { describeUneditable, isEditableCondition, operatorsFor, type ConditionSource } from './list-compatibility-condition';
+import { describeUneditable, isEditableCondition, operatorsFor, type ConditionSource } from '@/lib/lists/compatibility-condition';
 import { useLegacyListFilterOptions } from './use-legacy-list-filter-options';
 
 const NO_OPTIONS: readonly string[] = [];
@@ -93,6 +93,7 @@ export function LegacyListFilters({ rows, onChange, onPromote, discovered, store
     <div className="mt-3 space-y-2">
       <p className="text-xs font-medium">{t('lists.builder.compatibilityFilters')}</p>
       <p className="text-xs text-muted-foreground">{t('lists.builder.compatibilityFiltersHint')}</p>
+      {editable.length > 0 && <p role="status" className="text-xs text-amber-600 dark:text-amber-400">{t('lists.builder.compatibilityActiveWarning')}</p>}
       <ConditionsBody
         conditions={editable} discovered={discovered} values={values}
         spatialNames={spatialNames} modelNames={modelNames} zoneSets={zoneSets}

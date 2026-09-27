@@ -270,7 +270,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     registerLocale('list-builder-legacy-pseudo', PSEUDO);
     act(() => setLocale('list-builder-legacy-pseudo'));
     const after = readableStrings(container);
-    assertCoverage(english, after, ['lists.builder.compatibilityFilters', 'lists.builder.compatibilityFiltersHint', 'lists.builder.compatibilityPresetAriaLabel']);
+    assertCoverage(english, after, ['lists.builder.compatibilityFilters', 'lists.builder.compatibilityFiltersHint', 'lists.builder.compatibilityActiveWarning', 'lists.builder.compatibilityPresetAriaLabel']);
     act(() => setLocale('en'));
 
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);

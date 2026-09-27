@@ -211,6 +211,8 @@ describe('runListFederated (#5142)', () => {
     const malformed = [
       null,
       { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'invalid-value' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'unsupported-source' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A' }, reason: 'future-reason' },
     ];
     for (const row of malformed) {
       const def = definition({ groups: [{ rules: [], combinator: 'AND' }],

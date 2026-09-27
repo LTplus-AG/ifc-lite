@@ -42,7 +42,7 @@ import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { LegacyListFilters } from './ListBuilder.legacyFilters';
-import { isEditableCondition } from './list-compatibility-condition';
+import { isEditableCondition } from '@/lib/lists/compatibility-condition';
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {

@@ -8,7 +8,7 @@ import type { ListDataProvider, UnreadableListCondition } from '@ifc-lite/lists'
 import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import { discoverFilterStoreys } from '@/lib/search/filter-schema';
 import { discoverConditionValues, type ListConditionValues, type StoreWithView } from './list-builder-discovery';
-import { isEditableCondition } from './list-compatibility-condition';
+import { isEditableCondition } from '@/lib/lists/compatibility-condition';
 
 /** The provider-only List filter editor keeps suggestions from every loaded
  * model. The shared Rules editor samples the active model for its own rules. */

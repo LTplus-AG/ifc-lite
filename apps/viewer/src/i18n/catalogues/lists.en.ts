@@ -207,6 +207,7 @@ export const listsEn = {
   'lists.builder.unreadableWarning': 'These saved filters could not be converted. Remove malformed entries before running; other entries still narrow results.',
   'lists.builder.compatibilityFilters': 'List-specific filters',
   'lists.builder.compatibilityFiltersHint': 'These filters narrow every group and keep the Lists comparison modes.',
+  'lists.builder.compatibilityActiveWarning': 'These filters have no lossless Rules equivalent yet. Lists still applies them to every result.',
   'lists.builder.compatibilityPresetAriaLabel': 'List filter kind',
   'lists.builder.compatibilityPreset.zone': 'Zone assignment',
   'lists.builder.compatibilityPreset.spatial': 'Exact spatial level',

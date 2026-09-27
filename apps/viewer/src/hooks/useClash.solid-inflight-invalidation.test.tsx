@@ -6,7 +6,7 @@
  * The JOIN between the `clashSolidRequestSeq` producers and the consumer that
  * reads it.
  *
- * Four sibling suites pin the PRODUCER side — that Home reset, the clash tour
+ * Four sibling suites pin the PRODUCER side — that Show all reset, the clash tour
  * cleanup, `clearClashFocus` and the model-lifecycle teardowns each bump
  * `clashSolidRequestSeq`:
  *
@@ -72,7 +72,7 @@ import type { Clash, ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 
 import { useViewerStore, type FederatedModel } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { CLASH_TOUR } from '@/lib/tours/tours/clash';
 import { useClash } from './useClash.js';
 
@@ -286,17 +286,17 @@ afterEach(async () => {
 // ─── RED: a compute that lands after its focus was torn down paints nothing ──
 
 describe('an intersection-solid compute in flight across a teardown must not paint', () => {
-  it('Home / "Show all" mid-compute: the landing compute must not paint the solid', async (t) => {
+  it('Show all mid-compute: the landing compute must not paint the solid', async (t) => {
     if (!ensureWasm(t)) return;
     const clash = await seedAndRun();
-    const unsub = tearDownMidCompute(() => resetVisibilityForHomeFromStore('show_all'));
+    const unsub = tearDownMidCompute(() => showAllFromStore('show_all'));
 
     await focusAndSettle(clash);
     unsub();
 
     assert.equal(useViewerStore.getState().clashSelectedId, null,
-      'setup sanity: the Home reset really ran while the compute was in flight');
-    assertNoSolidPainted('Home reset mid-compute');
+      'setup sanity: the Show all reset really ran while the compute was in flight');
+    assertNoSolidPainted('Show all reset mid-compute');
   });
 
   it('clash-tour cleanup mid-compute: the landing compute must not paint the solid', async (t) => {

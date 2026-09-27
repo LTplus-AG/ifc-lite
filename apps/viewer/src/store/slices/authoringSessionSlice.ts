@@ -27,8 +27,7 @@ import {
   getCommandRuntime,
   type CommandPhase,
 } from '@/lib/commands/modeling/runtime';
-import type { CommandId, WorkplaneSpec } from '@/lib/commands/modeling/types';
-import type { SnapProfileId } from '@/lib/snap/types';
+import type { CommandId, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
 
 export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';

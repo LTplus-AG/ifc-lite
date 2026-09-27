@@ -7,8 +7,8 @@
  *
  * The basket is an incremental isolation set. Users can build it from
  * selection / visible scene / hierarchy sources via presentation controls:
- *   = (set)    — replace basket with source set
- *   + (add)    — add source set to basket
+ *   Set        — replace basket with source set
+ *   = / +      — add source set to basket
  *   − (remove) — remove source set from basket
  *
  * When the basket is non-empty, only basket entities are visible (isolation).
@@ -143,7 +143,7 @@ export interface PinboardSlice {
   showPinboard: () => void;
 
   // Basket actions (semantic aliases that also sync isolation)
-  /** = Set basket to exactly these entities and isolate them */
+  /** Set basket to exactly these entities and isolate them */
   setBasket: (refs: EntityRef[]) => void;
   /** + Add entities to basket and update isolation */
   addToBasket: (refs: EntityRef[]) => void;
@@ -239,7 +239,7 @@ export const createPinboardSlice: StateCreator<
   // Basket actions (= + −)
   // These are the primary API for the new basket-based isolation UX.
 
-  /** = Set basket to exactly these entities and isolate them */
+  /** Set basket to exactly these entities and isolate them */
   setBasket: (refs) => {
     if (refs.length === 0) {
       set((state) => ({ pinboardEntities: new Set(), ...basketReleaseIsolation(state), activeBasketViewId: null }));

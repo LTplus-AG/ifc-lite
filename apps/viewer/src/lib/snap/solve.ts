@@ -48,7 +48,10 @@ export function solveSnap(
 
   const candidates: SnapCandidate[] = [];
   const wanted = new Set(p.sources);
-  for (const s of sources) if (wanted.has(s.id)) s.collect(q, reach, candidates);
+  // Collect around the constrained cursor: the radius is measured from it, so a
+  // radius-honouring source queried at the raw cursor would miss the targets on the lock.
+  const cq: SnapQuery = locked ? { ...q, cursor } : q;
+  for (const s of sources) if (wanted.has(s.id)) s.collect(cq, reach, candidates);
   inferCandidates(q, cursor, reach, candidates, candidates);
 
   const tiers = locked ? (p.lockedTiers ?? p.tiers) : p.tiers;

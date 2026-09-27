@@ -6,8 +6,10 @@
  * Inline geometry editor for the Properties panel. Surfaces the
  * three IFC-level mutations every authoring user reaches for:
  *
- *   - Move — numeric XYZ for the entity's storey-local origin, with
- *     ±step quick buttons on each axis.
+ *   - Move — numeric XYZ in metres for the entity's storey-local
+ *     origin, with ±step quick buttons on each axis. The slice converts
+ *     to and from the file's length unit, so a millimetre model reads
+ *     and nudges in metres too (#6233).
  *   - Duplicate — clone the entity along a picked axis (reuses
  *     `MutationSlice.duplicateEntity` so the new geometry shares the
  *     existing representation reference).
@@ -73,6 +75,15 @@ function useEntityCoordinates(
 
 const STEP_PRESETS = [0.1, 0.5, 1];
 
+/**
+ * Position readout in metres at millimetre precision (#6233). The slice's
+ * placement actions already speak metres whatever the file's length unit,
+ * so this only trims float noise: `-5.618216808585` reads `-5.618`.
+ */
+export function formatMetres(value: number): string {
+  return String(Number(value.toFixed(3)) || 0);
+}
+
 export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEditCardProps) {
   const { t } = useTranslation();
   const setEntityPosition = useViewerStore((s) => s.setEntityPosition);
@@ -95,22 +106,24 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   // clobber an in-progress edit when the user types into X then the
   // mutationVersion bumps from an unrelated mutation.
   const seededForRef = useRef<string>('');
+  // The rounded text each input was seeded with: an axis the user left
+  // untouched applies its exact coordinate, so "Apply XYZ" after editing
+  // only X doesn't also snap Y and Z to the nearest millimetre.
+  const seededTextRef = useRef<string[]>([]);
 
   useEffect(() => {
     const key = `${modelId}:${entityId}:${coordinates?.join(',') ?? 'none'}`;
     if (seededForRef.current === key) return;
     seededForRef.current = key;
-    if (coordinates) {
-      setX(coordinates[0].toString());
-      setY(coordinates[1].toString());
-      setZ(coordinates[2].toString());
-    } else {
-      setX(''); setY(''); setZ('');
-    }
+    const text = coordinates ? coordinates.map(formatMetres) : ['', '', ''];
+    seededTextRef.current = text;
+    setX(text[0]); setY(text[1]); setZ(text[2]);
   }, [modelId, entityId, coordinates]);
 
   const applyAbsolute = useCallback(() => {
-    const parsed: [number, number, number] = [parseFloat(x), parseFloat(y), parseFloat(z)];
+    const parsed = [x, y, z].map((text, axis) =>
+      coordinates && text === seededTextRef.current[axis] ? coordinates[axis] : parseFloat(text),
+    ) as [number, number, number];
     if (parsed.some((n) => !Number.isFinite(n))) {
       toast.error(t('geometryExport.editCard.enterNumericError'));
       return;
@@ -120,8 +133,8 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
       toast.error(t('geometryExport.editCard.moveFailedError', { reason: result.reason }));
       return;
     }
-    toast.success(t('geometryExport.editCard.movedSuccess', { coordinates: parsed.map((n) => n.toFixed(2)).join(', ') }));
-  }, [modelId, entityId, x, y, z, setEntityPosition, t]);
+    toast.success(t('geometryExport.editCard.movedSuccess', { coordinates: parsed.map(formatMetres).join(', ') }));
+  }, [modelId, entityId, coordinates, x, y, z, setEntityPosition, t]);
 
   const nudge = useCallback(
     (axis: 0 | 1 | 2, sign: 1 | -1) => {

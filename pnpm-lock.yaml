@@ -1032,6 +1032,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

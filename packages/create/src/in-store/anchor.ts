@@ -100,3 +100,31 @@ export function toNativePoint2(anchor: SpatialAnchor, p: readonly [number, numbe
 export function toNativePoint3(anchor: SpatialAnchor, p: readonly [number, number, number]): [number, number, number] {
   return [toNativeLength(anchor, p[0]), toNativeLength(anchor, p[1]), toNativeLength(anchor, p[2])];
 }
+
+/** The host an opening voids: which placement frame it is cut in, and how. */
+export type HostKind = 'wall' | 'slab';
+
+/**
+ * Axis-aligned bounds of a host's Body geometry, expressed in the host's own
+ * `ObjectPlacement` frame and the file's native length unit. For a wall that
+ * frame is the usual `X` along the axis, `Y` across the thickness, `Z` up; for
+ * a slab `Z` spans the thickness.
+ */
+export interface HostBounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+/**
+ * A `SpatialAnchor` for an element that is cut into (or fills an opening in)
+ * an existing host. The storey fields are the HOST's containing storey, so a
+ * filling lands in the same storey as the element it is hosted by.
+ */
+export interface HostAnchor extends SpatialAnchor {
+  hostId: number;
+  hostKind: HostKind;
+  /** The host's own IfcLocalPlacement; openings are placed relative to it. */
+  hostPlacementId: number;
+  /** `null` when the host's Body is not a shape the resolver can bound. */
+  hostBounds: HostBounds | null;
+}

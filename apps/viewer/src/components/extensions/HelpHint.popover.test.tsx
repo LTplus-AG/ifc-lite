@@ -15,6 +15,8 @@ import { act } from 'react';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, cleanup, click, press, render, waitFor } from '@/test/render.js';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { useViewerStore } from '@/store';
 import { HelpHint } from './HelpHint.js';
 
 afterEach(cleanup);
@@ -56,16 +58,33 @@ describe('HelpHint popover (#5817)', () => {
   });
 
   it('opens on trigger click and closes on Escape, returning focus to the trigger', async () => {
-    const { trigger } = mount();
-    click(trigger);
-    assert.match(document.body.textContent ?? '', /Hint body text/);
+    const priorSelection = useViewerStore.getState().selectedEntityId;
+    const priorSelections = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
+    let toolCancels = 0;
+    let globalEscapes = 0;
+    const removeTool = registerKeyboardCommand('measure.cancel', () => { toolCancels++; });
+    const removeGlobal = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
+    try {
+      const { trigger } = mount();
+      click(trigger);
+      assert.match(document.body.textContent ?? '', /Hint body text/);
 
-    press(document.activeElement ?? trigger, 'Escape');
-    await waitFor(
-      () => !(document.body.textContent ?? '').includes('Hint body text'),
-      'Escape closes the popover',
-    );
-    await waitFor(() => document.activeElement === trigger, 'focus returns to the trigger on Escape');
+      press(document.activeElement ?? trigger, 'Escape');
+      await waitFor(
+        () => !(document.body.textContent ?? '').includes('Hint body text'),
+        'Escape closes the popover',
+      );
+      await waitFor(() => document.activeElement === trigger, 'focus returns to the trigger on Escape');
+      assert.equal(toolCancels, 0, 'the hint popover owns Escape before the tool');
+      assert.equal(globalEscapes, 0, 'the global selection handler does not run');
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
+    } finally {
+      removeTool();
+      removeGlobal();
+      useViewerStore.setState({ selectedEntityId: priorSelection, selectedEntityIds: priorSelections });
+    }
   });
 
   it('closes on outside click', async () => {

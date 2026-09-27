@@ -94,6 +94,16 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
       addRoof: ['model.create'],
       addPlate: ['model.create'],
       addMember: ['model.create'],
+      addOpening: ['model.create'],
+      addHostedDoor: ['model.create'],
+      addHostedWindow: ['model.create'],
+      addElementType: ['model.create'],
+      addMaterial: ['model.create'],
+      addMaterialLayerSet: ['model.create'],
+      addMaterialLayerSetUsage: ['model.create'],
+      // Also rewrites or removes existing IfcRel* rows the objects move out of.
+      assignType: ['model.create', 'model.mutate:*'],
+      assignMaterial: ['model.create', 'model.mutate:*'],
     },
   },
   viewer: {

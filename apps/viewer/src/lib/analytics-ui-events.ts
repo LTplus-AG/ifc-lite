@@ -20,8 +20,8 @@ export type UiSurface = 'ribbon' | 'classic' | 'rail' | 'palette' | 'shortcut';
  *  drawing); it is not a user action, so nothing is reported. */
 export type PanelOpenSource = UiSurface | 'programmatic';
 
-/** Esc no longer resets the view (#5595), so it is not a trigger. */
-export type ViewResetTrigger = 'home' | 'a' | 'show_all';
+/** Esc (#5595) and camera Home (#5855) do not reset visibility. */
+export type ViewResetTrigger = 'a' | 'show_all';
 
 /** `esc` = the Escape key; `switch` = anything else that picked another tool
  *  or Select (including a tool's own toggle, e.g. K for Split). */
@@ -79,7 +79,7 @@ export const isSdkProperty = (key: string): boolean =>
 const ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
   surface: new Set<string>(['ribbon', 'classic', 'rail', 'palette', 'shortcut', 'load_error', 'tour_invite', 'ribbon_notice']),
   via: new Set<string>(['esc', 'switch']),
-  trigger: new Set<string>(['home', 'a', 'show_all']),
+  trigger: new Set<string>(['a', 'show_all']),
   reason: new Set<string>(['unsupported_format', 'unrecognized_format']),
   action: new Set<string>(['dismiss', 'start_tour', 'keep_classic']),
 };

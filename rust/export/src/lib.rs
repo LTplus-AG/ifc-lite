@@ -38,6 +38,7 @@ mod merged;
 mod mesh_input;
 mod model;
 mod quantity_analysis;
+mod quantity_analysis_derived;
 mod obj;
 mod relationships;
 mod openings;
@@ -118,6 +119,8 @@ pub use model::{
     stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
     ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue,
 };
+pub use quantity_analysis_derived::{analyze_quantities, DerivedQuantity,
+    ProductQuantityAnalysis, QuantityAnalysis, QuantitySourceOccurrence};
 pub use quantity_analysis::{analyze_authored_quantities, AuthoredQuantity,
     AuthoredQuantityAnalysis, ProductQuantities, QuantityConflict, QuantityUnit};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};

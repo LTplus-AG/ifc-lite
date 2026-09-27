@@ -293,6 +293,32 @@ reported and its type-authored quantities are refused. Conflicting
 `IfcRelDefinesByType` assignments likewise refuse type inheritance for that
 product while preserving its occurrence-authored observations.
 
+### `quantity_analysis(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Join authored `IfcElementQuantity` observations with exact analytic swept-disk
+and extrusion source occurrences. `products` is keyed by product STEP ID;
+`authored` retains exact names, IDs, units, origin and conflicts. Each entry in
+`sources` keeps its canonical source key, solid ID, mapping path, ordinal,
+status and nominal values with formula, origin, unit and limitation. Swept-disk centreline
+and section estimates use world metres; extrusion depth and profile estimates
+remain in raw IFC file units because an occurrence transform may scale them.
+`Depth` is an authored solid parameter, not an `IfcElementQuantity` value.
+
+```python
+view = ifclite_geom.quantity_analysis(ifc_bytes, ids={50})
+for source in view["products"][50]["sources"]:
+    for estimate in source["quantities"]:
+        print(source["solid_id"], estimate["name"], estimate["value"], estimate["unit"])
+```
+
+`product_count` counts IFC products, `source_occurrence_count` counts uses of
+analytic solids, and `unique_source_count` counts distinct source definitions.
+Mapped products can share one source. `product_total` is always `None` with an
+`aggregate_diagnostic`: source estimates exclude voids, CSG results, overlap,
+self-intersection and cutting allowances. They cannot establish a physical
+part count or final material quantity. Unsupported and source-modified sources
+retain explicit status; extraction failures appear in `diagnostics`.
+
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

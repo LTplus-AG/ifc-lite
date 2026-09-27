@@ -282,6 +282,7 @@ const straddlers = await evaluateFilterGroupsFederated(
 | `migrateLegacyListConditions(conditions)` | Decode saved v1 conditions into one AND `FilterGroup` and explicit unreadable rows |
 | `migrateLegacyListDefinition(definition)` | Normalize a saved v1 definition to the public `groups` shape |
 | `listConditionMatcher(provider)` | The reader Rules' `listCondition` rules need on each evaluated model |
+| `listConditionValueKind(source, propertyName)` | The kind of value the engine compares for a condition (number, boolean, text, several texts, or any), for offering matching operators |
 | `LIST_PRESETS` | Built-in schedule definitions |
 | `ENTITY_ATTRIBUTES` | The attribute names available to `attribute` columns |
 

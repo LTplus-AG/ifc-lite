@@ -5,7 +5,7 @@
 /** The field vocabulary of a Lists value predicate (#6190), the one place the
  * List-value editor reads which levels, zone modes, axes and operators exist.
  * Stored spellings are the Lists engine's; changing one changes saved lists. */
-import type { ConditionOperator, PropertyCondition } from '@ifc-lite/lists';
+import { listConditionValueKind, type ConditionOperator, type PropertyCondition } from '@ifc-lite/lists';
 import type { ZoneSet } from '@/lib/zones';
 
 export type ConditionSource = PropertyCondition['source'];
@@ -26,15 +26,16 @@ export const ZONE_MODES = [ZONE_MODE_NAME, ZONE_MODE_STRADDLES, ZONE_MODE_VOLUME
 
 export const GEOMETRY_AXES = ['X', 'Y', 'Z'] as const;
 
-/** The operators that mean something for `source`; the engine evaluates every one. */
-export function operatorsFor(source: ConditionSource): ConditionOperator[] {
-  switch (source) {
-    case 'quantity':
-    case 'geometry': return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'property': return ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'material':
-    case 'classification': return ['contains', 'equals', 'notEquals', 'exists'];
-    default: return ['equals', 'notEquals', 'contains', 'exists'];
+/** The operators that can match the value the Lists engine reads for this
+ *  source and mode (`listConditionValueKind`): a zone volume offers
+ *  comparisons, Straddles only equality and presence. */
+export function operatorsFor(source: ConditionSource, mode = ''): ConditionOperator[] {
+  switch (listConditionValueKind(source, mode)) {
+    case 'number': return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
+    case 'any': return ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
+    case 'texts': return ['contains', 'equals', 'notEquals', 'exists'];
+    case 'boolean': return ['equals', 'notEquals', 'exists'];
+    case 'text': return ['equals', 'notEquals', 'contains', 'exists'];
   }
 }
 

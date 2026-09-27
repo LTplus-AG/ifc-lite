@@ -43,6 +43,11 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
   const options = useContext(ListValueOptionsContext);
   const zoneSets = options?.zoneSets ?? [];
   const set = (patch: Partial<PropertyCondition>) => onChange(withCondition({ ...rule, ...patch }));
+  /** A new mode can read a different kind of value (a zone volume is a number), so its operators change too. */
+  const setMode = (propertyName: string, value: PropertyCondition['value'] = rule.value) => {
+    const allowed = operatorsFor(rule.source, propertyName);
+    set({ propertyName, value, operator: allowed.includes(rule.operator) ? rule.operator : allowed[0]! });
+  };
 
   const sourceLabels: Record<ConditionSource, string> = {
     zone: t('lists.builder.source.zone'), spatial: t('lists.builder.source.spatial'),
@@ -64,7 +69,7 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
   const changeSource = (source: ConditionSource) => {
     const next = defaultConditionFor(source, zoneSets);
     // Keep the comparison when it still means something for the new source.
-    onChange(withCondition(operatorsFor(source).includes(rule.operator) ? { ...next, operator: rule.operator } : next));
+    onChange(withCondition(operatorsFor(source, next.propertyName).includes(rule.operator) ? { ...next, operator: rule.operator } : next));
   };
 
   const isSet = rule.source === 'property' || rule.source === 'quantity';
@@ -106,7 +111,7 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
               : isZoneVolumeMode(mode) ? t('lists.builder.valuePlaceholder.volume')
                 : volumeMode ? t('lists.builder.valuePlaceholder.zoneBreakdown') : t('lists.builder.valuePlaceholder.zoneName');
 
-  const ops: ConditionOperator[] = operatorsFor(rule.source);
+  const ops: ConditionOperator[] = operatorsFor(rule.source, rule.propertyName);
   if (!ops.includes(rule.operator)) ops.push(rule.operator);
   const levels: readonly string[] = SPATIAL_LEVELS.includes(rule.propertyName as (typeof SPATIAL_LEVELS)[number])
     ? SPATIAL_LEVELS : [...SPATIAL_LEVELS, rule.propertyName];
@@ -131,7 +136,7 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
             {rule.psetName && !zoneSet && <option value={rule.psetName}>{t('lists.builder.missingZoneSet', { id: rule.psetName })}</option>}
             {zoneSets.map((zs) => <option key={zs.id} value={zs.id}>{zs.name}</option>)}
           </select>
-          <select value={mode} onChange={(e) => set({ propertyName: e.target.value, value: '' })}
+          <select value={mode} onChange={(e) => setMode(e.target.value, '')}
             aria-label={t('lists.builder.zoneDisplayModeAriaLabel')} className={SELECT_CLASS}>
             {modes.map((m) => <option key={m} value={m}>{zoneModeLabels[m] ?? m}</option>)}
           </select>
@@ -139,21 +144,21 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
       )}
 
       {rule.source === 'spatial' && (
-        <select value={rule.propertyName} onChange={(e) => set({ propertyName: e.target.value, value: '' })}
+        <select value={rule.propertyName} onChange={(e) => setMode(e.target.value, '')}
           aria-label={t('lists.builder.spatialLevelAriaLabel')} className={SELECT_CLASS}>
           {levels.map((level) => <option key={level} value={level}>{levelLabels[level] ?? level}</option>)}
         </select>
       )}
 
       {rule.source === 'attribute' && (
-        <select value={rule.propertyName} onChange={(e) => set({ propertyName: e.target.value })}
+        <select value={rule.propertyName} onChange={(e) => setMode(e.target.value)}
           aria-label={t('lists.builder.attributeAriaLabel')} className={SELECT_CLASS}>
           {attributes.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       )}
 
       {rule.source === 'geometry' && (
-        <select value={rule.propertyName} onChange={(e) => set({ propertyName: e.target.value })}
+        <select value={rule.propertyName} onChange={(e) => setMode(e.target.value)}
           aria-label={t('lists.builder.axisAriaLabel')} className={SELECT_CLASS}>
           {(GEOMETRY_AXES as readonly string[]).concat((GEOMETRY_AXES as readonly string[]).includes(rule.propertyName) ? [] : [rule.propertyName])
             .map((axis) => <option key={axis} value={axis}>{axis}</option>)}

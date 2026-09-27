@@ -113,6 +113,34 @@ describe('List value rules in the Lists builder (#6190)', () => {
     }
   });
 
+  it('offers the comparisons each zone mode reads, and authors volume > 1.8 that runs like executeList (review finding on #6250)', async () => {
+    const pairs = await models();
+    let saved: ListDefinition | undefined;
+    const container = mount(pairs, initial, (d) => { saved = d; });
+    const row = addListValue(container);
+    choose(select(row, 'List value source'), 'zone');
+    const opsNow = () => [...(select(row, 'Operator')?.options ?? [])].map((o) => o.value);
+    assert.deepEqual(opsNow(), ['equals', 'notEquals', 'contains', 'exists'], 'the zone name is text');
+    choose(select(row, 'Zone display mode'), 'Straddles');
+    assert.deepEqual(opsNow(), ['equals', 'notEquals', 'exists'], 'Straddles is a boolean');
+    choose(select(row, 'Zone display mode'), 'Volume breakdown (mesh)');
+    assert.deepEqual(opsNow(), ['equals', 'notEquals', 'contains', 'exists'], 'the breakdown is text');
+    choose(select(row, 'Zone display mode'), 'Volume (mesh)');
+    assert.deepEqual(opsNow(), ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'], 'a volume is a number');
+    choose(select(row, 'Operator'), 'gt');
+    typeInto(row.querySelector<HTMLInputElement>('input[placeholder="volume"]')!, '1.8');
+    click(button(container, 'Save'));
+    const volume: PropertyCondition = { source: 'zone', psetName: ZONE_SET.id, propertyName: 'Volume (mesh)', operator: 'gt', value: '1.8' };
+    assert.deepEqual(saved?.groups, [{ combinator: 'AND', rules: [{ kind: 'listCondition', ...volume }] }]);
+    for (const scope of [pairs.slice(0, 1), pairs]) {
+      const result = await runListFederated(saved!, scope, { ...state, models: new Map(scope.map(({ modelId }) => [modelId, {}])) });
+      const expected = scope.flatMap(({ modelId, provider }) => executeList({ ...initial, legacyConditions: [volume] }, provider, modelId).rows);
+      const keys = (rows: ReadonlyArray<{ modelId: string; entityId: number }>) => rows.map((r) => `${r.modelId}:${r.entityId}`).sort();
+      assert.deepEqual(keys(result.rows), keys(expected));
+      assert.deepEqual(keys(result.rows), scope.length === 1 ? ['m1:10'] : ['m1:10', 'm2:35'], 'only home-zone volumes above 1.8');
+    }
+  });
+
   it('keeps a zone rule on a deleted set, named as missing, instead of moving it to another set', async () => {
     const pairs = await models();
     const gone: FilterRule = { kind: 'listCondition', source: 'zone', psetName: 'zs-gone', propertyName: 'Zone', operator: 'equals', value: 'Zone A' };

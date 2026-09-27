@@ -49,12 +49,13 @@ import type {
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
-import { createCostStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createCostStoreBackend, createModellingStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
 import { withCostMutationTracking } from './store-adapter-cost.js';
 import { withStructuralMutationTracking } from './store-adapter-structural.js';
+import { withModellingMutationTracking } from './store-adapter-modelling.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 import type { AuthoredElement } from '../../store/slices/mutationSlice.js';
@@ -217,6 +218,12 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     return { modelId: normalized, store: dataStore, editor, mutationView, ownerHistoryId };
   };
 
+  const resolveEditorAndStore = (modelId: string) => {
+    const editor = getEditor(modelId);
+    const dataStore = resolveDataStore(modelId);
+    return editor && dataStore ? { editor, dataStore } : null;
+  };
+
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
       assertCanEdit('addEntity', modelId);
@@ -358,20 +365,15 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addMember', modelId, storeyExpressId, { kind: 'member', params: params as MemberInStoreParams },
         (editor, anchor) => addMemberToStore(editor, anchor, params as MemberInStoreParams).memberId);
     },
-    ...withCostMutationTracking(createCostStoreBackend(resolveStoreModel, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store, (modelId) => {
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      return editor && dataStore ? { editor, dataStore } : null;
-    }),
+    ...withCostMutationTracking(createCostStoreBackend(resolveStoreModel, costAdapter, modelId => store.getState().markCostRelationshipMutation(modelId)), store, resolveEditorAndStore),
     // Structural authoring (#5167 S.1). Same shared resolver as cost, so an
     // entity authored through either surface is visible to the other, and the
     // same collab gate + room mirroring — spreading the factory raw would let
     // a read-only participant mutate the local overlay and would leave the
     // authored entities unpublished in a shared room.
-    ...withStructuralMutationTracking(createStructuralStoreBackend(resolveStoreModel), store, (modelId) => {
-      const editor = getEditor(modelId);
-      const dataStore = resolveDataStore(modelId);
-      return editor && dataStore ? { editor, dataStore } : null;
-    }),
+    ...withStructuralMutationTracking(createStructuralStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
+    // Openings and hosted doors/windows (#6232): same resolver, gate and room
+    // mirroring; see `store-adapter-modelling.ts` for the undo policy.
+    ...withModellingMutationTracking(createModellingStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
   };
 }

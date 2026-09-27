@@ -21,11 +21,11 @@ const DEG = Math.PI / 180;
 
 export const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 export const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
-export const cross = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
+const cross = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
 export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /** Unit direction at `deg`, exact for multiples of 90°. */
-export function unitAt(deg: number): Vec2 {
+function unitAt(deg: number): Vec2 {
   const r = ((deg % 360) + 360) % 360;
   if (r === 0) return [1, 0];
   if (r === 90) return [0, 1];
@@ -58,7 +58,7 @@ export function buildLocus(q: SnapQuery, p: SnapProfile): Locus {
     dir = axis === 'u' ? [1, 0] : [0, 1];
   } else if (q.modifiers.shift) {
     const step = p.angleStepDeg ?? 90;
-    dir = quantisedDir(q.cursor, a, step > 0 ? step : 90);
+    dir = quantisedDir(q.cursor, a, Number.isFinite(step) && step > 0 ? step : 90);
   }
   if (dir && hasLength) {
     // A linear lock is two-sided: take the side the cursor is on.
@@ -178,7 +178,11 @@ function crossAxisLine(l: Extract<Locus, { kind: 'line' }>, g: Linear): Vec2[] {
   return [fixed === 1 ? [f, l.origin[1]] : [l.origin[0], f]];
 }
 
-/** All points where the locus meets a guide. Points are computed on the locus so they stay on it. */
+/**
+ * All points where the locus meets a guide. Points are computed on the locus so they stay on it.
+ * Circle × circle is deliberately unsupported (returns []): circle guides only draw length
+ * locks, and no source or inference emits a circular candidate guide.
+ */
 export function intersectLocusWithGuide(l: Locus, g: Guide): Vec2[] {
   const gl = toLinear(g);
   if (l.kind === 'line' && gl && (l.dir[0] === 0 || l.dir[1] === 0)) return crossAxisLine(l, gl);

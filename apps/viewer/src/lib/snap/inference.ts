@@ -14,8 +14,10 @@
  *   inputs are (axis-aligned or integer-coordinate guides);
  * - chain points themselves (closing a polyline).
  *
- * Work is bounded: at most MAX_SEGMENTS edges and MAX_GUIDES guides (so at
- * most MAX_GUIDES·(MAX_GUIDES-1)/2 intersection tests) per query.
+ * Work is bounded per query: at most MAX_SEGMENTS edges and MAX_CHAIN_POINTS
+ * chain points build guides (up to two axes per chain point), and only the
+ * MAX_GUIDES nearest guides are intersected, so at most
+ * MAX_GUIDES·(MAX_GUIDES-1)/2 intersection tests.
  */
 
 import { dist, dot, intersectLinear, projectOntoLocus, sub, toLinear } from './constraints.js';

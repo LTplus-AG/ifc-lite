@@ -14,7 +14,7 @@
 /** Workplane-local 2D point, metres. */
 export type Vec2 = readonly [number, number];
 /** Render-space 3D point (viewer Y-up). */
-export type Vec3 = readonly [number, number, number];
+type Vec3 = readonly [number, number, number];
 
 export type SnapKind =
   | 'endpoint'
@@ -30,7 +30,7 @@ export type SnapKind =
   | 'workplane';
 
 /** Why a guide exists; drives how the HUD draws it. */
-export type GuideRole = 'edge' | 'extension' | 'axis' | 'perpendicular' | 'parallel' | 'lock';
+type GuideRole = 'edge' | 'extension' | 'axis' | 'perpendicular' | 'parallel' | 'lock';
 
 /**
  * A construction guide in workplane-local 2D. Linear guides carry an origin and
@@ -94,11 +94,13 @@ export interface CollectHint {
 /**
  * A candidate producer. `collect` appends into `out` (no allocation of an
  * intermediate array per source). A source SHOULD return candidates within
- * `radius` of the cursor but MAY over-collect: the solver enforces the radius
+ * `radius` of `q.cursor` but MAY over-collect: the solver enforces the radius
  * after projecting onto the active lock, and far edges still feed inference
- * (extension / intersection tracking). Under a lock a far target can still
- * land near the cursor (alignment along the lock), so a source that prunes
- * must prune with the `hint`, not by distance to the raw cursor.
+ * (extension / intersection tracking). Under a lock the solver passes the
+ * cursor already projected onto the lock, because that is where the result
+ * lands and what the radius is measured from. A far point target can still
+ * land near it (alignment along the lock), so a source that wants those must
+ * prune with the `hint` (`mayLandNear`), not by distance to `q.cursor`.
  */
 export interface SnapSource {
   id: string;
@@ -122,8 +124,6 @@ export interface SnapProfile {
   /** A held winner survives until it is this many pixels beyond the radius or beaten by this margin. */
   hysteresisPx?: number;
 }
-
-export type SnapProfileId = 'modeling' | 'space-sketch';
 
 export interface SnapResult {
   /** The solved point, on the active lock. */

@@ -62,7 +62,7 @@ describe('platform key glyphs (#5836)', () => {
     assert.equal(shortcutLabel('edit.undo', true), '⌘Z');
     assert.equal(shortcutLabel('edit.undo', false), 'Ctrl+Z');
     assert.equal(shortcutLabel('edit.redo', true), '⇧⌘Z');
-    assert.equal(shortcutLabel('edit.redo', false), 'Ctrl+Shift+Z');
+    assert.equal(shortcutLabel('edit.redo', false), 'Ctrl+Shift+Z, Ctrl+Y');
   });
 
   it('writes Alt as ⌥ on Apple, and positional digits as the digit', () => {
@@ -82,6 +82,7 @@ describe('platform key glyphs (#5836)', () => {
   });
 
   it('lists every chord of a multi-key command', () => {
+    assert.equal(shortcutLabel('basket.add', false), '=, +');
     assert.equal(shortcutLabel('visibility.hideSelection', false), 'Del, Backspace, Space');
     assert.equal(shortcutLabel('ui.closeAllPanels', false), 'Esc Esc');
     assert.equal(formatChord({ key: 'n', shift: true }, false), 'Shift+N');

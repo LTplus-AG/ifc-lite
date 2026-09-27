@@ -13,20 +13,21 @@ const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
   'tool:section', 'tool:annotate', 'tool:add-element', 'tool:edit-mode', 'tool:split',
 ] as const;
+const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
 const originalTool = useViewerStore.getState().activeTool;
 afterEach(() => useViewerStore.setState({ activeTool: originalTool }));
 
 describe('shared Tools palette commands (#5870)', () => {
   it('keeps browse order and hides authoring commands in a read-only session', () => {
-    assert.deepEqual(SURFACE_COMMANDS.filter((command) => command.category === 'Tools').map((command) => command.id),
+    assert.deepEqual(SURFACE_COMMANDS.filter((command) => isCoreTool(command.id)).map((command) => command.id),
       [...TOOL_IDS]);
     const split = SURFACE_COMMANDS.find((command) => command.id === 'tool:split');
     assert.ok(split);
     assert.deepEqual([...split.surfaces], ['palette'], 'Split belongs to the shared palette, not either toolbar');
     const readonlyRows = paletteSurfaceCommands({ canEditInSession: false }, () => {})
-      .filter((command) => command.category === 'Tools');
+      .filter((command) => isCoreTool(command.id));
     const editableRows = paletteSurfaceCommands({ canEditInSession: true }, () => {})
-      .filter((command) => command.category === 'Tools');
+      .filter((command) => isCoreTool(command.id));
     assert.deepEqual(readonlyRows.map((command) => command.id), TOOL_IDS.slice(0, 6));
     assert.deepEqual(editableRows.map((command) => command.id), [...TOOL_IDS]);
     for (const row of editableRows) {

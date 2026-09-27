@@ -47,6 +47,14 @@ describe('buildLocus (#6232 WP3)', () => {
     if (l.kind === 'line') assert.ok(Math.abs(Math.atan2(l.dir[1], l.dir[0]) * (180 / Math.PI) - 15) < 1e-12);
   });
 
+  it('a non-finite or non-positive angle step falls back to ortho', () => {
+    const shift = { shift: true, alt: false };
+    for (const angleStepDeg of [Infinity, NaN, 0, -15]) {
+      const l = buildLocus(query([6, 4], { anchor: A, modifiers: shift }), { ...P, angleStepDeg });
+      assert.deepEqual(l, { kind: 'line', origin: A, dir: [1, 0] }, `angleStepDeg ${angleStepDeg}`);
+    }
+  });
+
   it('a typed angle outranks an axis lock', () => {
     const l = buildLocus(query([9, 9], { anchor: A, locks: { angleDeg: 0, axis: 'v' } }), P);
     assert.deepEqual(l, { kind: 'ray', origin: A, dir: [1, 0] });

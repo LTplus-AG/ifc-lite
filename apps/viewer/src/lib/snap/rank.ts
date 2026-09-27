@@ -103,7 +103,7 @@ export function pickWinner(
     if (r.tier < 0) continue;
     const isPrev = prev !== null && held === null && sameTarget(r.cand, prev);
     if (isPrev && r.dist <= radius + hysteresis) held = r;
-    if (r.dist > radius) continue;
+    if (!(r.dist <= radius)) continue; // also drops a NaN distance (non-finite cursor or target)
     if (!best || better(r, best)) best = r;
   }
   if (!held) return best;

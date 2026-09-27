@@ -57,6 +57,12 @@ class DirectrixMetrics(TypedDict):
     total_length: float  # sum of segment centreline lengths in world metres
     segments: List[DirectrixSegmentMetrics]
 
+class SweptDiskNominalQuantities(TypedDict):
+    cross_section_area: float  # m², outer disk minus an optional inner disk
+    nominal_volume: float  # m³, area × complete centreline length
+    outer_lateral_area: float  # m², outer circumference × length
+    inner_lateral_area: Optional[float]  # m² for a hollow section
+
 class SweptDiskOccurrence(TypedDict):
     solid_id: int
     directrix_id: int
@@ -64,6 +70,7 @@ class SweptDiskOccurrence(TypedDict):
     InnerRadius: Optional[float]  # same coordinate rule as Radius
     Directrix: List[DirectrixSegment]  # IFC Z-up, absolute world metres
     directrix_metrics: Optional[DirectrixMetrics]  # None when status is unsupported
+    nominal_quantities: Optional[SweptDiskNominalQuantities]  # uncut source estimate only
     status: DirectrixStatus
     mapping_path: List[int]
     source_modified: bool  # source operand may differ from final boolean result
@@ -221,7 +228,9 @@ def geometry_data_buffers(
     InnerRadius, ordered analytic line/arc Directrix, and centreline lengths and
     arc bend angles in ``directrix_metrics``. Lengths are world metres and bend
     angles are positive radians; the signed arc ``sweep_angle`` retains travel
-    direction. Unsupported sweeps have ``directrix_metrics=None``.
+    direction. Complete, unmodified source sweeps also have
+    ``nominal_quantities`` in m²/m³. Unsupported or boolean-modified sweeps
+    have ``directrix_metrics=None`` or ``nominal_quantities=None`` as applicable.
 
     Raises:
         RuntimeError: the geometry pipeline failed.

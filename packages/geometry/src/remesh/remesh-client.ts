@@ -11,7 +11,7 @@
  * request still in flight. Requests are answered in the order they were sent.
  */
 
-import type { RemeshConfig, RemeshRequest, RemeshResult } from './remesh-core.js';
+import type { RemeshConfig, RemeshRequest, RemeshResult, StyleWire } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
 
 export interface RemeshClientOptions {
@@ -23,7 +23,7 @@ export interface RemeshClientOptions {
   createWorker?: () => Worker;
 }
 
-type Pending = { resolve: (result: RemeshResult) => void; reject: (error: Error) => void };
+type Pending = { resolve: (value: RemeshResult | StyleWire) => void; reject: (error: Error) => void };
 
 export class RemeshClient {
   private readonly pending = new Map<number, Pending>();
@@ -72,16 +72,32 @@ export class RemeshClient {
    * caller must not read it afterwards.
    */
   remesh(request: RemeshRequest): Promise<RemeshResult> {
-    if (this.disposed) return Promise.reject(new Error('RemeshClient is disposed'));
-    const requestId = this.nextRequestId++;
     const { buffer } = request;
     const transfer = buffer.buffer instanceof ArrayBuffer
       && buffer.byteOffset === 0 && buffer.byteLength === buffer.buffer.byteLength
       ? [buffer.buffer]
       : [];
-    return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
-      this.post({ type: 'remesh', requestId, request }, transfer);
+    return this.request<RemeshResult>((requestId) => ({ type: 'remesh', requestId, request }), transfer);
+  }
+
+  /**
+   * The style wire a whole-file pre-pass resolves for `source`, for a model
+   * whose load did not keep one. The source is COPIED to the worker (the
+   * caller's model still owns it), and the pre-pass cache is released after.
+   */
+  styleWire(source: Uint8Array): Promise<StyleWire> {
+    return this.request<StyleWire>((requestId) => ({ type: 'style-wire', requestId, source }));
+  }
+
+  private request<T extends RemeshResult | StyleWire>(
+    message: (requestId: number) => RemeshWorkerInbound,
+    transfer: Transferable[] = [],
+  ): Promise<T> {
+    if (this.disposed) return Promise.reject(new Error('RemeshClient is disposed'));
+    const requestId = this.nextRequestId++;
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(requestId, { resolve: resolve as (value: RemeshResult | StyleWire) => void, reject });
+      this.post(message(requestId), transfer);
     });
   }
 
@@ -104,11 +120,12 @@ export class RemeshClient {
   }
 
   private settle(message: RemeshWorkerOutbound): void {
-    if (message.type !== 'result' && message.type !== 'error') return;
+    if (message.type === 'ready' || message.type === 'init-error') return;
     const pending = this.pending.get(message.requestId);
     if (!pending) return;
     this.pending.delete(message.requestId);
     if (message.type === 'result') pending.resolve(message.result);
+    else if (message.type === 'style-wire') pending.resolve(message.wire);
     else pending.reject(new Error(`Re-mesh failed: ${message.message}`));
   }
 

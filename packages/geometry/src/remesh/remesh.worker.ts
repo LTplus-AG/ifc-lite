@@ -15,8 +15,10 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from '../wasm-init-retry.js';
 import { freeWasmInstanceQuietly } from '../wasm-instance-free.js';
-import { applyRemeshConfig, remeshOnApi, type RemeshConfig } from './remesh-core.js';
-import { meshTransferables, type RemeshWorkerInbound, type RemeshWorkerOutbound } from './remesh-protocol.js';
+import { applyRemeshConfig, remeshOnApi, styleWireOnApi, type RemeshConfig } from './remesh-core.js';
+import {
+  meshTransferables, styleWireTransferables, type RemeshWorkerInbound, type RemeshWorkerOutbound,
+} from './remesh-protocol.js';
 
 const scope = self as unknown as Worker;
 let config: RemeshConfig | null = null;
@@ -72,10 +74,16 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
       }
       return;
     }
-    case 'remesh': {
+    case 'remesh':
+    case 'style-wire': {
       try {
-        const result = remeshOnApi(currentApi(), message.request);
-        post({ type: 'result', requestId: message.requestId, result }, meshTransferables(result.meshes));
+        if (message.type === 'remesh') {
+          const result = remeshOnApi(currentApi(), message.request);
+          post({ type: 'result', requestId: message.requestId, result }, meshTransferables(result.meshes));
+        } else {
+          const wire = styleWireOnApi(currentApi(), message.source);
+          post({ type: 'style-wire', requestId: message.requestId, wire }, styleWireTransferables(wire));
+        }
       } catch (error) {
         if (error instanceof WebAssembly.RuntimeError) {
           freeWasmInstanceQuietly(api);

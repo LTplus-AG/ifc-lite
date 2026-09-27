@@ -49,6 +49,18 @@ export interface RemeshRequest {
   materialColors?: Uint8Array;
 }
 
+/**
+ * The style and material colour wire a whole-file pre-pass resolves: what a
+ * re-mesh request must carry, since a subgraph holds no styles.
+ */
+export interface StyleWire {
+  styleIds: Uint32Array;
+  styleColors: Uint8Array;
+  materialElementIds: Uint32Array;
+  materialColorCounts: Uint32Array;
+  materialColors: Uint8Array;
+}
+
 export interface RemeshResult {
   meshes: MeshData[];
   csgFailures: number;
@@ -147,6 +159,25 @@ export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => numbe
     }
     const meshes = convertMeshCollectionToBatch(collection);
     return { meshes, csgFailures, ms: { prepass: prepassDone - start, produce: now() - prepassDone } };
+  } finally {
+    api.clearPrePassCache();
+  }
+}
+
+/**
+ * Pre-pass a whole model once and keep only its style wire, releasing the
+ * pre-pass cache. Copies each array so nothing aliases the wasm heap.
+ */
+export function styleWireOnApi(api: RemeshApi, source: Uint8Array): StyleWire {
+  const prePass = api.buildPrePassOnce(source) as ByteStreamingPrePassResult;
+  try {
+    return {
+      styleIds: prePass.styleIds.slice(),
+      styleColors: prePass.styleColors.slice(),
+      materialElementIds: prePass.materialElementIds?.slice() ?? new Uint32Array(),
+      materialColorCounts: prePass.materialColorCounts?.slice() ?? new Uint32Array(),
+      materialColors: prePass.materialColors?.slice() ?? new Uint8Array(),
+    };
   } finally {
     api.clearPrePassCache();
   }

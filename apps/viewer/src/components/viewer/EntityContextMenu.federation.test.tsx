@@ -16,7 +16,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, after, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { act } from 'react';
@@ -29,6 +29,7 @@ import { EntityContextMenu } from './EntityContextMenu.js';
 import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
+import { posthog } from '@/lib/analytics.js';
 import {
   parseFixtureModel,
   FIXTURE_WALL_A,
@@ -75,6 +76,7 @@ function unmountAll(): void {
   }
 }
 after(unmountAll);
+afterEach(() => mock.restoreAll());
 
 function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
   const btn = [...container.querySelectorAll('button')].find((b) =>
@@ -198,6 +200,10 @@ describe('EntityContextMenu — federation-space selection', () => {
   }
 
   it('"Select all IfcWall" resolves through the model offset', () => {
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
     const container = render();
 
@@ -209,6 +215,9 @@ describe('EntityContextMenu — federation-space selection', () => {
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]),
       'selectedEntityIds must carry renderer-space (offset) ids, not raw model-space expressIds',
     );
+    assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
+      { event: 'command_executed', properties: { command_id: 'context:select-all-type', surface: 'context' } },
+    ], 'the mounted context click emits one command event');
   });
 
   it('selects the live class after deletion, creation, and retype (#5249)', () => {

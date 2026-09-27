@@ -4,6 +4,8 @@
 import { selectCreatedAppearanceObject } from './select-created-object';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { prepareCapturedRegion } from '@/lib/appearance/capture/source';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
@@ -44,6 +46,7 @@ export function AppearanceCapturePanel() {
   const placement = useViewerStore(state => state.modelPlacement);
   const { addModel, loadFile, loadFilesSequentially, loading } = useIfc();
   const target = useIfcAuthoringTarget();
+  const denialReason = useMutationDenialReason(target.modelId || undefined);
   const candidates = useMemo(() => [...models.values()].flatMap(model => (model.geometryResult?.meshes ?? [])
     .flatMap((mesh, index) => mesh.textureRef ? [{ id: `${model.id}:${index}`, modelId: model.id, mesh,
       label: t('appearance.capture.surfaceLabel', { modelName: model.name, n: formatLocaleNumber(locale, index + 1), triangleCount: formatLocaleNumber(locale, mesh.indices.length / 3) }) }] : [])), [models, t, locale, revision]);
@@ -123,6 +126,8 @@ export function AppearanceCapturePanel() {
   async function create() {
     const renderer = getGlobalRenderer();
     if (!prepared || !ready || !renderer || !target.modelId || target.containerId === undefined || operation.current || room) return;
+    const permission = mutationPermission(useViewerStore.getState(), target.modelId);
+    if (!permission.allowed) { setError(true); setTranslatedMessage(mutationDenialKey(permission.reason)); return; }
     const controller = new AbortController(); operation.current = controller; setBusy(true); setError(false); setTranslatedMessage('appearance.capture.creatingSurface');
     try {
       const result = await createIfcFromCapturedMesh(target.modelId,target.containerId,prepared,renderer,{ Name,signal:controller.signal });
@@ -172,10 +177,12 @@ export function AppearanceCapturePanel() {
       </select></label>
       <label className="block text-[11px]">{t('appearance.capture.nameLabel')}<Input aria-label={t('appearance.capture.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} /></label>
       <h3 className="pt-1 text-xs font-medium">{t('appearance.capture.step3Heading')}</h3>
-      <Button type="button" className="w-full" disabled={!ready || !prepared || !!placement.preview || !target.modelId || target.containerId === undefined || !Name.trim()}
+      <Button type="button" className="w-full" disabled={!ready || !prepared || !!placement.preview || !target.modelId || target.containerId === undefined || !Name.trim() || !!denialReason}
+        title={denialReason ? t(mutationDenialKey(denialReason)) : undefined}
         onClick={() => { void create(); }}>{t('appearance.capture.createIfcObject')}</Button>
     </fieldset>
     {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
+    {denialReason && <output className="block text-[11px] text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
     {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setTranslatedMessage('appearance.capture.cancelled'); }}>{t('appearance.capture.cancelCreation')}</Button>}
     {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, captureMessageParams(message, locale)) : message.text}</p>}
   </section>;

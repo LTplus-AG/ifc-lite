@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
-import { cleanup, render, type } from '@/test/render';
+import { cleanup, render, type, click } from '@/test/render';
+import { act } from 'react';
 import { registerLocale, setLocale } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { emptyPlacementState } from '@/lib/model-placement/state';
@@ -19,17 +20,35 @@ import { useScanTransfer } from './useScanTransfer';
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial); setLocale('en'); });
 let read: ReturnType<typeof useScanTransfer> | undefined;
-function Harness({ coverage, pointSource }: { coverage?: MeshTransferPlan['transfer']; pointSource?: boolean }) {
+let applyCalls = 0;
+function Harness({ coverage, pointSource, ready }: { coverage?: MeshTransferPlan['transfer']; pointSource?: boolean; ready?: boolean }) {
   const transfer = useScanTransfer({ targetId: 'target', session: null, result: null, stale: false, busy: false, applyAppearance: async () => {} });
   read = transfer;
-  return <ScanTransferFields transfer={{ ...transfer, ...(coverage ? { coverage } : {}), ...(pointSource ? { pointSource } : {}) }} disabled={false} />;
+  return <ScanTransferFields transfer={{ ...transfer, ...(coverage ? { coverage } : {}), ...(pointSource ? { pointSource } : {}),
+    ...(ready ? { ready, apply: async () => { applyCalls++; } } : {}) }} targetModelId="target" disabled={false} />;
 }
-function mount(coverage?: MeshTransferPlan['transfer'], pointSource?: boolean) {
-  useViewerStore.setState({ models: new Map([['target', fixtureModel('target')]]), mutationViews: new Map(), mutationVersion: 0, modelPlacement: emptyPlacementState(), collabRoomId: null });
-  return render(<Harness coverage={coverage} pointSource={pointSource} />);
+function mount(coverage?: MeshTransferPlan['transfer'], pointSource?: boolean, ready?: boolean) {
+  useViewerStore.setState({ models: new Map([['target', fixtureModel('target')]]), mutationViews: new Map(), mutationVersion: 0, modelPlacement: emptyPlacementState(), collabRoomId: null, editEnabled: true });
+  return render(<Harness coverage={coverage} pointSource={pointSource} ready={ready} />);
 }
 const label = 'Maximum depth behind the IFC surface (m)';
 const pointLabels = ['Point support radius (m)', 'Point surface band (m)', 'Minimum supporting points', 'Maximum supporting points'];
+
+test('scan transfer Apply explains Edit mode and becomes available when enabled (#5901)', () => {
+  applyCalls = 0;
+  const ui = mount(undefined, false, true);
+  const button = [...ui.querySelectorAll('button')].find(item => item.textContent === 'Apply scan appearance');
+  assert.ok(button);
+  act(() => useViewerStore.setState({ editEnabled: false }));
+  assert.equal(button.disabled, true);
+  assert.match(ui.textContent ?? '', /Turn on Edit mode/);
+  click(button);
+  assert.equal(applyCalls, 0);
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(button.disabled, false);
+  click(button);
+  assert.equal(applyCalls, 1);
+});
 
 test('behind-surface limit defaults to the project tolerance and its control reaches the transfer request settings (#4381)', () => {
   const ui = mount();

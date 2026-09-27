@@ -39,6 +39,7 @@
 import { useCallback } from 'react';
 import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
+import { canMutate, mutationPermission } from '@/store/mutation-permission';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import {
   buildElementWriteBack,
@@ -59,13 +60,19 @@ import { computeZoneApportionmentNow, gatherProvedVolumes } from './useZoneAppor
 // verification bar exists to prevent.
 import { contextFor, quantitySetsFor, zoneFactsFor, type ModelContext } from './zoneFacts.js';
 
+/** This command skips unavailable IFC models and reports only files it wrote. */
+function writableContextFor(modelId: string, cache: Map<string, ModelContext | null>): ModelContext | null {
+  if (!canMutate(useViewerStore.getState(), modelId)) return null;
+  return contextFor(modelId, cache);
+}
+
 export interface ZoneWriteBackResult {
   summary: WriteBackSummary;
   /** Model ids that gained properties. */
   modelIds: string[];
   elapsedMs: number;
   /** Set when nothing was written, and why. */
-  blocked: 'collab-role' | 'duplicate-set-name' | null;
+  blocked: 'edit-mode' | 'collab-role' | 'duplicate-set-name' | null;
 }
 
 /**
@@ -157,10 +164,10 @@ function sweepZoneSets(
  */
 export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWriteBackResult {
   const state = useViewerStore.getState();
-  // Checked ONCE for the run rather than per element, which is the only
-  // difference from the per-mutation actions' own gate: a read-only collab
-  // participant must not accumulate local edits no peer will ever see.
-  if (!state.canCollabEdit()) return { ...EMPTY, blocked: 'collab-role' };
+  // Check once before any direct overlay write; every target element shares
+  // the same viewer edit mode and collaboration role.
+  const permission = mutationPermission(state);
+  if (!permission.allowed) return { ...EMPTY, blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role' };
   if (collidesByName(zoneSet)) return { ...EMPTY, blocked: 'duplicate-set-name' };
 
   const t0 = performance.now();
@@ -175,7 +182,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
   for (const [globalId, record] of state.zoneAssignments) {
     const assignment = record[zoneSet.id];
     const ref = resolveEntityRef(globalId);
-    const context = contextFor(ref.modelId, contexts);
+    const context = writableContextFor(ref.modelId, contexts);
     if (!assignment || assignment.touchedZoneIds.length === 0) {
       // An element that has LEFT the set (a zone moved or was deleted) would
       // otherwise keep the previous run's zone and volumes forever, since the
@@ -250,7 +257,7 @@ export interface ZoneWriteBackRemoval {
   /** Elements something was actually deleted from. */
   removed: number;
   modelIds: string[];
-  blocked: 'collab-role' | 'duplicate-set-name' | null;
+  blocked: 'edit-mode' | 'collab-role' | 'duplicate-set-name' | null;
 }
 
 /**
@@ -273,7 +280,8 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
   // Reported rather than folded into `removed: 0`: "nothing to remove" and "you
   // were not allowed to" are different answers, and only one of them means the
   // user should do something next.
-  if (!state.canCollabEdit()) return { removed: 0, modelIds: [], blocked: 'collab-role' };
+  const permission = mutationPermission(state);
+  if (!permission.allowed) return { removed: 0, modelIds: [], blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role' };
   if (collidesByName(zoneSet)) return { removed: 0, modelIds: [], blocked: 'duplicate-set-name' };
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();
@@ -281,7 +289,7 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
 
   for (const [globalId] of state.zoneAssignments) {
     const ref = resolveEntityRef(globalId);
-    const context = contextFor(ref.modelId, contexts);
+    const context = writableContextFor(ref.modelId, contexts);
     if (!context) continue;
     if (sweepZoneSets(context, ref.expressId, zoneSet.id) === 0) continue;
     touchedModels.add(ref.modelId);
@@ -297,7 +305,7 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
   // in an EARLIER session whose geometry is not loaded now; loading the model's
   // geometry brings it back into the first pass.
   for (const [modelId, view] of state.mutationViews) {
-    const context = contextFor(modelId, contexts);
+    const context = writableContextFor(modelId, contexts);
     if (!context) continue;
     const seen = new Set<number>();
     for (const mutation of view.getMutations()) {

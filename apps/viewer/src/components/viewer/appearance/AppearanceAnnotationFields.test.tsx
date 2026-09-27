@@ -35,7 +35,7 @@ function create(ui: HTMLElement) {
 }
 test('annotation target follows the chosen model and never offers IfcProject as containment (#4308)', async () => {
   const a = await model('A', 40), b = await model('B', 80);
-  useViewerStore.setState({ models: new Map([['A', a], ['B', b]]), activeModelId: 'A', activeStorey: { modelId: 'A', expressId: 40 } });
+  useViewerStore.setState({ models: new Map([['A', a], ['B', b]]), activeModelId: 'A', activeStorey: { modelId: 'A', expressId: 40 }, editEnabled: true });
   const ui = render(<AppearanceAnnotationFields referenceId="drawing" name="Plan" disabled={false} />);
   assert.equal(select(ui, 'Annotation container').value, '40');
   assert.deepEqual([...select(ui, 'Annotation container').options].map(option => option.value), ['40']);
@@ -47,6 +47,15 @@ test('annotation target follows the chosen model and never offers IfcProject as 
   click(create(ui));
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /3D view/);
   assert.equal(useViewerStore.getState().mutationViews.has('B'), false, 'No command publishes before a renderer exists');
+});
+test('annotation Create explains Edit mode denial and becomes available when enabled (#5901)', async () => {
+  const a = await model('A', 40);
+  useViewerStore.setState({ models: new Map([['A', a]]), activeModelId: 'A', activeStorey: { modelId: 'A', expressId: 40 }, editEnabled: false });
+  const ui = render(<AppearanceAnnotationFields referenceId="drawing" name="Plan" disabled={false} />);
+  assert.equal(create(ui).disabled, true);
+  assert.match(ui.textContent ?? '', /Turn on Edit mode/);
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(create(ui).disabled, false);
 });
 test('annotation creation is unavailable without a spatial target or in a shared room (#4308)', async () => {
   useViewerStore.setState({ models: new Map(), activeModelId: null });

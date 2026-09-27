@@ -15,6 +15,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
@@ -64,6 +65,7 @@ async function seed(): Promise<IfcDataStore> {
     zoneApportionment: new Map(),
     mutationViews: new Map(),
     dirtyModels: new Set(),
+    editEnabled: true,
   } as never);
   return store;
 }
@@ -80,6 +82,19 @@ after(cleanup);
 describe('ZonesPanel: writing zone data into the model', () => {
   beforeEach(async () => {
     await seed();
+  });
+
+  it('disables writer controls and explains Edit mode while preserving the export controls (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false });
+    const container = render(<ZonesPanel />);
+    assert.equal(writeButton(container).disabled, true);
+    assert.match(container.textContent ?? '', /Turn on Edit mode/);
+    assert.equal(button(container, 'CSV').disabled, false);
+    assert.equal(useViewerStore.getState().getMutationView('m1'), null);
+    act(() => useViewerStore.setState({ editEnabled: true }));
+    assert.equal(writeButton(container).disabled, false);
+    click(writeButton(container));
+    assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
   });
 
   it('writes the property set when the panel button is clicked', () => {

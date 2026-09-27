@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ComponentType } from 'react';
+import { useId, type ComponentType } from 'react';
 import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useViewerStore } from '@/store';
@@ -31,6 +31,7 @@ interface MenuItemProps {
 }
 
 export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, title, tone = 'default' }: MenuItemProps) {
+  const descriptionId = useId();
   const iconClass = tone === 'destructive'
     ? 'h-4 w-4 text-red-500 dark:text-red-400'
     : 'h-4 w-4 text-muted-foreground';
@@ -42,7 +43,7 @@ export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, title
       <button
         type="button"
         aria-label={label}
-        aria-description={disabled ? title : undefined}
+        aria-describedby={disabled && title ? descriptionId : undefined}
         title={title}
         disabled={disabled}
         className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none ${focusClass}`}
@@ -51,6 +52,7 @@ export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, title
         <Icon className={iconClass} />
         <span className="min-w-0 flex-1">{label}</span>
         {shortcut && <span className="shrink-0 font-mono text-2xs text-muted-foreground">{shortcut}</span>}
+        {disabled && title && <span id={descriptionId} className="sr-only">{title}</span>}
       </button>
     </ContextMenuItem>
   );

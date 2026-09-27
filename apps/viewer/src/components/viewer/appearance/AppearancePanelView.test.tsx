@@ -2,18 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { saveFilter, clearSavedFilters } from '@/lib/search/saved-filters.js';
 import { Rule } from '@ifc-lite/rules';
 import { AppearancePanelView } from './AppearancePanelView.js';
+import { useViewerStore } from '@/store';
 import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
 
-afterEach(cleanup);
+const initialStore = useViewerStore.getState();
+afterEach(() => { cleanup(); useViewerStore.setState(initialStore); });
+beforeEach(() => { useViewerStore.setState({ editEnabled: true }); });
 function props(overrides: Partial<AppearancePanelViewProps> = {}): AppearancePanelViewProps {
   return {
     models: [{ id: 'model', name: 'Building.ifc' }], modelId: 'model', onModelChange() {},
@@ -35,6 +38,20 @@ function select(ui: HTMLElement, label: string, value: string) {
   assert.ok(element instanceof HTMLSelectElement);
   act(() => { element.value = value; element.dispatchEvent(new window.Event('change', { bubbles: true })); });
 }
+
+it('keeps appearance Apply disabled with a reason until Edit mode is enabled (#5901)', () => {
+  let applies = 0;
+  useViewerStore.setState({ editEnabled: false });
+  const ui = render(<AppearancePanelView {...props({ onApply: () => { applies++; } })} />);
+  assert.equal(button(ui, 'Apply').disabled, true);
+  assert.match(ui.textContent ?? '', /Turn on Edit mode/);
+  click(button(ui, 'Apply'));
+  assert.equal(applies, 0);
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(button(ui, 'Apply').disabled, false);
+  click(button(ui, 'Apply'));
+  assert.equal(applies, 1);
+});
 
 // #4243: exercise mounted controls, including real File events and disabled actions.
 it('uploads the chosen File and supports dropping a source without a separate import dialog', () => {

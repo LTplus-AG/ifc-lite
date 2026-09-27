@@ -1513,9 +1513,9 @@ export function PropertiesPanel() {
 
       {/* Tabs */}
       {editEnabled && !editPermission.allowed && selectedEntity && (
-        <p role="status" className="border-b px-3 py-2 text-xs text-muted-foreground">
+        <output className="block border-b px-3 py-2 text-xs text-muted-foreground">
           {t(mutationDenialKey(editPermission.reason))}
-        </p>
+        </output>
       )}
       <Tabs
         value={propertiesActiveTab}

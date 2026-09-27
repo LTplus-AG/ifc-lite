@@ -62,6 +62,7 @@ async function parse(ifc: string): Promise<IfcDataStore> {
 async function seedStore(): Promise<IfcDataStore> {
   const store = await parse(miniIfc());
   useViewerStore.setState({
+    editEnabled: true,
     activeModelId: 'm1',
     models: new Map([['m1', {
       id: 'm1',
@@ -119,6 +120,18 @@ describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
   let store: IfcDataStore;
   beforeEach(async () => {
     store = await seedStore();
+  });
+
+  it('keeps the IFC overlay and dirty state empty in Edit-off, then saves real markup in Edit-on (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false });
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).refusal, 'edit-mode');
+    assert.equal(overlay().length, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+
+    useViewerStore.setState({ editEnabled: true });
+    assert.equal(saveDrawingMarkupToModel('m1', ONE_MEASURE).measuresSaved, 1);
+    assert.equal(annotationEntities().length, 1);
+    assert.equal(useViewerStore.getState().dirtyModels.has('m1'), true);
   });
 
   it('uses a live overlay-created storey after the source storey is deleted (#5249)', () => {

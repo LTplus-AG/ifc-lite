@@ -31,6 +31,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { mutationDenialKey } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import type { TranslationKey } from '@/i18n';
 import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
 import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
@@ -48,6 +50,8 @@ const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
 
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const { t } = useTranslation();
+  const denialReason = useMutationDenialReason();
+  const denialMessage = denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
@@ -117,9 +121,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           variant="outline"
           size="sm"
           className="h-6 flex-1 text-2xs"
-          title={t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          disabled={!!denialReason}
+          title={denialMessage ?? t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
+            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
               return;
@@ -155,10 +161,12 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
         </Button>
         <IconButton
           label={t('zonesPanel.writeBack.removePropsAriaLabel')}
-          tooltip={t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          tooltip={denialMessage ?? t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          disabled={!!denialReason}
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
+            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
@@ -202,9 +210,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           variant="outline"
           size="sm"
           className="h-6 flex-1 text-2xs"
-          title={t('zonesPanel.writeBack.emitZonesTitle')}
+          disabled={!!denialReason}
+          title={denialMessage ?? t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
+            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyEmit'));
               return;
@@ -263,10 +273,12 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
         </Button>
         <IconButton
           label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
-          tooltip={t('zonesPanel.writeBack.removeEmittedTitle')}
+          tooltip={denialMessage ?? t('zonesPanel.writeBack.removeEmittedTitle')}
+          disabled={!!denialReason}
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
+            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
@@ -282,6 +294,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <Undo2 className="h-3 w-3" />
         </IconButton>
       </div>
+      {denialMessage && <output className="block text-2xs text-muted-foreground">{denialMessage}</output>}
     </div>
   );
 }

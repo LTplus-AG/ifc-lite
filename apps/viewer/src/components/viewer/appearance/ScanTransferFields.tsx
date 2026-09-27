@@ -5,9 +5,13 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { useScanTransfer } from './useScanTransfer';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { mutationDenialKey } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-export function ScanTransferFields({ transfer, disabled }: { transfer: ReturnType<typeof useScanTransfer>; disabled: boolean }) {
+export function ScanTransferFields({ transfer, targetModelId, disabled }: { transfer: ReturnType<typeof useScanTransfer>; targetModelId: string; disabled: boolean }) {
   const { t, locale } = useTranslation();
+  const denialReason = useMutationDenialReason(targetModelId || undefined);
+  const denialMessage = denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   const { settings, coverage } = transfer;
   const [search, setSearch] = useState('');
   const targets = transfer.targets.filter(target => target.name.toLowerCase().includes(search.toLowerCase()));
@@ -47,8 +51,9 @@ export function ScanTransferFields({ transfer, disabled }: { transfer: ReturnTyp
     <p role={transfer.error ? 'alert' : 'status'} className={`text-xs ${transfer.error ? 'text-destructive' : 'text-muted-foreground'}`}>{transfer.status.kind === 'translated' ? t(transfer.status.key, transfer.status.params) : transfer.status.text}</p>
     <div className="flex flex-wrap gap-2">
       {!transfer.ready && <Button size="sm" disabled={disabled || transfer.busy || !settings.reviewed || !transfer.productIds.length} onClick={() => void transfer.preview()}>{t('appearance.scanTransfer.previewTransfer')}</Button>}
-      {transfer.ready && <><Button size="sm" variant="outline" disabled={disabled} onClick={transfer.compare}>{transfer.original ? t('appearance.scanTransfer.showTransfer') : t('appearance.scanTransfer.showOriginal')}</Button><Button size="sm" disabled={disabled} onClick={() => void transfer.apply()}>{t('appearance.scanTransfer.applyAppearance')}</Button></>}
+      {transfer.ready && <><Button size="sm" variant="outline" disabled={disabled} onClick={transfer.compare}>{transfer.original ? t('appearance.scanTransfer.showTransfer') : t('appearance.scanTransfer.showOriginal')}</Button><Button size="sm" disabled={disabled || !!denialReason} title={denialMessage} onClick={() => void transfer.apply()}>{t('appearance.scanTransfer.applyAppearance')}</Button></>}
       {(transfer.busy || transfer.ready) && <Button size="sm" variant="outline" disabled={disabled && !transfer.busy} onClick={transfer.discard}>{transfer.busy ? t('appearance.scanTransfer.cancelTransfer') : t('appearance.scanTransfer.discardTransfer')}</Button>}
     </div>
+    {denialMessage && <output className="block text-xs text-muted-foreground">{denialMessage}</output>}
   </section>;
 }

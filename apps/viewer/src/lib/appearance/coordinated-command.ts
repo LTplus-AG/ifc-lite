@@ -5,6 +5,7 @@ import { captureAppearanceDependencies } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { preparePreparedOverlayPublication } from '@/store/federation-overlay-publication';
 import type { AppearanceCommitOptions } from './command.js';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets.js';
@@ -32,6 +33,8 @@ export async function commitAppearanceAssignments(
     const state = useViewerStore.getState();
     if (state.collabRoomId) throw new Error('Leave the shared room before applying appearance assignments.');
     for (const [modelId] of models) {
+      const denial = mutationDenial(state, modelId);
+      if (denial) throw new Error(denial);
       if (state.models.get(modelId) !== initial.models.get(modelId) || state.mutationViews.get(modelId) !== initial.mutationViews.get(modelId)) {
         throw new Error('An appearance target changed while preparing the coordinated application.');
       }

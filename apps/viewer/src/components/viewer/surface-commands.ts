@@ -41,7 +41,6 @@ import type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, S
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
-
 export const SURFACE_COMMANDS = [
   {
     id: 'file:open', labelKey: 'commandPalette.file.open.label',
@@ -74,9 +73,9 @@ export const SURFACE_COMMANDS = [
     run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); },
   },
   {
-    id: 'view:home', labelKey: 'commandPalette.view.home.label',
+    id: 'view:home', labelKey: 'commandPalette.view.home.label', ribbonLabelKey: 'ribbon.home.home', ribbonTooltipKey: 'ribbon.home.homeTooltip',
     searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
-    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.home',
+    surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled, shortcut: 'camera.home',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.homeAriaLabel',
     run: () => { goHomeFromStore(); },
   },

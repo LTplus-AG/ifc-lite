@@ -13,27 +13,35 @@ export type RibbonCommandButtonProps = Omit<
   'icon' | 'label' | 'shortcut' | 'aria-label'
 > & {
   commandId: SurfaceCommandId;
+  /** The ribbon may use its established SVG while the palette uses Lucide. */
+  icon?: RibbonButtonProps['icon'];
   onClick: NonNullable<RibbonButtonProps['onClick']>;
 };
 
 function useRibbonCommandPresentation(commandId: SurfaceCommandId) {
   const { t } = useTranslation();
   const command = surfaceCommand(commandId, 'ribbon');
-  return { command, label: t(command.labelKey) };
+  return {
+    command,
+    label: t(command.ribbonLabelKey ?? command.labelKey),
+    tooltip: command.ribbonTooltipKey ? t(command.ribbonTooltipKey) : undefined,
+  };
 }
 
 export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
-  function RibbonCommandLargeButton({ commandId, ...props }, ref) {
-    const { command, label } = useRibbonCommandPresentation(commandId);
+  function RibbonCommandLargeButton({ commandId, icon, ...props }, ref) {
+    const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
     return <RibbonLargeButton {...props} ref={ref} data-command-id={command.id}
-      icon={command.icon} label={label} aria-label={label} shortcut={command.shortcut} />;
+      icon={icon ?? command.icon} label={label} aria-label={label}
+      tooltip={tooltip ?? props.tooltip} shortcut={command.shortcut} />;
   },
 );
 
 export const RibbonCommandSmallButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
-  function RibbonCommandSmallButton({ commandId, ...props }, ref) {
-    const { command, label } = useRibbonCommandPresentation(commandId);
+  function RibbonCommandSmallButton({ commandId, icon, ...props }, ref) {
+    const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
     return <RibbonSmallButton {...props} ref={ref} data-command-id={command.id}
-      icon={command.icon} label={label} aria-label={label} shortcut={command.shortcut} />;
+      icon={icon ?? command.icon} label={label} aria-label={label}
+      tooltip={tooltip ?? props.tooltip} shortcut={command.shortcut} />;
   },
 );

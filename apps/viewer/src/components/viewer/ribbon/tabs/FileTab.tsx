@@ -17,6 +17,7 @@ import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { surfaceCommand } from '../../surface-commands';
+import { runSurfaceCommand } from '../../surface-command-run';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -94,7 +95,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           label={t(saveSetup.labelKey)}
           tooltip={t(saveSetup.labelKey)}
           disabled={!saveSetup.enabled({ canEditInSession })}
-          onClick={() => saveSetup.run({ surface: 'ribbon' })}
+          onClick={() => runSurfaceCommand(saveSetup, { surface: 'ribbon' })}
         />
         <RibbonSmallStack className="gap-1">
           {[openSetup, modelTags].map((command) => (
@@ -106,7 +107,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               tooltip={t(command.labelKey)}
               className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => command.run({ surface: 'ribbon' })}
+              onClick={() => runSurfaceCommand(command, { surface: 'ribbon' })}
             />
           ))}
         </RibbonSmallStack>

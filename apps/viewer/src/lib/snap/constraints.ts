@@ -63,7 +63,7 @@ export function buildLocus(q: SnapQuery, p: SnapProfile): Locus {
     dir = axis === 'u' ? [1, 0] : [0, 1];
   } else if (q.modifiers.shift) {
     const step = p.angleStepDeg ?? 90;
-    dir = quantisedDir(q.cursor, a, step > 0 ? step : 90);
+    dir = quantisedDir(q.cursor, a, Number.isFinite(step) && step > 0 ? step : 90);
   }
   if (dir && hasLength) {
     // A linear lock is two-sided: take the side the cursor is on.
@@ -166,7 +166,11 @@ function linearCircleParams(l: Linear, center: Vec2, radius: number): number[] {
 
 const at = (l: Linear, t: number): Vec2 => [l.o[0] + t * l.d[0], l.o[1] + t * l.d[1]];
 
-/** All points where the locus meets a guide. Points are computed on the locus so they stay on it. */
+/**
+ * All points where the locus meets a guide. Points are computed on the locus so they stay on it.
+ * Circle × circle is deliberately unsupported (returns []): circle guides only draw length
+ * locks, and no source or inference emits a circular candidate guide.
+ */
 export function intersectLocusWithGuide(l: Locus, g: Guide): Vec2[] {
   const gl = toLinear(g);
   if (l.kind === 'line' || l.kind === 'ray') {

@@ -71,14 +71,14 @@ export function runTransaction(
 
   const before = undoStackLengths(get().undoStacks);
   const redoBefore = get().redoStacks;
-  const overlayBefore = overlayEntityIds(get(), modelId);
+  const overlayBefore = overlayEntityIds(get());
   const tx: AuthoringTransaction = { modelId, storeyId, workplane, get store() { return get(); } };
   let result: CommitResult;
   try {
     result = cmd.commit(g, tx);
   } catch (error) {
     rollBack(store, before, redoBefore);
-    dropOverlayEntitiesSince(get(), modelId, overlayBefore);
+    dropOverlayEntitiesSince(get(), overlayBefore);
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[modeling] ${cmd.id} commit failed; reverted`, error);
     return { ok: false, reason };
@@ -87,10 +87,11 @@ export function runTransaction(
   const ids = mutationsSince(get().undoStacks, before);
   const batchId = ids.length > 0 ? newMutationBatchId() : null;
   if (batchId) get().tagMutationBatch(ids, batchId);
+  const target = result.modelId ?? modelId;
   if (batchId && result.remesh.length > 0) {
-    requestRemesh(get, { modelId, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
+    requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
   }
-  applySelection(get, modelId, result.select);
+  applySelection(get, target, result.select);
   return { ok: true, batchId, result };
 }
 
@@ -120,20 +121,24 @@ function rollBack(
   });
 }
 
-function overlayEntityIds(state: ViewerState, modelId: string): Set<number> {
-  return new Set(state.mutationViews.get(modelId)?.getNewEntities().map((e) => e.expressId));
+function overlayEntityIds(state: ViewerState): Map<string, Set<number>> {
+  const ids = new Map<string, Set<number>>();
+  for (const [modelId, view] of state.mutationViews) ids.set(modelId, new Set(view.getNewEntities().map((e) => e.expressId)));
+  return ids;
 }
 
 /**
  * A builder writes one CREATE_ENTITY record for the element but also creates
  * its placement, profile and representation entities without history of
  * their own; undoing the element leaves those unreferenced helpers behind.
- * A rolled-back commit must leave the overlay as it found it, so drop them.
+ * A rolled-back commit must leave every model's overlay as it found it (a
+ * command may write to another model than the session's), so drop them.
  */
-function dropOverlayEntitiesSince(state: ViewerState, modelId: string, before: ReadonlySet<number>): void {
-  const view = state.mutationViews.get(modelId);
-  if (!view) return;
-  for (const { expressId } of view.getNewEntities()) if (!before.has(expressId)) view.deleteEntity(expressId);
+function dropOverlayEntitiesSince(state: ViewerState, before: ReadonlyMap<string, ReadonlySet<number>>): void {
+  for (const [modelId, view] of state.mutationViews) {
+    const kept = before.get(modelId) ?? new Set<number>();
+    for (const { expressId } of view.getNewEntities()) if (!kept.has(expressId)) view.deleteEntity(expressId);
+  }
 }
 
 function applySelection(get: () => ViewerState, modelId: string, select: readonly number[] | undefined): void {

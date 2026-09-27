@@ -3,16 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Split tool's HUD presence (#4918, on the `TOOL_HUD` registry since
- * #5503) reads the i18n catalogue.
+ * The Split command's HUD presence (#4918; the `element.split` modeling
+ * command since #6232) reads the i18n catalogue.
  *
  * The oracle is a pseudo-locale that maps every `splitTool.*` key to a
- * marked copy of its English text. Three surfaces: the bar (`SplitBar`),
- * the registry hint the HUD places bottom-center (mounted through the real
- * `ToolOverlays` + `ViewportHud`), and the cursor-anchored distance entry
- * (`SplitCursorInput`, rendered in its single-click-element "aiming"
- * state inside the scene harness). The locale is switched live and every
- * marked string that was readable in English must reappear marked.
+ * marked copy of its English text. Three surfaces, all mounted through the
+ * real `ToolOverlays` + `ViewportHud` with the command running: the bar's
+ * name, the hint the HUD places bottom-center, and the cursor-anchored
+ * distance entry (`SplitCursorInput`, aiming at a real wall). The locale is
+ * switched live and every marked string that was readable in English must
+ * reappear marked.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -26,7 +26,11 @@ import { renderScene } from '../../viewport-ui/scene/test/scene-test-support.js'
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
-import { SplitBar, SplitScene } from './SplitHud.js';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import type { SplitGesture } from '@/lib/commands/modeling/commands/element-split';
+import { SplitScene } from './SplitHud.js';
 
 // Guarded dynamic import (#4918 revert-oracle): a static `import { splitToolEn }
 // from '...'` would fail this file's whole LOAD once `check-test-revert-oracle.mjs`
@@ -80,29 +84,18 @@ function assertTranslates(root: ParentNode, keys: SplitToolKey[], localeName: st
   }
 }
 
-const AIMING_STATE = {
-  activeTool: 'split',
-  splitMode: 'aiming',
-  splitHoverPoint: [1, 0, 0] as [number, number, number],
-  splitHoverDistance: 1.5,
-  splitHoverLength: 3,
-  splitTargetModelId: 'm1',
-  splitTargetExpressId: 42,
-  cameraCallbacks: {
-    projectToScreen: () => ({ x: 10, y: 10 }),
-    getViewpoint: () => null,
-  },
-  clearSplitHover: () => {},
-  setSelectedEntityId: () => {},
-} as unknown as Partial<ReturnType<typeof useViewerStore.getState>>;
-
-const RESET = {
-  activeTool: 'select',
-  splitMode: 'idle',
-  splitHoverPoint: null,
-  splitHoverDistance: null,
-  splitHoverLength: null,
-} as unknown as Partial<ReturnType<typeof useViewerStore.getState>>;
+/** `element.split` running on a real wall, aiming 1.5 m along it. */
+async function aim(): Promise<void> {
+  await seedModelingSession();
+  useViewerStore.setState({ cameraCallbacks: { projectToScreen: () => ({ x: 10, y: 10 }), getViewpoint: () => null } } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [3, 0, 0], Thickness: 0.2, Height: 3 });
+  assert.ok('expressId' in wall);
+  s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, wall.expressId));
+  act(() => s.startCommand('element.split'));
+  const plane = (getCommandRuntime().gesture as SplitGesture).plane!;
+  act(() => commandPointerMove({ local: [1.5, 0], render: plane.localToRender([1.5, 0, 0]), winner: null, guides: [], locked: false }));
+}
 
 beforeEach(() => {
   setLocale('en');
@@ -111,32 +104,27 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setLocale('en');
-  useViewerStore.setState(RESET);
+  useViewerStore.getState().exitModelWorkspace();
 });
 
 describe('Split tool localization (#4918)', { skip: !HAS_CATALOGUE && 'split-tool.en.ts catalogue module not present (revert-oracle probe)' }, () => {
-  it('translates the bar: tool name and close', () => {
-    const ui = render(<SplitBar />);
-    assertTranslates(ui, ['splitTool.barLabel', 'splitTool.closeAria'], 'split-bar-pseudo');
-  });
-
-  it('translates the cursor distance entry: accessible name and unit', () => {
-    useViewerStore.setState(AIMING_STATE);
-    const scene = renderScene(<SplitScene />);
-    scene.flush();
-    assertTranslates(scene.container, ['splitTool.cutDistanceAria', 'splitTool.unitMetres'], 'split-input-pseudo');
-  });
-
-  it('translates the registry hint the HUD places bottom-center', () => {
-    useViewerStore.setState({
-      ...RESET,
-      activeTool: 'split',
-      cameraCallbacks: { projectToScreen: () => null, getViewpoint: () => null },
-    } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+  it('translates the command bar name and the hint the HUD places bottom-center', async () => {
+    await aim();
     render(<ViewportHud />);
     render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
-    const region = document.querySelector('[data-hud-region="bottom-center"]');
-    assert.ok(region, 'the HUD bottom-center region exists');
-    assertTranslates(region, ['splitTool.hint'], 'split-hint-pseudo');
+    const bar = document.querySelector('[data-hud-region="top-center"]');
+    assert.ok(bar, 'the HUD top-center region exists');
+    assertTranslates(bar, ['splitTool.barLabel'], 'split-bar-pseudo');
+    act(() => setLocale('en'));
+    const hint = document.querySelector('[data-hud-region="bottom-center"]');
+    assert.ok(hint, 'the HUD bottom-center region exists');
+    assertTranslates(hint, ['splitTool.hint'], 'split-hint-pseudo');
+  });
+
+  it('translates the cursor distance entry: accessible name and unit', async () => {
+    await aim();
+    const scene = renderScene(<SplitScene gesture={getCommandRuntime().gesture as SplitGesture} ctx={getCommandRuntime().ctx!} />);
+    scene.flush();
+    assertTranslates(scene.container, ['splitTool.cutDistanceAria', 'splitTool.unitMetres'], 'split-input-pseudo');
   });
 });

@@ -37,7 +37,6 @@ export const commandsEn = {
   'commands.tool.annotate': 'Annotate tool — drop a pin with a note',
   'commands.tool.section': 'Section tool',
   'commands.tool.split': 'Split the selected entity (press again to leave Split)',
-  'commands.split.exit': 'Leave Split (Split tool)',
   'commands.walk.move': 'Walk forward / left / back / right (Walk mode, Shift = sprint)',
   'commands.walk.moveArrows': 'Walk with the arrow keys (Walk mode)',
   'commands.measure.toggleSnap': 'Toggle snapping (Measure tool)',

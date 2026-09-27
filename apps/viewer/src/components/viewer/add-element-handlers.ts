@@ -18,14 +18,14 @@ import { useViewerStore } from '@/store';
 import type { AddElementStoreyRef, AddElementVec3 } from '@/store/slices/addElementSlice';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
-import { isRotatedFrame } from '@/lib/authoring/storey-authoring-frame';
 import { raycastFloorPlane } from './pick-frame.js';
 import {
-  authoringFrameFor,
+  isRotatedWorkplane,
   projectOntoWorkplane,
   rendererPointToIfcStoreyLocal,
   resolveWorkplaneStorey,
   workplaneY,
+  workplaneFor,
   type WorkplaneFailure,
 } from './add-element-workplane.js';
 
@@ -104,7 +104,12 @@ export function handleAddElementClick(ctx: MouseHandlerContext, x: number, y: nu
   const { ref, point } = pickOnWorkplane(ctx, x, y);
   if (typeof ref === 'string') { reportWorkplaneFailure(ref); return; }
   if (!point) return;
-  handleAddElementDrop(point, ref);
+  try {
+    handleAddElementDrop(point, ref);
+  } catch (error) {
+    // The storey's workplane refused (e.g. a reprojected model): say why.
+    toast.error(`Couldn't add element: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** Common post-place: pick the new entity's global id, toast, clear pending. */
@@ -166,7 +171,7 @@ export function handleAddElementDrop(point: AddElementVec3, ref: AddElementStore
   const locked = state.addElementGestureStorey ?? ref;
   if (type === 'wall' || type === 'beam' || type === 'member') {
     if (pending.length === 0) { appendGesturePoint(point, ref); return; }
-    const frame = authoringFrameFor(locked);
+    const frame = workplaneFor(locked);
     const Start = rendererPointToIfcStoreyLocal(pending[0], locked, 0, frame);
     const End = rendererPointToIfcStoreyLocal(point, locked, 0, frame);
     if (type === 'wall') {
@@ -192,15 +197,15 @@ export function handleAddElementDrop(point: AddElementVec3, ref: AddElementStore
 }
 
 /**
- * The rectangle the preview draws is axis-aligned in the MODEL frame. On a
- * storey whose axes are turned against the model's, that rectangle is not
+ * The rectangle the preview draws is axis-aligned on screen. On a storey
+ * whose axes are turned against the render axes, that rectangle is not
  * axis-aligned storey-locally, so it is written as a polygon of its four
  * corners rather than as a (differently oriented) storey-axis rectangle.
  */
 function commitSlabRectangle(a: AddElementVec3, b: AddElementVec3, ref: AddElementStoreyRef): void {
   const state = useViewerStore.getState();
   const type = state.addElementType;
-  const frame = authoringFrameFor(ref);
+  const frame = workplaneFor(ref);
   const corners = [a, { x: b.x, y: a.y, z: a.z }, b, { x: a.x, y: a.y, z: b.z }]
     .map((c) => rendererPointToIfcStoreyLocal(c, ref, 0, frame));
   const xs = corners.map((c) => c[0]), ys = corners.map((c) => c[1]);
@@ -210,7 +215,7 @@ function commitSlabRectangle(a: AddElementVec3, b: AddElementVec3, ref: AddEleme
     toast.error(`${capitalize(type)} corners must span a non-zero rectangle`);
     return;
   }
-  if (isRotatedFrame(frame)) {
+  if (isRotatedWorkplane(frame)) {
     commitSlabLike(corners.map((c): [number, number] => [c[0], c[1]]), ref);
     return;
   }
@@ -268,7 +273,11 @@ export function commitAddElementSlabPolygon(): void {
   }
   const ref = state.addElementGestureStorey ?? resolveWorkplaneStorey(null);
   if (typeof ref === 'string') { reportWorkplaneFailure(ref); return; }
-  const frame = authoringFrameFor(ref);
+  let frame;
+  try { frame = workplaneFor(ref); } catch (error) {
+    toast.error(`Couldn't add element: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   const outer = pending.map((pt): [number, number] => {
     const ifc = rendererPointToIfcStoreyLocal(pt, ref, 0, frame);
     return [ifc[0], ifc[1]];

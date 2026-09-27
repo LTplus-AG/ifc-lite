@@ -194,15 +194,10 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     readLinearElementSplitProjection,
     readSlabFootprint,
   ]);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
-  const onSplit = useCallback(() => {
-    // Arm the tool with this entity pre-targeted so the user's next
-    // cursor move lights up the guide. setActiveTool('split')
-    // auto-enables edit mode if needed.
-    setSplitTarget(modelId, entityId);
-    setActiveTool('split');
-  }, [modelId, entityId, setActiveTool, setSplitTarget]);
+  const startCommand = useViewerStore((s) => s.startCommand);
+  // The Split command targets the selection this card edits; the next
+  // cursor move lights up the guide.
+  const onSplit = useCallback(() => startCommand('element.split'), [startCommand]);
 
   const onDuplicate = useCallback(() => {
     const result = duplicateEntity(modelId, entityId);

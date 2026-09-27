@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The one plan-frame crossing between what the viewer draws and what the
- * `@ifc-lite/create` in-store builders write (#6233).
+ * The storey plan frame the authored-element mirror meshes are drawn through
+ * (#6233). Picks go the other way through the storey workplane
+ * (`lib/commands/modeling/workplane.ts`), which takes its plan from here.
  *
  * Every builder (`addWallToStore`, `addColumnToStore`, …) anchors its element
  * to the storey's own placement, so the coordinates it is handed are STOREY-
@@ -30,7 +31,7 @@
  * no chain to read. Refusing would block authoring outright on such a storey.
  */
 
-import { storeyPlanFrame, toStoreyLocal, fromStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/create';
+import { storeyPlanFrame, fromStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/create';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { roomFramePlanOffsets, roomFrameToModelWorld } from '@/lib/wall-rects-from-meshes';
@@ -58,18 +59,8 @@ export function storeyAuthoringFrame(
   return { plan: plan ?? IDENTITY_PLAN, offset: [cx + dx, cy + dy] };
 }
 
-/** Rendered model-frame plan point → the storey-local frame a builder writes. */
-export function modelPlanToStoreyLocal(frame: StoreyAuthoringFrame, p: Vec2): Vec2 {
-  return toStoreyLocal(frame.plan, [p[0] + frame.offset[0], p[1] + frame.offset[1]]);
-}
-
 /** Storey-local plan point → the rendered model frame. Inverse of the above. */
 export function storeyLocalToModelPlan(frame: StoreyAuthoringFrame, p: Vec2): Vec2 {
   const world = fromStoreyLocal(frame.plan, p);
   return [world[0] - frame.offset[0], world[1] - frame.offset[1]];
-}
-
-/** Whether the storey's local axes are turned against the model's. */
-export function isRotatedFrame(frame: StoreyAuthoringFrame): boolean {
-  return Math.abs(frame.plan.axisX[1]) > 1e-9 || frame.plan.axisX[0] < 0;
 }

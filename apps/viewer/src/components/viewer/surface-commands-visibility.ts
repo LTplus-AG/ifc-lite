@@ -22,17 +22,17 @@ const paletteOnly = ['palette'] as const;
 
 export const VISIBILITY_SURFACE_COMMANDS = [
   {
-    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
+    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label', ribbonLabelKey: 'ribbon.elements.hide', ribbonTooltipKey: 'ribbon.elements.hideTooltip',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.hideSelection',
     contextLabelKey: 'entityContextMenu.hide',
     run: (context: SurfaceCommandContext) => runContextOr(context, hideSelectionFromStore),
   },
   {
-    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
+    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll, ribbonTooltipKey: 'ribbon.elements.showAllTooltip',
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
+    surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
     run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
   },
   {

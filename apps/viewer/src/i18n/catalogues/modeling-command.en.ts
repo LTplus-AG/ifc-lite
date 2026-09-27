@@ -14,4 +14,8 @@ export const modelingCommandEn = {
   'modelingCommand.unit.m': 'm',
   'modelingCommand.unit.deg': '°',
   'modelingCommand.unit.count': '',
+  'modelingCommand.split.noTarget': 'Select the element to split first',
+  'modelingCommand.split.noPlane': "This element's storey has no placement that resolves in plan",
+  'modelingCommand.split.needLine': 'Click two points to draw the cut line',
+  'modelingCommand.split.outOfRange': 'Point at the element, or type a distance along it',
 } as const satisfies Record<string, TranslationValue>;

@@ -25,9 +25,10 @@ import type { RenderOptions } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { AddElementStoreyRef, AddElementVec3 } from '@/store/slices/addElementSlice';
 import { fromGlobalIdFromModels } from '@/store/globalId';
-import { modelPlanToStoreyLocal, storeyAuthoringFrame, type StoreyAuthoringFrame } from '@/lib/authoring/storey-authoring-frame';
+import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
+import type { Workplane } from '@/lib/commands/modeling/types';
 import type { SectionRenderClip } from '@/lib/section/section-render-clip';
-import { rendererPointToModelFrame, resolveStoreyExpressId, storeyFloorY } from './pick-frame.js';
+import { resolveStoreyExpressId, storeyFloorY } from './pick-frame.js';
 
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
 
@@ -85,28 +86,41 @@ export function projectOntoWorkplane(
   return { point: projected, snap: Math.abs(point.y - planeY) > 1e-4 ? { ...point } : null };
 }
 
-/** The storey's authoring frame, from the live store. */
-export function authoringFrameFor(ref: AddElementStoreyRef): StoreyAuthoringFrame {
-  const model = useViewerStore.getState().models.get(ref.modelId);
-  return storeyAuthoringFrame(model?.ifcDataStore, ref.storeyId, model?.geometryResult?.coordinateInfo);
+/**
+ * The storey's workplane (`lib/commands/modeling/workplane.ts`): the one
+ * render ↔ storey-local map the modeling commands use too — storey placement
+ * chain, RTC anchor, origin shift, federation alignment and the model's
+ * reposition. Throws when it refuses (a reprojected model), with the reason.
+ */
+export function workplaneFor(ref: AddElementStoreyRef): Workplane {
+  const plane = buildStoreyWorkplane(useViewerStore.getState(), ref.modelId, ref.storeyId, 0);
+  if (!isWorkplane(plane)) throw new Error(plane.refused);
+  return plane;
 }
 
 /**
- * Renderer-frame point → IFC storey-local coordinates for `ref`'s storey:
- * undo the model's reposition (`rendererPointToModelFrame`), then divide the
- * storey's placement chain out (`modelPlanToStoreyLocal`), so a builder that
- * anchors to the storey reads back the point that was clicked. `z` is the
- * storey-local height (0 = on the floor; a window's sill height).
+ * Renderer-frame point → IFC storey-local coordinates for `ref`'s storey, so a
+ * builder that anchors to the storey reads back the point that was clicked.
+ * `z` is the storey-local height (0 = on the floor; a window's sill height).
  */
 export function rendererPointToIfcStoreyLocal(
   point: AddElementVec3,
   ref: AddElementStoreyRef,
   z = 0,
-  frame: StoreyAuthoringFrame = authoringFrameFor(ref),
+  plane: Workplane = workplaneFor(ref),
 ): [number, number, number] {
-  const [mx, my] = rendererPointToModelFrame(point, ref.modelId);
-  const [lx, ly] = modelPlanToStoreyLocal(frame, [mx, my]);
-  return [lx, ly, z];
+  const [x, y] = plane.renderToLocal([point.x, point.y, point.z]);
+  return [x, y, z];
+}
+
+/**
+ * Whether the storey's local axes are turned against the render axes (the
+ * storey chain or the model's reposition heading), so a rectangle drawn
+ * axis-aligned on screen is not axis-aligned storey-locally.
+ */
+export function isRotatedWorkplane(plane: Workplane): boolean {
+  const [ux, , uz] = plane.plane.u;
+  return Math.abs(uz) > 1e-9 || ux < 0;
 }
 
 /**

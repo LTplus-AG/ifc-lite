@@ -81,10 +81,7 @@ export const TOOL_SURFACE_COMMANDS = [
     shortcut: 'tool.split',
     run: () => {
       const state = useViewerStore.getState();
-      const selected = state.selectedEntity;
-      if (!selected) return;
-      state.setSplitTarget(selected.modelId, selected.expressId);
-      state.setActiveTool('split');
+      if (state.selectedEntity) state.startCommand('element.split');
     },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

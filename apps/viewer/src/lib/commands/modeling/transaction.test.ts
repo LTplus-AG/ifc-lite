@@ -11,7 +11,9 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { fixtureModel } from '@/test/store-fixture';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { runTransaction, setRequestRemesh, type RemeshRequest } from './transaction.js';
 import type { CommandContext, CommitResult, ModelingCommand } from './types.js';
@@ -92,6 +94,24 @@ describe('runTransaction (#6232 WP2)', () => {
     const outcome = runTransaction(useViewerStore, command(() => { ran = true; return NOTHING; }), null, ctx);
     assert.equal(outcome.ok, false);
     assert.equal(ran, false);
+  });
+
+  it('selects and re-meshes in the model the commit names, not the session model', () => {
+    // A split of an element selected in another federated model (#6232 WP2 review).
+    const OTHER = 'other';
+    const other = { ...fixtureModel(OTHER, { idOffset: 100_000 }), maxExpressId: 1_000 } as unknown as FederatedModel;
+    useViewerStore.setState({ models: new Map([...useViewerStore.getState().models, [OTHER, other]]) });
+    const requests: RemeshRequest[] = [];
+    setRequestRemesh((_get, request) => { requests.push(request); });
+    const outcome = runTransaction(useViewerStore, command((_g, tx) => {
+      tx.store.setProperty(MODEL_ID, STOREY, 'Pset_Test', 'A', 'a');
+      return { modelId: OTHER, created: [7], deleted: [], remesh: [7], select: [7] };
+    }), null, ctx);
+    assert.ok(outcome.ok);
+    assert.equal(requests[0]?.modelId, OTHER);
+    const models = useViewerStore.getState().models;
+    assert.equal(useViewerStore.getState().selectedEntityId, toGlobalIdFromModels(models, OTHER, 7));
+    assert.notEqual(toGlobalIdFromModels(models, OTHER, 7), toGlobalIdFromModels(models, MODEL_ID, 7));
   });
 
   it('asks the re-mesh seam once, with the batch it tagged', () => {

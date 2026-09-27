@@ -72,7 +72,7 @@ import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js
 import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
-import { runGpuUpload } from './gpu-upload-guard.js';
+import { useAuthoringOverlay } from './useAuthoringOverlay.js';
 import { anchorWorldLineVertices, rendererLineVertexData } from '@/lib/renderer/line-overlay-rte';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
@@ -549,34 +549,7 @@ export function Viewport({
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const ifcDataStoreRef = useLatestRef(ifcDataStore);
-  // Express-ids of the Space Sketch draft ghost meshes currently in the scene
-  // (added directly via appendToBatches, outside geometryResult) so they can be
-  // swapped/cleared without touching the streaming geometry pipeline.
-  const spaceOverlayIdsRef = useRef<Set<number>>(new Set());
-
-  /**
-   * Overlay ids that are still safe to remove from the scene.
-   *
-   * `removeMeshesForEntities` deletes EVERY mesh registered under an id, and the
-   * Space Sketch ghost band is not reserved: `GHOST_ID_BASE` is 0x70000000
-   * (~1.879e9) while `FederationRegistry.MAX_SAFE_OFFSET` is 2e9, and unloading a
-   * model burns its offset space permanently. A long federated session can
-   * therefore hand a real model a global id inside the band that a live ghost
-   * already occupies, and clearing the overlay would delete that model's geometry.
-   *
-   * `fromGlobalId` returns null for anything outside every registered range (it
-   * bounds-checks against `maxExpressId`, not just the offset), so an id that now
-   * resolves to a real model is dropped from the removal set. The residual failure
-   * is a leaked ghost mesh, not deleted building geometry.
-   */
-  const removableOverlayIds = useCallback((ids: Set<number>): Set<number> => {
-    const resolve = useViewerStore.getState().fromGlobalId;
-    const safe = new Set<number>();
-    for (const id of ids) {
-      if (!resolve(id)) safe.add(id);
-    }
-    return safe;
-  }, []);
+  const authoringOverlay = useAuthoringOverlay(rendererRef); // Space Sketch + command ghosts (#6232)
 
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
   // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
@@ -1190,38 +1163,7 @@ export function Viewport({
             calculateScale();
           }
         },
-        setSpaceOverlayMeshes: (meshes) => { // Space Sketch draft ghosts, via runGpuUpload (#4885); loss checked FIRST.
-          const renderer = rendererRef.current;
-          if (!renderer || renderer.isDeviceLost()) return;
-          const scene = renderer.getScene(), device = renderer.getGPUDevice(), pipeline = renderer.getPipeline();
-          if (!scene || !device || !pipeline) return;
-          runGpuUpload('setSpaceOverlayMeshes', () => {
-            if (spaceOverlayIdsRef.current.size > 0) {
-              scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
-              spaceOverlayIdsRef.current = new Set();
-            }
-            if (meshes.length > 0) {
-              const ids = new Set(meshes.map((m) => m.expressId)); // rolled back below on a GPU failure, or they orphan as ghosts (review)
-              try { scene.appendToBatches(meshes, device, pipeline, false); spaceOverlayIdsRef.current = ids; }
-              catch (err) { scene.removeMeshesForEntities(removableOverlayIds(ids)); throw err; }
-            }
-            if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
-          }, { isDeviceLost: () => renderer.isDeviceLost() });
-          renderer.clearCaches();
-          renderer.requestRender();
-        },
-        clearSpaceOverlayMeshes: () => {
-          const renderer = rendererRef.current;
-          const scene = renderer?.getScene();
-          if (!renderer || !scene || spaceOverlayIdsRef.current.size === 0) return;
-          scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
-          spaceOverlayIdsRef.current = new Set();
-          const device = renderer.getGPUDevice();
-          const pipeline = renderer.getPipeline();
-          if (device && pipeline && scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
-          renderer.clearCaches();
-          renderer.requestRender();
-        },
+        ...authoringOverlay,
         frameClashRegion: (min, max) => {
           // Frame the clash's (already context-padded) contact box from the
           // canonical isometric pose so the penetration is read at a 3/4 angle,

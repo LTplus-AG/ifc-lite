@@ -34,7 +34,6 @@ export type KeyContext =
   | 'overlay'
   | 'tool.walk'
   | 'tool.measure'
-  | 'tool.split'
   | 'tool.addElement'
   | 'tool.spaceSketch'
   /** While a modeling command runs (Model workspace, charter #6232). */
@@ -103,7 +102,6 @@ export const KEY_COMMANDS = [
   { id: 'tool.annotate', labelKey: 'commands.tool.annotate', category: 'tools', when: 'global', keys: [k('p')] },
   { id: 'tool.section', labelKey: 'commands.tool.section', category: 'tools', when: 'global', keys: [k('x')] },
   { id: 'tool.split', labelKey: 'commands.tool.split', category: 'tools', when: 'global', keys: [k('k')] },
-  { id: 'split.exit', labelKey: 'commands.split.exit', category: 'tools', when: 'tool.split', keys: [k('escape')] },
   { id: 'walk.move', labelKey: 'commands.walk.move', category: 'tools', when: 'tool.walk', keys: [k('w'), k('a'), k('s'), k('d')] },
   { id: 'walk.moveArrows', labelKey: 'commands.walk.moveArrows', category: 'tools', when: 'tool.walk', keys: [k('arrowup'), k('arrowleft'), k('arrowdown'), k('arrowright')] },
   { id: 'measure.toggleSnap', labelKey: 'commands.measure.toggleSnap', category: 'tools', when: 'tool.measure', keys: [k('s')] },

@@ -154,6 +154,12 @@ export function writeCommandField(index: number, value: number): void {
   publish({ gesture: field.write(state.gesture, value), dirty: true, activeField: index });
 }
 
+/** A command's own HUD edits its gesture (e.g. a distance typed at the cursor). */
+export function updateCommandGesture(update: (g: unknown) => unknown): void {
+  if (!state.command) return;
+  publish({ gesture: update(state.gesture), dirty: true });
+}
+
 /** Enter: validate, then commit the gesture as one transaction. */
 export function commitCommand(): boolean {
   const { command, ctx, gesture } = state;

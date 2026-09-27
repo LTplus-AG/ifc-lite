@@ -65,6 +65,20 @@ export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type 
 export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
+export {
+  addOpeningToStore,
+  type OpeningInStoreParams,
+  type WallOpeningInStoreParams,
+  type SlabOpeningInStoreParams,
+  type OpeningBuildResult,
+} from './in-store/opening.js';
+export {
+  addHostedDoorToStore,
+  addHostedWindowToStore,
+  type HostedDoorInStoreParams,
+  type HostedWindowInStoreParams,
+  type HostedFillBuildResult,
+} from './in-store/hosted-fill.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
 export {
   addSpatialZonesToStore,
@@ -93,8 +107,9 @@ export {
 } from './in-store/cost.js';
 export { removeCostEntityInStore, type CostRemovalReferrers } from './in-store/cost-removal.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
+export { resolveHostAnchor } from './in-store/resolve-host.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
-export type { SpatialAnchor } from './in-store/anchor.js';
+export type { SpatialAnchor, HostAnchor, HostBounds, HostKind } from './in-store/anchor.js';
 export {
   duplicateInStore,
   type SourceAttributes,

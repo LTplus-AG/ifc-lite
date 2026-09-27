@@ -94,6 +94,9 @@ export const INFERENCE_CATALOGUE: Record<string, NamespaceMapping> = {
       addRoof: ['model.create'],
       addPlate: ['model.create'],
       addMember: ['model.create'],
+      addOpening: ['model.create'],
+      addHostedDoor: ['model.create'],
+      addHostedWindow: ['model.create'],
     },
   },
   viewer: {

@@ -19,8 +19,7 @@ import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
-import { useSearchIndex } from '@/hooks/useSearchIndex';
+import { ShellStoreEffects } from './ShellStoreEffects';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
@@ -29,7 +28,6 @@ import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
-import { useIfc } from '@/hooks/useIfc';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -71,12 +69,10 @@ const SAFE_MODE_QUERY_FLAG = '?safe=0';
 
 export function ViewerLayout() {
   const { t } = useTranslation();
-  useSearchIndex();
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
-  useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
   // the whole session: a second instance would keep its own ownership map and
@@ -243,8 +239,9 @@ export function ViewerLayout() {
   const bottomViewportInset = useVisualViewportBottomInset();
 
   // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
-  const { models, geometryResult } = useIfc();
-  const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
+  // A boolean selector, not `useIfc()`: that hook subscribes to `models` and
+  // `geometryResult`, so every geometry update re-rendered the whole layout (#6232).
+  const hasModelsLoaded = useViewerStore((s) => s.models.size > 0 || (s.geometryResult?.meshes?.length ?? 0) > 0);
 
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();
@@ -256,6 +253,7 @@ export function ViewerLayout() {
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
+        <ShellStoreEffects />
         {safeMode && (
           <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-2xs text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />

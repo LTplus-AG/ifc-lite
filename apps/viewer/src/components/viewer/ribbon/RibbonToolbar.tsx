@@ -26,7 +26,6 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore, type RibbonTabId } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -73,7 +72,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   // hidden file inputs exactly once for this toolbar style.
   const fileCommands = useFileCommands();
 
-  const { loading, geometryProgress, metadataProgress } = useIfc();
+  // Narrow selectors: `useIfc()` also subscribes to `models` / `geometryResult` (#6232).
+  const loading = useViewerStore((s) => s.loading);
+  const geometryProgress = useViewerStore((s) => s.geometryProgress);
+  const metadataProgress = useViewerStore((s) => s.metadataProgress);
   const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const handleTabClick = (id: RibbonTabId) => {

@@ -12,7 +12,6 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 
 import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
 import { useViewerStore } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
@@ -34,7 +33,7 @@ const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-in
 
 export function AuthorTab() {
   const { t } = useTranslation();
-  const { ifcDataStore } = useIfc();
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);

@@ -126,6 +126,26 @@ fn issue_5759_type_fallback_conflict_and_missing_geometry() {
 }
 
 #[test]
+fn issue_5759_invalid_first_type_assignment_does_not_hide_valid_type_metadata() {
+    let file = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,$,$,$,$,$,$,$);\n\
+        #2=IFCREINFORCINGBARTYPE('type',$,'Type',$,$,$,$,$,$,.MAIN.,12.,$,900.,$,$,$);\n\
+        #3=IFCREINFORCINGBARTYPE('other',$,'Other',$,$,$,$,$,$,.SHEAR.,16.,$,800.,$,$,$);\n\
+        #4=IFCRELDEFINESBYTYPE('invalid',$,$,$,(#1),#99);\n\
+        #5=IFCRELDEFINESBYTYPE('valid',$,$,$,(#1),#2);\n\
+        #6=IFCRELDEFINESBYTYPE('conflict',$,$,$,(#1),#3);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let schedule = build_rebar_schedule(file, None, &SweptDiskCheckOptions::default()).unwrap();
+    let row = &schedule.rows[&1];
+    assert_eq!(row.type_id, Some(2));
+    assert_eq!(row.authored["BarLength"].source_id, 2);
+    assert_eq!(row.authored["BarLength"].value,
+        AuthoredRebarValue::Measure { value_file_units: 900.0, value_si: 900.0, si_unit: "m" });
+    assert!(row.diagnostics.iter().any(|message| message.contains("assigned type #99")));
+    assert!(row.diagnostics.iter().any(|message| message.contains("#2 and #3")));
+}
+
+#[test]
 fn issue_5759_ifc2x3_uses_barrole_not_predefinedtype() {
     let file = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
         #1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,'T1','B500B',12.,113.,1500.,.MAIN.,.PLAIN.);\n\

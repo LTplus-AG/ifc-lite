@@ -12,11 +12,11 @@ const TAB_BUTTON_COUNTS = [
   ['Home', 7],
   ['View', 19],
   ['Elements', 16],
-  ['Analyze', 16],
+  ['Analyze', 17], // 16 commands plus the panel-browser content trigger (#5873)
   ['Author', 9],
 ] as const;
 
-test('authored IFC keeps all 85 ribbon commands reachable at 1280px (#5874)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 85 ribbon commands and panel browser reachable at 1280px (#5874)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -52,7 +52,7 @@ test('authored IFC keeps all 85 ribbon commands reachable at 1280px (#5874)', as
 
       const bounds = await button.boundingBox();
       const bandBounds = await band.boundingBox();
-      expect(bounds, `${tabName} command ${index} has a layout box`).not.toBeNull();
+      expect(bounds, `${tabName} control ${index} has a layout box`).not.toBeNull();
       expect(bandBounds, `${tabName} ribbon band has a layout box`).not.toBeNull();
       expect(bounds!.x, `${tabName}: ${name} starts inside the scrollable band`).toBeGreaterThanOrEqual(bandBounds!.x - 1);
       expect(bounds!.x + bounds!.width, `${tabName}: ${name} ends inside the scrollable band`)
@@ -76,7 +76,9 @@ test('authored IFC keeps all 85 ribbon commands reachable at 1280px (#5874)', as
     expect(pageWidth, `${tabName} must not force a page-wide horizontal scrollbar`).toBeLessThanOrEqual(1281);
   }
 
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0)).toBe(85);
+  const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
+  expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(85);
   await testInfo.attach('reachable-ribbon-commands.json', {
     body: JSON.stringify(visited, null, 2),
     contentType: 'application/json',

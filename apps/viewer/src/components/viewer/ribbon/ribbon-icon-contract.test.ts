@@ -18,7 +18,7 @@
  * shipped — Reposition, Zones, Load Report, Appearance, World, Move georef,
  * Follow work, Classic bar — because nothing checked. This does, both ways:
  *
- * 1. Every `icon={X}` on a RibbonLargeButton / RibbonSmallButton under
+ * 1. Every `icon={X}` on a ribbon button or registry-backed ribbon button under
  *    `ribbon/tabs/` must be an identifier imported from `@/icons` (read from
  *    the TypeScript AST, so a stray import or a name in a comment does not
  *    count).
@@ -45,7 +45,10 @@ const TABS_DIR = path.join(HERE, 'tabs');
 const ICONS_DIR = path.join(SRC, 'icons');
 const ICONS_INDEX = path.join(ICONS_DIR, 'index.ts');
 
-const RIBBON_BUTTONS = new Set(['RibbonLargeButton', 'RibbonSmallButton']);
+const RIBBON_BUTTONS = new Set([
+  'RibbonLargeButton', 'RibbonSmallButton',
+  'RibbonCommandLargeButton', 'RibbonCommandSmallButton',
+]);
 
 /** Paints the vite loader rewrites (see `customCollections.viewer`), plus `none`. */
 const ALLOWED_PAINTS = new Set(['#000000', '#0063B1', 'rgba(0, 99, 177, 1)', 'none']);

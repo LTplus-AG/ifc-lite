@@ -54,6 +54,38 @@ afterEach(() => {
   useViewerStore.setState(RESET);
 });
 
+describe('ViewerLayout desktop split (#5873)', () => {
+  it('#5873 reserves enough default desktop split for hierarchy names beside the grouped rail', () => {
+    setViewport(1600, 1000);
+    useViewerStore.setState({ leftPanelCollapsed: false });
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    // Happy DOM reports zero layout width. Give the real panel group a desktop
+    // measurement so its own sizing algorithm applies the configured split.
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.id === 'left-panel') return 350;
+        if (this.id === 'viewport-panel') return 1200;
+        return originalOffsetWidth?.get?.call(this) ?? 0;
+      },
+    });
+    try {
+      const ui = renderViewerLayout();
+      const hierarchy = ui.querySelector<HTMLElement>('#left-panel');
+      const viewport = ui.querySelector<HTMLElement>('#viewport-panel');
+      assert.ok(hierarchy && viewport, 'the desktop hierarchy and viewport are both mounted');
+
+      const hierarchySize = Number.parseFloat(hierarchy.style.flexGrow);
+      const viewportSize = Number.parseFloat(viewport.style.flexGrow);
+      assert.ok(hierarchySize >= 22.5, `hierarchy received only ${hierarchySize}%`);
+      assert.ok(Math.abs(hierarchySize + viewportSize - 100) < 0.01, 'the initial split must total 100%');
+    } finally {
+      if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+  });
+});
+
 describe('ViewerLayout mobile panel collapse (#5837)', () => {
   it('#5874 opens the ribbon for a stored classic preference and clears that preference', () => {
     setViewport(1280, 900);

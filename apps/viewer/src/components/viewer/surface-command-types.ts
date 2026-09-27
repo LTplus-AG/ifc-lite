@@ -24,6 +24,8 @@ export interface SurfaceCommandContext {
   runExport?: (request: ExportRequest) => void;
   openFiles?: () => void;
   addModel?: () => void;
+  refreshModels?: () => Promise<void>;
+  openShareDialog?: () => void;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
 }
@@ -51,6 +53,8 @@ export interface SurfaceCommandDefinition {
   /** State-dependent mobile text/icon live here, alongside the action. */
   mobileLabelKey?: (state: SurfaceCommandState) => TranslationKey;
   mobileIcon?: (state: SurfaceCommandState) => Command['icon'];
+  ribbonLabelKey?: TranslationKey;
+  ribbonTooltipKey?: TranslationKey;
   contextLabelKey?: TranslationKey;
   contextLabelParams?: (state: SurfaceCommandState) => TranslationParameters;
   contextIcon?: Command['icon'];

@@ -16,13 +16,30 @@
 
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
-import { RIBBON_EXPORT_ICONS } from './ribbon/tabs/ribbon-export-icons';
+import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Puzzle } from 'lucide-react';
+import type { ExportIconSet } from './toolbar/export-commands';
 import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import {
   commandRowFromDefinition, type CommandSurface, type SurfaceCommandContext, type SurfaceCommandDefinition,
 } from './surface-commands';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
+
+/** Node-loadable palette icons. The ribbon uses its own SVG set through Vite. */
+const PALETTE_EXPORT_ICONS: ExportIconSet = {
+  ifc: FileText,
+  anonymized: EyeOff,
+  'modified-ifc': FilePen,
+  glb: Download,
+  kmz: Globe2,
+  usd: Download,
+  energy: Download,
+  csv: FileSpreadsheet,
+  json: FileJson,
+  screenshot: Camera,
+  pdf: FileText,
+  extension: Puzzle,
+};
 
 /** Extra search tokens per format — exhaustive, so a new registry entry must say how it is found. */
 const EXPORT_KEYWORDS: Record<ExportCommandId, string> = {
@@ -57,7 +74,7 @@ export const EXPORT_SURFACE_COMMANDS: readonly SurfaceCommandDefinition[] = EXPO
   const shared = {
     keywords: EXPORT_KEYWORDS[command.id],
     category: 'Export' as const,
-    icon: RIBBON_EXPORT_ICONS[command.id],
+    icon: PALETTE_EXPORT_ICONS[command.id],
     surfaces: ['palette', 'mobile'] as const,
     enabled: () => true,
   };
@@ -99,7 +116,7 @@ export function buildExportCommands(
     label: exporter.name,
     keywords: `extension ${exporter.extension.slice(1)} download`,
     category: 'Export',
-    icon: RIBBON_EXPORT_ICONS.extension,
+    icon: PALETTE_EXPORT_ICONS.extension,
     detail: exporter.extension,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));

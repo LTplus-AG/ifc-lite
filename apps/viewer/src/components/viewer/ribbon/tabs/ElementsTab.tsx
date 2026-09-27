@@ -13,7 +13,6 @@ import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { surfaceCommand } from '../../surface-commands';
-import { runSurfaceCommand } from '../../surface-command-run';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
@@ -62,18 +61,15 @@ export function ElementsTab() {
         <RibbonCommandLargeButton
           commandId="elements:search"
           icon={Search}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:search', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="vis:show"
           icon={DisplayAll}
-          onClick={() => runSurfaceCommand(surfaceCommand('vis:show', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="pref:tooltips"
           icon={ElementTooltips}
           active={hoverTooltipsEnabled}
-          onClick={() => runSurfaceCommand(surfaceCommand('pref:tooltips', 'ribbon'), { surface: 'ribbon' })}
         />
       </RibbonGroup>
 
@@ -84,45 +80,39 @@ export function ElementsTab() {
           commandId="vis:isolate"
           icon={IsolateSelected}
           disabled={!hasSelection}
-          onClick={() => runSurfaceCommand(surfaceCommand('vis:isolate', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="vis:hide"
           icon={HideSelected}
           disabled={!hasSelection}
-          onClick={() => runSurfaceCommand(surfaceCommand('vis:hide', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonSmallStack>
           <RibbonCommandSmallButton
             commandId="view:frame"
             icon={FocusSelected}
             disabled={!hasSelection}
-            onClick={() => runSurfaceCommand(surfaceCommand('view:frame', 'ribbon'), { surface: 'ribbon' })}
           />
           <RibbonCommandSmallButton
             commandId="context:copy-global-id"
             icon={CopyGuid}
             disabled={selectedEntityId === null}
-            onClick={() => runSurfaceCommand(surfaceCommand('context:copy-global-id', 'ribbon'), {
-              surface: 'ribbon', contextAction: handleCopyGuid,
-            })}
+            commandContext={{ contextAction: handleCopyGuid }}
           />
           <RibbonCommandSmallButton
             commandId="elements:entity-actions"
             icon={EntityActions}
             disabled={!hasSelection}
-            onClick={(event) => {
-              const targetId = selectedEntityIds.size > 0
-                ? (selectedEntityId !== null && selectedEntityIds.has(selectedEntityId)
-                    ? selectedEntityId : selectedEntityIds.values().next().value)
-                : selectedEntityId;
-              if (targetId === undefined || targetId === null) return;
-              const rect = event.currentTarget.getBoundingClientRect();
-              runSurfaceCommand(surfaceCommand('elements:entity-actions', 'ribbon'), {
-                surface: 'ribbon',
-                contextAction: () => openContextMenu(targetId, Math.max(1, rect.left + rect.width / 2), Math.max(1, rect.bottom)),
-              });
-            }}
+            commandContext={(event) => ({
+              contextAction: () => {
+                const targetId = selectedEntityIds.size > 0
+                  ? (selectedEntityId !== null && selectedEntityIds.has(selectedEntityId)
+                      ? selectedEntityId : selectedEntityIds.values().next().value)
+                  : selectedEntityId;
+                if (targetId === undefined || targetId === null) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                openContextMenu(targetId, Math.max(1, rect.left + rect.width / 2), Math.max(1, rect.bottom));
+              },
+            })}
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -134,31 +124,26 @@ export function ElementsTab() {
           commandId="elements:spatial"
           icon={Spatial}
           active={hierarchyMode === 'spatial'}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:spatial', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="elements:class"
           icon={Class}
           active={hierarchyMode === 'type'}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:class', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="elements:type"
           icon={Type}
           active={hierarchyMode === 'ifc-type'}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:type', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="elements:materials"
           icon={Material}
           active={hierarchyMode === 'material'}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:materials', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonCommandLargeButton
           commandId="elements:groups"
           icon={Group}
           active={hierarchyMode === 'groups'}
-          onClick={() => runSurfaceCommand(surfaceCommand('elements:groups', 'ribbon'), { surface: 'ribbon' })}
         />
       </RibbonGroup>
       <RibbonGroupDivider />
@@ -191,13 +176,12 @@ export function ElementsTab() {
               commandId={command.id}
               tooltip={t(command.labelKey)}
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => runSurfaceCommand(command, {
-                surface: 'ribbon',
+              commandContext={{
                 resetColors: () => {
                   if (!bim) throw new Error('Reset Colors requires a BimProvider');
                   bim.viewer.resetColors();
                 },
-              })}
+              }}
             />
           ))}
         </RibbonSmallStack>

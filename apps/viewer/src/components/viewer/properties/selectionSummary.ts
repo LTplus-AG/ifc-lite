@@ -8,7 +8,6 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EntityRef } from '@/store/types';
 import { effectiveSelectedClass } from './effectiveSelectedClass';
 import { propertyDisplayValue, quantityDisplayValue } from './propertyDisplayValue';
-import type { PropertySet, QuantitySet } from './encodingUtils';
 import { effectivePropertySets, effectiveQuantitySets } from './effectiveSets';
 
 /**

@@ -6,6 +6,7 @@ import { useCallback } from 'react';
 
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import type { EntityRef } from '@/store/types';
 
 /**
  * Select the parent `IfcElementAssembly` from the "Part of Assembly" badge
@@ -19,32 +20,39 @@ import { toGlobalIdFromModels } from '@/store/globalId';
  */
 export function useSelectAssembly(): (expressId: number) => void {
   return useCallback((expressId: number) => {
-    const s = useViewerStore.getState();
-    const selected = s.selectedEntity;
-    if (!selected) return;
-    const globalId = toGlobalIdFromModels(s.models, selected.modelId, expressId);
-
-    // An assembly owns no mesh of its own and the renderer highlights by
-    // mesh-id match, so selecting the bare id cleared the part's highlight and
-    // lit nothing in its place -- the camera moved to the right place while
-    // nothing lit up (Viewport.tsx:1156-1167). Highlight the renderable parts,
-    // assembly id LAST so it stays primary (#1133), the shape
-    // SearchModal.text and HierarchyPanel already use.
-    const renderableParts = s.cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
-    s.setSelectedEntityIds([...renderableParts, globalId]);
-    s.setSelectedEntityId(globalId);
-    s.setSelectedEntity({ modelId: selected.modelId, expressId });
-
-    // MeasureQuantities, basketVisibleSet, useBCF and the LLM context builder
-    // read this model-aware set in preference to `selectedEntity`, so one left
-    // standing keeps reporting the entities selected BEFORE this click. The
-    // canonical single-select path clears it too (Viewport.tsx:198-200).
-    if (s.selectedEntitiesSet.size > 0) {
-      useViewerStore.setState({ selectedEntitiesSet: new Set<string>() });
-    }
-
-    if (s.cameraCallbacks.frameSelection) {
-      window.setTimeout(() => useViewerStore.getState().cameraCallbacks.frameSelection?.(), 50);
-    }
+    const selected = useViewerStore.getState().selectedEntity;
+    if (selected) selectOnlyEntity({ modelId: selected.modelId, expressId });
   }, []);
+}
+
+/**
+ * Replace the whole selection with one entity on both selection channels and
+ * frame it. Also narrows a multi-selection to one of its members (#5900).
+ */
+export function selectOnlyEntity(ref: EntityRef): void {
+  const s = useViewerStore.getState();
+  const globalId = toGlobalIdFromModels(s.models, ref.modelId, ref.expressId);
+
+  // An assembly owns no mesh of its own and the renderer highlights by
+  // mesh-id match, so selecting the bare id cleared the part's highlight and
+  // lit nothing in its place -- the camera moved to the right place while
+  // nothing lit up (Viewport.tsx:1156-1167). Highlight the renderable parts,
+  // assembly id LAST so it stays primary (#1133), the shape
+  // SearchModal.text and HierarchyPanel already use.
+  const renderableParts = s.cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
+  s.setSelectedEntityIds([...renderableParts, globalId]);
+  s.setSelectedEntityId(globalId);
+  s.setSelectedEntity(ref);
+
+  // MeasureQuantities, basketVisibleSet, useBCF and the LLM context builder
+  // read this model-aware set in preference to `selectedEntity`, so one left
+  // standing keeps reporting the entities selected BEFORE this click. The
+  // canonical single-select path clears it too (Viewport.tsx:198-200).
+  if (s.selectedEntitiesSet.size > 0) {
+    useViewerStore.setState({ selectedEntitiesSet: new Set<string>() });
+  }
+
+  if (s.cameraCallbacks.frameSelection) {
+    window.setTimeout(() => useViewerStore.getState().cameraCallbacks.frameSelection?.(), 50);
+  }
 }

@@ -7,7 +7,7 @@
  */
 
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
-import { useCallback } from 'react';
+import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
@@ -15,6 +15,8 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { useTranslation } from '@/i18n';
+import { BimReactContext } from '@/sdk/BimProvider';
+import { surfaceCommand } from '../../surface-commands';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
@@ -26,6 +28,11 @@ import {
 
 export function ElementsTab() {
   const { t } = useTranslation();
+  const bim = useContext(BimReactContext);
+  const toggleCollection = surfaceCommand('vis:toggle-iso', 'ribbon');
+  const resetColors = surfaceCommand('vis:reset-colors', 'ribbon');
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
@@ -193,6 +200,25 @@ export function ElementsTab() {
           </DropdownMenuTrigger>
           <ClassVisibilityMenuContent align="start" />
         </DropdownMenu>
+        <RibbonSmallStack>
+          {[toggleCollection, resetColors].map((command) => (
+            <RibbonSmallButton
+              key={command.id}
+              data-command-id={command.id}
+              icon={command.icon}
+              label={t(command.labelKey)}
+              tooltip={t(command.labelKey)}
+              disabled={!command.enabled({ canEditInSession })}
+              onClick={() => command.run({
+                surface: 'ribbon',
+                resetColors: () => {
+                  if (!bim) throw new Error('Reset Colors requires a BimProvider');
+                  bim.viewer.resetColors();
+                },
+              })}
+            />
+          ))}
+        </RibbonSmallStack>
       </RibbonGroup>
     </>
   );

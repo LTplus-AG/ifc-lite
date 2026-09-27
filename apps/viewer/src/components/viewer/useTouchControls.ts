@@ -20,6 +20,8 @@ import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
 import { routeMeasureTap } from './touchRouting.js';
+import { openContextMenuAt } from './contextMenuSelection.js';
+import { createTouchLongPress } from './touchLongPress.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -56,6 +58,7 @@ export interface UseTouchControlsParams {
   geometryRef: MutableRefObject<MeshData[] | null>;
   isInteractingRef: MutableRefObject<boolean>;
   handlePickForSelection: (pickResult: PickResult | null) => void;
+  openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   getPickOptions: () => { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null };
 }
 
@@ -71,6 +74,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     isInteractingRef,
     selectedEntityIdRef,
     handlePickForSelection,
+    openContextMenu,
     getPickOptions,
   } = params;
 
@@ -92,6 +96,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // on every move, and a raycast per touchmove is what the gate is there to
     // avoid. Cleared when a new two-finger gesture starts.
     let pinchSurface: { point: SurfacePoint | null; pose: string } | null = null;
+    const longPress = createTouchLongPress((x, y) => {
+      void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
+        .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
+    });
 
     // Anchor the orbit pivot to the 3D point directly under a finger.
     // Touch UX: prefer the finger's actual hit, then fall back to ray-projection
@@ -139,6 +147,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Track multi-touch to prevent false tap-select after pinch/zoom
       if (touchState.touches.length > 1) {
         touchState.multiTouch = true;
+        longPress.cancel();
       }
 
       if (touchState.touches.length === 1 && !touchState.multiTouch) {
@@ -153,6 +162,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           y: touchState.touches[0].clientY,
         };
         touchState.didMove = false;
+        longPress.begin(touchState.touches[0]);
 
         anchorOrbitPivotUnderFinger(touchState.touches[0]);
       } else if (touchState.touches.length === 1) {
@@ -182,6 +192,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       touchState.touches = Array.from(e.touches);
 
       if (touchState.touches.length === 1) {
+        if (longPress.move(touchState.touches[0])) return;
         const dx = touchState.touches[0].clientX - touchState.lastCenter.x;
         const dy = touchState.touches[0].clientY - touchState.lastCenter.y;
 
@@ -257,6 +268,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
+      const wasLongPress = touchState.touches.length === 0 ? longPress.end() : false;
 
       // Multi-touch → single-touch transition: re-anchor everything to the
       // remaining finger so the next orbit move computes a clean delta from
@@ -293,6 +305,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         if (
           previousTouchCount === 1 &&
           !wasMultiTouch &&
+          !wasLongPress &&
           tapDuration < 300 &&
           !touchState.didMove &&
           tool !== 'pan' &&
@@ -335,6 +348,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // Also reset interaction on touchcancel — mobile browsers can cancel
     // gestures (system gestures, tab switch, lost focus) without touchend.
     const handleTouchCancel = () => {
+      longPress.cancel();
       invalidateSelectionPick(canvas);
       if (isInteractingRef.current) {
         isInteractingRef.current = false;
@@ -350,6 +364,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', handleTouchCancel);
+    canvas.addEventListener('contextmenu', longPress.suppressNativeMenu, { capture: true });
 
     // Prevent iOS Safari pull-to-refresh and elastic bounce on the canvas
     const preventOverscroll = (e: TouchEvent) => {
@@ -361,10 +376,12 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     return () => {
       invalidateSelectionPick(canvas);
+      longPress.dispose();
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchCancel);
+      canvas.removeEventListener('contextmenu', longPress.suppressNativeMenu, { capture: true });
       document.removeEventListener('touchmove', preventOverscroll);
     };
   }, [isInitialized]);

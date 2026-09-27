@@ -89,7 +89,7 @@
    855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2131 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  2054 apps/viewer/src/components/viewer/PropertiesPanel.tsx
    581 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
@@ -99,7 +99,7 @@
    578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
-  1131 apps/viewer/src/components/viewer/selectionHandlers.ts
+  1124 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    524 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx

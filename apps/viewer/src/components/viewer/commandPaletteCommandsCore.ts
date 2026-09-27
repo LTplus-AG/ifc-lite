@@ -18,40 +18,32 @@
  * The recent-files loop has no `labelKey`: the filename IS the label.
  */
 
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
-import { resolveEnglish } from '@/i18n/registry';
 import {
   MousePointer2, PersonStanding, Ruler, Scissors, Home, Maximize2, Crosshair,
-  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, EyeOff, Eye,
-  Equal, Plus, Minus, RotateCcw, SquareX, Building2, Layout,
-  Palette, Sun, Orbit, FolderOpen, Clock, Save, Tag,
-  PenLine, Slice, Layers3, SquareStack, ChevronsUpDown, Pencil, StickyNote,
+  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, Building2,
+  Sun, Orbit, FolderOpen, Clock,
+  PenLine, Slice, Layers3, SquareStack, ChevronsUpDown, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
-import { hideSelectionFromStore } from '@/store/hideSelection';
-import {
-  executeBasketSet, executeBasketAdd, executeBasketRemove, executeBasketToggleVisibility,
-  executeBasketSaveView, executeBasketClear,
-} from '@/store/basket/basketCommands';
+import { goHomeFromStore } from '@/store/homeView';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
 import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { paletteSurfaceCommands } from './surface-commands';
 
 export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
+  const shared = paletteSurfaceCommands({ canEditInSession: p.canEditInSession }, p.execute);
 
   // ── File ──
   c.push(
     { id: 'file:open', label: 'Open File', ...withKey('commandPalette.file.open.label'), keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
       immediate: true,
       action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); } },
-    { id: 'file:save-federation-setup', label: 'Save Federation Setup', ...withKey('commandPalette.file.saveFederationSetup.label'), keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
-    { id: 'file:open-federation-setup', label: 'Open Federation Setup', ...withKey('commandPalette.file.openFederationSetup.label'), keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
-    { id: 'file:model-tags', label: 'Model Tags', ...withKey('commandPalette.file.modelTags.label'), keywords: 'model tags label discipline federation organise organize', category: 'File', icon: Tag, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); } },
+    ...shared.filter((command) => command.category === 'File'),
   );
   for (const rf of p.recentFiles) {
     const fileName = rf.name;
@@ -145,46 +137,8 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
     ] : []),
   );
 
-  // ── Visibility ──
-  c.push(
-    { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'visibility.hideSelection',
-      action: () => { hideSelectionFromStore(); } },
-    { id: 'vis:show', label: resolveEnglish(ACTION_NAME_KEYS.showAll), ...withKey(ACTION_NAME_KEYS.showAll), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'visibility.showAll',
-      action: () => { resetVisibilityForHomeFromStore('show_all'); } },
-    { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: 'basket.set',
-      action: () => executeBasketSet() },
-    { id: 'vis:add-iso', label: 'Add to Basket', ...withKey('commandPalette.vis.addBasket.label'), keywords: 'basket plus selection hierarchy view', category: 'Visibility', icon: Plus, shortcut: 'basket.add',
-      action: () => executeBasketAdd() },
-    { id: 'vis:remove-iso', label: 'Remove from Basket', ...withKey('commandPalette.vis.removeBasket.label'), keywords: 'basket minus selection hierarchy view', category: 'Visibility', icon: Minus, shortcut: 'basket.remove',
-      action: () => executeBasketRemove() },
-    { id: 'vis:toggle-iso', label: 'Toggle Basket Visibility', ...withKey('commandPalette.vis.toggleBasket.label'), keywords: 'basket show hide', category: 'Visibility', icon: Eye,
-      action: () => executeBasketToggleVisibility() },
-    { id: 'vis:save-view', label: 'Save Basket as View', ...withKey('commandPalette.vis.saveBasketView.label'), keywords: 'basket presentation thumbnail', category: 'Visibility', icon: Save,
-      action: () => executeBasketSaveView().catch((err) => {
-        console.error('[CommandPalette] Failed to save basket view:', err);
-      }) },
-    { id: 'vis:toggle-presentation', label: 'Toggle Basket Presentation Dock', ...withKey('commandPalette.vis.togglePresentation.label'), keywords: 'basket panel carousel thumbnails', category: 'Visibility', icon: Layout,
-      // Routed through the bottom-panel table (#5508: presentation is the
-      // `presentation` bottom panel now), so it stays mutually exclusive
-      // with Script/Schedule/Lists/etc. instead of the raw flag toggle.
-      action: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); } },
-    { id: 'vis:clear-iso', label: 'Clear Basket', ...withKey('commandPalette.vis.clearBasket.label'), keywords: 'basket clear reset', category: 'Visibility', icon: RotateCcw,
-      action: () => executeBasketClear() },
-    { id: 'vis:spaces', label: 'Spaces', ...withKey('commandPalette.vis.spaces.label'), keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('spaces'); } },
-    { id: 'vis:spatialZones', label: 'Spatial Zones', ...withKey('commandPalette.vis.spatialZones.label'), keywords: 'IfcSpatialZone gross area GFA show hide', category: 'Visibility', icon: Box,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('spatialZones'); } },
-    { id: 'vis:openings', label: 'Openings', ...withKey('commandPalette.vis.openings.label'), keywords: 'IfcOpeningElement show hide', category: 'Visibility', icon: SquareX,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('openings'); } },
-    { id: 'vis:site', label: 'Site', ...withKey('commandPalette.vis.site.label'), keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('site'); } },
-    { id: 'vis:ifcAnnotations', label: 'Annotations', ...withKey('commandPalette.vis.ifcAnnotations.label'), keywords: 'IfcAnnotation 2d drawing symbols text dimension leader label show hide', category: 'Visibility', icon: Pencil,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); } },
-    { id: 'vis:ifcGrid', label: 'Grids', ...withKey('commandPalette.vis.ifcGrid.label'), keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip', category: 'Visibility', icon: Pencil,
-      action: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); } },
-    { id: 'vis:reset-colors', label: 'Reset Colors', ...withKey('commandPalette.vis.resetColors.label'), keywords: 'clear color override', category: 'Visibility', icon: Palette,
-      action: () => { p.execute('bim.viewer.resetColors()\nconsole.log("Colors reset")'); } },
-  );
+  // ── Visibility ── (static rows are generated from the shared table)
+  c.push(...shared.filter((command) => command.category === 'Visibility'));
 
   return c;
 }

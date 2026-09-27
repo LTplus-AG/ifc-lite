@@ -6,7 +6,7 @@
  * Coordinate display components for entity position information.
  */
 
-import { Copy, Check } from 'lucide-react';
+import { CopyValueButton } from './CopyValueButton';
 
 /** Inline coordinate value with dim axis label */
 export function CoordVal({ axis, value }: { axis: string; value: number }) {
@@ -16,18 +16,16 @@ export function CoordVal({ axis, value }: { axis: string; value: number }) {
 }
 
 /** Copyable coordinate row: label + values with copy button hugging the values */
-export function CoordRow({ label, values, primary, copyLabel, coordCopied, onCopy }: {
+export function CoordRow({ label, values, primary, copyName }: {
   label: string;
   values: { axis: string; value: number }[];
   primary?: boolean;
-  copyLabel: string;
-  coordCopied: string | null;
-  onCopy: (label: string, text: string) => void;
+  /** Names the copy button when the row has no visible label. */
+  copyName?: string;
 }) {
-  const isCopied = coordCopied === copyLabel;
   const copyText = values.map(v => v.value.toFixed(3)).join(', ');
   return (
-    <div className="flex items-start gap-1.5 group min-w-0">
+    <div className="flex items-start gap-1.5 group/copyrow min-w-0">
       {label && (
         <span className="text-2xs font-medium uppercase tracking-wider w-[34px] shrink-0 pt-px text-muted-foreground">
           {label}
@@ -38,12 +36,7 @@ export function CoordRow({ label, values, primary, copyLabel, coordCopied, onCop
           <span key={v.axis}>{i > 0 && <>{' '}</>}<CoordVal axis={v.axis} value={v.value} /></span>
         ))}
       </span>
-      <button
-        className={`shrink-0 p-0.5 rounded mt-px transition-colors ${isCopied ? 'text-emerald-500' : 'text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-muted-foreground'}`}
-        onClick={(e) => { e.stopPropagation(); onCopy(copyLabel, copyText); }}
-      >
-        {isCopied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
-      </button>
+      <CopyValueButton name={copyName ?? label} value={copyText} />
     </div>
   );
 }

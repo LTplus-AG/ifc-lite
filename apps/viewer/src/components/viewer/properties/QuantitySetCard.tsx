@@ -17,6 +17,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
 import { quantityDisplayValue } from './propertyDisplayValue';
+import { CopyValueButton } from './CopyValueButton';
 
 /** Maps quantity type to friendly name for tooltip */
 const QUANTITY_TYPE_KEYS: Record<number, TranslationKey> = {
@@ -54,32 +55,36 @@ export function QuantitySetCard({ qset, projectUnits, unitDisplayOverrides, sear
             // (see the note on `parsePropertyValue`), and decoding a second
             // time collapses `\\` twice.
             const typeKey = QUANTITY_TYPE_KEYS[q.type];
+            const display = quantityDisplayValue(q, projectUnits, unitDisplayOverrides ?? {}, locale);
             return (
-              <div key={`${q.name}-${index}`} className="flex flex-col gap-0.5 px-3 py-2 text-xs hover:bg-blue-50/50 dark:hover:bg-blue-900/20">
-                {/* Quantity name with type tooltip */}
-                {typeKey ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-zinc-500 dark:text-zinc-400 font-medium cursor-help break-words">
-                          <PropertySearchHighlight text={q.name} query={searchQuery} />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-2xs">
-                      {/* TooltipContent uses the neutral popover surface (#4767);
-                          secondary text uses its semantic muted token instead
-                          of a hardcoded primary-foreground opacity tier. */}
-                      <span className="text-muted-foreground">{t(typeKey)}</span>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <span className="text-zinc-500 dark:text-zinc-400 font-medium break-words">
-                    <PropertySearchHighlight text={q.name} query={searchQuery} />
+              <div key={`${q.name}-${index}`} className="group/copyrow flex items-start gap-2 px-3 py-2 text-xs hover:bg-blue-50/50 dark:hover:bg-blue-900/20">
+                <div className="flex flex-1 min-w-0 flex-col gap-0.5">
+                  {/* Quantity name with type tooltip */}
+                  {typeKey ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-zinc-500 dark:text-zinc-400 font-medium cursor-help break-words">
+                            <PropertySearchHighlight text={q.name} query={searchQuery} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-2xs">
+                        {/* TooltipContent uses the neutral popover surface (#4767);
+                            secondary text uses its semantic muted token instead
+                            of a hardcoded primary-foreground opacity tier. */}
+                        <span className="text-muted-foreground">{t(typeKey)}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <span className="text-zinc-500 dark:text-zinc-400 font-medium break-words">
+                      <PropertySearchHighlight text={q.name} query={searchQuery} />
+                    </span>
+                  )}
+                  {/* Quantity value */}
+                  <span className="font-mono text-blue-700 dark:text-blue-400 select-all break-words">
+                    <PropertySearchHighlight text={display} query={searchQuery} />
                   </span>
-                )}
-                {/* Quantity value */}
-                <span className="font-mono text-blue-700 dark:text-blue-400 select-all break-words">
-                  <PropertySearchHighlight text={quantityDisplayValue(q, projectUnits, unitDisplayOverrides ?? {}, locale)} query={searchQuery} />
-                </span>
+                </div>
+                <CopyValueButton name={q.name} value={display} />
               </div>
             );
           })}

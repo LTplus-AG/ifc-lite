@@ -100,7 +100,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
         <TooltipContent side="bottom">{t('shellChrome.sidebarPanelHost.splitTooltip')}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t(secondary ? 'shellChrome.sidebarPanelHost.panelBelowLabel' : 'shellChrome.sidebarPanelHost.splitShowBelowLabel')}
         </DropdownMenuLabel>
         {options.map((p) => (
@@ -170,13 +170,34 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
  *  header close button (and the Split menu), so the divider stays clutter-free. */
 function SplitDivider({ onResizeStart }: { onResizeStart: (e: React.MouseEvent) => void }) {
   const { t } = useTranslation();
+  const ratio = useViewerStore((s) => s.sidebarSplitRatio);
+  const setRatio = useViewerStore((s) => s.setSidebarSplitRatio);
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    let next: number;
+    switch (event.key) {
+      case 'ArrowUp': next = ratio - 0.05; break;
+      case 'ArrowDown': next = ratio + 0.05; break;
+      case 'Home': next = 0.2; break;
+      case 'End': next = 0.8; break;
+      default: return;
+    }
+    event.preventDefault();
+    setRatio(next);
+  };
   return (
     <div
       onMouseDown={onResizeStart}
+      onKeyDown={onKeyDown}
+      tabIndex={0}
+      // Interactive separators support pointer and keyboard resizing; a decorative <hr> cannot.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="separator"
       aria-orientation="horizontal"
       aria-label={t('shellChrome.sidebarPanelHost.resizeSplitAriaLabel')}
-      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 transition-colors"
+      aria-valuemin={20}
+      aria-valuemax={80}
+      aria-valuenow={Math.round(ratio * 100)}
+      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
     >
       <GripHorizontal className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary/70 transition-colors" />
     </div>

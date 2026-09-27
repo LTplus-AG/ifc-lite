@@ -4,8 +4,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLocus, intersectLocusWithGuide, projectOntoLocus, type Locus } from './constraints.js';
+import {
+  buildLocus, intersectLocusWithGuide, mayLandNear, projectCandidate, projectOntoLocus, type Locus,
+} from './constraints.js';
 import { MODELING_SNAP_PROFILE } from './rank.js';
+import { closestOnSegment } from './sources/linework.js';
 import type { Vec2 } from './types.js';
 import { query, rng } from '@/test/snap-fixture.js';
 
@@ -121,5 +124,36 @@ describe('intersectLocusWithGuide', () => {
       assert.ok(Math.abs(Math.hypot(h[0], h[1]) - 5) < 1e-12);
       assert.ok(Math.abs(Math.abs(h[0]) - 4) < 1e-12 && Math.abs(h[1] - 3) < 1e-12);
     }
+  });
+});
+
+describe('mayLandNear', () => {
+  it('is a superset of what the solver accepts (never prunes a landing target), 20k seeded cases', () => {
+    const r = rng(12);
+    const c = (): number => r() * 20 - 10;
+    let accepted = 0, prunedSome = 0;
+    for (let i = 0; i < 20_000; i++) {
+      const loci: Locus[] = [
+        { kind: 'free' },
+        { kind: 'line', origin: [c(), c()], dir: r() < 0.5 ? [1, 0] : [r() - 0.5, r() - 0.5] },
+        { kind: 'ray', origin: [c(), c()], dir: [r() - 0.5, r() - 0.5] },
+        { kind: 'circle', center: [c(), c()], radius: r() * 5 },
+      ];
+      const locus = loci[i % 4];
+      const cursor = projectOntoLocus([c(), c()], locus);
+      const radius = r() * 3;
+      const a: Vec2 = [c(), c()];
+      const b: Vec2 = r() < 0.3 ? [c(), a[1]] : [c(), c()];
+      const edge = { kind: 'edge' as const, local: closestOnSegment(cursor, a, b), source: 'linework' as const, guide: { kind: 'segment' as const, a, b, role: 'edge' as const } };
+      const point = { kind: 'vertex' as const, local: a, source: 'linework' as const };
+      for (const [cand, seg] of [[point, undefined], [edge, b]] as const) {
+        const landed = projectCandidate(cand, locus, cursor);
+        const lands = landed !== null && Math.hypot(landed[0] - cursor[0], landed[1] - cursor[1]) <= radius;
+        const kept = mayLandNear({ locus, cursor }, radius, a, seg);
+        if (lands) { accepted++; assert.ok(kept, `case ${i}: pruned a target that lands (${locus.kind})`); }
+        if (!kept) prunedSome++;
+      }
+    }
+    assert.ok(accepted > 2000 && prunedSome > 10_000, JSON.stringify({ accepted, prunedSome }));
   });
 });

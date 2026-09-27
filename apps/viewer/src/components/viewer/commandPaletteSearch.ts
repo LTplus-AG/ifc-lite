@@ -48,6 +48,8 @@ export interface Command {
   detailKey?: TranslationKey;
   detailKeyParams?: TranslationParameters;
   action: () => void;
+  /** Shared-registry action already emits its command event at the execution boundary. */
+  registryOwned?: true;
   /**
    * Run the action synchronously in the click handler instead of deferring to the
    * next animation frame — needed for a file dialog: Chrome only honours

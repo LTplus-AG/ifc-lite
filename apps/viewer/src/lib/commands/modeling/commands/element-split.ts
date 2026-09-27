@@ -23,7 +23,7 @@ import { SplitScene } from '@/components/viewer/tools/SplitHud';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import type { Vec2 } from '@/lib/snap/types';
-import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
+import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '../workplane.js';
 import type { CommandContext, CommitResult, ModelingCommand, Vec3, Workplane } from '../types.js';
 
 export interface SplitHover {
@@ -51,8 +51,8 @@ export interface SplitGesture {
 
 function targetPlane(ctx: CommandContext, modelId: string, expressId: number): Workplane | null {
   const s = ctx.get();
-  const storeyId = s.models.get(modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(expressId);
-  if (storeyId === undefined) return null;
+  const storeyId = elementStoreyId(s, modelId, expressId);
+  if (storeyId === null) return null;
   const plane = buildStoreyWorkplane(s, modelId, storeyId, 0);
   return isWorkplane(plane) ? plane : null;
 }

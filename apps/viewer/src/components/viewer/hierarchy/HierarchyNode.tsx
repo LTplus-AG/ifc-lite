@@ -373,7 +373,7 @@ export function HierarchyNode({
         )}
 
         {node.ifcType && (node.type === 'element' || node.type === 'group-member') && (
-          <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 truncate max-w-[90px]">
+          <span className="text-2xs font-mono text-zinc-400 dark:text-zinc-500 truncate max-w-[90px]">
             {node.ifcType}
           </span>
         )}

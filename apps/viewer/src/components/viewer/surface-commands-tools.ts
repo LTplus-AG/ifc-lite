@@ -12,6 +12,7 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const paletteOnly = ['palette'] as const;
+const paletteAndMobile = ['palette', 'mobile'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const editable = (state: SurfaceCommandState): boolean => state.canEditInSession;
 
@@ -19,14 +20,19 @@ export const TOOL_SURFACE_COMMANDS = [
   {
     id: 'tool:select', labelKey: 'commandPalette.tool.select.label',
     searchLabel: 'Select', keywords: 'pick click pointer', category: 'Tools', icon: MousePointer2,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'tool.select',
+    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.select',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.selectTool',
     run: () => { useViewerStore.getState().setActiveTool('select'); },
   },
   {
     id: 'tool:walk', labelKey: 'commandPalette.tool.walk.label',
     searchLabel: 'Walk', keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'tool.walk',
-    run: () => { useViewerStore.getState().setActiveTool('walk'); },
+    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.walk',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.walkMode',
+    run: ({ surface }) => {
+      const state = useViewerStore.getState();
+      state.setActiveTool(surface === 'mobile' && state.activeTool === 'walk' ? 'select' : 'walk');
+    },
   },
   {
     id: 'model:reposition', labelKey: 'commandPalette.tool.reposition.label',
@@ -37,13 +43,15 @@ export const TOOL_SURFACE_COMMANDS = [
   {
     id: 'tool:measure', labelKey: 'commandPalette.tool.measure.label',
     searchLabel: 'Measure', keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'tool.measure',
+    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.measure',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.measureTool',
     run: () => { useViewerStore.getState().setActiveTool('measure'); },
   },
   {
     id: 'tool:section', labelKey: 'commandPalette.tool.section.label',
     searchLabel: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'tool.section',
+    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.section',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.sectionTool',
     run: () => { useViewerStore.getState().setActiveTool('section'); },
   },
   {

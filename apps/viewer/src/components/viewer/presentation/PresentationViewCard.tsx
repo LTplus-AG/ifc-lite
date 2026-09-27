@@ -94,7 +94,7 @@ export function PresentationViewCard({
           />
         ) : (
           <>
-            <div className="text-[12px] font-medium truncate">{view.name}</div>
+            <div className="text-xs font-medium truncate">{view.name}</div>
             <div className="text-2xs opacity-80">
               {t('presentationPanel.objectsCount', { count: view.entityRefs.length })}
               {view.transitionMs ? t('presentationPanel.transitionSuffix', { duration: (view.transitionMs / 1000).toFixed(1) }) : ''}

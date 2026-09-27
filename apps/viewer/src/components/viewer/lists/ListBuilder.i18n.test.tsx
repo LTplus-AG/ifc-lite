@@ -283,7 +283,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.equal(container.querySelector('input[placeholder="value"]'), null);
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
     assert.deepEqual(saved?.unreadableConditions, []);
-    assert.deepEqual(saved?.unreadableConditions, []);
   });
 
   it('authors zone and exact spatial modes through the retained Lists evaluator (#5894)', () => {

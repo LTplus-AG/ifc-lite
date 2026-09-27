@@ -18,10 +18,10 @@
  * The recent-files loop has no `labelKey`: the filename IS the label.
  */
 
-import { FolderOpen, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { Command } from './commandPaletteSearch';
-import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 import { paletteSurfaceCommands } from './surface-commands';
 
 export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
@@ -29,12 +29,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   const shared = paletteSurfaceCommands({ canEditInSession: p.canEditInSession, cesiumAvailable: p.cesiumAvailable }, p.execute);
 
   // ── File ──
-  c.push(
-    { id: 'file:open', label: 'Open File', ...withKey('commandPalette.file.open.label'), keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
-      immediate: true,
-      action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); } },
-    ...shared.filter((command) => command.category === 'File'),
-  );
+  c.push(...shared.filter((command) => command.category === 'File'));
   for (const rf of p.recentFiles) {
     const fileName = rf.name;
     c.push({

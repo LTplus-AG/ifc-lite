@@ -72,6 +72,13 @@ const paletteOnly = ['palette'] as const;
 
 export const SURFACE_COMMANDS = [
   {
+    id: 'file:open', labelKey: 'commandPalette.file.open.label',
+    keywords: 'ifc ifcx glb load model browse',
+    category: 'File', icon: FolderOpen, surfaces: paletteOnly, enabled: alwaysEnabled,
+    immediate: true,
+    run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); },
+  },
+  {
     id: 'file:save-federation-setup', labelKey: 'commandPalette.file.saveFederationSetup.label',
     keywords: 'federation setup save export portable models order alignment anchor',
     category: 'File', icon: Save, surfaces: paletteAndRibbon, enabled: alwaysEnabled,

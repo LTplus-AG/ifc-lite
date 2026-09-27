@@ -97,7 +97,7 @@ const isAllowedValue = (key: string, value: unknown): boolean =>
 
 // Command-palette rows whose id embeds user or third-party data after a fixed
 // prefix: a recent file's name, a script template's name, an extension's id.
-const DYNAMIC_COMMAND_PREFIXES = ['file:recent:', 'auto:', 'ext:'];
+const DYNAMIC_COMMAND_PREFIXES = ['file:recent:', 'auto:', 'ext:', 'export:ext:'];
 
 /**
  * The id to report for a palette command. Dynamic rows collapse to their

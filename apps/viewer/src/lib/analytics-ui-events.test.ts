@@ -119,6 +119,7 @@ describe('commandIdForAnalytics (#5618)', () => {
     assert.equal(commandIdForAnalytics('file:recent:Sample Model.ifc'), 'file:recent');
     assert.equal(commandIdForAnalytics('auto:Client export script'), 'auto');
     assert.equal(commandIdForAnalytics('ext:acme.plugin.run'), 'ext');
+    assert.equal(commandIdForAnalytics('export:ext:clientExport'), 'export:ext');
   });
 
   it('keeps fixed command ids as they are', () => {

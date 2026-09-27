@@ -15,6 +15,7 @@
 
 import { isModelTagOp } from './model-tag.js';
 import { isModelFact } from './filter-model-fact.js';
+import { isListConditionRule } from './filter-list-condition.js';
 import type { ClassificationOp, FilterRule, StringOp, ValueOp } from './filter-rules.js';
 
 const STRING_OPS: ReadonlySet<unknown> = new Set<StringOp>([
@@ -66,6 +67,7 @@ export function isFilterRule(value: unknown): value is FilterRule {
     if (r.legacyListFirst !== undefined && r.legacyListFirst !== true) return false;
   }
   if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
+  if (kind === 'listCondition') return isListConditionRule(value);
   if (kind === 'modelFact') {
     const r = value as { fact?: unknown; op?: unknown; value?: unknown };
     return isModelFact(r.fact) && VALUE_OPS.has(r.op) && typeof r.value === 'string';

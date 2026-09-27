@@ -42,6 +42,12 @@ import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
 import { LegacyListFilters } from './ListBuilder.legacyFilters';
+import { ListValueOptionsContext, groupsNeedListValues, useListValueOptions } from './use-list-value-options';
+import { RULE_KIND_LABEL } from '../filter-rule-labels';
+import { isEditableCondition } from '@/lib/lists/compatibility-condition';
+
+/** Every rule kind, including the List-value rule only a list can evaluate (#6190). */
+const LIST_FILTER_KINDS = new Set(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]);
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {
@@ -192,6 +198,9 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     }
     return discoverColumns(providers, Array.from(selectedTypes));
   }, [providers, selectedTypes]);
+  const valueOptions = useListValueOptions(groupsNeedListValues(filterState.groups) || unreadableConditions.some((row) => isEditableCondition(row)
+    && ['property', 'material', 'classification'].includes(row.condition.source)), stores, storeViews, providers, mutationVersion);
+  const listValueOptions = useMemo(() => ({ ...valueOptions, discovered, zoneSets }), [valueOptions, discovered, zoneSets]);
 
   const toggleType = useCallback((type: IfcTypeEnum) => {
     setSelectedTypes(prev => {
@@ -390,18 +399,12 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
           <Section label={t('lists.builder.sectionFilters')} hint={filterState.groups.some((group) => group.rules.length > 0) || unreadableConditions.length > 0
             ? formatLocaleCount(filterState.groups.reduce((count, group) => count + group.rules.length, unreadableConditions.length), locale)
             : undefined}>
-            <FilterGroupEditor
-              groups={filterState.groups}
-              activeGroup={filterState.activeGroup}
-              onChange={setFilterState}
-              models={filterModels}
-            />
-            <LegacyListFilters
-              rows={unreadableConditions} onChange={setUnreadableConditions}
-              onPromote={promoteLegacy}
-              discovered={discovered} stores={stores} storeViews={storeViews}
-              providers={providers} mutationVersion={mutationVersion} zoneSets={zoneSets}
-            />
+            <ListValueOptionsContext.Provider value={listValueOptions}>
+              <FilterGroupEditor groups={filterState.groups} activeGroup={filterState.activeGroup}
+                onChange={setFilterState} allowedKinds={LIST_FILTER_KINDS} models={filterModels} />
+            </ListValueOptionsContext.Provider>
+            <LegacyListFilters rows={unreadableConditions} onChange={setUnreadableConditions} onPromote={promoteLegacy}
+              discovered={discovered} options={valueOptions} zoneSets={zoneSets} />
           </Section>
 
           {/* Columns */}

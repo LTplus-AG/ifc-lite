@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ConditionOperator, PropertyCondition, UnreadableListCondition } from '@ifc-lite/lists';
+import type { ConditionOperator, UnreadableListCondition } from '@ifc-lite/lists';
+import { operatorsFor, type ConditionSource } from './list-condition-fields.js';
 
-export type ConditionSource = PropertyCondition['source'];
+export type { ConditionSource } from './list-condition-fields.js';
+export { operatorsFor } from './list-condition-fields.js';
 const EDITABLE_SOURCES: readonly ConditionSource[] = [
   'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
 ];
@@ -12,16 +14,6 @@ const EXECUTABLE_SOURCES: readonly ConditionSource[] = [...EDITABLE_SOURCES, 'ge
 const EDITABLE_REASONS = ['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'mixed-groups'] as const;
 const SCALAR_OPERATORS: readonly ConditionOperator[] = ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
 const MULTI_VALUE_OPERATORS: readonly ConditionOperator[] = ['equals', 'notEquals', 'contains', 'exists'];
-
-export function operatorsFor(source: ConditionSource): ConditionOperator[] {
-  switch (source) {
-    case 'quantity': return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'property': return ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'material':
-    case 'classification': return ['contains', 'equals', 'notEquals', 'exists'];
-    default: return ['equals', 'notEquals', 'contains', 'exists'];
-  }
-}
 
 /** The provider can execute more persisted conditions than the compatibility editor can author. */
 export function isExecutableCondition(row: unknown): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {

@@ -10,18 +10,15 @@ import { InheritSelect } from '../InheritSelect';
 import { useTranslation } from '@/i18n/useTranslation';
 import { propValueKey } from '@/lib/search/filter-schema';
 import { LIST_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
-import { ENTITY_ATTRIBUTES, isZoneVolumeMode, migrateLegacyListConditions, type ConditionOperator, type DiscoveredColumns, type ListDataProvider, type PropertyCondition, type UnreadableListCondition } from '@ifc-lite/lists';
+import { ENTITY_ATTRIBUTES, isZoneVolumeMode, migrateLegacyListConditions, type ConditionOperator, type DiscoveredColumns, type PropertyCondition, type UnreadableListCondition } from '@ifc-lite/lists';
 import type { FilterRule } from '@ifc-lite/rules';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ZoneSet } from '@/lib/zones';
-import type { ListConditionValues, StoreWithView } from './list-builder-discovery';
+import type { ListConditionValues } from './list-builder-discovery';
 import { describeUneditable, isEditableCondition, operatorsFor, type ConditionSource } from '@/lib/lists/compatibility-condition';
-import { useLegacyListFilterOptions } from './use-legacy-list-filter-options';
+import { SPATIAL_LEVELS, ZONE_MODE_BREAKDOWN_LABEL, ZONE_MODE_VOLUME_LABEL, defaultConditionFor } from '@/lib/lists/list-condition-fields';
+import type { ListValueOptions } from './use-list-value-options';
 
 const NO_OPTIONS: readonly string[] = [];
-const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'] as const;
-const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
-const ZONE_MODE_BREAKDOWN_LABEL = 'Volume breakdown (mesh)';
 
 type CompatibilityPreset = 'zone' | 'spatial' | 'quantity' | 'material' | 'model' | 'attribute' | 'property';
 const COMPATIBILITY_PRESETS: readonly CompatibilityPreset[] = [
@@ -40,31 +37,6 @@ function conditionForPreset(preset: CompatibilityPreset, zoneSets: ZoneSet[]): P
   }
 }
 
-/** `zoneSets` supplies the default zone-SET id for a fresh `zone` condition
- *  (the first defined set, so switching the source dropdown to Zone lands
- *  on something usable rather than an empty set-picker). */
-function defaultConditionFor(source: ConditionSource, zoneSets: ZoneSet[] = []): PropertyCondition {
-  switch (source) {
-    case 'property':
-      return { source, psetName: '', propertyName: '', operator: 'equals', value: '' };
-    case 'quantity':
-      return { source, psetName: '', propertyName: '', operator: 'gt', value: '' };
-    case 'material':
-      return { source, propertyName: 'Material', operator: 'contains', value: '' };
-    case 'classification':
-      return { source, propertyName: 'Classification', operator: 'contains', value: '' };
-    case 'spatial':
-      return { source, propertyName: 'Storey', operator: 'equals', value: '' };
-    case 'model':
-      return { source, propertyName: 'Model', operator: 'equals', value: '' };
-    case 'zone':
-      return { source, psetName: zoneSets[0]?.id ?? '', propertyName: 'Zone', operator: 'equals', value: '' };
-    case 'attribute':
-    default:
-      return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
-  }
-}
-
 const SELECT_CLASS =
   'h-7 rounded-md border border-border bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
 
@@ -73,10 +45,7 @@ interface LegacyListFiltersProps {
   onChange: Dispatch<SetStateAction<UnreadableListCondition[]>>;
   onPromote: (index: number, rule: FilterRule) => boolean;
   discovered: DiscoveredColumns;
-  stores: readonly IfcDataStore[];
-  storeViews: readonly StoreWithView[];
-  providers: readonly ListDataProvider[];
-  mutationVersion: number;
+  options: Pick<ListValueOptions, 'values' | 'spatialNames' | 'modelNames'>;
   zoneSets: ZoneSet[];
 }
 
@@ -84,9 +53,9 @@ interface LegacyListFiltersProps {
 /** Provider-only predicates preserve authoring modes that Rules cannot yet
  * express, while Rules groups remain the primary editor. These predicates
  * narrow every group through the existing List candidate pass. */
-export function LegacyListFilters({ rows, onChange, onPromote, discovered, stores, storeViews, providers, mutationVersion, zoneSets }: LegacyListFiltersProps) {
+export function LegacyListFilters({ rows, onChange, onPromote, discovered, options, zoneSets }: LegacyListFiltersProps) {
   const { t } = useTranslation();
-  const { values, spatialNames, modelNames } = useLegacyListFilterOptions(rows, stores, storeViews, providers, mutationVersion);
+  const { values, spatialNames, modelNames } = options;
   const editable = rows.flatMap((row, index) => isEditableCondition(row) ? [{ condition: row.condition, index }] : []);
   const invalid = rows.flatMap((row, index) => isEditableCondition(row) ? [] : [{ row, index }]);
   return (

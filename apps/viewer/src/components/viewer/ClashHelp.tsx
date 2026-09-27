@@ -8,7 +8,7 @@ import { useTranslation } from '@/i18n';
 export function ClashHelp() {
   const { t } = useTranslation();
   return (
-    <div className="px-3 py-2.5 border-b border-border bg-muted/30 text-[11px] leading-relaxed text-muted-foreground space-y-1.5">
+    <div className="px-3 py-2.5 border-b border-border bg-muted/30 text-2xs leading-relaxed text-muted-foreground space-y-1.5">
       <p>
         <b className="text-foreground">{t('clashPanel.help.hardLabel')}</b> {t('clashPanel.help.hardDescription')}{' '}
         <i>{t('clashPanel.help.tolAbbrev')}</i>).{' '}

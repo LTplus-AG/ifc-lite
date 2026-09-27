@@ -221,7 +221,7 @@ export function StatusBar() {
           <button
             type="button"
             onClick={() => activeStreamCanceller()}
-            className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-[10px] uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-2xs uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
             title={t('shellChrome.statusBar.cancelStreamTitle')}
           >
             {t('shellChrome.statusBar.cancelButton')}

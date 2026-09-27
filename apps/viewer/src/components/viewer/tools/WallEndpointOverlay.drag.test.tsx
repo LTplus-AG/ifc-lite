@@ -14,7 +14,7 @@
  *   - The drag's floor-plane raycast goes through `cameraCallbacks.
  *     unprojectToFloor` — a plain camera/floor-plane intersection with NO
  *     knowledge of any model or its placement; its result is a genuine
- *     WORKSPACE point. `rendererPointToIfcStoreyLocal` inverting the
+ *     WORKSPACE point. `rendererPointToModelFrame` inverting the
  *     model's placement on that result is therefore correct, not a double
  *     transform — Codex's literal claim that the unprojection happens "by
  *     ifcStoreyLocalToRenderer" doesn't match the code: that function is
@@ -97,7 +97,7 @@ describe('dragging a wall-endpoint handle on a moved+rotated model writes the co
   it('resizeWall receives the dragged-to point in the model frame, and the plane height matches the placed (not raw) elevation', () => {
     // Where the user visually dragged the START handle to, in the wall's
     // OWN model frame (Z = 0, on the storey floor — same convention
-    // `rendererPointToIfcStoreyLocal` returns).
+    // `rendererPointToModelFrame` returns).
     const draggedToModel: Translation = [4, 8, 0];
     const unprojectHeights: number[] = [];
 

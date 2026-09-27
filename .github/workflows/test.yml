@@ -630,7 +630,8 @@ jobs:
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 20
+    # Python extension tests build separate wheels before and after the revert.
+    timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 90 || 20 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

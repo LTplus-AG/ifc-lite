@@ -7,7 +7,7 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, ClassicBar, Settings } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Settings } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -26,13 +26,11 @@ import {
 
 export function ViewTab() {
   const { t } = useTranslation();
-  // Camera, preset views and the 90° rotations come from the shared
-  // command list the classic toolbar also renders, so the two styles
-  // cannot host different camera commands (see toolbar/CameraCommands).
+  // Camera, preset views and the 90° rotations use the shared
+  // command list (see toolbar/CameraCommands).
   const cameraCommands = useCameraCommands();
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
-  const setToolbarStyle = useViewerStore((state) => state.setToolbarStyle);
   const ribbonContextualTabs = useViewerStore((state) => state.ribbonContextualTabs);
   const setRibbonContextualTabs = useViewerStore((state) => state.setRibbonContextualTabs);
 
@@ -202,7 +200,7 @@ export function ViewTab() {
           disabled={!hasModels}
           onClick={() => handleToggleBottomPanel('presentation')}
           badge={(basketViewCount > 0 || pinboardEntities.size > 0) ? (
-            <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-[9px] font-bold text-primary-foreground">
+            <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-2xs font-bold text-primary-foreground">
               {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}
             </span>
           ) : undefined}
@@ -215,13 +213,6 @@ export function ViewTab() {
             active={ribbonContextualTabs}
             onClick={() => setRibbonContextualTabs(!ribbonContextualTabs)}
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
-          />
-          <RibbonSmallButton
-            icon={ClassicBar}
-            label={t('ribbon.view.classicBar')}
-            tooltip={t('ribbon.view.classicBarTooltip')}
-            onClick={() => setToolbarStyle('classic')}
-            {...tourAnchor(TOUR_ANCHORS.ribbonClassicSwitch)}
           />
           <RibbonSmallButton
             icon={Settings}

@@ -25,8 +25,10 @@ import { BimReactContext } from '@/sdk/BimProvider.js';
 import { cleanup, render, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { commandPaletteEn } from '@/i18n/catalogues/command-palette.en';
+import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { CommandPalette } from './CommandPalette.js';
+import { EXPORT_COMMANDS } from './toolbar/export-commands.js';
 
 type PaletteKey = keyof typeof commandPaletteEn;
 const KEYS = Object.keys(commandPaletteEn) as PaletteKey[];
@@ -113,6 +115,27 @@ afterEach(() => {
 });
 
 describe('command palette localization (#4918 slice 3)', () => {
+  it('translates every live export menu label after the classic menu retires (#5874)', () => {
+    const labels = EXPORT_COMMANDS
+      .filter((command) => command.kind !== 'table-menu')
+      .map((command) => ({ key: command.menuLabelKey, english: resolveEnglish(command.menuLabelKey) }));
+    assert.ok(labels.length > 0, 'the registry has export rows to verify');
+    renderPalette('');
+    const english = readableStrings();
+    for (const label of labels) {
+      assert.ok(english.has(label.english), `${label.key}: the palette must render the registry row`);
+    }
+
+    registerLocale('shared-export-pseudo', Object.fromEntries(
+      labels.map(({ key, english: value }) => [key, `⟦${key}|${value}⟧`]),
+    ));
+    act(() => setLocale('shared-export-pseudo'));
+    const translated = readableStrings();
+    for (const { key, english: value } of labels) {
+      assert.ok(translated.has(`⟦${key}|${value}⟧`), `${key}: palette row must update with the locale`);
+    }
+  });
+
   it('translates every static key rendered in browse mode, a Learn search, and a no-match search', () => {
     renderPalette('');
     const browseEnglish = readableStrings();

@@ -8,7 +8,6 @@ import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
-import { MainToolbar } from '../MainToolbar.js';
 import { CommandPalette } from '../CommandPalette.js';
 import { BimProvider } from '@/sdk/BimProvider';
 
@@ -29,14 +28,6 @@ describe('appearance entry points #4243', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'appearance');
     click(control('Appearance'));
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
-  });
-  it('opens the workspace from the classic toolbar', () => {
-    render(<MainToolbar />);
-    const trigger = control('Panels');
-    act(() => { trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })); });
-    click(trigger);
-    click(control('Appearance'));
-    assert.equal(useViewerStore.getState().sidebarActivePanel, 'appearance');
   });
   it('opens the workspace from the command palette', async () => {
     render(<BimProvider><CommandPalette open onOpenChange={() => {}} /></BimProvider>);

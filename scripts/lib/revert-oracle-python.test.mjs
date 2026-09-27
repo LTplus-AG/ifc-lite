@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { pythonTestOwner, pythonRunner, parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
+import { planRuns } from './revert-oracle-plan-runs.mjs';
 
 // ---------------------------------------------------------------------------
 // pythonTestOwner: mirrors revert-oracle-cargo.test.mjs's Cargo.toml walk,
@@ -23,8 +24,8 @@ test('#4050: a Python test walks up to the nearest project marker; outside the r
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'requirements.lock'), 'ifcopenshell==0.8.0\n');
     writeFileSync(join(dir, 'test_harness.py'), 'def test_ok():\n    assert True\n');
-    assert.deepEqual(pythonTestOwner(join(dir, 'test_harness.py'), root), { dir });
-    assert.deepEqual(pythonTestOwner(join(dir, 'test_validate_export.py'), root), { dir });
+    assert.deepEqual(pythonTestOwner(join(dir, 'test_harness.py'), root), { dir, wheelProject: false });
+    assert.deepEqual(pythonTestOwner(join(dir, 'test_validate_export.py'), root), { dir, wheelProject: false });
     // No marker anywhere above this file: refuse rather than guess an owner,
     // the same refusal cargoTestOwner applies to a crate-less `.rs` file.
     assert.equal(pythonTestOwner(join(root, 'loose', 'test_x.py'), root), null);
@@ -43,8 +44,62 @@ test('pythonTestOwner: pyproject.toml and setup.py are also recognised markers',
     mkdirSync(b, { recursive: true });
     writeFileSync(join(a, 'pyproject.toml'), '[project]\nname = "a"\n');
     writeFileSync(join(b, 'setup.py'), '');
-    assert.deepEqual(pythonTestOwner(join(a, 'sub', 'test_a.py'), root), { dir: a });
-    assert.deepEqual(pythonTestOwner(join(b, 'test_b.py'), root), { dir: b });
+    assert.deepEqual(pythonTestOwner(join(a, 'sub', 'test_a.py'), root), { dir: a, wheelProject: false });
+    assert.deepEqual(pythonTestOwner(join(b, 'test_b.py'), root), { dir: b, wheelProject: false });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#5800: PyO3 project ownership requires a source-state wheel', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-wheel-owner-'));
+  try {
+    const dir = join(root, 'rust', 'python');
+    mkdirSync(join(dir, 'tests'), { recursive: true });
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = "extension"\n');
+    writeFileSync(join(dir, 'pyproject.toml'), '[build-system]\nrequires = ["maturin"]\n');
+    assert.deepEqual(pythonTestOwner(join(dir, 'tests', 'test_bindings.py'), root), { dir, wheelProject: true });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#5800: a Python test in a Cargo workspace member plans a wheel run', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-cargo-plan-'));
+  try {
+    const project = join(root, 'rust', 'python');
+    mkdirSync(join(project, 'tests'), { recursive: true });
+    writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["rust/python"]\n');
+    writeFileSync(join(project, 'Cargo.toml'), '[package]\nname = "extension"\nversion = "0.1.0"\n');
+    writeFileSync(join(project, 'pyproject.toml'), '[build-system]\nrequires = ["maturin"]\n');
+    writeFileSync(join(project, 'tests', 'test_bindings.py'), 'def test_binding():\n    assert True\n');
+    const { plans, unassigned } = planRuns(['rust/python/tests/test_bindings.py'], root);
+    assert.deepEqual(unassigned, []);
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0].runner?.family, 'python');
+    assert.equal(plans[0].wheelProject, true);
+    assert.equal(plans[0].dir, project);
+    assert.deepEqual(plans[0].relFiles, ['tests/test_bindings.py']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#5800 review: a Python helper in a Cargo fixture tree remains support', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-cargo-fixture-'));
+  try {
+    const project = join(root, 'rust', 'example');
+    const fixtures = join(project, 'tests', 'fixtures');
+    mkdirSync(fixtures, { recursive: true });
+    writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["rust/example"]\n');
+    writeFileSync(join(project, 'Cargo.toml'), '[package]\nname = "example"\nversion = "0.1.0"\n');
+    writeFileSync(join(fixtures, 'gen.py'), 'print("fixture")\n');
+
+    const file = 'rust/example/tests/fixtures/gen.py';
+    const { plans, unassigned, support } = planRuns([file], root);
+    assert.deepEqual(plans, []);
+    assert.deepEqual(unassigned, []);
+    assert.deepEqual(support, [file]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -61,6 +116,8 @@ test('pythonRunner: runs python3 -B -m pytest over the explicit file list, quiet
     args: ['-B', '-m', 'pytest', '-q', '--color=no', 'test_harness.py', 'test_validate_export.py'],
   });
   assert.equal(pythonRunner([]), null);
+  assert.deepEqual(pythonRunner(['/tmp/test_harness.py'], { importMode: 'importlib' }).args,
+    ['-B', '-m', 'pytest', '-q', '--color=no', '--import-mode=importlib', '/tmp/test_harness.py']);
 });
 
 // ---------------------------------------------------------------------------

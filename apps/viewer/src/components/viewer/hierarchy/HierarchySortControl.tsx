@@ -58,7 +58,7 @@ export function HierarchySortControl({ value, onChange }: HierarchySortControlPr
         <Button
           variant="outline"
           size="sm"
-          className="h-6 w-full justify-between gap-1 px-2 mt-1 text-[10px] rounded-none uppercase tracking-wider"
+          className="h-6 w-full justify-between gap-1 px-2 mt-1 text-2xs rounded-none uppercase tracking-wider"
           title={t('hierarchy.sortControl.tooltip')}
         >
           <span className="flex items-center gap-1 min-w-0">

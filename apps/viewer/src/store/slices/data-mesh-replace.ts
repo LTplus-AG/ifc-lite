@@ -21,9 +21,9 @@
  * the pre-alignment copies the caller passes (`correctPreAlignmentTail`, the
  * same fix-up `restoreStashedEntityMesh` applies).
  *
- * The ids are queued on `pendingMeshEdits` with the tick this update ends on,
- * so `useMeshEditDrain` can swap the renderer's copies and knows whether any
- * other geometry change landed in the same render.
+ * The ids are queued on `pendingMeshEdits` with the tick before and after
+ * this update, so `useMeshEditDrain` can swap the renderer's copies and knows
+ * whether any other geometry change landed in the same render.
  */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -32,9 +32,12 @@ import { appendGeometryBatchPatch } from './dataSlice.appendGeometryBatch.js';
 import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
 import { correctPreAlignmentTail, type PreAlignmentMeshBaseline } from './data-mesh-prealign.js';
 
-/** Entities whose renderer meshes must be swapped for the store's, and the tick of that swap. */
+/** Entities whose renderer meshes must be swapped for the store's, and the ticks around that swap. */
 export interface PendingMeshEdits {
   ids: ReadonlySet<number>;
+  /** The tick just before the first queued replacement. */
+  since: number;
+  /** The tick the last queued replacement ended on. */
   tick: number;
 }
 
@@ -87,6 +90,6 @@ export function replaceEntityMeshesPatch(
     models,
     ...(geometryResult ? { geometryResult } : {}),
     geometryUpdateTick: tick,
-    pendingMeshEdits: { ids: pendingIds, tick },
+    pendingMeshEdits: { ids: pendingIds, since: state.pendingMeshEdits?.since ?? state.geometryUpdateTick, tick },
   };
 }

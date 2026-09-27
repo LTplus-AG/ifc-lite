@@ -16,7 +16,6 @@ import { cleanup, click, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts.js';
 import { ElementsTab } from '@/components/viewer/ribbon/tabs/ElementsTab.js';
-import { MainToolbar } from '@/components/viewer/MainToolbar.js';
 import { MobileToolbar } from '@/components/viewer/MobileToolbar.js';
 import { EntityContextMenu } from '@/components/viewer/EntityContextMenu.js';
 
@@ -88,12 +87,6 @@ describe('Hide selection is one command on every surface (#5852)', () => {
     render(<ElementsTab />);
     click(buttonByLabel('Hide selection'));
     assertBothHiddenAndSelectionCleared('ribbon');
-  });
-
-  it('classic toolbar', () => {
-    render(<MainToolbar />);
-    click(buttonByLabel('Hide Selection'));
-    assertBothHiddenAndSelectionCleared('classic toolbar');
   });
 
   it('mobile toolbar overflow menu', () => {

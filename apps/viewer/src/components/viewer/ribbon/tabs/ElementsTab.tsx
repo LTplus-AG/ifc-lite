@@ -8,7 +8,7 @@
 
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback, useContext } from 'react';
-import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
+import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
@@ -17,6 +17,7 @@ import { hideSelectionFromStore } from '@/store/hideSelection';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { surfaceCommand } from '../../surface-commands';
+import { runSurfaceCommand } from '../../surface-command-run';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
@@ -31,10 +32,12 @@ export function ElementsTab() {
   const bim = useContext(BimReactContext);
   const toggleCollection = surfaceCommand('vis:toggle-iso', 'ribbon');
   const resetColors = surfaceCommand('vis:reset-colors', 'ribbon');
+  const entityActions = surfaceCommand('elements:entity-actions', 'ribbon');
   const collabRole = useViewerStore((s) => s.collabRole);
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
+  const openContextMenu = useViewerStore((state) => state.openContextMenu);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
@@ -136,6 +139,24 @@ export function ElementsTab() {
             disabled={selectedEntityId === null}
             onClick={handleCopyGuid}
           />
+          <RibbonSmallButton
+            data-command-id={entityActions.id}
+            icon={EntityActions}
+            label={t(entityActions.labelKey)}
+            disabled={!hasSelection}
+            onClick={(event) => {
+              const targetId = selectedEntityIds.size > 0
+                ? (selectedEntityId !== null && selectedEntityIds.has(selectedEntityId)
+                    ? selectedEntityId : selectedEntityIds.values().next().value)
+                : selectedEntityId;
+              if (targetId === undefined || targetId === null) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              runSurfaceCommand(entityActions, {
+                surface: 'ribbon',
+                contextAction: () => openContextMenu(targetId, Math.max(1, rect.left + rect.width / 2), Math.max(1, rect.bottom)),
+              });
+            }}
+          />
         </RibbonSmallStack>
       </RibbonGroup>
 
@@ -209,7 +230,7 @@ export function ElementsTab() {
               label={t(command.labelKey)}
               tooltip={t(command.labelKey)}
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => command.run({
+              onClick={() => runSurfaceCommand(command, {
                 surface: 'ribbon',
                 resetColors: () => {
                   if (!bim) throw new Error('Reset Colors requires a BimProvider');

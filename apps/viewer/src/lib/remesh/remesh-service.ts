@@ -23,6 +23,7 @@
  * notice, once per model and reason; the edit itself is always kept.
  */
 
+import type { StoreApi } from 'zustand';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { serializeEntitySubgraph } from '@ifc-lite/export';
 import { hostsOtherEntities } from '@ifc-lite/renderer';
@@ -70,6 +71,8 @@ const styleWires = new WeakMap<IfcDataStore, Promise<StyleWire>>();
 const readyWires = new WeakMap<IfcDataStore, StyleWire>();
 const generations = new Map<string, number>();
 const noticed = new Set<string>();
+/** Bumped by every deliberate dispose, so a request it cut off reads as stale, not failed. */
+let disposals = 0;
 
 /** Swap the worker factory (tests; `null` restores the real worker). Disposes the current client. */
 export function setRemeshClientFactory(next: ClientFactory | null): void {
@@ -80,10 +83,31 @@ export function setRemeshClientFactory(next: ClientFactory | null): void {
 /** Terminate the re-mesh worker; the next request starts a new one. */
 export function disposeRemeshClient(): void {
   const current = client;
+  if (current) disposals += 1;
   client = null;
   readyClient = null;
   clientConfig = '';
   void current?.then((c) => c.dispose(), () => undefined);
+}
+
+/**
+ * Terminate the worker whenever a model is unloaded or reloaded. The worker
+ * keeps whatever its wasm heap grew to (a style-wire pre-pass parses the whole
+ * file, and wasm memory never shrinks), so an idle worker would otherwise pin
+ * a closed model's footprint for the rest of the session. The next edit starts
+ * a fresh one; style wires stay cached on the main thread, per data store.
+ * Returns the unsubscribe.
+ */
+export function watchModelUnloads(subscribe: StoreApi<ViewerState>['subscribe']): () => void {
+  return subscribe((state, previous) => {
+    if (state.models === previous.models) return;
+    for (const [id, model] of previous.models) {
+      if (model.ifcDataStore && state.models.get(id)?.ifcDataStore !== model.ifcDataStore) {
+        disposeRemeshClient();
+        return;
+      }
+    }
+  });
 }
 
 /**
@@ -233,6 +257,7 @@ export async function requestRemesh(
   const globalIds = new Set([...targets].map((id) => toGlobalIdFromModels(state.models, modelId, id)));
   if (hostsColourMerged(model, globalIds)) return refuse(modelId, 'colourMerged');
   const stamps = stamp(modelId, targets);
+  const epoch = disposals;
 
   try {
     const sub = serializeEntitySubgraph(store, view, { targets });
@@ -277,6 +302,11 @@ export async function requestRemesh(
       },
     };
   } catch (error) {
+    // The worker was terminated on purpose (another model unloaded) while
+    // this ran: ask again on a fresh one unless the request went stale anyway.
+    if (disposals !== epoch) {
+      return isCurrent(get, modelId, store, stamps, targets) ? requestRemesh(get, modelId, targets, cause) : { status: 'stale' };
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error('[remesh] failed:', error);
     notice(modelId, 'remesh.failed', { message });

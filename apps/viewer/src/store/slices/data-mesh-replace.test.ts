@@ -42,6 +42,7 @@ describe('replaceEntityMeshesPatch (#6232)', () => {
     assert.equal(patch.geometryResult, geometry, 'the active mirror follows');
     assert.deepEqual([...patch.pendingMeshEdits!.ids], [1]);
     assert.equal(patch.pendingMeshEdits!.tick, patch.geometryUpdateTick);
+    assert.equal(patch.pendingMeshEdits!.since, 10, 'the tick before the replacement, for the drain');
   });
 
   it('an empty replacement removes the entity', () => {

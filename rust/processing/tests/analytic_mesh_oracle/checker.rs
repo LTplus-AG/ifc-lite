@@ -5,7 +5,7 @@
 //! #5781: compare authored swept-disk surfaces with independently produced meshes.
 //! The source description and element mesh use their public processing paths.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ifc_lite_geometry::{
     analytic::{AnalyticCurveSegment, AnalyticStatus},
@@ -158,6 +158,49 @@ fn bounds(points: impl Iterator<Item = Point>) -> (Point, Point) {
     (low, high)
 }
 
+/// A complete, unmodified IfcSweptDiskSolid is a closed volume. A nearby
+/// surface sample cannot detect a missing cap triangle or flipped winding, so
+/// assert that every welded triangle edge has exactly two opposite uses.
+fn check_closed_oriented_edges(identity: &str, mesh: &ExportedElement) -> Result<(), String> {
+    for (vertex_index, vertex) in mesh.vertices.iter().enumerate() {
+        if vertex.iter().any(|coordinate| !coordinate.is_finite()) {
+            return Err(format!(
+                "{identity}: vertex {vertex_index} has a non-finite coordinate"
+            ));
+        }
+    }
+    let mut edges = BTreeMap::<(u32, u32), (u32, i32)>::new();
+    for (face_index, &[a, b, c]) in mesh.faces.iter().enumerate() {
+        if a == b
+            || b == c
+            || c == a
+            || [a, b, c].iter().any(|&i| i as usize >= mesh.vertices.len())
+        {
+            return Err(format!(
+                "{identity}: face {face_index} has a repeated or invalid vertex"
+            ));
+        }
+        for (start, end) in [(a, b), (b, c), (c, a)] {
+            let (key, direction) = if start < end {
+                ((start, end), 1)
+            } else {
+                ((end, start), -1)
+            };
+            let entry = edges.entry(key).or_default();
+            entry.0 += 1;
+            entry.1 += direction;
+        }
+    }
+    for ((start, end), (uses, direction)) in edges {
+        if uses != 2 || direction != 0 {
+            return Err(format!(
+                "{identity}: edge ({start}, {end}) has {uses} face uses and winding sum {direction}; expected two opposite uses"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn surface_samples(disk: &SweptDiskOccurrence, include_endpoints: bool) -> Vec<Point> {
     let mut samples = Vec::new();
     for segment in &disk.directrix {
@@ -203,6 +246,7 @@ pub(super) fn compare_surface(
     if mesh.faces.is_empty() || mesh.vertices.is_empty() {
         return Err(format!("{identity}: mesh has no triangles"));
     }
+    check_closed_oriented_edges(&identity, mesh)?;
     let surface_tolerance = 0.05 * disk.radius + 0.000_05;
     for (sample_index, point) in surface_samples(disk, false).into_iter().enumerate() {
         let residual = nearest_mesh_distance(point, mesh);

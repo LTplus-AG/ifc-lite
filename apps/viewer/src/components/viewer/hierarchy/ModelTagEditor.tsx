@@ -114,7 +114,9 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
 
         {models.size > 1 && (
           <div
-            className="inline-flex overflow-hidden rounded-md border border-border text-[11px]"
+            className="inline-flex overflow-hidden rounded-md border border-border text-2xs"
+            // The two scope buttons are one named command group, not a form fieldset.
+            // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="group"
             aria-label={t('hierarchy.modelTagEditor.applyToAriaLabel')}
           >
@@ -136,6 +138,8 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
               placeholder={t('hierarchy.modelTagEditor.addPlaceholder')}
               aria-label={t('hierarchy.modelTagEditor.addAriaLabel')}
               className="h-8 text-sm"
+              // The user just opened tag creation; focus the text field immediately.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
             <Button type="button" size="sm" className="h-8" disabled={!draft.trim()} onClick={() => addDraft()}>
@@ -145,7 +149,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
           {suggestions.length > 0 && (
             <div className="flex flex-wrap gap-1" aria-label={t('hierarchy.modelTagEditor.matchingTagsAriaLabel')}>
               {suggestions.map((suggestion) => (
-                <button key={suggestion.id} type="button" onClick={() => addDraft(suggestion.name)} className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted">
+                <button key={suggestion.id} type="button" onClick={() => addDraft(suggestion.name)} className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-muted">
                   {suggestion.name}
                 </button>
               ))}
@@ -164,6 +168,8 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
               <li key={tag.id} className="flex items-center gap-2 rounded px-1 py-1 hover:bg-muted/60" data-tag-row={tag.id}>
                 <button
                   type="button"
+                  // This button exposes the mixed membership state and supports native button keys.
+                  // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
                   role="checkbox"
                   aria-checked={membership === 'all' ? 'true' : membership === 'some' ? 'mixed' : 'false'}
                   aria-label={t(
@@ -174,7 +180,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                   })}
                   onClick={() => toggle(tag)}
                   className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[10px]',
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-2xs',
                     membership !== 'none' && 'bg-primary text-primary-foreground',
                   )}
                 >
@@ -191,9 +197,11 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                       }}
                       aria-label={t('hierarchy.modelTagEditor.renameAriaLabel', { name: tag.name })}
                       className="h-7 text-xs"
+                      // The user just chose Rename; focus the replacement-name field.
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
                       autoFocus
                     />
-                    {renaming.hasError && <span role="alert" className="text-[10px] text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
+                    {renaming.hasError && <span role="alert" className="text-2xs text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
                   </div>
                 ) : (
                   <span className="min-w-0 flex-1"><ModelTagChip tag={tag} /></span>

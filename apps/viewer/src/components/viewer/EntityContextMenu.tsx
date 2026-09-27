@@ -24,7 +24,7 @@ import { useTranslation } from '@/i18n';
 import {
   ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { DuplicateItems, ExtensionContextItems, MenuItem } from './EntityContextMenuItems';
+import { CommandMenuItem, DuplicateItems, ExtensionContextItems } from './EntityContextMenuItems';
 import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
 import { runSurfaceCommand } from './surface-command-run';
 
@@ -295,9 +295,7 @@ export function EntityContextMenu() {
   } = {}) => {
     const command = surfaceCommand(id, 'context');
     const state = { canEditInSession: canEdit, contextEntityType: entityType };
-    const label = t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(state));
-    return <MenuItem commandId={id} icon={command.contextIcon ?? command.icon} label={label}
-      shortcut={command.contextShortcut ?? command.shortcut}
+    return <CommandMenuItem commandId={id} commandState={state}
       onClick={() => runSurfaceCommand(command, { surface: 'context', contextAction: action })}
       {...options} disabled={!command.enabled(state)} />;
   };

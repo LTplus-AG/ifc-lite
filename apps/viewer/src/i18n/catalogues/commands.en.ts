@@ -66,13 +66,13 @@ export const commandsEn = {
 
   // Visibility
   'commands.visibility.hideSelection': 'Hide selection',
-  'commands.visibility.showAll': 'Show all (clear filters and basket)',
-  'commands.basket.isolate': 'Isolate (set basket from current context)',
-  'commands.basket.set': 'Set basket from current context',
-  'commands.basket.add': 'Add current context to basket',
-  'commands.basket.remove': 'Remove current context from basket',
-  'commands.basket.toggleDock': 'Toggle basket presentation dock',
-  'commands.basket.saveView': 'Save basket as presentation view',
+  'commands.visibility.showAll': 'Show all',
+  'commands.basket.isolate': 'Isolate current context (set collection)',
+  'commands.basket.set': 'Set collection from current context',
+  'commands.basket.add': 'Add current context to collection',
+  'commands.basket.remove': 'Remove current context from collection',
+  'commands.basket.toggleDock': 'Toggle presentation dock',
+  'commands.basket.saveView': 'Save collection as presentation view',
 
   // Camera
   'commands.camera.home': 'Home (isometric + reset visibility)',

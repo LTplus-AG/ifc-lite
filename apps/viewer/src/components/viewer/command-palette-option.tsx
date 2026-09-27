@@ -88,6 +88,6 @@ export function registeredPaletteId(command: Command): RegisteredPaletteId | nul
     return null;
   }
   if (definition?.surfaces.some((surface) => surface === 'palette')) return definition.id;
-  if (exportId) return command.id;
+  if (isExportPaletteId(command.id)) return command.id;
   throw new Error(`Unknown registered palette command: ${command.id}`);
 }

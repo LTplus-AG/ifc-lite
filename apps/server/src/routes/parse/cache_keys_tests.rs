@@ -304,6 +304,10 @@ fn request_cache_key_separates_content_filter_and_quality() {
                 // a body-carrying request builds. Set to a value that would
                 // be visible if it leaked in.
                 sha256: Some("f".repeat(64)),
+                // Selects the data-model ENTRY (#6034), never the request
+                // key the geometry and metadata hang off: both variants share
+                // those. Non-default so a leak would show.
+                data_model_entities: crate::services::DataModelEntities::Rooted,
             };
             let key = request_cache_key(data, &query, quality);
             assert!(key.starts_with(&hash), "the file hash must lead the key: {key}");
@@ -329,7 +333,7 @@ fn request_cache_key_separates_content_filter_and_quality() {
 #[test]
 fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     let request_key = "0ab20f4e4014-default";
-    let key = data_model_cache_key(request_key);
+    let key = data_model_cache_key(request_key, crate::services::DataModelEntities::All);
     assert_eq!(key, format!("{request_key}-datamodel-v8"));
     assert_ne!(key, format!("{request_key}-datamodel-v7"));
     assert_ne!(
@@ -342,6 +346,20 @@ fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     assert_ne!(key, json_response_cache_key(request_key));
 }
 
+/// #6034: the default entities variant keeps the pre-#6034 key, so a warm
+/// cache still answers default requests, and the rooted variant gets its own
+/// entry under the SAME version, so one payload bump retires both.
+#[test]
+fn issue_6034_data_model_variants_are_separate_entries_under_one_version() {
+    use crate::services::DataModelEntities;
+    let request_key = "0ab20f4e4014-default";
+    let all = data_model_cache_key(request_key, DataModelEntities::All);
+    let rooted = data_model_cache_key(request_key, DataModelEntities::Rooted);
+    assert_eq!(all, format!("{request_key}-datamodel-v8"), "the default key must not move");
+    assert_eq!(rooted, format!("{request_key}-datamodel-rooted-v8"));
+    assert_ne!(all, rooted);
+}
+
 /// The derived keys are all distinct namespaces over the same seed, so a
 /// parquet blob can never be served where symbolic JSON or a typed
 /// `ParseResponse` is expected.
@@ -352,7 +370,8 @@ fn derived_keys_never_collide_with_each_other() {
         seed.to_string(),
         json_response_cache_key(seed),
         symbolic_cache_key(seed),
-        data_model_cache_key(seed),
+        data_model_cache_key(seed, crate::services::DataModelEntities::All),
+        data_model_cache_key(seed, crate::services::DataModelEntities::Rooted),
         parquet_cache_key(
             "0ab20f4e4014",
             OpeningFilterMode::Default,
@@ -438,7 +457,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         assert_ne!(optimized, flat);
         assert_ne!(optimized, flat_metadata);
         assert_ne!(optimized, symbolic_cache_key(&seed));
-        assert_ne!(optimized, data_model_cache_key(&seed));
+        assert_ne!(optimized, data_model_cache_key(&seed, crate::services::DataModelEntities::All));
         assert_ne!(optimized, json_response_cache_key(&seed));
     }
 }

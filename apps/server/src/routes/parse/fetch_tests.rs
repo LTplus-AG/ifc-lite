@@ -111,7 +111,7 @@ async fn seed_current_data_model(state: &AppState, hash: &str, filter: OpeningFi
         &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
     state
         .cache
-        .set_bytes(&data_model_cache_key(&seed), b"data-model-bytes")
+        .set_bytes(&data_model_cache_key(&seed, crate::services::DataModelEntities::All), b"data-model-bytes")
         .await
         .unwrap();
 }
@@ -360,7 +360,7 @@ async fn get_data_model_202_only_while_fill_in_flight() {
     let state = test_state("data-model-in-flight").await;
     let cache_key = "somehash-default";
 
-    let guard = state.data_model_in_flight.begin(cache_key.to_string());
+    let guard = state.data_model_in_flight.begin(data_model_cache_key(cache_key, crate::services::DataModelEntities::All));
     let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
     assert_eq!(
         response.status(),
@@ -406,7 +406,7 @@ async fn get_data_model_ignores_an_entry_written_under_the_previous_version() {
 async fn get_data_model_returns_200_with_cached_bytes() {
     let state = test_state("data-model-hit").await;
     let cache_key = "somehash-default";
-    let data_model_key = data_model_cache_key(cache_key);
+    let data_model_key = data_model_cache_key(cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .set_bytes(&data_model_key, b"the-data-model-parquet")
@@ -427,7 +427,7 @@ async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
     let geometry = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state.cache.set_bytes(&geometry, b"unchanged geometry").await.unwrap();
     seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
-    state.cache.set_bytes(&data_model_cache_key(&seed), b"current data model").await.unwrap();
+    state.cache.set_bytes(&data_model_cache_key(&seed, crate::services::DataModelEntities::All), b"current data model").await.unwrap();
     // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame
     // rebase), v3 (#4706, pre the site tier's translation and rotation coming
     // out of the stream). The list has to keep up with `symbolic_cache_key`:

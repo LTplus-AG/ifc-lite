@@ -90,7 +90,7 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
     // version (#3869); this test is about which side each blob lands on.
     state
         .cache
-        .set_bytes(&data_model_cache_key(&cache_key), b"DATA-MODEL-PAYLOAD")
+        .set_bytes(&data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"DATA-MODEL-PAYLOAD")
         .await
         .expect("seed data model cache entry");
     super::cache_keys::cache_symbolic_data(&state.cache, &cache_key,
@@ -148,7 +148,7 @@ async fn a_geometry_hit_with_a_stale_data_model_still_writes_the_current_data_mo
     let content = MINIMAL_IFC.as_bytes();
     let query = ParseQuery::default();
     let cache_key = request_cache_key(content, &query, TessellationQuality::default());
-    let current_key = data_model_cache_key(&cache_key);
+    let current_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
 
     state
         .cache
@@ -249,7 +249,7 @@ async fn issue_5542_parquet_cache_hit_reports_from_cache() {
         .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &serde_json::to_vec(&stored).unwrap())
         .await
         .unwrap();
-    state.cache.set_bytes(&data_model_cache_key(&cache_key), b"DATA-MODEL").await.unwrap();
+    state.cache.set_bytes(&data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"DATA-MODEL").await.unwrap();
     super::cache_keys::cache_symbolic_data(&state.cache, &cache_key,
         &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
 

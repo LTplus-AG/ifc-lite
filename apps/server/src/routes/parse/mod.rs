@@ -25,7 +25,7 @@ pub use parquet_stream::parse_parquet_stream;
 
 use crate::error::ApiError;
 use crate::services::cache::DiskCache;
-use crate::services::{OpeningFilterMode, ParquetLayout, StreamShapes};
+use crate::services::{DataModelEntities, OpeningFilterMode, ParquetLayout, StreamShapes};
 use axum::extract::Multipart;
 use flate2::read::GzDecoder;
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
@@ -58,6 +58,15 @@ pub struct ParseQuery {
     /// route, and not part of the cache identity.
     #[serde(default)]
     pub stream_shapes: StreamShapes,
+    /// Which rows the data model's entities table carries (#6034): "all"
+    /// (default, every STEP instance) or "rooted" (objects with a GlobalId,
+    /// plus every instance another data-model table references). See
+    /// [`DataModelEntities`]. Read by every route that writes the data model
+    /// (`/parse/parquet`, `/parse/parquet/optimized`, `/parse/parquet-stream`)
+    /// and by `/cache/check`, because it selects WHICH data-model entry has to
+    /// exist; the geometry and metadata entries are the same for both.
+    #[serde(default)]
+    pub data_model_entities: DataModelEntities,
     /// SHA-256 of the file the client is asking about, hex, lowercase (#3901).
     ///
     /// Read by `POST /api/v1/parse/parquet-stream` and (since #5128)
@@ -347,6 +356,9 @@ mod cache_keys_symbolic_tests;
 
 #[cfg(test)]
 mod cache_keys_tests;
+
+#[cfg(test)]
+mod data_model_entities_tests;
 
 #[cfg(test)]
 mod cached_replay_tests;

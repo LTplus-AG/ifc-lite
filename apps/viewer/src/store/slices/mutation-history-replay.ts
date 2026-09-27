@@ -23,6 +23,7 @@ import { hasAppearanceHistoryEntry, replayAppearanceHistory } from '@/lib/appear
 import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
 import { inverseMutationTargets, pruneInverseMutationTargets, revertedMutationIds } from './mutation-inverse-registry.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { refreshWallMeshIn, wallResizedByBatch } from './mutation-wall-resize.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -126,6 +127,9 @@ export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, mo
   }
   flush();
   pruneInverseMutationTargets(api);
+  // A wall resize's mesh is built from its IFC data, so rebuild it from the restored data.
+  const wall = wallResizedByBatch(get, batchId);
+  if (wall) refreshWallMeshIn(get, api.subscribe, wall.modelId, wall.expressId, false);
 }
 
 /**

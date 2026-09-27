@@ -51,6 +51,7 @@ import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { useTranslation } from '@/i18n';
+import { formatSquareMetres } from './computePolygonArea';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -169,7 +170,7 @@ export function SpaceSketchOverlay() {
   // losing the user's edits.
   const buildsRef = useRef<Map<number, { rects: WallRect[]; label: string; extraction: Extraction }>>(new Map());
   const [hist, setHist] = useState(0);
-  const [status, setStatus] = useState('Pick a storey to derive rooms from its walls.');
+  const [status, setStatus] = useState(() => t('spaceSketch.status.pickStorey'));
   const [showBuilding, setShowBuilding] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false); // Issue 7 — leak diagnostics
   // Default to the wall AXIS (face-based rooms are the gaps between wall
@@ -358,12 +359,12 @@ export function SpaceSketchOverlay() {
         if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
         snapDeltaTimerRef.current = setTimeout(() => setSnapDelta(null), 1800);
       }
-      const total = snap.reduce((s, r) => s + r.area, 0);
-      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · ${rects.length} walls.`);
+      const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+      setStatus(t('spaceSketch.status.derived', { label, count: snap.length, area, walls: rects.length }));
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
-  }, [buildPlate, resetInteraction, fitToPoints]);
+  }, [buildPlate, resetInteraction, fitToPoints, t]);
 
   // Manual weld-tolerance override (null → 5 cm default). Rebuilds the current
   // plate from its wall rectangles at the chosen tolerance.
@@ -427,10 +428,10 @@ export function SpaceSketchOverlay() {
     fitToPoints(snap.length > 0
       ? snap.flatMap((r) => r.outline)
       : (build?.rects ?? []).flatMap((r) => r.corners));
-    const total = snap.reduce((s, r) => s + r.area, 0);
-    setStatus(`${build?.label ?? `Storey ${storey}`}: ${snap.length} room(s), ${total.toFixed(1)} m² (your draft).`);
+    const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+    setStatus(t('spaceSketch.status.draftRestored', { label: build?.label ?? `Storey ${storey}`, count: snap.length, area }));
     return true;
-  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints]);
+  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints, t]);
 
   // On a storey change (and on open): restore that storey's existing draft if we
   // have one, otherwise derive it from the walls. Edits on every storey persist
@@ -1235,9 +1236,8 @@ export function SpaceSketchOverlay() {
     const session = sessionRef.current;
     if (draggedRef.current) { session?.commitDrag(); commit(); }
     else session?.cancelDrag(); // a click without a drag → discard the snapshot
-    const total = rooms.reduce((s, r) => s + r.area, 0);
-    if (draggedRef.current) setStatus(`Drag done — ${rooms.length} room(s), ${total.toFixed(1)} m² (conserved).`);
-  }, [rooms, commit]);
+    if (draggedRef.current) setStatus(t('spaceSketch.status.dragDone', { count: rooms.length, area: formatSquareMetres(rooms.reduce((s, r) => s + r.area, 0)) }));
+  }, [rooms, commit, t]);
 
   const f = fitRef.current;
   const total = rooms.reduce((s, r) => s + r.area, 0);

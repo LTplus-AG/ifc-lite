@@ -18,12 +18,14 @@
  *   4. same-CRS federation alignment (the affine baked into the vertices);
  *   5. the model's reposition placement (heading about the pivot, then
  *      translation), which the renderer applies on top of the vertices.
- * A reprojected (proj4) model has no affine inverse and is refused, as is a
- * storey whose chain will not resolve in plan: a wall written through a
- * guessed frame lands turned or offset, and nobody sees it until export.
+ * A reprojected (proj4) model has no affine inverse and is refused: a wall
+ * written through a guessed frame lands turned or offset, and nobody sees it
+ * until export. The Add Element tool (`add-element-workplane.ts`) converts
+ * through this same map.
  */
 
-import { fromStoreyLocal, storeyPlanFrame, toStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/create';
+import { fromStoreyLocal, toStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/create';
+import { storeyAuthoringFrame } from '@/lib/authoring/storey-authoring-frame';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import { effectiveStoreyElevation } from '@/components/viewer/add-element-storeys';
@@ -115,8 +117,10 @@ export function buildStoreyWorkplane(
   if (model.federationAlignmentStatus === 'reprojected') {
     return { refused: 'This model was reprojected into another CRS; draw in the anchor model instead.' };
   }
-  const plan = storeyPlanFrame(store, storeyId);
-  if (!plan) return { refused: `Storey #${storeyId}: its placement does not resolve in plan.` };
+  // The storey's plan frame, with #6287's identity fallback: a storey authored
+  // this session has no source chain to read, and refusing would block
+  // authoring on it outright (`storey-authoring-frame.ts`).
+  const { plan } = storeyAuthoringFrame(store, storeyId, undefined);
   let alignment: Affine | null = null;
   let coordinateInfo = model.geometryResult?.coordinateInfo;
   if (model.federationAlignmentStatus === 'same-crs') {

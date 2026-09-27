@@ -68,6 +68,7 @@ export { default as RotateRight } from '~icons/viewer/rotate-right';
 export { default as Share } from '~icons/viewer/share';
 export { default as Search } from '~icons/viewer/search';
 export { default as CopyGuid } from '~icons/viewer/copy-guid';
+export { default as EntityActions } from '~icons/viewer/entity-actions';
 export { default as CollabsRoom } from '~icons/viewer/collabs-room';
 export { default as Spatial } from '~icons/viewer/spatial';
 export { default as Class } from '~icons/viewer/class';

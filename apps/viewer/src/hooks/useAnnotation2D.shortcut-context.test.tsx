@@ -128,4 +128,13 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
       unregister();
     }
   });
+
+  it('#5841 Escape cancels measurement with both drawing hooks mounted', () => {
+    useViewerStore.getState().setAnnotation2DActiveTool('measure');
+    let cancellations = 0;
+    render(<><MeasureProbe onCancel={() => { cancellations++; }} /><Probe activeTool="measure" onDelete={() => {}} /></>);
+    press(window, 'Escape');
+    assert.equal(cancellations, 1, 'the in-progress measurement is cancelled once');
+    assert.equal(useViewerStore.getState().annotation2DActiveTool, 'none', 'the markup tool exits');
+  });
 });

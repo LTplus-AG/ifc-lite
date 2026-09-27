@@ -118,7 +118,9 @@ it('renders the literal mobile command and export registry matrix with its label
     const row = rows.find((candidate) => candidate.dataset.commandId === item.id);
     assert.ok(row);
     const rendered = row.getAttribute('aria-label') ?? row.textContent?.trim();
-    assert.equal(rendered, resolve(item.mobileLabelKey?.(state) ?? item.labelKey), `${item.id} uses its registered label`);
+    const labelKey = 'mobileLabelKey' in item && item.mobileLabelKey
+      ? item.mobileLabelKey(state) : item.labelKey;
+    assert.equal(rendered, resolve(labelKey), `${item.id} uses its registered label`);
   }
 
   const exports = [...document.querySelectorAll<HTMLElement>('[data-export-row]')];

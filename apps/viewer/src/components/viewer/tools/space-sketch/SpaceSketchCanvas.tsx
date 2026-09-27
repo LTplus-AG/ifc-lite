@@ -13,7 +13,7 @@
 
 import type { Room } from '@/lib/space-plate-session';
 import { sX, sY, centroid, polyArea, uniqueVerts, type Fit, type Pt } from '@/lib/space-sketch-geometry';
-import type { SnapKind } from '@/lib/space-snap';
+import type { SketchSnapKind } from '@/lib/snap/space-sketch';
 import type { BoundaryMode } from '@ifc-lite/create';
 import type { Hover, SplitTarget, Intent, IntentTone } from './types';
 import { useTranslation } from '@/i18n';
@@ -62,7 +62,7 @@ export interface SpaceSketchCanvasProps {
   previewEnd: Pt | null;
   splitHover: Pt | null;
   snapPos: Pt | null;
-  snapKind: SnapKind;
+  snapKind: SketchSnapKind;
   drawPts: Pt[];
   drawCursor: Pt | null;
   /** Rectangle tool: the 4 in-progress corners (null when not drawing one). */

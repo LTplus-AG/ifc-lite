@@ -33,6 +33,7 @@ import type { Command } from './commandPaletteSearch';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
+import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -70,6 +71,13 @@ const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
 
 export const SURFACE_COMMANDS = [
+  {
+    id: 'file:open', labelKey: 'commandPalette.file.open.label',
+    keywords: 'ifc ifcx glb load model browse',
+    category: 'File', icon: FolderOpen, surfaces: paletteOnly, enabled: alwaysEnabled,
+    immediate: true,
+    run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); },
+  },
   {
     id: 'file:save-federation-setup', labelKey: 'commandPalette.file.saveFederationSetup.label',
     keywords: 'federation setup save export portable models order alignment anchor',
@@ -190,6 +198,7 @@ export const SURFACE_COMMANDS = [
   },
   ...TOOL_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
+  ...WORKSPACE_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,

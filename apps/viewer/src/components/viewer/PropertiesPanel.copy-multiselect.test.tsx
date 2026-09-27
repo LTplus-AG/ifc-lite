@@ -12,12 +12,14 @@
 import '@/test/setup-dom.js';
 import { afterEach, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { advance, cleanup, click, render } from '@/test/render.js';
 import { parseStep } from '@/test/properties-panel-harness.js';
 import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast.js';
 import { useViewerStore } from '@/store';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView.js';
@@ -61,6 +63,7 @@ const OFFSET_A = 1_000_000;
 const OFFSET_B = 2_000_000;
 let storeA: IfcDataStore;
 let storeB: IfcDataStore;
+let authoredStore: IfcDataStore;
 let initialState: ReturnType<typeof useViewerStore.getState>;
 let clipboardWrites: string[] = [];
 
@@ -106,6 +109,7 @@ describe('Properties panel value copy and multi-selection summary (#5900)', () =
     initialState = useViewerStore.getState();
     storeA = await parseStep(stepFor('A', [{ id: 72, name: 'Wall A', acoustic: 'Rw50' }, { id: 73, name: 'Wall B', acoustic: 'Rw50' }]));
     storeB = await parseStep(stepFor('B', [{ id: 72, name: 'Wall C', acoustic: 'Rw45' }]));
+    authoredStore = await parseStep(new Uint8Array(readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url))));
   });
   beforeEach(() => {
     clipboardWrites = [];
@@ -245,6 +249,44 @@ describe('Properties panel value copy and multi-selection summary (#5900)', () =
     const panel = mount();
     assert.equal(panel.querySelector('button[aria-label="Copy Width"]'), null, 'the deleted qset\'s Width row is gone');
     assert.ok(panel.querySelector('button[aria-label="Copy FireRating"]'), 'properties are unaffected');
+  });
+
+  it('shows authored IFC sets only when both selected slabs still have them (#5900 follow-up)', () => {
+    // SketchUp 2024's buildingSMART sample has both Pset_SlabCommon and
+    // Qto_SlabBaseQuantities on slab #52. Two loaded copies exercise federation.
+    useViewerStore.setState({
+      models: new Map([
+        ['authored-a', model('authored-a', 'Building A.ifc', authoredStore, OFFSET_A)],
+        ['authored-b', model('authored-b', 'Building B.ifc', authoredStore, OFFSET_B)],
+      ]) as never,
+      activeModelId: 'authored-a',
+      selectedEntity: { modelId: 'authored-a', expressId: 52 },
+      selectedEntityId: 52 + OFFSET_A,
+      selectedEntityIds: new Set<number>(),
+      selectedEntitiesSet: new Set(['authored-a:52', 'authored-b:52']),
+      selectedModelId: null,
+      selectedEntities: [],
+      propertiesActiveTab: 'properties',
+      editEnabled: false,
+    });
+    const view = getOrCreateMutationView(useViewerStore, 'authored-a');
+    assert.ok(view);
+    const sourcePsets = view.getForEntity(52);
+    const sourceQsets = view.getQuantitiesForEntity(52);
+    assert.ok(sourcePsets.some((set) => set.name === 'Pset_SlabCommon'));
+    assert.ok(sourceQsets.some((set) => set.name === 'Qto_SlabBaseQuantities'));
+    const panel = mount();
+    assert.match(panel.textContent ?? '', /FireRating/);
+    assert.match(panel.textContent ?? '', /NetArea/);
+
+    act(() => {
+      for (const set of sourcePsets) view.deletePropertySet(52, set.name);
+      for (const set of sourceQsets) view.deleteQuantitySet(52, set.name);
+      useViewerStore.setState({ mutationViews: new Map(useViewerStore.getState().mutationViews) });
+    });
+    assert.deepEqual(view.getForEntity(52), []);
+    assert.deepEqual(view.getQuantitiesForEntity(52), []);
+    assert.doesNotMatch(panel.textContent ?? '', /FireRating|NetArea/);
   });
 
   it('narrows the selection to an element clicked in the summary', async () => {

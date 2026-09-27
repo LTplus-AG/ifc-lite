@@ -133,8 +133,10 @@ export function filterStyleWire(
  */
 export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => number = () => performance.now()): RemeshResult {
   const start = now();
-  const prePass = api.buildPrePassOnce(req.buffer) as ByteStreamingPrePassResult;
   try {
+    // Inside the `try`: a pre-pass that throws part-way may already have
+    // cached this buffer's index, which the next request must not inherit.
+    const prePass = api.buildPrePassOnce(req.buffer) as ByteStreamingPrePassResult;
     const prepassDone = now();
     const jobs = filterJobsToTargets(prePass.jobs ?? new Uint32Array(), req.targets);
     if (jobs.length === 0) {
@@ -169,8 +171,8 @@ export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => numbe
  * pre-pass cache. Copies each array so nothing aliases the wasm heap.
  */
 export function styleWireOnApi(api: RemeshApi, source: Uint8Array): StyleWire {
-  const prePass = api.buildPrePassOnce(source) as ByteStreamingPrePassResult;
   try {
+    const prePass = api.buildPrePassOnce(source) as ByteStreamingPrePassResult;
     return {
       styleIds: prePass.styleIds.slice(),
       styleColors: prePass.styleColors.slice(),

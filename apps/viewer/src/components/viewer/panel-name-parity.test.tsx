@@ -59,6 +59,10 @@ describe('workspace panel name parity (#5858)', () => {
     assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes(TITLE)), 'palette uses the panel title');
     typeInto(search, 'IDS Validation');
     assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes(TITLE)), 'the former palette name still finds the panel');
+    typeInto(search, 'Construction Schedule (Gantt)');
+    assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes('Schedule (Gantt)')), 'the former schedule name still finds the panel');
+    typeInto(search, 'Drawing (2D)');
+    assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes('Drawing')), 'the former drawing name still finds the panel');
     cleanup();
 
     const classic = render(<MainToolbar />);

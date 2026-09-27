@@ -16,11 +16,11 @@ import { withPanelTitle } from './commandPaletteCommandsTypes';
 const ENTRIES: ReadonlyArray<Pick<Command, 'keywords' | 'icon'> & { id: BottomPanelId }> = [
   { id: 'script', keywords: 'code automation console', icon: FileCode2 },
   { id: 'lists', keywords: 'entity lists table spreadsheet', icon: FileSpreadsheet },
-  { id: 'gantt', keywords: 'construction schedule 4d timeline tasks ifctask sequence playback animation', icon: CalendarClock },
+  { id: 'gantt', keywords: 'construction schedule (gantt) 4d timeline tasks ifctask sequence playback animation', icon: CalendarClock },
   { id: 'charts', keywords: 'dashboard chart graph bar pie statistics analytics report', icon: BarChart3 },
   { id: 'flow', keywords: 'flow graph node dynamo grasshopper automation workflow script', icon: Workflow },
   { id: 'document', keywords: 'document page report template cover sheet label binding pdf print logo', icon: FileText },
-  { id: 'drawing', keywords: '2d section cut plan floor plan elevation drawing sheet dxf svg pdf markup', icon: PencilRuler },
+  { id: 'drawing', keywords: 'drawing (2d) section cut plan floor plan elevation sheet dxf svg pdf markup', icon: PencilRuler },
 ];
 
 export function bottomPanelCommands(activate: (panel: BottomPanelId) => void): Command[] {

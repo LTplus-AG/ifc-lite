@@ -83,7 +83,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
     { id: 'panel:appearance', ...withPanelTitle('appearance'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()
-      ? [{ id: 'panel:collab', ...withPanelTitle('collab'), keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+      ? [{ id: 'panel:collab', ...withPanelTitle('collab'), keywords: 'collaboration session share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
           action: () => { p.activateRightPanel('collab'); } }]
       : []),
     { id: 'panel:extensions', ...withPanelTitle('extensions'), keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,

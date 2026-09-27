@@ -65,5 +65,7 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
   assert.equal(document.querySelector('[data-command-id="export:ifc"]')?.getAttribute('aria-label'),
     resolveEnglish(exportDefinition.labelKey));
   assert.equal(registeredPaletteId({ ...runtime, id: 'export:ifc', registryOwned: true }), 'export:ifc');
+  assert.throws(() => registeredPaletteId({ ...runtime, id: command.id }), /must be registry-owned/);
+  assert.throws(() => registeredPaletteId({ ...runtime, id: 'export:ifc' }), /must be registry-owned/);
   assert.throws(() => registeredPaletteId({ ...runtime, registryOwned: true }), /Unknown registered palette command/);
 });

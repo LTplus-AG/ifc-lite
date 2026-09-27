@@ -71,7 +71,7 @@ export function RegisteredPaletteOption({ commandId, ...placement }: RegisteredP
 /** Recent files, tours, scripts, and extension contributions have runtime titles. */
 export function DynamicPaletteOption({ command, ...placement }: OptionPlacement & { command: Command }) {
   const { t } = useTranslation();
-  if (command.registryOwned) throw new Error(`${command.id} must render as a registered palette option`);
+  if (registeredPaletteId(command)) throw new Error(`${command.id} must render as a registered palette option`);
   return <OptionChrome {...placement} icon={command.icon}
     label={command.labelKey ? t(command.labelKey, command.labelKeyParams) : command.label}
     detail={command.detail ? (command.detailKey ? t(command.detailKey, command.detailKeyParams) : command.detail) : undefined}
@@ -80,9 +80,13 @@ export function DynamicPaletteOption({ command, ...placement }: OptionPlacement 
 
 /** The row adapter marks registry ownership; resolve its literal typed id before rendering. */
 export function registeredPaletteId(command: Command): RegisteredPaletteId | null {
-  if (!command.registryOwned) return null;
   const definition = SURFACE_COMMANDS.find((entry) => entry.id === command.id);
-  if (definition) return definition.id;
-  if (isExportPaletteId(command.id)) return command.id;
+  const exportId = isExportPaletteId(command.id);
+  if (!command.registryOwned) {
+    if (definition || exportId) throw new Error(`${command.id} must be registry-owned in the palette`);
+    return null;
+  }
+  if (definition?.surfaces.some((surface) => surface === 'palette')) return definition.id;
+  if (exportId) return command.id;
   throw new Error(`Unknown registered palette command: ${command.id}`);
 }

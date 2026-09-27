@@ -995,6 +995,7 @@ export function buildMaterialTree(
   _isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  effectiveStores?: ReadonlyMap<string, IfcDataStore>,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1031,22 +1032,21 @@ export function buildMaterialTree(
       }
     }
   };
-
   if (models.size > 0) {
     // IFCX layers can share one composed store. Its material usage has no
     // per-layer provenance, so emit one unattributed row for that store.
     const storeOwners = new Map<IfcDataStore, string[]>();
     for (const [modelId, model] of models) {
-      if (!model.ifcDataStore) continue;
-      const owners = storeOwners.get(model.ifcDataStore) ?? [];
+      const materialStore = effectiveStores?.get(modelId) ?? model.ifcDataStore;
+      if (!materialStore) continue;
+      const owners = storeOwners.get(materialStore) ?? [];
       owners.push(modelId);
-      storeOwners.set(model.ifcDataStore, owners);
+      storeOwners.set(materialStore, owners);
     }
     for (const [store, owners] of storeOwners) processDataStore(store, owners);
   } else if (ifcDataStore) {
-    processDataStore(ifcDataStore, ['legacy']);
+    processDataStore(effectiveStores?.get('legacy') ?? ifcDataStore, ['legacy']);
   }
-
   const nodes: TreeNode[] = [];
   const entries = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name) || a.modelIds[0].localeCompare(b.modelIds[0]));
   for (const entry of entries) {

@@ -103,8 +103,6 @@ export const TOUR_ANCHORS = {
   ribbonTabs: 'ribbon-tabs',
   /** Ribbon collapse/expand chevron in the tab strip. */
   ribbonCollapse: 'ribbon-collapse',
-  /** ViewTab "Classic bar" button (only while the View tab is open). */
-  ribbonClassicSwitch: 'ribbon-classic-switch',
   /** ViewTab "Follow work" contextual-tabs toggle (View tab open). */
   ribbonFollowWork: 'ribbon-follow-work',
 } as const;

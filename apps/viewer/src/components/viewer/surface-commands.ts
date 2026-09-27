@@ -19,6 +19,7 @@ import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import type { ProjectionMode } from '@/store/types';
+import type { PanelGroup, WorkspacePanelId } from '@/lib/panels/registry';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -67,6 +68,9 @@ export interface SurfaceCommandState {
 
 export interface SurfaceCommandDefinition {
   id: string;
+  /** Panel commands project this metadata from the workspace-panel registry. */
+  panelId?: WorkspacePanelId;
+  panelGroup?: PanelGroup;
   labelKey: TranslationKey;
   /** Legacy English search text; display always uses labelKey. */
   searchLabel?: string;

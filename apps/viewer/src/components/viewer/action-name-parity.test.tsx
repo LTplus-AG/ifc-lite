@@ -17,7 +17,6 @@ import { cleanup, render, type as typeInto } from '@/test/render.js';
 import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support.js';
 import { CommandPalette } from './CommandPalette.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
-import { MainToolbar } from './MainToolbar.js';
 import { MobileToolbar } from './MobileToolbar.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
@@ -42,16 +41,12 @@ afterEach(() => {
 });
 
 describe('one action name across viewer surfaces (#5858)', () => {
-  it('shows the same localized Show all name in ribbon, classic, mobile, palette and canvas menu', () => {
+  it('shows the same localized Show all name in ribbon, mobile, palette and canvas menu', () => {
     registerLocale('action-name-parity-5858', { [ACTION_NAME_KEYS.showAll]: SHOW_ALL });
     setLocale('action-name-parity-5858');
 
     render(<ElementsTab />);
     assert.ok(findNamedButton(SHOW_ALL), 'ribbon uses the canonical action name');
-    cleanup();
-
-    render(<MainToolbar />);
-    assert.ok(findNamedButton(SHOW_ALL), 'classic strip uses the canonical action name');
     cleanup();
 
     render(<MobileToolbar />);

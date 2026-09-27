@@ -3,15 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Settings → General (#5857): theme, hover tooltips and (desktop) the
- * toolbar style. Each writes through the same store action as its existing
- * toggle (ribbon, classic toolbar, palette), so there is one source of truth
- * and one persistence path per setting.
+ * Settings → General (#5857): theme and hover tooltips.
  */
 
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import type { ToolbarStyle } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { Switch } from '@/components/ui/switch';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
@@ -22,9 +18,6 @@ export function GeneralSection() {
   const setTheme = useViewerStore((s) => s.setTheme);
   const hoverTooltipsEnabled = useViewerStore((s) => s.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((s) => s.toggleHoverTooltips);
-  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
-  const setToolbarStyle = useViewerStore((s) => s.setToolbarStyle);
-  const isMobile = useViewerStore((s) => s.isMobile);
 
   return (
     <div className="space-y-4">
@@ -41,20 +34,6 @@ export function GeneralSection() {
             onChange={setTheme}
           />
         </SettingsRow>
-        {!isMobile && (
-          <SettingsRow label={t('settings.general.toolbar')}>
-            <SettingsChoice<ToolbarStyle>
-              id="settings-toolbar"
-              label={t('settings.general.toolbar')}
-              value={toolbarStyle}
-              options={[
-                { value: 'ribbon', label: t('settings.general.toolbarRibbon') },
-                { value: 'classic', label: t('settings.general.toolbarClassic') },
-              ]}
-              onChange={setToolbarStyle}
-            />
-          </SettingsRow>
-        )}
       </SettingsGroup>
       <SettingsGroup title={t('settings.general.helpersTitle')}>
         <SettingsRow

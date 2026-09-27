@@ -41,6 +41,16 @@ it('pluralizes the asset-count readout (#4918)', () => {
   assert.ok(!single.textContent?.includes('1 assets'));
 });
 
+it('#5873 explains the empty Point Clouds panel while keeping its close control', () => {
+  let closed = 0;
+  const container = render(<PointCloudPanel assetCount={0} triangleCount={0} onClose={() => { closed += 1; }} />);
+  assert.match(container.querySelector('output')?.textContent ?? '', /load a point cloud/i);
+  const close = container.querySelector('button[aria-label="Close point cloud panel"]');
+  assert.ok(close);
+  click(close);
+  assert.equal(closed, 1);
+});
+
 it('#5811 names and activates the point cloud panel close control', () => {
   let closed = 0;
   const container = render(<PointCloudPanel assetCount={1} triangleCount={0} onClose={() => { closed += 1; }} />);

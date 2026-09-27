@@ -5,7 +5,7 @@
 /**
  * #4932: placement clicks and split-cut picks ignored a model's reposition
  * transform (a workspace translation, and — after #4873 — a heading about a
- * pivot). `rendererPointToIfcStoreyLocal` converted a renderer-frame pick
+ * pivot). The pick converter (now the storey workplane) converted a renderer-frame pick
  * straight to IFC storey-local coordinates with a bare axis swap, so on a
  * moved or rotated model the point handed to `addBeam` / `addColumn` / etc.
  * was the click's un-repositioned twin, not the point the user
@@ -29,7 +29,7 @@ import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
-import { handleSelectionClick, rendererPointToIfcStoreyLocal } from './selectionHandlers.js';
+import { handleSelectionClick } from './selectionHandlers.js';
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import type { PlacementState } from '@/lib/model-placement/state.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
@@ -70,25 +70,6 @@ function renderPointFor(modelPoint: Translation): { x: number; y: number; z: num
   const [x, y, z] = toRenderTranslation(workspace);
   return { x, y, z };
 }
-
-describe('placement/split-cut picks undo the model reposition transform (#4932)', () => {
-  it('rendererPointToIfcStoreyLocal recovers the model-frame point a workspace pick was placed from', () => {
-    useViewerStore.setState({ modelPlacement: PLACEMENT } as Partial<ReturnType<typeof useViewerStore.getState>>);
-    const modelPoint: Translation = [4, -2.5, 0];
-    const ifc = rendererPointToIfcStoreyLocal(renderPointFor(modelPoint), MODEL_ID);
-    assert.ok(Math.abs(ifc[0] - modelPoint[0]) < 1e-9, `x: got ${ifc[0]}, expected ${modelPoint[0]}`);
-    assert.ok(Math.abs(ifc[1] - modelPoint[1]) < 1e-9, `y: got ${ifc[1]}, expected ${modelPoint[1]}`);
-    assert.equal(ifc[2], 0);
-  });
-
-  it('an un-repositioned model (identity placement) is unaffected — the axis swap alone', () => {
-    useViewerStore.setState({
-      modelPlacement: { realignedFrameKey: null, placements: new Map(), preview: null, undo: [], redo: [], revision: 0 },
-    } as Partial<ReturnType<typeof useViewerStore.getState>>);
-    const ifc = rendererPointToIfcStoreyLocal({ x: 3, y: 9, z: -4 }, 'unplaced');
-    assert.deepEqual(ifc, [3, 4, 0]);
-  });
-});
 
 describe('placement-tool click: addBeam receives model-frame coordinates on a moved+rotated model (#4932)', () => {
   const original = useViewerStore.getState();

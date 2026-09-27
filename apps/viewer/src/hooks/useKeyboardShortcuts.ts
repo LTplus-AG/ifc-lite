@@ -138,7 +138,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['addElement.commit', () => {
     const state = useViewerStore.getState();
     if (!['slab', 'roof', 'plate', 'space'].includes(state.addElementType) || state.addElementSlabMode !== 'polygon') return false;
-    void import('@/components/viewer/selectionHandlers').then((module) => module.commitAddElementSlabPolygon());
+    void import('@/components/viewer/add-element-handlers').then((module) => module.commitAddElementSlabPolygon());
   }],
   ['addElement.clearPending', () => {
     const state = useViewerStore.getState();

@@ -85,6 +85,26 @@ test('#5800: a Python test in a Cargo workspace member plans a wheel run', () =>
   }
 });
 
+test('#5800 review: a Python helper in a Cargo fixture tree remains support', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-python-cargo-fixture-'));
+  try {
+    const project = join(root, 'rust', 'example');
+    const fixtures = join(project, 'tests', 'fixtures');
+    mkdirSync(fixtures, { recursive: true });
+    writeFileSync(join(root, 'Cargo.toml'), '[workspace]\nmembers = ["rust/example"]\n');
+    writeFileSync(join(project, 'Cargo.toml'), '[package]\nname = "example"\nversion = "0.1.0"\n');
+    writeFileSync(join(fixtures, 'gen.py'), 'print("fixture")\n');
+
+    const file = 'rust/example/tests/fixtures/gen.py';
+    const { plans, unassigned, support } = planRuns([file], root);
+    assert.deepEqual(plans, []);
+    assert.deepEqual(unassigned, []);
+    assert.deepEqual(support, [file]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // pythonRunner
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import { saveFilter, clearSavedFilters } from '@/lib/search/saved-filters.js';
 import { Rule } from '@ifc-lite/rules';
 import { AppearancePanelView } from './AppearancePanelView.js';
 import { useViewerStore } from '@/store';
+import { fixtureModel } from '@/test/store-fixture.js';
 import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import type { AppearancePanelViewProps, AppearanceDraftSettings } from './types.js';
@@ -48,6 +49,23 @@ it('keeps appearance Apply disabled with a reason until Edit mode is enabled (#5
   click(button(ui, 'Apply'));
   assert.equal(applies, 0);
   act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(button(ui, 'Apply').disabled, false);
+  click(button(ui, 'Apply'));
+  assert.equal(applies, 1);
+});
+
+it('disables assignment Apply when any frozen target model becomes unavailable (#5901)', () => {
+  let applies = 0;
+  const available = fixtureModel('A');
+  const unavailable = { ...fixtureModel('B'), ifcDataStore: null };
+  useViewerStore.setState({ models: new Map([['A', available], ['B', unavailable]]) });
+  const ui = render(<AppearancePanelView {...props({ modelId: 'A', assignmentMode: true,
+    assignmentTargetModelIds: ['A', 'B'], onApply: () => { applies++; } })} />);
+  assert.equal(button(ui, 'Apply').disabled, true);
+  assert.match(button(ui, 'Apply').title, /no editable IFC data/);
+  click(button(ui, 'Apply'));
+  assert.equal(applies, 0);
+  act(() => useViewerStore.setState({ models: new Map([['A', available], ['B', fixtureModel('B')]]) }));
   assert.equal(button(ui, 'Apply').disabled, false);
   click(button(ui, 'Apply'));
   assert.equal(applies, 1);

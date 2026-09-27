@@ -19,7 +19,10 @@ import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
+import type { FederatedModel } from '@/store';
 import { ZonesPanel } from './ZonesPanel.js';
+import { ZoneWriteBackControl } from './ZoneWriteBackControl.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 import { zonePropertySetName, type ZoneSet } from '@/lib/zones';
 
 const WALL_ID = 42;
@@ -95,6 +98,30 @@ describe('ZonesPanel: writing zone data into the model', () => {
     assert.equal(writeButton(container).disabled, false);
     click(writeButton(container));
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
+  });
+
+  it('explains unavailable write targets and enables a mixed federated set (#5901)', async () => {
+    const data = await seed();
+    const missing: FederatedModel = { ...fixtureModel('m1'), maxExpressId: WALL_ID, ifcDataStore: null };
+    useViewerStore.setState({ models: new Map([['m1', missing]]) });
+    const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
+    assert.equal(writeButton(ui).disabled, true);
+    assert.match(writeButton(ui).title, /no editable IFC data/);
+    assert.equal(button(ui, 'CSV').disabled, false);
+
+    const writable: FederatedModel = { ...fixtureModel('m2', { idOffset: 1_000_000 }), maxExpressId: WALL_ID, ifcDataStore: data };
+    act(() => useViewerStore.setState({
+      models: new Map([['m1', missing], ['m2', writable]]),
+      zoneAssignments: new Map([[WALL_ID, {
+        'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+      }], [1_000_000 + WALL_ID, {
+        'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+      }]]) as never,
+    }));
+    assert.equal(writeButton(ui).disabled, false);
+    click(writeButton(ui));
+    assert.ok(useViewerStore.getState().dirtyModels.has('m2'));
+    assert.equal(useViewerStore.getState().dirtyModels.has('m1'), false);
   });
 
   it('writes the property set when the panel button is clicked', () => {

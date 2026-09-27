@@ -31,7 +31,8 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     });
   }, []);
   const reference = props.intent === 'reference';
-  const denialReason = useMutationDenialReason();
+  const denialReason = useMutationDenialReason(props.assignmentMode && props.assignmentTargetModelIds?.length
+    ? props.assignmentTargetModelIds : undefined);
   const denialMessage = !reference && denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;

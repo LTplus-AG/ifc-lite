@@ -261,6 +261,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     move(id: string, direction: -1 | 1) { const next = [...rows], index = next.findIndex(row => row.id === id), target = index + direction;
       if (index >= 0 && target >= 0 && target < next.length) { [next[index], next[target]] = [next[target], next[index]]; save(next); } },
     hasPreview: !!draft.current,
+    targetModelIds: [...(draft.current?.preparation.snapshots.keys() ?? [])],
     blockedReason: room ? translatedMessage('appearance.assignments.status.leaveRoom') : undefined,
     affectedCount: resolved.reduce((sum, row) => sum + row.productIds.length, 0),
   };

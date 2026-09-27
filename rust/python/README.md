@@ -354,6 +354,14 @@ for step_id, row in schedule["rows"].items():
     print(step_id, row["GlobalId"], row["Name"], row["authored"].get("BarLength"), row["sweeps"])
 ```
 
+For project-specific comparisons, call
+`rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
+min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
+The measured comparisons identify their source segments; equality passes.
+Inside bend radius is arc centreline radius minus swept outer radius. Modified
+or unsupported sources and rows without sweeps carry explicit skip reasons.
+No result certifies a cutting length or fabrication-code compliance.
+
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

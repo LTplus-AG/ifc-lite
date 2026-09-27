@@ -17,6 +17,7 @@ use serde::Serialize;
 
 use crate::rebar_attributes::{attribute, FIELDS};
 use crate::schema_detect::detect_schema;
+use crate::rebar_preflight::{assess_sweep, RebarPreflightLimits, RebarPreflightReport, RebarSchedulePreflightError};
 
 /// Where a schema-declared value was authored. An occurrence wins a conflict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -70,6 +71,9 @@ pub struct RebarSweep {
     pub inner_radius_m: Option<f64>,
     pub directrix_metrics: Option<DirectrixMetrics>,
     pub checks: SweptDiskCheckReport,
+    /// Present only when caller requested fabrication preflight comparisons.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<RebarPreflightReport>,
 }
 
 /// One IFC `IfcReinforcingBar` entity, including bars without analytic geometry.
@@ -85,6 +89,9 @@ pub struct RebarScheduleRow {
     pub authored: BTreeMap<String, AuthoredRebarAttribute>,
     pub sweeps: Vec<RebarSweep>,
     pub geometry_unavailable_reason: Option<String>,
+    /// For an opted-in row with no represented sweep.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preflight_skipped_reason: Option<String>,
     pub diagnostics: Vec<String>,
 }
 
@@ -114,6 +121,28 @@ pub fn build_rebar_schedule(
     content: &[u8],
     ids: Option<&HashSet<u32>>,
     options: &SweptDiskCheckOptions,
+) -> Result<RebarSchedule, SweptDiskCheckError> {
+    build_rebar_schedule_impl(content, ids, options, None)
+}
+
+/// Build a schedule with caller-supplied geometric fabrication comparisons.
+/// Results do not certify a cutting length or code compliance.
+pub fn build_rebar_schedule_with_preflight(
+    content: &[u8],
+    ids: Option<&HashSet<u32>>,
+    options: &SweptDiskCheckOptions,
+    limits: &RebarPreflightLimits,
+) -> Result<RebarSchedule, RebarSchedulePreflightError> {
+    limits.validate().map_err(RebarSchedulePreflightError::Limits)?;
+    build_rebar_schedule_impl(content, ids, options, Some(limits))
+        .map_err(RebarSchedulePreflightError::SweepChecks)
+}
+
+fn build_rebar_schedule_impl(
+    content: &[u8],
+    ids: Option<&HashSet<u32>>,
+    options: &SweptDiskCheckOptions,
+    limits: Option<&RebarPreflightLimits>,
 ) -> Result<RebarSchedule, SweptDiskCheckError> {
     options.validate()?;
     let schema_label = detect_schema(content);
@@ -234,6 +263,7 @@ pub fn build_rebar_schedule(
             authored: BTreeMap::new(),
             sweeps: Vec::new(),
             geometry_unavailable_reason: None,
+            preflight_skipped_reason: None,
             diagnostics: type_diagnostics,
         };
         if known_schema {
@@ -316,6 +346,7 @@ pub fn build_rebar_schedule(
                     inner_radius_m: disk.inner_radius,
                     directrix_metrics: disk.directrix_metrics(),
                     checks: check_swept_disk(disk, options)?,
+                    preflight: limits.map(|limits| assess_sweep(disk, limits)),
                 });
             }
         }
@@ -334,6 +365,9 @@ pub fn build_rebar_schedule(
                         "no swept-disk source in selected body representation".to_string()
                     }),
             );
+            if limits.is_some() {
+                row.preflight_skipped_reason = row.geometry_unavailable_reason.clone();
+            }
         }
         rows.insert(id, row);
     }

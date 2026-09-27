@@ -6,7 +6,10 @@
 
 use std::collections::HashSet;
 
-use ifc_lite_export::{build_rebar_schedule, AuthoredRebarValue, RebarSchedule};
+use ifc_lite_export::{
+    build_rebar_schedule, build_rebar_schedule_with_preflight, AuthoredRebarValue,
+    RebarPreflightLimits, RebarSchedule,
+};
 use ifc_lite_processing::SweptDiskCheckOptions;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -26,6 +29,42 @@ pub(super) fn rebar_schedule(
     gap_tolerance_m: f64,
     tangent_tolerance_rad: f64,
 ) -> PyResult<Py<PyAny>> {
+    schedule_impl(py, ifc_bytes, ids, zero_length_tolerance_m,
+        gap_tolerance_m, tangent_tolerance_rad, None)
+}
+
+/// Assess represented source sweeps against caller-provided project limits.
+#[pyfunction]
+#[pyo3(signature = (ifc_bytes, min_inside_bend_radius_m, min_straight_segment_length_m, ids = None, *, max_developed_centreline_length_m = None, zero_length_tolerance_m = 1e-9, gap_tolerance_m = 1e-6, tangent_tolerance_rad = 1e-6))]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn rebar_schedule_with_preflight(
+    py: Python<'_>,
+    ifc_bytes: Vec<u8>,
+    min_inside_bend_radius_m: f64,
+    min_straight_segment_length_m: f64,
+    ids: Option<HashSet<u32>>,
+    max_developed_centreline_length_m: Option<f64>,
+    zero_length_tolerance_m: f64,
+    gap_tolerance_m: f64,
+    tangent_tolerance_rad: f64,
+) -> PyResult<Py<PyAny>> {
+    let limits = RebarPreflightLimits::new(min_inside_bend_radius_m,
+        min_straight_segment_length_m, max_developed_centreline_length_m)
+        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    schedule_impl(py, ifc_bytes, ids, zero_length_tolerance_m,
+        gap_tolerance_m, tangent_tolerance_rad, Some(limits))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn schedule_impl(
+    py: Python<'_>,
+    ifc_bytes: Vec<u8>,
+    ids: Option<HashSet<u32>>,
+    zero_length_tolerance_m: f64,
+    gap_tolerance_m: f64,
+    tangent_tolerance_rad: f64,
+    limits: Option<RebarPreflightLimits>,
+) -> PyResult<Py<PyAny>> {
     let mut options = SweptDiskCheckOptions::default();
     options.zero_length_tolerance_m = zero_length_tolerance_m;
     options.gap_tolerance_m = gap_tolerance_m;
@@ -38,11 +77,15 @@ pub(super) fn rebar_schedule(
             std::thread::Builder::new()
                 .stack_size(GEOMETRY_STACK_BYTES)
                 .name("ifclite-rebar-schedule".into())
-                .spawn(move || build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options))
+                .spawn(move || match limits {
+                    Some(limits) => build_rebar_schedule_with_preflight(&ifc_bytes, ids.as_ref(), &options, &limits)
+                        .map_err(|error| error.to_string()),
+                    None => build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options)
+                        .map_err(|error| error.to_string()),
+                })
                 .map_err(|error| format!("spawn failed: {error}"))?
                 .join()
                 .map_err(|_| "rebar schedule worker panicked".to_string())?
-                .map_err(|error| error.to_string())
         })
         .map_err(PyRuntimeError::new_err)?;
     validate_finite(&schedule).map_err(PyValueError::new_err)?;

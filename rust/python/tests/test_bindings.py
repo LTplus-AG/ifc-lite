@@ -463,6 +463,28 @@ def test_issue_5759_rebar_schedule_retains_unsupported_source_reason():
     assert sweep["checks"]["skipped_reason"]
 
 
+def test_issue_6305_rebar_preflight_reports_values_and_skips():
+    source = read(REBAR)
+    schedule = ifclite_geom.rebar_schedule_with_preflight(
+        source, 0.0, 0.0, max_developed_centreline_length_m=10.0
+    )
+    row = schedule["rows"][125]
+    report = row["sweeps"][0]["preflight"]
+    assert report["skipped_reason"] is None
+    bend = next(item for item in report["comparisons"] if item["kind"] == "inside_bend_radius")
+    assert bend["measured_m"] == pytest.approx(0.087)
+    assert bend["segment_index"] == 1
+    assert bend["passed"]
+    assert all(item["passed"] for item in report["comparisons"])
+    assert "preflight" not in ifclite_geom.rebar_schedule(source)["rows"][125]["sweeps"][0]
+
+    absent = source.decode().replace("#33,#124,$,$,29.", "#33,$,$,$,29.").encode()
+    missing = ifclite_geom.rebar_schedule_with_preflight(absent, 0.0, 0.0)["rows"][125]
+    assert missing["preflight_skipped_reason"] == missing["geometry_unavailable_reason"]
+    with pytest.raises(ValueError, match="min_inside_bend_radius_m"):
+        ifclite_geom.rebar_schedule_with_preflight(source, float("nan"), 0.0, ids=set())
+
+
 def test_issue_5758_invalid_check_options_raise_even_when_no_ids_selected():
     for options in (
         {"zero_length_tolerance_m": float("nan")},

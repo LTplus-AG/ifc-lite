@@ -330,7 +330,7 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
     errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
   } else if (source.kind === 'list') {
     const list = source.list;
-    if (!isSavedListShape(list) || !(Array.isArray(list.groups) || Array.isArray(list.conditions))) {
+    if (!isSavedListShape(list) || !Array.isArray(list.groups)) {
       errors.push({ path: `${at}.source.list`, message: 'expected a list definition' });
     } else if (list.expressIdsByModel !== undefined) {
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });

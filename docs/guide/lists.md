@@ -234,9 +234,11 @@ applies them; saving or exporting writes only the canonical groups and
 unreadable rows. `migrateLegacyListConditions(conditions)` exposes the pure
 condition conversion for other v1 importers.
 
-`executeList` is the synchronous provider-only source and column engine. Pass
-an already-filtered `expressIdsByModel` snapshot when a definition has Rules
-filters; it rejects nonempty groups to avoid silently returning extra rows.
+`executeList` is the synchronous provider-only source and column engine. First
+evaluate any Rules groups, then pass an execution copy such as
+`{ ...definition, groups: [], expressIdsByModel: filteredIdsByModel }`.
+Passing the original definition with nonempty groups throws, even when it has
+an `expressIdsByModel` snapshot, to avoid silently returning extra rows.
 
 ## Key Exports
 

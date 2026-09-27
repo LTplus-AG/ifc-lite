@@ -292,7 +292,7 @@ export type ConditionOperator =
   | 'exists';
 
 export type UnreadableListCondition =
-  | { condition: PropertyCondition; reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value' }
+  | { condition: PropertyCondition; reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value' | 'mixed-groups' }
   | { condition: unknown; reason: 'invalid-condition' };
 
 // ============================================================================

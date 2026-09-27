@@ -742,6 +742,7 @@ describe('table block (#5142)', () => {
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'elements' } }), ['blocks[0].source']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), columns: undefined } } }), ['blocks[0].source.list']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), id: '' } } }), ['blocks[0].source.list']);
+    assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), groups: undefined, conditions: [] } } }), ['blocks[0].source.list']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), expressIdsByModel: { m: [1] } } } }), ['blocks[0].source.list.expressIdsByModel']);
     assert.deepEqual(bad({ kind: 'table', id: 'x' }), ['blocks[0].source']);
     assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table | ids-report']);

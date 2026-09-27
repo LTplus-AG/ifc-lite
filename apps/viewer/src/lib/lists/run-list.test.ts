@@ -13,7 +13,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeList, migrateLegacyListConditions, type ConditionOperator, type ListDataProvider, type ListDefinition, type PropertyCondition } from '@ifc-lite/lists';
+import { executeList, migrateLegacyListConditions, migrateLegacyListDefinition, type ConditionOperator, type ListDataProvider, type ListDefinition, type PropertyCondition } from '@ifc-lite/lists';
 import { IfcTypeEnum, QuantityType, type QuantitySet } from '@ifc-lite/data';
 import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -191,6 +191,29 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     });
     const result = await runListFederated(def, [model], state);
     assert.deepEqual(result.rows, [], 'the unreadable Name predicate still excludes the Blue wall');
+  });
+
+  it('narrows existing OR groups with mixed saved v1 conditions in one and two parsed IFC models (#5894)', async () => {
+    const pairs = await parsedPairs();
+    const mixed = migrateLegacyListDefinition({ ...definition(),
+      groups: [
+        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Red')] },
+        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] },
+      ],
+      conditions: [property],
+    });
+    assert.equal(mixed.unreadableConditions?.[0].reason, 'mixed-groups');
+    for (const selected of [pairs.slice(0, 1), pairs]) {
+      const expected = selected.flatMap(({ modelId, provider }) => executeList({
+        ...mixed, groups: [], unreadableConditions: [], legacyConditions: [property],
+      }, provider, modelId).rows.map(({ entityId }) => [modelId, entityId]));
+      const result = await runListFederated(mixed, selected, state, {
+        evaluatorModels: selected.map(({ modelId, store, mutationView }) => ({ id: modelId, store, mutationView })),
+      });
+      const unconstrained = await runListFederated({ ...mixed, unreadableConditions: [] }, selected, state);
+      assert.ok(unconstrained.rows.length > result.rows.length, 'the saved v1 row narrows the OR union');
+      assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]), expected);
+    }
   });
 
   it('reports a malformed saved condition for removal instead of evaluating it (#5894)', async () => {

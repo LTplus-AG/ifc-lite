@@ -8,11 +8,12 @@ export type ConditionSource = PropertyCondition['source'];
 const EDITABLE_SOURCES: readonly ConditionSource[] = [
   'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
 ];
-const EDITABLE_REASONS = ['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator'] as const;
+const EDITABLE_REASONS = ['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'mixed-groups'] as const;
 
 export function operatorsFor(source: ConditionSource): ConditionOperator[] {
   switch (source) {
     case 'quantity': return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
+    case 'property': return ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
     case 'material':
     case 'classification': return ['contains', 'equals', 'notEquals', 'exists'];
     default: return ['equals', 'notEquals', 'contains', 'exists'];

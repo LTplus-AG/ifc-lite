@@ -33,6 +33,7 @@ import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF.js';
+import { waitFor } from '@/test/render.js';
 import { ClashPanel } from './ClashPanel.js';
 import { Toaster } from '@/components/ui/toast.js';
 
@@ -131,8 +132,14 @@ async function clickBcfTopic(): Promise<string> {
   assert.ok(button, 'the Clash panel offers "BCF topic"');
   await act(async () => {
     button.click();
-    await new Promise((r) => setTimeout(r, 50));
   });
+  await waitFor(
+    () => {
+      const topics = useViewerStore.getState().bcfProject?.topics;
+      return topics?.size === 1 && [...topics.values()][0]?.viewpoints.length === 1;
+    },
+    'the BCF topic and its viewpoint are created after the camera frames',
+  );
   const project = useViewerStore.getState().bcfProject;
   assert.ok(project, 'the button created a BCF project');
   const zip = await JSZip.loadAsync(await (await writeBCF(project)).arrayBuffer());
@@ -143,10 +150,17 @@ async function clickBcfTopic(): Promise<string> {
 
 describe('Clash panel "BCF topic" clipping planes (#4806, #5893)', () => {
   it('writes <ClippingPlanes> for a cut left enabled across a tool switch — lasting scene state (#5893)', async () => {
-    seed('select', true);
-    const xml = await clickBcfTopic();
-    assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
-    assert.match(xml, /<ClippingPlane>/, 'the cut is genuinely on screen now (#5893), so it exports');
+    const originalAnimationFrame = globalThis.requestAnimationFrame;
+    // Two delayed frames exceed the old fixed 50 ms test sleep under CI load.
+    globalThis.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), 40);
+    try {
+      seed('select', true);
+      const xml = await clickBcfTopic();
+      assert.match(xml, /<PerspectiveCamera>/, 'the viewpoint itself was written');
+      assert.match(xml, /<ClippingPlane>/, 'the cut is genuinely on screen now (#5893), so it exports');
+    } finally {
+      globalThis.requestAnimationFrame = originalAnimationFrame;
+    }
   });
 
   it('writes no <ClippingPlanes> when the cut is hidden by the visibility toggle (#4806, #5893)', async () => {

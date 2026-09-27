@@ -8448,6 +8448,8 @@
     "IdsToRuleSetResult: interface",
     "IfcTypeRule: interface",
     "InformationRule: interface",
+    "LIST_CONDITION_OPERATORS: const",
+    "LIST_CONDITION_SOURCES: const",
     "LegacyOperatorResult: type",
     "ListConditionMatcher: type",
     "ListConditionOperator: type",

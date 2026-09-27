@@ -41,10 +41,9 @@ import { rebuildGrouping } from './list-table-utils';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
-import { LegacyListFilters } from './ListBuilder.legacyFilters';
+import { UnreadableListFilters } from './ListBuilder.unreadableFilters';
 import { ListValueOptionsContext, groupsNeedListValues, useListValueOptions } from './use-list-value-options';
 import { RULE_KIND_LABEL } from '../filter-rule-labels';
-import { isEditableCondition } from '@/lib/lists/compatibility-condition';
 
 /** Every rule kind, including the List-value rule only a list can evaluate (#6190). */
 const LIST_FILTER_KINDS = new Set(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]);
@@ -157,12 +156,6 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
   const [unreadableConditions, setUnreadableConditions] = useState<UnreadableListCondition[]>(
     initial?.unreadableConditions ?? [],
   );
-  const promoteLegacy = useCallback((index: number, rule: FilterRule): boolean => {
-    if (!filterState.groups.every((group) => group.combinator === 'AND')) return false;
-    setFilterState((current) => ({ ...current, groups: current.groups.map((group) => ({ ...group, rules: [...group.rules, rule] })) }));
-    setUnreadableConditions((current) => current.filter((_, i) => i !== index));
-    return true;
-  }, [filterState.groups]);
   // Which federated models the list runs over, by model tag (#4215).
   const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
   // Location zones remain available for quick-add columns.
@@ -198,8 +191,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     }
     return discoverColumns(providers, Array.from(selectedTypes));
   }, [providers, selectedTypes]);
-  const valueOptions = useListValueOptions(groupsNeedListValues(filterState.groups) || unreadableConditions.some((row) => isEditableCondition(row)
-    && ['property', 'material', 'classification'].includes(row.condition.source)), stores, storeViews, providers, mutationVersion);
+  const valueOptions = useListValueOptions(groupsNeedListValues(filterState.groups), stores, storeViews, providers, mutationVersion);
   const listValueOptions = useMemo(() => ({ ...valueOptions, discovered, zoneSets }), [valueOptions, discovered, zoneSets]);
 
   const toggleType = useCallback((type: IfcTypeEnum) => {
@@ -403,8 +395,7 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
               <FilterGroupEditor groups={filterState.groups} activeGroup={filterState.activeGroup}
                 onChange={setFilterState} allowedKinds={LIST_FILTER_KINDS} models={filterModels} />
             </ListValueOptionsContext.Provider>
-            <LegacyListFilters rows={unreadableConditions} onChange={setUnreadableConditions} onPromote={promoteLegacy}
-              discovered={discovered} options={valueOptions} zoneSets={zoneSets} />
+            <UnreadableListFilters rows={unreadableConditions} onChange={setUnreadableConditions} />
           </Section>
 
           {/* Columns */}

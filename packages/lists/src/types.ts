@@ -203,10 +203,13 @@ export interface ListDefinition {
   /** Canonical Rules filters for migrated and newly-authored lists. */
   groups: FilterGroup[];
 
-  /** Only for provider-only execution of v1 predicates with no Rules equivalent. */
+  /** Flat predicates for provider-only `executeList` callers (the SDK). Saved
+   *  lists carry every predicate in `groups` instead (`listCondition`, #6190). */
   legacyConditions?: PropertyCondition[];
 
-  /** V1 conditions that have no lossless FilterRule form; keep them visible. */
+  /** Saved filters migration could not read (malformed, unknown operator or
+   *  source, a rule this build does not know). Kept visible; a list with any
+   *  cannot run until they are removed. */
   unreadableConditions?: UnreadableListCondition[];
 
   /** Columns to display */

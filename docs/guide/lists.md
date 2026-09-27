@@ -227,12 +227,19 @@ Conditions and lookups that match by name accept either an exact string or a reg
 ## Migrating saved v1 conditions
 
 `migrateLegacyListDefinition(definition)` converts a saved v1 definition's flat
-`conditions` into `groups: FilterGroup[]` before the viewer runs it. Its
-`unreadableConditions` retain predicates that cannot be represented without
-changing their results. The viewer shows those rows with a warning and still
-applies them; saving or exporting writes only the canonical groups and
-unreadable rows. `migrateLegacyListConditions(conditions)` exposes the pure
-condition conversion for other v1 importers.
+`conditions`, and the provider-only rows lists saved before #6190, into
+`groups: FilterGroup[]` before the viewer runs it. A plain property comparison
+becomes a `property` rule; every other predicate becomes a `listCondition`
+rule (see below), so no saved predicate changes the rows it keeps. Flat
+conditions narrow every group: they are ANDed into each one, and an OR group is
+split into one AND group per rule. The conversion is idempotent.
+
+Only data no build can evaluate stays in `unreadableConditions`: a malformed
+member, an unknown operator or source, or a saved rule this build does not
+know. A saved list is not hidden because of one; the viewer shows each row
+with a warning and a Remove button, and the list cannot run until they are
+gone. `migrateLegacyListConditions(conditions)` exposes the pure condition
+conversion for other v1 importers.
 
 `executeList` is the synchronous provider-only source and column engine. First
 evaluate any Rules groups, then pass an execution copy such as

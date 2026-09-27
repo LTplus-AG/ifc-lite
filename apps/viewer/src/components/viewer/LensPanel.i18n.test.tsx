@@ -543,4 +543,22 @@ describe('Lens panel localization (#4918)', () => {
     assertMarked(after, 'lensPanel.editor.save');
     assertMarked(after, 'lensPanel.editor.cancel');
   });
+
+  it('keeps existing rules when an unfinished shared chip blocks Save (#5896)', () => {
+    const complete = ifcRule({ id: 'complete' });
+    const unfinished = ifcRule({ id: 'unfinished', groups: [{ combinator: 'AND', rules: [
+      { kind: 'ifcType', op: 'in', values: [] },
+    ] }] });
+    useViewerStore.setState({ savedLenses: [ruleLens([complete, unfinished])] });
+    const container = render(<LensPanel />);
+    const edit = container.querySelector<HTMLButtonElement>('button[title="Edit lens"]');
+    assert.ok(edit);
+    act(() => edit.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save');
+    assert.ok(save);
+    assert.equal(save.disabled, true, 'an unfinished rule must not be silently removed when another is valid');
+    act(() => save.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    assert.deepEqual(useViewerStore.getState().savedLenses[0].rules.map((rule) => rule.id),
+      ['complete', 'unfinished']);
+  });
 });

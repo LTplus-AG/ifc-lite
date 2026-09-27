@@ -30,8 +30,13 @@ const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.leng
 const redoDepth = () => useViewerStore.getState().redoStacks.get(MODEL_ID)?.length ?? 0;
 
 let view: MutablePropertyView;
-beforeEach(async () => { view = await seedModelingSession(); });
-afterEach(() => { setRequestRemesh(() => {}); });
+let restoreRemesh: () => void;
+beforeEach(async () => {
+  view = await seedModelingSession();
+  // The seam's own contract is tested here; the real service in transaction.remesh.test.ts.
+  restoreRemesh = setRequestRemesh(() => {});
+});
+afterEach(() => restoreRemesh());
 
 describe('runTransaction (#6232 WP2)', () => {
   it('four mutations in one commit are one undo step', () => {

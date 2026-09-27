@@ -1814,7 +1814,6 @@ export function PropertiesPanel() {
     </div>
   );
 }
-
 /** Multi-entity panel for unified storeys - shows data from multiple entities stacked */
 function MultiEntityPanel({
   entities,

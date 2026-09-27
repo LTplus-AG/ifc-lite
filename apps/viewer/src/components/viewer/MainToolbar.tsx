@@ -26,7 +26,7 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -307,7 +307,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
   }, []);
 
   const handleIsolate = useCallback(() => {

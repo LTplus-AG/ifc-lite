@@ -11,10 +11,9 @@
  * that names a key asks `shortcutLabel(id)` for it, so a key can no longer be
  * documented one way in the dialog and another on a button.
  *
- * The handlers still live where they did (`useKeyboardShortcuts`,
- * `useKeyboardControls`, the per-tool listeners). The layered dispatcher
- * (#5841) moves them onto this table as `run`, and the surfaces work (#5870)
- * adds `icon` and `surfaces`; neither field exists before its first consumer.
+ * Handlers register by command id with the layered dispatcher (#5841), which
+ * reads the chords and contexts here. Surfaces work (#5870) adds icons and
+ * placements in its own registry.
  *
  * Adding a binding = adding a row here, in the same PR as its handler.
  * `keyboard-commands.test.ts` fails when two rows claim one chord in one
@@ -86,7 +85,7 @@ const ALT_DIGITS: readonly KeyChord[] = ['1', '2', '3', '4', '5', '6', '7', '8',
 export const KEY_COMMANDS = [
   // ── Editing ───────────────────────────────────────────────────────────
   { id: 'edit.undo', labelKey: 'commands.edit.undo', category: 'editing', when: 'global', keys: [k('z', { mod: true })] },
-  { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true })] },
+  { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true }), k('y', { mod: true, only: 'other' })] },
   { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('e')] },
   { id: 'edit.rotate', labelKey: 'commands.edit.rotate', category: 'editing', when: 'global', keys: [k('r'), k('r', { shift: true })] },
   { id: 'edit.duplicate', labelKey: 'commands.edit.duplicate', category: 'editing', when: 'global', keys: [k('d', { mod: true }), k('d', { mod: true, shift: true }), k('d', { mod: true, alt: true })] },
@@ -132,8 +131,7 @@ export const KEY_COMMANDS = [
   { id: 'visibility.hideSelection', labelKey: 'commands.visibility.hideSelection', category: 'visibility', when: 'global', keys: [k('delete'), k('backspace'), k(' ')] },
   { id: 'visibility.showAll', labelKey: ACTION_NAME_KEYS.showAll, category: 'visibility', when: 'global', keys: [k('a')] },
   { id: 'basket.isolate', labelKey: 'commands.basket.isolate', category: 'visibility', when: 'global', keys: [k('i')] },
-  { id: 'basket.set', labelKey: 'commands.basket.set', category: 'visibility', when: 'global', keys: [k('=')] },
-  { id: 'basket.add', labelKey: 'commands.basket.add', category: 'visibility', when: 'global', keys: [k('+')] },
+  { id: 'basket.add', labelKey: 'commands.basket.add', category: 'visibility', when: 'global', keys: [k('='), k('+')] },
   { id: 'basket.remove', labelKey: 'commands.basket.remove', category: 'visibility', when: 'global', keys: [k('-')] },
   { id: 'basket.toggleDock', labelKey: 'commands.basket.toggleDock', category: 'visibility', when: 'global', keys: [k('d')] },
   { id: 'basket.saveView', labelKey: 'commands.basket.saveView', category: 'visibility', when: 'global', keys: [k('b')] },

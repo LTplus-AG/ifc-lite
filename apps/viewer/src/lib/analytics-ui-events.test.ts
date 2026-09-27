@@ -89,6 +89,16 @@ describe('scrubUiEvent (#5618)', () => {
     assert.deepEqual(sent.properties, { panel_id: 'loadReport' });
   });
 
+  it('keeps registered mobile and context command surfaces without leaking free text (#5870)', () => {
+    for (const surface of ['mobile', 'context'] as const) {
+      const sent = beforeSend({
+        event: 'command_executed',
+        properties: { ...SDK_PROPS, command_id: 'context:duplicate', surface, model_name: 'Tower A.ifc' },
+      });
+      assert.deepEqual(sent?.properties, { ...SDK_PROPS, command_id: 'context:duplicate', surface });
+    }
+  });
+
   it('strips person-property updates while keeping the SDK\'s own $ properties', () => {
     const sent = beforeSend({
       event: 'view_reset',

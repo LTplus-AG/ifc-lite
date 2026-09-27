@@ -81,4 +81,21 @@ describe('storeyWallAxes (#6232 WP3)', () => {
     const live = storeyWallAxes(s.store, s.view, s.editor, STOREY).find((w) => w.expressId === moved.expressId);
     assert.ok(live && close(live.a, [1, 4]) && close(live.b, [7, 4]), JSON.stringify(live));
   });
+
+  it('returns a moved source wall in metres when the file is in millimetres', async () => {
+    const authoring = await session();
+    addWall(authoring, [1, 2], [6, 2]);
+    const { content } = new StepExporter(authoring.store, authoring.view).export({ schema: 'IFC4', applyMutations: true });
+    // Same bytes, but the file now declares millimetres: raw 1 → 0.001 m.
+    const text = new TextDecoder().decode(content);
+    assert.ok(text.includes('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)'), 'fixture declares metres');
+    const s = await session(new TextEncoder().encode(text.replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)')));
+    const moved = storeyWallAxes(s.store, s.view, s.editor, STOREY).find((w) => close(w.a, [0.001, 0.002]));
+    assert.ok(moved, 'the re-opened wall reads in metres');
+    // resizeRectangleWall takes native STEP units (mm here).
+    const res = resizeRectangleWall(s.store, s.view, s.editor, moved.expressId, [1000, 4000, 0], [7000, 4000, 0]);
+    assert.ok(res.ok, res.ok ? '' : res.reason);
+    const live = storeyWallAxes(s.store, s.view, s.editor, STOREY).find((w) => w.expressId === moved.expressId);
+    assert.ok(live && close(live.a, [1, 4]) && close(live.b, [7, 4]), JSON.stringify(live));
+  });
 });

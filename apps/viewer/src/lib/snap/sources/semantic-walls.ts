@@ -32,18 +32,23 @@ export function storeyWallAxes(
   const axes: WallAxis[] = [];
   res.segments.forEach((seg, i) => {
     const expressId = res.contributingWallIds[i];
-    const live = created.has(expressId) ? null : movedAxis(store, view, editor, expressId);
+    const live = created.has(expressId) ? null : movedAxis(store, view, editor, expressId, res.lengthUnitScale);
     axes.push(live ?? { expressId, a: seg.a, b: seg.b });
   });
   return axes;
 }
 
-/** The live axis of a source wall whose edit chain carries pending edits, else null. */
+/**
+ * The live axis of a source wall whose edit chain carries pending edits, else
+ * null. The chain holds native STEP units; `unitScale` (raw → metres, as the
+ * extractor applies to source walls) brings the axis into the same frame.
+ */
 function movedAxis(
   store: IfcDataStore,
   view: MutablePropertyView,
   editor: StoreEditor,
   expressId: number,
+  unitScale: number,
 ): WallAxis | null {
   const chain = resolveWallEditChain(store, view, editor, expressId);
   if (!chain) return null;
@@ -55,5 +60,6 @@ function movedAxis(
   const len = Math.hypot(dx, dy);
   if (!(len > 0)) return null;
   const k = chain.wallLength / len;
-  return { expressId, a: [sx, sy], b: [sx + dx * k, sy + dy * k] };
+  const m = unitScale;
+  return { expressId, a: [sx * m, sy * m], b: [(sx + dx * k) * m, (sy + dy * k) * m] };
 }

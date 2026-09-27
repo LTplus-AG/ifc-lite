@@ -83,7 +83,7 @@ import { getModelLengthUnitScale, pointToMetres, pointToNative } from '@/lib/len
 import { readWallMetres, refreshWallMeshIn, resizeWallMetres } from './mutation-wall-resize.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutate, mutationDenial } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';

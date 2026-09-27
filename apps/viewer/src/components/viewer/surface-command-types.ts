@@ -24,6 +24,8 @@ export interface SurfaceCommandContext {
   runExport?: (request: ExportRequest) => void;
   openFiles?: () => void;
   addModel?: () => void;
+  refreshModels?: () => Promise<void>;
+  openShareDialog?: () => void;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
 }

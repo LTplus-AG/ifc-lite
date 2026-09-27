@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ConditionOperator } from '@ifc-lite/lists';
-import type { FilterOperator } from '@ifc-lite/mutations';
 import type { ClassificationOp, ModelTagOp, NumericOp, SetOp, StringOp, ValueOp } from '@ifc-lite/rules';
 import type { TranslationKey } from '@/i18n';
 

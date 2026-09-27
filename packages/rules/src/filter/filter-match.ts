@@ -171,9 +171,7 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
       : first.legacyListValue;
     if (rule.op === 'isNonEmpty') return value !== null && value !== '';
     if (value === null) return false;
-    return valueOpMatches(rule.op, value, rule.value, rule.valueKind, {
-      ...rule.comparison, candidateType: first?.valueType,
-    });
+    return valueOpMatches(rule.op, value, rule.value, rule.valueKind, rule.comparison);
   }
   const matching = rows.filter(
     (r) =>

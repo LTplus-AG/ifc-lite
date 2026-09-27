@@ -65,8 +65,7 @@ assert.ok(src.includes('handleRowClick'));`),
   );
 });
 
-// The helper in export-ui-parity.test.tsx is annotated; requiring whitespace
-// between `)` and `{` once made every TS-annotated helper opaque to the taint.
+// Requiring whitespace between `)` and `{` once made TS-annotated helpers opaque to the taint.
 test('read behind a TS-annotated helper is still followed', () => {
   assert.ok(
     flagged(`${READ}
@@ -308,7 +307,7 @@ test('the gate passes on the repo and states its counts', () => {
   assert.equal(r.status, 0, output);
   assert.match(
     output,
-    /check-source-text-assertions: OK \(30 allowlisted, \d+ marked, 0 new\)/,
+    /check-source-text-assertions: OK \(29 allowlisted, \d+ marked, 0 new\)/,
     'a pass must state the numbers, not merely exit 0',
   );
 });
@@ -320,7 +319,6 @@ test('the gate passes on the repo and states its counts', () => {
 test('the narrowing kept every file the flat detector flagged', () => {
   const expected = [
     'apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts',
-    'apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx',
     'apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts',
     'packages/create-ifc-lite/test/config-fixers.test.ts',
     'packages/geometry/src/prepass-class-spans.test.ts',

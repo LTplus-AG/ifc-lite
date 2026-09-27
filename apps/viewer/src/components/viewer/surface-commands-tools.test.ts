@@ -19,6 +19,9 @@ describe('shared Tools palette commands (#5870)', () => {
   it('keeps browse order and hides authoring commands in a read-only session', () => {
     assert.deepEqual(SURFACE_COMMANDS.filter((command) => command.category === 'Tools').map((command) => command.id),
       [...TOOL_IDS]);
+    const split = SURFACE_COMMANDS.find((command) => command.id === 'tool:split');
+    assert.ok(split);
+    assert.deepEqual([...split.surfaces], ['palette'], 'Split belongs to the shared palette, not either toolbar');
     const readonlyRows = paletteSurfaceCommands({ canEditInSession: false }, () => {})
       .filter((command) => command.category === 'Tools');
     const editableRows = paletteSurfaceCommands({ canEditInSession: true }, () => {})

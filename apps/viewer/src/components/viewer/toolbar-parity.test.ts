@@ -127,6 +127,11 @@ const ALLOWLIST: { surface: Surface; symbol: string; reason: string }[] = [
     symbol: 'setLeftPanelCollapsed',
     reason: 'Same: un-collapses the left panel so the hierarchy shortcut has somewhere to land.',
   },
+  {
+    surface: 'ribbon',
+    symbol: 'setSplitTarget',
+    reason: 'The ribbon imports the shared command table for its own rows, so this AST closure also reaches the palette-only Split row. Neither toolbar renders Split; the shared palette owns it.',
+  },
 ];
 
 function resolveImport(spec: string, fromFile: string): string | null {

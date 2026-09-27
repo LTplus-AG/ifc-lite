@@ -17,11 +17,14 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { ViewTab } from './ViewTab.js';
 
-function lightingButton(container: HTMLElement): HTMLButtonElement {
-  const button = [...container.querySelectorAll('button')].find((b) => /Lighting/.test(b.textContent ?? ''));
-  assert.ok(button, 'expected a ribbon button labelled "Lighting"');
+function environmentButton(container: HTMLElement): HTMLButtonElement {
+  const label = resolve(panelTitleKey('environment'));
+  const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  assert.ok(button, `expected a ribbon button labelled "${label}"`);
   return button as HTMLButtonElement;
 }
 
@@ -34,16 +37,16 @@ afterEach(() => {
   useViewerStore.setState({ sidebarActivePanel: 'properties' });
 });
 
-describe('ViewTab — Lighting button opens the Environment side panel (#5506)', () => {
+describe('ViewTab — Environment button opens the Environment side panel (#5506)', () => {
   it('docks the environment panel in the sidebar on first click', () => {
     const container = render(<ViewTab />);
-    click(lightingButton(container));
+    click(environmentButton(container));
     assert.strictEqual(useViewerStore.getState().sidebarActivePanel, 'environment');
   });
 
   it('re-docks the Information panel on a second click (toggle-off, #1208 semantics)', () => {
     const container = render(<ViewTab />);
-    const button = lightingButton(container);
+    const button = environmentButton(container);
     click(button);
     assert.strictEqual(useViewerStore.getState().sidebarActivePanel, 'environment');
     click(button);

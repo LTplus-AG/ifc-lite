@@ -23,6 +23,8 @@ import assert from 'node:assert/strict';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './useWorkspacePanelControls.js';
 import { MainToolbar } from '../MainToolbar.js';
@@ -87,7 +89,7 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
   it('the classic Panels dropdown opens Load Report', () => {
     const container = mount(<MainToolbar />);
     openPanelsMenu(container);
-    clickEl(classicMenuItem('Load Report'));
+    clickEl(classicMenuItem(resolve(panelTitleKey('loadReport'))));
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'loadReport');
   });
 
@@ -129,6 +131,6 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
 
     act(() => { useViewerStore.getState().toggleWorkspacePanel('loadReport'); });
     assert.ok(probe.activeWorkspacePanels.has('loadReport'), 'Load Report must read as an active workspace panel once docked');
-    assert.equal(probe.workspacePanelLabel, 'Load Report');
+    assert.equal(probe.workspacePanelLabel, resolve(panelTitleKey('loadReport')));
   });
 });

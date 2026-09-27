@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { collectMeshedIds } from '@/lib/object-count';
 
@@ -24,15 +24,27 @@ function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {
   return true;
 }
 
-/** Every model field except its geometry is identical, and the same ids have geometry. */
-function sameForHierarchy(prev: Models, next: Models): boolean {
+/** A model whose geometry is still streaming in: every batch changes which ids have geometry. */
+function isStreaming(model: FederatedModel): boolean {
+  return model.loadState === 'pending' || model.loadState === 'streaming-geometry';
+}
+
+/**
+ * Every model field except its geometry is identical, the frame the storey
+ * badges are read in (`coordinateInfo`, as captured in `frames`) is the same
+ * object, and the same ids have geometry.
+ */
+function sameForHierarchy(prev: Models, next: Models, frames: ReadonlyMap<string, CoordinateInfo | undefined>): boolean {
   if (prev.size !== next.size) return false;
   const prevEntries = [...prev];
   let i = 0;
   for (const [id, model] of next) {
     const [prevId, prevModel] = prevEntries[i++];
     if (prevId !== id) return false;
+    if (frames.get(id) !== model.geometryResult?.coordinateInfo) return false;
     if (prevModel === model) continue;
+    // Not worth an id scan per streamed batch: the answer is always "changed".
+    if (isStreaming(model) || isStreaming(prevModel)) return false;
     const keys = new Set([...Object.keys(prevModel), ...Object.keys(model)]);
     for (const key of keys) {
       if (key === 'geometryResult' || key === 'preAlignment') continue;
@@ -49,18 +61,28 @@ function sameForHierarchy(prev: Models, next: Models): boolean {
  * element swaps meshes but keeps its id, so re-rendering the panel and every
  * visible row for it is wasted work. The tree reads geometry only for WHICH
  * ids have it (and whether a model has geometry at all), and that is exactly
- * what is compared. A store selector, so an unchanged answer does not even
+ * what is compared, along with the frame the storey badges read
+ * (`coordinateInfo`). A store selector, so an unchanged answer does not even
  * re-render the panel.
  */
-export function createHierarchyModelsSelector(): (state: { models: Models }) => Models {
+export function createHierarchyModelsSelector(): (state: { models: Models; geometryContentVersion: number }) => Models {
   let input: Models | null = null;
+  let inputVersion = 0;
   let output: Models | null = null;
+  let frames = new Map<string, CoordinateInfo | undefined>();
   return (state) => {
     const models = state.models;
-    if (models === input) return output!;
-    const reuse = output !== null && models.size > 0 && sameForHierarchy(output, models);
+    const version = state.geometryContentVersion;
+    if (models === input && version === inputVersion) return output!;
+    // A content-version bump rewrote geometry IN PLACE (a federation re-align,
+    // an RTC rebase), frame included, which no identity check can see.
+    const reuse = output !== null && version === inputVersion && models.size > 0 && sameForHierarchy(output, models, frames);
     input = models;
-    if (!reuse) output = models;
+    inputVersion = version;
+    if (!reuse) {
+      output = models;
+      frames = new Map([...models].map(([id, model]) => [id, model.geometryResult?.coordinateInfo]));
+    }
     return output!;
   };
 }

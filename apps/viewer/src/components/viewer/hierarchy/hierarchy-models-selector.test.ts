@@ -17,7 +17,7 @@ import { createHierarchyModelsSelector } from './hierarchy-models-selector';
 const mesh = (expressId: number) => ({ expressId }) as MeshData;
 const geometry = (...ids: number[]) => ({ meshes: ids.map(mesh) }) as unknown as GeometryResult;
 const model = (fields: Partial<FederatedModel>) => ({ id: 'm', name: 'M', visible: true, ifcDataStore: null, ...fields }) as FederatedModel;
-const state = (m: FederatedModel) => ({ models: new Map([['m', m]]) });
+const state = (m: FederatedModel, geometryContentVersion = 0) => ({ models: new Map([['m', m]]), geometryContentVersion });
 
 describe('hierarchy models selector (#6232)', () => {
   it('keeps the previous map when only the meshes of existing ids were replaced', () => {
@@ -37,5 +37,24 @@ describe('hierarchy models selector (#6232)', () => {
     assert.equal(select(hidden), hidden.models);
     const renamed = state(model({ geometryResult: geometry(1, 3), visible: false, name: 'N' }));
     assert.equal(select(renamed), renamed.models);
+  });
+
+  it('passes a change through when the frame the storey badges read changes, in place or not', () => {
+    const select = createHierarchyModelsSelector();
+    const first = geometry(1);
+    select(state(model({ geometryResult: first })));
+    const reframed = { ...geometry(1), coordinateInfo: { originShift: { x: 1, y: 0, z: 0 } } } as unknown as GeometryResult;
+    const next = state(model({ geometryResult: reframed }));
+    assert.equal(select(next), next.models, 'a new coordinateInfo');
+    // A federation re-align rewrites geometry in place and bumps the content version.
+    const bumped = state(model({ geometryResult: reframed }), 1);
+    assert.equal(select(bumped), bumped.models, 'a content-version bump');
+  });
+
+  it('passes every streamed batch through without comparing ids', () => {
+    const select = createHierarchyModelsSelector();
+    select(state(model({ geometryResult: geometry(1), loadState: 'streaming-geometry' })));
+    const batch = state(model({ geometryResult: geometry(1), loadState: 'streaming-geometry' }));
+    assert.equal(select(batch), batch.models);
   });
 });

@@ -78,6 +78,35 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
   };
   const name: PropertyCondition = { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'wall' };
 
+  it('keeps authored zone and exact Building filters scoped to the owning model at 1 and N (#5894)', async () => {
+    const zone: PropertyCondition = { source: 'zone', psetName: 'sections', propertyName: 'Zone', operator: 'equals', value: 'Section A' };
+    const building: PropertyCondition = { source: 'spatial', propertyName: 'Building', operator: 'contains', value: 'East' };
+    const pairs = (await parsedPairs()).map((pair) => ({
+      ...pair,
+      provider: {
+        ...pair.provider,
+        getZoneAssignment: (id: number, setId: string) => setId === 'sections'
+          ? { zoneName: id === (pair.modelId === 'm1' ? 20 : 10) ? 'Section A' : 'Section B', straddles: false, touchedZoneNames: [] }
+          : null,
+        getBuildingName: (id: number) => id === (pair.modelId === 'm1' ? 20 : 10) ? 'East Wing' : 'West Wing',
+      },
+    }));
+    const def = definition({
+      entityTypes: [IfcTypeEnum.IfcWall], conditions: [zone, building],
+      groups: [{ rules: [], combinator: 'AND' }],
+      unreadableConditions: [
+        { condition: zone, reason: 'unsupported-source' },
+        { condition: building, reason: 'unsupported-source' },
+      ],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    });
+    for (const selected of [pairs.slice(0, 1), pairs]) {
+      const result = await runListFederated(def, selected, state);
+      const expected = selected.map(({ modelId }) => [modelId, modelId === 'm1' ? 20 : 10]);
+      assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]), expected);
+    }
+  });
+
   it('preserves saved v1 rows and order in one and two models, including a live property edit', async () => {
     const pairs = await parsedPairs();
     const conditions = [property, name];

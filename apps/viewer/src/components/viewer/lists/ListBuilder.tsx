@@ -13,13 +13,14 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil, AlertTriangle } from 'lucide-react';
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import type { FilterRule } from '@ifc-lite/rules';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type {
   ListDataProvider,
@@ -40,6 +41,7 @@ import { rebuildGrouping } from './list-table-utils';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
 import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
+import { LegacyListFilters } from './ListBuilder.legacyFilters';
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {
@@ -152,6 +154,12 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
   const [unreadableConditions, setUnreadableConditions] = useState<UnreadableListCondition[]>(
     initial?.unreadableConditions ?? migrated?.unreadableConditions ?? [],
   );
+  const promoteLegacy = useCallback((index: number, rule: FilterRule): boolean => {
+    if (!filterState.groups.every((group) => group.combinator === 'AND')) return false;
+    setFilterState((current) => ({ ...current, groups: current.groups.map((group) => ({ ...group, rules: [...group.rules, rule] })) }));
+    setUnreadableConditions((current) => current.filter((_, i) => i !== index));
+    return true;
+  }, [filterState.groups]);
   // Which federated models the list runs over, by model tag (#4215).
   const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
   // Location zones remain available for quick-add columns.
@@ -392,25 +400,12 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
               onChange={setFilterState}
               models={filterModels}
             />
-            {unreadableConditions.length > 0 && (
-              <div role="alert" className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
-                <p className="mb-2 flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                  {t('lists.builder.unreadableWarning')}
-                </p>
-                <ul className="space-y-1">
-                  {unreadableConditions.map(({ condition, reason }, index) => (
-                    <li key={index} className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background px-2 py-1">
-                      <span>{reason === 'invalid-condition' ? t('lists.builder.malformedCondition')
-                        : `${condition.source}: ${condition.psetName ? `${condition.psetName}.` : ''}${condition.propertyName} ${condition.operator} ${String(condition.value)} (${reason})`}</span>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setUnreadableConditions((current) => current.filter((_, i) => i !== index))}>
-                        {t('lists.builder.removeUnreadable')}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <LegacyListFilters
+              rows={unreadableConditions} onChange={setUnreadableConditions}
+              onPromote={promoteLegacy}
+              discovered={discovered} stores={stores} storeViews={storeViews}
+              providers={providers} mutationVersion={mutationVersion} zoneSets={zoneSets}
+            />
           </Section>
 
           {/* Columns */}

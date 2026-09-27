@@ -226,7 +226,11 @@ describe('shared palette and ribbon commands (#5870)', () => {
         'extension-export': 'export:ext:',
       } as const;
       assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
-      assert.deepEqual(new Set(rows.filter((row) => row.dataset.commandId).map((row) => row.dataset.commandId)),
+      const browseRows = rows.filter((row) => !row.closest('[data-command-category="Recent"]'));
+      const renderedStaticIds = browseRows.filter((row) => row.dataset.commandId).map((row) => row.dataset.commandId);
+      assert.equal(new Set(renderedStaticIds).size, renderedStaticIds.length,
+        'a registered palette command is rendered exactly once');
+      assert.deepEqual(new Set(renderedStaticIds),
         new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
       for (const row of rows) {
         const source = row.dataset.runtimeSource;

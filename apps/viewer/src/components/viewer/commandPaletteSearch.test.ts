@@ -12,7 +12,7 @@ void unownedOption;
 
 function command(): Command {
   return {
-    id: 'export:json',
+    id: 'auto:export-json',
     label: 'Export JSON',
     runtimeSource: 'script-template',
     keywords: 'download data',

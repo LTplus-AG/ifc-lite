@@ -221,7 +221,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             )}
 
             {grouped.map((group) => (
-              <div key={group.category || '__flat'}>
+              <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (
                   <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}

@@ -44,6 +44,7 @@ function storeyOfGlobalId(globalId: number): AddElementStoreyRef | null {
   const state = useViewerStore.getState();
   const local = fromGlobalIdFromModels(state.models, globalId);
   if (!local) return null;
+  // @raw-entity-enumeration-ok Smart-placement storey hint only (moved from selectionHandlers); recordAuthoredElementIn registers authored elements here, and a miss falls back to the panel storey.
   const storeyId = state.models.get(local.modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(local.expressId);
   return storeyId === undefined ? null : { modelId: local.modelId, storeyId };
 }

@@ -31,7 +31,7 @@ export function ModelTagChip({ tag, unresolved, onRemove, className }: ModelTagC
       data-unresolved={broken ? 'true' : undefined}
       title={broken ? t('hierarchy.modelTagChip.unresolvedTitle') : label}
       className={cn(
-        'inline-flex max-w-[9rem] items-center gap-1 rounded px-1.5 py-0.5 text-[10px] leading-tight',
+        'inline-flex max-w-[9rem] items-center gap-1 rounded px-1.5 py-0.5 text-2xs leading-tight',
         broken
           ? 'border border-dashed border-amber-500 text-amber-700 dark:text-amber-400'
           : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',

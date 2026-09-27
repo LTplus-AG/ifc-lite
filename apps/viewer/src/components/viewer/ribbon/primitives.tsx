@@ -97,7 +97,7 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
             // `w-min` is the min-content width, so multi-word labels still wrap
             // onto two lines instead of widening the button.
             'relative flex h-full w-min min-w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
-            'text-[10px] font-medium leading-[1.15] text-foreground/90 transition-colors',
+            'text-2xs font-medium leading-[1.15] text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
@@ -141,7 +141,7 @@ export const RibbonSmallButton = forwardRef<HTMLButtonElement, RibbonButtonProps
           }}
           className={cn(
             'relative flex h-[20px] w-full min-w-0 select-none items-center gap-1.5 rounded px-1.5',
-            'text-[11px] leading-none text-foreground/90 transition-colors',
+            'text-2xs leading-none text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
@@ -186,7 +186,7 @@ export function RibbonGroup({ label, children, className }: {
       <div className="flex min-h-0 flex-1 items-stretch justify-center gap-0.5 pt-1">
         {children}
       </div>
-      <div className="pb-1 pt-0.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="pb-1 pt-0.5 text-center text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
     </div>

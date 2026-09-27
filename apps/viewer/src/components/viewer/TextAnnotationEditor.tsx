@@ -106,7 +106,7 @@ export function TextAnnotationEditor({
           caretColor: '#000000',
         }}
       />
-      <div className="text-[10px] text-muted-foreground mt-0.5 bg-white/80 px-1 rounded">
+      <div className="text-2xs text-muted-foreground mt-0.5 bg-white/80 px-1 rounded">
         {t('textAnnotationEditor.hint')}
       </div>
     </div>

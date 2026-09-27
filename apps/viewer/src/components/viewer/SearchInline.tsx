@@ -457,7 +457,7 @@ export function SearchInline() {
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               {hasFilters && (
-                <span className="font-mono text-[10px] font-semibold leading-none">{activeRuleCount}</span>
+                <span className="font-mono text-2xs font-semibold leading-none">{activeRuleCount}</span>
               )}
             </button>
           </div>

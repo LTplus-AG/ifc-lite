@@ -177,7 +177,7 @@ function LensEditor({
         <Button
           variant="default"
           size="sm"
-          className="flex-1 h-7 text-[10px] uppercase tracking-wider rounded-sm"
+          className="flex-1 h-7 text-2xs uppercase tracking-wider rounded-sm"
           onClick={handleSave}
           disabled={!canSave}
         >
@@ -187,7 +187,7 @@ function LensEditor({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
+          className="h-7 text-2xs uppercase tracking-wider rounded-sm"
           onClick={onCancel}
         >
           {t('lensPanel.editor.cancel')}
@@ -304,7 +304,7 @@ export function AutoColorEditor({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <label className="text-[10px] uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.sourceLabel')}</label>
+          <label className="text-2xs uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.sourceLabel')}</label>
           <select
             value={source}
             onChange={(e) => {
@@ -326,7 +326,7 @@ export function AutoColorEditor({
 
         {needsPset && (
           <div className="flex items-center gap-1.5">
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 w-[50px]">
+            <label className="text-2xs uppercase tracking-wider text-zinc-500 w-[50px]">
               {source === 'property' ? t('lensPanel.autoColor.psetLabel') : source === 'classification' ? t('lensPanel.autoColor.systemLabel') : t('lensPanel.autoColor.qsetLabel')}
             </label>
             <SearchableSelect
@@ -341,7 +341,7 @@ export function AutoColorEditor({
 
         {needsPropertyName && (
           <div className="flex items-center gap-1.5">
-            <label className="text-[10px] uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.nameLabel')}</label>
+            <label className="text-2xs uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.nameLabel')}</label>
             {source === 'attribute' ? (
               <select
                 value={propertyName}
@@ -365,7 +365,7 @@ export function AutoColorEditor({
 
         {source === 'classification' && (
           <label className="flex items-center justify-between gap-2 cursor-pointer pt-0.5">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500">{t('lensPanel.autoColor.showUnclassified')}</span>
+            <span className="text-2xs uppercase tracking-wider text-zinc-500">{t('lensPanel.autoColor.showUnclassified')}</span>
             <input
               type="checkbox"
               checked={includeUnclassified}
@@ -380,7 +380,7 @@ export function AutoColorEditor({
         <Button
           variant="default"
           size="sm"
-          className="flex-1 h-7 text-[10px] uppercase tracking-wider rounded-sm"
+          className="flex-1 h-7 text-2xs uppercase tracking-wider rounded-sm"
           onClick={handleSave}
           disabled={!canSave}
         >
@@ -390,7 +390,7 @@ export function AutoColorEditor({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
+          className="h-7 text-2xs uppercase tracking-wider rounded-sm"
           onClick={onCancel}
         >
           {t('lensPanel.editor.cancel')}
@@ -480,7 +480,7 @@ function LensCard({
           <span className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 truncate">
             {lens.name}
           </span>
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono ml-auto shrink-0">
+          <span className="text-2xs text-zinc-500 dark:text-zinc-400 font-mono ml-auto shrink-0">
             {isAutoColor ? t(TYPE_LABEL_KEYS[lens.autoColor!.source]) : t('lensPanel.card.ruleCount', { count: enabledRuleCount })}
           </span>
         </button>
@@ -520,12 +520,12 @@ function LensCard({
       {isActive && legendToShow && legendToShow.length > 0 && (
         <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60" {...tourAnchor(TOUR_ANCHORS.lensLegend)}>
           <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
+            <span className="text-2xs uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
               {t('lensPanel.card.legendValuesCount', { count: legendToShow.length })}
             </span>
             <button
               onClick={cycleLegendSort}
-              className="flex items-center gap-0.5 text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="flex items-center gap-0.5 text-2xs uppercase tracking-wider text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
               title={t('lensPanel.card.sortLegendTooltip')}
             >
               <ArrowUpDown className="h-2.5 w-2.5" />
@@ -887,7 +887,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
+              className="h-7 text-2xs uppercase tracking-wider rounded-sm"
               onClick={() => {
                 // Release the lens's own rule-isolation; the sync effect
                 // restores the lens-owned hidden ids. No showAll() — keep
@@ -997,7 +997,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
       </div>
 
       {/* Status footer */}
-      <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-600 dark:text-zinc-400 text-center bg-zinc-50 dark:bg-zinc-900 font-mono">
+      <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-2xs uppercase tracking-wide text-zinc-600 dark:text-zinc-400 text-center bg-zinc-50 dark:bg-zinc-900 font-mono">
         {activeLensId
           ? t('lensPanel.footer.active', {
               colored: lensColorMapSize,

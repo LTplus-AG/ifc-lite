@@ -94,7 +94,7 @@ export const GanttTaskTree = memo(function GanttTaskTree({
         lands on the same row.
       */}
       <div
-        className="sticky top-0 z-10 shrink-0 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
+        className="sticky top-0 z-10 shrink-0 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-2xs uppercase tracking-wide text-muted-foreground font-medium"
         style={{ height: GANTT_HEADER_HEIGHT }}
       >
         <span>{t('schedule.taskTree.columnTask')}</span>

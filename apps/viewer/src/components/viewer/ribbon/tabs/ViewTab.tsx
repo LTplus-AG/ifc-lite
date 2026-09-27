@@ -202,7 +202,7 @@ export function ViewTab() {
           disabled={!hasModels}
           onClick={() => handleToggleBottomPanel('presentation')}
           badge={(basketViewCount > 0 || pinboardEntities.size > 0) ? (
-            <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-[9px] font-bold text-primary-foreground">
+            <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-2xs font-bold text-primary-foreground">
               {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}
             </span>
           ) : undefined}

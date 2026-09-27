@@ -114,7 +114,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
 
         {models.size > 1 && (
           <div
-            className="inline-flex overflow-hidden rounded-md border border-border text-[11px]"
+            className="inline-flex overflow-hidden rounded-md border border-border text-2xs"
             role="group"
             aria-label={t('hierarchy.modelTagEditor.applyToAriaLabel')}
           >
@@ -145,7 +145,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
           {suggestions.length > 0 && (
             <div className="flex flex-wrap gap-1" aria-label={t('hierarchy.modelTagEditor.matchingTagsAriaLabel')}>
               {suggestions.map((suggestion) => (
-                <button key={suggestion.id} type="button" onClick={() => addDraft(suggestion.name)} className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted">
+                <button key={suggestion.id} type="button" onClick={() => addDraft(suggestion.name)} className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-muted">
                   {suggestion.name}
                 </button>
               ))}
@@ -174,7 +174,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                   })}
                   onClick={() => toggle(tag)}
                   className={cn(
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-[10px]',
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border text-2xs',
                     membership !== 'none' && 'bg-primary text-primary-foreground',
                   )}
                 >
@@ -193,7 +193,7 @@ export function ModelTagEditor({ modelIds: initialIds, modelName, onClose }: Mod
                       className="h-7 text-xs"
                       autoFocus
                     />
-                    {renaming.hasError && <span role="alert" className="text-[10px] text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
+                    {renaming.hasError && <span role="alert" className="text-2xs text-red-600">{t('hierarchy.modelTagEditor.renameError')}</span>}
                   </div>
                 ) : (
                   <span className="min-w-0 flex-1"><ModelTagChip tag={tag} /></span>

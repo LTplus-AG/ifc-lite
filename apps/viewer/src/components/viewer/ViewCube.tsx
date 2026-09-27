@@ -170,7 +170,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
               key={id}
               type="button"
               className={cn(
-                'absolute w-full h-full flex items-center justify-center text-[10px] font-bold transition-colors cursor-pointer',
+                'absolute w-full h-full flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer',
                 'bg-card/95 border border-border/50',
                 hovered === id ? 'bg-primary/30 border-primary text-primary' : 'hover:bg-muted'
               )}

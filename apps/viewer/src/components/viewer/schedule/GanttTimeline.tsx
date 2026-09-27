@@ -246,7 +246,7 @@ export const GanttTimeline = memo(function GanttTimeline({
                 <text
                   x={x + 3}
                   y={HEADER_HEIGHT - 8}
-                  className="text-[10px] fill-muted-foreground font-mono"
+                  className="text-2xs fill-muted-foreground font-mono"
                 >
                   {formatTickLabel(t, scale)}
                 </text>

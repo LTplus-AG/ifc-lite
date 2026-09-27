@@ -66,7 +66,7 @@ function ClassVisibilityRow({ icon, label, description, checked, onChange }: Cla
         {icon}
         <span className="grid gap-0.5 min-w-0">
           <span className="text-sm leading-tight truncate">{label}</span>
-          <span className="text-[10px] leading-tight text-muted-foreground truncate">{description}</span>
+          <span className="text-2xs leading-tight text-muted-foreground truncate">{description}</span>
         </span>
       </span>
       <Switch checked={checked} onCheckedChange={onChange} />
@@ -126,7 +126,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
       {hasTypeGeometry && (
         <>
           <div className="px-1.5 pb-1 pt-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('classVisibility.viewHeading')}
             </span>
           </div>
@@ -168,17 +168,17 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
       )}
 
       <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('classVisibility.heading')}
         </span>
         <div className="flex items-center gap-1">
-          <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="text-2xs tabular-nums text-muted-foreground">
             {visibleClassCount}/{classToggleCount}
           </span>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            className="h-6 px-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground"
             onClick={resetTypeVisibility}
           >
             {t('classVisibility.reset')}
@@ -248,7 +248,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           <Layers2 className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
             <span className="text-sm leading-tight truncate">{t('classVisibility.mergeLayers.label')}</span>
-            <span className="text-[10px] leading-tight text-muted-foreground truncate">
+            <span className="text-2xs leading-tight text-muted-foreground truncate">
               {t('classVisibility.mergeLayers.description')}
             </span>
           </span>
@@ -266,7 +266,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           <Zap className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
             <span className="text-sm leading-tight truncate">{t('classVisibility.fastGeometry.label')}</span>
-            <span className="text-[10px] leading-tight text-muted-foreground truncate">
+            <span className="text-2xs leading-tight text-muted-foreground truncate">
               {geometryMode === 'fast'
                 ? t('classVisibility.fastGeometry.descriptionFast')
                 : t('classVisibility.fastGeometry.descriptionExact')}
@@ -294,7 +294,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             <Gauge className="h-4 w-4 shrink-0 text-primary" />
             <span className="grid gap-0.5 min-w-0">
               <span className="text-sm leading-tight truncate">{t('classVisibility.pinnedDetail.label', { tier: geomTierOverride })}</span>
-              <span className="text-[10px] leading-tight text-muted-foreground truncate">
+              <span className="text-2xs leading-tight text-muted-foreground truncate">
                 {isPreviewTier(geomTierOverride) && geometryMode !== 'fast'
                   ? t('classVisibility.pinnedDetail.descriptionIgnored')
                   : t('classVisibility.pinnedDetail.descriptionOverrides')}
@@ -305,7 +305,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 shrink-0 px-2 text-[11px] font-semibold uppercase tracking-wider"
+              className="h-7 shrink-0 px-2 text-2xs font-semibold uppercase tracking-wider"
             >
               {t('classVisibility.performanceSettings')}
             </Button>

@@ -290,7 +290,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
               {filterMode === 'selector' && filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
             </>
           ) : (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
             </span>
           )}

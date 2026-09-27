@@ -99,7 +99,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
         <TooltipContent side="bottom">{t('shellChrome.sidebarPanelHost.splitTooltip')}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t(secondary ? 'shellChrome.sidebarPanelHost.panelBelowLabel' : 'shellChrome.sidebarPanelHost.splitShowBelowLabel')}
         </DropdownMenuLabel>
         {options.map((p) => (

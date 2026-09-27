@@ -220,7 +220,7 @@ export function MobileToolbar() {
       {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
           <Progress value={activeProgress.percent} className="w-16 h-1.5" />
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-2xs text-muted-foreground tabular-nums">
             {Math.round(activeProgress.percent)}%
           </span>
         </div>

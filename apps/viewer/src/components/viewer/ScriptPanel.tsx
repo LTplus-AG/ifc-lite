@@ -283,7 +283,7 @@ export function ScriptPanel() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold">{t('scriptPanel.toolReady.title')}</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   {t('scriptPanel.toolReady.description')}
                 </div>
               </div>
@@ -480,7 +480,7 @@ export function ScriptPanel() {
                           surface a one-line cue so the user understands
                           why the rewrite is needed before clicking Fix. */}
                       {/(document|window|navigator|location|fetch|XMLHttpRequest|localStorage|indexedDB|setTimeout|setInterval) is not defined/.test(lastError) && (
-                        <div className="mt-1 text-[11px] text-muted-foreground font-sans">
+                        <div className="mt-1 text-2xs text-muted-foreground font-sans">
                           {t('scriptPanel.output.sandboxHintPrefix')}{' '}
                           <code className="font-mono">{t('scriptPanel.output.fetchCode')}</code>
                           {t('scriptPanel.output.sandboxHintMiddle')}{' '}

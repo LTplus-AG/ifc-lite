@@ -107,7 +107,7 @@ export function ModelHeaderRow({
         </span>
 
         {node.elementCount !== undefined && (
-          <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400 rounded-none">
+          <span className="text-2xs font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400 rounded-none">
             {formatLocaleNumber(locale, node.elementCount)}
           </span>
         )}

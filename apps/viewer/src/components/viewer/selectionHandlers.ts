@@ -26,10 +26,6 @@ import { modelPointToWorkspacePoint, workspacePointToModelFrame } from '@/lib/mo
 import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element-storeys.js';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
-/**
- * Handle click event for selection (single click and double click).
- * Manages click timing for double-click detection and Ctrl/Cmd multi-select.
- */
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
   const mode = useViewerStore.getState().measureMode;

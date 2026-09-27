@@ -19,6 +19,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render } from '@/test/render.js';
 import { WORKSPACE_PANELS, workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { en } from '@/i18n/en';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog.js';
 import { setPlatform } from '@/test/platform.js';
 
@@ -67,8 +68,9 @@ describe('generated Shortcuts tab (#5836)', () => {
     let from = 0;
     for (const d of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']) {
       const id = workspacePanelForShortcutCode(`Digit${d}`);
-      const title = WORKSPACE_PANELS.find((p) => p.id === id)?.title;
-      assert.ok(title, `Digit${d} opens a registered panel`);
+      const titleKey = WORKSPACE_PANELS.find((p) => p.id === id)?.titleKey;
+      const title = titleKey ? en[titleKey] : undefined;
+      assert.ok(typeof title === 'string', `Digit${d} opens a registered panel with a text title`);
       const at = row.text.indexOf(title, from);
       assert.ok(at >= from, `"${title}" appears in key order in: ${row.text}`);
       from = at + title.length;

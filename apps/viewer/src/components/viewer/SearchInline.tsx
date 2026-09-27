@@ -460,9 +460,7 @@ export function SearchInline() {
             aria-expanded={showPopover}
             aria-controls="search-inline-popover"
           />
-          {/* Advanced-filter affordance — always visible so structured
-              filtering is discoverable without its shortcut. Shows the
-              active rule count and a quick-clear when a filter is applied. */}
+          {/* Always-visible filter entry shows the rule count and a quick-clear. */}
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
             {hasFilters && (
               <button

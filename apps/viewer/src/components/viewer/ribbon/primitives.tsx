@@ -50,7 +50,7 @@ export interface RibbonContentButtonProps extends Omit<React.ButtonHTMLAttribute
   icon: React.ElementType;
   /** Visible runtime content; static commands use RibbonCommand* and a registry id. */
   contentLabel: string;
-  contentSource: 'registered' | 'export' | 'extension';
+  contentSource: 'registered' | 'export' | 'extension' | 'panel-browser';
   contentId: string;
   /** Latched/toggled state (aria-pressed). */
   active?: boolean;

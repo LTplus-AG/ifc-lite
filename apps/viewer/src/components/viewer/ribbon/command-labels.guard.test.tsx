@@ -73,6 +73,8 @@ it('#5870/#5878 mounts every ribbon command with its registry name across all ta
     for (const button of buttons) {
       if (button.dataset.ribbonContent === 'panel-browser') {
         assert.equal(tab, 'analyze', 'the panel browser belongs to Analyze');
+        assert.equal(button.dataset.ribbonContentSource, 'panel-browser');
+        assert.equal(button.dataset.ribbonContentId, 'panel-browser');
         assert.equal(button.getAttribute('aria-label'), resolve('shellChrome.panelGroups.browse'));
         panelBrowsers++;
         continue;

@@ -19,7 +19,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { CompactEntityIndex, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { FederationRegistry } from '@ifc-lite/renderer';
 import { clashMemberKey, createClashEngine, matchesSelector, rulesFromPresets, type ClashElement, type ClashRule } from '@ifc-lite/clash';
 import { evaluateFilterRulesFederated, Rule, type FilterRule } from '@ifc-lite/rules';
 import {
@@ -295,6 +296,8 @@ it('a saved single-group clash preset finds the same actual pairs after migratio
 it('authored IFC set groups keep external and internal walls distinct across one and two models (#5898)', async () => {
   const bytes = Uint8Array.from(readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url)));
   const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true }) as IfcDataStore;
+  assert.ok(store.entityIndex.byId instanceof CompactEntityIndex, 'authored source exposes its indexed maximum ID');
+  const maxExpressId = store.entityIndex.byId.maxExpressId;
   const external = Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true');
   const legacy = { combinator: 'AND' as const, rules: [Rule.ifcType(['IfcWall']), external] };
   const migrated = parseClashSetFilter(JSON.parse(JSON.stringify(legacy)));
@@ -304,7 +307,9 @@ it('authored IFC set groups keep external and internal walls distinct across one
 
   for (const count of [1, 2]) {
     const loaded = Array.from({ length: count }, (_, i) => ({ id: `m${i + 1}`, store }));
-    const globalId = (modelId: string, expressId: number) => (modelId === 'm1' ? 0 : 1_000_000) + expressId;
+    const registry = new FederationRegistry();
+    for (const model of loaded) registry.registerModel(model.id, maxExpressId);
+    const globalId = (modelId: string, expressId: number) => registry.toGlobalId(modelId, expressId);
     const oldMatches = await evaluateFilterRulesFederated(loaded, legacy.rules, legacy.combinator);
     const [single] = await withResolvedClashSetFilters(
       [rule], [{ id: rule.id, filterA: migrated }], loaded, globalId,
@@ -320,7 +325,8 @@ it('authored IFC set groups keep external and internal walls distinct across one
     }
     assert.equal(new Set(union.membersA).size, union.membersA?.length, 'group union has no duplicated members');
     if (count === 2) {
-      assert.notEqual(clashMemberKey('m1', 262), clashMemberKey('m2', 1_000_262), 'federated members keep model attribution');
+      assert.notEqual(globalId('m1', 262), globalId('m2', 262), 'the registry assigns distinct global IDs');
+      assert.equal(registry.getModelForGlobalId(globalId('m2', 262)), 'm2', 'the second model owns its member');
     }
   }
 });

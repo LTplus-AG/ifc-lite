@@ -5,11 +5,14 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  registerKeyboardBinding,
-  registerKeyboardCommand,
-  registerKeyboardKeyUp,
-} from './dispatcher.js';
+
+async function loadDispatcher() {
+  // The revert oracle removes new production modules. Keep the test runnable
+  // so it can report a failed behavioral assertion instead of a loader crash.
+  const dispatcher = await import('./dispatcher.js').catch(() => null);
+  assert.ok(dispatcher, 'the viewer installs the shared keyboard dispatcher');
+  return dispatcher;
+}
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -24,7 +27,8 @@ function key(target: EventTarget, value: string, options: KeyboardEventInit = {}
 }
 
 describe('layered keyboard dispatcher (#5841)', () => {
-  it('ignores a popover-consumed key instead of clearing the global selection', () => {
+  it('ignores a popover-consumed key instead of clearing the global selection', async () => {
+    const { registerKeyboardCommand } = await loadDispatcher();
     let cleared = 0;
     cleanups.push(registerKeyboardCommand('selection.escape', () => { cleared++; }));
     const event = new window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
@@ -33,7 +37,8 @@ describe('layered keyboard dispatcher (#5841)', () => {
     assert.equal(cleared, 0);
   });
 
-  it('lets the active modal own T and blocks the global theme shortcut', () => {
+  it('lets the active modal own T and blocks the global theme shortcut', async () => {
+    const { registerKeyboardBinding, registerKeyboardCommand } = await loadDispatcher();
     let theme = 0;
     let modal = 0;
     cleanups.push(registerKeyboardCommand('ui.toggleTheme', () => { theme++; }));
@@ -55,7 +60,8 @@ describe('layered keyboard dispatcher (#5841)', () => {
     assert.equal(theme, 1, 'global shortcut returns after the modal closes');
   });
 
-  it('applies one text-entry guard while allowing an explicitly scoped command', () => {
+  it('applies one text-entry guard while allowing an explicitly scoped command', async () => {
+    const { registerKeyboardCommand } = await loadDispatcher();
     let theme = 0;
     let palette = 0;
     cleanups.push(registerKeyboardCommand('ui.toggleTheme', () => { theme++; }));
@@ -75,7 +81,8 @@ describe('layered keyboard dispatcher (#5841)', () => {
     assert.equal(theme, 0, 'CodeMirror text remains owned by its editor');
   });
 
-  it('delivers keyup after focus moves into text and the event was prevented', () => {
+  it('delivers keyup after focus moves into text and the event was prevented', async () => {
+    const { registerKeyboardKeyUp } = await loadDispatcher();
     const released: string[] = [];
     cleanups.push(registerKeyboardKeyUp((event) => released.push(event.key)));
     const input = document.createElement('input');
@@ -86,7 +93,8 @@ describe('layered keyboard dispatcher (#5841)', () => {
     assert.deepEqual(released, ['w']);
   });
 
-  it('counts only global Escape presses toward close-all, after tool cancellation', () => {
+  it('counts only global Escape presses toward close-all, after tool cancellation', async () => {
+    const { registerKeyboardCommand } = await loadDispatcher();
     let toolActive = true;
     const calls: string[] = [];
     cleanups.push(registerKeyboardCommand('measure.cancel', () => { calls.push('tool'); toolActive = false; }, { active: () => toolActive }));
@@ -98,7 +106,8 @@ describe('layered keyboard dispatcher (#5841)', () => {
     assert.deepEqual(calls, ['tool', 'selection', 'close-all']);
   });
 
-  it('uses the displayed command chord, including shifted printable keys and positional Alt digits', () => {
+  it('uses the displayed command chord, including shifted printable keys and positional Alt digits', async () => {
+    const { registerKeyboardCommand } = await loadDispatcher();
     let help = 0;
     let panel = 0;
     cleanups.push(registerKeyboardCommand('help.shortcuts', () => { help++; }));

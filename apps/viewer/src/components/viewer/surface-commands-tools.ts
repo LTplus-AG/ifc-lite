@@ -67,9 +67,9 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().setActiveTool('addElement'); },
   },
   {
-    id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label',
+    id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label', ribbonLabelKey: 'ribbon.author.editMode',
     searchLabel: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify',
-    category: 'Tools', icon: PenLine, surfaces: paletteOnly, enabled: editable,
+    category: 'Tools', icon: PenLine, surfaces: ['palette', 'ribbon'], enabled: editable,
     shortcut: 'edit.toggleEditMode',
     run: () => { useViewerStore.getState().toggleEditEnabled(); },
   },

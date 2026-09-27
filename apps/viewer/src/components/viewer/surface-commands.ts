@@ -4,14 +4,25 @@
 
 /** Shared homes for static viewer commands (#5870).
  *
- * The remaining palette rows move here with their surface families. Runtime
- * rows (recent files, extensions, tours) stay with their runtime providers.
+ * The keyboard table remains the source of chords; `shortcut` references its
+ * ids rather than copying a binding. Runtime rows (recent files, extensions,
+ * tours) stay with their runtime providers.
  */
 
-import { Eye, FolderOpen, Palette, Save, Tag } from 'lucide-react';
+import {
+  Box, Building2, Equal, Eye, EyeOff, FolderOpen, Layout, Minus, Palette,
+  Pencil, Plus, RotateCcw, Save, SquareX, Tag,
+} from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 import { resolveEnglish } from '@/i18n/registry';
-import { executeBasketToggleVisibility } from '@/store/basket/basketCommands';
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
+import { useViewerStore } from '@/store';
+import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
+import {
+  executeBasketAdd, executeBasketClear, executeBasketRemove, executeBasketSaveView,
+  executeBasketSet, executeBasketToggleVisibility,
+} from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
@@ -37,11 +48,13 @@ export interface SurfaceCommandDefinition {
   surfaces: readonly CommandSurface[];
   enabled: (state: SurfaceCommandState) => boolean;
   run: (context: SurfaceCommandContext) => void;
+  shortcut?: Command['shortcut'];
   immediate?: boolean;
 }
 
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
+const paletteOnly = ['palette'] as const;
 
 export const SURFACE_COMMANDS = [
   {
@@ -64,11 +77,103 @@ export const SURFACE_COMMANDS = [
     run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); },
   },
   {
+    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
+    keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    run: () => { hideSelectionFromStore(); },
+  },
+  {
+    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
+    keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.showAll',
+    run: () => { resetVisibilityForHomeFromStore('show_all'); },
+  },
+  {
+    id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
+    searchLabel: 'Set Basket from Selection',
+    keywords: 'basket isolate set selection hierarchy view equals',
+    category: 'Visibility', icon: Equal, surfaces: paletteOnly,
+    enabled: alwaysEnabled, shortcut: 'basket.set',
+    run: () => { executeBasketSet(); },
+  },
+  {
+    id: 'vis:add-iso', labelKey: 'commandPalette.vis.addBasket.label',
+    searchLabel: 'Add to Basket',
+    keywords: 'basket plus selection hierarchy view',
+    category: 'Visibility', icon: Plus, surfaces: paletteOnly,
+    enabled: alwaysEnabled, shortcut: 'basket.add',
+    run: () => { executeBasketAdd(); },
+  },
+  {
+    id: 'vis:remove-iso', labelKey: 'commandPalette.vis.removeBasket.label',
+    searchLabel: 'Remove from Basket',
+    keywords: 'basket minus selection hierarchy view',
+    category: 'Visibility', icon: Minus, surfaces: paletteOnly,
+    enabled: alwaysEnabled, shortcut: 'basket.remove',
+    run: () => { executeBasketRemove(); },
+  },
+  {
     id: 'vis:toggle-iso', labelKey: 'commandPalette.vis.toggleBasket.label',
     searchLabel: 'Toggle Basket Visibility',
     keywords: 'basket show hide', category: 'Visibility', icon: Eye,
     surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { executeBasketToggleVisibility(); },
+  },
+  {
+    id: 'vis:save-view', labelKey: 'commandPalette.vis.saveBasketView.label',
+    searchLabel: 'Save Basket as View', keywords: 'basket presentation thumbnail',
+    category: 'Visibility', icon: Save, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { void executeBasketSaveView().catch((err: unknown) => {
+      console.error('[CommandPalette] Failed to save basket view:', err);
+    }); },
+  },
+  {
+    id: 'vis:toggle-presentation', labelKey: 'commandPalette.vis.togglePresentation.label',
+    searchLabel: 'Toggle Basket Presentation Dock', keywords: 'basket panel carousel thumbnails',
+    category: 'Visibility', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); },
+  },
+  {
+    id: 'vis:clear-iso', labelKey: 'commandPalette.vis.clearBasket.label',
+    searchLabel: 'Clear Basket', keywords: 'basket clear reset',
+    category: 'Visibility', icon: RotateCcw, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { executeBasketClear(); },
+  },
+  {
+    id: 'vis:spaces', labelKey: 'commandPalette.vis.spaces.label',
+    keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('spaces'); },
+  },
+  {
+    id: 'vis:spatialZones', labelKey: 'commandPalette.vis.spatialZones.label',
+    keywords: 'IfcSpatialZone gross area GFA show hide', category: 'Visibility', icon: Box,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('spatialZones'); },
+  },
+  {
+    id: 'vis:openings', labelKey: 'commandPalette.vis.openings.label',
+    keywords: 'IfcOpeningElement show hide', category: 'Visibility', icon: SquareX,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('openings'); },
+  },
+  {
+    id: 'vis:site', labelKey: 'commandPalette.vis.site.label',
+    keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
+    surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('site'); },
+  },
+  {
+    id: 'vis:ifcAnnotations', labelKey: 'commandPalette.vis.ifcAnnotations.label',
+    keywords: 'IfcAnnotation 2d drawing symbols text dimension leader label show hide',
+    category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); },
+  },
+  {
+    id: 'vis:ifcGrid', labelKey: 'commandPalette.vis.ifcGrid.label',
+    keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip',
+    category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); },
   },
   {
     id: 'vis:reset-colors', labelKey: 'commandPalette.vis.resetColors.label',
@@ -104,6 +209,7 @@ export function paletteSurfaceCommands(
       keywords: command.keywords,
       category: command.category,
       icon: command.icon,
+      shortcut: 'shortcut' in command ? command.shortcut : undefined,
       immediate: 'immediate' in command ? command.immediate : undefined,
       action: () => command.run({ surface: 'palette', execute }),
     }));

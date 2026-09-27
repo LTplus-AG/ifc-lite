@@ -19,6 +19,7 @@ import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, type Mutation } from '@ifc-lite/mutations';
+import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
@@ -41,7 +42,7 @@ FILE_NAME('attr.ifc','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCWALL('${GUID_A}',$,'Wall A',$,$,$,$,$,$);
+#1=IFCWALL('${GUID_A}',$,'Wall A','Original description',$,$,$,$,$);
 #2=IFCWALL('${GUID_B}',$,'Wall B',$,$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;
@@ -65,6 +66,7 @@ async function seed(): Promise<void> {
     undoStacks: new Map(),
     redoStacks: new Map([['m', [REDO_SENTINEL]]]),
     dirtyModels: new Set(),
+    editEnabled: true,
     collabRole: null,
   });
 }
@@ -112,6 +114,34 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     assert.equal(undo().length, 0, 'no undo entry for an unchanged value');
     assert.deepEqual(redo(), [REDO_SENTINEL], 'the redo branch survives');
     assert.equal(useViewerStore.getState().dirtyModels.has('m'), false, 'the model is not marked dirty');
+  });
+
+  it('trim-equal Name input is a no-op and preserves redo (#5872)', () => {
+    const input = openEditor(mount('Name', 'Wall A'), 'Wall A');
+    type(input, ' Wall A ');
+    key(input, 'Enter');
+    assert.equal(undo().length, 0);
+    assert.deepEqual(redo(), [REDO_SENTINEL]);
+    assert.equal(useViewerStore.getState().dirtyModels.has('m'), false);
+  });
+
+  it('clearing optional Description exports STEP null and Undo restores the authored value (#5872)', async () => {
+    const input = openEditor(mount('Description', 'Original description'), 'Original description');
+    type(input, '  ');
+    key(input, 'Enter');
+    assert.equal(undo().length, 1);
+    assert.equal(undo()[0].newValue, '$');
+    const store = await parse();
+    const view = useViewerStore.getState().mutationViews.get('m')!;
+    const output = () => new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    assert.ok(output().includes(`#1=IFCWALL('${GUID_A}',$,'Wall A',$,`), 'the optional slot exports as STEP null');
+    useViewerStore.getState().undo('m');
+    assert.match(output(), /'Wall A','Original description'/);
+    cleanup();
+    const name = openEditor(mount('Name', 'Wall A'), 'Wall A');
+    type(name, '');
+    key(name, 'Enter');
+    assert.ok(output().includes(`#1=IFCWALL('${GUID_A}',$,$,'Original description',`), 'clearing Name also exports STEP null');
   });
 
   it('Enter commits exactly one undo entry, even though the input then blurs', () => {
@@ -199,7 +229,8 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     const owner = (guid: string) => (guid === GUID_B ? 2 : -1);
     assert.deepEqual(judgeAttributeEdit('GlobalId', ` ${'3'.repeat(22)} `, GUID_A, 1, owner), { kind: 'commit', value: '3'.repeat(22) });
     assert.deepEqual(judgeAttributeEdit('GlobalId', GUID_A, GUID_A, 1, owner), { kind: 'unchanged' });
-    // Free text keeps its whitespace: only an identical value is a no-op.
-    assert.deepEqual(judgeAttributeEdit('Name', 'Wall A ', 'Wall A', 1, owner), { kind: 'commit', value: 'Wall A ' });
+    assert.deepEqual(judgeAttributeEdit('Name', 'Wall A ', 'Wall A', 1, owner), { kind: 'unchanged' });
+    // A genuinely different free-text value keeps its intentional whitespace.
+    assert.deepEqual(judgeAttributeEdit('Name', 'Wall B ', 'Wall A', 1, owner), { kind: 'commit', value: 'Wall B ' });
   });
 });

@@ -37,8 +37,11 @@ export function judgeAttributeEdit(
   entityId: number,
   globalIdOwner: (guid: string) => number,
 ): AttributeEditVerdict {
-  const value = attrName === 'GlobalId' ? input.trim() : input;
-  if (value === currentValue) return { kind: 'unchanged' };
+  const trimmed = input.trim();
+  // Whitespace alone is not a new IFC value. Keep intentional whitespace on
+  // changed free text, but do not create an undo step for a trim-equal edit.
+  if (trimmed === currentValue.trim()) return { kind: 'unchanged' };
+  const value = attrName === 'GlobalId' ? trimmed : trimmed === '' ? '$' : input;
   if (attrName === 'GlobalId') {
     const problem = globalIdProblem(value, entityId, globalIdOwner);
     if (problem) return { kind: 'invalid', messageKey: problem };
@@ -77,8 +80,10 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
     settledRef.current = true;
     // setAttribute records the undo entry, marks the model dirty and bumps
     // mutationVersion itself; an unchanged value records nothing.
-    // Undo restores a prior session edit exactly (even ''); with none, a blank
-    // value restores the source's `$` by dropping the edit.
+    // `$` is the existing named-attribute null marker. An explicit empty
+    // string would export as STEP `''`, which is present rather than absent.
+    // Undo restores a prior session edit exactly (even ''); with none, it
+    // drops the overlay and restores the source token.
     const prior = useViewerStore.getState().mutationViews.get(storeModelId)?.getAttributeMutationsForEntity(entityId).find((m) => m.name === attrName);
     if (verdict.kind === 'commit') setAttribute(storeModelId, entityId, attrName, verdict.value, prior ? prior.value : currentValue || undefined);
     setEditing(false);

@@ -32,12 +32,13 @@ function seed(): void {
     mutationViews: new Map([[MODEL_ID, view]]),
     undoStacks: new Map(),
     redoStacks: new Map([[MODEL_ID, [REDO_SENTINEL]]]),
+    editEnabled: true,
     collabRole: null,
   });
 }
 
 async function open(container: HTMLElement): Promise<HTMLInputElement> {
-  const value = [...container.querySelectorAll('span')].find((s) => s.title === 'Click to edit');
+  const value = [...container.querySelectorAll('button')].find((button) => button.title === 'Click to edit');
   assert.ok(value, 'the value renders');
   click(value!);
   await advance(0);

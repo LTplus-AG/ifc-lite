@@ -54,6 +54,7 @@ async function seed(): Promise<void> {
     undoStacks: new Map(),
     redoStacks: new Map([['m', [REDO_SENTINEL]]]),
     dirtyModels: new Set(),
+    editEnabled: true,
     collabRole: null,
   });
 }

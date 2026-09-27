@@ -589,10 +589,10 @@ export function PropertiesPanel() {
           if (baseNames.has(ma.name)) {
             // Update existing attribute value
             const idx = merged.findIndex(a => a.name === ma.name);
-            if (idx >= 0) merged[idx] = { name: ma.name, value: ma.value };
+            if (idx >= 0) merged[idx] = { name: ma.name, value: ma.value === '$' ? '' : ma.value };
           } else {
             // Add new attribute
-            merged.push({ name: ma.name, value: ma.value });
+            merged.push({ name: ma.name, value: ma.value === '$' ? '' : ma.value });
           }
         }
         return merged;

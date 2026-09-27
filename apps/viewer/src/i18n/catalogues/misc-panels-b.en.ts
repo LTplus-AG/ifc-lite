@@ -243,6 +243,16 @@ export const miscPanelsBEn = {
   'entityContextMenu.addToBasket': 'Add to Collection',
   'entityContextMenu.removeFromBasket': 'Remove from Collection',
   'entityContextMenu.saveBasketView': 'Save Collection View',
+  'entityContextMenu.selectAllType': 'Select all {type}',
+  'entityContextMenu.selectSameStorey': 'Select same storey',
+  'entityContextMenu.exportAnonymized': 'Export anonymized…',
+  'entityContextMenu.deleteEntity': 'Delete entity',
+  'entityContextMenu.duplicateXPlus': 'Duplicate +X (east)',
+  'entityContextMenu.duplicateXMinus': 'Duplicate −X (west)',
+  'entityContextMenu.duplicateYPlus': 'Duplicate +Y (north)',
+  'entityContextMenu.duplicateYMinus': 'Duplicate −Y (south)',
+  'entityContextMenu.duplicateZPlus': 'Duplicate +Z (up)',
+  'entityContextMenu.duplicateZMinus': 'Duplicate −Z (down)',
 
   // ---- TextAnnotationEditor.tsx ---------------------------------------------
   'textAnnotationEditor.placeholder': 'Type annotation text...',

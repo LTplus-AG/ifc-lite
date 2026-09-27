@@ -38,7 +38,7 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
         <span className="font-bold text-xs text-amber-700 dark:text-amber-400 truncate flex-1 min-w-0">
           {displayName}
         </span>
-        <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 shrink-0">
+        <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 shrink-0">
           {typeLabel}
         </span>
         <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
@@ -68,7 +68,7 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
                       {t('properties.material.layerN', { n: i + 1 })}
                     </span>
                     {layer.thickness !== undefined && (
-                      <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
+                      <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
                         {formatThickness(layer.thickness, locale)}
                       </span>
                     )}
@@ -151,7 +151,7 @@ export function MaterialCard({ material, sectionId }: { material: MaterialInfo; 
                       {constituent.name || t('properties.material.constituentN', { n: i + 1 })}
                     </span>
                     {constituent.fraction !== undefined && (
-                      <span className="text-[10px] font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
+                      <span className="text-2xs font-mono bg-amber-100 dark:bg-amber-900/50 px-1 py-0.5 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-300">
                         {formatLocaleNumber(locale, constituent.fraction * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                       </span>
                     )}

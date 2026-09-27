@@ -12,7 +12,7 @@
  * (`KeyboardShortcutsDialog.tsx`) rather than floated over the viewport.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Activity, ChevronDown, ChevronUp, Copy, Unplug } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -29,7 +29,7 @@ function AxisBar({ label, value }: { label: string; value: number }) {
   const half = Math.abs(fraction) * 50;
   return (
     <div className="flex items-center gap-1.5">
-      <span className="w-4 shrink-0 font-mono text-[9px] uppercase text-muted-foreground">{label}</span>
+      <span className="w-4 shrink-0 font-mono text-2xs uppercase text-muted-foreground">{label}</span>
       <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
         <div className="absolute inset-y-0 left-1/2 w-px bg-muted-foreground/30" />
         <div
@@ -39,7 +39,7 @@ function AxisBar({ label, value }: { label: string; value: number }) {
             : { right: '50%', width: `${half}%` }}
         />
       </div>
-      <span className="w-8 shrink-0 text-right font-mono text-[9px] tabular-nums text-muted-foreground">
+      <span className="w-8 shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground">
         {Math.round(value)}
       </span>
     </div>
@@ -47,6 +47,7 @@ function AxisBar({ label, value }: { label: string; value: number }) {
 }
 
 export function SpaceMousePanel() {
+  const sensitivityId = useId();
   const { t } = useTranslation();
 
   const supported = useViewerStore((s) => s.spaceMouseSupported);
@@ -92,7 +93,7 @@ export function SpaceMousePanel() {
   return (
     <div className="flex flex-col gap-2 text-xs">
       {!supported ? (
-        <p className="text-[11px] leading-snug text-muted-foreground">
+        <p className="text-2xs leading-snug text-muted-foreground">
           {t('spaceMousePanel.noWebHidMessage')}
         </p>
       ) : connected ? (
@@ -107,7 +108,7 @@ export function SpaceMousePanel() {
             size="sm"
             onClick={() => disconnect?.()}
             title={t('spaceMousePanel.disconnectTitle')}
-            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+            className="h-7 gap-1 px-2 text-2xs text-muted-foreground"
           >
             <Unplug className="h-3 w-3" />
             {t('spaceMousePanel.disconnectButton')}
@@ -125,14 +126,14 @@ export function SpaceMousePanel() {
       )}
 
       {error && !connected && (
-        <p className="text-[11px] leading-snug text-destructive">{error}</p>
+        <p className="text-2xs leading-snug text-destructive">{error}</p>
       )}
 
       {supported && (
         <>
-          <label className="flex flex-col gap-0.5">
-            <span className="flex justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
-              <span>{t('spaceMousePanel.sensitivityLabel')}</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="flex justify-between text-2xs uppercase tracking-wider text-muted-foreground">
+              <label htmlFor={sensitivityId}>{t('spaceMousePanel.sensitivityLabel')}</label>
               <button
                 type="button"
                 onClick={() => setSensitivity(SENSITIVITY.default)}
@@ -146,6 +147,7 @@ export function SpaceMousePanel() {
               </button>
             </span>
             <input
+              id={sensitivityId}
               type="range"
               min={SENSITIVITY.min}
               max={SENSITIVITY.max}
@@ -154,9 +156,9 @@ export function SpaceMousePanel() {
               onChange={(e) => setSensitivity(Number(e.target.value))}
               className="w-full accent-primary"
             />
-          </label>
+          </div>
 
-          <p className="text-[11px] leading-snug text-muted-foreground">
+          <p className="text-2xs leading-snug text-muted-foreground">
             {t('spaceMousePanel.guidanceMessage')}
           </p>
 
@@ -166,7 +168,7 @@ export function SpaceMousePanel() {
                 type="button"
                 onClick={() => setDiagOpen(!diagOpen)}
                 aria-expanded={diagOpen}
-                className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                className="flex items-center gap-1 text-2xs uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
               >
                 <Activity className="h-3 w-3" />
                 {t('spaceMousePanel.diagnosticsLabel')}
@@ -181,7 +183,7 @@ export function SpaceMousePanel() {
                     ))}
                   </div>
 
-                  <div className="font-mono text-[10px] leading-snug text-muted-foreground">
+                  <div className="font-mono text-2xs leading-snug text-muted-foreground">
                     <div>
                       {t('spaceMousePanel.layoutLine', {
                         value: diag.layoutSource === 'descriptor'
@@ -210,7 +212,7 @@ export function SpaceMousePanel() {
                     variant="outline"
                     size="sm"
                     onClick={() => { void copyDump(); }}
-                    className="h-7 gap-1 text-[11px] text-muted-foreground"
+                    className="h-7 gap-1 text-2xs text-muted-foreground"
                   >
                     <Copy className="h-2.5 w-2.5" />
                     {copyState === 'copied'
@@ -219,7 +221,7 @@ export function SpaceMousePanel() {
                         ? t('spaceMousePanel.copyFailedLabel')
                         : t('spaceMousePanel.copyDeviceReportLabel')}
                   </Button>
-                  <p className="text-[10px] leading-snug text-muted-foreground">
+                  <p className="text-2xs leading-snug text-muted-foreground">
                     {t('spaceMousePanel.reportHintMessage')}
                   </p>
                 </>

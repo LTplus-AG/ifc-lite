@@ -221,9 +221,9 @@ export function BCFOverlay() {
         (marker: BCFMarker3D) =>
           hoveredGuid === marker.topicGuid && (
             <AnchoredCard key={`${marker.topicGuid}-tooltip`} worldPoint={marker.position} offset={{ dx: -90, dy: -48 }}>
-              <div className="w-[180px] font-mono text-[11px] leading-relaxed">
+              <div className="w-[180px] font-mono text-2xs leading-relaxed">
                 <p className="font-semibold truncate">{marker.title}</p>
-                <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <p className="mt-0.5 text-2xs uppercase tracking-wide text-muted-foreground">
                   {marker.status}
                   {marker.priority ? ` · ${marker.priority}` : ''}
                   {marker.commentCount > 0

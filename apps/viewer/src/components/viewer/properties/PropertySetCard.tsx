@@ -105,7 +105,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
           </Tooltip>
         )}
         <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0"><PropertySearchHighlight text={setDisplayName(pset.name, t('properties.propertySet.unnamed'))} query={searchQuery} /></span>
-        <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
+        <span className="text-2xs font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
         <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -140,7 +140,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     {isMutated && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-overlay-accent-soft text-foreground border-overlay-accent/40">
+                          <Badge variant="secondary" className="h-4 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40">
                             {t('properties.propertySetCard.editedBadge')}
                           </Badge>
                         </TooltipTrigger>
@@ -154,7 +154,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                             <PropertySearchHighlight text={prop.name} query={searchQuery} />
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="text-[10px]">
+                        <TooltipContent side="top" className="text-2xs">
                           {/* TooltipContent uses the neutral popover surface (#4767);
                               secondary text uses its semantic muted token instead
                               of a hardcoded primary-foreground opacity tier. */}

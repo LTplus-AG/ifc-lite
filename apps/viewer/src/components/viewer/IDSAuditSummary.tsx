@@ -144,18 +144,17 @@ export function IDSAuditSummary({
   // Auditing in flight — quietly mark the spot.
   if (auditing && !report) {
     return (
-      <div
+      <output
         className={cn(
           'flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground',
           'animate-fade-in-up',
           className
         )}
-        role="status"
         aria-live="polite"
       >
         <Spinner size="sm" />
         <span>{t('idsPanel.audit.auditing')}</span>
-      </div>
+      </output>
     );
   }
 
@@ -258,7 +257,7 @@ export function IDSAuditSummary({
                 type="button"
                 onClick={() => setFilter(tab.key)}
                 className={cn(
-                  'rounded px-2 py-0.5 text-[11px] transition-colors',
+                  'rounded px-2 py-0.5 text-2xs transition-colors',
                   filter === tab.key
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -328,7 +327,7 @@ function IssueRow({ issue, index }: IssueRowProps): React.ReactElement {
           <span className="flex flex-wrap items-baseline gap-2">
             <code
               className={cn(
-                'shrink-0 rounded border px-1.5 py-0 font-mono text-[10px] uppercase tracking-tight leading-relaxed',
+                'shrink-0 rounded border px-1.5 py-0 font-mono text-2xs uppercase tracking-tight leading-relaxed',
                 tok.chipBg,
                 tok.chipFg,
                 tok.chipBorder
@@ -341,7 +340,7 @@ function IssueRow({ issue, index }: IssueRowProps): React.ReactElement {
           {hasDetail && open && (
             <div className="ml-1 mt-1.5 space-y-1 border-l border-border/60 pl-2">
               {issue.path && (
-                <div className="flex gap-2 font-mono text-[11px]">
+                <div className="flex gap-2 font-mono text-2xs">
                   <span className="text-muted-foreground">{t('idsPanel.audit.path')}</span>
                   <span className="break-all text-muted-foreground">
                     {issue.path}
@@ -349,7 +348,7 @@ function IssueRow({ issue, index }: IssueRowProps): React.ReactElement {
                 </div>
               )}
               {issue.facetType && (
-                <div className="flex gap-2 font-mono text-[11px]">
+                <div className="flex gap-2 font-mono text-2xs">
                   <span className="text-muted-foreground">{t('idsPanel.audit.facet')}</span>
                   <span className="text-muted-foreground">
                     {issue.facetType}
@@ -357,7 +356,7 @@ function IssueRow({ issue, index }: IssueRowProps): React.ReactElement {
                 </div>
               )}
               {issue.detail && Object.keys(issue.detail).length > 0 && (
-                <div className="flex flex-col gap-0.5 font-mono text-[11px]">
+                <div className="flex flex-col gap-0.5 font-mono text-2xs">
                   {Object.entries(issue.detail).map(([k, v]) => (
                     <div key={k} className="flex gap-2">
                       <span className="text-muted-foreground">{k}</span>

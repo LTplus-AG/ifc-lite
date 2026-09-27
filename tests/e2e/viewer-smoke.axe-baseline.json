@@ -11,5 +11,15 @@
     "landmark-one-main": 1,
     "page-has-heading-one": 1,
     "region": 1
+  },
+  "mobile-empty": {
+    "color-contrast": 1,
+    "region": 1
+  },
+  "mobile-loaded": {
+    "aria-prohibited-attr": 1,
+    "landmark-one-main": 1,
+    "page-has-heading-one": 1,
+    "region": 1
   }
 }

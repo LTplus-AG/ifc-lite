@@ -59,7 +59,7 @@ function RoleBadge({ role }: { role: CollabRole }) {
   const { t } = useTranslation();
   const m = ROLE_META[role];
   return (
-    <span className={`shrink-0 rounded-full border px-1.5 py-px text-[10px] font-medium leading-none ${m.cls}`}>
+    <span className={`shrink-0 rounded-full border px-1.5 py-px text-2xs font-medium leading-none ${m.cls}`}>
       {t(m.labelKey)}
     </span>
   );
@@ -121,9 +121,9 @@ function PeerRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-xs font-medium">{name}</span>
-          {isSelf && <span className="text-[10px] text-muted-foreground">{t('zonesPanel.roomPanel.youSuffix')}</span>}
+          {isSelf && <span className="text-2xs text-muted-foreground">{t('zonesPanel.roomPanel.youSuffix')}</span>}
         </div>
-        {subLine && <span className="text-[10px] capitalize text-muted-foreground">{subLine}</span>}
+        {subLine && <span className="text-2xs capitalize text-muted-foreground">{subLine}</span>}
       </div>
       {role && <RoleBadge role={role} />}
       {onJump && (
@@ -275,13 +275,13 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
         </p>
         <Button
           size="sm"
-          className="mt-1 h-7 gap-1.5 px-3 text-[11px]"
+          className="mt-1 h-7 gap-1.5 px-3 text-2xs"
           onClick={() => window.dispatchEvent(new CustomEvent('ifc-lite:open-share-dialog'))}
         >
           <Share2 className="size-3.5" aria-hidden />
           {t('zonesPanel.roomPanel.createRoomButton')}
         </Button>
-        <p className="max-w-[30ch] text-[10px] text-muted-foreground">
+        <p className="max-w-[30ch] text-2xs text-muted-foreground">
           {t('zonesPanel.roomPanel.inviteHint')}
         </p>
       </div>
@@ -305,13 +305,13 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
               : t('zonesPanel.roomPanel.statusRoom', { status: t(status.labelKey) })}
           </div>
           {seedLabel && (
-            <div role="status" className="truncate text-[10px] text-muted-foreground">
+            <output className="block truncate text-2xs text-muted-foreground">
               {seedLabel}
-            </div>
+            </output>
           )}
-          <div className="truncate font-mono text-[10px] text-muted-foreground">{collabRoomId}</div>
+          <div className="truncate font-mono text-2xs text-muted-foreground">{collabRoomId}</div>
         </div>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
           {peerCount}
         </span>
       </div>
@@ -328,7 +328,7 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
           />
           {peerRows}
           {peerRows.length === 0 && (
-            <p className="px-1.5 py-2 text-[11px] text-muted-foreground">
+            <p className="px-1.5 py-2 text-2xs text-muted-foreground">
               {t('zonesPanel.roomPanel.onlyOneHereMessage')}
             </p>
           )}

@@ -62,9 +62,10 @@ describe('shared palette and ribbon commands (#5870)', () => {
       assert.ok(button.querySelector('svg'), `${definition.id} has the registry icon`);
     }
 
-    const palette = paletteSurfaceCommands({ canEditInSession: true }, () => {});
+    const palette = paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, () => {});
     assert.deepEqual(new Set(palette.map((command) => command.id)),
-      new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('palette')).map((command) => command.id)),
+      new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('palette')
+        && command.enabled({ canEditInSession: true, cesiumAvailable: false })).map((command) => command.id)),
       'every palette-declared command is available there');
     assert.deepEqual(palette.filter((command) => command.category === 'Visibility').map((command) => command.id),
       [...VISIBILITY_IDS], 'the migrated visibility family keeps its browse order');
@@ -87,7 +88,7 @@ describe('shared palette and ribbon commands (#5870)', () => {
       ['file:open-federation-setup', 'ifc-lite:open-federation-setup'],
       ['file:model-tags', 'ifc-lite:edit-model-tags'],
     ] as const;
-    const palette = registry.paletteSurfaceCommands({ canEditInSession: true }, () => {});
+    const palette = registry.paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, () => {});
     for (const [id, eventName] of cases) {
       let events = 0;
       const listener = () => { events += 1; };
@@ -118,7 +119,7 @@ describe('shared palette and ribbon commands (#5870)', () => {
     const registry = await loadRegistry();
     assert.ok(registry);
     const scripts: string[] = [];
-    const row = registry.paletteSurfaceCommands({ canEditInSession: true }, (code) => { scripts.push(code); })
+    const row = registry.paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, (code) => { scripts.push(code); })
       .find((command) => command.id === 'vis:reset-colors');
     assert.ok(row);
     row.action();

@@ -68,12 +68,12 @@ describe('tooltip secondary text meets WCAG AA on the real popover surface (#478
     {
       name: 'QuantitySetCard quantity-type tooltip',
       file: QUANTITY_SET_CARD,
-      anchor: '<TooltipContent side="top" className="text-[10px]">',
+      anchor: '<TooltipContent side="top" className="text-2xs">',
     },
     {
       name: 'PropertySetCard IFC-type tooltip',
       file: PROPERTY_SET_CARD,
-      anchor: '<TooltipContent side="top" className="text-[10px]">',
+      anchor: '<TooltipContent side="top" className="text-2xs">',
     },
     {
       name: 'BsddCard property description',

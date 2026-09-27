@@ -39,6 +39,7 @@ import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
+import { runSurfaceCommand } from './surface-command-run';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -389,6 +390,7 @@ export function commandRowFromDefinition(
     icon: command.icon,
     shortcut: command.shortcut,
     immediate: command.immediate,
-    action: () => command.run(context),
+    registryOwned: true,
+    action: () => runSurfaceCommand(command, context),
   };
 }

@@ -14,7 +14,7 @@ import type { WorkspacePanelId } from './panels/registry.js';
 // posthog-js.
 
 /** The chrome an action was started from. `rail` = the sidebar activity bar. */
-export type UiSurface = 'ribbon' | 'classic' | 'rail' | 'palette' | 'shortcut';
+export type UiSurface = 'ribbon' | 'classic' | 'rail' | 'palette' | 'shortcut' | 'mobile' | 'context';
 
 /** `programmatic` = the app opened the panel itself (a tour, a load, a
  *  drawing); it is not a user action, so nothing is reported. */
@@ -77,7 +77,7 @@ export const isSdkProperty = (key: string): boolean =>
 
 // Closed vocabularies: a value outside them is dropped.
 const ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
-  surface: new Set<string>(['ribbon', 'classic', 'rail', 'palette', 'shortcut', 'load_error', 'tour_invite', 'ribbon_notice']),
+  surface: new Set<string>(['ribbon', 'classic', 'rail', 'palette', 'shortcut', 'mobile', 'context', 'load_error', 'tour_invite', 'ribbon_notice']),
   via: new Set<string>(['esc', 'switch']),
   trigger: new Set<string>(['home', 'a', 'show_all']),
   reason: new Set<string>(['unsupported_format', 'unrecognized_format']),

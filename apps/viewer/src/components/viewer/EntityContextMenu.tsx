@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/context-menu';
 import { DuplicateItems, ExtensionContextItems, MenuItem } from './EntityContextMenuItems';
 import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
+import { runSurfaceCommand } from './surface-command-run';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -297,7 +298,7 @@ export function EntityContextMenu() {
     const label = t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(state));
     return <MenuItem commandId={id} icon={command.contextIcon ?? command.icon} label={label}
       shortcut={command.contextShortcut ?? command.shortcut}
-      onClick={() => command.run({ surface: 'context', contextAction: action })}
+      onClick={() => runSurfaceCommand(command, { surface: 'context', contextAction: action })}
       {...options} disabled={!command.enabled(state)} />;
   };
 

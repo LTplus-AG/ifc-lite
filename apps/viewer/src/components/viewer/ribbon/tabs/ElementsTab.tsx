@@ -17,6 +17,7 @@ import { hideSelectionFromStore } from '@/store/hideSelection';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { surfaceCommand } from '../../surface-commands';
+import { runSurfaceCommand } from '../../surface-command-run';
 import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
@@ -209,7 +210,7 @@ export function ElementsTab() {
               label={t(command.labelKey)}
               tooltip={t(command.labelKey)}
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => command.run({
+              onClick={() => runSurfaceCommand(command, {
                 surface: 'ribbon',
                 resetColors: () => {
                   if (!bim) throw new Error('Reset Colors requires a BimProvider');

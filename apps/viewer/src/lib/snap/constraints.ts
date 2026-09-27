@@ -34,13 +34,19 @@ function unitAt(deg: number): Vec2 {
   return [Math.cos(r * DEG), Math.sin(r * DEG)];
 }
 
-/** Direction from `anchor` towards `cursor`, quantised to `stepDeg`. 90° uses the Space Sketch |dx| ≥ |dy| rule. */
+/**
+ * Direction from `anchor` towards `cursor`, quantised to `stepDeg`. 90° uses the
+ * Space Sketch |dx| ≥ |dy| rule, and so does any step that cannot quantise
+ * (non-finite, non-positive, or so small that deg / step overflows).
+ */
 function quantisedDir(cursor: Vec2, anchor: Vec2, stepDeg: number): Vec2 {
   const dx = cursor[0] - anchor[0];
   const dy = cursor[1] - anchor[1];
-  if (stepDeg === 90) return Math.abs(dx) >= Math.abs(dy) ? [1, 0] : [0, 1];
-  const deg = Math.atan2(dy, dx) / DEG;
-  return unitAt(Math.round(deg / stepDeg) * stepDeg);
+  if (stepDeg !== 90 && Number.isFinite(stepDeg) && stepDeg > 0) {
+    const snapped = Math.round(Math.atan2(dy, dx) / DEG / stepDeg) * stepDeg;
+    if (Number.isFinite(snapped)) return unitAt(snapped);
+  }
+  return Math.abs(dx) >= Math.abs(dy) ? [1, 0] : [0, 1];
 }
 
 /** The single locus the query's locks constrain the result to. */
@@ -58,7 +64,7 @@ export function buildLocus(q: SnapQuery, p: SnapProfile): Locus {
     dir = axis === 'u' ? [1, 0] : [0, 1];
   } else if (q.modifiers.shift) {
     const step = p.angleStepDeg ?? 90;
-    dir = quantisedDir(q.cursor, a, Number.isFinite(step) && step > 0 ? step : 90);
+    dir = quantisedDir(q.cursor, a, step);
   }
   if (dir && hasLength) {
     // A linear lock is two-sided: take the side the cursor is on.

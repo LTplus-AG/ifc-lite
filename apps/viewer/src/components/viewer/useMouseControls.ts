@@ -38,6 +38,7 @@ import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
+import { closeAddElementPolygonFromDoubleClick, isAddElementPolygonRepeatClick } from './add-element-double-click.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -811,7 +812,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
     };
 
-    const handleClick = (e: MouseEvent) => handleSelectionClick(ctx, e);
+    const handleClick = (e: MouseEvent) => { if (!isAddElementPolygonRepeatClick(e)) void handleSelectionClick(ctx, e); };
 
     // Double-click finishes an in-progress polyline sequence as OPEN (#2199)
     // — the same "reads the length so far, does not close the loop" outcome
@@ -825,6 +826,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // `activeRadius` is ever non-null, so the two `!== null` checks below
     // never both fire.
     const handleDoubleClick = (e: MouseEvent) => {
+      // Add Element: double-click closes a polygon outline, like Enter (#6233).
+      if (closeAddElementPolygonFromDoubleClick()) { e.preventDefault(); return; }
       if (activeToolRef.current !== 'measure') return;
       // The store side lives in selectionHandlers.ts (beside
       // handlePolylineClick / handleRadiusClick) so it is reachable from a

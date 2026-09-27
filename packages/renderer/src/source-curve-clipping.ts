@@ -9,6 +9,7 @@ import { pointClipped } from './scene-raycaster.js';
 type Interval = readonly [number, number];
 type Plane = { n: readonly [number, number, number]; limit: number };
 const TAU = 2 * Math.PI;
+const NON_AFFINE_CLIP_SAMPLES = 32;
 
 function planesFor(clip: PickClipState): Plane[] {
   const planes: Plane[] = [];
@@ -72,6 +73,54 @@ function arcPlaneRoots(
   return roots;
 }
 
+function visibleIntervals(curve: SourceSnapCurve, roots: number[], clip: PickClipState): Interval[] {
+  roots.sort((a, b) => a - b);
+  const intervals: Interval[] = [];
+  for (let i = 0; i + 1 < roots.length; i++) {
+    const a = roots[i], b = roots[i + 1];
+    if (b - a <= 1e-14) continue;
+    const middle = curve.pointAt((a + b) / 2);
+    if (middle && !pointClipped(clip, middle.x, middle.y, middle.z)) intervals.push([a, b]);
+  }
+  return intervals;
+}
+
+/** Bracket clip-plane crossings along a smooth cross-CRS display curve.
+ * A fold entirely between adjacent samples remains below this bounded search's resolution.
+ */
+function nonAffineIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: PickClipState): Interval[] {
+  const samples = Array.from({ length: NON_AFFINE_CLIP_SAMPLES + 1 }, (_, i) =>
+    curve.pointAt(i / NON_AFFINE_CLIP_SAMPLES));
+  const roots = [0, 1];
+  for (const plane of planes) {
+    for (let i = 0; i < NON_AFFINE_CLIP_SAMPLES; i++) {
+      const a = samples[i], b = samples[i + 1];
+      if (!a || !b) continue;
+      let fa = dot(a, plane.n) - plane.limit;
+      const fb = dot(b, plane.n) - plane.limit;
+      if (!Number.isFinite(fa) || !Number.isFinite(fb)) continue;
+      const start = i / NON_AFFINE_CLIP_SAMPLES;
+      const end = (i + 1) / NON_AFFINE_CLIP_SAMPLES;
+      if (fa === 0) roots.push(start);
+      if (fb === 0) roots.push(end);
+      if (fa === 0 || fb === 0 || Math.sign(fa) === Math.sign(fb)) continue;
+      let low = start, high = end;
+      let valid = true;
+      for (let step = 0; step < 40; step++) {
+        const middle = (low + high) / 2;
+        const point = curve.pointAt(middle);
+        if (!point) { valid = false; break; }
+        const fm = dot(point, plane.n) - plane.limit;
+        if (!Number.isFinite(fm)) { valid = false; break; }
+        if (Math.sign(fm) === Math.sign(fa)) { low = middle; fa = fm; }
+        else high = middle;
+      }
+      if (valid) roots.push((low + high) / 2);
+    }
+  }
+  return visibleIntervals(curve, roots, clip);
+}
+
 function arcIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: PickClipState): Interval[] {
   const sweep = curve.sweepAngle;
   if (!sweep || !Number.isFinite(sweep)) return [];
@@ -83,25 +132,16 @@ function arcIntervals(curve: SourceSnapCurve, planes: readonly Plane[], clip: Pi
   const center = { x: (p0.x + p180.x) / 2, y: (p0.y + p180.y) / 2, z: (p0.z + p180.z) / 2 };
   const u = { x: p0.x - center.x, y: p0.y - center.y, z: p0.z - center.z };
   const v = { x: p90.x - center.x, y: p90.y - center.y, z: p90.z - center.z };
-  const roots = [0, 1, ...planes.flatMap((plane) => arcPlaneRoots(plane, center, u, v, sweep))]
-    .sort((a, b) => a - b);
-  const intervals: Interval[] = [];
-  for (let i = 0; i + 1 < roots.length; i++) {
-    const a = roots[i], b = roots[i + 1];
-    if (b - a <= 1e-14) continue;
-    const middle = curve.pointAt((a + b) / 2);
-    if (middle && !pointClipped(clip, middle.x, middle.y, middle.z)) intervals.push([a, b]);
-  }
-  return intervals;
+  const roots = [0, 1, ...planes.flatMap((plane) => arcPlaneRoots(plane, center, u, v, sweep))];
+  return visibleIntervals(curve, roots, clip);
 }
 
 /** Feasible source-parameter intervals for the renderer's current clip. */
 export function sourceCurveClipIntervals(curve: SourceSnapCurve, clip?: PickClipState | null): Interval[] {
   if (!clip || (!clip.sectionPlane && !clip.clipBox?.enabled)) return [[0, 1]];
-  // A cross-CRS map is non-affine. These equations no longer have linear or
-  // sinusoidal clip roots; retain the whole domain and reject clipped points
-  // in the candidate's final predicate.
-  if (curve.affineDisplayFrame === false) return [[0, 1]];
   const planes = planesFor(clip);
+  // Cross-CRS curves have no analytic clip roots. Numerically bracket crossings
+  // so a thin visible interval is not lost between snap-distance samples.
+  if (curve.affineDisplayFrame === false) return nonAffineIntervals(curve, planes, clip);
   return curve.kind === 'line' ? lineIntervals(curve, planes) : arcIntervals(curve, planes, clip);
 }

@@ -150,6 +150,23 @@ describe('authored source snapping (#5780)', () => {
     assert.equal(hit.target.type, SnapType.EDGE);
   });
 
+  it('finds a thin visible island and its boundary on a clipped non-affine line (#6280)', () => {
+    const curve: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 100,
+      affineDisplayFrame: false,
+      pointAt: (t) => ({ x: 100 * t, y: 0.01 * Math.sin(2 * Math.PI * t), z: 0 }) };
+    const clip = { clipBox: { enabled: true, min: [1, -1, -1] as [number, number, number],
+      max: [1.0001, 1, 1] as [number, number, number] } };
+    const centre = sourceCurveSnapCandidate([curve], 1.00005, 0.01 * Math.sin(0.020001 * Math.PI),
+      0.0001, project, accepts, clip);
+    assert.ok(centre, 'both clip boundaries fall between the original coarse samples');
+    assert.ok(Math.abs(centre.target.position.x - 1.00005) < 1e-6);
+    const nearBoundary = sourceCurveSnapCandidate([curve], 0.99995, 0.01 * Math.sin(0.02 * Math.PI),
+      0.0002, project, accepts, clip);
+    assert.ok(nearBoundary, 'the nearest visible point can lie on a clip boundary');
+    assert.ok(nearBoundary.target.position.x >= 1 && nearBoundary.target.position.x <= 1.0001);
+    assert.ok(Math.abs(nearBoundary.target.position.x - 1) < 1e-6);
+  });
+
   it('does not return a point behind a perspective near plane', () => {
     const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 2,
       pointAt: (t) => ({ x: t, y: 0, z: 1 - 2 * t }) };

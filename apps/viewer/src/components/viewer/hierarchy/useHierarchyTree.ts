@@ -95,11 +95,17 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   );
 
   const georefMutations = useViewerStore((state) => state.georefMutations); // storey badges only (#4843)
+  // The session's edits; the trees read authored rows' name and class through them (#5249, #6233).
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds, geometryReadyModelIds, georefMutations),
-    [models, sortMode, geometricIds, geometryReadyModelIds, georefMutations]
+    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds, geometryReadyModelIds, georefMutations,
+      (modelId) => mutationViews.get(modelId)),
+    // mutationVersion: the views mutate in place, so their identity alone never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, sortMode, geometricIds, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
 
   // Auto-expand nodes on initial load based on model count
@@ -215,8 +221,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // not the columnar parse the class/type builders scan, so a baked IfcSpace was
   // absent from the "By Class" tree. Filtering by geometricIds keeps it to real
   // products (the space has a mesh; its helper points/placements/solids don't).
-  const mutationViews = useViewerStore((s) => s.mutationViews);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const authoredProducts = useMemo<AuthoredProduct[]>(() => {
     const out: AuthoredProduct[] = [];
     const state = useViewerStore.getState();

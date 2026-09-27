@@ -10,15 +10,68 @@
  * this exact split (the single/federated spatial tree and the multi-model
  * Storeys section's per-model contribution) — so the row shape stays one
  * implementation rather than two, and so `treeDataBuilder.ts` stays under its
- * module-size budget.
+ * module-size budget. The rows, their "Other" shape test and the storey
+ * badge all read an element's name and class through the session's mutation
+ * view, so an element authored this session is labelled like any other (#6233).
  */
 
 import { getAggregatedChildren, collectAggregatedDescendants, type AggregationRelationships } from '@/utils/aggregation';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
-import { resolveTreeGlobalId } from './productTree';
+import { makeAssemblyGeometry, resolveTreeGlobalId } from './productTree';
+import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
+import { effectiveRowType, type TreeOverlay } from './treeOverlay.js';
 import type { TreeNode, HierarchySortMode, ExpansionLookup } from './types';
+
+/** One model's mutation view as the spatial tree reads it; absent = no edits. */
+export type ElementRowView = MutablePropertyView | null | undefined;
+
+/** The spatial tree's view for `modelId`. Legacy single-store mode keys its
+ *  edits under `__legacy__`, as the Inspector does. */
+export function spatialRowView(overlay: TreeOverlay | undefined, modelId: string): ElementRowView {
+  return overlay?.(modelId === 'legacy' ? '__legacy__' : modelId);
+}
+
+/** The class a spatial element row shows and counts: the edited class, so an
+ *  element authored this session reads as its own class rather than the
+ *  parsed table's `'Unknown'` (#6233). A deleted parsed row keeps its parsed
+ *  class; taking it out of the tree is not this label's job. */
+export function elementRowType(dataStore: IfcDataStore, view: ElementRowView, id: number): string {
+  return effectiveRowType(dataStore, view, id) ?? (dataStore.entities?.getTypeName(id) || 'Unknown');
+}
+
+/**
+ * The shape half of the object count: "would this entity put anything on
+ * screen?".
+ *
+ * It is `makeAssemblyGeometry`'s own `renders`, not a second reading of the
+ * mesh set, so the spatial badge and the By Class tab cannot answer the same
+ * question differently -- an `IfcRoof` whose geometry sits on its
+ * `IfcRelAggregates` beams renders in both or neither.
+ *
+ * `null` while nothing has streamed: the shape test is unanswerable then, so
+ * the count reports every physical object and says on hover that it is still
+ * provisional, rather than reading an empty mesh set as "nothing has a shape".
+ */
+export function makeShapeTest(
+  dataStore: IfcDataStore,
+  view: ElementRowView,
+  modelId: string,
+  models: Map<string, FederatedModel>,
+  geometricIds: Set<number> | undefined,
+  geometryKnown = !!geometricIds && geometricIds.size > 0,
+): ((id: number) => boolean) | null {
+  if (!geometryKnown) return null;
+  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds, true);
+  return (id: number) =>
+    assemblyGeometry.renders(
+      elementRowType(dataStore, view, id),
+      id,
+      resolveTreeGlobalId(modelId, id, models),
+    );
+}
 
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level
  *  10" — the same convention `treeDataBuilder.ts`'s storey sort uses. A
@@ -27,16 +80,14 @@ import type { TreeNode, HierarchySortMode, ExpansionLookup } from './types';
  *  `treeDataBuilder.ts` for one constant. */
 const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-/** The name a spatial element row renders with: its entity name, or a
- *  "<Type> #<id>" fallback. Single source of truth so the displayed label
- *  (`emitElementSubtree`) and the name-sort key (`orderElementIdsByName`)
- *  can't drift apart. Callers that already resolved the type name pass it as
- *  `typeName` so the fallback branch does not fetch it a second time. */
-function getElementDisplayName(id: number, dataStore: IfcDataStore, typeName?: string): string {
-  const entities = dataStore.entities;
-  const name = entities?.getName(id);
-  if (name) return name;
-  return `${typeName || entities?.getTypeName(id) || 'Unknown'} #${id}`;
+/** The name a spatial element row renders with: its effective (overlay-aware)
+ *  entity name, or a "<Type> #<id>" fallback. Single source of truth so the
+ *  displayed label (`emitElementSubtree`) and the name-sort key
+ *  (`orderElementIdsByName`) can't drift apart. Callers that already resolved
+ *  the type name pass it as `typeName` so it is not resolved a second time. */
+function getElementDisplayName(id: number, dataStore: IfcDataStore, view: ElementRowView, typeName?: string): string {
+  return effectiveTreeEntityName(dataStore, view, id, '')
+    || `${typeName ?? elementRowType(dataStore, view, id)} #${id}`;
 }
 
 /** Order the element rows within a spatial container by the active browser sort
@@ -51,6 +102,7 @@ function getElementDisplayName(id: number, dataStore: IfcDataStore, typeName?: s
 export function orderElementIdsByName(
   elementIds: number[],
   dataStore: IfcDataStore,
+  view: ElementRowView,
   mode: HierarchySortMode,
 ): number[] {
   if ((mode !== 'name-asc' && mode !== 'name-desc') || elementIds.length < 2) {
@@ -60,7 +112,7 @@ export function orderElementIdsByName(
   // Decorate-sort-undecorate: resolve each display name exactly once rather than
   // O(n log n) times inside the comparator.
   return elementIds
-    .map((id) => ({ id, name: getElementDisplayName(id, dataStore) }))
+    .map((id) => ({ id, name: getElementDisplayName(id, dataStore, view) }))
     .sort((a, b) => dir * nameCollator.compare(a.name, b.name))
     .map((e) => e.id);
 }
@@ -86,6 +138,7 @@ export function emitElementSubtree(
   modelId: string,
   models: Map<string, FederatedModel>,
   dataStore: IfcDataStore,
+  view: ElementRowView,
   depth: number,
   expandedNodes: ExpansionLookup,
   nodes: TreeNode[],
@@ -95,9 +148,9 @@ export function emitElementSubtree(
 ): void {
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
-  const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
+  const entityType = elementRowType(dataStore, view, elementId);
   // Reuse entityType so an unnamed element resolves its type name only once.
-  const entityName = getElementDisplayName(elementId, dataStore, entityType);
+  const entityName = getElementDisplayName(elementId, dataStore, view, entityType);
 
   // Direct decomposition children, minus anything already on the path (cycle
   // guard), ordered by the active name sort so it reaches inside a decomposing
@@ -107,6 +160,7 @@ export function emitElementSubtree(
       (id) => id !== elementId && !ancestors.has(id),
     ),
     dataStore,
+    view,
     sortMode,
   );
   const hasChildren = childIds.length > 0;
@@ -148,7 +202,7 @@ export function emitElementSubtree(
       // yes), so in practice this row has no children whenever `noGeometry`
       // is true. Propagate anyway rather than assume it, so a future caller
       // can never end up with a normal-looking child under a grayed parent.
-      emitElementSubtree(childId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, nextAncestors, sortMode, noGeometry);
+      emitElementSubtree(childId, modelId, models, dataStore, view, depth + 1, expandedNodes, nodes, nextAncestors, sortMode, noGeometry);
     }
   }
 }
@@ -177,6 +231,7 @@ export function emitElementsWithOtherBucket(
   modelId: string,
   models: Map<string, FederatedModel>,
   dataStore: IfcDataStore,
+  view: ElementRowView,
   depth: number,
   expandedNodes: ExpansionLookup,
   nodes: TreeNode[],
@@ -184,11 +239,11 @@ export function emitElementsWithOtherBucket(
   hasShape: ((id: number) => boolean) | null,
   otherNodeId: string,
 ): void {
-  const ordered = orderElementIdsByName(elementIds as number[], dataStore, sortMode);
+  const ordered = orderElementIdsByName(elementIds as number[], dataStore, view, sortMode);
 
   if (!hasShape) {
     for (const elementId of ordered) {
-      emitElementSubtree(elementId, modelId, models, dataStore, depth, expandedNodes, nodes, new Set(), sortMode);
+      emitElementSubtree(elementId, modelId, models, dataStore, view, depth, expandedNodes, nodes, new Set(), sortMode);
     }
     return;
   }
@@ -204,12 +259,12 @@ export function emitElementsWithOtherBucket(
     // physical element with no shape belongs in "Other". A non-physical row
     // (an annotation, for instance) with no representation is normal and
     // stays a plain row instead of being swept into the bucket.
-    const typeName = dataStore.entities?.getTypeName(elementId) ?? 'Unknown';
+    const typeName = elementRowType(dataStore, view, elementId);
     (isPhysicalObjectType(typeName) ? other : shaped).push(elementId);
   }
 
   for (const elementId of shaped) {
-    emitElementSubtree(elementId, modelId, models, dataStore, depth, expandedNodes, nodes, new Set(), sortMode);
+    emitElementSubtree(elementId, modelId, models, dataStore, view, depth, expandedNodes, nodes, new Set(), sortMode);
   }
 
   if (other.length === 0) return;
@@ -233,7 +288,7 @@ export function emitElementsWithOtherBucket(
   if (isOtherExpanded) {
     // Already in `orderElementIdsByName` order as a subsequence of `ordered`.
     for (const elementId of other) {
-      emitElementSubtree(elementId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, new Set(), sortMode, true);
+      emitElementSubtree(elementId, modelId, models, dataStore, view, depth + 1, expandedNodes, nodes, new Set(), sortMode, true);
     }
   }
 }

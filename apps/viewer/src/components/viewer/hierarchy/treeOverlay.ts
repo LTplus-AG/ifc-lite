@@ -15,7 +15,7 @@
  * enumerate authored entities and edited relationship endpoints (#5249).
  */
 
-import { normalizeIfcTypeName } from '@ifc-lite/parser';
+import { normalizeIfcTypeName, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 
 /** Resolves a model's mutation view; absent or null means no edits to apply. */
@@ -35,4 +35,20 @@ export function effectiveTreeType(
   if (view.isDeleted(expressId)) return null;
   const retype = view.getEntityTypeMutation(expressId)?.newType;
   return retype ? normalizeIfcTypeName(retype) : parsedType;
+}
+
+/**
+ * Any row's class in the edited model, parsed or authored: the overlay
+ * record's class for an entity created this session (the parsed table does
+ * not hold it and answers `'Unknown'`, #6233), the parsed class otherwise,
+ * then {@link effectiveTreeType}'s retype and delete rules.
+ */
+export function effectiveRowType(
+  store: IfcDataStore,
+  view: MutablePropertyView | null | undefined,
+  expressId: number,
+): string | null {
+  const authored = view?.getNewEntity(expressId)?.type;
+  const parsedType = authored ? normalizeIfcTypeName(authored) : store.entities?.getTypeName(expressId);
+  return effectiveTreeType(view, expressId, parsedType || 'Unknown');
 }

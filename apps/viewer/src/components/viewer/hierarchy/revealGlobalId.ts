@@ -69,7 +69,7 @@ export function buildTreeForGrouping(
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
   }
-  return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations);
+  return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations, treeOverlay);
 }
 
 interface TreeBuildParams {

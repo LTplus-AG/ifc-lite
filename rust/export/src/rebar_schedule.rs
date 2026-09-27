@@ -177,8 +177,7 @@ pub fn build_rebar_schedule(
     let scale = decoder.length_unit_scale();
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
-    let mut type_of = HashMap::new();
-    let mut type_conflicts: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut type_candidates: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
     let mut project_id = None;
@@ -213,12 +212,7 @@ pub fn build_rebar_schedule(
                         let Some(bar_id) = item.as_entity_ref() else {
                             continue;
                         };
-                        if let Some(previous) = type_of.insert(bar_id, type_id) {
-                            if previous != type_id {
-                                type_conflicts.entry(bar_id).or_default().push(type_id);
-                                type_of.insert(bar_id, previous);
-                            }
-                        }
+                        type_candidates.entry(bar_id).or_default().push(type_id);
                     }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
                 }
@@ -246,7 +240,25 @@ pub fn build_rebar_schedule(
     let mut rows = BTreeMap::new();
     let mut sweep_count = 0;
     for (id, bar) in bars {
-        let type_id = type_of.get(&id).copied();
+        let mut type_id = None;
+        let mut type_diagnostics = Vec::new();
+        let mut seen_types = HashSet::new();
+        for candidate in type_candidates.remove(&id).unwrap_or_default() {
+            if !seen_types.insert(candidate) {
+                continue;
+            }
+            if !types.contains_key(&candidate) {
+                type_diagnostics.push(format!(
+                    "assigned type #{candidate} is not IfcReinforcingBarType"
+                ));
+            } else if let Some(first) = type_id {
+                type_diagnostics.push(format!(
+                    "conflicting type assignments #{first} and #{candidate}; first valid assignment wins"
+                ));
+            } else {
+                type_id = Some(candidate);
+            }
+        }
         let bar_type = type_id.and_then(|type_id| types.get(&type_id));
         let mut row = RebarScheduleRow {
             global_id: bar.get_string(0).map(str::to_owned),
@@ -255,22 +267,8 @@ pub fn build_rebar_schedule(
             authored: BTreeMap::new(),
             sweeps: Vec::new(),
             geometry_unavailable_reason: None,
-            diagnostics: Vec::new(),
+            diagnostics: type_diagnostics,
         };
-        if type_id.is_some() && bar_type.is_none() {
-            row.diagnostics.push(format!(
-                "assigned type #{} is not IfcReinforcingBarType",
-                type_id.unwrap_or_default()
-            ));
-        }
-        if let Some(conflicts) = type_conflicts.get(&id) {
-            for other in conflicts {
-                row.diagnostics.push(format!(
-                    "conflicting type assignments #{} and #{other}; first assignment wins",
-                    type_id.unwrap_or_default()
-                ));
-            }
-        }
         if known_schema {
             for &field in FIELDS {
                 let own = attribute(&bar, &schema_label, field, scale, area_scale);

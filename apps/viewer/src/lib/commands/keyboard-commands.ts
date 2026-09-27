@@ -40,6 +40,8 @@ export type KeyContext =
   | 'command'
   /** One modeling command's own keys, e.g. `command.wall.place`. */
   | `command.${string}`
+  /** While the Model workspace is open (not while walking): its tool rail keys. */
+  | 'workspace.model'
   /** The 2D drawing's measure and annotation tools. */
   | 'drawing2d'
   /** While right mouse is held in the 3D view (fly). */
@@ -120,6 +122,9 @@ export const KEY_COMMANDS = [
   { id: 'command.nextField', labelKey: 'commands.command.nextField', category: 'tools', when: 'command', keys: [k('tab')] },
   { id: 'command.typeValue', labelKey: 'commands.command.typeValue', category: 'tools', when: 'command', keys: DIGITS, display: 'range' },
   { id: 'command.toggleSnap', labelKey: 'commands.command.toggleSnap', category: 'tools', when: 'command', keys: [k('s')] },
+  { id: 'model.wall', labelKey: 'commands.model.wall', category: 'tools', when: 'workspace.model', keys: [k('w')] },
+  { id: 'model.storeyUp', labelKey: 'commands.model.storeyUp', category: 'tools', when: 'workspace.model', keys: [k('pageup')] },
+  { id: 'model.storeyDown', labelKey: 'commands.model.storeyDown', category: 'tools', when: 'workspace.model', keys: [k('pagedown')] },
   { id: 'drawing2d.cancel', labelKey: 'commands.drawing2d.cancel', category: 'tools', when: 'drawing2d', keys: [k('escape')] },
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },

@@ -56,8 +56,8 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const addElementStoreyId = useViewerStore((s) => s.addElementStoreyId);
   const setAddElementStoreyId = useViewerStore((s) => s.setAddElementStoreyId);
 
-  const wallParams = useViewerStore((s) => s.addElementWallParams);
-  const setWallParams = useViewerStore((s) => s.setAddElementWallParams);
+  const wallParams = useViewerStore((s) => s.authoringDefaults.dims.wall);
+  const setWallParams = useViewerStore((s) => s.setAuthoringDims);
   const slabParams = useViewerStore((s) => s.addElementSlabParams);
   const setSlabParams = useViewerStore((s) => s.setAddElementSlabParams);
   const beamParams = useViewerStore((s) => s.addElementBeamParams);
@@ -280,8 +280,8 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
           {addElementType === 'wall' && (
             <div className="grid grid-cols-2 gap-2">
-              <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams({ Thickness: v })} />
-              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={wallParams.Height} min={0.01} onChange={(v) => setWallParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams('wall', { Thickness: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={wallParams.Height} min={0.01} onChange={(v) => setWallParams('wall', { Height: v })} />
             </div>
           )}
 

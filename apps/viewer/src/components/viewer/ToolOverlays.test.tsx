@@ -60,6 +60,9 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
 
   it('places a running command\'s bar top-center and its hint bottom-center, and removes both when the tool changes', async () => {
     await seedModelingSession();
+    // Back in Select the Model workspace shows its one-time hint (#6232 M2.1);
+    // a returning user has seen it, and it is not the command's hint.
+    localStorage.setItem('ifc-lite:model-hint-seen', '1');
     const unregister = registerModelingCommand<null>({
       id: 'test.hud', labelKey: 'splitTool.barLabel', hud: { hint: () => 'splitTool.hint' }, snap: 'modeling',
       init: () => null, pointerMove: (g) => g, pointerDown: (g) => g, commit: () => ({ created: [], deleted: [], remesh: [] }),
@@ -82,6 +85,7 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
     } finally {
       useViewerStore.getState().exitModelWorkspace();
       unregister();
+      localStorage.removeItem('ifc-lite:model-hint-seen');
     }
   });
 

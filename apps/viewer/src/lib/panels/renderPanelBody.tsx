@@ -34,6 +34,7 @@ import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
 import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
 import { MeasurementsPanel } from '@/components/viewer/MeasurementsPanel';
 import { PlacementPanel } from '@/components/viewer/placement/PlacementPanel';
+import { ModelInspectorPanel } from '@/components/viewer/model-inspector/ModelInspectorPanel';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
@@ -157,5 +158,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'pointclouds': return <PointCloudPanelBody onClose={onClose} />;
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
     case 'placement': return <PlacementPanel onClose={onClose} />;
+    case 'model': return <ModelInspectorPanel onClose={onClose} />;
   }
 }

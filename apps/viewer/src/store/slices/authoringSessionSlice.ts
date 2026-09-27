@@ -29,6 +29,11 @@ import {
   type CommandPhase,
 } from '@/lib/commands/modeling/runtime';
 import type { CommandId, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
+import {
+  loadModelLayout, persistModelLayout, restoreSidebar, showModelInspector,
+  type ModelLayout, type SidebarRestore,
+} from './authoringSessionSidebar.js';
+
 
 export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';
@@ -41,6 +46,8 @@ export interface AuthoringSession {
   readonly activeCommandId: CommandId | null;
   readonly phase: CommandPhase;
   readonly snap: { readonly profile: SnapProfileId };
+  /** The sidebar panel to put back on exit (null: the workspace took nothing over). */
+  readonly sidebarRestore: SidebarRestore | null;
 }
 
 export interface EnterModelWorkspaceOptions {
@@ -52,6 +59,9 @@ export interface EnterModelWorkspaceOptions {
 export interface AuthoringSessionSlice {
   workspaceMode: WorkspaceMode;
   session: AuthoringSession | null;
+  /** Plan ‖ 3D split of the Model workspace's viewport (persisted per browser). */
+  modelLayout: ModelLayout;
+  setModelLayout: (layout: ModelLayout) => void;
   /** False when refused (collab role, no editable model). */
   enterModelWorkspace: (opts?: EnterModelWorkspaceOptions) => boolean;
   exitModelWorkspace: () => void;
@@ -134,6 +144,11 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
   return {
     workspaceMode: 'view',
     session: null,
+    modelLayout: loadModelLayout(),
+    setModelLayout: (modelLayout) => {
+      persistModelLayout(modelLayout);
+      set({ modelLayout });
+    },
 
     enterModelWorkspace: (opts = {}) => {
       const s = get();
@@ -148,6 +163,8 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
       // Storey: explicit → the selection's → the Add Element panel's → the first.
       const preferred = opts.storeyId ?? selectionStorey(s, modelId) ?? s.addElementStoreyId;
       const storeyId = selectEffectiveStoreyId(store, s.mutationViews.get(modelId), preferred);
+      // Re-entering on another model keeps the panel the FIRST entry took over.
+      const sidebarRestore = s.session ? s.session.sidebarRestore : showModelInspector(s);
       set({
         workspaceMode: 'model',
         editEnabled: true,
@@ -158,6 +175,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
           activeCommandId: null,
           phase: 'idle',
           snap: { profile: 'modeling' },
+          sidebarRestore,
         },
       });
       if (opts.command) get().startCommand(opts.command);
@@ -167,7 +185,9 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     exitModelWorkspace: () => {
       // Leaving cancels the gesture in progress; nothing half-drawn is written.
       if (get().session?.activeCommandId) get().endCommand('cancel');
+      const restore = get().session?.sidebarRestore ?? null;
       set({ workspaceMode: 'view', session: null });
+      restoreSidebar(get, restore);
       // …and edit mode with it (authoring tools, georef drafts: uiSlice).
       if (get().editEnabled) get().setEditEnabled(false);
     },

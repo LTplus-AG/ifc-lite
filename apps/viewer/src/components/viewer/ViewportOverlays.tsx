@@ -26,7 +26,7 @@ import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
 // zero-net addition since this already lives inside the same viewport panel.
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
-import { EditModeHudChip } from './EditModeHudChip';
+import { WorkspaceStoreyChip } from './model/WorkspaceStoreyChip';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
@@ -179,7 +179,7 @@ export function ViewportOverlays({
       {/* HUD kernel (#5485); mounted first so its regions exist before
           anything below portals in. */}
       <ViewportHud />
-      <EditModeHudChip />
+      <WorkspaceStoreyChip />
       {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />

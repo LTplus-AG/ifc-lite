@@ -17,7 +17,9 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import type { ComponentType } from 'react';
+import { EditElement } from '@/icons';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -53,10 +55,11 @@ export type WorkspacePanelId =
   | 'measurements'
   | 'placement'
   | 'presentation'
-  | 'changes';
+  | 'changes'
+  | 'model';
 
 /** Shared task grouping for the rail, ribbon panel browser, and palette commands (#5873). */
-export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site';
+export type PanelGroup = 'coordinate' | 'check' | 'quantify' | 'automate' | 'site' | 'author';
 
 export const PANEL_GROUPS = [
   { id: 'coordinate', labelKey: 'shellChrome.panelGroups.coordinate', descriptionKey: 'shellChrome.panelGroups.coordinateDescription' },
@@ -64,6 +67,7 @@ export const PANEL_GROUPS = [
   { id: 'quantify', labelKey: 'shellChrome.panelGroups.quantify', descriptionKey: 'shellChrome.panelGroups.quantifyDescription' },
   { id: 'automate', labelKey: 'shellChrome.panelGroups.automate', descriptionKey: 'shellChrome.panelGroups.automateDescription' },
   { id: 'site', labelKey: 'shellChrome.panelGroups.site', descriptionKey: 'shellChrome.panelGroups.siteDescription' },
+  { id: 'author', labelKey: 'shellChrome.panelGroups.author', descriptionKey: 'shellChrome.panelGroups.authorDescription' },
 ] as const satisfies readonly { id: PanelGroup; labelKey: TranslationKey; descriptionKey: TranslationKey }[];
 
 export function panelGroupDefinition(id: PanelGroup): (typeof PANEL_GROUPS)[number] {
@@ -80,7 +84,8 @@ export interface WorkspacePanelDef {
   id: WorkspacePanelId;
   /** One name for every panel surface, translated at the rendering boundary. */
   titleKey: TranslationKey;
-  Icon: LucideIcon;
+  /** A lucide icon or a custom `@/icons` one; both take a `className`. */
+  Icon: ComponentType<{ className?: string }>;
   /** Task group shared by the rail, ribbon, and panel commands. */
   group: PanelGroup;
   /** Home dock: the right pane (`side`) or the bottom strip (`bottom`). */
@@ -188,6 +193,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Active model edits and their undoable operations (#5902). Appended so
   // existing Alt+digit panel shortcuts remain stable.
   { id: 'changes', titleKey: 'changesPanel.title', Icon: History, group: 'check', region: 'side' },
+  // The Model workspace's inspector (#6232 M2): shown on entry, the previous
+  // panel restored on exit (`authoringSessionSidebar.ts`). Flag-free like
+  // 'changes' / 'zones' (#1869 precedent). APPENDED (no Alt shortcut).
+  { id: 'model', titleKey: 'modelInspector.panel.title', Icon: EditElement, group: 'author', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

@@ -157,6 +157,80 @@ fn issue_5786_many_mapped_occurrences_decode_one_source_and_keep_each_target() {
 }
 
 #[test]
+fn issue_5786_nested_mirrored_scaled_maps_keep_order_and_world_frames() {
+    let fixture = include_str!("../../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc");
+    let model = fixture.replace(
+        "#45=IFCREPRESENTATIONMAP(#13,#44);",
+        "#1009=IFCCARTESIANPOINT((100.,20.,0.));\n\
+         #1010=IFCAXIS2PLACEMENT3D(#1009,$,$);\n\
+         #45=IFCREPRESENTATIONMAP(#1010,#44);",
+    ).replace(
+        "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",
+        "#1000=IFCCARTESIANPOINT((5000.,0.,0.));\n\
+         #1001=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,2.,$);\n\
+         #1002=IFCMAPPEDITEM(#45,#1001);\n\
+         #48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47,#1002));",
+    ).replace(
+        "#49=IFCPRODUCTDEFINITIONSHAPE($,$,(#48));",
+        "#1003=IFCDIRECTION((0.,-1.,0.));\n\
+         #1004=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#12,#1003,#10,$,$);\n\
+         #1005=IFCREPRESENTATIONMAP(#13,#48);\n\
+         #1006=IFCMAPPEDITEM(#1005,#1004);\n\
+         #1007=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,3.,$);\n\
+         #1008=IFCMAPPEDITEM(#1005,#1007);\n\
+         #1011=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#1006,#1008));\n\
+         #49=IFCPRODUCTDEFINITIONSHAPE($,$,(#1011));",
+    );
+
+    for (definitions, descriptions) in [(false, true), (true, false)] {
+        let mut cached = MappedSourceCache::new();
+        let actual = extract_with_source_cache(
+            model.as_bytes(), None, definitions, descriptions, false, &mut cached,
+        );
+        let mut uncached = MappedSourceCache::new();
+        uncached.enabled = false;
+        let expected = extract_with_source_cache(
+            model.as_bytes(), None, definitions, descriptions, false, &mut uncached,
+        );
+        assert_eq!((cached.loads, cached.hits, uncached.loads), (2, 4, 6));
+        assert!(actual.descriptions.diagnostics.is_empty(),
+            "{:?}", actual.descriptions.diagnostics);
+        assert_eq!(serde_json::to_value(&actual.descriptions).unwrap(),
+            serde_json::to_value(&expected.descriptions).unwrap());
+        assert_eq!(serde_json::to_value(&actual.definitions).unwrap(),
+            serde_json::to_value(&expected.definitions).unwrap());
+
+        if definitions {
+            let instances = &actual.definitions.unwrap().instances[&50];
+            let paths: Vec<_> = instances.iter().map(|instance| instance.mapping_path.as_slice()).collect();
+            assert_eq!(paths, [
+                &[1006, 47][..], &[1006, 1002], &[1008, 47], &[1008, 1002],
+            ]);
+            let matrices: Vec<_> = instances.iter().map(|instance|
+                instance.world_from_source.expect("valid mapped world transform")).collect();
+            for (index, (scale, x, y)) in [
+                (0.001, 0.1, -0.02), (0.002, 5.2, -0.04),
+                (0.003, 0.3, 0.06), (0.006, 15.6, 0.12),
+            ].into_iter().enumerate() {
+                assert!((matrices[index][0] - scale).abs() < 1e-12);
+                assert!((matrices[index][12] - x).abs() < 1e-10);
+                assert!((matrices[index][13] - y).abs() < 1e-10);
+            }
+            assert!(matrices[0][5] < 0.0 && matrices[1][5] < 0.0);
+            assert!(matrices[2][5] > 0.0 && matrices[3][5] > 0.0);
+        } else {
+            let occurrences = &actual.descriptions.elements[&50];
+            assert_eq!(occurrences.len(), 4);
+            assert_eq!(occurrences.iter().map(|item| item.mapping_path.as_slice()).collect::<Vec<_>>(),
+                vec![&[1006, 47][..], &[1006, 1002], &[1008, 47], &[1008, 1002]]);
+            for (item, radius) in occurrences.iter().zip([0.0145, 0.029, 0.0435, 0.087]) {
+                assert!((item.radius - radius).abs() < 1e-12);
+            }
+        }
+    }
+}
+
+#[test]
 fn issue_5786_invalid_shared_source_reports_each_product() {
     let fixture = include_str!("../../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc");
     let model = fixture.replace(

@@ -14,9 +14,9 @@
  * cursor position of that frame.
  */
 
-import type { SnapResult, Vec3 } from '@/lib/snap/types';
+import type { SnapResult } from '@/lib/snap/types';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
-import type { CommandContext } from '@/lib/commands/modeling/types';
+import type { CommandContext, Vec3 } from '@/lib/commands/modeling/types';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 let latest: { x: number; y: number } | null = null;

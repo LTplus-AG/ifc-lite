@@ -22,9 +22,9 @@ import { notifyWallSplit } from '@/components/viewer/wallSplitNotice';
 import { SplitScene } from '@/components/viewer/tools/SplitHud';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
-import type { Vec2, Vec3 } from '@/lib/snap/types';
+import type { Vec2 } from '@/lib/snap/types';
 import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
-import type { CommandContext, CommitResult, ModelingCommand, Workplane } from '../types.js';
+import type { CommandContext, CommitResult, ModelingCommand, Vec3, Workplane } from '../types.js';
 
 export interface SplitHover {
   /** Cut point in render space. */

@@ -14,7 +14,7 @@
 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
-import type { Vec3 } from '@/lib/snap/types';
+import type { Vec3 } from './types.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from '@/hooks/ingest/federationAlign';
 import { buildSpatialAlignmentTransform } from '@/hooks/ingest/federationSpatialTransform';
 import type { AffineTransform3D } from '@/hooks/ingest/federationAlignAabb';

@@ -2,66 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Export parity between the two toolbar styles (ifc-lite#2511).
- *
- * WHAT THIS IS A REGRESSION TEST FOR. Every test below traces to a specific
- * defect, and each names its own in the test title so a failure here is
- * readable without this header. Together:
- *
- * - **#2511** — the two toolbars kept separate hand-written export lists, and
- *   had already drifted on *when* a format is offered: the ribbon's Screenshot
- *   button carried no `disabled` gate, so it was clickable with no model
- *   loaded, while the classic strip's dialog rows carried no gate either and
- *   were merely unreachable behind a disabled Download trigger. Both are now
- *   one `requires` field in `export-commands.ts`.
- * - **#2511** — a federated CSV/JSON export reads only the active
- *   `ifcDataStore`, so it covers one model of several, and both styles
- *   reported it as a whole-model export.
- * - **#2510**, the sibling PR that did this for three non-export toolbar
- *   capabilities, found the hole this file had too: rendering the export
- *   clusters directly proves the clusters work, not that the shipped toolbars
- *   still host them. Deleting `<ClassicExportMenuItems />` from `MainToolbar`
- *   while leaving its import behind kept this file 10/10 green with the
- *   classic Export menu shipping empty.
- *
- * The three capability gaps that motivated the sibling guard — camera
- * rotate-90 ribbon-only, the desktop zoom cluster hidden from classic, inline
- * search classic-only — are listed in `../toolbar-parity.test.ts` (#2510).
- *
- * The viewer ships the classic `MainToolbar` strip *and* the tabbed
- * `RibbonToolbar`; a user on either must reach the same export formats. This
- * file is the gate: it renders both styles' Export clusters and asserts each
- * emits exactly the ids in `EXPORT_COMMANDS`, in the same order — so adding a
- * format to one surface and not the other fails here.
- *
- * It also nails down the three ways someone could get around the registry:
- * hand-rolling an export entry inside a toolbar (source guard), adding a
- * registry entry without teaching a style's icon set about it (icon-set
- * coverage, checked for the ribbon by source because `@/icons` only resolves
- * through the Vite plugin), and — the one that bites hardest — deleting a
- * surface's Export cluster while leaving its import behind, which every other
- * test here happily survives because they render the cluster components
- * directly rather than the toolbars that host them.
- *
- * Presence is not enough — a wired-looking button whose handler does nothing
- * has shipped here before — so the last tests actually click through both
- * surfaces and assert a download is produced, the right one is produced, and a
- * dialog opens.
- */
+/** Ribbon export reachability, gating and actions (#2510, #2511, #5874). */
 
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu.js';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { useViewerStore } from '@/store/index.js';
 // Bare specifiers, matching what the code under test imports: a `.js`-suffixed
@@ -71,18 +18,18 @@ import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 import {
   EXPORT_COMMANDS,
   EXPORT_COMMAND_IDS,
   type ExportIconSet,
 } from './export-commands.js';
-import { CLASSIC_EXPORT_ICONS, ClassicExportMenuItems } from './ClassicExportMenuItems.js';
 import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
 import { RIBBON_EXPORT_ICONS } from '../ribbon/tabs/ribbon-export-icons.js';
-import { MainToolbar } from '../MainToolbar.js';
 import { FileTab } from '../ribbon/tabs/FileTab.js';
 import type { FileCommands } from './useFileCommands.js';
+import { useExportCommands } from './useExportCommands.js';
 
 /**
  * The real `FileCommands` contract, TYPED rather than cast: none of these are
@@ -98,13 +45,6 @@ const FILE_COMMANDS: FileCommands = {
   hasModelsLoaded: true,
 };
 
-const VIEWER_SRC = fileURLToPath(new URL('../../..', import.meta.url));
-
-function readSource(relativePath: string): string {
-  return readFileSync(`${VIEWER_SRC}/${relativePath}`, 'utf8');
-}
-
-/** Import statements (including multi-line named imports), matched as a unit. */
 /**
  * The ribbon's real icons come from `@/icons`, which resolves through
  * `unplugin-icons` and cannot be loaded by the node test runner; the component
@@ -133,21 +73,16 @@ function render(node: React.ReactNode): HTMLElement {
   return container;
 }
 
-/** The classic strip's Export cluster: the body of its Download dropdown. */
-function renderClassicExports(): void {
-  render(
-    <DropdownMenu open modal={false}>
-      <DropdownMenuTrigger>Export and download</DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <ClassicExportMenuItems />
-      </DropdownMenuContent>
-    </DropdownMenu>,
-  );
-}
-
 /** The ribbon's Export cluster: the File tab's Export group. */
 function renderRibbonExports(): void {
   render(<RibbonExportGroup icons={STUB_ICONS} />);
+}
+
+let exportEntitiesCsv: (() => Promise<void>) | null = null;
+function CsvExportHarness() {
+  const { handleExportCSV } = useExportCommands('ribbon');
+  exportEntitiesCsv = () => handleExportCSV('entities');
+  return null;
 }
 
 /** Export ids currently on screen, in DOM order. */
@@ -307,23 +242,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  exportEntitiesCsv = null;
   for (const { root, container } of mounted.splice(0)) {
     act(() => root.unmount());
     container.remove();
   }
 });
 
-describe('export UI parity (ifc-lite#2511)', () => {
+describe('ribbon export UI (#2510, #2511, #5874)', () => {
   it('the registry is internally consistent', () => {
     const ids = EXPORT_COMMANDS.map((c) => c.id);
     assert.deepEqual([...EXPORT_COMMAND_IDS], ids, 'EXPORT_COMMAND_IDS must mirror the registry');
     assert.equal(new Set(ids).size, ids.length, 'export command ids must be unique');
     assert.ok(ids.length > 0, 'the registry must not be empty');
-  });
-
-  it('the classic toolbar renders every registered export format', () => {
-    renderClassicExports();
-    assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS]);
   });
 
   it('the ribbon renders every registered export format', () => {
@@ -345,11 +276,6 @@ describe('export UI parity (ifc-lite#2511)', () => {
           return <Dialog {...props} />;
         });
       }
-      renderClassicExports();
-      assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
-        dialogs.map((command) => [command.id, ['classic']]));
-      unmountAll();
-      seen.clear();
       renderRibbonExports();
       assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
         dialogs.map((command) => [command.id, ['ribbon']]));
@@ -359,41 +285,14 @@ describe('export UI parity (ifc-lite#2511)', () => {
     }
   });
 
-  it('both toolbar styles expose the same formats in the same order (#2511: two hand-written lists)', () => {
-    renderClassicExports();
-    const classic = renderedExportIds();
-    unmountAll();
-    renderRibbonExports();
-    const ribbon = renderedExportIds();
-
-    assert.deepEqual(
-      ribbon,
-      classic,
-      'a format reachable in one toolbar style must be reachable in the other — ' +
-        'add it to EXPORT_COMMANDS instead of to a single toolbar',
-    );
-  });
-
-  it('both toolbar styles gate every format identically (#2511: the ribbon offered Screenshot with no model loaded)', () => {
-    // No model, no data store: everything is off in both styles.
-    renderClassicExports();
-    const classicOff = renderedExportIds().filter((id) => {
-      const el = exportControl(id);
-      return el.hasAttribute('disabled') || el.getAttribute('data-disabled') !== null;
-    });
-    unmountAll();
+  it('gates every format with no model loaded (#2511)', () => {
     renderRibbonExports();
     const ribbonOff = renderedExportIds().filter((id) => {
       const el = exportControl(id);
       return el.hasAttribute('disabled') || el.getAttribute('data-disabled') !== null;
     });
 
-    assert.deepEqual(ribbonOff, classicOff);
     assert.deepEqual(ribbonOff, [...EXPORT_COMMAND_IDS], 'nothing is exportable with no model loaded');
-  });
-
-  it('the classic icon set covers every registered format', () => {
-    assert.deepEqual(Object.keys(CLASSIC_EXPORT_ICONS).sort(), [...ICON_KEYS].sort());
   });
 
   it('the ribbon icon set covers every registered format', () => {
@@ -409,70 +308,8 @@ describe('export UI parity (ifc-lite#2511)', () => {
     }
   });
 
-  it('neither toolbar hand-rolls an export entry beside the registry (#2511: routing around the single source)', () => {
-    const surfaces = [
-      'components/viewer/MainToolbar.tsx',
-      ...readdirSync(`${VIEWER_SRC}/components/viewer/ribbon/tabs`)
-        .filter((f) => f.endsWith('.tsx') && f !== 'RibbonExportGroup.tsx')
-        .map((f) => `components/viewer/ribbon/tabs/${f}`),
-    ];
-
-    for (const surface of surfaces) {
-      const source = readSource(surface);
-      assert.equal(
-        /from ['"][^'"]*Export(Dialog|Modal)['"]/.test(source),
-        false,
-        `${surface} imports an export dialog directly — register the format in ` +
-          'toolbar/export-commands.ts so both toolbar styles get it',
-      );
-      assert.equal(
-        source.includes('data-export-command'),
-        false,
-        `${surface} renders an export control of its own — register the format in ` +
-          'toolbar/export-commands.ts so both toolbar styles get it',
-      );
-      assert.equal(
-        source.includes('useExportCommands'),
-        false,
-        `${surface} drives exports by hand — render ClassicExportMenuItems / ` +
-          'RibbonExportGroup instead',
-      );
-    }
-  });
-
-  it('each toolbar style actually renders its export cluster (#2510: a cluster deleted with its import left behind kept this file green)', () => {
-    // Every other test in this file renders ClassicExportMenuItems /
-    // RibbonExportGroup itself, so it proves the clusters work — not that the
-    // shipped toolbars still host them. That host edge used to be checked in
-    // source on the claim that neither host could be rendered here; the
-    // `src/test/` loader hooks make both mountable, so it is now checked by
-    // MOUNTING them and reading the export controls off the screen (#2434).
-    //
-    // Stronger than the regex in a way that matters for #2510's actual defect:
-    // `<RibbonExportGroup />` rendered without its `icons` prop, or behind a
-    // condition that is never true, reads identically in source and ships no
-    // exports.
+  it('the File tab actually hosts its export cluster (#2510)', () => {
     loadFakeModel();
-
-    render(<MainToolbar />);
-    const exportTrigger = [...document.body.querySelectorAll('button')].find(
-      (b) => b.getAttribute('aria-label') === 'Export and download',
-    );
-    assert.ok(exportTrigger, 'the classic strip must have an export menu');
-    act(() => {
-      exportTrigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 } as PointerEventInit));
-    });
-    act(() => {
-      exportTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    });
-    assert.deepEqual(
-      renderedExportIds().sort(),
-      [...EXPORT_COMMAND_IDS].sort(),
-      'the classic strip must host the whole registry — without it this style ships no exports at all',
-    );
-
-    unmountAll();
-
     render(<FileTab fileCommands={FILE_COMMANDS} />);
     assert.deepEqual(
       renderedExportIds().sort(),
@@ -481,7 +318,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
     );
   });
 
-  it('the JSON export actually downloads a file from both toolbar styles', async () => {
+  it('the JSON export actually downloads a file from the ribbon', async () => {
     loadFakeModel();
     const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
     const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
@@ -489,16 +326,6 @@ describe('export UI parity (ifc-lite#2511)', () => {
     });
 
     try {
-    renderClassicExports();
-    const fromClassic = await captureDownloads(async () => {
-      await act(async () => {
-        exportControl('json').click();
-      });
-    });
-    assert.deepEqual(fromClassic, ['json'], 'the classic JSON row must produce a download');
-
-    unmountAll();
-
     renderRibbonExports();
     const fromRibbon = await captureDownloads(async () => {
       await act(async () => {
@@ -507,7 +334,6 @@ describe('export UI parity (ifc-lite#2511)', () => {
     });
     assert.deepEqual(fromRibbon, ['json'], 'the ribbon JSON button must produce a download');
     assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
-      { event: 'export_completed', properties: { format: 'json', surface: 'classic', row_count: 1 } },
       { event: 'export_completed', properties: { format: 'json', surface: 'ribbon', row_count: 1 } },
     ], '#5844: one completion per successful download with its initiating surface');
     } finally {
@@ -515,7 +341,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
     }
   });
 
-  it('the screenshot export saves a PNG from both toolbar styles (#2511: a cross-wired action dispatch would still download something)', async () => {
+  it('the screenshot export saves a PNG from the ribbon (#2511)', async () => {
     // The second `kind: 'action'` command, and the one that had already drifted
     // (the ribbon offered it with no model loaded). Asserting the *extension*
     // rather than "something downloaded" is what makes a cross-wired dispatch —
@@ -531,16 +357,6 @@ describe('export UI parity (ifc-lite#2511)', () => {
     });
 
     try {
-      renderClassicExports();
-      const fromClassic = await captureDownloads(async () => {
-        await act(async () => {
-          exportControl('screenshot').click();
-        });
-      });
-      assert.deepEqual(fromClassic, ['png'], 'the classic Screenshot row must save a PNG');
-
-      unmountAll();
-
       renderRibbonExports();
       const fromRibbon = await captureDownloads(async () => {
         await act(async () => {
@@ -549,7 +365,6 @@ describe('export UI parity (ifc-lite#2511)', () => {
       });
       assert.deepEqual(fromRibbon, ['png'], 'the ribbon Screenshot button must save a PNG');
       assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
-        { event: 'export_completed', properties: { format: 'png', surface: 'classic' } },
         { event: 'export_completed', properties: { format: 'png', surface: 'ribbon' } },
       ], '#5844: screenshot completions retain the initiating surface');
     } finally {
@@ -558,27 +373,11 @@ describe('export UI parity (ifc-lite#2511)', () => {
     }
   });
 
-  it('both toolbar styles say so when a data export covers the active model only (#2511: a federated CSV/JSON export was reported as whole-model)', async () => {
+  it('reports when a data export covers the active model only (#2511)', async () => {
     // CSV/JSON read the one active `ifcDataStore`, so a federated session gets
-    // a partial export. Spanning the federation changes the output contract and
-    // is deliberately not done here — but a partial export must not be reported
-    // as a whole one, in EITHER style, since both read the same hook.
+    // a partial export. A partial export must not be reported as a whole one.
     loadFakeModel();
     useViewerStore.setState({ models: fakeFederation(3) });
-
-    renderClassicExports();
-    const classicToast = await captureSuccessToast(async () => {
-      await act(async () => {
-        exportControl('json').click();
-      });
-    });
-    assert.match(
-      classicToast,
-      /active model only, 2 other loaded models not included/,
-      'the classic JSON row must not report a federated partial export as a whole one',
-    );
-
-    unmountAll();
 
     renderRibbonExports();
     const ribbonToast = await captureSuccessToast(async () => {
@@ -586,46 +385,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
         exportControl('json').click();
       });
     });
-    assert.equal(
-      ribbonToast,
-      classicToast,
-      'both styles read one hook, so they must describe the same export identically',
-    );
-
-    // CSV is the other data export and takes the note from the same value —
-    // but "the same value" is exactly what a one-sided edit breaks. It cannot
-    // be driven here (its exporter loads the wasm over a `file://` URL, which
-    // fetch refuses), so it is covered by source, the same way the ribbon's
-    // icon set is: both handlers must carry the note, and the screenshot —
-    // which is a viewport capture, not a model export — must not.
-    const hookSource = readSource('components/viewer/toolbar/useExportCommands.ts');
-    // Backtick, single- and double-quoted forms alike: the screenshot's toast
-    // is a plain string, and a regex that only saw template literals would
-    // quietly drop it and check two toasts while claiming three.
-    const successToasts = [...hookSource.matchAll(/toast\.success\((['"`])([\s\S]*?)\1\)/g)].map(
-      (m) => m[2],
-    );
-    assert.equal(successToasts.length, 3, 'expected one success toast per one-click export');
-    for (const format of ['CSV', 'JSON']) {
-      const message = successToasts.find((t) => t.includes(format));
-      assert.ok(message, `no success toast mentions ${format}`);
-      assert.ok(
-        // Asserting the PLACEHOLDER text itself: this is what a leaked template
-        // looks like in a toast, which is the bug the assertion exists for.
-        // eslint-disable-next-line no-template-curly-in-string
-        message.includes('${activeModelOnlyNote}'),
-        `the ${format} success toast must carry the partial-export note`,
-      );
-    }
-    const screenshotToast = successToasts.find((t) => t.includes('Screenshot'));
-    assert.ok(screenshotToast, 'no success toast mentions the screenshot');
-    assert.equal(
-      // As above: the placeholder text is the thing being looked for.
-      // eslint-disable-next-line no-template-curly-in-string
-      screenshotToast.includes('${activeModelOnlyNote}'),
-      false,
-      'a screenshot captures the viewport, so it is not an active-model-only export',
-    );
+    assert.match(ribbonToast, /active model only, 2 other loaded models not included/);
 
     // ...and a single-model session must NOT carry the note.
     unmountAll();
@@ -639,19 +399,30 @@ describe('export UI parity (ifc-lite#2511)', () => {
     assert.doesNotMatch(soloToast, /active model only/, 'a single-model export is not partial');
   });
 
-  it('a dialog format opens its dialog from both toolbar styles', async () => {
+  it('reports a partial federated CSV export from the real handler (#2511, #5874)', async () => {
     loadFakeModel();
+    useViewerStore.setState({ models: fakeFederation(3) });
+    const init = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const dispose = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const exportCsv = mock.method(GeometryProcessor.prototype, 'exportCsv', () => new TextEncoder().encode('id\n1\n'));
+    try {
+      render(<CsvExportHarness />);
+      const runCsv = exportEntitiesCsv;
+      assert.ok(runCsv);
+      const message = await captureSuccessToast(async () => {
+        await act(async () => { await runCsv(); });
+      });
+      assert.match(message, /Exported entities CSV — active model only, 2 other loaded models not included/);
+      assert.equal(exportCsv.mock.callCount(), 1, 'CSV passed through the real export handler');
+    } finally {
+      init.mock.restore();
+      dispose.mock.restore();
+      exportCsv.mock.restore();
+    }
+  });
 
-    renderClassicExports();
-    await act(async () => {
-      exportControl('ifc').click();
-    });
-    assert.ok(
-      document.body.querySelector('[role="dialog"]'),
-      'the classic IFC row must open the export dialog',
-    );
-
-    unmountAll();
+  it('a dialog format opens its dialog from the ribbon', async () => {
+    loadFakeModel();
 
     renderRibbonExports();
     await act(async () => {

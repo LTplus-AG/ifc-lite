@@ -5,12 +5,8 @@
 /**
  * Ribbon tour: what changed when the tabbed ribbon became the default
  * toolbar. Orientation, not training - where the commands went, how the
- * tabs follow your work, how to reclaim the vertical space, and the way
- * back to the classic strip. Target: about a minute, no model needed.
- *
- * The first step switches the toolbar style so the tour also works when
- * started from the Learn hub in classic mode; the snapshot restores the
- * user's own style on finish or abort.
+ * tabs follow your work, and how to reclaim the vertical space. Target:
+ * about a minute, no model needed.
  */
 
 import { TOUR_ANCHORS } from '../anchors';
@@ -19,7 +15,7 @@ import type { TourDefinition } from '../types';
 export const RIBBON_TOUR: TourDefinition = {
   id: 'ribbon',
   title: 'The new ribbon',
-  description: 'Where the toolbar commands went, how tabs follow your work, and how to switch back.',
+  description: 'Where the toolbar commands went and how tabs follow your work.',
   minutes: 1,
   version: 1,
   steps: [
@@ -31,15 +27,9 @@ export const RIBBON_TOUR: TourDefinition = {
       title: 'Commands live in tabs now',
       body: 'Everything from the old single strip is here, grouped by task: File, Home, View, Elements, Analyze, Author. Nothing was removed, and every shortcut still works.',
       prepare: (store) => {
-        // Transient on purpose: `setToolbarStyle` PERSISTS, so a classic-bar
-        // user who reloads or closes the browser mid-tour would find their
-        // stored choice already replaced by a preview they never asked to
-        // keep. The tour only needs the ribbon on screen, and the snapshot
-        // restores the pre-tour value when it ends.
-        // Both transient for the same reason: `setRibbonCollapsed` persists
-        // too, so expanding the band to point at things in it would
-        // permanently undo the choice of a user who keeps it collapsed.
-        store.setState({ toolbarStyle: 'ribbon', ribbonCollapsed: false });
+        // Expanding the band for the tour must not overwrite the user's
+        // persisted collapsed preference.
+        store.setState({ ribbonCollapsed: false });
         store.getState().setRibbonTab('home');
       },
     },
@@ -70,18 +60,6 @@ export const RIBBON_TOUR: TourDefinition = {
       placement: 'bottom',
       title: 'Reclaim the height',
       body: 'Collapse the band to the tab strip with this chevron, or by double-clicking the active tab. That is remembered too, so the ribbon costs you one strip at most.',
-    },
-    // LAST on purpose (PR #1880 review): this step spotlights the Classic bar
-    // switch, and acting on it unmounts RibbonToolbar. Any step after it would
-    // lose its ribbon-hosted anchor and auto-skip with a broken-anchor report.
-    {
-      id: 'classic',
-      kind: 'passive',
-      anchor: TOUR_ANCHORS.ribbonClassicSwitch,
-      placement: 'bottom',
-      prepare: (store) => store.getState().setRibbonTab('view'),
-      title: 'The way back',
-      body: 'Prefer the old strip? Classic bar brings it back and this browser remembers the choice. Its View menu has the way here again, so nothing is one-way.',
     },
   ],
 };

@@ -3,15 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Point Clouds side panel's rail visibility (#5507).
+ * The Point Clouds side panel remains reachable before an asset loads (#5873).
  *
- * `PointCloudPanel` used to be a floating card mounted unconditionally
- * whenever `pointCloudAssetCount > 0` (`ViewportOverlays`'s
- * `PointCloudPanelMount`). Docked into the sidebar as the `pointclouds`
- * panel, its entry point is the ActivityBar rail — which must therefore
- * carry the same gating the floating card had: no icon (and so no way to
- * reach the panel) while no point cloud asset is loaded, same shape as the
- * Room icon's `isCollabEnabled()` gate right above it in the component.
+ * The rail exposes every panel. With no point cloud asset, the panel explains
+ * how to populate it rather than becoming unreachable.
  */
 
 import '@/test/setup-dom.js';
@@ -28,18 +23,18 @@ function pointCloudsButton(container: HTMLElement): HTMLElement | undefined {
   );
 }
 
-describe('ActivityBar — Point Clouds rail visibility (#5507)', () => {
+describe('ActivityBar — Point Clouds rail reachability (#5873)', () => {
   afterEach(() => {
     cleanup();
     useViewerStore.getState().setPointCloudAssetCount(0);
     useViewerStore.getState().showWorkspacePanel('properties');
   });
 
-  it('shows no Point Clouds icon when no point cloud is loaded', () => {
+  it('shows the Point Clouds icon when no point cloud is loaded', () => {
     useViewerStore.getState().setPointCloudAssetCount(0);
     const container = render(<ActivityBar />);
-    assert.equal(pointCloudsButton(container), undefined,
-      'the rail must not offer a way to open the Point Clouds panel with nothing loaded');
+    assert.ok(pointCloudsButton(container),
+      'the rail must offer every panel before its data is available');
   });
 
   it('shows the Point Clouds icon once a point cloud asset loads', () => {
@@ -58,11 +53,11 @@ describe('ActivityBar — Point Clouds rail visibility (#5507)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'pointclouds');
   });
 
-  it('the icon disappears again once the last asset unloads', () => {
+  it('the icon stays available once the last asset unloads', () => {
     useViewerStore.getState().setPointCloudAssetCount(1);
     const container = render(<ActivityBar />);
     assert.ok(pointCloudsButton(container));
     act(() => { useViewerStore.getState().setPointCloudAssetCount(0); });
-    assert.equal(pointCloudsButton(container), undefined);
+    assert.ok(pointCloudsButton(container));
   });
 });

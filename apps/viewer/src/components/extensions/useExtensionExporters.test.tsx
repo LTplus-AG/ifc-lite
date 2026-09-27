@@ -27,12 +27,10 @@ import { ExtensionHostService } from '@/services/extensions/host.js';
 import type { ExporterOutput } from '@/services/extensions/host-exporters.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { EXPORT_COMMAND_IDS, type ExportIconSet } from '@/components/viewer/toolbar/export-commands';
-import { ClassicExportMenuItems } from '@/components/viewer/toolbar/ClassicExportMenuItems';
 import { RibbonExportGroup } from '@/components/viewer/ribbon/tabs/RibbonExportGroup';
 import { buildExportCommands } from '@/components/viewer/commandPaletteExports';
 import { useExportRunner } from '@/components/viewer/useExportRunner';
@@ -198,23 +196,16 @@ describe('extension exporters are export-registry entries (#1907, #5838)', () =>
     assert.equal(extensionControls().length, 0);
   });
 
-  it('a registered exporter APPEARS in the ribbon, the classic menu and the palette, labelled with its name', () => {
+  it('a registered exporter APPEARS in the ribbon and palette, labelled with its name (#5874)', () => {
     const host = new StubExtensionHost();
     registerExporter(host, 'ext.alpha', exporterContribution());
 
     renderRibbon(host);
-    mount(host, (
-      <DropdownMenu open modal={false}>
-        <DropdownMenuTrigger>Export</DropdownMenuTrigger>
-        <DropdownMenuContent><ClassicExportMenuItems /></DropdownMenuContent>
-      </DropdownMenu>
-    ));
     const controls = extensionControls();
-    assert.deepEqual(controls.map((c) => c.getAttribute('data-export-extension')), [`ext.alpha:${EXPORTER_ID}`, `ext.alpha:${EXPORTER_ID}`]);
+    assert.deepEqual(controls.map((c) => c.getAttribute('data-export-extension')), [`ext.alpha:${EXPORTER_ID}`]);
     for (const control of controls) {
       assert.ok(control.textContent?.includes('Demo CSV'), `row carries the exporter's name: ${JSON.stringify(control.textContent)}`);
     }
-    assert.ok(document.body.textContent?.includes('From extensions'), 'the classic menu labels the group');
 
     mount(host, <PaletteRunnerHarness />);
     assert.ok(paletteRunner);

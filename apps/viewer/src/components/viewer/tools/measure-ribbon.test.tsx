@@ -3,24 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Both-toolbar guard for the Measure tool (#2199).
- *
- * The viewer ships two desktop toolbars at once — the classic `MainToolbar`
- * strip and the tabbed ribbon — and a user sits behind exactly one of them.
- * #2510 and #2511 close that gap for camera and export by giving each a single
- * ordered command registry plus a drift guard.
+ * Measure tool reachability from the ribbon and its shared panel (#2199, #5874).
  *
  * Measure does not need a registry, and adding one would be the wrong fix: the
- * two toolbars do not host measurement UI at all. Each does one thing —
+ * the ribbon does not host measurement UI. It dispatches
  * `setActiveTool('measure')` — and `ToolOverlays` renders the ONE panel off
  * that store field. There is no second list to drift from the first.
  *
  * What CAN drift is that structure itself, in three ways, and this file guards
  * each:
  *
- * 1. a toolbar stops dispatching `'measure'` (the ribbon-only search bug of
- *    #2510, in its measure-shaped form);
- * 2. a toolbar grows its own measurement UI beside the shared panel, which is
+ * 1. the ribbon stops dispatching `'measure'`;
+ * 2. the ribbon grows its own measurement UI beside the shared panel, which is
  *    how two hand-maintained lists get created in the first place;
  * 3. the shared panel stops hosting a section, so the section's own tests stay
  *    green while the feature ships unreachable — the exact hole #2510 and
@@ -38,10 +32,7 @@
  * can be printed from the wrong source, which is invisible to a test that only
  * checks a number appeared.
  *
- * (1) and (2) were asserted in SOURCE TEXT here, on the claim that neither
- * toolbar could be mounted in the node runner (`MainToolbar` drags in the whole
- * viewer; `HomeTab` reaches `@/icons`, a Vite virtual module). That claim is
- * false as of #2540's loader hooks: both mount, `ViewportContainer` mounts
+ * The checks mount the real ribbon and host; `ViewportContainer` mounts
  * given a WebGPU adapter and a loaded model, and `PropertiesPanel` mounts given
  * a real parsed store. So (1) is now a click on the Measure control with the
  * store read back, (2) is the absence of the panel's own controls in a mounted
@@ -65,7 +56,6 @@ import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody.js';
-import { MainToolbar } from '../MainToolbar.js';
 import { RibbonToolbar } from '../ribbon/RibbonToolbar.js';
 import { HomeTab } from '../ribbon/tabs/HomeTab.js';
 import { ViewportContainer } from '../ViewportContainer.js';
@@ -165,20 +155,14 @@ function useWebGpuStub(): () => void {
   };
 }
 
-/**
- * The two surfaces that DISPATCH the tool. Both mount under the `src/test/`
- * loader hooks — this file's header used to claim neither could be, which is
- * why (1) and (2) were asserted in source text until #2434.
- */
+/** The ribbon tab dispatches the tool. */
 const TOOLBARS = [
-  { name: 'MainToolbar (classic)', Toolbar: MainToolbar },
   { name: 'HomeTab (ribbon)', Toolbar: HomeTab },
 ] as const;
 
-/** The same two, but the ribbon at its ROOT — a toolbar could host the panel
+/** The ribbon at its ROOT — a toolbar could host the panel
  *  outside the tab body, which mounting HomeTab alone would not see. */
 const TOOLBAR_ROOTS = [
-  { name: 'MainToolbar (classic)', Toolbar: MainToolbar },
   { name: 'RibbonToolbar (ribbon root)', Toolbar: RibbonToolbar },
 ] as const;
 
@@ -324,7 +308,7 @@ beforeEach(() => {
   });
 });
 
-describe('measure tool is hosted once, for both toolbars', () => {
+describe('measure tool is hosted once for the ribbon (#5874)', () => {
   it('renders the bar off activeTool alone, with all four modes, and the panel with all three tabs', () => {
     const container = render();
     assert.deepEqual(modeControls(container), MODES);

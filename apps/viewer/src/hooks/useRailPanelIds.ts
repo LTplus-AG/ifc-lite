@@ -8,9 +8,9 @@
  * cannot drift apart.
  *
  * Hidden panels are removed in every mode (#1263), except Properties, the
- * right pane's fallback. The collab Room panel only surfaces while the collab
- * feature flag is on, and Point Clouds (#5507) only while a point cloud asset
- * is loaded.
+ * right pane's fallback. The collaboration panel only surfaces while that
+ * feature is enabled. Point Clouds remains reachable before loading an asset
+ * and shows an empty state (#5873).
  */
 
 import { useMemo } from 'react';
@@ -21,14 +21,12 @@ import type { WorkspacePanelId } from '@/lib/panels/registry';
 export function useRailPanelIds(): WorkspacePanelId[] {
   const order = useViewerStore((s) => s.sidebarOrder);
   const hiddenIds = useViewerStore((s) => s.sidebarHiddenIds);
-  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   return useMemo(() => {
     const hidden = new Set(hiddenIds);
     return order.filter(
       (id) =>
         (!hidden.has(id) || id === 'properties') &&
-        (id !== 'collab' || isCollabEnabled()) &&
-        (id !== 'pointclouds' || pointCloudAssetCount > 0),
+        (id !== 'collab' || isCollabEnabled()),
     );
-  }, [order, hiddenIds, pointCloudAssetCount]);
+  }, [order, hiddenIds]);
 }

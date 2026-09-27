@@ -86,6 +86,17 @@ it('mobile commands keep their table ids and act on the selected federated model
   ], 'each mounted mobile click emits exactly one command event');
 });
 
+it('a mounted mobile command still runs when telemetry capture fails (#5870)', () => {
+  useViewerStore.setState({ activeTool: 'select', loading: false });
+  mock.method(posthog, 'capture', () => { throw new Error('analytics unavailable'); });
+  const warning = mock.method(console, 'warn', () => {});
+  render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
+
+  click(command('tool:measure'));
+  assert.equal(useViewerStore.getState().activeTool, 'measure');
+  assert.equal(warning.mock.callCount(), 1, 'capture failure is reported once');
+});
+
 it('mobile Walk, projection, and theme commands preserve their toggles and live labels (#5870)', async () => {
   useViewerStore.setState({ activeTool: 'select', projectionMode: 'perspective', theme: 'light', loading: false });
   render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);

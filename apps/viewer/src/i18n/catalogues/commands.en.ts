@@ -53,6 +53,7 @@ export const commandsEn = {
   'commands.drawing2d.delete': 'Delete the selected 2D annotation (2D drawing)',
   'commands.drawing2d.orthogonal': 'Hold to keep the 2D measurement horizontal or vertical (2D drawing)',
   'commands.reposition.apply': 'Apply the move (Reposition panel)',
+  'commands.reposition.cancel': 'Cancel the move (Reposition panel)',
   'commands.reposition.constrain': 'Constrain the move to the X, Y or Z axis (Reposition panel)',
   'commands.reposition.nudge': 'Nudge along the chosen axis (Reposition panel)',
   'commands.schedule.cancelDrag': 'Cancel the bar drag (Schedule)',

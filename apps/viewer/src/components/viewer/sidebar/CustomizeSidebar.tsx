@@ -25,6 +25,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { resetLayout } from '@/store/layoutReset';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -69,16 +70,15 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
         onClose();
       }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const removeEscape = registerKeyboardCommand('ui.closeOverlay', () => { onClose(); }, {
+      layer: 'popover', allowInTextEntry: true, ignoreModifiers: true,
+    });
     // Defer the mousedown listener a tick so the click that opened us doesn't close us.
     const t = window.setTimeout(() => document.addEventListener('mousedown', onDown), 0);
-    document.addEventListener('keydown', onKey);
     return () => {
       window.clearTimeout(t);
       document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      removeEscape();
     };
   }, [onClose]);
 

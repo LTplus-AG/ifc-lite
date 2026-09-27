@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
+import { registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 
 // ─── Public interfaces ──────────────────────────────────────────────────────
 
@@ -207,32 +208,22 @@ export function useMeasure2D({
   // Keyboard handlers for shift key (orthogonal constraint)
   useEffect(() => {
     if (!measure2DMode) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift' && measure2DStart && measure2DCurrent && !measure2DShiftLocked) {
-        // Determine axis based on dominant direction
+    const removeOrthogonal = registerKeyboardCommand('drawing2d.orthogonal', () => {
+      if (measure2DStart && measure2DCurrent && !measure2DShiftLocked) {
         const dx = Math.abs(measure2DCurrent.x - measure2DStart.x);
         const dy = Math.abs(measure2DCurrent.y - measure2DStart.y);
-        const axis = dx > dy ? 'x' : 'y';
-        setMeasure2DShiftLocked(true, axis);
+        setMeasure2DShiftLocked(true, dx > dy ? 'x' : 'y');
       }
-      if (e.key === 'Escape') {
-        cancelMeasure2D();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        setMeasure2DShiftLocked(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
+      return false; // Both 2D tools observe Shift without consuming it.
+    }, { ignoreModifiers: true, allowInTextEntry: true });
+    const removeCancel = registerKeyboardCommand('drawing2d.cancel', () => {
+      cancelMeasure2D();
+    }, { allowInTextEntry: true, ignoreModifiers: true });
+    const removeKeyUp = registerKeyboardKeyUp((event) => {
+      if (event.key === 'Shift') setMeasure2DShiftLocked(false);
+    });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      removeOrthogonal(); removeCancel(); removeKeyUp();
     };
   }, [measure2DMode, measure2DStart, measure2DCurrent, measure2DShiftLocked, setMeasure2DShiftLocked, cancelMeasure2D]);
 

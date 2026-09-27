@@ -3,11 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Delete / Backspace removes the selected 2D annotation only when focus is not
- * on an input-like surface (#5596). The hook kept its own INPUT/TEXTAREA-only
- * copy of that guard, so the key still deleted the annotation while a
- * `<select>` or a contenteditable host had focus. It now shares
- * `isTextEntryElement` with the other shortcut sites.
+ * Delete / Backspace respects focused editing widgets (#5596). The drawing's
+ * Escape handler also takes priority over the global viewer action (#5841).
  */
 
 import '@/test/setup-dom.js';
@@ -16,9 +13,10 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import { render, cleanup, press } from '@/test/render.js';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useAnnotation2D } from './useAnnotation2D.js';
 
-function Probe({ onDelete }: { onDelete: () => void }) {
+function Probe({ onDelete, onDeselect = () => {} }: { onDelete: () => void; onDeselect?: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   useAnnotation2D({
     drawing: null,
@@ -42,7 +40,7 @@ function Probe({ onDelete }: { onDelete: () => void }) {
     measure2DResults: [],
     polygonArea2DResults: [],
     selectedAnnotation2D: { type: 'text', id: 't1' },
-    setSelectedAnnotation2D: () => {},
+    setSelectedAnnotation2D: (selection) => { if (selection === null) onDeselect(); },
     deleteSelectedAnnotation2D: onDelete,
     moveAnnotation2D: () => {},
     setAnnotation2DCursorPos: () => {},
@@ -81,5 +79,19 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
     press(editable, 'Backspace');
 
     assert.equal(deletes, 0);
+  });
+
+  it('#5841 Escape clears the drawing selection before the global viewer action', () => {
+    let deselections = 0;
+    let globalEscapes = 0;
+    const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
+    try {
+      render(<Probe onDelete={() => {}} onDeselect={() => { deselections++; }} />);
+      press(window, 'Escape');
+      assert.equal(deselections, 1);
+      assert.equal(globalEscapes, 0);
+    } finally {
+      unregister();
+    }
   });
 });

@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { addTranslation, subtractTranslation, parseMoveLength, toRenderTranslation, translationAtDistance,
   type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
@@ -72,32 +73,37 @@ export function RepositionRuntimeHost() {
   }, [preview?.modelIds, models, reference, selected]);
 
   useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault(); event.stopImmediatePropagation(); useViewerStore.getState().closeReposition(); return;
-      }
+    const removeCancel = registerKeyboardCommand('reposition.cancel', () => {
+      useViewerStore.getState().closeReposition();
+    }, { allowInTextEntry: true, ignoreModifiers: true });
+    const eligibleTarget = (event: KeyboardEvent) => {
       const target = event.target;
-      if (isTextEntryTarget(event) || (target instanceof HTMLElement && target.closest('button, summary, a[href], [role=button]'))) return;
-      const state = useViewerStore.getState();
-      if (event.key === 'Enter') { event.preventDefault(); event.stopImmediatePropagation(); apply(); }
-      else if (!event.ctrlKey && !event.metaKey && ['x', 'y', 'z'].includes(event.key.toLowerCase())) {
-        event.preventDefault(); event.stopImmediatePropagation(); ensurePreview();
-        state.setMoveConstraint(event.key.toLowerCase() as MoveConstraint);
-      } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-        event.preventDefault(); event.stopImmediatePropagation();
-        run(() => {
-          ensurePreview();
-          const current = useViewerStore.getState().modelPlacement.preview!;
-          if (!['x', 'y', 'z'].includes(current.constraint)) throw new Error('Choose X, Y, or Z before nudging.');
-          const axis = ['x', 'y', 'z'].indexOf(current.constraint);
-          const step: [number, number, number] = [0, 0, 0];
-          step[axis] = state.repositionNudge * (event.key === 'ArrowUp' ? 1 : -1);
-          state.previewModelTranslation(addTranslation(current.delta, step));
-        });
-      }
+      return !isTextEntryTarget(event) && !(target instanceof HTMLElement && target.closest('button, summary, a[href], [role=button]'));
     };
-    window.addEventListener('keydown', keydown, true);
-    return () => window.removeEventListener('keydown', keydown, true);
+    const removeApply = registerKeyboardCommand('reposition.apply', (event) => {
+      if (!eligibleTarget(event)) return false;
+      apply();
+    }, { ignoreModifiers: true });
+    const removeConstrain = registerKeyboardCommand('reposition.constrain', (event) => {
+      if (!eligibleTarget(event) || event.ctrlKey || event.metaKey) return false;
+      const state = useViewerStore.getState();
+      ensurePreview();
+      state.setMoveConstraint(event.key.toLowerCase() as MoveConstraint);
+    }, { ignoreModifiers: true });
+    const removeNudge = registerKeyboardCommand('reposition.nudge', (event) => {
+      if (!eligibleTarget(event)) return false;
+      run(() => {
+        ensurePreview();
+        const state = useViewerStore.getState();
+        const current = state.modelPlacement.preview!;
+        if (!['x', 'y', 'z'].includes(current.constraint)) throw new Error('Choose X, Y, or Z before nudging.');
+        const axis = ['x', 'y', 'z'].indexOf(current.constraint);
+        const step: [number, number, number] = [0, 0, 0];
+        step[axis] = state.repositionNudge * (event.key === 'ArrowUp' ? 1 : -1);
+        state.previewModelTranslation(addTranslation(current.delta, step));
+      });
+    }, { ignoreModifiers: true });
+    return () => { removeCancel(); removeApply(); removeConstrain(); removeNudge(); };
   }, [apply, ensurePreview, run]);
 
   const chooseModels = useCallback((ids: readonly string[]) => run(() => {

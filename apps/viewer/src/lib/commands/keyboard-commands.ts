@@ -114,6 +114,7 @@ export const KEY_COMMANDS = [
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },
   { id: 'reposition.apply', labelKey: 'commands.reposition.apply', category: 'tools', when: 'panel.reposition', keys: [k('enter')] },
+  { id: 'reposition.cancel', labelKey: 'commands.reposition.cancel', category: 'tools', when: 'panel.reposition', keys: [k('escape')] },
   { id: 'reposition.constrain', labelKey: 'commands.reposition.constrain', category: 'tools', when: 'panel.reposition', keys: [k('x'), k('y'), k('z')] },
   { id: 'reposition.nudge', labelKey: 'commands.reposition.nudge', category: 'tools', when: 'panel.reposition', keys: [k('arrowup'), k('arrowdown')] },
   { id: 'schedule.undo', labelKey: 'commands.schedule.undo', category: 'editing', when: 'panel.schedule', keys: [k('z', { mod: true })] },

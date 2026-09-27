@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { isFilterRule } from '@ifc-lite/rules';
+import { Rule, isFilterRule } from '@ifc-lite/rules';
 import { migrateLegacyListConditions } from './legacy-condition-migration.js';
 import type { ConditionOperator, ListDefinition, PropertyCondition } from './types.js';
 
@@ -33,18 +33,19 @@ describe('v1 List condition migration (#5894)', () => {
       conditions: [property('contains'), { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' }],
     };
     const normalized = migrate(old);
-    expect(normalized.groups[0].rules).toHaveLength(1);
-    expect(normalized.unreadableConditions?.[0].condition).toEqual(old.conditions[1]);
+    expect(normalized.groups[0].rules.map((rule) => rule.kind)).toEqual(['property', 'listCondition']);
+    expect(normalized.groups[0].rules[1]).toEqual({ kind: 'listCondition', ...old.conditions[1] });
+    expect(normalized.unreadableConditions).toBeUndefined();
     expect('conditions' in normalized).toBe(false);
     expect(migrate(normalized)).toEqual(normalized);
   });
 
-  it('rejects malformed whole definitions and malformed Rules groups before execution (#5894)', async () => {
+  it('rejects malformed whole definitions before execution (#5894)', async () => {
     const migrateLegacyListDefinition = (await import('./index.js')).migrateLegacyListDefinition;
     const valid = { id: 'walls', name: 'Walls', createdAt: 1, updatedAt: 1,
       entityTypes: [], columns: [], groups: [] };
     for (const malformed of [[], { id: 'x' }, { ...valid, id: '' }, { ...valid, columns: {} },
-      { ...valid, groups: [null] }, { ...valid, groups: [{ combinator: 'AND', rules: [null] }] },
+      { ...valid, groups: {} },
       { ...valid, expressIdsByModel: { m1: 'bad' } },
       { ...valid, expressIdsByModel: { m1: [1, 'bad'] } },
       { ...valid, grouping: { columnId: 'name' } },
@@ -54,27 +55,55 @@ describe('v1 List condition migration (#5894)', () => {
     expect(migrateLegacyListDefinition(valid)).toEqual(valid);
   });
 
-  it('keeps both existing and newly discovered unreadable rows in mixed saved JSON (#5894)', async () => {
+  it('keeps a malformed or unknown rule visible instead of dropping the whole list (#6190)', async () => {
     const migrate = (await import('./index.js')).migrateLegacyListDefinition;
-    const old = { id: 'mixed', name: 'Mixed', createdAt: 1, updatedAt: 1,
-      entityTypes: [], columns: [], groups: [{ combinator: 'AND', rules: [] }],
-      unreadableConditions: [{ condition: { source: 'attribute', propertyName: 'Name', operator: 'equals', value: 'A' }, reason: 'unsupported-attribute' }],
-      conditions: [property('equals'), null],
+    const name = Rule.name('eq', 'A');
+    const future = { kind: 'futureKind', op: 'eq', value: 'x' };
+    const broken = { kind: 'listCondition', source: 'zone', propertyName: 'Zone', operator: 'equals', value: null };
+    const migrated = migrate({ id: 'g', name: 'G', createdAt: 1, updatedAt: 1, entityTypes: [], columns: [],
+      groups: [{ combinator: 'AND', rules: [name, future] }, null, { combinator: 'OR', rules: [broken] }] });
+    expect(migrated.groups).toEqual([{ combinator: 'AND', rules: [name] }, { combinator: 'OR', rules: [] }]);
+    expect(migrated.unreadableConditions).toEqual([
+      { condition: future, reason: 'invalid-condition' },
+      { condition: null, reason: 'invalid-condition' },
+      { condition: broken, reason: 'invalid-condition' },
+    ]);
+    expect(migrate(migrated)).toEqual(migrated);
+  });
+
+  it('ANDs saved flat conditions and provider-only rows into every group, losslessly (#6190)', async () => {
+    const migrate = (await import('./index.js')).migrateLegacyListDefinition;
+    const attribute: PropertyCondition = { source: 'attribute', propertyName: 'Name', operator: 'equals', value: 'A' };
+    const zone: PropertyCondition = { source: 'zone', psetName: 'zs', propertyName: 'Straddles', operator: 'equals', value: 'true' };
+    const a = Rule.name('eq', 'A');
+    const b = Rule.name('eq', 'B');
+    const c = Rule.name('eq', 'C');
+    const old = { id: 'mixed', name: 'Mixed', createdAt: 1, updatedAt: 1, entityTypes: [], columns: [],
+      groups: [{ combinator: 'OR', rules: [a, b] }, { combinator: 'AND', rules: [c] }, { combinator: 'AND', rules: [] }],
+      unreadableConditions: [
+        { condition: attribute, reason: 'unsupported-attribute' },
+        { condition: null, reason: 'invalid-condition' },
+      ],
+      conditions: [zone, null],
     };
     const migrated = migrate(old);
-    expect(migrated.groups).toEqual(old.groups);
-    expect(migrated.unreadableConditions?.map((row) => row.reason)).toEqual([
-      'unsupported-attribute', 'mixed-groups', 'invalid-condition',
+    const carried = [Rule.listCondition(attribute), Rule.listCondition(zone)];
+    // (A OR B) AND x  +  C AND x  ==  (A AND x) OR (B AND x) OR (C AND x); the empty group matched nothing.
+    expect(migrated.groups).toEqual([
+      { combinator: 'AND', rules: [a, ...carried] },
+      { combinator: 'AND', rules: [b, ...carried] },
+      { combinator: 'AND', rules: [c, ...carried] },
+    ]);
+    expect(migrated.unreadableConditions).toEqual([
+      { condition: null, reason: 'invalid-condition' },
+      { condition: null, reason: 'invalid-condition' },
     ]);
     expect('conditions' in migrated).toBe(false);
     expect(migrate(migrated)).toEqual(migrated);
 
-    const v1 = { ...old, groups: undefined };
-    const converted = migrate(v1);
-    expect(converted.unreadableConditions?.map((row) => row.reason)).toEqual([
-      'unsupported-attribute', 'invalid-condition',
-    ]);
-    expect(converted.groups[0].rules).toHaveLength(1);
+    const v1 = migrate({ ...old, groups: undefined, unreadableConditions: undefined });
+    expect(v1.groups).toEqual([{ combinator: 'AND', rules: [Rule.listCondition(zone)] }]);
+    expect(v1.unreadableConditions).toEqual([{ condition: null, reason: 'invalid-condition' }]);
   });
 
   it('preserves every persisted operator in one AND group for the new Rules evaluator', () => {
@@ -96,21 +125,26 @@ describe('v1 List condition migration (#5894)', () => {
     expect(JSON.stringify(conditions)).toBe(before);
   });
 
-  it('retains every non-lossless condition as an explicit unreadable row', () => {
+  it('carries every other Lists predicate as a listCondition rule; only unevaluable data stays unreadable (#6190)', () => {
     const unknown = { ...property('equals'), operator: 'new-op' as ConditionOperator };
+    const future = { ...property('equals'), source: 'future' as PropertyCondition['source'] };
     const regex = { ...property('equals'), psetName: '/Pset_.*/i' };
     const inherited = { ...property('equals'), inherit: 'aggregation' as const };
-    const attribute: PropertyCondition = { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' };
-    const zone: PropertyCondition = { source: 'zone', psetName: 'zone-set', propertyName: 'Zone', operator: 'equals', value: 'West' };
-    const result = migrateLegacyListConditions([property('equals'), unknown, regex, inherited, attribute, zone]);
+    const attribute: PropertyCondition = { source: 'attribute', propertyName: 'GlobalId', operator: 'contains', value: 'Wall' };
+    const zone: PropertyCondition = { source: 'zone', psetName: 'zone-set', propertyName: 'Volume (mesh)', operator: 'gt', value: 2 };
+    const spatial: PropertyCondition = { source: 'spatial', propertyName: 'Building', operator: 'equals', value: 'B1' };
+    const presence: PropertyCondition = { source: 'quantity', psetName: 'Qto', propertyName: 'NetVolume', operator: 'exists', value: '' };
+    const result = migrateLegacyListConditions([property('equals'), unknown, future, regex, inherited, attribute, zone, spatial, presence]);
 
-    expect(result.groups[0].rules).toHaveLength(1);
+    expect(result.groups).toEqual([{ combinator: 'AND', rules: [
+      result.groups[0].rules[0],
+      ...[regex, inherited, attribute, zone, spatial, presence].map((condition) => ({ kind: 'listCondition', ...condition })),
+    ] }]);
+    expect(result.groups[0].rules[0].kind).toBe('property');
+    expect(result.groups[0].rules.every(isFilterRule)).toBe(true);
     expect(result.unreadableConditions).toEqual([
       { condition: unknown, reason: 'operator' },
-      { condition: regex, reason: 'name-pattern' },
-      { condition: inherited, reason: 'inherit' },
-      { condition: attribute, reason: 'unsupported-attribute' },
-      { condition: zone, reason: 'unsupported-source' },
+      { condition: future, reason: 'unsupported-source' },
     ]);
   });
 });

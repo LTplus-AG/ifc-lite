@@ -26,8 +26,6 @@ import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useContextMutationAccess } from './useContextMutationAccess';
 import { effectiveTreeEntityName } from './hierarchy/effectiveTypeEntities';
-import { effectiveRowType } from './hierarchy/treeOverlay';
-import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { showAllFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
@@ -43,6 +41,8 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { DuplicateItems, ExtensionContextItems, MenuItem } from './EntityContextMenuItems';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -56,11 +56,17 @@ export function EntityContextMenu() {
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
-  const mutationViews = useViewerStore((s) => s.mutationViews);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   const [radixOpen, setRadixOpen] = useState(false);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
+  const mutationViewFor = useCallback((modelId: string): MutablePropertyView | null => {
+    const view = getMutationView(modelId);
+    return modelId === 'legacy'
+      ? view ?? getMutationView('__legacy__') ?? getMutationView('default')
+      : view;
+  }, [getMutationView]);
   const { ifcDataStore, models } = useIfc();
 
   // Resolve contextMenu.entityId (globalId) to original expressId/model (IfcDataStore uses original expressIds, not globalIds).
@@ -179,31 +185,21 @@ export function EntityContextMenu() {
       return;
     }
 
-    // Get the type of the selected entity
-    const entity = activeDataStore.entities;
-    let entityType: string | null = null;
-
-    for (let i = 0; i < entity.count; i++) {
-      if (entity.expressId[i] === resolvedExpressId) {
-        entityType = entity.getTypeName(resolvedExpressId);
-        break;
+    if (contextEntityRef) {
+      const view = mutationViewFor(contextEntityRef.modelId);
+      const localIds = sameEffectiveTypeIds(activeDataStore, view, resolvedExpressId);
+      if (localIds.length === 0) {
+        closeContextMenu();
+        return;
       }
-    }
-
-    if (entityType && contextEntityRef) {
-      // `entity.expressId` is model-space — resolve through the model
-      // offset before it reaches `selectedEntityIds` (renderer-space).
-      const sameTypeIds: number[] = [];
-      for (let i = 0; i < entity.count; i++) {
-        if (entity.getTypeName(entity.expressId[i]) === entityType) {
-          sameTypeIds.push(toGlobalIdFromModels(models, contextEntityRef.modelId, entity.expressId[i]));
-        }
-      }
+      // Effective ids are model-space — resolve through the model offset
+      // before they reach `selectedEntityIds` (renderer-space).
+      const sameTypeIds = localIds.map(id => toGlobalIdFromModels(models, contextEntityRef.modelId, id));
       setSelectedEntityIds(sameTypeIds);
     }
 
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   const handleSelectSameStorey = useCallback(() => {
     // Use resolvedExpressId (original ID) for IfcDataStore lookups
@@ -256,11 +252,9 @@ export function EntityContextMenu() {
   let entityName = '';
   let entityType = '';
   if (resolvedExpressId && activeDataStore) {
-    const view = contextEntityRef
-      ? mutationViews.get(normalizeMutationModelId(useViewerStore.getState(), contextEntityRef.modelId)) : undefined;
+    const view = contextEntityRef ? mutationViewFor(contextEntityRef.modelId) : null;
     entityName = effectiveTreeEntityName(activeDataStore, view, resolvedExpressId, '');
-    entityType = effectiveRowType(activeDataStore, view, resolvedExpressId)
-      ?? (activeDataStore.entities.getTypeName(resolvedExpressId) || '');
+    entityType = effectiveContextType(activeDataStore, view, resolvedExpressId);
   }
 
   const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);

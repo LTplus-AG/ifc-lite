@@ -29,7 +29,7 @@ async function makeStore(canCollabEdit = true) {
     { disableWorkerScan: true },
   );
   const mutationViews = new Map<string, MutablePropertyView>();
-  const undoCalls: number[] = [];
+  const undoCalls: Array<[number, string]> = [];
   const relationshipMutationCalls: string[] = [];
   const created: Array<{ entityId: number; ifcType: string }> = [];
   const model = { id: 'm', name: 'hello-wall.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 5000 };
@@ -42,7 +42,7 @@ async function makeStore(canCollabEdit = true) {
     collabRoomModels: new Map([['m', { slotId: 'm0', pathPrefix: '/m0' }]]),
     getMutationView: (id: string) => mutationViews.get(id) ?? null,
     registerMutationView: (id: string, view: MutablePropertyView) => { mutationViews.set(id, view); },
-    pushCreateEntityUndo: (_modelId: string, entityId: number) => { undoCalls.push(entityId); },
+    pushCreateEntityUndo: (_modelId: string, entityId: number, ifcType: string) => { undoCalls.push([entityId, ifcType]); },
     markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
     canCollabEdit: () => canCollabEdit,
     editEnabled: true,
@@ -57,7 +57,7 @@ async function makeStore(canCollabEdit = true) {
   return { store, mutationViews, undoCalls, relationshipMutationCalls, created };
 }
 
-describe('#6232 store-adapter hosted openings', () => {
+describe('#6232 store-adapter modelling surface', () => {
   it('refuses every hosted-opening call for a read-only participant, overlay untouched', async () => {
     const { store, mutationViews } = await makeStore(false);
     const adapter = createStoreAdapter(store);
@@ -81,6 +81,18 @@ describe('#6232 store-adapter hosted openings', () => {
     // A single CREATE_ENTITY entry cannot invert the compound write; the
     // model is marked dirty and its undo history fenced instead.
     assert.deepEqual(undoCalls, []);
+    assert.deepEqual(relationshipMutationCalls, ['m']);
+  });
+
+  it('undoes a new type as one record, and fences undo for a type assignment', async () => {
+    const { store, undoCalls, relationshipMutationCalls, created } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const type = adapter.addElementType('m', { Type: 'IfcWallType', Name: 'EW-300' });
+    assert.deepEqual(undoCalls, [[type.expressId, 'IFCWALLTYPE']]);
+    assert.deepEqual(relationshipMutationCalls, []);
+
+    const rel = adapter.assignType('m', type.expressId, [WALL]);
+    assert.ok(created.some((c) => c.entityId === rel.expressId && c.ifcType.toUpperCase() === 'IFCRELDEFINESBYTYPE'));
     assert.deepEqual(relationshipMutationCalls, ['m']);
   });
 });

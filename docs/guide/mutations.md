@@ -516,6 +516,41 @@ const hole = addOpeningToStore(editor, host, { Offset: 5, Sill: 1.8, Width: 0.4,
 
 The opening is placed relative to the host's own `IfcLocalPlacement` and is not contained in the storey (IFC reaches it through the element it voids). By default the cut runs through the host's body thickness plus 50 mm per face; pass `CutDepth` to override it, but never with a value thinner than the host. The door or window is placed relative to the opening, centred in the wall, and contained in the host's storey. For a slab host, pass `Position: [x, y]`, `Width` and `Depth` in the slab's local frame. Through the SDK these are `bim.store.addOpening`, `bim.store.addHostedDoor` and `bim.store.addHostedWindow` (`modelId, hostExpressId, params`). In the viewer they write the model and its export, but the host is not re-cut in 3D until overlay re-tessellation lands (#6232 M1).
 
+#### Type objects and materials
+
+`addElementTypeToStore` writes any `IfcElementType` subtype (`IfcWallType`, `IfcSlabType`, `IfcDoorType`, `IfcWindowType`, ...). Its attribute layout comes from the model's schema: IFC2X3 has no `IfcDoorType`, and IFC4 adds `OperationType`, so the same call writes a valid record in each schema or refuses the class by name. Enumeration values are checked against the schema. `assignTypeInStore` links occurrences through `IfcRelDefinesByType`. It extends the type's existing relationship, and it moves an occurrence off any other type, because an occurrence has one type.
+
+Materials follow the IFC4 practice for layered elements. The `IfcMaterialLayerSet` goes on the type, and an `IfcMaterialLayerSetUsage` of that set goes on each occurrence to say where the layers sit relative to its reference line: `AXIS2` across a wall, `AXIS3` up through a slab. `assignMaterialInStore` associates any `IfcMaterialSelect` (a plain `IfcMaterial` too) through `IfcRelAssociatesMaterial`, and it replaces an object's previous association.
+
+```typescript
+import { StoreEditor } from '@ifc-lite/mutations';
+import {
+  addElementTypeToStore, addMaterialLayerSetToStore, addMaterialLayerSetUsageToStore, addMaterialToStore,
+  assignMaterialInStore, assignTypeInStore, readRelatedLists, resolveAuthoringAnchor,
+} from '@ifc-lite/create';
+
+const editor = new StoreEditor(dataStore, view);
+const anchor = resolveAuthoringAnchor(dataStore, view);
+
+const { typeId } = addElementTypeToStore(editor, anchor, { Type: 'IfcWallType', Name: 'EW-300', PredefinedType: 'SOLIDWALL' });
+assignTypeInStore(editor, anchor, typeId, [wallExpressId], readRelatedLists(dataStore, 'IfcRelDefinesByType', view));
+
+const concrete = addMaterialToStore(editor, anchor, { Name: 'Concrete', Category: 'concrete' }).materialId;
+const wool = addMaterialToStore(editor, anchor, { Name: 'Mineral wool', Category: 'insulation' }).materialId;
+const { layerSetId } = addMaterialLayerSetToStore(editor, anchor, {
+  LayerSetName: 'EW-300',
+  MaterialLayers: [{ Material: concrete, LayerThickness: 0.2 }, { Material: wool, LayerThickness: 0.1 }],
+});
+// A wall centred on its axis: the layers start half its thickness below the reference line.
+const { usageId } = addMaterialLayerSetUsageToStore(editor, anchor, { ForLayerSet: layerSetId, OffsetFromReferenceLine: -0.15 });
+
+const associations = () => readRelatedLists(dataStore, 'IfcRelAssociatesMaterial', view);
+assignMaterialInStore(editor, anchor, layerSetId, [typeId], associations());
+assignMaterialInStore(editor, anchor, usageId, [wallExpressId], associations());
+```
+
+Layer thicknesses and offsets are metres, converted to the file's length unit. Through the SDK these are `bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`, `addMaterialLayerSetUsage` and `assignMaterial`. The two `assign*` methods read the model's existing relationships themselves.
+
 #### Auto Spaces — generate IfcSpace from a storey's walls
 
 For room generation, `@ifc-lite/create` ships a planar-graph face finder that turns a storey's wall axes into a CCW polygon per enclosed region:
@@ -584,6 +619,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Inject a small raw STEP entity (a point, a profile, a unit) | `addEntity` / `bim.store.addEntity` |
 | Drop a fully-formed building element with geometry | `addColumnToStore` / `addWallToStore` / `addSlabToStore` / `addBeamToStore` / `addDoorToStore` / `addWindowToStore` / `addSpaceToStore` / `addRoofToStore` / `addPlateToStore` / `addMemberToStore` (or `bim.store.add{Column,Wall,Slab,…}`) |
 | Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
+| Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
 | Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
 | Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |

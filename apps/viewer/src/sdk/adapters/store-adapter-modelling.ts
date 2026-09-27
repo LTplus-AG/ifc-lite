@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Collab gate, shared-room mirroring and undo bookkeeping for
- * `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow` (#6232).
+ * Collab gate, shared-room mirroring and undo bookkeeping for the #6232
+ * `bim.store` modelling surface: openings, hosted doors/windows, type objects
+ * and materials.
  *
- * Each call writes a compound graph — opening, IfcRelVoidsElement, and for a
+ * An opening or hosted filling writes a compound graph — opening, IfcRelVoidsElement, and for a
  * hosted door/window the filling, IfcRelFillsElement and containment — that a
  * single `CREATE_ENTITY` undo entry cannot invert: undoing only the door would
  * leave IfcRelFillsElement pointing at a deleted record. Until the authoring
@@ -32,7 +33,7 @@ export function withModellingMutationTracking(
   store: StoreApi,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
 ): ModellingMethods {
-  const { relationship } = createStoreMutationTracker(store, resolve, 'modelling');
+  const { create, relationship } = createStoreMutationTracker(store, resolve, 'modelling');
   const compound = <A extends [string, ...unknown[]]>(fn: (...args: A) => EntityRef) =>
     relationship((...args: A): EntityRef => {
       const ref = fn(...args);
@@ -43,5 +44,18 @@ export function withModellingMutationTracking(
     addOpening: compound(methods.addOpening),
     addHostedDoor: compound(methods.addHostedDoor),
     addHostedWindow: compound(methods.addHostedWindow),
+    // Single records with no relationship: one CREATE_ENTITY entry inverts them.
+    addElementType: relationship((modelId: string, params: Parameters<ModellingMethods['addElementType']>[1]) => {
+      const ref = methods.addElementType(modelId, params);
+      store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, params.Type.toUpperCase());
+      return ref;
+    }),
+    addMaterial: create('IFCMATERIAL', methods.addMaterial),
+    addMaterialLayerSetUsage: create('IFCMATERIALLAYERSETUSAGE', methods.addMaterialLayerSetUsage),
+    // A layer set is several records; the assignments rewrite or remove
+    // existing IfcRel* rows the objects move out of.
+    addMaterialLayerSet: compound(methods.addMaterialLayerSet),
+    assignType: compound(methods.assignType),
+    assignMaterial: compound(methods.assignMaterial),
   };
 }

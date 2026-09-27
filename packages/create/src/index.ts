@@ -79,6 +79,26 @@ export {
   type HostedWindowInStoreParams,
   type HostedFillBuildResult,
 } from './in-store/hosted-fill.js';
+export {
+  addElementTypeToStore,
+  assignTypeInStore,
+  type AuthoringAnchor,
+  type ElementTypeInStoreParams,
+  type ElementTypeBuildResult,
+} from './in-store/element-type.js';
+export {
+  addMaterialToStore,
+  addMaterialLayerSetToStore,
+  addMaterialLayerSetUsageToStore,
+  assignMaterialInStore,
+  type MaterialInStoreParams,
+  type MaterialLayerInStoreParams,
+  type MaterialLayerSetInStoreParams,
+  type MaterialLayerSetBuildResult,
+  type MaterialLayerSetUsageInStoreParams,
+} from './in-store/material.js';
+export type { OneToManyResult } from './in-store/relate.js';
+export { resolveAuthoringAnchor, readRelatedLists, liveEntityType } from './in-store/resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
 export {
   addSpatialZonesToStore,

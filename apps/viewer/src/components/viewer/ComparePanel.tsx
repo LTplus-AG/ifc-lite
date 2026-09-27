@@ -29,7 +29,7 @@ import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { CompareExportBar } from './compare/CompareExportBar';
-import { StaleResultBanner } from './StaleResultBanner';
+import { StaleResultBanner } from './analysis/StaleResultBanner';
 import { useCompareSuggestions } from './compare/useCompareSuggestions';
 import { focusRefs } from './compare/focusRefs';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';

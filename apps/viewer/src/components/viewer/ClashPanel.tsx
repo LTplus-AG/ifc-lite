@@ -64,7 +64,7 @@ import {
 } from '@ifc-lite/clash';
 import { ClashModelTagNotice } from './ClashModelTagNotice';
 import { ClashHelp } from './ClashHelp';
-import { StaleResultBanner } from './StaleResultBanner';
+import { StaleResultBanner } from './analysis/StaleResultBanner';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 interface ClashPanelProps {

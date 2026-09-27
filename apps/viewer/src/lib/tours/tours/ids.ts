@@ -11,7 +11,7 @@
 
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { activityAnchor, TOUR_ANCHORS } from '../anchors';
-import { DEMO_MODEL_NAMES, loadDemoIds, loadDemoProject, waitForModelSettled } from '../demo-kit';
+import { loadDemoIdsWithProject } from '../demo-kit';
 import type { TourDefinition } from '../types';
 
 /** Every in-panel IDS anchor lives on the Data validation panel's IDS side;
@@ -59,19 +59,7 @@ export const IDS_TOUR: TourDefinition = {
         // The demo spec is authored against the demo project; validating an
         // arbitrary user model against it would be noise. Swap in the demo
         // project first when it is not already loaded.
-        run: async (store) => {
-          const models = [...store.getState().models.values()];
-          // Exact kit names only, so a user's own similarly-named file is
-          // not mistaken for the demo and the swap is skipped wrongly.
-          const demoLoaded = models.some(
-            (m) => m.name === DEMO_MODEL_NAMES.base || m.name === DEMO_MODEL_NAMES.revB,
-          );
-          if (!demoLoaded) {
-            await loadDemoProject();
-            await waitForModelSettled();
-          }
-          await loadDemoIds();
-        },
+        run: loadDemoIdsWithProject,
       },
       // The demo action may REPLACE the loaded model set; without this the
       // run watcher would treat that as a destructive model change.

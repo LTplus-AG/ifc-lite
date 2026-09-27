@@ -24,7 +24,7 @@ import {
   MousePointer2, PersonStanding, Ruler, Scissors, Home, Maximize2, Crosshair,
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, EyeOff, Eye,
   Equal, Plus, Minus, RotateCcw, SquareX, Building2, Layout,
-  Palette, Sun, Orbit, FolderOpen, Clock, Save, Tag,
+  Sun, Orbit, FolderOpen, Clock, Save,
   PenLine, Slice, Layers3, SquareStack, ChevronsUpDown, Pencil, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -33,25 +33,25 @@ import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
-  executeBasketSet, executeBasketAdd, executeBasketRemove, executeBasketToggleVisibility,
+  executeBasketSet, executeBasketAdd, executeBasketRemove,
   executeBasketSaveView, executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
 import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { paletteSurfaceCommands } from './surface-commands';
 
 export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
+  const shared = paletteSurfaceCommands({ canEditInSession: p.canEditInSession }, p.execute);
 
   // ── File ──
   c.push(
     { id: 'file:open', label: 'Open File', ...withKey('commandPalette.file.open.label'), keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
       immediate: true,
       action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); } },
-    { id: 'file:save-federation-setup', label: 'Save Federation Setup', ...withKey('commandPalette.file.saveFederationSetup.label'), keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
-    { id: 'file:open-federation-setup', label: 'Open Federation Setup', ...withKey('commandPalette.file.openFederationSetup.label'), keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
-    { id: 'file:model-tags', label: 'Model Tags', ...withKey('commandPalette.file.modelTags.label'), keywords: 'model tags label discipline federation organise organize', category: 'File', icon: Tag, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); } },
+    ...shared.filter((command) => command.category === 'File'),
   );
   for (const rf of p.recentFiles) {
     const fileName = rf.name;
@@ -157,8 +157,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => executeBasketAdd() },
     { id: 'vis:remove-iso', label: 'Remove from Basket', ...withKey('commandPalette.vis.removeBasket.label'), keywords: 'basket minus selection hierarchy view', category: 'Visibility', icon: Minus, shortcut: 'basket.remove',
       action: () => executeBasketRemove() },
-    { id: 'vis:toggle-iso', label: 'Toggle Basket Visibility', ...withKey('commandPalette.vis.toggleBasket.label'), keywords: 'basket show hide', category: 'Visibility', icon: Eye,
-      action: () => executeBasketToggleVisibility() },
+    ...shared.filter((command) => command.id === 'vis:toggle-iso'),
     { id: 'vis:save-view', label: 'Save Basket as View', ...withKey('commandPalette.vis.saveBasketView.label'), keywords: 'basket presentation thumbnail', category: 'Visibility', icon: Save,
       action: () => executeBasketSaveView().catch((err) => {
         console.error('[CommandPalette] Failed to save basket view:', err);
@@ -182,8 +181,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); } },
     { id: 'vis:ifcGrid', label: 'Grids', ...withKey('commandPalette.vis.ifcGrid.label'), keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip', category: 'Visibility', icon: Pencil,
       action: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); } },
-    { id: 'vis:reset-colors', label: 'Reset Colors', ...withKey('commandPalette.vis.resetColors.label'), keywords: 'clear color override', category: 'Visibility', icon: Palette,
-      action: () => { p.execute('bim.viewer.resetColors()\nconsole.log("Colors reset")'); } },
+    ...shared.filter((command) => command.id === 'vis:reset-colors'),
   );
 
   return c;

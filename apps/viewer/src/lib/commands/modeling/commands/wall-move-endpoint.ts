@@ -20,7 +20,7 @@ import { dist } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
 import { commandGhostId, wallGhostMesh } from '../ghost.js';
 import { commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime.js';
-import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
+import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '../workplane.js';
 import type { CommandContext, ModelingCommand, Vec3, Workplane } from '../types.js';
 
 export type WallEnd = 'start' | 'end';
@@ -47,8 +47,8 @@ function init(ctx: CommandContext): WallEndpointGesture {
   if (s.selectedEntityId === null) return EMPTY;
   const { modelId, expressId } = resolveEntityRef(s.selectedEntityId);
   const wall = s.models.has(modelId) ? s.readWallEndpoints(modelId, expressId) : null;
-  const storeyId = s.models.get(modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(expressId);
-  if (!wall || storeyId === undefined) return EMPTY;
+  const storeyId = elementStoreyId(s, modelId, expressId);
+  if (!wall || storeyId === null) return EMPTY;
   const plane = buildStoreyWorkplane(s, modelId, storeyId, 0);
   return {
     ...EMPTY,

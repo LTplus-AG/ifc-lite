@@ -35,6 +35,7 @@ export function PanelGroupBrowser() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <RibbonLargeButton
+            data-ribbon-content="panel-browser"
             icon={BrowsePanels}
             label={t('shellChrome.panelGroups.browse')}
             aria-label={t('shellChrome.panelGroups.browse')}

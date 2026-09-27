@@ -143,18 +143,18 @@ describe('UISlice — toolbar style (issue #1686)', () => {
     assert.strictEqual(storage!.store[STYLE_KEY], 'classic');
   });
 
-  it('defaults to the ribbon, and only an explicit classic wins', async () => {
+  it('#5874 migrates an explicit classic preference to ribbon and clears storage', async () => {
     const { resolveInitialToolbarStyle } = await import('../constants.js');
-    // Fresh browser: the ribbon is the default toolbar.
     assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
-    // A user who switched back keeps the classic strip across reloads.
     storage!.store[STYLE_KEY] = 'classic';
-    assert.strictEqual(resolveInitialToolbarStyle(), 'classic');
-    // Anything else (stale / corrupt value) falls back to the default.
+    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    assert.equal(storage!.store[STYLE_KEY], undefined);
     storage!.store[STYLE_KEY] = 'ribbon';
     assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    assert.equal(storage!.store[STYLE_KEY], undefined);
     storage!.store[STYLE_KEY] = 'nonsense';
     assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    assert.equal(storage!.store[STYLE_KEY], undefined);
   });
 
   it('setRibbonTab opens a tab without touching storage', async () => {

@@ -113,7 +113,7 @@
  * STILL OPEN, deliberately: `for (const line of lines)` where the split was
  * bound to a name first. Widening the for-of rule to "any iterable carrying
  * file bytes" also taints `for (const file of files)` where the elements are
- * PATHS — measured as 4 new hits in `toolbar-parity.test.ts`. That is a
+ * PATHS — previously measured as 4 hits in the retired toolbar parity test. That is a
  * question about what an array HOLDS, which a parser cannot answer either, so
  * parsing does not close it and the rule still takes only the `.split(` it can
  * prove.
@@ -519,8 +519,8 @@ function computeTainted(sourceFile) {
     //
     // Deliberately narrow to a SPLIT of tainted text. Tainting on
     // `carriesFileBytes` alone also catches `for (const file of files)` where
-    // the elements are PATHS, not contents — measured as 4 false hits in
-    // toolbar-parity.test.ts, because a list of paths is tainted too. Nothing
+    // the elements are PATHS, not contents — previously measured as 4 false hits in the retired toolbar parity test,
+    // because a list of paths is tainted too. Nothing
     // in the SYNTAX separates a tainted array of lines from a tainted array of
     // filenames, which is why parsing does not close this and the rule still
     // takes only the `.split(` it can prove. `for (const line of lines)` with

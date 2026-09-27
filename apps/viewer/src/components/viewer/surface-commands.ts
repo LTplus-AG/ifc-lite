@@ -10,7 +10,7 @@
  */
 
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Building2, ChevronsUpDown,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Building2, ChevronsUpDown, Ellipsis,
   Crosshair, Equal, Eye, EyeOff, FolderOpen, Home, Layers3, Layout, Maximize2,
   Minus, Orbit, Palette, Pencil, Plus, RotateCcw, Save, SquareStack, SquareX,
   Sun, Tag,
@@ -38,7 +38,7 @@ import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
-import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
+import { CONTEXT_SURFACE_COMMANDS, runContextAction, runContextOr } from './surface-commands-context';
 import { runSurfaceCommand } from './surface-command-run';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
@@ -235,6 +235,12 @@ export const SURFACE_COMMANDS = [
   ...WORKSPACE_SURFACE_COMMANDS,
   ...MOBILE_SURFACE_COMMANDS,
   ...CONTEXT_SURFACE_COMMANDS,
+  {
+    id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',
+    keywords: 'selected entity type storey duplicate delete actions',
+    category: 'Tools', icon: Ellipsis,
+    surfaces: ['ribbon'], enabled: alwaysEnabled, run: runContextAction,
+  },
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,

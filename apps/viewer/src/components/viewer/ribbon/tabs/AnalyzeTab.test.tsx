@@ -4,10 +4,9 @@
 
 /**
  * The Analyze ribbon tab's "Validate" group has its own toggle button for
- * the BCF panel — a fourth site (alongside CommandPalette, MainToolbar, and
- * useWorkspacePanelControls, all pinned elsewhere) that once read "BCF
- * issues". Topic is the BCF-XML container element and Issue is only one
- * TopicType value among several (Request, Comment, Error, Warning, Info),
+ * the BCF panel that once read "BCF issues". Topic is the BCF-XML container
+ * element; Issue is only one TopicType value among several (Request, Comment,
+ * Error, Warning, Info),
  * so "issues" narrowed and contradicted the spec (#4096/#4097). Pin the
  * corrected label here too, so it can't regress silently.
  */

@@ -1829,7 +1829,7 @@ export const createMutationSlice: StateCreator<
     return result;
   },
 
-  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, api.subscribe, modelId, expressId, true),
+  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId, true),
 
   readWallEndpoints: (modelId, expressId) => {
     // Same lazy-create pattern as `readEntityRotation` /

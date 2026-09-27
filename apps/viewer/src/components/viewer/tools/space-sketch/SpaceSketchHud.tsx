@@ -132,7 +132,7 @@ export function SpaceSketchBarContent(p: SpaceSketchBarProps & { tier: number; m
     : t('spaceSketch.footer.doneButton');
   return (
     <HudToolbar
-      className={cn('select-none', p.measuring && 'flex-nowrap')}
+      className={cn('select-none', minimal && 'gap-0.5 px-1', p.measuring && 'flex-nowrap')}
       data-tool-bar={p.measuring ? undefined : 'spaceSketch'}
       data-bar-tier={p.measuring ? undefined : p.tier}
     >

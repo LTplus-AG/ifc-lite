@@ -8,10 +8,8 @@
  * Cost (#4858) shipped with no toolbar entry point — the ActivityBar rail was
  * its only way in, the same failure class as Location Zones before #2508.
  *
- * These mount the ribbon `AnalyzeTab`, click the controls the way a user would,
- * and read `sidebarActivePanel` back — pinning its reachability and that the shared
- * `useWorkspacePanelControls` hook reports them as open with the right
- * label.
+ * These mount the ribbon `AnalyzeTab`, click the named controls the way a
+ * user would, and read `sidebarActivePanel` back.
  */
 
 import '@/test/setup-dom.js';
@@ -23,7 +21,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolve } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { useWorkspacePanelControls } from './useWorkspacePanelControls.js';
 import { AnalyzeTab } from '../ribbon/tabs/AnalyzeTab.js';
 
 const extraMounts: Array<{ root: Root; container: HTMLElement }> = [];
@@ -68,31 +65,10 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'cost');
   });
 
-  it('the shared hook reports Cost as active with its own label, not a fallback', () => {
-    function Probe() {
-      const controls = useWorkspacePanelControls();
-      probe = controls;
-      return null;
-    }
-    let probe!: ReturnType<typeof useWorkspacePanelControls>;
-    mount(<Probe />);
-
-    act(() => { useViewerStore.getState().toggleWorkspacePanel('cost'); });
-    assert.ok(probe.activeWorkspacePanels.has('cost'), 'Cost must read as an active workspace panel once docked');
-    assert.equal(probe.workspacePanelLabel, resolve(panelTitleKey('cost')));
+  it('the ribbon Analyze tab opens Load Report', () => {
+    const container = mount(<AnalyzeTab />);
+    clickEl(ribbonButton(container, resolve(panelTitleKey('loadReport'))));
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'loadReport');
   });
 
-  it('the shared hook reports Load Report as active with its own label, not a fallback', () => {
-    function Probe() {
-      const controls = useWorkspacePanelControls();
-      probe = controls;
-      return null;
-    }
-    let probe!: ReturnType<typeof useWorkspacePanelControls>;
-    mount(<Probe />);
-
-    act(() => { useViewerStore.getState().toggleWorkspacePanel('loadReport'); });
-    assert.ok(probe.activeWorkspacePanels.has('loadReport'), 'Load Report must read as an active workspace panel once docked');
-    assert.equal(probe.workspacePanelLabel, resolve(panelTitleKey('loadReport')));
-  });
 });

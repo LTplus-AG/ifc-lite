@@ -9,6 +9,7 @@ import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import type { SurfaceCommandDefinition, SurfaceCommandContext, SurfaceCommandState } from './surface-commands';
 
 const contextOnly = ['context'] as const;
+const contextAndRibbon = ['context', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const canEdit = (state: SurfaceCommandState): boolean => state.canEditInSession;
 
@@ -35,9 +36,9 @@ export const CONTEXT_SURFACE_COMMANDS = [
     surfaces: contextOnly, enabled: alwaysEnabled, run: runContextAction,
   },
   {
-    id: 'context:copy-global-id', labelKey: ACTION_NAME_KEYS.copyGlobalId,
+    id: 'context:copy-global-id', labelKey: ACTION_NAME_KEYS.copyGlobalId, ribbonTooltipKey: ACTION_NAME_KEYS.copyGlobalId,
     keywords: 'copy guid global id', category: 'Tools', icon: Copy,
-    surfaces: contextOnly, enabled: alwaysEnabled, run: runContextAction,
+    surfaces: contextAndRibbon, enabled: alwaysEnabled, run: runContextAction,
   },
   {
     id: 'context:export-anonymized', labelKey: 'entityContextMenu.exportAnonymized',

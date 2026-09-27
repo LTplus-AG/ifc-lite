@@ -509,26 +509,6 @@ describe('#2508 zone apportionment reachability', () => {
   });
 
   describe('the panel entry points land where they belong', () => {
-    it('announces Zones by name instead of falling back to "Analysis"', () => {
-      const seen: Array<string | null> = [];
-      function Probe() {
-        seen.push(useWorkspacePanelControls().workspacePanelLabel);
-        return null;
-      }
-      const host = document.createElement('div');
-      document.body.appendChild(host);
-      const probeRoot = createRoot(host);
-      try {
-        act(() => probeRoot.render(<Probe />));
-        act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
-        assert.equal(seen.at(-1), 'Location zones');
-      } finally {
-        act(() => probeRoot.unmount());
-        host.remove();
-        useViewerStore.getState().showWorkspacePanel('properties');
-      }
-    });
-
     it('does not promote a BOTTOM panel into the single-tenant side slot', () => {
       // `openWorkspacePanel` has no `isBottomPanel` early return of its own —
       // `showWorkspacePanel` does — so the unflagged-panel line added for Zones

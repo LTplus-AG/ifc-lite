@@ -99,7 +99,11 @@ export const WALL_MOVE_ENDPOINT: ModelingCommand<WallEndpointGesture> = {
     const result = tx.store.resizeWall(modelId, expressId, next.start, next.end, tx.batchId);
     if (!result.ok) throw new Error(`Couldn't resize the wall: ${result.reason}`);
     tx.store.refreshWallMesh(modelId, expressId);
-    return { created: [], deleted: [], remesh: [expressId], select: [expressId] };
+    // `resizeWall` remembered this batch for undo / redo re-meshing as
+    // 'hostsChanged' (its openings and fillings move with it) and
+    // `refreshWallMesh` re-meshed it so; a second request here would replace
+    // both with a 'shape' re-mesh of the wall alone.
+    return { modelId, created: [], deleted: [], remesh: [], select: [expressId] };
   },
   afterCommit: () => ({ exit: true }),
   cancel: () => 'exit',

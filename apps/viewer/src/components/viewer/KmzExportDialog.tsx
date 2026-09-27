@@ -40,7 +40,7 @@ import type { TranslationKey } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 interface KmzExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   trigger?: React.ReactNode;
 }
 
@@ -50,7 +50,7 @@ const ERROR_MESSAGE_KEY: Record<KmzBuildError, TranslationKey> = {
   'no-geometry': 'geometryExport.kmz.noGeometryError',
 };
 
-export function KmzExportDialog({ surface = 'classic', trigger }: KmzExportDialogProps) {
+export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const georefMutations = useViewerStore((s) => s.georefMutations);

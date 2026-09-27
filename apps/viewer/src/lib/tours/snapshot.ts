@@ -69,7 +69,6 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
       custom: s.sectionPlane.custom ? structuredClone(s.sectionPlane.custom) : undefined,
     },
     activeLensId: s.activeLensId,
-    toolbarStyle: s.toolbarStyle,
     ribbonTab: s.ribbonTab,
     ribbonCollapsed: s.ribbonCollapsed,
     camera: s.cameraCallbacks.getViewpoint?.() ?? null,
@@ -234,20 +233,11 @@ export function restoreUiSnapshot(
     s.setPropertiesActiveTab(snapshot.propertiesActiveTab);
   }
 
-  // Toolbar: restored TRANSIENTLY (setState, not setToolbarStyle) so a tour
-  // never writes the stored preference. Tours move the toolbar to teach it,
-  // which is a preview, not a choice — localStorage must only ever change
-  // when the user works the toolbar control themselves. Restoring through
-  // the persisting setter would also overwrite a deliberate switch made
-  // DURING the tour with the pre-tour value.
-  if (!keep.has('toolbarStyle') && store.getState().toolbarStyle !== snapshot.toolbarStyle) {
-    store.setState({ toolbarStyle: snapshot.toolbarStyle });
-  }
   if (!keep.has('ribbonTab') && store.getState().ribbonTab !== snapshot.ribbonTab) {
     s.setRibbonTab(snapshot.ribbonTab);
   }
   // `setRibbonCollapsed` persists as well, so restore it transiently for the
-  // same reason as the toolbar above — the ribbon tour expands the band to
+  // ribbon tour expands the band to
   // point at things in it, and that preview must not overwrite the choice of
   // someone who keeps it collapsed.
   if (!keep.has('ribbonCollapsed') && store.getState().ribbonCollapsed !== snapshot.ribbonCollapsed) {

@@ -15,24 +15,22 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { panelTitleKey } from '@/lib/panels/registry';
 import { surfaceCommand } from '../../surface-commands';
-import { runSurfaceCommand } from '../../surface-command-run';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
   RibbonGroup,
   RibbonGroupDivider,
-  RibbonLargeButton,
-  RibbonSmallButton,
   RibbonSmallStack,
 } from '../primitives';
+import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { t } = useTranslation();
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
   const { loading, models } = useIfc();
   const saveSetup = surfaceCommand('file:save-federation-setup', 'ribbon');
+  const shareCommand = surfaceCommand('file:share', 'ribbon');
   const openSetup = surfaceCommand('file:open-federation-setup', 'ribbon');
   const modelTags = surfaceCommand('file:model-tags', 'ribbon');
   const collabRole = useViewerStore((s) => s.collabRole);
@@ -57,57 +55,48 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   return (
     <>
       <RibbonGroup label={t('ribbon.file.modelGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="file:open"
           icon={loading ? Loading : OpenFile}
-          label={t('ribbon.file.open')}
-          tooltip={t('ribbon.file.openTooltip')}
           disabled={loading}
           className={loading ? '[&_svg]:animate-spin' : undefined}
-          onClick={() => { void handleOpenClick(); }}
+          commandContext={{ openFiles: () => { void handleOpenClick(); } }}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="panel:sources"
           icon={CloudSources}
-          label={t(panelTitleKey('sources'))}
-          aria-label={t(panelTitleKey('sources'))}
           tooltip={t('ribbon.file.cloudSourcesTooltip')}
           active={activeWorkspacePanels.has('sources')}
-          onClick={() => handleToggleRightPanel('sources')}
+          commandContext={{ activateRightPanel: () => handleToggleRightPanel('sources') }}
         />
         <RibbonSmallStack>
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="file:add-model"
             icon={AddFile}
-            label={t('ribbon.file.addModel')}
-            tooltip={t('ribbon.file.addModelTooltip')}
             disabled={loading || !hasModelsLoaded}
-            onClick={() => { void handleAddModelClick(); }}
+            commandContext={{ addModel: () => { void handleAddModelClick(); } }}
           />
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="file:refresh"
             icon={Refresh}
-            label={t('ribbon.file.refresh')}
             tooltip={models.size > 1 ? t('ribbon.file.refreshModelsTooltip') : t('ribbon.file.refreshModelTooltip')}
             disabled={loading || !canRefresh}
-            onClick={() => { void handleRefresh(); }}
+            commandContext={{ refreshModels: handleRefresh }}
           />
         </RibbonSmallStack>
-        <RibbonLargeButton
-          data-command-id={saveSetup.id}
-          icon={saveSetup.icon}
-          label={t(saveSetup.labelKey)}
+        <RibbonCommandLargeButton
+          commandId={saveSetup.id}
           tooltip={t(saveSetup.labelKey)}
           disabled={!saveSetup.enabled({ canEditInSession })}
-          onClick={() => runSurfaceCommand(saveSetup, { surface: 'ribbon' })}
         />
         <RibbonSmallStack className="gap-1">
           {[openSetup, modelTags].map((command) => (
-            <RibbonSmallButton
+            <RibbonCommandSmallButton
               key={command.id}
-              data-command-id={command.id}
-              icon={command.icon}
-              label={t(command.labelKey)}
+              commandId={command.id}
               tooltip={t(command.labelKey)}
               className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => runSurfaceCommand(command, { surface: 'ribbon' })}
             />
           ))}
         </RibbonSmallStack>
@@ -121,12 +110,11 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         <>
           <RibbonGroupDivider />
           <RibbonGroup label={t('ribbon.file.shareGroup')}>
-            <RibbonLargeButton
+            <RibbonCommandLargeButton
+              commandId={shareCommand.id}
               icon={Share}
-              label={t('ribbon.file.share')}
-              tooltip={t('ribbon.file.shareTooltip')}
               disabled={!hasModelsLoaded}
-              onClick={openShareDialog}
+              commandContext={{ openShareDialog }}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-2xs font-medium text-primary-foreground">
                   {collabPeerCount + 1}
@@ -134,18 +122,16 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               ) : undefined}
             />
             {/* Room panel toggle — live presence + management. Shown whenever
-                collab is on, not only inside a room: the classic strip's Panels
-                menu, the palette and the rail all offer it unconditionally, and
-                gating it here left ribbon users unable to open the panel at all
-                before joining. It also contradicted this toolbar's own rule
+                collab is on, not only inside a room: the palette and rail offer
+                it unconditionally. Gating it here left ribbon users unable to
+                open the panel before joining. It also contradicted this toolbar's own rule
                 that its geography stays put rather than appearing mid-session. */}
-            <RibbonLargeButton
+            <RibbonCommandLargeButton
+              commandId="panel:collab"
               icon={CollabsRoom}
-              label={t(panelTitleKey('collab'))}
-              aria-label={t(panelTitleKey('collab'))}
               tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
-              onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}
+              commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon') }}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
                   {collabPeerCount + 1}

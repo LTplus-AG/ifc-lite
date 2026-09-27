@@ -14,6 +14,7 @@ import type { WorkspacePanelId } from './panels/registry.js';
 // posthog-js.
 
 /** The chrome an action was started from. `rail` = the sidebar activity bar. */
+/** `classic` is retained for historical event-schema compatibility; no live toolbar emits it. */
 export type UiSurface = 'ribbon' | 'classic' | 'rail' | 'palette' | 'shortcut' | 'mobile' | 'context';
 
 /** `programmatic` = the app opened the panel itself (a tour, a load, a

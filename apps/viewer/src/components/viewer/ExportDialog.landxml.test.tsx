@@ -48,7 +48,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
   it('refuses IFC export from a LandXML-only model instead of synthesizing IFC', () => {
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.match(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
@@ -59,7 +59,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
   it('keeps the non-IFC JSON mutation-delta export available', () => {
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
@@ -76,7 +76,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     const terrain = landXmlModel('survey.xml');
     terrain.schemaVersion = 'IFC5';
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
@@ -93,7 +93,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     authored.schemaVersion = 'IFC4';
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(authored, terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const scope = document.querySelector('[role="combobox"]');
@@ -171,7 +171,7 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     const terrain = landXmlModel('survey.xml');
     terrain.sourceFile = new File(['<LandXML/>'], 'Example_Terrain.xml', { type: 'application/xml' });
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const button = sourceButton();
@@ -195,7 +195,7 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     const terrain = landXmlModel('survey.xml');
     delete terrain.sourceFile;
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.equal(sourceButton(), undefined, 'no action is offered that cannot be performed');
@@ -207,7 +207,7 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     authored.schemaVersion = 'IFC4';
     authored.sourceFile = new File(['ISO-10303-21;'], 'building.ifc');
     useViewerStore.setState({ ...fixtureModels(authored), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.equal(sourceButton(), undefined, 'the route belongs to the LandXML refusal, not to every export');
@@ -285,7 +285,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     const terrain = terrainWithDocument('survey.xml');
     terrain.sourceFile = new File([source], 'survey.xml', { type: 'application/xml' });
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const { bytes } = await captureAsyncDownload(() => click(exportButton()));
@@ -298,7 +298,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -313,7 +313,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('survey.xml', { alignments: [{}, {}] })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -336,7 +336,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('alignments.xml', { surfaces: [], alignments: fixture.alignments })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -350,7 +350,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('alignment.xml', { surfaces: [], alignments: [{}, {}, {}] })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.match(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
@@ -365,7 +365,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       },
     });
     useViewerStore.setState({ ...fixtureModels(assumed), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // The scale is an operator's choice, not the file's. Nothing in the
@@ -377,7 +377,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // The fixture's own schemaVersion is IFC4. Without this the dialog would
@@ -394,7 +394,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       useViewerStore.setState({
         ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
       });
-      render(<ExportDialog />);
+      render(<ExportDialog surface="ribbon" />);
       openDialog();
 
       const schema = [...document.querySelectorAll('[role="combobox"]')].at(-1);
@@ -415,7 +415,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
   it('actually writes the changes-only JSON for a LandXML model, which has no data store', () => {
     const terrain = terrainWithDocument('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
@@ -438,7 +438,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       coordinateSystem: { horizontalDatum: 'SWEREF99 TM' },
     });
     useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // §2.2's transposition check needs the CRS's coordinate BOUNDS, which this
@@ -455,7 +455,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     // the dialog called a "declared datum".
     const georeferenced = terrainWithDocument('survey.xml', { coordinateSystem: { horizontalDatum: 'EPSG:3875' } });
     useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -489,7 +489,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     const terrain = terrainWithDocument('survey.xml');
     terrain.terrainImagery = draped('file');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const row = outputRow();
@@ -501,7 +501,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     const terrain = terrainWithDocument('survey.xml');
     terrain.terrainImagery = draped('tiles');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.match(outputRow(), /IFC \(STEP\)\.ifc$/);
@@ -515,7 +515,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     useViewerStore.setState({
       ...fixtureModels(authored, terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const scope = document.querySelector('[role="combobox"]');

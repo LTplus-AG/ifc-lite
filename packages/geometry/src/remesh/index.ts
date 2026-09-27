@@ -13,4 +13,5 @@ export {
   type RemeshConfig,
   type RemeshRequest,
   type RemeshResult,
+  type StyleWire,
 } from './remesh-core.js';

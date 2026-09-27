@@ -4,13 +4,13 @@
 
 /**
  * Ribbon rendering of the export registry: the File tab's Export group. Every
- * button is generated from `EXPORT_COMMANDS`, so the ribbon cannot fall behind
- * the classic strip — see `toolbar/export-commands.ts`.
+ * button is generated from `EXPORT_COMMANDS`, the single format/order/gating
+ * registry — see `toolbar/export-commands.ts`.
  *
  * The icon set arrives as a prop rather than being imported here: the ribbon's
  * icons come from `@/icons`, which resolves through the `unplugin-icons` Vite
  * plugin and therefore cannot be loaded by the node test runner. Injecting it
- * keeps this component renderable in `export-ui-parity.test.tsx`, while the
+ * keeps this component renderable in `export-ui-ribbon.test.tsx`, while the
  * real set (`RIBBON_EXPORT_ICONS`) stays exhaustive at the type level.
  */
 

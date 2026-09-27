@@ -110,7 +110,7 @@ function semanticSource(modelId: string): SemanticSource {
   return source;
 }
 
-export function resolveCommandSnap(
+function resolveCommandSnap(
   ctx: MouseHandlerContext,
   runtime: CommandRuntimeState,
   x: number,

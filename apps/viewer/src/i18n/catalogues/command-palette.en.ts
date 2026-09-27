@@ -21,7 +21,7 @@ import type { TranslationValue } from '../types';
  *  - Extension-contributed entries (`ext:*`) — `payload.title`, sourced
  *    from the extension registry at runtime, not a literal in this repo.
  *  - Built-in panel rows resolve their names from the workspace panel registry
- *    so the palette, rail, ribbon, and classic toolbar display the same name.
+ *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
   // ── File ──

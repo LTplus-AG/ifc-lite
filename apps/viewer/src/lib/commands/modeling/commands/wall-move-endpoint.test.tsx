@@ -21,6 +21,9 @@ import { cleanup, press, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { WallEndpointOverlay } from '@/components/viewer/tools/WallEndpointOverlay';
 import type { PlacementState } from '@/lib/model-placement/state';
+import { setRemeshClientFactory, type RemeshClientLike } from '@/lib/remesh/remesh-service';
+import type { RemeshRequest, RemeshResult, StyleWire } from '@ifc-lite/geometry/remesh';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import type { SnapResult } from '@/lib/snap/types';
 import '../builtin.js';
 import { commandPointerMove, getCommandRuntime } from '../runtime.js';
@@ -73,6 +76,42 @@ describe('wall.moveEndpoint (#6232 WP2)', () => {
     useViewerStore.getState().undo(MODEL_ID);
     assert.deepEqual(ends()?.end.map((v) => +v.toFixed(6)), [4, 0, 0], 'one undo restores the wall');
     assert.equal(undoDepth(), before);
+  });
+
+  it('release re-meshes the wall once, as the resize registered it (with what it hosts)', async () => {
+    // A scripted worker in place of the wasm one; the model carries the RTC
+    // frame the re-mesh service meshes in.
+    const requests: RemeshRequest[] = [];
+    const client: RemeshClientLike = {
+      alive: true,
+      remesh: (request) => { requests.push(request); return new Promise<RemeshResult>(() => {}); },
+      styleWire: () => Promise.resolve({
+        styleIds: new Uint32Array(), styleColors: new Uint8Array(),
+        materialElementIds: new Uint32Array(), materialColorCounts: new Uint32Array(), materialColors: new Uint8Array(),
+      } as StyleWire),
+      setConfig: () => {},
+      dispose: () => {},
+    };
+    setRemeshClientFactory(async () => client);
+    try {
+      const model = useViewerStore.getState().models.get(MODEL_ID)!;
+      const geometryResult = {
+        ...model.geometryResult,
+        coordinateInfo: { ...model.geometryResult!.coordinateInfo, wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } },
+      } as GeometryResult;
+      useViewerStore.setState({ models: new Map([[MODEL_ID, { ...model, geometryResult }]]) });
+
+      beginWallEndpointDrag('end');
+      dragTo(6, 1);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // `refreshWallMesh` asks once ('hostsChanged'); a second, 'shape' request
+      // from the transaction would supersede it and re-register the batch.
+      assert.equal(requests.length, 1, 'one re-mesh request for the release');
+      assert.ok([...requests[0].targets].includes(wallId));
+    } finally {
+      setRemeshClientFactory(null);
+    }
   });
 
   it('Escape during the drag, or a press without a drag, writes nothing', () => {

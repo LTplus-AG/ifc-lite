@@ -5,13 +5,11 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The command lists both the classic `MainToolbar` and the ribbon render
- * from a single registry, so neither style can host a command the other
- * lacks (#4918 slice 2, following slice 1's `main-toolbar.en.ts`):
- * - `export-commands.ts` — `ClassicExportMenuItems` / `RibbonExportGroup`
- * - `camera-commands.ts` — `CameraCommandMenuItems` / `ViewTab`
- * - `bottom-panels.ts` consumer `BottomPanelMenuItems`
- * - `AuthorPanelMenuItems`
+ * Shared command labels rendered by the ribbon, palette and mobile surfaces
+ * from one registry (#4918 slice 2, #5874):
+ * - `export-commands.ts` — `RibbonExportGroup` / command palette / mobile menu
+ * - `camera-commands.ts` — `ViewTab`
+ * - panel registry titles — ribbon Analyze / Author / View tabs
  * - `ClassVisibilityMenu` (`ClassVisibilityMenuContent`)
  *
  * The two data-only registries (`export-commands.ts`, `camera-commands.ts`)
@@ -70,15 +68,9 @@ export const sharedCommandsEn = {
   'exportCommands.modifiedIfc.tooltip': 'Export every model with unexported edits, edits applied',
 
   // Extension-contributed exporters: the row text is the exporter's own name.
-  'exportCommands.extension.groupLabel': 'From extensions',
   'exportCommands.extension.exportedToast': 'Exported with {name}',
   'exportCommands.extension.failedToast': '"{name}" failed: {error}',
 
-  'cameraCommands.group.camera': 'Camera',
-  'cameraCommands.group.preset': 'Preset views',
-  'cameraCommands.group.rotate': 'Rotate',
-
-  'cameraCommands.home.label': 'Isometric',
   'cameraCommands.home.tooltip': 'Home (isometric camera + fit)',
   'cameraCommands.zoomIn.label': 'Zoom in',
   'cameraCommands.zoomIn.tooltip': 'Zoom in',
@@ -103,17 +95,12 @@ export const sharedCommandsEn = {
   'cameraCommands.rotateRight.label': 'Rotate right',
   'cameraCommands.rotateRight.tooltip': 'Rotate right 90°',
 
-  'workspacePanels.workspaceLabel': 'Workspace',
-  'workspacePanels.multiplePanels': 'Multiple panels',
   'workspacePanels.panel.collab': 'Collaboration room',
   'workspacePanels.panel.layers': 'Layer stack',
   'workspacePanels.panel.presentation': 'Presentation',
   'workspacePanels.bottom.gantt': 'Schedule (Gantt)',
   'workspacePanels.bottom.charts': 'Charts',
   'workspacePanels.bottom.document': 'Document',
-
-  'workspacePanels.authorLabel': 'Author',
-  'workspacePanels.author.addElement': 'Add Element',
 
   'classVisibility.viewHeading': '3D View',
   'classVisibility.viewModeAriaLabel': '3D view mode',

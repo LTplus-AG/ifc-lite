@@ -60,10 +60,10 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   c.push(...shared.filter((command) => command.category === 'View'));
 
   // ── Tools ── (static rows are generated from the shared table)
-  c.push(...shared.filter((command) => command.category === 'Tools'));
+  c.push(...shared.filter((command) => command.id.startsWith('tool:') || command.id === 'model:reposition'));
 
   // ── Visibility ── (static rows are generated from the shared table)
-  c.push(...shared.filter((command) => command.category === 'Visibility'));
+  c.push(...shared.filter((command) => command.id.startsWith('vis:')));
 
   return c;
 }

@@ -33,6 +33,7 @@ import type { Command } from './commandPaletteSearch';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
+import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -190,6 +191,7 @@ export const SURFACE_COMMANDS = [
   },
   ...TOOL_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
+  ...WORKSPACE_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,

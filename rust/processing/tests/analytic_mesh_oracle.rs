@@ -11,8 +11,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use checker::{compare_model, compare_surface, eligibility};
-use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+use ifc_lite_core::EntityDecoder;
+use ifc_lite_geometry::{analytic::AnalyticCurveSegment, GeometryRouter};
 use ifc_lite_processing::extract_swept_disk_descriptions;
+use nalgebra::Matrix4;
 
 fn synthetic(name: &str) -> Vec<u8> {
     fs::read(format!(
@@ -54,9 +56,24 @@ fn straight_and_tangent_composite_bars_match_independent_meshes() {
 
 #[test]
 fn mapped_scaled_mirrored_and_large_world_occurrences_match() {
+    // An explicit +Y paired with -X and +Z makes the mapping left-handed.
+    // Omitting Axis2 derives -Y from Z × -X and merely rotates the source.
+    let mirrored = altered_line(
+        "#1000=IFCDIRECTION((-1.,0.,0.));\n#1001=IFCDIRECTION((0.,1.,0.));\n#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1000,#1001,#10,$,#11);",
+    );
+    let mut decoder = EntityDecoder::new(&mirrored);
+    let item = decoder.decode_by_id(47).unwrap();
+    let source = decoder.decode_by_id(45).unwrap();
+    let matrix = GeometryRouter::with_scale(1.0)
+        .resolve_scaled_mapped_item_transform(&item, &source, &mut decoder)
+        .unwrap().unwrap();
+    let determinant = Matrix4::from_column_slice(&matrix)
+        .fixed_view::<3, 3>(0, 0).determinant();
+    assert!(determinant < 0.0, "mapped operator must reflect, determinant {determinant}");
+
     let variants = [
         altered_line("#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,2.,$);"),
-        altered_line("#1000=IFCDIRECTION((-1.,0.,0.));\n#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1000,$,#10,$,#11);"),
+        mirrored,
         large_local_placement(),
     ];
     for (index, variant) in variants.iter().enumerate() {

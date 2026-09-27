@@ -28,7 +28,7 @@ export const EVENT_FILE_DOWNLOADED = 'ifc-lite:file-downloaded';
 /**
  * Add a model to the CURRENT federation set (detail: File) - unlike
  * `ifc-lite:load-file`, which replaces the loaded model. Listener lives in
- * MainToolbar next to the load-file one; used by the compare tour to bring
+ * useFileCommands next to the load-file one; used by the compare tour to bring
  * in the demo revision B.
  */
 export const EVENT_ADD_MODEL = 'ifc-lite:add-model';

@@ -4,18 +4,15 @@
 
 /**
  * Export command registry — the single source of truth for which formats the
- * viewer's toolbars can export.
+ * viewer's ribbon, palette and mobile menu can export.
  *
- * The viewer ships two toolbar styles: the classic `MainToolbar` strip and the
- * tabbed `RibbonToolbar`. Both render their Export cluster by mapping over
- * `EXPORT_COMMANDS`, so a format can never be reachable in one style and
- * missing in the other — there is one list, one order, one gating rule.
+ * Their export controls derive from `EXPORT_COMMANDS`, so there is one list,
+ * one order and one gating rule.
  *
  * Adding a format = adding one entry here. `ExportCommandId` is derived from
- * the array, so every `Record<ExportCommandId, …>` — notably each toolbar
- * style's icon map — stops compiling until that style has been taught the new
- * format. `export-ui-parity.test.tsx` then checks at runtime that both styles
- * actually render every id, and that neither hand-rolls an entry beside it.
+ * the array, so every `Record<ExportCommandId, …>` — notably the ribbon icon
+ * map — stops compiling until the new format has an icon.
+ * `export-ui-ribbon.test.tsx` checks that the live File tab renders every id.
  *
  * Extension-contributed exporters are the registry's runtime half: they are
  * not known until an extension installs them, so `useExportCommands` resolves

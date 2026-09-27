@@ -3,12 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * File-command surface shared by every desktop toolbar style (classic
- * `MainToolbar` and the ribbon). Owns the Open / Add Model / Refresh
- * flows, the hidden file inputs, and the global `ifc-lite:*` load
- * events, so both toolbars drive the exact same load pipeline and the
- * logic lives once. Exactly one toolbar mounts at a time, so the
- * window listeners registered here never double-fire.
+ * File-command surface for the ribbon. Owns the Open / Add Model / Refresh
+ * flows, hidden file inputs, and global `ifc-lite:*` load events. The ribbon
+ * mounts it once, so the window listeners never double-fire.
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';

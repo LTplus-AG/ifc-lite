@@ -7,11 +7,9 @@
  * one-click exports (CSV / JSON / screenshot) plus the gating that decides
  * which registry entries are live right now.
  *
- * Both toolbar styles call this hook and render `commands` — the classic strip
- * through `ClassicExportMenuItems`, the ribbon through `RibbonExportGroup` —
- * so the enabled/disabled rule for a format is written once. The dialog-based
- * formats stay dialog components with a `trigger` prop; each style supplies
- * its own trigger element.
+ * The ribbon renders `commands` through `RibbonExportGroup`, while palette
+ * and mobile requests use the same handlers. The enabled/disabled rule for a
+ * format is written once. Dialog formats keep their `trigger` prop.
  */
 
 import { useCallback, useMemo } from 'react';

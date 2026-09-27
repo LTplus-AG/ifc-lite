@@ -43,6 +43,22 @@ const FILE_COMMANDS: FileCommands = {
 afterEach(() => { cleanup(); mock.restoreAll(); });
 
 describe('shared palette and ribbon commands (#5870)', () => {
+  it('projects a mobile row through the extracted command boundary (#5874)', async () => {
+    const registry = await loadRegistry();
+    const projection = await import('./surface-command-row.js').catch(() => null);
+    assert.ok(registry && projection, 'the command projection loads');
+    const definition = registry.surfaceCommand('file:open', 'mobile');
+    let opens = 0;
+    const row = projection.commandRowFromDefinition(definition, {
+      surface: 'mobile', openFiles: () => { opens += 1; },
+    });
+    assert.equal(row.labelKey, definition.labelKey);
+    assert.equal(row.icon, definition.icon);
+    assert.equal(row.immediate, true);
+    row.action();
+    assert.equal(opens, 1, 'the projected row reaches the real file-open action');
+  });
+
   it('renders every declared ribbon home with its one registry name and icon', async () => {
     render(<FileTab fileCommands={FILE_COMMANDS} />);
     render(<ElementsTab />);

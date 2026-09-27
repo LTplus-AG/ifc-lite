@@ -87,7 +87,7 @@ describe('shared command surfaces with a registered locale (#4918 slice 2)', () 
   it('falls back to English per key for a partial locale', () => {
     registerLocale('shared-commands-partial', {
       'exportCommands.ifc.menuLabel': 'IFC exportieren (mit Änderungen)',
-      'workspacePanels.bottom.lists': 'Listen',
+      'lists.panel.title': 'Listen',
     });
     setLocale('shared-commands-partial');
 

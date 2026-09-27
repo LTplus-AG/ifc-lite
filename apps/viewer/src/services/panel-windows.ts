@@ -24,6 +24,7 @@
 
 import { getViewerStoreApi } from '@/store';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resolve } from '@/i18n/registry';
 
 interface DocumentPictureInPictureApi {
   requestWindow(options?: { width?: number; height?: number }): Promise<Window>;
@@ -166,7 +167,7 @@ export async function openPanelWindow(id: WorkspacePanelId): Promise<PanelWindow
   if (!win) return null; // blocked by a popup blocker
 
   try {
-    win.document.title = `${def?.title ?? id} — ifc-lite`;
+    win.document.title = `${def ? resolve(def.titleKey) : id} — ifc-lite`;
     bridgeStyles(win.document);
   } catch {
     /* about:blank not ready in some engines — portal still mounts into body */

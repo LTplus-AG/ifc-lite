@@ -37,7 +37,7 @@ import {
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
-import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
 export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
@@ -105,7 +105,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
       category: 'View' as const, icon: Building2,
       action: () => { useViewerStore.getState().toggleCesium(); },
     }] : []),
-    { id: 'view:lighting', label: 'Environment', ...withKey('commandPalette.view.lighting.label'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
+    { id: 'view:lighting', ...withPanelTitle('environment'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
       category: 'View', icon: Sun,
       action: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); } },
     { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',

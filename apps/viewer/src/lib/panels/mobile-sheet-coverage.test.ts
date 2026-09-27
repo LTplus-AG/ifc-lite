@@ -77,7 +77,7 @@ describe('workspace panel registry coverage', () => {
 
   it('gives every registered panel a title for the sheet header', () => {
     const untitled = WORKSPACE_PANELS
-      .filter((panel) => !getPanelDef(panel.id)?.title)
+      .filter((panel) => !getPanelDef(panel.id)?.titleKey)
       .map((panel) => panel.id);
 
     assert.deepEqual(untitled, [], 'these panels would head the mobile sheet with a blank title');

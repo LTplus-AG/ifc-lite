@@ -30,7 +30,7 @@ describe('WORKSPACE_PANELS — environment panel registration (#5506)', () => {
   it('registers an environment entry', () => {
     const entry = WORKSPACE_PANELS.find((p) => p.id === 'environment');
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'environment' panel definition");
-    assert.equal(entry?.title, 'Environment');
+    assert.equal(entry?.titleKey, 'viewportLighting.sunSkyPanel.header.title');
     assert.equal(entry?.region, 'side');
   });
 

@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Grip, ChevronRight, Rows2, X, Check, GripHorizontal } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
@@ -105,7 +105,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
         {options.map((p) => (
           <DropdownMenuItem key={p.id} onSelect={() => pick(p.id)} className="gap-2">
             <p.Icon className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1">{p.title}</span>
+            <span className="flex-1">{t(p.titleKey)}</span>
             {secondary === p.id && <Check className="h-3.5 w-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}

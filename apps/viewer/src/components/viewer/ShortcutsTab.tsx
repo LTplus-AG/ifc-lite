@@ -27,11 +27,8 @@ interface ShortcutRow {
   readonly params?: TranslationParameters;
 }
 
-/** Alt+1…0 panel names, taken from the registry so a rename cannot go stale. */
-const altPanelTitles = (bottom: boolean) =>
-  ALT_SHORTCUT_PANELS.filter((p) => (p.region === 'bottom') === bottom).map((p) => p.title).join(', ');
-
-function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTURES)[number]) => string) {
+function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTURES)[number]) => string,
+  panelTitles: { sidePanels: string; bottomPanels: string }) {
   const rows = new Map<KeyCommandCategory, ShortcutRow[]>();
   const push = (category: KeyCommandCategory, row: ShortcutRow) => {
     const list = rows.get(category) ?? [];
@@ -43,9 +40,7 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
       id: command.id,
       keys: formatCommandKeys(command, apple),
       labelKey: command.labelKey,
-      params: command.id === 'ui.openPanel'
-        ? { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) }
-        : undefined,
+      params: command.id === 'ui.openPanel' ? panelTitles : undefined,
     });
   }
   for (const gesture of POINTER_GESTURES) {
@@ -60,7 +55,11 @@ function rowsByCategory(apple: boolean, gestureKeys: (row: (typeof POINTER_GESTU
 export function ShortcutsTab() {
   const { t } = useTranslation();
   const apple = isApplePlatform();
-  const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }));
+  const altPanelTitles = (bottom: boolean) => ALT_SHORTCUT_PANELS
+    .filter((panel) => (panel.region === 'bottom') === bottom)
+    .map((panel) => t(panel.titleKey)).join(', ');
+  const groups = rowsByCategory(apple, (gesture) => t(gesture.gestureKey, { mod: apple ? '⌘' : 'Ctrl' }),
+    { sidePanels: altPanelTitles(false), bottomPanels: altPanelTitles(true) });
 
   return (
     <div className="space-y-4">

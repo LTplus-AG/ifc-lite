@@ -129,12 +129,12 @@ function openPanelsMenu(container: HTMLElement): void {
 function zonesControl(surface: 'classic' | 'ribbon', container: HTMLElement): HTMLElement {
   const found = surface === 'classic'
     ? [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
-        (e) => e.textContent?.trim() === 'Location Zones')
+        (e) => e.textContent?.trim() === 'Location zones')
     // Matched on the VISIBLE label: `RibbonLargeButton` sets
     // `aria-label={tooltip ?? label}`, so this button's accessible name is the
     // tooltip prose, not "Zones".
     : [...container.querySelectorAll<HTMLElement>('button')].filter(
-        (e) => e.textContent?.trim() === 'Zones');
+        (e) => e.textContent?.trim() === 'Location zones');
   assert.equal(found.length, 1, `${surface}: expected one Zones control, found ${found.length}`);
   return found[0];
 }
@@ -583,7 +583,7 @@ describe('#2508 zone apportionment reachability', () => {
       try {
         act(() => probeRoot.render(<Probe />));
         act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
-        assert.equal(seen.at(-1), 'Location Zones');
+        assert.equal(seen.at(-1), 'Location zones');
       } finally {
         act(() => probeRoot.unmount());
         host.remove();

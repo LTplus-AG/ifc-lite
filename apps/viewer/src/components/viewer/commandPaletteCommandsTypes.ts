@@ -14,6 +14,8 @@ import type { ExtensionHostService } from '@/services/extensions/host.js';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
+import { resolveEnglish } from '@/i18n/registry';
+import { panelTitleKey, type WorkspacePanelId } from '@/lib/panels/registry';
 import type { ExportRequest } from './useExportRunner';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
@@ -42,4 +44,10 @@ export interface CommandPaletteBuildParams {
  *  render `label` as-is (see `commandPaletteCommandsCore.ts`'s docblock). */
 export function withKey(labelKey: TranslationKey, labelKeyParams?: TranslationParameters) {
   return { labelKey, labelKeyParams };
+}
+
+/** Display and English search text from the one workspace-panel name. */
+export function withPanelTitle(id: WorkspacePanelId) {
+  const labelKey = panelTitleKey(id);
+  return { labelKey, label: resolveEnglish(labelKey) };
 }

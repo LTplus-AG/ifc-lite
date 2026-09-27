@@ -13,6 +13,7 @@ import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, 
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
+import { panelTitleKey } from '@/lib/panels/registry';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -46,20 +47,23 @@ export function AnalyzeTab() {
       <RibbonGroup label={t('ribbon.analyze.validateGroup')}>
         <RibbonLargeButton
           icon={Issue}
-          label={t('ribbon.analyze.bcfTopics')}
+          label={t(panelTitleKey('bcf'))}
+          aria-label={t(panelTitleKey('bcf'))}
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
           icon={Check}
-          label={t('ribbon.analyze.ids')}
+          label={t(panelTitleKey('validation'))}
+          aria-label={t(panelTitleKey('validation'))}
           tooltip={t('ribbon.analyze.idsTooltip')}
           active={activeWorkspacePanels.has('validation')}
           onClick={() => handleToggleRightPanel('validation')}
         />
         <RibbonLargeButton
           icon={Clash}
-          label={t('ribbon.analyze.clash')}
+          label={t(panelTitleKey('clash'))}
+          aria-label={t(panelTitleKey('clash'))}
           tooltip={t('ribbon.analyze.clashTooltip')}
           active={activeWorkspacePanels.has('clash')}
           onClick={() => handleToggleRightPanel('clash')}
@@ -71,14 +75,16 @@ export function AnalyzeTab() {
       <RibbonGroup label={t('ribbon.analyze.compareGroup')}>
         <RibbonLargeButton
           icon={Compare}
-          label={t('ribbon.analyze.compare')}
+          label={t(panelTitleKey('compare'))}
+          aria-label={t(panelTitleKey('compare'))}
           tooltip={t('ribbon.analyze.compareTooltip')}
           active={activeWorkspacePanels.has('compare')}
           onClick={() => handleToggleRightPanel('compare')}
         />
         <RibbonLargeButton
           icon={Layer}
-          label={t('ribbon.analyze.layers')}
+          label={t(panelTitleKey('layers'))}
+          aria-label={t(panelTitleKey('layers'))}
           tooltip={t('ribbon.analyze.layersTooltip')}
           active={activeWorkspacePanels.has('layers')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'ribbon')}
@@ -87,7 +93,8 @@ export function AnalyzeTab() {
             (#2508): the ActivityBar rail was its only entry point. */}
         <RibbonLargeButton
           icon={Zones}
-          label={t('ribbon.analyze.zones')}
+          label={t(panelTitleKey('zones'))}
+          aria-label={t(panelTitleKey('zones'))}
           tooltip={t('ribbon.analyze.zonesTooltip')}
           active={activeWorkspacePanels.has('zones')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'ribbon')}
@@ -95,7 +102,8 @@ export function AnalyzeTab() {
         {/* Per-model load report (#3927): actionable geometry warnings. */}
         <RibbonLargeButton
           icon={LoadReport}
-          label={t('ribbon.analyze.loadReport')}
+          label={t(panelTitleKey('loadReport'))}
+          aria-label={t(panelTitleKey('loadReport'))}
           tooltip={t('ribbon.analyze.loadReportTooltip')}
           active={activeWorkspacePanels.has('loadReport')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'ribbon')}
@@ -109,56 +117,64 @@ export function AnalyzeTab() {
             first time — the ActivityBar rail was its only entry point. */}
         <RibbonLargeButton
           icon={Cost}
-          label={t('ribbon.analyze.cost')}
+          label={t(panelTitleKey('cost'))}
+          aria-label={t(panelTitleKey('cost'))}
           tooltip={t('ribbon.analyze.costTooltip')}
           active={activeWorkspacePanels.has('cost')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'ribbon')}
         />
         <RibbonLargeButton
           icon={List}
-          label={t('ribbon.analyze.lists')}
+          label={t(panelTitleKey('lists'))}
+          aria-label={t(panelTitleKey('lists'))}
           tooltip={t('ribbon.analyze.listsTooltip')}
           active={activeWorkspacePanels.has('lists')}
           onClick={() => handleToggleBottomPanel('lists')}
         />
         <RibbonLargeButton
           icon={Schedule}
-          label={t('ribbon.analyze.schedule')}
+          label={t(panelTitleKey('gantt'))}
+          aria-label={t(panelTitleKey('gantt'))}
           tooltip={t('ribbon.analyze.scheduleTooltip')}
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />
         <RibbonLargeButton
           icon={Chart}
-          label={t('ribbon.analyze.charts')}
+          label={t(panelTitleKey('charts'))}
+          aria-label={t(panelTitleKey('charts'))}
           tooltip={t('ribbon.analyze.chartsTooltip')}
           active={activeWorkspacePanels.has('charts')}
           onClick={() => handleToggleBottomPanel('charts')}
         />
         <RibbonLargeButton
           icon={Document}
-          label={t('ribbon.analyze.document')}
+          label={t(panelTitleKey('document'))}
+          aria-label={t(panelTitleKey('document'))}
           tooltip={t('ribbon.analyze.documentTooltip')}
           active={activeWorkspacePanels.has('document')}
           onClick={() => handleToggleBottomPanel('document')}
         />
         <RibbonLargeButton
           icon={Drawing}
-          label={t('ribbon.analyze.drawing')}
+          label={t(panelTitleKey('drawing'))}
+          aria-label={t(panelTitleKey('drawing'))}
           tooltip={t('ribbon.analyze.drawingTooltip')}
           active={activeWorkspacePanels.has('drawing')}
           onClick={() => handleToggleBottomPanel('drawing')}
         />
         <RibbonLargeButton
           icon={Script}
-          label={t('ribbon.analyze.script')}
+          label={t(panelTitleKey('script'))}
+          aria-label={t(panelTitleKey('script'))}
           tooltip={t('ribbon.analyze.scriptTooltip')}
           active={activeWorkspacePanels.has('script')}
           onClick={() => handleToggleBottomPanel('script')}
         />
         <RibbonLargeButton
           icon={Flow}
-          label={t('ribbon.analyze.flow')}
+          label={t(panelTitleKey('flow'))}
+          aria-label={t(panelTitleKey('flow'))}
           tooltip={t('ribbon.analyze.flowTooltip')}
           active={activeWorkspacePanels.has('flow')}
           onClick={() => handleToggleBottomPanel('flow')}
@@ -170,7 +186,8 @@ export function AnalyzeTab() {
       <RibbonGroup label={t('ribbon.analyze.styleGroup')}>
         <RibbonLargeButton
           icon={Coloring}
-          label={t('ribbon.analyze.lens')}
+          label={t(panelTitleKey('lens'))}
+          aria-label={t(panelTitleKey('lens'))}
           tooltip={t('ribbon.analyze.lensTooltip')}
           active={activeWorkspacePanels.has('lens')}
           onClick={() => handleToggleRightPanel('lens')}

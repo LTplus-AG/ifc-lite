@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { resolveEnglish } from '@/i18n/registry';
 import {
   WORKSPACE_PANELS,
   isBottomPanel,
@@ -96,10 +97,10 @@ describe('migratePanelId (#5138 registry rename)', () => {
 // Comment, Error, Warning, Info), so "issues" narrowed and contradicted the
 // spec (#4096). Pin the corrected label so it can't regress silently.
 describe('BCF panel title', () => {
-  it('says "BCF topics", not "BCF issues" (#4096)', () => {
+  it('says "BCF Topics", not "BCF issues" (#4096)', () => {
     const bcf = WORKSPACE_PANELS.find((p) => p.id === 'bcf');
     assert.ok(bcf, 'expected a bcf panel entry in the registry');
-    assert.strictEqual(bcf.title, 'BCF topics');
+    assert.strictEqual(resolveEnglish(bcf.titleKey), 'BCF Topics');
   });
 });
 

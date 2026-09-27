@@ -24,7 +24,7 @@ describe('WORKSPACE_PANELS — point clouds panel registration (#5507)', () => {
   it('registers a pointclouds entry', () => {
     const entry = WORKSPACE_PANELS.find((p) => p.id === 'pointclouds');
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'pointclouds' panel definition");
-    assert.equal(entry?.title, 'Point Clouds');
+    assert.equal(entry?.titleKey, 'pointCloudPanel.title');
     assert.equal(entry?.region, 'side');
     assert.equal(entry?.group, 'inspect');
   });

@@ -20,11 +20,8 @@ import type { TranslationValue } from '../types';
  *    detail are catalogued here, the title itself is registry content.
  *  - Extension-contributed entries (`ext:*`) — `payload.title`, sourced
  *    from the extension registry at runtime, not a literal in this repo.
- *  - `commandPaletteBottomPanels.ts`'s bottom-panel toggle rows have their
- *    OWN keys here (`commandPalette.panel.*`) rather than reusing
- *    `workspacePanels.bottom.*` from shared-commands.en.ts: the palette's
- *    long-form labels ("Entity Lists") intentionally read differently from
- *    that menu's compact ones ("Lists").
+ *  - Built-in panel rows resolve their names from the workspace panel registry
+ *    so the palette, rail, ribbon, and classic toolbar display the same name.
  */
 export const commandPaletteEn = {
   // ── File ──
@@ -48,7 +45,6 @@ export const commandPaletteEn = {
   'commandPalette.view.left.label': 'Left View',
   'commandPalette.view.right.label': 'Right View',
   'commandPalette.view.world.label': 'Toggle 3D World Context',
-  'commandPalette.view.lighting.label': 'Environment',
   'commandPalette.view.spacemouse.label': 'SpaceMouse',
 
   // ── Tools ──
@@ -82,30 +78,7 @@ export const commandPaletteEn = {
   'commandPalette.vis.resetColors.label': 'Reset Colors',
 
   // ── Panels ──
-  'commandPalette.panel.script.label': 'Script Editor',
-  'commandPalette.panel.lists.label': 'Entity Lists',
-  'commandPalette.panel.gantt.label': 'Construction Schedule (Gantt)',
-  'commandPalette.panel.charts.label': 'Charts',
-  'commandPalette.panel.flow.label': 'Flow',
-  'commandPalette.panel.drawing.label': 'Drawing (2D)',
-  'commandPalette.panel.document.label': 'Document',
-  'commandPalette.panel.tree.label': 'Hierarchy',
-  'commandPalette.panel.bcf.label': 'BCF Topics',
-  'commandPalette.panel.ids.label': 'IDS Validation',
-  'commandPalette.panel.clash.label': 'Clash Detection',
-  'commandPalette.panel.compare.label': 'Compare Models',
-  'commandPalette.panel.cost.label': 'Cost',
   'commandPalette.panel.chat.label': 'AI Chat',
-  'commandPalette.panel.lens.label': 'Lens Rules',
-  'commandPalette.panel.layers.label': 'Layer Stack',
-  'commandPalette.panel.sources.label': 'Cloud Sources',
-  'commandPalette.panel.zones.label': 'Location Zones',
-  'commandPalette.panel.loadReport.label': 'Load Report',
-  'commandPalette.panel.pointClouds.label': 'Point Clouds',
-  'commandPalette.panel.measurements.label': 'Measurements',
-  'commandPalette.panel.appearance.label': 'Appearance',
-  'commandPalette.panel.collab.label': 'Collaboration Session',
-  'commandPalette.panel.extensions.label': 'Extensions',
   'commandPalette.panel.flavors.label': 'Manage profiles…',
   'commandPalette.sidebar.toggle.label': 'Toggle Sidebar',
   'commandPalette.sidebar.collapse.label': 'Collapse Sidebar to Icons',

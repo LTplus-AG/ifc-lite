@@ -161,6 +161,13 @@ const RESET = {
  *    (`exportCommands.csv.label` / `.menuLabel` / `.tooltip`) instead.
  */
 const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
+  // These registry names appear in the activity rail/host; the shared
+  // classic-menu harness below has no live collaboration, layer stack, or
+  // presentation entry, and cannot open multiple panels at once.
+  'workspacePanels.multiplePanels',
+  'workspacePanels.panel.collab',
+  'workspacePanels.panel.layers',
+  'workspacePanels.panel.presentation',
   'classVisibility.pinnedDetail.descriptionIgnored',
   'classVisibility.fastGeometry.descriptionExact',
   'exportCommands.csv.item.entities',

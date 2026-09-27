@@ -4,6 +4,7 @@
 import { PackagePlus, Palette, Puzzle } from 'lucide-react';
 import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { useTranslation } from '@/i18n';
+import { panelTitleKey } from '@/lib/panels/registry';
 import type { RightPanel } from './useWorkspacePanelControls.js';
 
 export function AuthorPanelMenuItems({ active, canEdit, onToggle }: {
@@ -15,13 +16,13 @@ export function AuthorPanelMenuItems({ active, canEdit, onToggle }: {
   return <>
     <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('workspacePanels.authorLabel')}</DropdownMenuLabel>
     <DropdownMenuCheckboxItem checked={active.has('appearance')} onCheckedChange={() => onToggle('appearance')}>
-      <Palette className="h-4 w-4 mr-2" />{t('workspacePanels.author.appearance')}
+      <Palette className="h-4 w-4 mr-2" />{t(panelTitleKey('appearance'))}
     </DropdownMenuCheckboxItem>
     <DropdownMenuCheckboxItem checked={active.has('addElement')} disabled={!canEdit} onCheckedChange={() => onToggle('addElement')}>
       <PackagePlus className="h-4 w-4 mr-2" />{t('workspacePanels.author.addElement')}
     </DropdownMenuCheckboxItem>
     <DropdownMenuCheckboxItem checked={active.has('extensions')} onCheckedChange={() => onToggle('extensions')}>
-      <Puzzle className="h-4 w-4 mr-2" />{t('workspacePanels.author.extensions')}
+      <Puzzle className="h-4 w-4 mr-2" />{t(panelTitleKey('extensions'))}
     </DropdownMenuCheckboxItem>
   </>;
 }

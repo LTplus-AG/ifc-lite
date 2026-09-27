@@ -179,6 +179,39 @@ const bounds = result.coordinateInfo.shiftedBounds;
 console.log(`Model bounds:`, bounds);
 ```
 
+### Exact extrusion source definitions
+
+`GeometryProcessor.extractExtrusionDefinitions` returns the authored
+`IfcExtrudedAreaSolid` profile, direction, depth, and placement separately from
+each product occurrence. It accepts raw IFC bytes and optional product STEP IDs.
+Omit the IDs to inspect every product; pass an empty `Uint32Array` to select none.
+The result type comes from the generated WASM binding.
+
+```typescript
+import { GeometryProcessor, type ExtrusionDefinitions } from '@ifc-lite/geometry';
+
+async function inspectExtrusions(bytes: Uint8Array, productId: number): Promise<ExtrusionDefinitions> {
+  const geometry = new GeometryProcessor();
+  await geometry.init();
+  try {
+    const definitions = geometry.extractExtrusionDefinitions(bytes, new Uint32Array([productId]));
+    if (!definitions) throw new Error('Geometry processor is not initialized');
+    return definitions;
+  } finally {
+    geometry.dispose();
+  }
+}
+```
+
+`source.Depth`, profile loop coordinates and the optional `position_matrix` and
+`profile_position` retain IFC file length units. `length_unit_scale` converts
+file lengths to metres; nominal area and volume remain in squared and cubed
+file units. Each occurrence's column-major `world_from_source` maps solid-local
+coordinates to absolute IFC Z-up metres. For a profile point, apply
+`world_from_source × position_matrix × profile_position` in that order, using
+identity for an absent position. The `status` field reports unsupported or
+invalid sources explicitly; a missing `nominal_quantities` value is not zero.
+
 ### Drilling from a Mesh Back to its Source Item
 
 An element's `expressId` names the wall; it does not name the piece of the wall

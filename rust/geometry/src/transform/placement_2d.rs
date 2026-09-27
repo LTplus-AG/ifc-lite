@@ -4,8 +4,8 @@
 
 //! Canonical router-free `IfcAxis2Placement2D` transform.
 
-use super::{parse_cartesian_point, parse_direction};
-use crate::Result;
+use super::{parse_decoded_cartesian_point, parse_direction};
+use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::{Matrix4, Vector3};
 
@@ -15,7 +15,16 @@ pub(crate) fn parse_axis2_placement_2d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
-    let location = parse_cartesian_point(placement, decoder, 0)?;
+    // The generic point parser uses a type-agnostic raw fast path. Mapping
+    // origins historically reject a Location that is not IfcCartesianPoint,
+    // so resolve once and check the decoded entity before reading coordinates.
+    let location_attr = placement
+        .get(0)
+        .ok_or_else(|| Error::geometry("Missing cartesian point".to_string()))?;
+    let location_entity = decoder
+        .resolve_ref(location_attr)?
+        .ok_or_else(|| Error::geometry("Failed to resolve cartesian point".to_string()))?;
+    let location = parse_decoded_cartesian_point(&location_entity)?;
     let ref_dir = match placement.get(1) {
         Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
             Some(direction) => parse_direction(&direction)?

@@ -152,6 +152,11 @@ pub fn parse_cartesian_point(
         .resolve_ref(point_attr)?
         .ok_or_else(|| Error::geometry("Failed to resolve cartesian point".to_string()))?;
 
+    parse_decoded_cartesian_point(&point_entity)
+}
+
+/// Parse a point already decoded by a caller that must verify its IFC type.
+pub(crate) fn parse_decoded_cartesian_point(point_entity: &DecodedEntity) -> Result<Point3<f64>> {
     if point_entity.ifc_type != IfcType::IfcCartesianPoint {
         return Err(Error::geometry(format!(
             "Expected IfcCartesianPoint, got {}",

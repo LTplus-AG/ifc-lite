@@ -28,11 +28,11 @@
  *   match. Result is in renderer frame; we convert to IFC via
  *   `rendererPointToIfcStoreyLocal`.
  *
- * We commit one `resizeWall` call per pointer-move frame. The action
- * pushes four positional mutations onto the undo stack (start, dir,
- * profile length, profile origin) so each drag frame is a coarse but
- * recoverable step. Future polish: a batched-mutation primitive that
- * folds the four into one undo entry.
+ * We commit one `resizeWall` call per pointer-move frame, all tagged
+ * with one batch id per drag (the move gizmo's mechanism), so a whole
+ * drag is ONE undo step. On release `refreshWallMesh` rebuilds the
+ * wall's mesh once at its new length; rebuilding per frame would
+ * re-upload the scene on every pointer move. Endpoints are metres.
  *
  * Re-render wake (#5510): same swap as `GizmoOverlay` — `useProjectorTick`
  * subscribes to the scene kernel's one shared `SceneProjector` loop instead
@@ -54,6 +54,7 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state.
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -104,6 +105,10 @@ interface ActiveDrag {
    * (correctly) inverts the placement on whatever it found.
    */
   planeRenderY: number;
+  /** Shared by every frame's `resizeWall` so one Ctrl+Z reverts the drag. */
+  batchId: string;
+  /** Whether any frame landed, i.e. whether the mesh needs rebuilding. */
+  resized: boolean;
 }
 
 export function WallEndpointOverlay() {
@@ -114,6 +119,7 @@ export function WallEndpointOverlay() {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
   const resizeWall = useViewerStore((s) => s.resizeWall);
+  const refreshWallMesh = useViewerStore((s) => s.refreshWallMesh);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
   // Subscribed for the re-render alone, same idiom as `useProjectorTick`
@@ -195,6 +201,8 @@ export function WallEndpointOverlay() {
       end: which,
       fixedIfc: which === 'start' ? endpoints.end : endpoints.start,
       planeRenderY: endpoints.storeyElevation + placementOf(endpoints.modelId).translation[2],
+      batchId: newMutationBatchId(),
+      resized: false,
     };
   };
 
@@ -221,18 +229,18 @@ export function WallEndpointOverlay() {
     if (!ifc) return;
     const newStart = drag.end === 'start' ? ifc : drag.fixedIfc;
     const newEnd = drag.end === 'end' ? ifc : drag.fixedIfc;
-    const result = resizeWall(endpoints.modelId, endpoints.expressId, newStart, newEnd);
-    if (!result.ok) {
-      // Most likely a zero-length drag (cursor over the fixed end).
-      // Don't toast every frame; just skip the write.
-      return;
-    }
+    const result = resizeWall(endpoints.modelId, endpoints.expressId, newStart, newEnd, drag.batchId);
+    // A failure is most likely a zero-length drag (cursor over the fixed
+    // end). Don't toast every frame; just skip the write.
+    if (result.ok) drag.resized = true;
   };
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
-    if (!dragRef.current) return;
+    const drag = dragRef.current;
+    if (!drag) return;
     releasePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = null;
+    if (drag.resized) refreshWallMesh(endpoints.modelId, endpoints.expressId);
   };
 
   // Validate that the unproject callback exists once per render —

@@ -9,37 +9,41 @@
  * stays focused on its job; the duplicate flow doesn't need
  * keyState tracking or per-frame work, just a one-shot trigger.
  *
- * Mirrors the right-click menu's gating: only fires when there's a
- * selection and the active model has a live mutation view.
+ * Gated exactly like the right-click menu's Duplicate, through the one
+ * shared `entityMutationAccess` predicate (Edit mode, collab role,
+ * editable model, live mutation view — #6233).
  */
 
 import { useEffect } from 'react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { useTranslation } from '@/i18n';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { ensureEntityMutationView, entityMutationAccess } from './useContextMutationAccess';
 
 export function useDuplicateShortcut() {
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
-  const getMutationView = useViewerStore((s) => s.getMutationView);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const unregister = registerKeyboardCommand('edit.duplicate', (e) => {
-      const state = useViewerStore.getState();
-      const selectedId = state.selectedEntityId;
+      const selectedId = useViewerStore.getState().selectedEntityId;
       if (selectedId === null) return false;
 
       const ref = resolveEntityRef(selectedId);
       if (!ref) return false;
 
-      // Suppress the browser's bookmark default for any duplicate
-      // shortcut we recognise — even when the model has no editable
-      // mutation view, otherwise Ctrl/⌘+D opens the bookmark dialog
-      // while we're "silently no-op'ing" below.
-      // Match the menu's canEdit gating — silently no-op on
-      // native-metadata models.
-      const view = getMutationView(ref.modelId);
-      if (!view) return;
+      // From here on the shortcut is ours: returning nothing suppresses the
+      // browser's bookmark default even when the duplicate is refused.
+      // The menu creates the editable view when it opens; a keypress has no
+      // such moment, so create it here (a no-op when editing is refused).
+      ensureEntityMutationView(ref.modelId);
+      const access = entityMutationAccess(useViewerStore.getState(), ref.modelId);
+      if (!access.canEdit) {
+        if (access.editReasonKey) toast.info(t(access.editReasonKey));
+        return;
+      }
 
       // ⌘D + Shift = +Z (up), ⌘D + Alt = +Y (north), default = +X (east).
       // Power users can chain modifiers without leaving the keyboard;
@@ -55,5 +59,5 @@ export function useDuplicateShortcut() {
       }
     });
     return unregister;
-  }, [duplicateEntity, getMutationView, setSelectedEntityId]);
+  }, [duplicateEntity, setSelectedEntityId, t]);
 }

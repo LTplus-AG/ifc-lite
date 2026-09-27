@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { FederationRegistry } from '@ifc-lite/renderer';
 import type { BimContext } from '@ifc-lite/sdk';
@@ -12,6 +12,7 @@ import { render, cleanup, click, advance, press } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { resolve } from '@/i18n/registry';
+import { posthog } from '@/lib/analytics';
 import { MobileToolbar } from './MobileToolbar';
 import { SURFACE_COMMANDS } from './surface-commands';
 import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
@@ -19,6 +20,7 @@ import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
 const initialState = useViewerStore.getState();
 afterEach(() => {
   cleanup();
+  mock.restoreAll();
   useViewerStore.setState(initialState);
 });
 
@@ -36,6 +38,10 @@ async function openMore(): Promise<void> {
 }
 
 it('mobile commands keep their table ids and act on the selected federated model (#5870)', async () => {
+  const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+  mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+    events.push({ event, properties });
+  });
   const registry = new FederationRegistry();
   const firstOffset = registry.registerModel('first', 11);
   const secondOffset = registry.registerModel('second', 11);
@@ -73,6 +79,11 @@ it('mobile commands keep their table ids and act on the selected federated model
   assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
   click(command('vis:show'));
   assert.equal(useViewerStore.getState().hiddenEntities.size, 0, 'Show all restores the hidden federated entity');
+  const commandEvents = events.filter(({ event }) => event === 'command_executed')
+    .map(({ properties }) => [properties.command_id, properties.surface]);
+  assert.deepEqual(commandEvents, [
+    ['tool:measure', 'mobile'], ['view:fit', 'mobile'], ['vis:hide', 'mobile'], ['vis:show', 'mobile'],
+  ], 'each mounted mobile click emits exactly one command event');
 });
 
 it('mobile Walk, projection, and theme commands preserve their toggles and live labels (#5870)', async () => {

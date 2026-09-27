@@ -18,15 +18,11 @@
  */
 
 import {
-  Play, Box, Cloud, Layout, TreeDeciduous, MessageSquare, ClipboardCheck, FileWarning,
-  Palette, Puzzle, Sun, Info, Settings,
-  CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
-  SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
-  Ruler, Coins, History,
+  Play, Palette, Sun, Info, Settings, CalendarPlus, Sparkles, Eraser,
+  GraduationCap, PanelRight, SlidersHorizontal, ChevronsRight, RotateCcw,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { openSettings } from '@/lib/settings/open-settings';
-import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
 import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
@@ -35,61 +31,22 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
-import { bottomPanelCommands } from './commandPaletteBottomPanels';
 import { buildExportCommands } from './commandPaletteExports';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import type { Command } from './commandPaletteSearch';
-import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { paletteSurfaceCommands } from './surface-commands';
 
 export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
 
-  // ── Panels ──
+  // ── Panels ── (static panel rows come from the shared command table)
+  c.push(...paletteSurfaceCommands(
+    { canEditInSession: p.canEditInSession, cesiumAvailable: p.cesiumAvailable, collabEnabled: isCollabEnabled() },
+    p.execute,
+    { activateRightPanel: p.activateRightPanel, activateBottomPanel: p.activateBottomPanel },
+  ).filter((command) => command.id.startsWith('panel:')));
   c.push(
-    ...bottomPanelCommands(p.activateBottomPanel),
-    { id: 'panel:properties', ...withPanelTitle('properties'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
-      action: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); } },
-    { id: 'panel:tree', ...withPanelTitle('hierarchy'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
-      action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
-    { id: 'panel:bcf', ...withPanelTitle('bcf'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
-      action: () => { p.activateRightPanel('bcf'); } },
-    { id: 'panel:ids', ...withPanelTitle('validation'), keywords: 'ids validation information delivery specification check', category: 'Panels', icon: ClipboardCheck,
-      action: () => { p.activateRightPanel('validation'); } },
-    { id: 'panel:clash', ...withPanelTitle('clash'), keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
-      action: () => { p.activateRightPanel('clash'); } },
-    { id: 'panel:compare', ...withPanelTitle('compare'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
-      action: () => { p.activateRightPanel('compare'); } },
-    { id: 'panel:changes', ...withPanelTitle('changes'), keywords: 'authored edits modifications properties history review', category: 'Panels', icon: History,
-      action: () => { p.activateRightPanel('changes'); } },
-    { id: 'panel:cost', ...withPanelTitle('cost'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
-      action: () => { p.activateRightPanel('cost'); } },
-    { id: 'panel:chat', label: 'AI Chat', ...withKey('commandPalette.panel.chat.label'), keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
-      action: () => {
-        if (!isBottomPanelDocked(useViewerStore.getState(), 'script')) p.activateBottomPanel('script');
-        useViewerStore.getState().setChatPanelVisible(true);
-      } },
-    { id: 'panel:lens', ...withPanelTitle('lens'), keywords: 'lens rules color filter highlight', category: 'Panels', icon: Palette,
-      action: () => { p.activateRightPanel('lens'); } },
-    { id: 'panel:layers', ...withPanelTitle('layers'), keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
-      action: () => { p.activateRightPanel('layers'); } },
-    { id: 'panel:sources', ...withPanelTitle('sources'), keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
-      action: () => { p.activateRightPanel('sources'); } },
-    { id: 'panel:zones', ...withPanelTitle('zones'), keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
-      action: () => { p.activateRightPanel('zones'); } },
-    { id: 'panel:loadReport', ...withPanelTitle('loadReport'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
-      action: () => { p.activateRightPanel('loadReport'); } },
-    { id: 'panel:pointclouds', ...withPanelTitle('pointclouds'), keywords: 'point clouds scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
-      action: () => { p.activateRightPanel('pointclouds'); } },
-    { id: 'panel:measurements', ...withPanelTitle('measurements'), keywords: 'measure distance polyline angle radius coordinates point quantities area volume list', category: 'Panels', icon: Ruler,
-      action: () => { p.activateRightPanel('measurements'); } },
-    { id: 'panel:appearance', ...withPanelTitle('appearance'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
-      action: () => { p.activateRightPanel('appearance'); } },
-    ...(isCollabEnabled()
-      ? [{ id: 'panel:collab', ...withPanelTitle('collab'), keywords: 'collaboration session share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
-          action: () => { p.activateRightPanel('collab'); } }]
-      : []),
-    { id: 'panel:extensions', ...withPanelTitle('extensions'), keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
-      action: () => { p.activateRightPanel('extensions'); } },
     { id: 'extensions:author', label: 'Author an extension…', ...withKey('commandPalette.tool.extensionsAuthor.label'),
       keywords: 'create new build plan chat ai extension generate',
       category: 'Tools', icon: Sparkles,

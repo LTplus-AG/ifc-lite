@@ -71,7 +71,7 @@ export interface CameraCommand {
 
 export interface CameraCommandContext {
   callbacks: CameraCallbacks;
-  /** Home also resets visibility, so it is more than a camera pose — injected. */
+  /** Camera Home is shared across the toolbar and ribbon. */
   goHome: () => void;
 }
 

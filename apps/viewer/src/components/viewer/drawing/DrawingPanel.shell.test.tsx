@@ -45,7 +45,7 @@ const byLabel = (ui: ParentNode, label: string) => {
   assert.ok(el, `a control labelled "${label}"`);
   return el;
 };
-const statusText = (ui: HTMLElement) => ui.querySelector('[role="status"]')?.textContent ?? '';
+const statusText = (ui: HTMLElement) => ui.querySelector('output')?.textContent ?? '';
 
 beforeEach(() => seed());
 afterEach(() => cleanup());

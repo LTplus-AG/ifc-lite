@@ -6,6 +6,8 @@
 
 use std::collections::HashSet;
 use ifc_lite_processing::{extract_extrusion_definitions, AnalyticSourceContext};
+use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+use nalgebra::{Matrix4, Vector4};
 
 fn mapped_fixture() -> String {
     std::fs::read_to_string("../geometry/tests/fixtures/mapped_instances_synthetic.ifc").unwrap()
@@ -67,22 +69,45 @@ fn large_product_origin_stays_f64_and_does_not_mutate_raw_profile() {
 }
 
 #[test]
-fn profile_solid_and_occurrence_positions_remain_separate_in_composition_order() {
+fn profile_solid_and_occurrence_frames_compose_in_authored_order() {
     let model = mapped_fixture()
-        .replace("#6=IFCCARTESIANPOINT((0.,0.));", "#6=IFCCARTESIANPOINT((2.,0.));")
-        .replace("#10=IFCCARTESIANPOINT((0.,0.,0.));", "#10=IFCCARTESIANPOINT((0.,3.,0.));");
+        .replace("#6=IFCCARTESIANPOINT((0.,0.));", "#6=IFCCARTESIANPOINT((1.,0.));")
+        .replace("#7=IFCAXIS2PLACEMENT2D(#6,$);", "#7=IFCAXIS2PLACEMENT2D(#6,#600);")
+        .replace("#10=IFCCARTESIANPOINT((0.,0.,0.));", "#10=IFCCARTESIANPOINT((0.,2.,0.));")
+        .replace("#11=IFCAXIS2PLACEMENT3D(#10,$,$);", "#11=IFCAXIS2PLACEMENT3D(#10,$,#601);")
+        .replace("#17=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);",
+            "#17=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,2.,$);")
+        .replace("#36=IFCAXIS2PLACEMENT3D(#35,$,$);", "#36=IFCAXIS2PLACEMENT3D(#35,$,#602);")
+        .replace("ENDSEC;\nEND-ISO-10303-21;",
+            "#600=IFCDIRECTION((0.,1.));\n#601=IFCDIRECTION((0.,1.,0.));\n#602=IFCDIRECTION((0.,1.,0.));\nENDSEC;\nEND-ISO-10303-21;");
     let view = extract_extrusion_definitions(model.as_bytes(), Some(&HashSet::from([38])));
+    assert!(view.diagnostics.is_empty(), "{:?}", view.diagnostics);
     let source = &view.sources[0].source;
     let profile = source.profile.as_ref().unwrap();
-    assert_eq!(profile.profile_position.unwrap()[12], 2.0);
-    assert_eq!(source.position_matrix.unwrap()[13], 3.0);
+    let profile_frame = Matrix4::from_column_slice(&profile.profile_position.unwrap());
+    let solid_frame = Matrix4::from_column_slice(&source.position_matrix.unwrap());
+    assert_eq!((profile_frame[(0, 3)], profile_frame[(0, 0)], profile_frame[(1, 0)]),
+        (1.0, 0.0, 1.0));
+    assert_eq!((solid_frame[(1, 3)], solid_frame[(0, 0)], solid_frame[(1, 0)]),
+        (2.0, 0.0, 1.0));
     let instance = &view.instances[&38][0];
-    assert_eq!(instance.world_from_source.unwrap()[12..14], [3.0, 2.0]);
-    // A profile-origin point in this source lands at (5, 5) world metres.
-    assert_eq!(instance.world_from_source.unwrap()[12] + source.position_matrix.unwrap()[12]
-        + profile.profile_position.unwrap()[12], 5.0);
-    assert_eq!(instance.world_from_source.unwrap()[13] + source.position_matrix.unwrap()[13]
-        + profile.profile_position.unwrap()[13], 5.0);
+    let occurrence_frame = Matrix4::from_column_slice(&instance.world_from_source.unwrap());
+    assert_eq!((occurrence_frame[(0, 3)], occurrence_frame[(1, 3)],
+        occurrence_frame[(0, 0)], occurrence_frame[(1, 0)]), (3.0, 2.0, 0.0, 2.0));
+
+    let AnalyticCurveSegment::Line { start, end } = &profile.loops[0].segments[0] else {
+        panic!("rectangle boundary must start with a line");
+    };
+    assert_eq!((*start, *end), ([-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]));
+    let world_from_profile = occurrence_frame * solid_frame * profile_frame;
+    let to_world = |point: &[f64; 3]| {
+        let result = world_from_profile * Vector4::new(point[0], point[1], point[2], 1.0);
+        [result.x, result.y, result.z]
+    };
+    // Independently: profile R90+(1,0), solid R90+(0,2), map scale 2,
+    // product R90+(3,2). The two authored endpoints land at these world points.
+    assert_eq!(to_world(start), [-4.0, 3.0, 0.0]);
+    assert_eq!(to_world(end), [-4.0, 1.0, 0.0]);
 }
 
 #[test]

@@ -80,13 +80,12 @@ fn quantity(name: &'static str, value: f64, unit: &'static str,
 }
 
 fn source_status(instance: &SweptDiskInstance) -> (&'static str, Option<String>) {
-    if instance.source_modified {
-        return ("source_modified", Some("CSG operand; final product geometry differs from this source".into()));
-    }
     match &instance.status {
-        ifc_lite_geometry::analytic::AnalyticStatus::Complete => ("complete", None),
         ifc_lite_geometry::analytic::AnalyticStatus::Unsupported(reason) =>
             ("unsupported", Some(reason.clone())),
+        ifc_lite_geometry::analytic::AnalyticStatus::Complete if instance.source_modified =>
+            ("source_modified", Some("CSG operand; final product geometry differs from this source".into())),
+        ifc_lite_geometry::analytic::AnalyticStatus::Complete => ("complete", None),
     }
 }
 

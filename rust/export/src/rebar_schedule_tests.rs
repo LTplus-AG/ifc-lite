@@ -4,6 +4,35 @@ const REBAR: &str = include_str!("../../geometry/tests/fixtures/swept_disk_compo
 const MAPPED: &str = include_str!("../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc");
 
 #[test]
+fn issue_5759_revit_snowdon_schedule_preserves_authored_and_measured_lengths() {
+    // Revit 24.2.0.63 / IFC 24.2.0.63, from the catalogued structural model.
+    let Some(content) = crate::test_support::fixture_opt(
+        "various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+    ) else {
+        return; // fixture_opt reports the `pnpm fixtures` command.
+    };
+    let ids = HashSet::from([132347, 132418, 132562]);
+    let schedule = build_rebar_schedule(&content, Some(&ids), &SweptDiskCheckOptions::default())
+        .unwrap();
+    assert_eq!(schedule.rows.keys().copied().collect::<Vec<_>>(),
+        vec![132347, 132418, 132562]);
+    assert_eq!(schedule.bar_entity_count, 3);
+    assert_eq!(schedule.represented_sweep_count, 3);
+
+    let bar = &schedule.rows[&132347];
+    let AuthoredRebarValue::Measure { value_si: authored_m, .. } =
+        &bar.authored["BarLength"].value else {
+        panic!("Revit BarLength must remain an authored measure");
+    };
+    let metrics = bar.sweeps[0].directrix_metrics.as_ref().unwrap();
+    assert!((authored_m - 3.6068).abs() < 1e-6);
+    assert!((metrics.total_length - 3.61642001695).abs() < 1e-6);
+    assert_eq!(metrics.segments.len(), 11);
+    assert_eq!(metrics.segments.iter().filter(|part| part.bend_angle.is_some()).count(), 5);
+    assert!((metrics.total_length - authored_m).abs() > 0.009);
+}
+
+#[test]
 fn issue_5759_keeps_authored_and_derived_lengths_separate() {
     let authored = REBAR.replace(
         "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.NOTDEFINED.,$);",

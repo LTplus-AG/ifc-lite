@@ -5,6 +5,7 @@
 import { isInstantiable, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
+  HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
   StructuralLinearActionInStoreParams,
@@ -226,6 +227,34 @@ export class StoreNamespace {
    */
   addMember(modelId: string, storeyExpressId: number, params: AddMemberInStoreParams): EntityRef {
     return this.backend.store.addMember(modelId, storeyExpressId, params);
+  }
+
+  // -- Openings and hosted fillings (#6232 M3) --------------------------------
+  // The host is an existing IfcWall/IfcSlab (from the file or authored this
+  // session). Params are metres in the HOST's own placement frame.
+
+  /**
+   * Cut a rectangular IfcOpeningElement into a wall or slab, linked by
+   * IfcRelVoidsElement. Wall params: `Offset` (along the wall axis, to the
+   * opening centre), `Sill`, `Width`, `Height`; slab params: `Position` [x, y],
+   * `Width`, `Depth`. The cut depth defaults to the host's body thickness
+   * + 50 mm per side (`CutDepth` overrides; never shallower than the host).
+   *
+   * @example
+   *   bim.store.addOpening('default', wallId, { Offset: 2, Sill: 0.9, Width: 1.2, Height: 1.2 });
+   */
+  addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
+    return this.backend.store.addOpening(modelId, hostExpressId, params);
+  }
+
+  /** Add an IfcDoor filling a new opening in a wall (IfcRelFillsElement). `Sill` defaults to 0. */
+  addHostedDoor(modelId: string, hostExpressId: number, params: HostedDoorInStoreParams): EntityRef {
+    return this.backend.store.addHostedDoor(modelId, hostExpressId, params);
+  }
+
+  /** Add an IfcWindow filling a new opening in a wall (IfcRelFillsElement), bottom edge at `Sill`. */
+  addHostedWindow(modelId: string, hostExpressId: number, params: HostedWindowInStoreParams): EntityRef {
+    return this.backend.store.addHostedWindow(modelId, hostExpressId, params);
   }
 
   // -- Cost / 5D authoring on a loaded model (#4857 PR A) --------------------

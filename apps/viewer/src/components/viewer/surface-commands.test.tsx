@@ -64,7 +64,7 @@ describe('shared palette and ribbon commands (#5870)', () => {
 
     const palette = paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, () => {});
     assert.deepEqual(new Set(palette.map((command) => command.id)),
-      new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('palette')
+      new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.some((surface) => surface === 'palette')
         && command.enabled({ canEditInSession: true, cesiumAvailable: false })).map((command) => command.id)),
       'every palette-declared command is available there');
     assert.deepEqual(palette.filter((command) => command.id.startsWith('vis:')).map((command) => command.id),

@@ -6,22 +6,7 @@
  * Context menu for entity interactions
  */
 
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
-import {
-  Equal,
-  Plus,
-  Minus,
-  EyeOff,
-  Eye,
-  Layers,
-  Copy,
-  Maximize2,
-  Building2,
-  Save,
-  Trash2,
-  ShieldQuestion,
-} from 'lucide-react';
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useContextMutationAccess } from './useContextMutationAccess';
@@ -43,6 +28,8 @@ import {
 import { DuplicateItems, ExtensionContextItems, MenuItem } from './EntityContextMenuItems';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
+import { sameEffectiveStoreyIds } from './EntityContextMenu.effective-storey';
+import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -202,25 +189,15 @@ export function EntityContextMenu() {
   }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   const handleSelectSameStorey = useCallback(() => {
-    // Use resolvedExpressId (original ID) for IfcDataStore lookups
-    if (!resolvedExpressId || !activeDataStore?.spatialHierarchy) {
+    if (!resolvedExpressId || !activeDataStore || !contextEntityRef) {
       closeContextMenu();
       return;
     }
-
-    const storeyId = activeDataStore.spatialHierarchy.elementToStorey.get(resolvedExpressId);
-    if (storeyId && contextEntityRef) {
-      const storeyElements = activeDataStore.spatialHierarchy.byStorey.get(storeyId);
-      if (storeyElements) {
-        // Same model-space -> renderer-space resolution as above.
-        setSelectedEntityIds(
-          Array.from(storeyElements, (id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)),
-        );
-      }
-    }
-
+    const view = mutationViewFor(contextEntityRef.modelId);
+    const ids = sameEffectiveStoreyIds(activeDataStore, view, resolvedExpressId);
+    setSelectedEntityIds(ids.map((id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)));
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   // "Export anonymized…" (#2934): seed `AnonymizedExportDialog` — whose
   // `useAnonymizedExportSet` reads `selectedEntityIds`, the multi-select
@@ -300,6 +277,18 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextEntityRef, canEdit, entityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
+  const contextItem = (id: SurfaceCommandId, action: () => void, options: {
+    title?: string; tone?: 'default' | 'destructive';
+  } = {}) => {
+    const command = surfaceCommand(id, 'context');
+    const state = { canEditInSession: canEdit, contextEntityType: entityType };
+    const label = t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(state));
+    return <MenuItem commandId={id} icon={command.contextIcon ?? command.icon} label={label}
+      shortcut={command.contextShortcut ?? command.shortcut}
+      onClick={() => command.run({ surface: 'context', contextAction: action })}
+      {...options} disabled={!command.enabled(state)} />;
+  };
+
   return (
     <ContextMenu
       open={contextMenu.isOpen && radixOpen}
@@ -332,48 +321,43 @@ export function EntityContextMenu() {
             <div className="text-xs text-muted-foreground">{entityType}</div>
           </div>
 
-          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="camera.frameSelection" onClick={handleFrameSelection} />
-          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="visibility.hideSelection" onClick={handleHide} />
+          {contextItem('view:frame', handleFrameSelection)}
+          {contextItem('vis:hide', handleHide)}
 
           <ContextMenuSeparator />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} onClick={handleSetBasket} />
-          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="basket.add" onClick={handleAddToBasket} />
-          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="basket.remove" onClick={handleRemoveFromBasket} />
-          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="basket.saveView" onClick={handleSaveBasketView} />
+          {contextItem('vis:set-iso', handleSetBasket)}
+          {contextItem('vis:add-iso', handleAddToBasket)}
+          {contextItem('vis:remove-iso', handleRemoveFromBasket)}
+          {contextItem('vis:save-view', handleSaveBasketView)}
 
           <ContextMenuSeparator />
 
-          <MenuItem icon={Layers} label={`Select all ${entityType}`} onClick={handleSelectSimilar} />
-          <MenuItem icon={Building2} label="Select same storey" onClick={handleSelectSameStorey} />
+          {contextItem('context:select-all-type', handleSelectSimilar)}
+          {contextItem('context:select-same-storey', handleSelectSameStorey)}
 
           <ContextMenuSeparator />
 
-          <MenuItem icon={Copy} label={t(ACTION_NAME_KEYS.copyGlobalId)} onClick={handleCopyId} />
-          <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
+          {contextItem('context:copy-global-id', handleCopyId)}
+          {contextItem('context:export-anonymized', handleExportAnonymized)}
 
           {/* Keep denied actions visible with their reason; an editable view
               is created on demand when the menu opens in Edit mode. */}
           {showMutationActions && (
             <>
               <ContextMenuSeparator />
-              <DuplicateItems onDuplicate={handleDuplicate} disabled={!canEdit} reason={editReason} />
-              <MenuItem
-                icon={Trash2}
-                label="Delete entity"
-                tone="destructive"
-                disabled={!canEdit}
-                title={editReason}
-                onClick={handleDeleteEntity}
-              />
+              <DuplicateItems onDuplicate={handleDuplicate} canEdit={canEdit} reason={editReason} />
+              {contextItem('context:delete', handleDeleteEntity, {
+                tone: 'destructive', title: editReason,
+              })}
             </>
           )}
         </>
       )}
 
       {!contextMenu.entityId && (
-        <MenuItem icon={Eye} label={t(ACTION_NAME_KEYS.showAll)} shortcut="visibility.showAll" onClick={handleShowAll} />
+        contextItem('vis:show', handleShowAll)
       )}
 
       <ExtensionContextItems

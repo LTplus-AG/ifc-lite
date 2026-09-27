@@ -26,7 +26,7 @@
  *   helper (re-exported via `selectionHandlers`) — same fallback used
  *   by the wall draw tool, so snapping and floor-plane semantics
  *   match. Result is in renderer frame; we convert to IFC via
- *   `rendererPointToIfcStoreyLocal`.
+ *   `rendererPointToModelFrame`.
  *
  * We commit one `resizeWall` call per pointer-move frame, all tagged
  * with one batch id per drag (the move gizmo's mechanism), so a whole
@@ -49,7 +49,7 @@ import { useViewerStore } from '@/store';
 import { canMutate } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { useProjectorTick } from '@/components/viewport-ui/scene';
-import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
+import { rendererPointToModelFrame } from '../pick-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
@@ -64,7 +64,7 @@ const HANDLE_RADIUS = 7;
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
- * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`,
+ * world-frame point (Y-up). Mirror of `rendererPointToModelFrame`,
  * including its #4932 placement handling: `readWallEndpoints` returns
  * points in the WALL's model frame (storey-local, Z = 0 for a planar
  * wall; we add the storey elevation explicitly since it isn't carried
@@ -101,7 +101,7 @@ interface ActiveDrag {
    * model moved vertically would have its handles rendered at the correct
    * (placed) height but its drag plane at the wrong one — under a
    * non-top-down camera the two disagree, and the raycast lands somewhere
-   * other than under the cursor before `rendererPointToIfcStoreyLocal`
+   * other than under the cursor before `rendererPointToModelFrame`
    * (correctly) inverts the placement on whatever it found.
    */
   planeRenderY: number;
@@ -219,7 +219,7 @@ export function WallEndpointOverlay() {
     if (typeof pickFn !== 'function') return null;
     const world = pickFn(clientX, clientY, drag.planeRenderY);
     if (!world) return null;
-    return rendererPointToIfcStoreyLocal(world, endpoints.modelId);
+    return rendererPointToModelFrame(world, endpoints.modelId);
   };
 
   const onDragMove = (e: React.PointerEvent<SVGElement>) => {

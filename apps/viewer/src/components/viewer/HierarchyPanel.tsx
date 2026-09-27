@@ -96,9 +96,14 @@ export function HierarchyPanel() {
   // that don't resolve to any federated model rather than querying the
   // fallback store with a raw, un-offset id (#2532 review: could hit an
   // unrelated entity in a multi-model scene and mislabel the chip).
+  // Classes come through the session's mutation views (#6233); they mutate in
+  // place, so mutationVersion re-runs the label.
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const typeIsolationLabel = useMemo(
-    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore),
-    [isolatedEntities, models, ifcDataStore],
+    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore, (modelId) => mutationViews.get(modelId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isolatedEntities, models, ifcDataStore, mutationViews, mutationVersion],
   );
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;

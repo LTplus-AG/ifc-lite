@@ -3,21 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The camera command set — Home, zoom, the six preset views and the 90°
- * rotations — as ONE ordered list, shared by the classic toolbar and the
- * ribbon so neither style can host a camera command the other lacks.
+ * The camera command set — Home, zoom, six preset views and 90°
+ * rotations — in ribbon order. Camera callbacks stay behind this table so
+ * keyboard metadata and visible controls share command ids.
  *
- * This exists because they did fork: `rotateLeft`/`rotateRight` landed with
- * a single call site in the ribbon's View tab (#1829), leaving the classic
- * toolbar with no way to rotate the camera at all, and the same change hid
- * the viewport's desktop zoom cluster from BOTH styles on the (ribbon-only)
- * grounds that the ribbon owned those controls. A list is the fix that
- * scales: a command added here reaches both surfaces without anyone
- * remembering to wire the second one.
- *
- * Icons and rendering live in `CameraCommands.tsx` — the icon module is a
- * Vite virtual module, so keeping the command data here is what lets the
- * dispatch be asserted in a plain node test.
+ * Icons and rendering live in `CameraCommands.tsx`; keeping command data
+ * here lets dispatch be asserted in a plain Node test.
  */
 
 import type { TranslationKey } from '@/i18n';
@@ -50,7 +41,7 @@ export interface CameraCommand {
   /**
    * Translation keys, not text — this list has no React import, so it
    * cannot call `t()` itself (`shared-commands.en.ts` holds the English);
-   * renderers (`CameraCommandMenuItems`, `ViewTab`) call `t(command.xKey)`.
+   * the ribbon's `ViewTab` calls `t(command.xKey)`.
    *
    * Short button caption.
    */
@@ -60,11 +51,7 @@ export interface CameraCommand {
   /** Keyboard command naming this action's key, where one exists (`lib/commands`). */
   shortcut?: KeyCommandId;
   group: CameraCommandGroup;
-  /**
-   * True when users press it repeatedly (zoom, rotate). Menu surfaces stay
-   * open on select for these; a menu that closes after one 90° step makes a
-   * half-turn a four-click errand.
-   */
+  /** Repeated zoom and rotation action. */
   repeatable?: boolean;
   run: () => void;
 }

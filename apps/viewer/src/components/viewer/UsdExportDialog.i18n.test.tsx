@@ -71,7 +71,7 @@ function readable(): Set<string> {
 }
 
 function openDialog(): void {
-  render(<UsdExportDialog />);
+  render(<UsdExportDialog surface="ribbon" />);
   const trigger = [...document.body.querySelectorAll('button')].find((b) =>
     b.textContent?.includes(STRINGS['geometryExport.usd.triggerButton']),
   );

@@ -8,7 +8,7 @@ import type { TranslationValue } from '../types';
  * The Settings dialog (#5857, `components/viewer/settings/`): its chrome,
  * section names and each section's own labels. The SpaceMouse controls in
  * Display come from `spaceMousePanel.*` in `misc-panels-a.en.ts`, which owns
- * that component. The openers' labels (ribbon, classic toolbar, palette) live
+ * that component. The openers' labels (ribbon and palette) live
  * in their own catalogues.
  */
 export const settingsEn = {

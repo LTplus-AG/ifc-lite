@@ -6,14 +6,14 @@
  * Export dispatch for the surfaces that close before an export's dialog opens:
  * the command palette (#5601) and the mobile overflow menu (#5842). Their rows
  * are built from `toolbar/export-commands.ts` (`commandPaletteExports.ts`),
- * and this hook runs them through the SAME handlers and dialogs the classic
- * toolbar and the ribbon use — `useExportCommands` for the one-click and CSV
+ * and this hook runs them through the SAME handlers and dialogs the ribbon
+ * uses — `useExportCommands` for the one-click and CSV
  * exports, the registry's own `Dialog` component for everything with
  * options — so neither surface has an export implementation of its own.
  *
  * Dialog formats own their open state behind a `trigger` element (see
- * `ExportDialogComponent`), exactly as `ClassicExportRow` and
- * `RibbonExportGroup` mount them. A palette or menu closes as soon as a row
+ * `ExportDialogComponent`), exactly as `RibbonExportGroup` mounts them.
+ * A palette or menu closes as soon as a row
  * runs, so it cannot host that trigger itself: the surface renders `dialog`
  * outside its own popup (so it outlives the popup closing) and the trigger is
  * a hidden button that clicks itself once on mount — the same `DialogTrigger`

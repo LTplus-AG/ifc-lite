@@ -182,8 +182,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // `basketPresentationVisible` (`lib/panels/bottom-panels.ts`), unchanged
   // from the floating dock so saved views and their transitions are
   // unaffected. APPENDED so the frozen Alt+1..0 mapping stays intact (no Alt
-  // shortcut). Entry points: the status bar and the ribbon / classic
-  // toolbar's Present button.
+  // shortcut). Entry points: the status bar and the ribbon's Present button.
   { id: 'presentation', titleKey: 'workspacePanels.panel.presentation', Icon: Presentation, group: 'site', region: 'bottom', prefersWide: true },
   // Active model edits and their undoable operations (#5902). Appended so
   // existing Alt+digit panel shortcuts remain stable.

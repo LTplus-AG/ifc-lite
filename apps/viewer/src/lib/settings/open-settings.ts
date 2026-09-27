@@ -4,7 +4,7 @@
 
 /**
  * The one way to open Settings (#5857). Every opener (the ribbon's View tab,
- * the classic toolbar's View options menu, the command palette, a button
+ * the command palette, a button
  * that deep-links a section such as SpaceMouse) calls `openSettings`, and
  * `SettingsDialogHost` is the one listener. A window event rather than store
  * state keeps it callable from plain modules (palette command builders) and

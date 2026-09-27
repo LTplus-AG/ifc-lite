@@ -131,7 +131,7 @@ function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
 
-function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' | 'palette' = 'classic'): void {
+function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' | 'palette' = 'ribbon'): void {
   const container = render(
     <PdfViewExportDialog surface={surface} trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
   );

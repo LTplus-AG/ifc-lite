@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The classic toolbar and the ribbon share this hook, which opens most side
+ * The ribbon tabs share this hook, which opens most side
  * panels by flipping their flags directly rather than through the store's
  * panel actions. The open must still be reported, with the surface the hook
  * was mounted for (#5618).

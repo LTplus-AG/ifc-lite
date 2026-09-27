@@ -2,11 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useImperativeHandle, useRef, useState, type KeyboardEvent, type PointerEvent, type Ref } from 'react';
 import { cn } from '@/lib/utils';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 
+/** Opens the field for typing from outside: Tab-through, "type a digit to start". */
+export interface HudValueFieldHandle {
+  /** Enter type-to-set mode; `draft` replaces the shown value (a typed first digit). */
+  beginEdit(draft?: string): void;
+}
+
 export interface HudValueFieldProps {
+  ref?: Ref<HudValueFieldHandle>;
   value: number;
   onChange: (next: number) => void;
   /** Displayed after the number, e.g. "m" — never localized here, the
@@ -36,6 +43,10 @@ export interface HudValueFieldProps {
   onScrubStart?: () => void;
   /** Fires when a scrub that fired `onScrubStart` ends or is cancelled. */
   onScrubEnd?: () => void;
+  /** Enter in the text input: fires after `onChange` with the typed value. */
+  onSubmit?: (value: number) => void;
+  /** Tab in the text input: the typed value is applied, then this fires (the caller moves focus). */
+  onTab?: (shift: boolean) => void;
   /** Accessible name — required, caller-supplied and translated. */
   'aria-label': string;
   className?: string;
@@ -55,6 +66,7 @@ const CLICK_SLOP_PX = 2;
  * "1.2") when at rest, and a plain text `<input>` while editing.
  */
 export function HudValueField({
+  ref,
   value,
   onChange,
   unit = '',
@@ -68,6 +80,8 @@ export function HudValueField({
   snapTolerance = 0,
   onScrubStart,
   onScrubEnd,
+  onSubmit,
+  onTab,
   className,
   ...aria
 }: HudValueFieldProps) {
@@ -94,15 +108,20 @@ export function HudValueField({
     return best;
   };
 
-  function startEdit(): void {
-    setDraft(value.toFixed(precision));
+  function startEdit(initial?: string): void {
+    setDraft(initial ?? value.toFixed(precision));
     setEditing(true);
   }
 
-  function commitDraft(): void {
+  useImperativeHandle(ref, () => ({ beginEdit: startEdit }));
+
+  /** The typed value, clamped; null when the draft is not a number. */
+  function commitDraft(): number | null {
     const parsed = Number.parseFloat(draft);
-    if (Number.isFinite(parsed)) onChange(clamp(parsed));
+    const next = Number.isFinite(parsed) ? clamp(parsed) : null;
+    if (next !== null) onChange(next);
     setEditing(false);
+    return next;
   }
 
   function handlePointerDown(e: PointerEvent<HTMLDivElement>): void {
@@ -153,7 +172,12 @@ export function HudValueField({
   function handleInputKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
     if (e.key === 'Enter') {
       e.preventDefault();
+      const next = commitDraft();
+      if (next !== null) onSubmit?.(next);
+    } else if (e.key === 'Tab' && onTab) {
+      e.preventDefault();
       commitDraft();
+      onTab(e.shiftKey);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setEditing(false);

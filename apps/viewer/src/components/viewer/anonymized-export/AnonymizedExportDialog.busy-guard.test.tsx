@@ -83,7 +83,7 @@ beforeEach(async () => {
 
 describe('AnonymizedExportDialog close guard and result clearing (#5848)', () => {
   it('refuses Cancel while an export is in flight, and Cancel disables', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     assert.ok(dialogIsOpen(), 'precondition: the host-flag path opened the dialog');
 
     click(button('Export .ifc'));
@@ -97,7 +97,7 @@ describe('AnonymizedExportDialog close guard and result clearing (#5848)', () =>
   });
 
   it('refuses Escape while an export is in flight (the guard itself, not just the disabled Cancel button)', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     click(button('Export .ifc'));
     assert.ok(button('Cancel').disabled, 'precondition: export is in flight');
 
@@ -113,7 +113,7 @@ describe('AnonymizedExportDialog close guard and result clearing (#5848)', () =>
   });
 
   it('clears the previous run\'s result when the dialog is reopened', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     click(button('Export .ifc'));
     await waitFor(() => alerts().length === 1, 'the first run must render its result');
 
@@ -140,7 +140,7 @@ describe('AnonymizedExportDialog close guard and result clearing (#5848)', () =>
 
     const warningDetails = () => [...document.body.querySelectorAll('details')]
       .find((detail) => detail.textContent?.includes('GlobalId could not be read'));
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     click(button('Export .ifc'));
     await waitFor(() => !!warningDetails(), 'the malformed IFC root must produce a visible warning');
 
@@ -152,7 +152,7 @@ describe('AnonymizedExportDialog close guard and result clearing (#5848)', () =>
   });
 
   it('clears the previous result the instant another export starts', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     click(button('Export .ifc'));
     await waitFor(() => alerts().length === 1, 'the first run must render its result');
 

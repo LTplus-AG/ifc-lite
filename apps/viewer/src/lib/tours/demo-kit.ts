@@ -75,7 +75,7 @@ export function fetchDemoProjectFile(): Promise<File> {
  */
 export async function loadDemoProject(): Promise<void> {
   const file = await fetchDemoProjectFile();
-  // detail IS the File - the MainToolbar listener reads e.detail directly.
+  // detail IS the File - useFileCommands reads e.detail directly.
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
 }
 

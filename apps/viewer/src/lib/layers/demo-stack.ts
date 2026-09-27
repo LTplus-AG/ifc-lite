@@ -34,8 +34,8 @@ const COMBUSTIBLE = 'bsi::ifc::v5a::Pset_FireSafety::Combustible';
 
 const SAMPLE_PATH = '/samples/hello-wall.ifcx';
 
-/** Load-a-layer-stack request; the listener lives next to the load-file
- *  one in MainToolbar and routes to `loadFederatedIfcx`. */
+/** Load-a-layer-stack request; the listener in useFileCommands routes to
+ * `loadFederatedIfcx`. */
 export const EVENT_LOAD_LAYER_STACK = 'ifc-lite:load-layer-stack';
 
 function publishable(

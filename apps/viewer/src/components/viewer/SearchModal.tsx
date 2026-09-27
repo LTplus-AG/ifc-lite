@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import type { SearchResult } from '@/lib/search/tier0-scan';
 import { collectSearchResults } from '@/lib/search/collect-results';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
@@ -80,21 +81,15 @@ export function SearchModal() {
    *  This is a text-search entry point, so opening always lands on the Search
    *  tab (the controlled tab otherwise remembers the last-used Filter tab). */
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      const isAdvancedShortcut =
-        (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F');
-      if (isAdvancedShortcut) {
-        e.preventDefault();
-        if (searchModalOpen) {
-          setSearchModalOpen(false);
-        } else {
-          setSearchModalTab('search');
-          setSearchModalOpen(true);
-        }
-      }
+    const toggle = () => {
+      if (searchModalOpen) setSearchModalOpen(false);
+      else { setSearchModalTab('search'); setSearchModalOpen(true); }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const removeGlobal = registerKeyboardCommand('search.openAdvanced', toggle, { allowInTextEntry: true });
+    const removeModal = searchModalOpen
+      ? registerKeyboardCommand('search.openAdvanced', toggle, { layer: 'modal', allowInTextEntry: true })
+      : () => {};
+    return () => { removeGlobal(); removeModal(); };
   }, [searchModalOpen, setSearchModalOpen, setSearchModalTab]);
 
   /**

@@ -167,6 +167,7 @@ export const KEY_COMMANDS = [
   { id: 'ui.closeOverlay', labelKey: 'commands.ui.closeOverlay', category: 'ui', when: 'overlay', keys: [k('escape')] },
   { id: 'ui.toggleTheme', labelKey: 'commands.ui.toggleTheme', category: 'ui', when: 'global', keys: [k('t')] },
   { id: 'chat.focusInput', labelKey: 'commands.chat.focusInput', category: 'ui', when: 'panel.chat', keys: [k('l', { mod: true })] },
+  { id: 'chat.close', labelKey: 'commands.chat.close', category: 'ui', when: 'panel.chat', keys: [k('escape')] },
 
   // ── Help ──────────────────────────────────────────────────────────────
   { id: 'help.shortcuts', labelKey: 'commands.help.shortcuts', category: 'help', when: 'global', keys: [k('?')] },

@@ -51,7 +51,7 @@ export const WALK_MOVEMENT_KEYS: ReadonlySet<string> = new Set([
 
 /** ARIA roles whose widgets consume plain keys (type-ahead, arrows, values). */
 const INPUT_ROLE_SELECTOR =
-  '[role=combobox],[role=listbox],[role=slider],[role=menu],[role=menuitem]';
+  '[role=combobox],[role=listbox],[role=slider],[role=menu],[role=menuitem],.cm-editor';
 
 /**
  * True when `target` is a surface that consumes plain key presses — a

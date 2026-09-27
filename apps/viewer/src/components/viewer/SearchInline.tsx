@@ -11,8 +11,7 @@
  *     surfaced in the popover when the field is focused with empty query.
  *
  * Keyboard:
- *   • `/` or ⌘F / Ctrl+F  → focus the field (focus-suppressed when an
- *     input/textarea/CodeMirror editor already has focus)
+ *   • `/` → focus the field outside another editor; ⌘F / Ctrl+F focuses it anywhere
  *   • ↑ / ↓               → navigate result rows in the popover
  *   • Enter               → select + frame the highlighted result,
  *                           enter vim cycle mode, record recent
@@ -32,7 +31,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
-import { isTextEntryTarget } from '@/lib/keyboard-event';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { useTranslation } from '@/i18n';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
@@ -46,13 +45,6 @@ import { VimCycleHint, RecentsPopoverBody, SearchPopoverBody } from './SearchInl
 
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
-
-/** True when the key lands on a surface that should swallow `/` / `n` keystrokes. */
-function isEditableFocused(e: globalThis.KeyboardEvent): boolean {
-  if (isTextEntryTarget(e)) return true;
-  // CodeMirror 6 editor — its content host wears `.cm-content`.
-  return e.target instanceof Element && e.target.closest('.cm-editor') !== null;
-}
 
 export function SearchInline() {
   const { t } = useTranslation();
@@ -305,53 +297,30 @@ export function SearchInline() {
 
   /** Global `/` and ⌘F / Ctrl+F shortcuts to focus the field. */
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      // ⌘F / Ctrl+F focuses regardless of what else has focus — we want
-      // to override the browser's native Find inside the viewer.
-      const isFindShortcut = (e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F') && !e.shiftKey;
-      if (isFindShortcut) {
-        e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-        setSearchOpen(true);
-        return;
-      }
-
-      // `/` only when no other input is focused — vim-style search summon.
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableFocused(e)) {
-        e.preventDefault();
-        inputRef.current?.focus();
-        setSearchOpen(true);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return registerKeyboardCommand('search.focus', () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      setSearchOpen(true);
+    }, { allowInTextEntry: (event) => event.ctrlKey || event.metaKey });
   }, [setSearchOpen]);
 
-  /** Global n / N / Esc cycle-control listener — active only while cycling. */
+  useEffect(() => registerKeyboardCommand('search.openAdvancedFromField', () => {
+    setSearchOpen(false);
+    setSearchModalTab('search');
+    setSearchModalOpen(true);
+  }, {
+    active: () => document.activeElement === inputRef.current,
+    allowInTextEntry: true,
+    layer: 'popover',
+  }), [setSearchOpen, setSearchModalTab, setSearchModalOpen]);
+
+  /** Cycle-context n / N / Esc commands — active only while cycling. */
   useEffect(() => {
     if (!searchVimCycle) return;
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Don't swallow `n` / `N` when the user is typing elsewhere.
-      if (isEditableFocused(e)) return;
-      if (e.key === 'n') {
-        e.preventDefault();
-        stepVimCycle(1);
-        return;
-      }
-      if (e.key === 'N') {
-        e.preventDefault();
-        stepVimCycle(-1);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        exitVimCycle();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const removeNext = registerKeyboardCommand('search.nextMatch', () => { stepVimCycle(1); });
+    const removePrevious = registerKeyboardCommand('search.previousMatch', () => { stepVimCycle(-1); });
+    const removeExit = registerKeyboardCommand('search.exitCycle', () => { exitVimCycle(); });
+    return () => { removeNext(); removePrevious(); removeExit(); };
   }, [searchVimCycle, stepVimCycle, exitVimCycle]);
 
   const handleInputKeyDown = useCallback(
@@ -387,16 +356,9 @@ export function SearchInline() {
         return;
       }
       if (e.key === 'Enter') {
+        // The shared field-context command owns Ctrl/⌘+Enter.
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
-        // ⌘↵ / Ctrl+↵ opens the advanced modal instead of committing — the
-        // inline query is preserved so the modal opens already populated.
-        // Text-search entry point, so land on the Search tab.
-        if (e.metaKey || e.ctrlKey) {
-          setSearchOpen(false);
-          setSearchModalTab('search');
-          setSearchModalOpen(true);
-          return;
-        }
         // Flush the debounce: if the user typed something that hasn't yet
         // settled into `debouncedQuery`, re-scan synchronously against the
         // LIVE `searchQuery`. The popover is showing stale results in that

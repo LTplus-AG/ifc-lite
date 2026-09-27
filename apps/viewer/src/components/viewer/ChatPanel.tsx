@@ -40,7 +40,7 @@ import {
   estimateMessagesTokens,
   summarizeDroppedMessages,
 } from './chat/chatPanelHelpers';
-import { fetchUsageSnapshot, streamChat, type StreamMessage, type UsageInfo } from '@/lib/llm/stream-client';
+import { fetchUsageSnapshot, streamChat, type UsageInfo } from '@/lib/llm/stream-client';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
@@ -52,10 +52,11 @@ import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
 import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Check, Image as ImageIcon, KeyRound } from 'lucide-react';
+import { Image as ImageIcon, KeyRound } from 'lucide-react';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
@@ -190,7 +191,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const consumePendingPrompt = useViewerStore((s) => s.consumeChatPendingPrompt);
   const pendingRepairRequest = useViewerStore((s) => s.chatPendingRepairRequest);
   const consumePendingRepairRequest = useViewerStore((s) => s.consumeChatPendingRepairRequest);
-  const hasByokKey = useViewerStore((s) => s.chatHasByokKey);
   const setChatHasByokKey = useViewerStore((s) => s.setChatHasByokKey);
   const usage = useViewerStore((s) => s.chatUsage);
   const setChatUsage = useViewerStore((s) => s.setChatUsage);
@@ -325,22 +325,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      // Cmd+L / Ctrl+L → focus chat input
-      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-      // Escape → close panel (only if chat input isn't focused or is empty)
-      if (e.key === 'Escape' && onClose) {
-        const isChatFocused = document.activeElement === inputRef.current;
-        if (!isChatFocused || !inputText) {
-          onClose();
-        }
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const removeFocus = registerKeyboardCommand('chat.focusInput', () => {
+      inputRef.current?.focus();
+    }, { allowInTextEntry: true });
+    const removeClose = registerKeyboardCommand('chat.close', () => {
+      if (!onClose) return false;
+      const isChatFocused = document.activeElement === inputRef.current;
+      if (isChatFocused && inputText) return false;
+      onClose();
+    }, { allowInTextEntry: true });
+    return () => { removeFocus(); removeClose(); };
   }, [onClose, inputText]);
 
   const buildRepairPromptFromLiveState = useCallback((request: ChatRepairRequest) => {

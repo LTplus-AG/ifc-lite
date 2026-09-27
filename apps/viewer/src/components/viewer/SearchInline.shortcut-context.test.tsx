@@ -46,4 +46,15 @@ describe('SearchInline — `/` respects the focused widget (#5596)', () => {
     press(option, '/');
     assert.equal(useViewerStore.getState().searchOpen, false);
   });
+
+  it('Ctrl+Enter in the focused field opens advanced search through the dispatcher (#5841)', () => {
+    useViewerStore.setState({ searchOpen: true, searchModalOpen: false });
+    const container = render(<SearchInline />);
+    const input = container.querySelector('input');
+    assert.ok(input);
+    input.focus();
+    press(input, 'Enter', { ctrlKey: true });
+    assert.equal(useViewerStore.getState().searchModalOpen, true);
+    assert.equal(useViewerStore.getState().searchModalTab, 'search');
+  });
 });

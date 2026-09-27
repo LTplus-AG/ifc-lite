@@ -28,6 +28,7 @@ import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomS
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
+import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useIfc } from '@/hooks/useIfc';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useViewerStore } from '@/store';
@@ -63,6 +64,7 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
 import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 /** Technical query flag rendered as code by the localized safe-mode notice. */
 const SAFE_MODE_QUERY_FLAG = '?safe=0';
@@ -128,16 +130,11 @@ export function ViewerLayout() {
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // Ctrl+K / Cmd+K to open command palette
+  // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return registerKeyboardCommand('ui.commandPalette', () => {
+      setCommandPaletteOpen((prev) => !prev);
+    }, { allowInTextEntry: true });
   }, []);
 
   useEffect(() => {
@@ -258,6 +255,7 @@ export function ViewerLayout() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+        <ExtensionKeyboardBindings />
         {safeMode && (
           <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />

@@ -13,7 +13,8 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
-import { eventKey, isTextEntryTarget, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
+import { eventKey, WALK_MOVEMENT_KEYS } from '@/lib/keyboard-event';
+import { dispatchKeyboardDown, registerKeyboardBinding, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 import { flySpeedStore } from './flySpeedStore.js';
 
@@ -48,18 +49,11 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
     rendererRef,
     isInitialized,
     keyboardHandlersRef,
-    firstPersonModeRef,
     geometryBoundsRef,
     coordinateInfoRef,
     geometryRef,
     selectedEntityIdRef,
-    hiddenEntitiesRef,
-    isolatedEntitiesRef,
-    selectedModelIndexRef,
-    clearColorRef,
     activeToolRef,
-    sectionPlaneRef,
-    sectionRangeRef,
     updateCameraRotationRealtime,
     calculateScale,
   } = params;
@@ -79,92 +73,39 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       renderer.requestRender();
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isTextEntryTarget(e)) {
-        return;
-      }
-
-      // Browsers may dispatch a key event with no `key` (autofill, synthetic
-      // events) — see lib/keyboard-event.ts. Nothing below could match such an
-      // event, so skipping it is behaviour-preserving.
-      const key = eventKey(e);
-      if (key === null) return;
-
+    const startMovement = (event: KeyboardEvent) => {
+      const key = eventKey(event);
+      if (key === null) return false;
       keyState[key] = true;
-
-      // Start movement loop when a movement key is pressed
       if (MOVEMENT_KEYS.has(key) && !moveLoopRunning) {
         moveLoopRunning = true;
         keyboardMove();
       }
+    };
 
-      // The camera shortcuts below are plain keys. With Ctrl/Meta/Alt held the
-      // key belongs to another binding (Ctrl+Z undo, Ctrl+F search, Alt+1
-      // panel), which must not also move the camera (#5596).
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {
+      // Match the viewcube, including Cesium north-up when its basemap is live.
+      const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+      const rotation = presetViewRotation(view, coordinateInfoRef.current?.buildingRotation, cesiumEnabled && cesiumAvailable);
+      camera.setPresetView(view, geometryBoundsRef.current, rotation);
+      renderScene();
+      updateCameraRotationRealtime(camera.getRotation());
+      calculateScale();
+    };
 
-      // Preset views - set view and re-render
-      const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {
-        // Match the viewcube: when the Cesium world-context basemap is rendering,
-        // TOP/BOTTOM read north-up rather than following the building's IfcSite
-        // axes (#1532). cesiumAvailable guards a stale cesiumEnabled after georef
-        // disappears.
-        const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
-        const rotation = presetViewRotation(
-          view,
-          coordinateInfoRef.current?.buildingRotation,
-          cesiumEnabled && cesiumAvailable,
-        );
-        camera.setPresetView(view, geometryBoundsRef.current, rotation);
-        renderScene();
-        updateCameraRotationRealtime(camera.getRotation());
+    const frameSelection = () => {
+      // Use the same multi-selection callback as the toolbar (#1133). The
+      // direct bounds fallback matters when a renderer lacks that callback.
+      const state = useViewerStore.getState();
+      const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
+      if (hasSelection && state.cameraCallbacks.frameSelection) {
+        state.cameraCallbacks.frameSelection();
+      } else if (selectedEntityIdRef.current !== null) {
+        const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
+        if (bounds) camera.frameBounds(bounds.min, bounds.max, 300);
         calculateScale();
-      };
-
-      if (e.key === '1') setViewAndRender('top');
-      if (e.key === '2') setViewAndRender('bottom');
-      if (e.key === '3') setViewAndRender('front');
-      if (e.key === '4') setViewAndRender('back');
-      if (e.key === '5') setViewAndRender('left');
-      if (e.key === '6') setViewAndRender('right');
-
-      // Frame selection (F) - zoom to fit selection, or fit all if nothing
-      // selected. Delegates to `cameraCallbacks.frameSelection` — the SAME
-      // callback the toolbar/ribbon "Frame selection" button, search,
-      // hierarchy, properties, compare and clash all use — rather than
-      // reimplementing it: `frameSelection` unions the full multi-selection
-      // set (not just this hook's single `selectedEntityIdRef`) and resolves
-      // a geometry-less assembly to the aggregated parts that carry geometry
-      // (#1133) before giving up on bounds. A local reimplementation here
-      // would silently regain both bugs (Viewport.tsx documents #1133 at the
-      // `frameSelection` definition).
-      if (e.key === 'f' || e.key === 'F') {
-        const state = useViewerStore.getState();
-        const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
-        if (hasSelection && state.cameraCallbacks.frameSelection) {
-          state.cameraCallbacks.frameSelection();
-        } else if (selectedEntityIdRef.current !== null) {
-          // No frameSelection callback registered (renderer not mounted) —
-          // fall back to the direct bounds lookup so the shortcut still does
-          // something rather than nothing.
-          const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
-          if (bounds) camera.frameBounds(bounds.min, bounds.max, 300);
-          calculateScale();
-        } else {
-          // Nothing selected: Fit All, framing what is visible (#5884).
-          state.cameraCallbacks.fitAll?.();
-        }
-      }
-
-      // Home view (H) - reset to isometric
-      if (e.key === 'h' || e.key === 'H') {
-        goHomeFromStore();
-      }
-
-      // Fit all / Zoom extents (Z): the one Fit All, which frames what is
-      // visible rather than the load-time bounds (#5884).
-      if (e.key === 'z' || e.key === 'Z') {
-        useViewerStore.getState().cameraCallbacks.fitAll?.();
+      } else {
+        state.cameraCallbacks.fitAll?.();
       }
     };
 
@@ -189,9 +130,6 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
         }
       }
     };
-
-    keyboardHandlersRef.current.handleKeyDown = handleKeyDown;
-    keyboardHandlersRef.current.handleKeyUp = handleKeyUp;
 
     const keyboardMove = () => {
       if (aborted || !moveLoopRunning) return;
@@ -233,8 +171,25 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       moveFrameId = requestAnimationFrame(keyboardMove);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    const isWalkMode = () => activeToolRef.current === 'walk';
+    const registrations = [
+      registerKeyboardCommand('walk.move', startMovement, { active: isWalkMode, ignoreModifiers: true }),
+      registerKeyboardCommand('walk.moveArrows', startMovement, { active: isWalkMode, ignoreModifiers: true }),
+      registerKeyboardCommand('camera.pan', startMovement, { active: () => !isWalkMode(), ignoreModifiers: true }),
+      registerKeyboardBinding({ id: 'walk.sprint', when: 'tool.walk', layer: 'tool', keys: [{ key: 'shift', shift: true }], active: isWalkMode, run: startMovement }),
+      registerKeyboardCommand('camera.viewTop', () => { setViewAndRender('top'); }),
+      registerKeyboardCommand('camera.viewBottom', () => { setViewAndRender('bottom'); }),
+      registerKeyboardCommand('camera.viewFront', () => { setViewAndRender('front'); }),
+      registerKeyboardCommand('camera.viewBack', () => { setViewAndRender('back'); }),
+      registerKeyboardCommand('camera.viewLeft', () => { setViewAndRender('left'); }),
+      registerKeyboardCommand('camera.viewRight', () => { setViewAndRender('right'); }),
+      registerKeyboardCommand('camera.frameSelection', () => { frameSelection(); }),
+      registerKeyboardCommand('camera.home', () => { goHomeFromStore(); }),
+      registerKeyboardCommand('camera.fitAll', () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); }),
+      registerKeyboardKeyUp(handleKeyUp),
+    ];
+    keyboardHandlersRef.current.handleKeyDown = dispatchKeyboardDown;
+    keyboardHandlersRef.current.handleKeyUp = handleKeyUp;
 
     return () => {
       aborted = true;
@@ -242,8 +197,9 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
       if (moveFrameId !== null) {
         cancelAnimationFrame(moveFrameId);
       }
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      for (const unregister of registrations) unregister();
+      keyboardHandlersRef.current.handleKeyDown = null;
+      keyboardHandlersRef.current.handleKeyUp = null;
     };
   }, [isInitialized]);
 }

@@ -16,7 +16,7 @@
 import { useEffect } from 'react';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { isTextEntryTarget } from '@/lib/keyboard-event';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 export function useDuplicateShortcut() {
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
@@ -24,28 +24,18 @@ export function useDuplicateShortcut() {
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key !== 'd' && e.key !== 'D') return;
-
-      // Ignore when the user is typing somewhere — Ctrl+D in an
-      // input usually means "delete word forward" or browser-bookmark.
-      if (isTextEntryTarget(e)) return;
-
+    const unregister = registerKeyboardCommand('edit.duplicate', (e) => {
       const state = useViewerStore.getState();
       const selectedId = state.selectedEntityId;
-      if (selectedId === null) return;
+      if (selectedId === null) return false;
 
       const ref = resolveEntityRef(selectedId);
-      if (!ref) return;
+      if (!ref) return false;
 
       // Suppress the browser's bookmark default for any duplicate
       // shortcut we recognise — even when the model has no editable
       // mutation view, otherwise Ctrl/⌘+D opens the bookmark dialog
       // while we're "silently no-op'ing" below.
-      e.preventDefault();
-      e.stopPropagation();
-
       // Match the menu's canEdit gating — silently no-op on
       // native-metadata models.
       const view = getMutationView(ref.modelId);
@@ -63,9 +53,7 @@ export function useDuplicateShortcut() {
         setSelectedEntityId(result.globalId);
         toast.success(`Duplicated as #${result.expressId} (${direction}) — undo to remove`);
       }
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    });
+    return unregister;
   }, [duplicateEntity, getMutationView, setSelectedEntityId]);
 }

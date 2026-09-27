@@ -104,6 +104,7 @@ export const commandsEn = {
   'commands.ui.closeOverlay': 'Close the open menu or dialog',
   'commands.ui.toggleTheme': 'Toggle theme',
   'commands.chat.focusInput': 'Focus the chat input (AI chat)',
+  'commands.chat.close': 'Close chat when the input is empty',
 
   // Help
   'commands.help.shortcuts': 'Show keyboard shortcuts',

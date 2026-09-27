@@ -8,6 +8,7 @@ import type { ListDataProvider, UnreadableListCondition } from '@ifc-lite/lists'
 import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import { discoverFilterStoreys } from '@/lib/search/filter-schema';
 import { discoverConditionValues, type ListConditionValues, type StoreWithView } from './list-builder-discovery';
+import { isEditableCondition } from './list-compatibility-condition';
 
 /** The provider-only List filter editor keeps suggestions from every loaded
  * model. The shared Rules editor samples the active model for its own rules. */
@@ -24,7 +25,7 @@ export function useLegacyListFilterOptions(
   const values = sampled?.version === mutationVersion && sampled.source === storeViews ? sampled.values : null;
   useEffect(() => {
     if (values || stores.length === 0) return;
-    const needs = rows.some((row) => row.reason !== 'invalid-condition' && (
+    const needs = rows.some((row) => isEditableCondition(row) && (
       row.condition.source === 'property' || row.condition.source === 'material' || row.condition.source === 'classification'
     ));
     if (needs) setSampled({ version: mutationVersion, source: storeViews, values: discoverConditionValues(storeViews) });

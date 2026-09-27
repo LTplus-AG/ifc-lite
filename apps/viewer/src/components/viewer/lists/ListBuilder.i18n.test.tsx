@@ -389,6 +389,37 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.equal(container.querySelector('[role="alert"]'), null);
   });
 
+  it('warns and preserves future source/operator and invalid-value filters instead of rendering broken editors (#5894)', () => {
+    const store = buildStore();
+    const raw = [
+      { condition: { source: 'future', propertyName: 'X', operator: 'equals', value: 'a' }, reason: 'unsupported-source' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'invalid-value' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'futureOp', value: 'A' }, reason: 'operator' },
+      { condition: null, reason: 'unsupported-source' },
+    ];
+    const initial = {
+      id: 'future-filter', name: 'Future filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], conditions: [], groups: [],
+      unreadableConditions: raw,
+    } as unknown as ListDefinition;
+    let saved: ListDefinition | undefined;
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
+        onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    const warning = container.querySelector('[role="alert"]');
+    assert.match(warning?.textContent ?? '', /future: X equals \(unsupported-source\)/);
+    assert.match(warning?.textContent ?? '', /property: Code equals \(invalid-value\)/);
+    assert.match(warning?.textContent ?? '', /property: Code futureOp \(operator\)/);
+    assert.match(warning?.textContent ?? '', /Malformed saved condition/);
+    assert.equal(container.querySelectorAll('button[aria-label="Remove filter"]').length, 0);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, raw);
+    click([...warning!.querySelectorAll('button')][0]);
+    assert.doesNotMatch(container.querySelector('[role="alert"]')?.textContent ?? '', /future: X/);
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /invalid-value/);
+  });
+
   it('saves group edits from the shared FilterGroupEditor (#5894)', () => {
     const store = buildStore();
     let saved: ListDefinition | undefined;

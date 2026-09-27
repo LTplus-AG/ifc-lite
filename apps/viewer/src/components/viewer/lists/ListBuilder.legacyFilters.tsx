@@ -15,17 +15,13 @@ import type { FilterRule } from '@ifc-lite/rules';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ZoneSet } from '@/lib/zones';
 import type { ListConditionValues, StoreWithView } from './list-builder-discovery';
+import { describeUneditable, isEditableCondition, operatorsFor, type ConditionSource } from './list-compatibility-condition';
 import { useLegacyListFilterOptions } from './use-legacy-list-filter-options';
 
 const NO_OPTIONS: readonly string[] = [];
 const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'] as const;
 const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
 const ZONE_MODE_BREAKDOWN_LABEL = 'Volume breakdown (mesh)';
-
-// Filters (conditions)
-// ============================================================================
-
-type ConditionSource = PropertyCondition['source'];
 
 type CompatibilityPreset = 'zone' | 'spatial' | 'quantity' | 'material' | 'model' | 'attribute' | 'property';
 const COMPATIBILITY_PRESETS: readonly CompatibilityPreset[] = [
@@ -41,18 +37,6 @@ function conditionForPreset(preset: CompatibilityPreset, zoneSets: ZoneSet[]): P
     case 'attribute': return { ...defaultConditionFor('attribute'), propertyName: 'GlobalId' };
     case 'property': return { ...defaultConditionFor('property'), inherit: 'aggregation' };
     case 'zone': return defaultConditionFor('zone', zoneSets);
-  }
-}
-
-function operatorsFor(source: ConditionSource): ConditionOperator[] {
-  switch (source) {
-    case 'quantity':
-      return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'material':
-    case 'classification':
-      return ['contains', 'equals', 'notEquals', 'exists'];
-    default:
-      return ['equals', 'notEquals', 'contains', 'exists'];
   }
 }
 
@@ -103,8 +87,8 @@ interface LegacyListFiltersProps {
 export function LegacyListFilters({ rows, onChange, onPromote, discovered, stores, storeViews, providers, mutationVersion, zoneSets }: LegacyListFiltersProps) {
   const { t } = useTranslation();
   const { values, spatialNames, modelNames } = useLegacyListFilterOptions(rows, stores, storeViews, providers, mutationVersion);
-  const editable = rows.flatMap((row, index) => row.reason === 'invalid-condition' ? [] : [{ condition: row.condition, index }]);
-  const invalid = rows.flatMap((row, index) => row.reason === 'invalid-condition' ? [{ index }] : []);
+  const editable = rows.flatMap((row, index) => isEditableCondition(row) ? [{ condition: row.condition, index }] : []);
+  const invalid = rows.flatMap((row, index) => isEditableCondition(row) ? [] : [{ row, index }]);
   return (
     <div className="mt-3 space-y-2">
       <p className="text-xs font-medium">{t('lists.builder.compatibilityFilters')}</p>
@@ -123,9 +107,9 @@ export function LegacyListFilters({ rows, onChange, onPromote, discovered, store
       {invalid.length > 0 && (
         <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
           <p className="mb-2 flex items-center gap-1.5 font-medium"><AlertTriangle className="h-3.5 w-3.5" aria-hidden />{t('lists.builder.unreadableWarning')}</p>
-          {invalid.map(({ index }) => (
+          {invalid.map(({ row, index }) => (
             <div key={index} className="flex items-center justify-between gap-2">
-              <span>{t('lists.builder.malformedCondition')}</span>
+              <span>{describeUneditable(row, t('lists.builder.malformedCondition'))}</span>
               <Button type="button" variant="ghost" size="sm" onClick={() => onChange((current) => current.filter((_, i) => i !== index))}>
                 {t('lists.builder.removeUnreadable')}
               </Button>

@@ -30,9 +30,9 @@ export const MOBILE_SURFACE_COMMANDS = [
     run: () => { emitOpenCommandPalette(); },
   },
   {
-    id: 'vis:isolate', labelKey: 'shellChrome.mobileToolbar.isolateSelection',
+    id: 'vis:isolate', labelKey: 'shellChrome.mobileToolbar.isolateSelection', ribbonLabelKey: 'ribbon.elements.isolate', ribbonTooltipKey: 'ribbon.elements.isolateTooltip',
     keywords: 'isolate selected collection', category: 'Visibility', icon: Eye,
-    surfaces: mobileOnly, enabled: alwaysEnabled, shortcut: 'basket.isolate',
+    surfaces: mobileAndRibbon, enabled: alwaysEnabled, shortcut: 'basket.isolate',
     run: () => { executeBasketIsolate(); },
   },
   {

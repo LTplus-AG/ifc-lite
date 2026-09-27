@@ -105,9 +105,9 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().toggleTheme(); },
   },
   {
-    id: 'pref:tooltips', labelKey: 'commandPalette.pref.tooltips.label',
+    id: 'pref:tooltips', labelKey: 'commandPalette.pref.tooltips.label', ribbonLabelKey: 'ribbon.elements.hoverTips', ribbonTooltipKey: 'ribbon.elements.hoverTipsTooltip',
     keywords: 'entity info mouse hover show hide',
-    category: 'Preferences', icon: Info, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Preferences', icon: Info, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleHoverTooltips(); },
   },
   {

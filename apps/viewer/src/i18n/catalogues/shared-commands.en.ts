@@ -71,7 +71,6 @@ export const sharedCommandsEn = {
   'exportCommands.extension.exportedToast': 'Exported with {name}',
   'exportCommands.extension.failedToast': '"{name}" failed: {error}',
 
-  'cameraCommands.home.label': 'Isometric',
   'cameraCommands.home.tooltip': 'Home (isometric camera + fit)',
   'cameraCommands.zoomIn.label': 'Zoom in',
   'cameraCommands.zoomIn.tooltip': 'Zoom in',

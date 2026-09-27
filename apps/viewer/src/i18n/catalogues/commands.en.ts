@@ -45,6 +45,7 @@ export const commandsEn = {
   'commands.measure.finish': 'Finish the polyline as open length, or the radius fit (Measure tool)',
   'commands.addElement.commit': 'Close the slab, roof, plate or space outline (Add element, polygon mode)',
   'commands.addElement.clearPending': 'Clear the points placed so far (Add element)',
+  'commands.addElement.toggleSnap': 'Toggle snapping (Add element)',
   'commands.spaceSketch.undo': 'Undo the last sketch step (Space sketch)',
   'commands.spaceSketch.redo': 'Redo the sketch step (Space sketch)',
   'commands.spaceSketch.commit': 'Close the drawn room (Space sketch)',

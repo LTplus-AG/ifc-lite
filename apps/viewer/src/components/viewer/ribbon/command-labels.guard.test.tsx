@@ -79,15 +79,24 @@ it('#5870/#5878 mounts every ribbon command with its registry name across all ta
       }
       const exportId = button.dataset.exportCommand;
       if (exportId) {
+        assert.equal(button.dataset.ribbonContentSource, 'export', `${tab}: ${exportId} declares its export owner`);
+        assert.equal(button.dataset.ribbonContentId, exportId, `${tab}: ${exportId} carries its export registry id`);
         const exportCommand = EXPORT_COMMANDS.find((item) => item.id === exportId);
         assert.ok(exportCommand, `${tab}: ${exportId} is a registered export`);
         assert.equal(button.getAttribute('aria-label'), resolve(exportCommand.tooltipKey),
           `${tab}: ${exportId} announces its export registry tooltip`);
         continue;
       }
-      if (button.dataset.exportExtension || button.dataset.ribbonExtension) continue;
+      const extensionId = button.dataset.exportExtension ?? button.dataset.ribbonExtension;
+      if (extensionId) {
+        assert.equal(button.dataset.ribbonContentSource, 'extension', `${tab}: ${extensionId} declares its extension owner`);
+        assert.equal(button.dataset.ribbonContentId, extensionId, `${tab}: ${extensionId} carries its contribution id`);
+        continue;
+      }
       const id = button.dataset.commandId;
       if (!id) { raw++; continue; }
+      assert.equal(button.dataset.ribbonContentSource, 'registered', `${tab}: ${id} is a registered button`);
+      assert.equal(button.dataset.ribbonContentId, id, `${tab}: ${id} matches its typed command id`);
       renderedIds.add(id);
       const command: SurfaceCommandDefinition | undefined = SURFACE_COMMANDS.find((item) => item.id === id);
       assert.ok(command, `${tab}: ${id} is registered`);

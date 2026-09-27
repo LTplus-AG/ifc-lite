@@ -217,11 +217,28 @@ describe('shared palette and ribbon commands (#5870)', () => {
       const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
       const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
         .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
-      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"][data-command-id]')];
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+      const runtimePrefixes = {
+        'recent-file': 'file:recent:',
+        'script-template': 'auto:',
+        tour: 'tour:',
+        'extension-command': 'ext:',
+        'extension-export': 'export:ext:',
+      } as const;
       assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
-      assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+      assert.deepEqual(new Set(rows.filter((row) => row.dataset.commandId).map((row) => row.dataset.commandId)),
         new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
       for (const row of rows) {
+        const source = row.dataset.runtimeSource;
+        assert.notEqual(Boolean(row.dataset.commandId), Boolean(source),
+          'each option has exactly one registered command id or runtime owner');
+        if (source) {
+          const prefix = runtimePrefixes[source as keyof typeof runtimePrefixes];
+          assert.ok(prefix && row.dataset.runtimeCommandId?.startsWith(prefix),
+            `${source} owns its runtime command id`);
+          assert.ok(row.querySelector('span.flex-1')?.textContent?.trim(), 'runtime content has a visible name');
+          continue;
+        }
         const command = expected.find((item) => item.id === row.dataset.commandId);
         assert.ok(command);
         assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),

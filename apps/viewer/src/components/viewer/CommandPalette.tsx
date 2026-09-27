@@ -235,6 +235,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     <button role="option"
                       key={`${group.category}:${cmd.id}`}
                       data-command-id={cmd.registryOwned ? cmd.id : undefined}
+                      data-runtime-source={cmd.runtimeSource}
+                      data-runtime-command-id={cmd.runtimeSource ? cmd.id : undefined}
                       data-index={flatIdx}
                       aria-selected={flatIdx === selectedIndex}
                       className={cn(

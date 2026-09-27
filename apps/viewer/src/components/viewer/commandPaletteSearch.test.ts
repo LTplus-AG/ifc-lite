@@ -6,15 +6,19 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { rankCommand, score, type Command } from './commandPaletteSearch.js';
 
-function command(overrides: Partial<Command> = {}): Command {
+// @ts-expect-error #5878: a palette option cannot invent a static command label without a registry id or runtime owner.
+const unownedOption: Command = { id: 'raw:foo', label: 'Foo', keywords: '', category: 'Tools', icon: () => null, action: () => {} };
+void unownedOption;
+
+function command(): Command {
   return {
     id: 'export:json',
     label: 'Export JSON',
+    runtimeSource: 'script-template',
     keywords: 'download data',
     category: 'Export',
     icon: () => null,
     action: () => {},
-    ...overrides,
   };
 }
 

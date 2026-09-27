@@ -272,7 +272,7 @@ describe('PropertyEditor native Boolean choices (#5821)', () => {
     setLocale('en');
   });
 
-  it('keeps the three choices in one radio group and commits the selected value', async () => {
+  it('activates a visible Boolean label and commits the selected value', async () => {
     const view = seedStore();
     const container = render(
       <PropertyEditor
@@ -294,7 +294,10 @@ describe('PropertyEditor native Boolean choices (#5821)', () => {
     assert.equal(new Set(choices.map((choice) => choice.name)).size, 1);
     assert.deepEqual(choices.map((choice) => choice.checked), [true, false, false]);
 
-    click(choices[1]!);
+    const trueLabel = choices[1]?.closest('label');
+    assert.ok(trueLabel, 'the True option has a visible label');
+    assert.equal(trueLabel.textContent?.trim(), 'True');
+    click(trueLabel);
     await advance(0);
     assert.deepEqual(choices.map((choice) => choice.checked), [false, true, false]);
     click(getSaveButton());

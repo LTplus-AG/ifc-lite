@@ -15,10 +15,10 @@ import type { PropertySet, QuantitySet } from './encodingUtils';
  * element list always cover the whole selection; reading every property of a
  * select-all on a large model would stall the panel for seconds.
  */
-export const SUMMARY_VALUE_LIMIT = 500;
+const SUMMARY_VALUE_LIMIT = 500;
 
 /** One selected model as the summary reads it. */
-export interface SummarySource {
+interface SummarySource {
   store: IfcDataStore | null;
   view: MutablePropertyView | undefined;
   modelName: string;
@@ -26,10 +26,10 @@ export interface SummarySource {
 
 /** A shared row: `value` is the common display value, or null when it varies. */
 export interface SummaryRow { name: string; value: string | null; distinct: number }
-export interface SummaryGroup { name: string; rows: SummaryRow[] }
-export interface SummaryElement { ref: EntityRef; name: string; className: string }
+interface SummaryGroup { name: string; rows: SummaryRow[] }
+interface SummaryElement { ref: EntityRef; name: string; className: string }
 
-export interface SelectionSummary {
+interface SelectionSummary {
   total: number;
   compared: number;
   byClass: Array<{ label: string; count: number }>;
